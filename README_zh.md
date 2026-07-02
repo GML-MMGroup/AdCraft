@@ -8,7 +8,7 @@
 
 **从一个模糊想法到成片交付，AdCraft 全流程自动化你的广告视频生产。**
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
 [![Stars](https://img.shields.io/github/stars/yourname/adcraft?style=social)](https://github.com/yourname/adcraft)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/yourname/adcraft/releases)
 [![Discord](https://img.shields.io/badge/Discord-加入-5865F2.svg)](https://discord.gg/yourlink)
@@ -154,7 +154,11 @@ AdCraft 不绑定单一生成模型，而是支持接入多个主流图片、视
 
 ## 📄 开源协议
 
-本项目基于 [Apache 2.0 协议](./LICENSE)开源。
+本项目基于 **[GNU 通用公共许可证 v3.0（GPL v3）](./LICENSE)** 开源。
+
+你可以自由地运行、研究、分享和修改本软件。任何分发的衍生作品也必须以
+GPL v3 协议发布，从而让本软件对所有用户始终保持自由。完整条款请见
+[LICENSE](./LICENSE) 文件。
 
 ## 💬 社区交流
 

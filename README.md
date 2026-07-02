@@ -9,7 +9,7 @@
 
 **From a rough idea to a finished ad — AdCraft automates your entire advertising video workflow.**
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
 [![Stars](https://img.shields.io/github/stars/yourname/adcraft?style=social)](https://github.com/yourname/adcraft)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/yourname/adcraft/releases)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2.svg)](https://discord.gg/yourlink)
@@ -158,7 +158,11 @@ We welcome contributions of all kinds! Please see our [Contributing Guide](#) to
 
 ## 📄 License
 
-This project is licensed under the [Apache 2.0 License](./LICENSE).
+This project is licensed under the **[GNU General Public License v3.0](./LICENSE)**.
+
+You are free to run, study, share, and modify this software. Any distributed
+derivative work must also be released under the GPL v3, keeping the software
+free for all users. See the [LICENSE](./LICENSE) file for the full text.
 
 ## 💬 Community
 
