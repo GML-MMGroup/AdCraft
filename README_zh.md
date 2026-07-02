@@ -9,7 +9,7 @@
 **从一个模糊想法到成片交付，AdCraft 全流程自动化你的广告视频生产。**
 
 [![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
-[![Stars](https://img.shields.io/github/stars/yourname/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
+[![Stars](https://img.shields.io/github/stars/GML-MMGroup/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/GML-MMGroup/AdCraft/releases)
 [![Discord](https://img.shields.io/badge/Discord-加入-5865F2.svg)](https://discord.gg/yourlink)
 

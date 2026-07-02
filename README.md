@@ -10,7 +10,7 @@
 **From a rough idea to a finished ad — AdCraft automates your entire advertising video workflow.**
 
 [![License](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](./LICENSE)
-[![Stars](https://img.shields.io/github/stars/yourname/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
+[![Stars](https://img.shields.io/github/stars/GML-MMGroup/adcraft?style=social)](https://github.com/GML-MMGroup/AdCraft)
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/GML-MMGroup/AdCraft/releases)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2.svg)](https://discord.gg/yourlink)
 
