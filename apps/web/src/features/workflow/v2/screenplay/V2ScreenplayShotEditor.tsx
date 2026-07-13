@@ -1,12 +1,12 @@
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon, TrashIcon } from "../../../../icons.tsx";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   V2EditableScriptDialogue,
   V2EditableScriptDocument,
   V2EditableScriptShot,
 } from "../../../../types-v2.ts";
 import { createEditableDialogue, createEditableShot, reorderItem } from "./screenplayModel.ts";
-import { mergeProductOptions, parsePositiveDuration, type ScreenplayProductOption } from "./screenplayUiHelpers.ts";
+import { draftDurationValue, mergeProductOptions, parsePositiveDuration, type ScreenplayProductOption } from "./screenplayUiHelpers.ts";
 
 type Props = {
   document: V2EditableScriptDocument;
@@ -155,15 +155,15 @@ function ReferenceSelect({ label, options, value, error, onChange }: { label: st
 function DurationField({ value, error, onCommit }: { value: number; error?: string; onCommit: (value: number) => void }) {
   const [text, setText] = useState(String(value));
   const [touched, setTouched] = useState(false);
-  useEffect(() => { setText(String(value)); }, [value]);
+  const editingRef = useRef(false);
+  useEffect(() => { if (!editingRef.current) setText(String(value)); }, [value]);
   const localError = touched && parsePositiveDuration(text) === null ? "Enter a positive whole-number duration." : undefined;
-  const commitIfValid = () => {
+  const commitOnBlur = () => {
+    editingRef.current = false;
     setTouched(true);
-    const duration = parsePositiveDuration(text);
-    if (duration !== null && duration !== value) onCommit(duration);
   };
   return <Field label="Duration (seconds)" error={error ?? localError}>
-    <input title="Enter a positive duration in seconds" min="1" step="1" inputMode="numeric" type="number" value={text} onChange={(event) => { setText(event.target.value); const duration = parsePositiveDuration(event.target.value); if (duration !== null && duration !== value) onCommit(duration); }} onBlur={commitIfValid} />
+    <input title="Enter a positive duration in seconds" min="1" step="1" inputMode="numeric" type="number" value={text} onChange={(event) => { const nextText = event.target.value; editingRef.current = true; setText(nextText); const duration = draftDurationValue(nextText, value); if (parsePositiveDuration(nextText) === null) setTouched(true); if (duration !== value) onCommit(duration); }} onBlur={commitOnBlur} />
   </Field>;
 }
 

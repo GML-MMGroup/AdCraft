@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CloseIcon, DocumentIcon, HistoryIcon, SaveIcon } from "../../../../icons.tsx";
 import { V2ScreenplaySceneEditor } from "./V2ScreenplaySceneEditor.tsx";
-import { nextFocusableIndex, nextTabIndex, selectionGate, summarizeValidationIssues, type ScreenplayProductOption, type ScreenplayVersionTarget } from "./screenplayUiHelpers.ts";
+import { validateEditableScript } from "./screenplayModel.ts";
+import { nextFocusableIndex, nextTabIndex, selectionGate, summarizeValidationIssues, versionSelectionFocusTarget, type ScreenplayProductOption, type ScreenplayVersionTarget } from "./screenplayUiHelpers.ts";
 import { V2ScreenplayVersionHistory } from "./V2ScreenplayVersionHistory.tsx";
 import type { V2ScreenplayController } from "./useV2ScreenplayController.ts";
 
@@ -31,6 +32,8 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wasOpenRef = useRef(false);
   const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
+  const selectionTriggerRef = useRef<HTMLElement | null>(null);
+  const wasSelectingRef = useRef(false);
   const requestedOperationRef = useRef<Operation | null>(null);
 
   useEffect(() => {
@@ -51,6 +54,20 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
   }, [state.requestError]);
 
   useEffect(() => {
+    const selectionFinished = wasSelectingRef.current && !state.isSelecting;
+    wasSelectingRef.current = state.isSelecting;
+    if (!selectionFinished) return;
+    const trigger = selectionTriggerRef.current;
+    selectionTriggerRef.current = null;
+    const failed = state.requestError?.operation === "select";
+    const triggerEnabled = trigger instanceof HTMLButtonElement && !trigger.disabled && document.contains(trigger);
+    requestAnimationFrame(() => {
+      if (versionSelectionFocusTarget({ failed, triggerEnabled }) === "trigger") trigger?.focus();
+      else (tabRefs.current[1] ?? headingRef.current)?.focus();
+    });
+  }, [state.isSelecting, state.requestError]);
+
+  useEffect(() => {
     if (!state.isOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || pendingVersion || state.closeState === "confirmation_required") return;
@@ -63,7 +80,10 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
   }, [controller, pendingVersion, state.closeState, state.isOpen]);
 
   if (!state.isOpen) return null;
-  const validationIssues = summarizeValidationIssues(state.validationErrors);
+  const validationIssues = summarizeValidationIssues([...new Map([
+    ...state.validationErrors,
+    ...(state.draft ? validateEditableScript(state.draft) : []),
+  ].map((issue) => [`${issue.path}:${issue.message}`, issue])).values()]);
   const errorOperation = lastFailedOperation ?? (state.requestError ? operationForRequest(state.requestError.operation) : null);
   const errorViolations = requestViolations(state.requestError?.details);
 
@@ -78,7 +98,10 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
     if (operation.kind === "initial_load" || operation.kind === "selected_refresh") void controller.refreshSelected();
     if (operation.kind === "history_refresh") void controller.refreshHistory();
     if (operation.kind === "confirm") void controller.confirm();
-    if (operation.kind === "select") void controller.selectVersion(operation.target.script_version_id);
+    if (operation.kind === "select") {
+      selectionTriggerRef.current ??= activeElement();
+      void controller.selectVersion(operation.target.script_version_id);
+    }
   };
 
   const requestVersionSelection = (target: ScreenplayVersionTarget, trigger: HTMLButtonElement) => {
@@ -126,10 +149,10 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
       </div>
       <footer className="v2-screenplay-drawer__footer">
         <span>{state.dirty ? "Unsaved changes" : "All changes saved"}</span>
-        <button className="v2-screenplay-confirm" type="button" disabled={!state.draft || state.isSaving || state.isSelecting || Boolean(state.conflict)} onClick={() => runOperation({ kind: "confirm" })}><SaveIcon /> {state.isSaving ? "Confirming script..." : "Confirm script"}</button>
+        <button className="v2-screenplay-confirm" type="button" disabled={!state.draft || validationIssues.length > 0 || state.isSaving || state.isSelecting || Boolean(state.conflict)} onClick={() => runOperation({ kind: "confirm" })}><SaveIcon /> {state.isSaving ? "Confirming script..." : "Confirm script"}</button>
       </footer>
       {state.closeState === "confirmation_required" ? <ConfirmationDialog title="Discard unsaved screenplay changes?" description="Your local draft has changes that have not been confirmed." confirmLabel="Discard changes" onCancel={() => finishDialog(() => controller.cancelClose())} onConfirm={() => finishDialog(() => controller.discardDraftAndClose())} /> : null}
-      {pendingVersion ? <ConfirmationDialog title={`Use ${pendingVersion.script_title}?`} description="Your unsaved changes will be discarded and this saved script version will become selected." confirmLabel="Use this script version" onCancel={() => finishDialog(() => setPendingVersion(null))} onConfirm={() => finishDialog(() => { const target = pendingVersion; setPendingVersion(null); runOperation({ kind: "select", target }); })} /> : null}
+      {pendingVersion ? <ConfirmationDialog title={`Use ${pendingVersion.script_title}?`} description="Your unsaved changes will be discarded and this saved script version will become selected." confirmLabel="Use this script version" onCancel={() => finishDialog(() => setPendingVersion(null))} onConfirm={() => { const target = pendingVersion; selectionTriggerRef.current = dialogReturnFocusRef.current; dialogReturnFocusRef.current = null; setPendingVersion(null); runOperation({ kind: "select", target }); }} /> : null}
     </aside>
   </div>;
 }

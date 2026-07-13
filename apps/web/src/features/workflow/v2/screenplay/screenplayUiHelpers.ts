@@ -49,6 +49,16 @@ export function parsePositiveDuration(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+export function draftDurationValue(value: string, _fallback: number): number {
+  if (!value.trim()) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function versionSelectionFocusTarget({ failed, triggerEnabled }: { failed: boolean; triggerEnabled: boolean }): "trigger" | "stable" {
+  return failed && triggerEnabled ? "trigger" : "stable";
+}
+
 export function createProductBeatRows(values: readonly string[], nextKey: () => string): ProductBeatRow[] {
   return values.map((value) => ({ key: nextKey(), value }));
 }
