@@ -229,7 +229,8 @@ export function updateSlotDraftAttachment(
   attachmentId: string,
   patch: Partial<SlotMicroEditAttachment>,
 ): SlotMicroEditState {
-  const draft = ensureDraft(state, slotId);
+  const draft = state.draftsBySlotId[slotId];
+  if (!draft) return state;
   return updateDraft(
     state,
     slotId,
@@ -478,7 +479,7 @@ function mergeSuccessfulSubmissionBaseline(
 }
 
 function draftReferencesDifferFromBaseline(draft: SlotMicroEditDraft, baseline: SlotMicroEditServerBaseline) {
-  if (!sameStrings(draft.reference_asset_ids, baseline.reference_asset_ids) || draft.uploaded_asset_ids.length > 0) return true;
+  if (!sameStringSet(draft.reference_asset_ids, baseline.reference_asset_ids) || draft.uploaded_asset_ids.length > 0) return true;
   const baselineAssetIds = new Set(baseline.reference_asset_ids);
   const unresolvedLibraryEntity = draft.library_entity_ids.some((entityId) => !draft.attachments.some((attachment) =>
     attachment.library_entity_id === entityId && attachment.source_asset_id && baselineAssetIds.has(attachment.source_asset_id)
@@ -531,6 +532,12 @@ function sameServerBaseline(left: SlotMicroEditServerBaseline | undefined, right
 
 function sameStrings(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function sameStringSet(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const rightValues = new Set(right);
+  return left.every((value) => rightValues.has(value));
 }
 
 function sameAttachments(left: SlotMicroEditAttachment[], right: SlotMicroEditAttachment[]) {

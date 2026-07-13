@@ -603,10 +603,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     removedSourceAssetIds: string[] = [],
   ) {
     const slot = workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? v2SlotById(slotId);
-    if (!slot) {
-      argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false);
-      return;
-    }
+    if (!slot) return;
     const removed = new Set(removedSourceAssetIds.filter(Boolean));
     const explicitReferenceIds = Array.from(new Set([
       ...(slot.explicit_reference_ids ?? []),
