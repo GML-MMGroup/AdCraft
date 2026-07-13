@@ -497,10 +497,6 @@ export function applyWorkflowRuntimeEventV2(current: WorkflowRuntimeStoreV2, eve
     event.event_type === "asset_history_updated" ||
     event.event_type === "workflow_updated" ||
     event.event_type === "resolved_inputs_updated" ||
-    event.event_type === "slot_outdated_hint_added" ||
-    event.event_type === "item_outdated_hint_added" ||
-    event.event_type === "node_outdated_hint_added" ||
-    event.event_type === "slot_outdated_hint_cleared" ||
     event.event_type === "storyboard_summary_refined"
   ) {
     const refresh = refreshHints(event);

@@ -93,10 +93,6 @@ export const V2_WORKFLOW_REFRESH_EVENT_TYPES = new Set([
   "reference_attached",
   "reference_removed",
   "asset_owner_resolved",
-  "slot_outdated_hint_added",
-  "item_outdated_hint_added",
-  "node_outdated_hint_added",
-  "slot_outdated_hint_cleared",
   "storyboard_summary_refined",
   "chat_action_applied",
 ]);

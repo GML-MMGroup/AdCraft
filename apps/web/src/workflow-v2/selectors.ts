@@ -1,6 +1,5 @@
 import type {
   AssetVersionV2,
-  OutdatedSourceV2,
   ProviderTaskStatusV2,
   RuntimeRecordV2,
   SlotFunctionalCardViewModel,
@@ -160,34 +159,6 @@ export function dedupeSlotVersionAssets(versions: AssetVersionV2[]) {
     result.push(asset);
   }
   return result;
-}
-
-export type V2OutdatedHintView = {
-  active: boolean;
-  label: string;
-  sources: OutdatedSourceV2[];
-};
-
-export function outdatedHintForSlot(slot: WorkflowSlotV2 | undefined): V2OutdatedHintView {
-  if (!slot) return { active: false, label: "", sources: [] };
-  return outdatedHintFromMetadata(slot.metadata);
-}
-
-export function outdatedHintFromMetadata(metadata: Record<string, unknown> | undefined): V2OutdatedHintView {
-  const active = Boolean(
-    metadata?.outdated_hint ||
-      metadata?.is_outdated ||
-      metadata?.outdated ||
-      metadata?.stale_hint ||
-      metadata?.reference_updated,
-  );
-  const sources = outdatedSourcesFromMetadata(metadata);
-  if (!active && !sources.length) return { active: false, label: "", sources: [] };
-  return {
-    active: true,
-    label: firstString(metadata?.outdated_label, metadata?.outdated_hint_label, metadata?.stale_label) || "Reference updated",
-    sources,
-  };
 }
 
 export function isIdOnlyAssetVersion(asset?: AssetVersionV2 | null) {
@@ -441,33 +412,6 @@ function collectReferenceIdsFromRelations(target: Set<string>, value: unknown) {
       if (typeof id === "string" && id.trim()) target.add(id.trim());
     }
   }
-}
-
-function outdatedSourcesFromMetadata(metadata: Record<string, unknown> | undefined): OutdatedSourceV2[] {
-  const rawSources = metadata?.outdated_sources ?? metadata?.outdated_source ?? metadata?.stale_sources;
-  if (Array.isArray(rawSources)) {
-    return rawSources
-      .map(outdatedSourceFromValue)
-      .filter((source): source is OutdatedSourceV2 => Boolean(source));
-  }
-  const source = outdatedSourceFromValue(rawSources);
-  return source ? [source] : [];
-}
-
-function outdatedSourceFromValue(value: unknown): OutdatedSourceV2 | null {
-  const record = recordValue(value);
-  if (!record) return null;
-  return {
-    source_node_id: firstString(record.source_node_id),
-    source_item_id: firstString(record.source_item_id),
-    source_slot_id: firstString(record.source_slot_id),
-    source_asset_id: firstString(record.source_asset_id),
-    old_asset_id: firstString(record.old_asset_id),
-    new_asset_id: firstString(record.new_asset_id),
-    reason: firstString(record.reason),
-    created_at: firstString(record.created_at),
-    metadata: recordValue(record.metadata),
-  };
 }
 
 function firstPresent(...values: unknown[]) {

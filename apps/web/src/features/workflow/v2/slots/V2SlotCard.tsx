@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
-import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, outdatedHintForSlot, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
+import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
 import { V2ReferencePicker } from "../references/V2ReferencePicker.tsx";
@@ -125,7 +125,6 @@ export function V2SlotCard({
     history_versions: versionHistory,
     quality_status: workingVersion?.quality_status ?? selectedAsset?.quality_status,
   });
-  const outdatedHint = outdatedHintForSlot(slot);
   const advancedPromptFields = [
     ["Dialogue prompt", slot.dialogue_prompt],
     ["Audio description prompt", slot.audio_description_prompt],
@@ -182,13 +181,6 @@ export function V2SlotCard({
         <span>{slotLabel}</span>
         <span className="v2-slot-status">{runtimeStatus || slot.status}</span>
       </header>
-      {outdatedHint.active ? (
-        <aside className="v2-slot-outdated-hint" aria-label="Reference updated">
-          <strong>{outdatedHint.label || "Reference updated"}</strong>
-          <span>Based on an older reference</span>
-          {outdatedHint.sources.length ? <small>{outdatedHint.sources.map((source) => source.source_slot_id || source.source_asset_id || source.reason).filter(Boolean).join(" · ")}</small> : null}
-        </aside>
-      ) : null}
       {providerStatusItems.length || materializerWarnings.length ? (
         <section className="v2-provider-status" aria-label="Provider task status">
           {providerWaiting ? <strong>Generating / waiting for provider</strong> : null}
