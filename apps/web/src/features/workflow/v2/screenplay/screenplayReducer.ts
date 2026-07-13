@@ -68,7 +68,7 @@ export type ScreenplayReducerAction =
   | { type: "SELECTED_REFRESH_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; script: V2ScriptPlan; selectedScriptVersionId: string }
   | { type: "SELECTED_REFRESH_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
   | { type: "HISTORY_REFRESH_STARTED"; workflowId: string; generation: number; requestToken: number }
-  | { type: "HISTORY_REFRESH_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; versions: V2ScriptVersionSummary[] }
+  | { type: "HISTORY_REFRESH_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; selectedScriptVersionId: string; versions: V2ScriptVersionSummary[] }
   | { type: "HISTORY_REFRESH_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
   | { type: "KEEP_REVIEWING_LOCAL_DRAFT" }
   | { type: "DISCARD_LOCAL_DRAFT_AND_RELOAD_LATEST" }
@@ -157,6 +157,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
         isSaving: true,
         isSelecting: false,
         selectedRequestToken: action.requestToken,
+        historyRequestToken: null,
         saveRequestToken: action.requestToken,
         selectRequestToken: null,
         requestError: null,
@@ -199,6 +200,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
         isSaving: false,
         isSelecting: true,
         selectedRequestToken: action.requestToken,
+        historyRequestToken: null,
         saveRequestToken: null,
         selectRequestToken: action.requestToken,
         requestError: null,
@@ -226,6 +228,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
         isSaving: false,
         isSelecting: false,
         selectedRequestToken: action.requestToken,
+        historyRequestToken: null,
         saveRequestToken: null,
         selectRequestToken: null,
         requestError: null,
@@ -245,7 +248,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       if (!matchesWorkflowAndGeneration(state, action)) return state;
       return { ...state, isLoading: true, historyRequestToken: action.requestToken, requestError: null };
     case "HISTORY_REFRESH_SUCCEEDED":
-      if (!matchesHistoryRefreshRequest(state, action)) return state;
+      if (!matchesHistoryRefreshRequest(state, action) || state.selectedScriptVersionId !== action.selectedScriptVersionId) return state;
       return { ...state, isLoading: false, historyRequestToken: null, requestError: null, versions: freezeVersions(action.versions) };
     case "HISTORY_REFRESH_FAILED":
       if (!matchesHistoryRefreshRequest(state, action)) return state;

@@ -83,6 +83,16 @@ export function createV2ScreenplayControllerRuntime({
     return isSessionActive(workflowId, generation) && getState().historyRequestToken === request;
   };
 
+  const isCoherentHistoryResponse = (
+    workflowId: string,
+    generation: number,
+    request: number,
+    selectedScriptVersionId: string,
+  ): boolean => {
+    return isHistoryRequestActive(workflowId, generation, request)
+      && getState().selectedScriptVersionId === selectedScriptVersionId;
+  };
+
   const isOpenRequestActive = (workflowId: string, generation: number, request: number): boolean => {
     return isSelectedRequestActive(workflowId, generation, request) && getState().historyRequestToken === request;
   };
@@ -157,12 +167,13 @@ export function createV2ScreenplayControllerRuntime({
     try {
       const response = await api.scriptVersions(workflowId);
       if (response.workflow_id !== workflowId) throw new Error("Screenplay history response belongs to a different workflow.");
-      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
+      if (!isCoherentHistoryResponse(workflowId, state.generation, request, response.selected_script_version_id)) return;
       dispatch({
         type: "HISTORY_REFRESH_SUCCEEDED",
         workflowId,
         generation: state.generation,
         requestToken: request,
+        selectedScriptVersionId: response.selected_script_version_id,
         versions: response.versions,
       });
     } catch (error) {
