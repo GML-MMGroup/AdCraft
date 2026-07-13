@@ -9,7 +9,7 @@ import { V2ProviderTaskPanel } from "../provider/V2ProviderTaskPanel.tsx";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
 import { V2SlotReferenceComposer } from "./V2SlotReferenceComposer.tsx";
 import { V2SlotVersionActions } from "./V2SlotVersionActions.tsx";
-import { createSlotPromptEditorState, rebaseSlotPromptEditorState } from "./slotPromptEditorState.ts";
+import { createSlotPromptEditorState, rebaseSlotPromptEditorState, saveSlotPromptEditorState, type SlotPromptSaveResult } from "./slotPromptEditorState.ts";
 
 type V2SlotCardProps = {
   slot: WorkflowSlotV2;
@@ -21,7 +21,7 @@ type V2SlotCardProps = {
   runtimeRecord?: RuntimeRecordV2;
   onGenerate?: (slotId: string) => Promise<unknown> | unknown;
   onLoadVersions?: (slotId: string) => void;
-  onSavePrompt?: (slotId: string, prompt: string, negativePrompt?: string) => Promise<unknown> | unknown;
+  onSavePrompt?: (slotId: string, prompt: string, negativePrompt?: string) => Promise<SlotPromptSaveResult> | SlotPromptSaveResult;
   onSelectCurrentVersion?: (slotId: string, versionId: string) => void;
   onDiscardWorkingVersion?: (slotId: string) => void;
   onDeleteSelectedAsset?: (slotId: string) => void;
@@ -164,14 +164,15 @@ export function V2SlotCard({
   }
 
   async function savePrompt() {
-    await onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt);
-    setPromptState((current) => ({ ...current, basePrompt: current.prompt, baseNegativePrompt: current.negativePrompt, dirty: false }));
+    if (!onSavePrompt) return false;
+    const saved = await saveSlotPromptEditorState(promptState, () => onSavePrompt(slot.slot_id, slotPrompt, negativePrompt));
+    if (!saved.saved) return false;
+    setPromptState(saved.state);
+    return true;
   }
 
   async function generateSlotVersion() {
-    if (promptDirty) {
-      await savePrompt();
-    }
+    if (promptDirty && !await savePrompt()) return;
     await onGenerate?.(slot.slot_id);
   }
 

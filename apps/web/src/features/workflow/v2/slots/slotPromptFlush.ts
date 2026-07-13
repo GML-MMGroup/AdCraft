@@ -41,7 +41,7 @@ export function buildDirtyV2SlotPromptPatch(slot: WorkflowSlotV2, draft: SlotMic
   if (nextPrompt === currentPrompt && nextNegativePrompt === currentNegativePrompt) return null;
   return {
     slot_prompt: nextPrompt,
-    negative_prompt: nextNegativePrompt || undefined,
+    negative_prompt: nextNegativePrompt,
   };
 }
 

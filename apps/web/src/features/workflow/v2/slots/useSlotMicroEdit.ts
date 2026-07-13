@@ -240,27 +240,41 @@ export function completeSlotDraftSubmission(
   slotId: string,
   options: { slot?: WorkflowSlotV2; promptPersisted?: boolean; error?: string } = {},
 ): SlotMicroEditState {
-  const draft = ensureDraft(state, slotId);
-  const incoming = draft.pendingRebase ?? (options.slot ? serverBaselineFromSlot(options.slot) : draft.serverBaseline);
-  if (!incoming) return updateDraft(state, slotId, { ...draft, isSubmitting: false, error: options.error });
+  const draft = state.draftsBySlotId[slotId];
+  if (!draft) return state;
   const promptPersisted = Boolean(options.promptPersisted);
-  const serverBaseline = promptPersisted
-    ? { ...incoming, prompt: draft.prompt, user_prompt: draft.prompt, negative_prompt: draft.negative_prompt ?? "" }
-    : incoming;
-  const keepPrompt = Boolean(options.error) || draft.promptDirty;
+  const returnedBaseline = options.slot ? serverBaselineFromSlot(options.slot) : undefined;
+  const incoming = options.error
+    ? draft.pendingRebase ?? returnedBaseline ?? draft.serverBaseline
+    : returnedBaseline
+      ? mergeSuccessfulSubmissionBaseline(returnedBaseline, draft.pendingRebase, promptPersisted ? draft.prompt : undefined)
+      : undefined;
+  if (!incoming) return updateDraft(state, slotId, { ...draft, isSubmitting: false, error: options.error });
+  const serverBaseline = incoming;
+  const failed = Boolean(options.error);
+  const keepPrompt = failed;
   const prompt = keepPrompt ? draft.prompt : serverBaseline.prompt;
   const negative_prompt = keepPrompt ? draft.negative_prompt : serverBaseline.negative_prompt;
-  const base_prompt = promptPersisted ? draft.prompt : keepPrompt ? draft.base_prompt : serverBaseline.prompt;
-  const base_negative_prompt = promptPersisted ? (draft.negative_prompt ?? "") : keepPrompt ? draft.base_negative_prompt : serverBaseline.negative_prompt;
+  const base_prompt = serverBaseline.prompt;
+  const base_negative_prompt = serverBaseline.negative_prompt;
+  const preserveReferences = failed && draft.referenceDirty;
+  const reference_asset_ids = preserveReferences ? draft.reference_asset_ids : serverBaseline.reference_asset_ids;
+  const attachments = preserveReferences ? draft.attachments : serverBaseline.attachments;
+  const referenceDirty = preserveReferences ? draftReferencesDifferFromBaseline(draft, serverBaseline) : false;
+  const promptDirty = failed
+    ? prompt !== base_prompt || (negative_prompt ?? "") !== base_negative_prompt
+    : false;
   const nextDraft: SlotMicroEditDraft = {
     ...draft,
     prompt,
     negative_prompt,
+    reference_asset_ids,
+    attachments,
     base_prompt,
     base_negative_prompt,
-    promptDirty: options.error ? draft.promptDirty : promptPersisted ? false : prompt !== base_prompt || (negative_prompt ?? "") !== base_negative_prompt,
-    referenceDirty: options.error ? draft.referenceDirty : false,
-    dirty: options.error ? draft.dirty : false,
+    promptDirty,
+    referenceDirty,
+    dirty: promptDirty || referenceDirty,
     isSubmitting: false,
     error: options.error,
     serverBaseline,
@@ -271,6 +285,7 @@ export function completeSlotDraftSubmission(
 }
 
 export function markSlotDraftClean(state: SlotMicroEditState, slotId: string, slot?: WorkflowSlotV2, promptPersisted = true): SlotMicroEditState {
+  if (!state.draftsBySlotId[slotId]) return state;
   return completeSlotDraftSubmission(state, slotId, { slot, promptPersisted });
 }
 
@@ -342,6 +357,29 @@ function serverBaselineFromSlot(slot: WorkflowSlotV2): SlotMicroEditServerBaseli
       status: "attached",
     })),
   };
+}
+
+function mergeSuccessfulSubmissionBaseline(
+  returned: SlotMicroEditServerBaseline,
+  pending: SlotMicroEditServerBaseline | undefined,
+  persistedUserPrompt: string | undefined,
+): SlotMicroEditServerBaseline {
+  if (!pending && persistedUserPrompt === undefined) return returned;
+  const merged = {
+    ...returned,
+    user_prompt: returned.user_prompt === undefined ? persistedUserPrompt : returned.user_prompt,
+    system_suggested_prompt: pending?.system_suggested_prompt ?? returned.system_suggested_prompt,
+    reference_asset_ids: pending?.reference_asset_ids ?? returned.reference_asset_ids,
+    attachments: pending?.attachments ?? returned.attachments,
+  };
+  return { ...merged, prompt: effectiveSlotPrompt(merged) };
+}
+
+function draftReferencesDifferFromBaseline(draft: SlotMicroEditDraft, baseline: SlotMicroEditServerBaseline) {
+  return !sameStrings(draft.reference_asset_ids, baseline.reference_asset_ids) ||
+    draft.uploaded_asset_ids.length > 0 ||
+    draft.library_entity_ids.length > 0 ||
+    !sameAttachments(draft.attachments, baseline.attachments);
 }
 
 function sameDraft(left: SlotMicroEditDraft, right: SlotMicroEditDraft) {

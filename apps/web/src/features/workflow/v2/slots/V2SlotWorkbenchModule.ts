@@ -137,11 +137,13 @@ export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2Slo
           action.sourceAction ?? "slot_micro_prompt_send",
         );
         const promptPersisted = Boolean(draft && slotDraftHasPromptChanges(draft));
+        let savedSlot: WorkflowSlotV2 | undefined;
         if (promptPersisted) {
-          await v2Api.updateSlotPrompt(args.workflowId, action.slotId, {
+          const nextWorkflow = await v2Api.updateSlotPrompt(args.workflowId, action.slotId, {
             slot_prompt: request.slot_prompt,
             negative_prompt: request.negative_prompt,
           });
+          savedSlot = nextWorkflow.slots.find((candidate) => candidate.slot_id === action.slotId);
         }
         await ensureV2SlotDraftReferences(args, slot);
         for (const libraryEntityId of request.library_entity_ids) {
@@ -157,8 +159,10 @@ export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2Slo
           );
           await v2Api.attachReference(args.workflowId, buildSlotReferenceAttachRequest(action.slotId, sourceAssetId, slot.slot_type));
         }
-        await v2Api.regenerateSlot(args.workflowId, action.slotId);
-        microEdit.markClean(action.slotId, undefined, promptPersisted);
+        const regenerated = await v2Api.regenerateSlot(args.workflowId, action.slotId);
+        savedSlot = regenerated.workflow?.slots.find((candidate) => candidate.slot_id === action.slotId) ?? savedSlot;
+        if (savedSlot) microEdit.markClean(action.slotId, savedSlot, promptPersisted);
+        else await args.onWorkflowRefresh();
         await refreshSlot(action.slotId);
         await args.onAssetRefresh();
         return;

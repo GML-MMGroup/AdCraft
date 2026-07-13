@@ -110,18 +110,24 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
 
   async function saveV2SlotPrompt(slotId: string, prompt: string, negativePrompt?: string) {
     const workflowId = activeWorkflowId();
-    if (!workflowId) return;
+    if (!workflowId) return { ok: false } as const;
     try {
       const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
         slot_prompt: prompt,
-        negative_prompt: negativePrompt || undefined,
+        negative_prompt: negativePrompt,
       });
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
+      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return { ok: false } as const;
+      const savedSlot = nextWorkflow.slots.find((slot) => slot.slot_id === slotId);
+      if (!savedSlot) {
+        argsRef.current.setStatus(`V2 slot prompt update did not return ${slotId}.`);
+        return { ok: false } as const;
+      }
       await argsRef.current.applyWorkflowV2(nextWorkflow);
-      argsRef.current.v2SlotMicroEdit.markClean(slotId, nextWorkflow.slots.find((slot) => slot.slot_id === slotId));
       argsRef.current.setStatus(`${slotId} prompt saved`);
+      return { ok: true, slot: savedSlot } as const;
     } catch (error) {
       argsRef.current.setStatus(error instanceof Error ? error.message : "V2 slot prompt update failed");
+      return { ok: false } as const;
     }
   }
 
@@ -598,7 +604,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       if (promptPersisted) {
         const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
           slot_prompt: request.slot_prompt,
-          negative_prompt: request.negative_prompt || undefined,
+          negative_prompt: request.negative_prompt,
         });
         if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
         await argsRef.current.applyWorkflowV2(nextWorkflow);
@@ -646,7 +652,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       if (promptPersisted) {
         const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
           slot_prompt: nextPrompt,
-          negative_prompt: slot.negative_prompt ?? undefined,
+          negative_prompt: slot.negative_prompt,
         });
         if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
         await argsRef.current.applyWorkflowV2(nextWorkflow);

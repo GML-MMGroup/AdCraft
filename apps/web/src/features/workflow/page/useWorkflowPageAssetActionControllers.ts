@@ -7,6 +7,7 @@ import { useDynamicMediaOperations } from "../assets/useDynamicMediaOperations.t
 import { canShowLocalRevisionActions } from "./workflowPageNodeGuards.ts";
 import { getWorkflowNodeType } from "../canvas/workflowNodeModel.ts";
 import { useWorkflowV2DerivedState } from "../v2/useWorkflowV2DerivedState.ts";
+import { deriveV2SlotRebaseSnapshot } from "../v2/slots/v2SlotRebaseSnapshot.ts";
 
 // Adapter value bag used while the page model is being decomposed into stable controllers.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,19 +44,13 @@ export function useWorkflowPageAssetActionControllers(args: WorkflowPageAssetAct
     selectedFreeAbsorbTargetNodes,
   } = v2DerivedState;
   const rebaseV2SlotDrafts = args.v2SlotMicroEdit.rebaseSlots;
-  const workflowV2 = args.workflowV2Model.workflowV2;
-  const slotRebaseSnapshot = useMemo(() => {
-    if (!workflowV2) return { slots: allV2Slots, authoritative: false, archivedSlotIds: [] as string[] };
-    const archivedItemIds = new Set(workflowV2.items.filter((item: { lifecycle_state?: string }) => item.lifecycle_state === "archived").map((item: { item_id: string }) => item.item_id));
-    return {
-      slots: workflowV2.slots.filter((slot: { item_id: string }) => !archivedItemIds.has(slot.item_id)),
-      authoritative: true,
-      archivedSlotIds: workflowV2.slots.filter((slot: { item_id: string }) => archivedItemIds.has(slot.item_id)).map((slot: { slot_id: string }) => slot.slot_id),
-    };
-  }, [allV2Slots, workflowV2]);
+  const slotRebaseSnapshot = useMemo(
+    () => deriveV2SlotRebaseSnapshot(args.workflowV2Model.workflowV2 ?? args.workflowV2Model.workflow, allV2Slots),
+    [allV2Slots, args.workflowV2Model.workflow, args.workflowV2Model.workflowV2],
+  );
 
   useEffect(() => {
-    rebaseV2SlotDrafts(slotRebaseSnapshot.slots, { authoritative: slotRebaseSnapshot.authoritative, archivedSlotIds: slotRebaseSnapshot.archivedSlotIds });
+    rebaseV2SlotDrafts(slotRebaseSnapshot.slots, slotRebaseSnapshot);
   }, [rebaseV2SlotDrafts, slotRebaseSnapshot]);
 
   const v2SlotOperations = useV2SlotOperations({
