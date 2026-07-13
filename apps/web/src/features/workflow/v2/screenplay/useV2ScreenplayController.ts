@@ -64,6 +64,7 @@ export function createV2ScreenplayControllerRuntime({
 }: V2ScreenplayControllerRuntimeOptions): V2ScreenplayControllerRuntime {
   let sessionGeneration = 0;
   let requestToken = 0;
+  let queuedHistoryRefresh: { workflowId: string; generation: number; promise: Promise<void>; resolve: () => void } | null = null;
 
   const nextRequestToken = () => {
     requestToken += 1;
@@ -92,7 +93,44 @@ export function createV2ScreenplayControllerRuntime({
     return isSelectedBundleRequestActive(workflowId, generation, request);
   };
 
+  const isInitialOpenPending = (state: V2ScreenplayState): boolean => {
+    return state.selectedScriptVersionId === null
+      && state.draft === null
+      && state.selectedRequestToken !== null
+      && state.historyRequestToken === state.selectedRequestToken;
+  };
+
+  const clearQueuedHistoryRefresh = (workflowId?: string, generation?: number): void => {
+    const queued = queuedHistoryRefresh;
+    if (!queued || (workflowId !== undefined && (queued.workflowId !== workflowId || queued.generation !== generation))) return;
+    queuedHistoryRefresh = null;
+    queued.resolve();
+  };
+
+  const queueHistoryRefresh = (workflowId: string, generation: number): Promise<void> => {
+    if (queuedHistoryRefresh?.workflowId === workflowId && queuedHistoryRefresh.generation === generation) {
+      return queuedHistoryRefresh.promise;
+    }
+    clearQueuedHistoryRefresh();
+    let resolve = () => {};
+    const promise = new Promise<void>((nextResolve) => { resolve = nextResolve; });
+    queuedHistoryRefresh = { workflowId, generation, promise, resolve };
+    return promise;
+  };
+
+  const flushQueuedHistoryRefresh = async (workflowId: string, generation: number): Promise<void> => {
+    const queued = queuedHistoryRefresh;
+    if (!queued || queued.workflowId !== workflowId || queued.generation !== generation) return;
+    queuedHistoryRefresh = null;
+    try {
+      if (isSessionActive(workflowId, generation)) await refreshHistory();
+    } finally {
+      queued.resolve();
+    }
+  };
+
   const open = async (workflowId: string): Promise<void> => {
+    clearQueuedHistoryRefresh();
     const generation = ++sessionGeneration;
     const request = nextRequestToken();
     dispatch({ type: "OPEN_STARTED", workflowId, generation, requestToken: request });
@@ -109,9 +147,14 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: selected.selected_script_version_id,
         versions: history.versions,
       });
+      await flushQueuedHistoryRefresh(workflowId, generation);
     } catch (error) {
-      if (!isOpenRequestActive(workflowId, generation, request)) return;
+      if (!isOpenRequestActive(workflowId, generation, request)) {
+        clearQueuedHistoryRefresh(workflowId, generation);
+        return;
+      }
       dispatch({ type: "OPEN_FAILED", workflowId, generation, requestToken: request, error: toRequestError("open", error) });
+      clearQueuedHistoryRefresh(workflowId, generation);
     }
   };
 
@@ -157,6 +200,7 @@ export function createV2ScreenplayControllerRuntime({
   const refreshHistory = async (): Promise<void> => {
     const state = getState();
     if (!state.workflowId || !state.isOpen) return;
+    if (isInitialOpenPending(state)) return queueHistoryRefresh(state.workflowId, state.generation);
     const workflowId = state.workflowId;
     const request = nextRequestToken();
     dispatch({ type: "HISTORY_REFRESH_STARTED", workflowId, generation: state.generation, requestToken: request });
@@ -283,6 +327,7 @@ export function createV2ScreenplayControllerRuntime({
   const cancelClose = (): void => dispatch({ type: "CLOSE_CANCELLED" });
   const finishClose = (): void => {
     if (!getState().isOpen) return;
+    clearQueuedHistoryRefresh();
     dispatch({ type: "CLOSE_CONFIRMED", generation: ++sessionGeneration });
   };
   const discardDraftAndClose = (): void => finishClose();
