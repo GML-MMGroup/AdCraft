@@ -32,6 +32,7 @@ export interface SlotMicroEditDraft {
   base_prompt: string;
   base_negative_prompt: string;
   isSubmitting: boolean;
+  submissionDepth?: number;
   promptRevision?: number;
   referenceRevision?: number;
   error?: string;
@@ -270,19 +271,35 @@ export function removeSlotDraftReference(state: SlotMicroEditState, slotId: stri
 }
 
 export function setSlotDraftSubmitting(state: SlotMicroEditState, slotId: string, isSubmitting: boolean, error?: string): SlotMicroEditState {
-  const draft = ensureDraft(state, slotId);
-  if (!isSubmitting && (draft.pendingRebase || error)) return completeSlotDraftSubmission(state, slotId, { error });
-  return updateDraft(state, slotId, {
-    ...draft,
-    isSubmitting,
-    error,
-    submissionBaseline: isSubmitting
-      ? draft.submissionBaseline ?? {
+  if (isSubmitting) {
+    const draft = ensureDraft(state, slotId);
+    return updateDraft(state, slotId, {
+      ...draft,
+      isSubmitting: true,
+      submissionDepth: submissionDepthOf(draft) + 1,
+      error,
+      submissionBaseline: draft.submissionBaseline ?? {
         prompt: draft.prompt,
         promptRevision: revisionOf(draft.promptRevision),
         referenceRevision: revisionOf(draft.referenceRevision),
-      }
-      : undefined,
+      },
+    });
+  }
+
+  const draft = state.draftsBySlotId[slotId];
+  if (!draft) return state;
+  const settledState = draft.pendingRebase || error
+    ? completeSlotDraftSubmission(state, slotId, { error })
+    : state;
+  const settledDraft = settledState.draftsBySlotId[slotId];
+  if (!settledDraft) return settledState;
+  const submissionDepth = Math.max(0, submissionDepthOf(settledDraft) - 1);
+  return updateDraft(settledState, slotId, {
+    ...settledDraft,
+    isSubmitting: submissionDepth > 0,
+    submissionDepth,
+    error: error ?? settledDraft.error,
+    submissionBaseline: submissionDepth > 0 ? settledDraft.submissionBaseline : undefined,
   });
 }
 
@@ -293,6 +310,8 @@ export function completeSlotDraftSubmission(
 ): SlotMicroEditState {
   const draft = state.draftsBySlotId[slotId];
   if (!draft) return state;
+  const submissionDepth = submissionDepthOf(draft);
+  const isSubmitting = submissionDepth > 0;
   const submissionBaseline = draft.submissionBaseline;
   const promptChangedAfterSubmit = Boolean(submissionBaseline && revisionOf(draft.promptRevision) !== submissionBaseline.promptRevision);
   const referencesChangedAfterSubmit = Boolean(submissionBaseline && revisionOf(draft.referenceRevision) !== submissionBaseline.referenceRevision);
@@ -308,7 +327,15 @@ export function completeSlotDraftSubmission(
         options.referenceBaselineAuthoritative,
       )
       : draft.pendingRebase;
-  if (!incoming) return updateDraft(state, slotId, { ...draft, isSubmitting: false, error: options.error, submissionBaseline: undefined });
+  if (!incoming) {
+    return updateDraft(state, slotId, {
+      ...draft,
+      isSubmitting,
+      submissionDepth,
+      error: options.error,
+      submissionBaseline: isSubmitting ? submissionBaseline : undefined,
+    });
+  }
   const serverBaseline = incoming;
   const failed = Boolean(options.error);
   const keepPrompt = failed || promptChangedAfterSubmit || (!promptPersisted && draft.promptDirty);
@@ -338,11 +365,12 @@ export function completeSlotDraftSubmission(
     promptDirty,
     referenceDirty,
     dirty: promptDirty || referenceDirty,
-    isSubmitting: false,
+    isSubmitting,
+    submissionDepth,
     error: options.error,
     serverBaseline,
     pendingRebase: undefined,
-    submissionBaseline: undefined,
+    submissionBaseline: isSubmitting ? submissionBaseline : undefined,
   };
   nextDraft.dirty = nextDraft.promptDirty || nextDraft.referenceDirty;
   return sameDraft(draft, nextDraft) ? state : updateDraft(state, slotId, nextDraft);
@@ -407,6 +435,7 @@ function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
     base_prompt: serverBaseline.prompt,
     base_negative_prompt: serverBaseline.negative_prompt,
     isSubmitting: false,
+    submissionDepth: 0,
     promptRevision: 0,
     referenceRevision: 0,
     serverBaseline,
@@ -449,10 +478,13 @@ function mergeSuccessfulSubmissionBaseline(
 }
 
 function draftReferencesDifferFromBaseline(draft: SlotMicroEditDraft, baseline: SlotMicroEditServerBaseline) {
-  return !sameStrings(draft.reference_asset_ids, baseline.reference_asset_ids) ||
-    draft.uploaded_asset_ids.length > 0 ||
-    draft.library_entity_ids.length > 0 ||
-    !sameAttachments(draft.attachments, baseline.attachments);
+  if (!sameStrings(draft.reference_asset_ids, baseline.reference_asset_ids) || draft.uploaded_asset_ids.length > 0) return true;
+  const baselineAssetIds = new Set(baseline.reference_asset_ids);
+  const unresolvedLibraryEntity = draft.library_entity_ids.some((entityId) => !draft.attachments.some((attachment) =>
+    attachment.library_entity_id === entityId && attachment.source_asset_id && baselineAssetIds.has(attachment.source_asset_id)
+  ));
+  if (unresolvedLibraryEntity) return true;
+  return draft.attachments.some((attachment) => attachment.status === "failed" || !attachment.source_asset_id);
 }
 
 function sameDraft(left: SlotMicroEditDraft, right: SlotMicroEditDraft) {
@@ -465,6 +497,7 @@ function sameDraft(left: SlotMicroEditDraft, right: SlotMicroEditDraft) {
     left.promptDirty === right.promptDirty &&
     left.referenceDirty === right.referenceDirty &&
     left.isSubmitting === right.isSubmitting &&
+    submissionDepthOf(left) === submissionDepthOf(right) &&
     revisionOf(left.promptRevision) === revisionOf(right.promptRevision) &&
     revisionOf(left.referenceRevision) === revisionOf(right.referenceRevision) &&
     left.error === right.error &&
@@ -524,6 +557,7 @@ function ensureDraft(state: SlotMicroEditState, slotId: string): SlotMicroEditDr
     base_prompt: "",
     base_negative_prompt: "",
     isSubmitting: false,
+    submissionDepth: 0,
     promptRevision: 0,
     referenceRevision: 0,
   };
@@ -626,6 +660,10 @@ function cleanString(value?: string | null) {
 
 function revisionOf(value?: number) {
   return value ?? 0;
+}
+
+function submissionDepthOf(draft: Pick<SlotMicroEditDraft, "isSubmitting" | "submissionDepth">) {
+  return draft.submissionDepth ?? (draft.isSubmitting ? 1 : 0);
 }
 
 function scrubInlineMedia(value: string) {

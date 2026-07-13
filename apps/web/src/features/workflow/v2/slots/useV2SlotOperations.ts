@@ -365,8 +365,8 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       semantic_type: slot.slot_type,
       status: "registering",
     }));
-    attachments.forEach((attachment) => argsRef.current.v2SlotMicroEdit.addAttachment(slotId, attachment));
     argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
+    attachments.forEach((attachment) => argsRef.current.v2SlotMicroEdit.addAttachment(slotId, attachment));
     try {
       const formData = new FormData();
       fileItems.forEach((file) => formData.append("files[]", file));
@@ -406,6 +406,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     const slot = v2SlotById(slotId);
     if (!slot || !entityId) return;
     const attachmentId = `library:${entityId}:`;
+    argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
     argsRef.current.v2SlotMicroEdit.addAttachment(slotId, {
       id: attachmentId,
       source: "asset_library",
@@ -413,7 +414,6 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       semantic_type: slot.slot_type,
       status: "registering",
     });
-    argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
     try {
       const capture = captureSlotMutation(workflowId);
       const registered = await v2Api.registerLibraryReference(
@@ -500,8 +500,26 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       attachment.relation_id === reference.relation_id ||
       (reference.entity_id && attachment.library_entity_id === reference.entity_id)
     )?.source_asset_id;
+    const removeLocalReference = () => {
+      if (reference.source === "library_entity" && reference.entity_id) {
+        argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "library_entity", entity_id: reference.entity_id, library_asset_id: reference.library_asset_id, relation_id: reference.relation_id });
+        return;
+      }
+      if (reference.source === "uploaded_asset" && reference.asset_id) {
+        argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "uploaded_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
+        return;
+      }
+      if (reference.asset_id) {
+        argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "reference_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
+      }
+    };
+    if (!reference.relation_id || !workflowId) {
+      removeLocalReference();
+      return;
+    }
     if (reference.relation_id && workflowId) {
       argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
+      removeLocalReference();
       try {
         const capture = captureSlotMutation(workflowId);
         const response = await v2Api.removeReference(workflowId, reference.relation_id);
@@ -516,17 +534,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         return;
       }
       argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false);
-    }
-    if (reference.source === "library_entity" && reference.entity_id) {
-      argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "library_entity", entity_id: reference.entity_id, library_asset_id: reference.library_asset_id, relation_id: reference.relation_id });
       return;
-    }
-    if (reference.source === "uploaded_asset" && reference.asset_id) {
-      argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "uploaded_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
-      return;
-    }
-    if (reference.asset_id) {
-      argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "reference_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
     }
   }
 

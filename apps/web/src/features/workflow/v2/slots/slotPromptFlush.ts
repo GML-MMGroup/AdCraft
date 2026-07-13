@@ -18,7 +18,7 @@ export function collectDirtyV2SlotDraftFlushes(
   const flushes: V2SlotDraftFlush[] = [];
 
   for (const [slotId, draft] of Object.entries(draftsBySlotId)) {
-    if (!draft?.dirty) continue;
+    if (!draft?.dirty || draft.isSubmitting) continue;
     const slot = slotById.get(slotId);
     if (!slot) continue;
     const promptPatch = buildDirtyV2SlotPromptPatch(slot, draft);
