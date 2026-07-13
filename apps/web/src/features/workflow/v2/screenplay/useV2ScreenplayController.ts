@@ -90,6 +90,11 @@ export function createV2ScreenplayControllerRuntime({
     promise: Promise<void>;
     resolve: () => void;
   } | null = null;
+  let queuedSynchronizationPlans: Array<{
+    workflowId: string;
+    generation: number;
+    plan: V2SynchronizationRefreshPlan;
+  }> = [];
 
   const nextRequestToken = () => {
     requestToken += 1;
@@ -123,6 +128,41 @@ export function createV2ScreenplayControllerRuntime({
       && state.draft === null
       && state.selectedRequestToken !== null
       && state.historyRequestToken === state.selectedRequestToken;
+  };
+
+  const hasActiveLocalSelectionOperation = (state: V2ScreenplayState): boolean =>
+    (state.isSaving
+      && state.saveRequestToken !== null
+      && state.saveRequestToken === state.selectedRequestToken)
+    || (state.isSelecting
+      && state.selectRequestToken !== null
+      && state.selectRequestToken === state.selectedRequestToken);
+
+  const clearQueuedSynchronizationPlans = (): void => {
+    queuedSynchronizationPlans = [];
+  };
+
+  const queueSynchronizationPlan = (
+    workflowId: string,
+    generation: number,
+    plan: V2SynchronizationRefreshPlan,
+  ): void => {
+    let mergedPlan = plan;
+    const aliases = synchronizationPlanAliases(plan);
+    for (let index = queuedSynchronizationPlans.length - 1; index >= 0; index -= 1) {
+      const queued = queuedSynchronizationPlans[index];
+      if (queued.workflowId !== workflowId || queued.generation !== generation) continue;
+      const queuedAliases = synchronizationPlanAliases(queued.plan);
+      const shouldMerge = aliases.size === 0
+        ? queuedAliases.size === 0
+        : setsOverlap(aliases, queuedAliases);
+      if (!shouldMerge) continue;
+      mergedPlan = mergeSynchronizationRefreshPlans(queued.plan, mergedPlan);
+      synchronizationPlanAliases(mergedPlan).forEach((alias) => aliases.add(alias));
+      queuedSynchronizationPlans.splice(index, 1);
+    }
+    queuedSynchronizationPlans.push({ workflowId, generation, plan: mergedPlan });
+    if (queuedSynchronizationPlans.length > 32) queuedSynchronizationPlans.splice(0, queuedSynchronizationPlans.length - 32);
   };
 
   const clearQueuedHistoryRefresh = (criteria?: { workflowId: string; generation: number; ownerRequestToken?: number }): void => {
@@ -172,6 +212,7 @@ export function createV2ScreenplayControllerRuntime({
   const open = async (workflowId: string): Promise<void> => {
     synchronizationCoordinator.activateWorkflow(workflowId);
     clearQueuedHistoryRefresh();
+    clearQueuedSynchronizationPlans();
     const generation = ++sessionGeneration;
     const request = nextRequestToken();
     dispatch({ type: "OPEN_STARTED", workflowId, generation, requestToken: request });
@@ -207,7 +248,9 @@ export function createV2ScreenplayControllerRuntime({
     dispatch({ type: "DRAFT_UPDATED", document });
   };
 
-  const refreshSelected = async (): Promise<void> => {
+  const refreshSelectedWithHistory = async (
+    reusableHistory: V2ScriptVersionListResponse | null = null,
+  ): Promise<void> => {
     const state = getState();
     if (!state.workflowId || !state.isOpen) return;
     const workflowId = state.workflowId;
@@ -215,7 +258,16 @@ export function createV2ScreenplayControllerRuntime({
     dispatch({ type: "SELECTED_REFRESH_STARTED", workflowId, generation: state.generation, requestToken: request });
     handoffQueuedHistoryRefresh(workflowId, state.generation, request);
     try {
-      const [selected, history] = await Promise.all([api.script(workflowId), api.scriptVersions(workflowId)]);
+      let selected: V2ScriptReadResponse;
+      let history: V2ScriptVersionListResponse;
+      if (reusableHistory?.workflow_id === workflowId) {
+        selected = await api.script(workflowId);
+        history = reusableHistory.selected_script_version_id === selected.selected_script_version_id
+          ? reusableHistory
+          : await api.scriptVersions(workflowId);
+      } else {
+        [selected, history] = await Promise.all([api.script(workflowId), api.scriptVersions(workflowId)]);
+      }
       assertCoherentOpenResponse(workflowId, selected, history);
       if (!isSelectedBundleRequestActive(workflowId, state.generation, request)) return;
       dispatch({
@@ -241,17 +293,24 @@ export function createV2ScreenplayControllerRuntime({
     }
   };
 
-  const refreshHistory = async (): Promise<void> => {
+  const refreshSelected = async (): Promise<void> => {
+    await refreshSelectedWithHistory();
+  };
+
+  const refreshHistoryResponse = async (): Promise<V2ScriptVersionListResponse | null> => {
     const state = getState();
-    if (!state.workflowId || !state.isOpen) return;
-    if (isInitialOpenPending(state)) return queueHistoryRefresh(state.workflowId, state.generation);
+    if (!state.workflowId || !state.isOpen) return null;
+    if (isInitialOpenPending(state)) {
+      await queueHistoryRefresh(state.workflowId, state.generation);
+      return null;
+    }
     const workflowId = state.workflowId;
     const request = nextRequestToken();
     dispatch({ type: "HISTORY_REFRESH_STARTED", workflowId, generation: state.generation, requestToken: request });
     try {
       const response = await api.scriptVersions(workflowId);
       if (response.workflow_id !== workflowId) throw new Error("Screenplay history response belongs to a different workflow.");
-      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
+      if (!isHistoryRequestActive(workflowId, state.generation, request)) return null;
       dispatch({
         type: "HISTORY_REFRESH_SUCCEEDED",
         workflowId,
@@ -260,8 +319,9 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: response.selected_script_version_id,
         versions: response.versions,
       });
+      return response;
     } catch (error) {
-      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
+      if (!isHistoryRequestActive(workflowId, state.generation, request)) return null;
       dispatch({
         type: "HISTORY_REFRESH_FAILED",
         workflowId,
@@ -269,7 +329,29 @@ export function createV2ScreenplayControllerRuntime({
         requestToken: request,
         error: toRequestError("refresh_history", error),
       });
+      return null;
     }
+  };
+
+  const refreshHistory = async (): Promise<void> => {
+    await refreshHistoryResponse();
+  };
+
+  const flushQueuedSynchronizationPlans = async (
+    workflowId: string,
+    generation: number,
+  ): Promise<{ refreshedSelected: boolean }> => {
+    const queued = queuedSynchronizationPlans.filter((entry) =>
+      entry.workflowId === workflowId && entry.generation === generation);
+    queuedSynchronizationPlans = queuedSynchronizationPlans.filter((entry) =>
+      entry.workflowId !== workflowId || entry.generation !== generation);
+    let refreshedSelected = false;
+    for (const entry of queued) {
+      refreshedSelected ||= entry.plan.refreshSelectedScreenplay;
+      if (!isSessionActive(workflowId, generation)) break;
+      await coordinateSynchronizationRefresh(workflowId, entry.plan);
+    }
+    return { refreshedSelected };
   };
 
   const confirm = async (): Promise<void> => {
@@ -308,6 +390,7 @@ export function createV2ScreenplayControllerRuntime({
         createV2LocalSynchronizationRefreshPlan(response.selected_script_version_id, response.structural_diff, response.linked_context),
         { localSelection: true, linkedContext: response.linked_context },
       );
+      await flushQueuedSynchronizationPlans(workflowId, state.generation);
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       await notifyRuntimeRefresh(workflowId, response.linked_context, refreshRuntime);
     } catch (error) {
@@ -322,7 +405,8 @@ export function createV2ScreenplayControllerRuntime({
           localDraft: document,
           message: error.message,
         });
-        await refreshSelected();
+        const queued = await flushQueuedSynchronizationPlans(workflowId, state.generation);
+        if (!queued.refreshedSelected) await refreshSelected();
         return;
       }
       dispatch({
@@ -332,6 +416,7 @@ export function createV2ScreenplayControllerRuntime({
         requestToken: request,
         error: toRequestError("confirm", error),
       });
+      await flushQueuedSynchronizationPlans(workflowId, state.generation);
     }
   };
 
@@ -361,11 +446,13 @@ export function createV2ScreenplayControllerRuntime({
         createV2LocalSynchronizationRefreshPlan(response.selected_script_version_id, response.structural_diff, response.linked_context),
         { localSelection: true, linkedContext: response.linked_context },
       );
+      await flushQueuedSynchronizationPlans(workflowId, state.generation);
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       await notifyRuntimeRefresh(workflowId, response.linked_context, refreshRuntime);
     } catch (error) {
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({ type: "SELECT_FAILED", workflowId, generation: state.generation, requestToken: request, error: toRequestError("select", error) });
+      await flushQueuedSynchronizationPlans(workflowId, state.generation);
     }
   };
 
@@ -380,6 +467,7 @@ export function createV2ScreenplayControllerRuntime({
   const finishClose = (): void => {
     if (!getState().isOpen) return;
     clearQueuedHistoryRefresh();
+    clearQueuedSynchronizationPlans();
     dispatch({ type: "CLOSE_CONFIRMED", generation: ++sessionGeneration });
   };
   const discardDraftAndClose = (): void => finishClose();
@@ -391,6 +479,15 @@ export function createV2ScreenplayControllerRuntime({
     if (workflowId) {
       const workflowEvents = events.filter((event) => event.workflow_id === workflowId);
       const plan = createV2SynchronizationRefreshPlan(workflowEvents);
+      const state = getState();
+      if (
+        state.workflowId === workflowId
+        && state.isOpen
+        && hasActiveLocalSelectionOperation(state)
+      ) {
+        queueSynchronizationPlan(workflowId, state.generation, plan);
+        return;
+      }
       await coordinateSynchronizationRefresh(workflowId, plan);
       return;
     }
@@ -408,11 +505,11 @@ export function createV2ScreenplayControllerRuntime({
     const state = getState();
     const screenplayOpen = state.isOpen && state.workflowId === workflowId;
     await synchronizationCoordinator.coordinate(workflowId, plan, {
-      refreshHistory: screenplayOpen ? refreshHistory : undefined,
+      refreshHistory: screenplayOpen ? refreshHistoryResponse : undefined,
       refreshSelectedScreenplay: screenplayOpen
         ? options.localSelection
-          ? refreshHistory
-          : refreshSelected
+          ? async () => { await refreshHistoryResponse(); }
+          : refreshSelectedWithHistory
         : undefined,
       refreshWorkflow: refreshSynchronizationWorkflow || refreshWorkflow
         ? (scopes) => refreshSynchronizationWorkflow?.(workflowId, scopes)
@@ -531,6 +628,42 @@ function isScriptVersionConflict(error: unknown): error is V2ApiError {
 
 function isScreenplayRuntimeEvent(event: WorkflowRuntimeEventV2): boolean {
   return /(^|[.:_])script([.:_]|$)|screenplay/i.test(event.event_type);
+}
+
+function synchronizationPlanAliases(plan: V2SynchronizationRefreshPlan): Set<string> {
+  return new Set([
+    ...plan.transactionIds.map((id) => `transaction:${id}`),
+    ...plan.scriptVersionIds.map((id) => `script:${id}`),
+  ]);
+}
+
+function setsOverlap(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  for (const value of left) {
+    if (right.has(value)) return true;
+  }
+  return false;
+}
+
+function mergeSynchronizationRefreshPlans(
+  left: V2SynchronizationRefreshPlan,
+  right: V2SynchronizationRefreshPlan,
+): V2SynchronizationRefreshPlan {
+  const unique = (values: string[]) => Array.from(new Set(values));
+  return {
+    isSynchronizationBatch: left.isSynchronizationBatch || right.isSynchronizationBatch,
+    refreshScreenplayHistory: left.refreshScreenplayHistory || right.refreshScreenplayHistory,
+    refreshSelectedScreenplay: left.refreshSelectedScreenplay || right.refreshSelectedScreenplay,
+    refreshWorkflow: left.refreshWorkflow || right.refreshWorkflow,
+    refreshWorkflowStructure: left.refreshWorkflowStructure || right.refreshWorkflowStructure,
+    refreshSlotPrompts: left.refreshSlotPrompts || right.refreshSlotPrompts,
+    refreshReferences: left.refreshReferences || right.refreshReferences,
+    refreshAssets: left.refreshAssets || right.refreshAssets,
+    nodeIds: unique([...left.nodeIds, ...right.nodeIds]),
+    itemIds: unique([...left.itemIds, ...right.itemIds]),
+    slotIds: unique([...left.slotIds, ...right.slotIds]),
+    transactionIds: unique([...left.transactionIds, ...right.transactionIds]),
+    scriptVersionIds: unique([...left.scriptVersionIds, ...right.scriptVersionIds]),
+  };
 }
 
 async function notifyRuntimeRefresh(
