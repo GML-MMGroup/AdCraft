@@ -7,6 +7,7 @@ import { V2ScreenplayShotEditor } from "./V2ScreenplayShotEditor.tsx";
 
 type Props = {
   document: V2EditableScriptDocument;
+  disabled: boolean;
   validationErrors: ReadonlyArray<{ path: string; message: string }>;
   onChange: (update: (document: V2EditableScriptDocument) => V2EditableScriptDocument) => void;
   productOptions?: readonly ScreenplayProductOption[];
@@ -15,13 +16,13 @@ type Props = {
 let clientKeyCounter = 0;
 const aspectRatios: V2ScriptAspectRatio[] = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 
-export function V2ScreenplaySceneEditor({ document, validationErrors, onChange, productOptions = [] }: Props) {
+export function V2ScreenplaySceneEditor({ document, disabled, validationErrors, onChange, productOptions = [] }: Props) {
   const characters = document.characters ?? [];
   const locations = document.locations ?? [];
   const change = (update: (next: V2EditableScriptDocument) => void) => onChange((next) => { update(next); return next; });
   const setField = (field: "script_title" | "language" | "tone" | "visual_style", value: string) => change((next) => { next[field] = value; });
 
-  return <div className="v2-screenplay-editor">
+  return <fieldset className="v2-screenplay-editor" disabled={disabled} style={{ border: 0, margin: 0, minInlineSize: 0, padding: 0 }}>
     <section className="v2-screenplay-section" aria-labelledby="v2-screenplay-details">
       <h3 id="v2-screenplay-details">Script details</h3>
       <div className="v2-screenplay-fields">
@@ -76,7 +77,7 @@ export function V2ScreenplaySceneEditor({ document, validationErrors, onChange, 
         <V2ScreenplayShotEditor document={document} sceneIndex={index} validationErrors={validationErrors} onChange={onChange} productOptions={productOptions} />
       </article>)}
     </EntitySection>
-  </div>;
+  </fieldset>;
 }
 
 function EntitySection({ title, addLabel, onAdd, children }: { title: string; addLabel: string; onAdd: () => void; children: ReactNode }) { return <section className="v2-screenplay-section"><div className="v2-screenplay-section-heading"><h3>{title}</h3><button className="v2-screenplay-add" type="button" onClick={onAdd}><PlusIcon /> {addLabel}</button></div>{children}</section>; }

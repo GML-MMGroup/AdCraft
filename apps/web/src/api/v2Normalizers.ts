@@ -346,10 +346,13 @@ function normalizeV2LinkedContextSummary(value: unknown): V2LinkedContextSummary
 
 export function normalizeV2ScriptReadResponse(value: unknown): V2ScriptReadResponse {
   const record = requiredScriptRecord(value);
+  const selectedScriptVersionId = requiredScriptString(record, "selected_script_version_id");
+  const script = normalizeV2ScriptPlan(record.script);
+  if (selectedScriptVersionId !== script.script_version_id) invalidScriptPayload();
   return {
     workflow_id: requiredScriptString(record, "workflow_id"),
-    selected_script_version_id: requiredScriptString(record, "selected_script_version_id"),
-    script: normalizeV2ScriptPlan(record.script),
+    selected_script_version_id: selectedScriptVersionId,
+    script,
     events_cursor: requiredScriptInteger(record, "events_cursor", 0),
   };
 }

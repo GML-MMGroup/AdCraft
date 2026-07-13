@@ -134,7 +134,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
         requestError: action.error,
       };
     case "DRAFT_UPDATED":
-      if (!state.isOpen) return state;
+      if (!state.isOpen || state.isSaving || state.isSelecting) return state;
       return {
         ...state,
         draft: cloneDocument(action.document),

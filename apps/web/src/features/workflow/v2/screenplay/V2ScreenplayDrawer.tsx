@@ -22,12 +22,14 @@ type Props = {
 
 const tabs = ["editor", "history"] as const;
 type Tab = typeof tabs[number];
+const focusableSelector = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocusRef, returnFocusElement }: Props) {
   const { state } = controller;
   const [tab, setTab] = useState<Tab>("editor");
   const [pendingVersion, setPendingVersion] = useState<ScreenplayVersionTarget | null>(null);
   const [lastFailedOperation, setLastFailedOperation] = useState<Operation | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wasOpenRef = useRef(false);
@@ -79,7 +81,16 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [controller, pendingVersion, state.closeState, state.isOpen]);
 
+  useEffect(() => {
+    const drawer = drawerRef.current;
+    if (!state.isOpen || !drawer) return;
+    const trapFocus = (event: KeyboardEvent) => trapTabFocus(drawer, event, headingRef.current);
+    drawer.addEventListener("keydown", trapFocus);
+    return () => drawer.removeEventListener("keydown", trapFocus);
+  }, [state.isOpen]);
+
   if (!state.isOpen) return null;
+  const draftMutationLocked = state.isSaving || state.isSelecting;
   const validationIssues = summarizeValidationIssues([...new Map([
     ...state.validationErrors,
     ...(state.draft ? validateEditableScript(state.draft) : []),
@@ -130,7 +141,7 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
   };
 
   return <div className="v2-screenplay-drawer-backdrop">
-    <aside className="v2-screenplay-drawer" role="dialog" aria-modal="true" aria-labelledby="v2-screenplay-drawer-title">
+    <aside ref={drawerRef} className="v2-screenplay-drawer" role="dialog" aria-modal="true" aria-labelledby="v2-screenplay-drawer-title">
       <div className="v2-screenplay-drawer__top">
         <header className="v2-screenplay-drawer__header">
           <div><p>Screenplay</p><h2 id="v2-screenplay-drawer-title" ref={headingRef} tabIndex={-1}>Edit script</h2></div>
@@ -145,7 +156,7 @@ export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocu
         {state.requestError ? <RequestErrorNotice error={state.requestError.message} violations={errorViolations} operation={errorOperation} onRetry={() => { if (errorOperation) runOperation(errorOperation); }} /> : null}
         {validationIssues.length ? <section className="v2-screenplay-validation-summary" aria-live="polite" role="status"><strong>Fix these fields before confirming:</strong><ul>{validationIssues.map((issue) => <li key={`${issue.path}:${issue.message}`}><code>{issue.path}</code>: {issue.message}</li>)}</ul></section> : null}
         {state.isLoading && !state.draft ? <p className="v2-screenplay-status">Loading screenplay...</p> : null}
-        {tab === "editor" ? <div id="v2-screenplay-editor-panel" role="tabpanel" aria-labelledby="v2-screenplay-editor-tab">{state.draft ? <V2ScreenplaySceneEditor document={state.draft} validationErrors={validationIssues} onChange={controller.updateDraft} productOptions={productOptions} /> : !state.isLoading ? <p className="v2-screenplay-empty">No screenplay draft is available.</p> : null}</div> : <div id="v2-screenplay-history-panel" role="tabpanel" aria-labelledby="v2-screenplay-history-tab"><V2ScreenplayVersionHistory controller={controller} pendingVersionId={pendingVersion?.script_version_id} onRequestSelect={requestVersionSelection} onRefreshHistory={() => runOperation({ kind: "history_refresh" })} /></div>}
+        {tab === "editor" ? <div id="v2-screenplay-editor-panel" role="tabpanel" aria-labelledby="v2-screenplay-editor-tab">{state.draft ? <V2ScreenplaySceneEditor document={state.draft} disabled={draftMutationLocked} validationErrors={validationIssues} onChange={controller.updateDraft} productOptions={productOptions} /> : !state.isLoading ? <p className="v2-screenplay-empty">No screenplay draft is available.</p> : null}</div> : <div id="v2-screenplay-history-panel" role="tabpanel" aria-labelledby="v2-screenplay-history-tab"><V2ScreenplayVersionHistory controller={controller} pendingVersionId={pendingVersion?.script_version_id} onRequestSelect={requestVersionSelection} onRefreshHistory={() => runOperation({ kind: "history_refresh" })} /></div>}
       </div>
       <footer className="v2-screenplay-drawer__footer">
         <span>{state.dirty ? "Unsaved changes" : "All changes saved"}</span>
@@ -164,15 +175,11 @@ function ConfirmationDialog({ title, description, confirmLabel, onCancel, onConf
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const trapFocus = (event: KeyboardEvent) => {
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); return; }
-    if (event.key !== "Tab") return;
-    const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
-    if (!focusable.length) return;
-    event.preventDefault();
-    const current = focusable.indexOf(document.activeElement as HTMLElement);
-    focusable[nextFocusableIndex(current < 0 ? 0 : current, focusable.length, event.shiftKey)]?.focus();
-    };
+      const trapFocus = (event: KeyboardEvent) => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); return; }
+        if (event.key === "Tab") event.stopPropagation();
+        trapTabFocus(dialog, event, dialog);
+      };
     dialog.addEventListener("keydown", trapFocus);
     return () => dialog.removeEventListener("keydown", trapFocus);
   }, [onCancel]);
@@ -187,4 +194,16 @@ function operationForRequest(operation: "open" | "confirm" | "select" | "refresh
 function operationLabel(operation: Operation | null): string { return operation?.kind === "confirm" ? "Unable to confirm screenplay." : operation?.kind === "select" ? "Unable to select script version." : operation?.kind === "history_refresh" ? "Unable to refresh version history." : operation?.kind === "selected_refresh" ? "Unable to refresh selected screenplay." : "Unable to load screenplay."; }
 function retryLabel(operation: Operation): string { return operation.kind === "confirm" ? "Retry confirmation" : operation.kind === "select" ? "Retry version selection" : operation.kind === "history_refresh" ? "Retry version history" : operation.kind === "selected_refresh" ? "Retry selected screenplay refresh" : "Retry loading screenplay"; }
 function activeElement(): HTMLElement | null { return document.activeElement instanceof HTMLElement ? document.activeElement : null; }
+function focusableElements(container: HTMLElement): HTMLElement[] { return [...container.querySelectorAll<HTMLElement>(focusableSelector)].filter((element) => element.closest("fieldset:disabled") === null); }
+function trapTabFocus(container: HTMLElement, event: KeyboardEvent, fallback: HTMLElement | null): void {
+  if (event.key !== "Tab" || event.defaultPrevented) return;
+  event.preventDefault();
+  const focusable = focusableElements(container);
+  if (!focusable.length) { fallback?.focus(); return; }
+  const current = focusable.indexOf(document.activeElement as HTMLElement);
+  const next = current < 0
+    ? event.shiftKey ? focusable.length - 1 : 0
+    : nextFocusableIndex(current, focusable.length, event.shiftKey);
+  focusable[next]?.focus();
+}
 function requestViolations(details: Record<string, unknown> | undefined): Array<{ field: string; message: string }> { const raw = details?.violations; if (!Array.isArray(raw)) return []; return raw.flatMap((entry) => { if (!entry || typeof entry !== "object") return []; const value = entry as Record<string, unknown>; return typeof value.message === "string" ? [{ field: typeof value.field === "string" ? value.field : "Screenplay", message: value.message }] : []; }); }

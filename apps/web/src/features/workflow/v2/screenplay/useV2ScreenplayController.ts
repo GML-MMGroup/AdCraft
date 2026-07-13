@@ -241,7 +241,9 @@ export function createV2ScreenplayControllerRuntime({
   };
 
   const updateDraft = (update: V2EditableScriptDocument | ScreenplayDraftUpdater): void => {
-    const current = getState().draft;
+    const state = getState();
+    if (state.isSaving || state.isSelecting) return;
+    const current = state.draft;
     if (!current) return;
     const workingCopy = structuredClone(current);
     const document = typeof update === "function" ? update(workingCopy) : update;
@@ -595,6 +597,18 @@ function assertCoherentOpenResponse(
 
 function assertWorkflowResponse(workflowId: string, response: V2ScriptReadResponse | V2ScriptConfirmResponse | V2ScriptSelectVersionResponse): void {
   if (response.workflow_id !== workflowId) throw new Error("Screenplay response belongs to a different workflow.");
+  if (response.selected_script_version_id !== response.script.script_version_id) {
+    throw new ScreenplayResponseVersionConsistencyError("Screenplay selected version and embedded script version disagree.");
+  }
+}
+
+class ScreenplayResponseVersionConsistencyError extends Error {
+  readonly code = "screenplay_response_version_mismatch";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ScreenplayResponseVersionConsistencyError";
+  }
 }
 
 class ScreenplaySelectionHistoryConsistencyError extends Error {
@@ -617,6 +631,9 @@ function toRequestError(operation: ScreenplayRequestError["operation"], error: u
     };
   }
   if (error instanceof ScreenplaySelectionHistoryConsistencyError) {
+    return { operation, message: error.message, code: error.code };
+  }
+  if (error instanceof ScreenplayResponseVersionConsistencyError) {
     return { operation, message: error.message, code: error.code };
   }
   return { operation, message: error instanceof Error ? error.message : "Screenplay request failed." };
