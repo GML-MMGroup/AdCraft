@@ -168,9 +168,9 @@ function nullableScriptSettingType(value: unknown): "interior" | "exterior" | nu
   return value === "interior" || value === "exterior" ? value : null;
 }
 
-function requiredScriptNumber(record: Record<string, unknown>, key: string): number {
+function requiredScriptInteger(record: Record<string, unknown>, key: string, minimum: number): number {
   const value = record[key];
-  if (typeof value !== "number" || !Number.isFinite(value)) invalidScriptPayload();
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum) invalidScriptPayload();
   return value;
 }
 
@@ -178,6 +178,22 @@ function requiredScriptArray(record: Record<string, unknown>, key: string): unkn
   const value = record[key];
   if (!Array.isArray(value) || value.length === 0) invalidScriptPayload();
   return value;
+}
+
+function requiredScriptStringArray(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptBoolean(record: Record<string, unknown>, key: string): boolean {
+  if (typeof record[key] !== "boolean") invalidScriptPayload();
+  return record[key];
+}
+
+function requiredScriptFalse(record: Record<string, unknown>, key: string): false {
+  if (record[key] !== false) invalidScriptPayload();
+  return false;
 }
 
 function optionalScriptArray(value: unknown): unknown[] {
@@ -205,7 +221,7 @@ function normalizeV2ScriptShot(value: unknown): V2ScriptShot {
   return {
     shot_id: requiredScriptString(record, "shot_id"),
     scene_id: requiredScriptString(record, "scene_id"),
-    shot_index: requiredScriptNumber(record, "shot_index"),
+    shot_index: requiredScriptInteger(record, "shot_index", 1),
     product_ids: stringArray(record.product_ids),
     character_ids: stringArray(record.character_ids),
     scene_ids: stringArray(record.scene_ids),
@@ -214,7 +230,7 @@ function normalizeV2ScriptShot(value: unknown): V2ScriptShot {
     dialogue: optionalScriptArray(record.dialogue).map(normalizeV2ScriptDialogueLine),
     narration: nullableScriptString(record.narration),
     visual_prompt: requiredScriptString(record, "visual_prompt"),
-    duration_seconds: requiredScriptNumber(record, "duration_seconds"),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
   };
 }
 
@@ -226,7 +242,7 @@ function normalizeV2ScriptScene(value: unknown): V2ScriptScene {
     description: requiredScriptString(record, "description"),
     location_id: nullableScriptString(record.location_id),
     shot_ids: stringArray(record.shot_ids),
-    duration_seconds: requiredScriptNumber(record, "duration_seconds"),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
     location_type: nullableScriptString(record.location_type),
     time_of_day: nullableScriptString(record.time_of_day),
     setting_type: nullableScriptSettingType(record.setting_type),
@@ -275,7 +291,7 @@ export function normalizeV2ScriptPlan(value: unknown): V2ScriptPlan {
     product_beats: stringArray(record.product_beats),
     tone: requiredScriptString(record, "tone"),
     visual_style: requiredScriptString(record, "visual_style"),
-    duration_seconds: requiredScriptNumber(record, "duration_seconds"),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
     aspect_ratio: requiredScriptAspectRatio(record),
     materializer_mode: requiredScriptMaterializerMode(record),
     model_id: nullableScriptString(record.model_id),
@@ -290,41 +306,41 @@ export function normalizeV2ScriptPlan(value: unknown): V2ScriptPlan {
 }
 
 function normalizeV2ScriptStructuralDiff(value: unknown): V2ScriptStructuralDiff {
-  const record = isRecord(value) ? value : {};
+  const record = requiredScriptRecord(value);
   return {
-    added_character_ids: stringArray(record.added_character_ids),
-    archived_character_ids: stringArray(record.archived_character_ids),
-    reactivated_character_ids: stringArray(record.reactivated_character_ids),
-    updated_character_ids: stringArray(record.updated_character_ids),
-    added_location_ids: stringArray(record.added_location_ids),
-    archived_location_ids: stringArray(record.archived_location_ids),
-    reactivated_location_ids: stringArray(record.reactivated_location_ids),
-    updated_location_ids: stringArray(record.updated_location_ids),
-    added_scene_ids: stringArray(record.added_scene_ids),
-    archived_scene_ids: stringArray(record.archived_scene_ids),
-    reactivated_scene_ids: stringArray(record.reactivated_scene_ids),
-    updated_scene_ids: stringArray(record.updated_scene_ids),
-    added_shot_ids: stringArray(record.added_shot_ids),
-    archived_shot_ids: stringArray(record.archived_shot_ids),
-    reactivated_shot_ids: stringArray(record.reactivated_shot_ids),
-    updated_shot_ids: stringArray(record.updated_shot_ids),
-    added_dialogue_ids: stringArray(record.added_dialogue_ids),
-    archived_dialogue_ids: stringArray(record.archived_dialogue_ids),
-    updated_dialogue_ids: stringArray(record.updated_dialogue_ids),
-    order_changed: record.order_changed === true,
+    added_character_ids: requiredScriptStringArray(record, "added_character_ids"),
+    archived_character_ids: requiredScriptStringArray(record, "archived_character_ids"),
+    reactivated_character_ids: requiredScriptStringArray(record, "reactivated_character_ids"),
+    updated_character_ids: requiredScriptStringArray(record, "updated_character_ids"),
+    added_location_ids: requiredScriptStringArray(record, "added_location_ids"),
+    archived_location_ids: requiredScriptStringArray(record, "archived_location_ids"),
+    reactivated_location_ids: requiredScriptStringArray(record, "reactivated_location_ids"),
+    updated_location_ids: requiredScriptStringArray(record, "updated_location_ids"),
+    added_scene_ids: requiredScriptStringArray(record, "added_scene_ids"),
+    archived_scene_ids: requiredScriptStringArray(record, "archived_scene_ids"),
+    reactivated_scene_ids: requiredScriptStringArray(record, "reactivated_scene_ids"),
+    updated_scene_ids: requiredScriptStringArray(record, "updated_scene_ids"),
+    added_shot_ids: requiredScriptStringArray(record, "added_shot_ids"),
+    archived_shot_ids: requiredScriptStringArray(record, "archived_shot_ids"),
+    reactivated_shot_ids: requiredScriptStringArray(record, "reactivated_shot_ids"),
+    updated_shot_ids: requiredScriptStringArray(record, "updated_shot_ids"),
+    added_dialogue_ids: requiredScriptStringArray(record, "added_dialogue_ids"),
+    archived_dialogue_ids: requiredScriptStringArray(record, "archived_dialogue_ids"),
+    updated_dialogue_ids: requiredScriptStringArray(record, "updated_dialogue_ids"),
+    order_changed: requiredScriptBoolean(record, "order_changed"),
   };
 }
 
 function normalizeV2LinkedContextSummary(value: unknown): V2LinkedContextSummary {
-  const record = isRecord(value) ? value : {};
+  const record = requiredScriptRecord(value);
   return {
-    updated_node_ids: stringArray(record.updated_node_ids),
-    updated_item_ids: stringArray(record.updated_item_ids),
-    updated_slot_ids: stringArray(record.updated_slot_ids),
-    updated_fields: stringArray(record.updated_fields),
-    selected_asset_versions_changed: false,
-    provider_execution_started: false,
-    refresh: stringArray(record.refresh),
+    updated_node_ids: requiredScriptStringArray(record, "updated_node_ids"),
+    updated_item_ids: requiredScriptStringArray(record, "updated_item_ids"),
+    updated_slot_ids: requiredScriptStringArray(record, "updated_slot_ids"),
+    updated_fields: requiredScriptStringArray(record, "updated_fields"),
+    selected_asset_versions_changed: requiredScriptFalse(record, "selected_asset_versions_changed"),
+    provider_execution_started: requiredScriptFalse(record, "provider_execution_started"),
+    refresh: requiredScriptStringArray(record, "refresh"),
   };
 }
 
@@ -334,7 +350,7 @@ export function normalizeV2ScriptReadResponse(value: unknown): V2ScriptReadRespo
     workflow_id: requiredScriptString(record, "workflow_id"),
     selected_script_version_id: requiredScriptString(record, "selected_script_version_id"),
     script: normalizeV2ScriptPlan(record.script),
-    events_cursor: requiredScriptNumber(record, "events_cursor"),
+    events_cursor: requiredScriptInteger(record, "events_cursor", 0),
   };
 }
 
@@ -370,7 +386,7 @@ export function normalizeV2ScriptVersionListResponse(value: unknown): V2ScriptVe
     workflow_id: requiredScriptString(record, "workflow_id"),
     selected_script_version_id: requiredScriptString(record, "selected_script_version_id"),
     versions: scriptRecordArray(record.versions).map(normalizeV2ScriptVersionSummary),
-    events_cursor: requiredScriptNumber(record, "events_cursor"),
+    events_cursor: requiredScriptInteger(record, "events_cursor", 0),
   };
 }
 
