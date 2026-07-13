@@ -64,7 +64,13 @@ export function createV2ScreenplayControllerRuntime({
 }: V2ScreenplayControllerRuntimeOptions): V2ScreenplayControllerRuntime {
   let sessionGeneration = 0;
   let requestToken = 0;
-  let queuedHistoryRefresh: { workflowId: string; generation: number; promise: Promise<void>; resolve: () => void } | null = null;
+  let queuedHistoryRefresh: {
+    workflowId: string;
+    generation: number;
+    ownerRequestToken: number;
+    promise: Promise<void>;
+    resolve: () => void;
+  } | null = null;
 
   const nextRequestToken = () => {
     requestToken += 1;
@@ -100,11 +106,20 @@ export function createV2ScreenplayControllerRuntime({
       && state.historyRequestToken === state.selectedRequestToken;
   };
 
-  const clearQueuedHistoryRefresh = (workflowId?: string, generation?: number): void => {
+  const clearQueuedHistoryRefresh = (criteria?: { workflowId: string; generation: number; ownerRequestToken?: number }): void => {
     const queued = queuedHistoryRefresh;
-    if (!queued || (workflowId !== undefined && (queued.workflowId !== workflowId || queued.generation !== generation))) return;
+    if (!queued || (criteria && (
+      queued.workflowId !== criteria.workflowId
+      || queued.generation !== criteria.generation
+      || (criteria.ownerRequestToken !== undefined && queued.ownerRequestToken !== criteria.ownerRequestToken)
+    ))) return;
     queuedHistoryRefresh = null;
     queued.resolve();
+  };
+
+  const handoffQueuedHistoryRefresh = (workflowId: string, generation: number, ownerRequestToken: number): void => {
+    if (queuedHistoryRefresh?.workflowId !== workflowId || queuedHistoryRefresh.generation !== generation) return;
+    queuedHistoryRefresh.ownerRequestToken = ownerRequestToken;
   };
 
   const queueHistoryRefresh = (workflowId: string, generation: number): Promise<void> => {
@@ -114,13 +129,19 @@ export function createV2ScreenplayControllerRuntime({
     clearQueuedHistoryRefresh();
     let resolve = () => {};
     const promise = new Promise<void>((nextResolve) => { resolve = nextResolve; });
-    queuedHistoryRefresh = { workflowId, generation, promise, resolve };
+    queuedHistoryRefresh = {
+      workflowId,
+      generation,
+      ownerRequestToken: getState().selectedRequestToken ?? -1,
+      promise,
+      resolve,
+    };
     return promise;
   };
 
-  const flushQueuedHistoryRefresh = async (workflowId: string, generation: number): Promise<void> => {
+  const flushQueuedHistoryRefresh = async (workflowId: string, generation: number, ownerRequestToken: number): Promise<void> => {
     const queued = queuedHistoryRefresh;
-    if (!queued || queued.workflowId !== workflowId || queued.generation !== generation) return;
+    if (!queued || queued.workflowId !== workflowId || queued.generation !== generation || queued.ownerRequestToken !== ownerRequestToken) return;
     queuedHistoryRefresh = null;
     try {
       if (isSessionActive(workflowId, generation)) await refreshHistory();
@@ -147,14 +168,14 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: selected.selected_script_version_id,
         versions: history.versions,
       });
-      await flushQueuedHistoryRefresh(workflowId, generation);
+      await flushQueuedHistoryRefresh(workflowId, generation, request);
     } catch (error) {
       if (!isOpenRequestActive(workflowId, generation, request)) {
-        clearQueuedHistoryRefresh(workflowId, generation);
+        clearQueuedHistoryRefresh({ workflowId, generation, ownerRequestToken: request });
         return;
       }
       dispatch({ type: "OPEN_FAILED", workflowId, generation, requestToken: request, error: toRequestError("open", error) });
-      clearQueuedHistoryRefresh(workflowId, generation);
+      clearQueuedHistoryRefresh({ workflowId, generation, ownerRequestToken: request });
     }
   };
 
@@ -172,6 +193,7 @@ export function createV2ScreenplayControllerRuntime({
     const workflowId = state.workflowId;
     const request = nextRequestToken();
     dispatch({ type: "SELECTED_REFRESH_STARTED", workflowId, generation: state.generation, requestToken: request });
+    handoffQueuedHistoryRefresh(workflowId, state.generation, request);
     try {
       const [selected, history] = await Promise.all([api.script(workflowId), api.scriptVersions(workflowId)]);
       assertCoherentOpenResponse(workflowId, selected, history);
@@ -185,6 +207,7 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: selected.selected_script_version_id,
         versions: history.versions,
       });
+      await flushQueuedHistoryRefresh(workflowId, state.generation, request);
     } catch (error) {
       if (!isSelectedBundleRequestActive(workflowId, state.generation, request)) return;
       dispatch({
@@ -194,6 +217,7 @@ export function createV2ScreenplayControllerRuntime({
         requestToken: request,
         error: toRequestError("refresh_selected", error),
       });
+      clearQueuedHistoryRefresh({ workflowId, generation: state.generation, ownerRequestToken: request });
     }
   };
 
