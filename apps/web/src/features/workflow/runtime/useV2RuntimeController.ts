@@ -11,7 +11,7 @@ import {
   type V2RuntimeStore,
 } from "../../../workflow-v2/runtime.ts";
 
-const V2_RUNTIME_EVENT_STREAM_TYPES = [
+export const V2_RUNTIME_EVENT_STREAM_TYPES = [
   "execution_queued",
   "execution_started",
   "execution_waiting",
@@ -61,6 +61,10 @@ const V2_RUNTIME_EVENT_STREAM_TYPES = [
   "item_outdated_hint_added",
   "node_outdated_hint_added",
   "storyboard_summary_refined",
+  "script_version_created",
+  "script_selected_version_updated",
+  "workflow_structure_updated",
+  "linked_context_updated",
 ] as const;
 
 export function useV2RuntimeController(options: {

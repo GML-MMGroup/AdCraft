@@ -10,6 +10,7 @@ import type {
   WorkflowRuntimeEventV2,
 } from "../../../../types-v2.ts";
 import { validateEditableScript } from "./screenplayModel.ts";
+import { createV2SynchronizationRefreshPlan } from "../../runtime/v2RuntimeEventModel.ts";
 import {
   createV2ScreenplayState,
   screenplayReducer,
@@ -360,8 +361,18 @@ export function createV2ScreenplayControllerRuntime({
 
   const handleRuntimeEvents = async (events: WorkflowRuntimeEventV2[]): Promise<void> => {
     const workflowId = getState().workflowId;
-    if (!workflowId || !events.some((event) => event.workflow_id === workflowId && isScreenplayRuntimeEvent(event))) return;
-    await refreshSelected();
+    if (!workflowId) return;
+    const workflowEvents = events.filter((event) => event.workflow_id === workflowId);
+    const plan = createV2SynchronizationRefreshPlan(workflowEvents);
+    if (plan.refreshSelectedScreenplay) {
+      await refreshSelected();
+      return;
+    }
+    if (plan.refreshScreenplayHistory) {
+      await refreshHistory();
+      return;
+    }
+    if (workflowEvents.some(isScreenplayRuntimeEvent)) await refreshSelected();
   };
 
   return {

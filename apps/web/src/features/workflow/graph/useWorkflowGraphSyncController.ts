@@ -133,7 +133,7 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
 
   async function applyWorkflowV2(
     nextWorkflow: WorkflowV2,
-    options: { refreshAssetsReason?: string | false; preserveViewport?: boolean } = {},
+    options: { refreshAssetsReason?: string | false; preserveViewport?: boolean; refreshRuntime?: boolean } = {},
   ) {
     const current = argsRef.current;
     const graph = workflowV2ToWorkflowGraph(nextWorkflow);
@@ -153,30 +153,45 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
         ? selectedNodeId
         : firstVisibleWorkflowNodeId(graph.nodes),
     );
-    current.setDetailsOpen(true);
+    if (!options.preserveViewport) {
+      current.setDetailsOpen(true);
+    }
     const refreshAssetsReason = options.refreshAssetsReason ?? "apply-workflow";
     if (refreshAssetsReason) {
       await refreshV2AssetsAndRetryMissing(nextWorkflow.workflow_id, refreshAssetsReason, nextWorkflow);
     }
-    await current.syncV2RuntimeSnapshot(nextWorkflow.workflow_id);
+    if (options.refreshRuntime !== false) await current.syncV2RuntimeSnapshot(nextWorkflow.workflow_id);
     if (!options.preserveViewport) {
       window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
     }
   }
 
-  async function refreshV2WorkflowGraph(id: string) {
+  async function refreshV2WorkflowGraph(
+    id: string,
+    options: { refreshRuntime?: boolean; refreshAssets?: boolean } = {},
+  ) {
     try {
       const nextWorkflow = await v2Api.workflow(id);
       const current = argsRef.current;
       if (!shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)) return null;
       const graph = workflowV2ToWorkflowGraph(nextWorkflow);
-      await applyWorkflowV2(nextWorkflow, { refreshAssetsReason: false, preserveViewport: true });
+      await applyWorkflowV2(nextWorkflow, {
+        refreshAssetsReason: false,
+        preserveViewport: true,
+        refreshRuntime: options.refreshRuntime,
+      });
       argsRef.current.setSavedAt(graph.updated_at ?? new Date().toISOString());
-      await refreshV2AssetsAndRetryMissing(id, "workflow-refresh", nextWorkflow);
+      if (options.refreshAssets !== false) {
+        await refreshV2AssetsAndRetryMissing(id, "workflow-refresh", nextWorkflow);
+      }
       return nextWorkflow;
     } catch {
       return null;
     }
+  }
+
+  function refreshV2WorkflowStructure(id: string) {
+    return refreshV2WorkflowGraph(id, { refreshRuntime: false, refreshAssets: false });
   }
 
   async function refreshV2AssetsAndRetryMissing(
@@ -484,6 +499,7 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     applyWorkflowGraph: typeof applyWorkflowGraph;
     applyWorkflowV2: typeof applyWorkflowV2;
     refreshV2WorkflowGraph: typeof refreshV2WorkflowGraph;
+    refreshV2WorkflowStructure: typeof refreshV2WorkflowStructure;
     refreshV2AssetsAndRetryMissing: typeof refreshV2AssetsAndRetryMissing;
     currentWorkflowIsV2: typeof currentWorkflowIsV2;
     assertNotV2WorkflowForV1Api: typeof assertNotV2WorkflowForV1Api;
@@ -504,6 +520,7 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
       applyWorkflowGraph,
       applyWorkflowV2,
       refreshV2WorkflowGraph,
+      refreshV2WorkflowStructure,
       refreshV2AssetsAndRetryMissing,
       currentWorkflowIsV2,
       assertNotV2WorkflowForV1Api,

@@ -446,6 +446,7 @@ export function useWorkflowPageModel() {
     applyWorkflowGraph,
     applyWorkflowV2,
     refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
     refreshV2AssetsAndRetryMissing,
     currentWorkflowIsV2,
     assertNotV2WorkflowForV1Api,
@@ -578,6 +579,7 @@ export function useWorkflowPageModel() {
     refreshWorkflowGraph,
     refreshMediaStatus,
     refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
     refreshV2AssetsAndRetryMissing,
     noteAffected,
     timelineLoadStarted,
@@ -592,6 +594,7 @@ export function useWorkflowPageModel() {
     handleNodePromptUpdatedEvent,
     handleItemPromptUpdatedEvent,
     handleRevisionConversationEvent,
+    screenplayActionsRef: screenplay.actionsRef,
   });
   const { canvasRuntimeEvents, v2Runtime, workflowV2Controller, v2NodeRuntimeStatusById, v2ActiveEdgeSourceNodeIds, v2SlotRuntimeStatusById } = workflowPageRuntimeControllers;
   const {

@@ -98,6 +98,7 @@ export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeContr
     onRefreshWorkflowGraph: args.refreshWorkflowGraph,
     onRefreshMediaStatus: args.refreshMediaStatus,
     onRefreshV2WorkflowGraph: args.refreshV2WorkflowGraph,
+    onRefreshV2WorkflowStructure: args.refreshV2WorkflowStructure,
     onRefreshV2AssetsAndRetryMissing: args.refreshV2AssetsAndRetryMissing,
     onLoadV2SlotVersions: (slotId) => args.v2SlotOperationsRef.current?.actions.loadV2SlotVersions(slotId),
     onLoadLocalAssetHistory: (workflowId, nodeId, asset) => args.localRevisionOperationsRef.current?.actions.loadLocalAssetHistory(workflowId, nodeId, asset) ?? Promise.resolve(null),
@@ -126,6 +127,7 @@ export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeContr
     onEvents: async (eventWorkflowId, events) => {
       if (!shouldApplyWorkflowScopedResult(eventWorkflowId, args.activeWorkflowIdRef.current)) return;
       canvasRuntimeEvents.actions.applyV2RuntimeEventsToPage(events);
+      await args.screenplayActionsRef.current?.handleRuntimeEvents(events);
     },
     onSnapshot: (snapshotWorkflowId, runtime) => {
       if (!shouldApplyWorkflowScopedResult(snapshotWorkflowId, args.activeWorkflowIdRef.current)) return;

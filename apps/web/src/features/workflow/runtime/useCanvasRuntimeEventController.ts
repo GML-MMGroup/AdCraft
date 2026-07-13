@@ -30,6 +30,7 @@ import {
 import { localRevisionStateKey, pendingVisibleRevisionCandidates } from "../../../workflow/localRevision.ts";
 import { shouldApplyWorkflowScopedResult } from "../../../workflow/sessionGuards.ts";
 import { isV2WorkflowId } from "../../../workflow-v2/pageAdapter.ts";
+import { isV2SynchronizationEvent } from "../../../workflow-v2/runtime.ts";
 import { frontDeskConversationId } from "../copilot/agentConversationPanelModel.ts";
 import { assetLibraryRefreshDetailFromEvent, patchAssetLibraryState } from "../assets/dynamicItemAssetModel.ts";
 import { assetTypeFromSemanticType, latestLocalRevisionPromptMetadata, localRevisionTargetsMatch, revisionMatchesCanvasCandidate } from "../assets/localRevisionViewModel.ts";
@@ -37,6 +38,7 @@ import type { CanvasCandidateSummaryState, LocalRevisionCardState } from "../ass
 import {
   V2_SLOT_VERSION_REFRESH_EVENT_TYPES,
   V2_WORKFLOW_REFRESH_EVENT_TYPES,
+  createV2SynchronizationRefreshPlan,
   v2EventRefreshHints,
   v2EventShouldRefreshAssets,
   v2EventShouldRefreshProviderTasks,
@@ -89,6 +91,7 @@ export type CanvasRuntimeEventControllerArgs = {
   onRefreshWorkflowGraph: (workflowId: string) => Promise<unknown>;
   onRefreshMediaStatus: (workflowId: string) => Promise<MediaStatus | null>;
   onRefreshV2WorkflowGraph: (workflowId: string) => Promise<WorkflowV2 | null>;
+  onRefreshV2WorkflowStructure: (workflowId: string) => Promise<WorkflowV2 | null>;
   onRefreshV2AssetsAndRetryMissing: (workflowId: string, reason: string, workflow?: WorkflowV2 | null) => Promise<unknown>;
   onLoadV2SlotVersions: (slotId: string) => Promise<unknown> | void;
   onLoadLocalAssetHistory: (workflowId: string, nodeId: string, asset: UploadedAsset) => Promise<unknown>;
@@ -651,6 +654,8 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
+    const synchronizationPlan = createV2SynchronizationRefreshPlan(events);
+    const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));
     const latestExecutionEvent = [...events].reverse().find((event) =>
       [
         "execution_queued",
@@ -686,16 +691,24 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
         argsRef.current.setWorkflowRunning(true);
       }
     }
-    const shouldRefreshRuntime = events.some(v2EventShouldRefreshRuntime);
-    const shouldRefreshWorkflow = events.some((event) =>
+    const shouldRefreshRuntime = runtimeEvents.some(v2EventShouldRefreshRuntime);
+    const shouldRefreshWorkflow = runtimeEvents.some((event) =>
       V2_WORKFLOW_REFRESH_EVENT_TYPES.has(event.event_type) ||
       v2EventRefreshHints(event).some((hint) => hint === "workflow" || hint === "slot_versions"),
     );
-    const shouldRefreshAssets = events.some(v2EventShouldRefreshAssets);
-    if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
+    const shouldRefreshAssets = runtimeEvents.some(v2EventShouldRefreshAssets);
+    const shouldRefreshSynchronizationStructure =
+      synchronizationPlan.refreshWorkflow ||
+      synchronizationPlan.refreshSlotPrompts ||
+      synchronizationPlan.refreshReferences;
+    if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets || shouldRefreshSynchronizationStructure)) {
       void (async () => {
         if (shouldRefreshRuntime || shouldRefreshAssets) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
-        const refreshedWorkflow = shouldRefreshWorkflow ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId) : null;
+        const refreshedWorkflow = shouldRefreshWorkflow
+          ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId)
+          : shouldRefreshSynchronizationStructure
+            ? await argsRef.current.onRefreshV2WorkflowStructure(workflowId)
+            : null;
         if (shouldRefreshAssets) {
           await argsRef.current.onRefreshV2AssetsAndRetryMissing(workflowId, "runtime-event", refreshedWorkflow ?? argsRef.current.getWorkflowV2());
         }

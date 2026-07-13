@@ -1,4 +1,18 @@
 import type { WorkflowRuntimeEventV2 } from "../../../types-v2.ts";
+import { isV2SynchronizationEvent } from "../../../workflow-v2/runtime.ts";
+
+export type V2SynchronizationRefreshPlan = {
+  isSynchronizationBatch: boolean;
+  refreshScreenplayHistory: boolean;
+  refreshSelectedScreenplay: boolean;
+  refreshWorkflow: boolean;
+  refreshSlotPrompts: boolean;
+  refreshReferences: boolean;
+  nodeIds: string[];
+  itemIds: string[];
+  slotIds: string[];
+  transactionIds: string[];
+};
 
 const V2_SLOT_OPERATION_REFRESH_EVENTS = new Set([
   "slot_working_version_updated",
@@ -133,17 +147,78 @@ export function v2EventRefreshHints(event: WorkflowRuntimeEventV2): string[] {
   return Array.isArray(refresh) ? refresh.filter((item): item is string => typeof item === "string") : [];
 }
 
+export function createV2SynchronizationRefreshPlan(events: WorkflowRuntimeEventV2[]): V2SynchronizationRefreshPlan {
+  const plan: V2SynchronizationRefreshPlan = {
+    isSynchronizationBatch: false,
+    refreshScreenplayHistory: false,
+    refreshSelectedScreenplay: false,
+    refreshWorkflow: false,
+    refreshSlotPrompts: false,
+    refreshReferences: false,
+    nodeIds: [],
+    itemIds: [],
+    slotIds: [],
+    transactionIds: [],
+  };
+  const nodeIds = new Set<string>();
+  const itemIds = new Set<string>();
+  const slotIds = new Set<string>();
+  const transactionIds = new Set<string>();
+
+  for (const event of events) {
+    if (!isV2SynchronizationEvent(event.event_type)) continue;
+    plan.isSynchronizationBatch = true;
+    const refresh = v2EventRefreshHints(event);
+
+    if (event.event_type === "script_version_created") {
+      plan.refreshScreenplayHistory = true;
+    } else if (event.event_type === "script_selected_version_updated") {
+      plan.refreshScreenplayHistory = true;
+      plan.refreshSelectedScreenplay = true;
+      plan.refreshWorkflow = true;
+    } else if (event.event_type === "workflow_structure_updated") {
+      plan.refreshWorkflow = true;
+    } else if (event.event_type === "linked_context_updated") {
+      plan.refreshWorkflow ||= refresh.includes("workflow");
+      plan.refreshSlotPrompts ||= refresh.includes("slot_prompts");
+      plan.refreshReferences ||= refresh.includes("references");
+      if (refresh.includes("script")) {
+        plan.refreshScreenplayHistory = true;
+        plan.refreshSelectedScreenplay = true;
+      }
+    }
+
+    addStrings(nodeIds, event.payload?.node_ids);
+    addStrings(itemIds, event.payload?.item_ids);
+    addStrings(slotIds, event.payload?.slot_ids);
+    if (event.node_id) nodeIds.add(event.node_id);
+    if (event.item_id) itemIds.add(event.item_id);
+    if (event.slot_id) slotIds.add(event.slot_id);
+    const transactionId = stringFromUnknown(event.payload?.transaction_id);
+    if (transactionId) transactionIds.add(transactionId);
+  }
+
+  plan.nodeIds = Array.from(nodeIds);
+  plan.itemIds = Array.from(itemIds);
+  plan.slotIds = Array.from(slotIds);
+  plan.transactionIds = Array.from(transactionIds);
+  return plan;
+}
+
 export function v2EventShouldRefreshRuntime(event: WorkflowRuntimeEventV2) {
+  if (isV2SynchronizationEvent(event.event_type)) return false;
   return V2_RUNTIME_REFRESH_EVENT_TYPES.has(event.event_type) ||
     v2EventRefreshHints(event).some((hint) => hint === "runtime" || hint === "workflow" || hint === "slot_versions" || hint === "assets");
 }
 
 export function v2EventShouldRefreshAssets(event: WorkflowRuntimeEventV2) {
+  if (isV2SynchronizationEvent(event.event_type)) return false;
   return V2_ASSET_REFRESH_EVENT_TYPES.has(event.event_type) ||
     v2EventRefreshHints(event).some((hint) => hint === "assets" || hint === "slot_versions" || hint === "workflow");
 }
 
 export function v2EventShouldRefreshProviderTasks(event: WorkflowRuntimeEventV2) {
+  if (isV2SynchronizationEvent(event.event_type)) return false;
   return V2_PROVIDER_TASK_REFRESH_EVENT_TYPES.has(event.event_type) ||
     event.event_type.startsWith("provider_task_") ||
     Boolean(v2RuntimeEventProviderTaskId(event));
@@ -159,4 +234,12 @@ export function v2RuntimeEventProviderTaskId(event: WorkflowRuntimeEventV2) {
 
 function stringFromUnknown(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function addStrings(target: Set<string>, value: unknown) {
+  if (!Array.isArray(value)) return;
+  value.forEach((item) => {
+    const normalized = stringFromUnknown(item);
+    if (normalized) target.add(normalized);
+  });
 }
