@@ -24,6 +24,12 @@ import type {
   V2RegisterReferenceResponse,
   V2ReferenceAttachRequest,
   V2ReferenceMutationResponse,
+  V2ScriptConfirmRequest,
+  V2ScriptConfirmResponse,
+  V2ScriptReadResponse,
+  V2ScriptSelectVersionRequest,
+  V2ScriptSelectVersionResponse,
+  V2ScriptVersionListResponse,
   V2SelectSlotVersionRequest,
   V2SlotPromptUpdateRequest,
   V2SlotReferenceUploadResponse,
@@ -51,6 +57,10 @@ import {
   normalizeWorkflowV2ReferenceMutationResponse,
   normalizeWorkflowV2RunResponse,
   normalizeV2RegisterReferenceResponse,
+  normalizeV2ScriptConfirmResponse,
+  normalizeV2ScriptReadResponse,
+  normalizeV2ScriptSelectVersionResponse,
+  normalizeV2ScriptVersionListResponse,
   normalizeV2SlotReferenceUploadResponse,
   normalizeV2InputAssetUploadResponse,
   normalizeWorkflowAssetListResponseV2,
@@ -179,6 +189,34 @@ export const v2Api = {
 
   runtime(workflowId: string): Promise<WorkflowRuntimeV2> {
     return requestV2(`/workflows/${encodeURIComponent(workflowId)}/runtime`, {}, normalizeWorkflowRuntimeV2);
+  },
+
+  script(workflowId: string): Promise<V2ScriptReadResponse> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/script`, {}, normalizeV2ScriptReadResponse);
+  },
+
+  confirmScript(workflowId: string, request: V2ScriptConfirmRequest): Promise<V2ScriptConfirmResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/script/confirm`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeV2ScriptConfirmResponse,
+    );
+  },
+
+  scriptVersions(workflowId: string): Promise<V2ScriptVersionListResponse> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/script/versions`, {}, normalizeV2ScriptVersionListResponse);
+  },
+
+  selectScriptVersion(
+    workflowId: string,
+    versionId: string,
+    request: V2ScriptSelectVersionRequest,
+  ): Promise<V2ScriptSelectVersionResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/script/versions/${encodeURIComponent(versionId)}/select`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeV2ScriptSelectVersionResponse,
+    );
   },
 
   async events(workflowId: string, afterSeq = 0): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
