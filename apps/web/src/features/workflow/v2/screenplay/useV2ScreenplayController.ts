@@ -83,18 +83,13 @@ export function createV2ScreenplayControllerRuntime({
     return isSessionActive(workflowId, generation) && getState().historyRequestToken === request;
   };
 
-  const isCoherentHistoryResponse = (
-    workflowId: string,
-    generation: number,
-    request: number,
-    selectedScriptVersionId: string,
-  ): boolean => {
-    return isHistoryRequestActive(workflowId, generation, request)
-      && getState().selectedScriptVersionId === selectedScriptVersionId;
+  const isSelectedBundleRequestActive = (workflowId: string, generation: number, request: number): boolean => {
+    return isSelectedRequestActive(workflowId, generation, request)
+      && getState().historyRequestToken === request;
   };
 
   const isOpenRequestActive = (workflowId: string, generation: number, request: number): boolean => {
-    return isSelectedRequestActive(workflowId, generation, request) && getState().historyRequestToken === request;
+    return isSelectedBundleRequestActive(workflowId, generation, request);
   };
 
   const open = async (workflowId: string): Promise<void> => {
@@ -135,21 +130,22 @@ export function createV2ScreenplayControllerRuntime({
     const request = nextRequestToken();
     dispatch({ type: "SELECTED_REFRESH_STARTED", workflowId, generation: state.generation, requestToken: request });
     try {
-      const response = await api.script(workflowId);
-      assertWorkflowResponse(workflowId, response);
-      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
+      const [selected, history] = await Promise.all([api.script(workflowId), api.scriptVersions(workflowId)]);
+      assertCoherentOpenResponse(workflowId, selected, history);
+      if (!isSelectedBundleRequestActive(workflowId, state.generation, request)) return;
       dispatch({
-        type: "SELECTED_REFRESH_SUCCEEDED",
+        type: "SELECTED_BUNDLE_SUCCEEDED",
         workflowId,
         generation: state.generation,
         requestToken: request,
-        script: response.script,
-        selectedScriptVersionId: response.selected_script_version_id,
+        script: selected.script,
+        selectedScriptVersionId: selected.selected_script_version_id,
+        versions: history.versions,
       });
     } catch (error) {
-      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
+      if (!isSelectedBundleRequestActive(workflowId, state.generation, request)) return;
       dispatch({
-        type: "SELECTED_REFRESH_FAILED",
+        type: "SELECTED_BUNDLE_FAILED",
         workflowId,
         generation: state.generation,
         requestToken: request,
@@ -167,7 +163,7 @@ export function createV2ScreenplayControllerRuntime({
     try {
       const response = await api.scriptVersions(workflowId);
       if (response.workflow_id !== workflowId) throw new Error("Screenplay history response belongs to a different workflow.");
-      if (!isCoherentHistoryResponse(workflowId, state.generation, request, response.selected_script_version_id)) return;
+      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "HISTORY_REFRESH_SUCCEEDED",
         workflowId,
@@ -234,7 +230,7 @@ export function createV2ScreenplayControllerRuntime({
           localDraft: document,
           message: error.message,
         });
-        await Promise.all([refreshSelected(), refreshHistory()]);
+        await refreshSelected();
         return;
       }
       dispatch({
@@ -296,7 +292,7 @@ export function createV2ScreenplayControllerRuntime({
   const handleRuntimeEvents = async (events: WorkflowRuntimeEventV2[]): Promise<void> => {
     const workflowId = getState().workflowId;
     if (!workflowId || !events.some((event) => event.workflow_id === workflowId && isScreenplayRuntimeEvent(event))) return;
-    await Promise.all([refreshSelected(), refreshHistory()]);
+    await refreshSelected();
   };
 
   return {
@@ -366,9 +362,9 @@ function assertCoherentOpenResponse(
   history: V2ScriptVersionListResponse,
 ): void {
   assertWorkflowResponse(workflowId, selected);
-  if (history.workflow_id !== workflowId) throw new Error("Screenplay history response belongs to a different workflow.");
+  if (history.workflow_id !== workflowId) throw new ScreenplaySelectionHistoryConsistencyError("Screenplay history response belongs to a different workflow.");
   if (selected.selected_script_version_id !== history.selected_script_version_id) {
-    throw new Error("Screenplay selected script and version history disagree.");
+    throw new ScreenplaySelectionHistoryConsistencyError("Screenplay selected script and version history disagree.");
   }
 }
 
@@ -376,9 +372,21 @@ function assertWorkflowResponse(workflowId: string, response: V2ScriptReadRespon
   if (response.workflow_id !== workflowId) throw new Error("Screenplay response belongs to a different workflow.");
 }
 
+class ScreenplaySelectionHistoryConsistencyError extends Error {
+  readonly code = "screenplay_selection_history_mismatch";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ScreenplaySelectionHistoryConsistencyError";
+  }
+}
+
 function toRequestError(operation: ScreenplayRequestError["operation"], error: unknown): ScreenplayRequestError {
   if (error instanceof V2ApiError) {
     return { operation, message: error.message, status: error.status, code: error.code, details: error.details };
+  }
+  if (error instanceof ScreenplaySelectionHistoryConsistencyError) {
+    return { operation, message: error.message, code: error.code };
   }
   return { operation, message: error instanceof Error ? error.message : "Screenplay request failed." };
 }

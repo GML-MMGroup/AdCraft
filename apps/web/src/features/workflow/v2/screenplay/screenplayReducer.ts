@@ -65,8 +65,8 @@ export type ScreenplayReducerAction =
   | { type: "SELECT_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; script: V2ScriptPlan; selectedScriptVersionId: string; structuralDiff: V2ScriptStructuralDiff }
   | { type: "SELECT_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
   | { type: "SELECTED_REFRESH_STARTED"; workflowId: string; generation: number; requestToken: number }
-  | { type: "SELECTED_REFRESH_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; script: V2ScriptPlan; selectedScriptVersionId: string }
-  | { type: "SELECTED_REFRESH_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
+  | { type: "SELECTED_BUNDLE_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; script: V2ScriptPlan; selectedScriptVersionId: string; versions: V2ScriptVersionSummary[] }
+  | { type: "SELECTED_BUNDLE_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
   | { type: "HISTORY_REFRESH_STARTED"; workflowId: string; generation: number; requestToken: number }
   | { type: "HISTORY_REFRESH_SUCCEEDED"; workflowId: string; generation: number; requestToken: number; selectedScriptVersionId: string; versions: V2ScriptVersionSummary[] }
   | { type: "HISTORY_REFRESH_FAILED"; workflowId: string; generation: number; requestToken: number; error: ScreenplayRequestError }
@@ -228,27 +228,41 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
         isSaving: false,
         isSelecting: false,
         selectedRequestToken: action.requestToken,
-        historyRequestToken: null,
+        historyRequestToken: action.requestToken,
         saveRequestToken: null,
         selectRequestToken: null,
         requestError: null,
       };
-    case "SELECTED_REFRESH_SUCCEEDED":
-      if (!matchesSelectedRefreshRequest(state, action)) return state;
+    case "SELECTED_BUNDLE_SUCCEEDED":
+      if (!matchesSelectedBundleRequest(state, action)) return state;
       return adoptServerScript({
         ...state,
         isLoading: false,
         selectedRequestToken: null,
+        historyRequestToken: null,
         requestError: null,
+        versions: freezeVersions(action.versions),
       }, action.script, action.selectedScriptVersionId, !state.dirty && !state.conflict);
-    case "SELECTED_REFRESH_FAILED":
-      if (!matchesSelectedRefreshRequest(state, action)) return state;
-      return { ...state, isLoading: false, selectedRequestToken: null, requestError: action.error };
+    case "SELECTED_BUNDLE_FAILED":
+      if (!matchesSelectedBundleRequest(state, action)) return state;
+      return { ...state, isLoading: false, selectedRequestToken: null, historyRequestToken: null, requestError: action.error };
     case "HISTORY_REFRESH_STARTED":
       if (!matchesWorkflowAndGeneration(state, action)) return state;
       return { ...state, isLoading: true, historyRequestToken: action.requestToken, requestError: null };
     case "HISTORY_REFRESH_SUCCEEDED":
-      if (!matchesHistoryRefreshRequest(state, action) || state.selectedScriptVersionId !== action.selectedScriptVersionId) return state;
+      if (!matchesHistoryRefreshRequest(state, action)) return state;
+      if (state.selectedScriptVersionId !== action.selectedScriptVersionId) {
+        return {
+          ...state,
+          isLoading: false,
+          historyRequestToken: null,
+          requestError: {
+            operation: "refresh_history",
+            message: "Screenplay history no longer matches the selected screenplay version.",
+            code: "screenplay_selection_history_mismatch",
+          },
+        };
+      }
       return { ...state, isLoading: false, historyRequestToken: null, requestError: null, versions: freezeVersions(action.versions) };
     case "HISTORY_REFRESH_FAILED":
       if (!matchesHistoryRefreshRequest(state, action)) return state;
@@ -362,11 +376,13 @@ function matchesSelectRequest(
     && state.selectRequestToken === action.requestToken;
 }
 
-function matchesSelectedRefreshRequest(
+function matchesSelectedBundleRequest(
   state: V2ScreenplayState,
   action: { workflowId: string; generation: number; requestToken: number },
 ): boolean {
-  return matchesWorkflowAndGeneration(state, action) && state.selectedRequestToken === action.requestToken;
+  return matchesWorkflowAndGeneration(state, action)
+    && state.selectedRequestToken === action.requestToken
+    && state.historyRequestToken === action.requestToken;
 }
 
 function matchesHistoryRefreshRequest(
