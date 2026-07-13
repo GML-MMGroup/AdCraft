@@ -59,6 +59,55 @@ import {
 
 const API_V2_BASE = "/api/v2";
 
+export class V2ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly details: Record<string, unknown>;
+  readonly stage?: string;
+  readonly violations: unknown[];
+  readonly suggestedActions: Array<Record<string, unknown>>;
+  readonly payload: unknown;
+
+  constructor({
+    status,
+    code,
+    message,
+    details,
+    stage,
+    violations,
+    suggestedActions,
+    payload,
+  }: {
+    status: number;
+    code?: string;
+    message: string;
+    details: Record<string, unknown>;
+    stage?: string;
+    violations: unknown[];
+    suggestedActions: Array<Record<string, unknown>>;
+    payload: unknown;
+  }) {
+    super(message);
+    this.name = "V2ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.stage = stage;
+    this.violations = violations;
+    this.suggestedActions = suggestedActions;
+    this.payload = payload;
+  }
+}
+
+export function isV2ApiError(value: unknown): value is V2ApiError {
+  return value instanceof V2ApiError;
+}
+
+export function isNetworkError(value: unknown): value is Error {
+  if (isV2ApiError(value) || !(value instanceof Error)) return false;
+  return value instanceof TypeError || /(?:failed to fetch|network|connection|load failed)/i.test(value.message);
+}
+
 async function requestV2<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<T> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(`${API_V2_BASE}${path}`, {
@@ -68,22 +117,31 @@ async function requestV2<T>(path: string, options: RequestInit = {}, normalize?:
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : payload;
-    const detailRecord = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null;
+    const detailRecord = asRecord(detail);
     const code = typeof detailRecord?.code === "string" ? detailRecord.code : undefined;
     const message = detailRecord && "message" in detailRecord
       ? String(detailRecord.message)
       : typeof detail === "string"
         ? detail
         : `Request failed with status ${response.status}`;
-    const error = new Error(code ? `${code}: ${message}` : message) as Error & {
-      code?: string;
-      payload?: unknown;
-      status?: number;
-    };
-    error.code = code;
-    error.payload = payload;
-    error.status = response.status;
-    throw error;
+    const details = asRecord(detailRecord?.details) ?? {};
+    const violations = Array.isArray(detailRecord?.violations)
+      ? detailRecord.violations
+      : Array.isArray(details.violations)
+        ? details.violations
+        : [];
+    const suggestedActions = recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions);
+    const stage = firstString(detailRecord?.stage, details.stage);
+    throw new V2ApiError({
+      status: response.status,
+      code,
+      message,
+      details,
+      stage,
+      violations,
+      suggestedActions,
+      payload,
+    });
   }
   return normalize ? normalize(payload) : (payload as T);
 }
@@ -372,7 +430,25 @@ function normalizeWorkflowV2PlanFromChatResponse(value: unknown): V2PlanFromChat
   return {
     front_desk: (record.front_desk ?? {}) as V2PlanFromChatResponse["front_desk"],
     workflow: record.workflow ? normalizeWorkflowV2(record.workflow) : null,
+    normalized_v2_request: asRecord(record.normalized_v2_request),
+    status: typeof record.status === "string" ? record.status : null,
+    error_code: typeof record.error_code === "string" ? record.error_code : null,
+    message: typeof record.message === "string" ? record.message : null,
+    details: asRecord(record.details) ?? {},
+    suggested_actions: recordsFrom(record.suggested_actions),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function recordsFrom(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(asRecord(item))) : [];
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string");
 }
 
 function normalizeWorkflowV2ChatTargetResponse(value: unknown): V2ChatTargetResponse {

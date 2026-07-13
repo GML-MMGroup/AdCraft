@@ -591,6 +591,12 @@ export interface V2PlanFromChatRequest {
 export interface V2PlanFromChatResponse {
   front_desk: FrontDeskResponse;
   workflow: WorkflowV2 | null;
+  normalized_v2_request?: Record<string, unknown> | null;
+  status?: string | null;
+  error_code?: string | null;
+  message?: string | null;
+  details: Record<string, unknown>;
+  suggested_actions: Array<Record<string, unknown>>;
 }
 
 export interface WorkflowV2RunResponse {
