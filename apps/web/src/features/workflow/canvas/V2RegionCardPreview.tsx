@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { ImageIcon, VideoIcon } from "../../../icons";
 import type { AssetVersionV2, WorkflowItemV2, WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { isCompleteV2Asset } from "../../../workflow-v2/assets.ts";
 import { usableAssetVersionUrl } from "../../../workflow-v2/selectors.ts";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
@@ -427,7 +428,7 @@ function SlotAssetPreview({ slot, asset }: { slot: WorkflowSlotV2; asset?: Asset
 
 function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
   return {
-    prompt: slot.slot_prompt ?? "",
+    prompt: effectiveSlotPrompt(slot),
     negative_prompt: slot.negative_prompt ?? "",
     reference_asset_ids: [...(slot.explicit_reference_ids ?? [])],
     uploaded_asset_ids: [],

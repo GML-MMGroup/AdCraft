@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { AssetVersionV2, RuntimeRecordV2, SlotVersionsResponseV2, V2ReferenceAttachRequest, WorkflowSlotV2 } from "../../../../types-v2.ts";
+import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, outdatedHintForSlot, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
@@ -103,12 +103,13 @@ export function V2SlotCard({
   libraryOptions = [],
   onAttachReference,
 }: V2SlotCardProps) {
-  const [slotPrompt, setSlotPrompt] = useState(slot.slot_prompt ?? "");
+  const effectivePrompt = effectiveSlotPrompt(slot);
+  const [slotPrompt, setSlotPrompt] = useState(effectivePrompt);
   const [negativePrompt, setNegativePrompt] = useState(slot.negative_prompt ?? "");
   useEffect(() => {
-    setSlotPrompt(slot.slot_prompt ?? "");
+    setSlotPrompt(effectivePrompt);
     setNegativePrompt(slot.negative_prompt ?? "");
-  }, [slot.slot_id, slot.slot_prompt, slot.negative_prompt]);
+  }, [effectivePrompt, slot.slot_id, slot.negative_prompt]);
   const workingIsSelected = Boolean(workingVersion && selectedAsset && workingVersion.asset_id === selectedAsset.asset_id);
   const versionHistory = dedupeSlotVersionAssets(slotVersions?.versions?.length ? slotVersions.versions : historyVersions);
   const referenceAttachments = slotReferencesAsAttachments(slot, referenceAssets);
@@ -148,7 +149,7 @@ export function V2SlotCard({
   const slotWaiting = providerWaiting || runtimeStatus === "waiting" || slot.status === "waiting";
   const referenceAudit = referenceAuditForSlot(slot, runtimeRecord, workingVersion ?? selectedAsset);
   const slotLabel = SLOT_LABELS[slot.slot_type] ?? slot.slot_type.replace(/_/g, " ");
-  const promptDirty = slotPrompt !== (slot.slot_prompt ?? "") || negativePrompt !== (slot.negative_prompt ?? "");
+  const promptDirty = slotPrompt !== effectivePrompt || negativePrompt !== (slot.negative_prompt ?? "");
 
   async function generateSlotVersion() {
     if (promptDirty) {

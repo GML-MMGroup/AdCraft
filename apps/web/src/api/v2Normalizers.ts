@@ -589,6 +589,8 @@ export function normalizeWorkflowSlotV2(value: unknown): WorkflowSlotV2 {
     required: typeof record.required === "boolean" ? record.required : true,
     status: stringValue(record.status, "empty"),
     slot_prompt: stringValue(record.slot_prompt) || undefined,
+    system_suggested_prompt: typeof record.system_suggested_prompt === "string" ? record.system_suggested_prompt : undefined,
+    user_prompt: typeof record.user_prompt === "string" ? record.user_prompt : undefined,
     negative_prompt: stringValue(record.negative_prompt) || undefined,
     media_prompt_asset_ids: stringArray(record.media_prompt_asset_ids),
     implicit_reference_ids: stringArray(record.implicit_reference_ids),

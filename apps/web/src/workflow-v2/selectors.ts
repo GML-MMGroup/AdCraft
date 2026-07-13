@@ -11,6 +11,7 @@ import type {
   WorkflowSlotV2,
   WorkflowV2,
 } from "../types-v2.ts";
+import { effectiveSlotPrompt } from "../types-v2.ts";
 import { chooseMoreCompleteV2Asset } from "./assets.ts";
 
 export function assetVersionByAssetId(workflow: Pick<WorkflowV2, "asset_versions">) {
@@ -271,7 +272,7 @@ export function buildSlotFunctionalCardViewModel(
     slot_type: slotType,
     media_type: slot?.media_type ?? "image",
     title: titleForSlot(slot, item),
-    prompt: slot?.slot_prompt ?? item?.item_prompt ?? "",
+    prompt: slot ? effectiveSlotPrompt(slot) : item?.item_prompt ?? "",
     prompt_source: slot?.prompt_source ?? item?.prompt_source ?? "system",
     manual_prompt_dirty: Boolean(slot?.manual_prompt_dirty),
     selected_asset: slot ? selectedAssetForSlot(workflow, slot) ?? null : null,

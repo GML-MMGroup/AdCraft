@@ -1,4 +1,4 @@
-import type { V2SlotPromptUpdateRequest, WorkflowSlotV2 } from "../../../../types-v2.ts";
+import { effectiveSlotPrompt, type V2SlotPromptUpdateRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import type { SlotMicroEditDraft } from "./useSlotMicroEdit.ts";
 import { slotDraftSubmitPayload } from "./useSlotMicroEdit.ts";
 
@@ -32,10 +32,10 @@ export function collectDirtyV2SlotDraftFlushes(
 
 export function buildDirtyV2SlotPromptPatch(slot: WorkflowSlotV2, draft: SlotMicroEditDraft): V2SlotPromptUpdateRequest | null {
   const payload = slotDraftSubmitPayload(draft);
-  const nextPrompt = normalizePrompt(payload.slot_prompt);
-  const nextNegativePrompt = normalizePrompt(payload.negative_prompt ?? "");
-  const currentPrompt = normalizePrompt(slot.slot_prompt ?? "");
-  const currentNegativePrompt = normalizePrompt(slot.negative_prompt ?? "");
+  const nextPrompt = payload.slot_prompt;
+  const nextNegativePrompt = payload.negative_prompt ?? "";
+  const currentPrompt = effectiveSlotPrompt(slot);
+  const currentNegativePrompt = slot.negative_prompt ?? "";
 
   if (nextPrompt === currentPrompt && nextNegativePrompt === currentNegativePrompt) return null;
   return {
@@ -55,8 +55,4 @@ export function v2SlotDraftHasPendingReferences(draft: SlotMicroEditDraft) {
     if (attachment.source_asset_id && !attachment.relation_id) return true;
     return attachment.status === "draft" || attachment.status === "registering" || attachment.status === "registered";
   });
-}
-
-function normalizePrompt(value: string) {
-  return value.trim();
 }

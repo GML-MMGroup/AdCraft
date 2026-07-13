@@ -1,5 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { v2Api } from "../../../../api/v2Client.ts";
+import { effectiveSlotPrompt } from "../../../../types-v2.ts";
 import type {
   AssetVersionV2,
   SlotVersionsResponseV2,
@@ -92,6 +93,11 @@ async function ensureV2SlotDraftReferences(args: V2SlotWorkbenchModuleArgs, slot
 
 export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2SlotWorkbenchModule {
   const microEdit = useSlotMicroEdit();
+  const rebaseSlotDrafts = microEdit.rebaseSlots;
+
+  useEffect(() => {
+    rebaseSlotDrafts(args.slots);
+  }, [args.slots, rebaseSlotDrafts]);
 
   const refreshSlot = useCallback(async (slotId: string) => {
     if (!args.workflowId) return;
@@ -121,7 +127,7 @@ export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2Slo
         const draft = microEdit.state.draftsBySlotId[action.slotId];
         const request = buildSlotCandidateRegenerateRequest(
           draft ?? {
-            prompt: slot.slot_prompt ?? "",
+            prompt: effectiveSlotPrompt(slot),
             negative_prompt: slot.negative_prompt ?? "",
             reference_asset_ids: slot.explicit_reference_ids ?? [],
             uploaded_asset_ids: [],

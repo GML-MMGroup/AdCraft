@@ -127,6 +127,8 @@ export interface WorkflowSlotV2 {
   required: boolean;
   status: WorkflowSlotStatusV2 | string;
   slot_prompt?: string;
+  system_suggested_prompt?: string;
+  user_prompt?: string;
   negative_prompt?: string;
   media_prompt_asset_ids?: string[];
   implicit_reference_ids?: string[];
@@ -146,6 +148,17 @@ export interface WorkflowSlotV2 {
   negative_constraints?: string | null;
   warnings?: Array<{ code?: string; message?: string; [key: string]: unknown }>;
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Returns the editable prompt layer while preserving user-authored whitespace.
+ * Whitespace is normalized only to decide whether a layer is present.
+ */
+export function effectiveSlotPrompt(slot: Pick<WorkflowSlotV2, "slot_prompt" | "system_suggested_prompt" | "user_prompt">): string {
+  for (const prompt of [slot.user_prompt, slot.system_suggested_prompt, slot.slot_prompt]) {
+    if (typeof prompt === "string" && prompt.trim()) return prompt;
+  }
+  return "";
 }
 
 export interface AssetVersionV2 {

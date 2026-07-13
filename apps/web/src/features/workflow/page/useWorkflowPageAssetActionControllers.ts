@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { buildVideoTimeline } from "../final-composition/finalCompositionTimelineModel.ts";
 import { useV2SlotOperations } from "../v2/slots/useV2SlotOperations.ts";
 import { useLocalRevisionOperations } from "../assets/useLocalRevisionOperations.ts";
@@ -42,6 +42,12 @@ export function useWorkflowPageAssetActionControllers(args: WorkflowPageAssetAct
     selectedFreeGenerationMediaType,
     selectedFreeAbsorbTargetNodes,
   } = v2DerivedState;
+  const rebaseV2SlotDrafts = args.v2SlotMicroEdit.rebaseSlots;
+  const freshV2Slots = args.workflowV2Model.workflowV2?.slots ?? allV2Slots;
+
+  useEffect(() => {
+    rebaseV2SlotDrafts(freshV2Slots);
+  }, [freshV2Slots, rebaseV2SlotDrafts]);
 
   const v2SlotOperations = useV2SlotOperations({
     workflowId: args.workflow?.workflow_id,
