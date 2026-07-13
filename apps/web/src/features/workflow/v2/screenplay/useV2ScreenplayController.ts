@@ -452,7 +452,13 @@ class ScreenplaySelectionHistoryConsistencyError extends Error {
 
 function toRequestError(operation: ScreenplayRequestError["operation"], error: unknown): ScreenplayRequestError {
   if (error instanceof V2ApiError) {
-    return { operation, message: error.message, status: error.status, code: error.code, details: error.details };
+    return {
+      operation,
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      details: { ...error.details, violations: error.violations },
+    };
   }
   if (error instanceof ScreenplaySelectionHistoryConsistencyError) {
     return { operation, message: error.message, code: error.code };
