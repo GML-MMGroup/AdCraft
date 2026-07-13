@@ -99,21 +99,35 @@ export class V2ApiError extends Error {
   }
 }
 
+export class V2NetworkError extends Error {
+  override readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "Network request failed");
+    this.name = "V2NetworkError";
+    this.cause = cause;
+  }
+}
+
 export function isV2ApiError(value: unknown): value is V2ApiError {
   return value instanceof V2ApiError;
 }
 
-export function isNetworkError(value: unknown): value is Error {
-  if (isV2ApiError(value) || !(value instanceof Error)) return false;
-  return value instanceof TypeError || /(?:failed to fetch|network|connection|load failed)/i.test(value.message);
+export function isNetworkError(value: unknown): value is V2NetworkError {
+  return value instanceof V2NetworkError;
 }
 
 async function requestV2<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<T> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-  const response = await fetch(`${API_V2_BASE}${path}`, {
-    headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_V2_BASE}${path}`, {
+      headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
+      ...options,
+    });
+  } catch (error) {
+    throw new V2NetworkError(error);
+  }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : payload;
