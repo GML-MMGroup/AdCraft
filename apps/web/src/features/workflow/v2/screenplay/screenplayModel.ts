@@ -18,10 +18,20 @@ export interface EditableScriptValidationIssue {
   message: string;
 }
 
+export class CanonicalScreenplayOrderError extends Error {
+  readonly code = "inconsistent_canonical_screenplay_order";
+
+  constructor() {
+    super("Canonical scene and shot order cannot preserve the canonical flat shot order in an editable document.");
+    this.name = "CanonicalScreenplayOrderError";
+  }
+}
+
 export function scriptToEditableDocument(script: V2ScriptPlan): V2EditableScriptDocument {
+  assertEditableOrderCanPreserveCanonicalOrder(script);
   const shotsByScene = new Map<string, V2EditableScriptShot[]>();
 
-  for (const shot of [...script.shots].sort((left, right) => left.shot_index - right.shot_index)) {
+  for (const shot of script.shots) {
     const editableShot: V2EditableScriptShot = {
       shot_id: shot.shot_id,
       product_ids: [...shot.product_ids],
@@ -179,6 +189,17 @@ export function validateEditableScript(document: V2EditableScriptDocument): Edit
   collectNestedEntityIds(issues, shotIdentities, "shot", "shot_id");
   collectNestedEntityIds(issues, dialogueIdentities, "dialogue", "dialogue_id");
   return issues;
+}
+
+function assertEditableOrderCanPreserveCanonicalOrder(script: V2ScriptPlan): void {
+  const canonicalShotIds = script.shots.map((shot) => shot.shot_id);
+  const flattenedShotIds = script.scenes.flatMap((scene) => script.shots
+    .filter((shot) => shot.scene_id === scene.scene_id)
+    .map((shot) => shot.shot_id));
+
+  if (canonicalShotIds.length !== flattenedShotIds.length || canonicalShotIds.some((shotId, index) => shotId !== flattenedShotIds[index])) {
+    throw new CanonicalScreenplayOrderError();
+  }
 }
 
 function toEditableCharacter(character: V2ScriptPlan["characters"][number]): V2EditableScriptCharacter {
