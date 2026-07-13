@@ -68,6 +68,7 @@ import {
   isSuccessfulNodeStatus,
   mergeOutputPreservingQuality,
 } from "../quality/qualityReviewViewModel";
+import { createV2WorkflowHydrationRequestGuard } from "./v2WorkflowHydrationRequestGuard.ts";
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
@@ -106,10 +107,20 @@ export type WorkflowGraphSyncControllerArgs = {
 
 export function useWorkflowGraphSyncController(args: WorkflowGraphSyncControllerArgs) {
   const argsRef = useRef(args);
+  const hydrationRequestGuardRef = useRef<ReturnType<typeof createV2WorkflowHydrationRequestGuard> | null>(null);
+  if (!hydrationRequestGuardRef.current) {
+    hydrationRequestGuardRef.current = createV2WorkflowHydrationRequestGuard();
+  }
+  const hydrationRequestGuard = hydrationRequestGuardRef.current;
 
   useEffect(() => {
     argsRef.current = args;
   }, [args]);
+
+  useEffect(() => {
+    hydrationRequestGuard.activateWorkflow(args.workflow?.workflow_id ?? null);
+    return () => hydrationRequestGuard.invalidate();
+  }, [args.workflow?.workflow_id, hydrationRequestGuard]);
 
   async function applyWorkflowGraph(nextWorkflow: WorkflowGraph) {
     const current = argsRef.current;
@@ -170,20 +181,26 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     id: string,
     options: { refreshRuntime?: boolean; refreshAssets?: boolean } = {},
   ) {
+    const requestToken = hydrationRequestGuard.begin(id);
     try {
       const nextWorkflow = await v2Api.workflow(id);
       const current = argsRef.current;
-      if (!shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)) return null;
+      if (
+        !hydrationRequestGuard.isCurrent(requestToken, current.activeWorkflowIdRef.current) ||
+        !shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)
+      ) return null;
       const graph = workflowV2ToWorkflowGraph(nextWorkflow);
       await applyWorkflowV2(nextWorkflow, {
         refreshAssetsReason: false,
         preserveViewport: true,
         refreshRuntime: options.refreshRuntime,
       });
+      if (!hydrationRequestGuard.isCurrent(requestToken, argsRef.current.activeWorkflowIdRef.current)) return null;
       argsRef.current.setSavedAt(graph.updated_at ?? new Date().toISOString());
       if (options.refreshAssets !== false) {
         await refreshV2AssetsAndRetryMissing(id, "workflow-refresh", nextWorkflow);
       }
+      if (!hydrationRequestGuard.isCurrent(requestToken, argsRef.current.activeWorkflowIdRef.current)) return null;
       return nextWorkflow;
     } catch {
       return null;

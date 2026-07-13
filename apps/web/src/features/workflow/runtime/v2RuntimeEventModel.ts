@@ -1,4 +1,8 @@
-import type { WorkflowRuntimeEventV2 } from "../../../types-v2.ts";
+import type {
+  V2LinkedContextSummary,
+  V2ScriptStructuralDiff,
+  WorkflowRuntimeEventV2,
+} from "../../../types-v2.ts";
 import { isV2SynchronizationEvent } from "../../../workflow-v2/runtime.ts";
 
 export type V2SynchronizationRefreshPlan = {
@@ -6,12 +10,15 @@ export type V2SynchronizationRefreshPlan = {
   refreshScreenplayHistory: boolean;
   refreshSelectedScreenplay: boolean;
   refreshWorkflow: boolean;
+  refreshWorkflowStructure: boolean;
   refreshSlotPrompts: boolean;
   refreshReferences: boolean;
+  refreshAssets: boolean;
   nodeIds: string[];
   itemIds: string[];
   slotIds: string[];
   transactionIds: string[];
+  scriptVersionIds: string[];
 };
 
 const V2_SLOT_OPERATION_REFRESH_EVENTS = new Set([
@@ -153,17 +160,21 @@ export function createV2SynchronizationRefreshPlan(events: WorkflowRuntimeEventV
     refreshScreenplayHistory: false,
     refreshSelectedScreenplay: false,
     refreshWorkflow: false,
+    refreshWorkflowStructure: false,
     refreshSlotPrompts: false,
     refreshReferences: false,
+    refreshAssets: false,
     nodeIds: [],
     itemIds: [],
     slotIds: [],
     transactionIds: [],
+    scriptVersionIds: [],
   };
   const nodeIds = new Set<string>();
   const itemIds = new Set<string>();
   const slotIds = new Set<string>();
   const transactionIds = new Set<string>();
+  const scriptVersionIds = new Set<string>();
 
   for (const event of events) {
     if (!isV2SynchronizationEvent(event.event_type)) continue;
@@ -178,10 +189,12 @@ export function createV2SynchronizationRefreshPlan(events: WorkflowRuntimeEventV
       plan.refreshWorkflow = true;
     } else if (event.event_type === "workflow_structure_updated") {
       plan.refreshWorkflow = true;
+      plan.refreshWorkflowStructure = true;
     } else if (event.event_type === "linked_context_updated") {
       plan.refreshWorkflow ||= refresh.includes("workflow");
       plan.refreshSlotPrompts ||= refresh.includes("slot_prompts");
       plan.refreshReferences ||= refresh.includes("references");
+      plan.refreshAssets ||= refresh.includes("assets");
       if (refresh.includes("script")) {
         plan.refreshScreenplayHistory = true;
         plan.refreshSelectedScreenplay = true;
@@ -196,13 +209,39 @@ export function createV2SynchronizationRefreshPlan(events: WorkflowRuntimeEventV
     if (event.slot_id) slotIds.add(event.slot_id);
     const transactionId = stringFromUnknown(event.payload?.transaction_id);
     if (transactionId) transactionIds.add(transactionId);
+    const scriptVersionId = stringFromUnknown(event.payload?.script_version_id) || stringFromUnknown(event.version_id);
+    if (scriptVersionId) scriptVersionIds.add(scriptVersionId);
   }
 
   plan.nodeIds = Array.from(nodeIds);
   plan.itemIds = Array.from(itemIds);
   plan.slotIds = Array.from(slotIds);
   plan.transactionIds = Array.from(transactionIds);
+  plan.scriptVersionIds = Array.from(scriptVersionIds);
   return plan;
+}
+
+export function createV2LocalSynchronizationRefreshPlan(
+  scriptVersionId: string,
+  structuralDiff: V2ScriptStructuralDiff,
+  linkedContext: V2LinkedContextSummary,
+): V2SynchronizationRefreshPlan {
+  const refresh = new Set(linkedContext.refresh ?? []);
+  return {
+    isSynchronizationBatch: true,
+    refreshScreenplayHistory: true,
+    refreshSelectedScreenplay: true,
+    refreshWorkflow: true,
+    refreshWorkflowStructure: v2StructuralDiffChangesWorkflow(structuralDiff),
+    refreshSlotPrompts: refresh.has("slot_prompts"),
+    refreshReferences: refresh.has("references"),
+    refreshAssets: refresh.has("assets"),
+    nodeIds: uniqueStrings(linkedContext.updated_node_ids),
+    itemIds: uniqueStrings(linkedContext.updated_item_ids),
+    slotIds: uniqueStrings(linkedContext.updated_slot_ids),
+    transactionIds: [],
+    scriptVersionIds: scriptVersionId ? [scriptVersionId] : [],
+  };
 }
 
 export function v2EventShouldRefreshRuntime(event: WorkflowRuntimeEventV2) {
@@ -242,4 +281,17 @@ function addStrings(target: Set<string>, value: unknown) {
     const normalized = stringFromUnknown(item);
     if (normalized) target.add(normalized);
   });
+}
+
+function uniqueStrings(value: unknown): string[] {
+  const result = new Set<string>();
+  addStrings(result, value);
+  return Array.from(result);
+}
+
+function v2StructuralDiffChangesWorkflow(diff: V2ScriptStructuralDiff): boolean {
+  if (diff.order_changed) return true;
+  return Object.entries(diff).some(([key, value]) =>
+    /^(added|archived|reactivated)_(character|location|scene|shot)_ids$/.test(key) && Array.isArray(value) && value.length > 0,
+  );
 }

@@ -465,6 +465,7 @@ export function useWorkflowPageModel() {
     activeWorkflowId: workflowV2Model.isV2 ? workflow?.workflow_id ?? null : null,
     workflowItems: workflowV2Model.workflowV2?.items ?? canvasNodes.flatMap(v2RegionItemsForNode),
     refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
     syncV2RuntimeSnapshot: async (requestWorkflowId) => v2RuntimeRef.current?.syncSnapshot(requestWorkflowId),
   });
   const {

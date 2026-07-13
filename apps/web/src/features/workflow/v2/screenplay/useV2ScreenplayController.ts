@@ -9,8 +9,18 @@ import type {
   V2ScriptVersionListResponse,
   WorkflowRuntimeEventV2,
 } from "../../../../types-v2.ts";
+import { isV2SynchronizationEvent } from "../../../../workflow-v2/runtime.ts";
 import { validateEditableScript } from "./screenplayModel.ts";
-import { createV2SynchronizationRefreshPlan } from "../../runtime/v2RuntimeEventModel.ts";
+import {
+  createV2LocalSynchronizationRefreshPlan,
+  createV2SynchronizationRefreshPlan,
+  type V2SynchronizationRefreshPlan,
+} from "../../runtime/v2RuntimeEventModel.ts";
+import {
+  createV2SynchronizationRefreshCoordinator,
+  type V2SynchronizationRefreshCoordinator,
+  type V2SynchronizationRefreshScope,
+} from "../../runtime/v2SynchronizationRefreshCoordinator.ts";
 import {
   createV2ScreenplayState,
   screenplayReducer,
@@ -26,16 +36,22 @@ export type V2ScreenplayApi = Pick<typeof v2Api, "script" | "confirmScript" | "s
 export type V2ScreenplayControllerCallbacks = {
   refreshWorkflow?: (workflowId: string, linkedContext: V2LinkedContextSummary) => Promise<unknown> | unknown;
   refreshRuntime?: (workflowId: string, linkedContext: V2LinkedContextSummary) => Promise<unknown> | unknown;
+  refreshSynchronizationWorkflow?: (
+    workflowId: string,
+    scopes: ReadonlySet<V2SynchronizationRefreshScope>,
+  ) => Promise<unknown> | unknown;
 };
 
 export type V2ScreenplayControllerRuntimeOptions = V2ScreenplayControllerCallbacks & {
   api: V2ScreenplayApi;
   getState: () => V2ScreenplayState;
   dispatch: (action: ScreenplayReducerAction) => void;
+  synchronizationCoordinator?: V2SynchronizationRefreshCoordinator;
 };
 
 export type UseV2ScreenplayControllerOptions = V2ScreenplayControllerCallbacks & {
   api?: V2ScreenplayApi;
+  synchronizationCoordinator?: V2SynchronizationRefreshCoordinator;
 };
 
 export type V2ScreenplayController = {
@@ -62,6 +78,8 @@ export function createV2ScreenplayControllerRuntime({
   dispatch,
   refreshWorkflow,
   refreshRuntime,
+  refreshSynchronizationWorkflow,
+  synchronizationCoordinator = createV2SynchronizationRefreshCoordinator(),
 }: V2ScreenplayControllerRuntimeOptions): V2ScreenplayControllerRuntime {
   let sessionGeneration = 0;
   let requestToken = 0;
@@ -152,6 +170,7 @@ export function createV2ScreenplayControllerRuntime({
   };
 
   const open = async (workflowId: string): Promise<void> => {
+    synchronizationCoordinator.activateWorkflow(workflowId);
     clearQueuedHistoryRefresh();
     const generation = ++sessionGeneration;
     const request = nextRequestToken();
@@ -284,9 +303,13 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: response.selected_script_version_id,
         structuralDiff: response.structural_diff,
       });
-      await refreshHistory();
+      await coordinateSynchronizationRefresh(
+        workflowId,
+        createV2LocalSynchronizationRefreshPlan(response.selected_script_version_id, response.structural_diff, response.linked_context),
+        { localSelection: true, linkedContext: response.linked_context },
+      );
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
-      await notifyLinkedRefresh(workflowId, response.linked_context, refreshWorkflow, refreshRuntime);
+      await notifyRuntimeRefresh(workflowId, response.linked_context, refreshRuntime);
     } catch (error) {
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       if (isScriptVersionConflict(error)) {
@@ -333,9 +356,13 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: response.selected_script_version_id,
         structuralDiff: response.structural_diff,
       });
-      await refreshHistory();
+      await coordinateSynchronizationRefresh(
+        workflowId,
+        createV2LocalSynchronizationRefreshPlan(response.selected_script_version_id, response.structural_diff, response.linked_context),
+        { localSelection: true, linkedContext: response.linked_context },
+      );
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
-      await notifyLinkedRefresh(workflowId, response.linked_context, refreshWorkflow, refreshRuntime);
+      await notifyRuntimeRefresh(workflowId, response.linked_context, refreshRuntime);
     } catch (error) {
       if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({ type: "SELECT_FAILED", workflowId, generation: state.generation, requestToken: request, error: toRequestError("select", error) });
@@ -360,19 +387,38 @@ export function createV2ScreenplayControllerRuntime({
   const discardLocalDraftAndReloadLatest = (): void => dispatch({ type: "DISCARD_LOCAL_DRAFT_AND_RELOAD_LATEST" });
 
   const handleRuntimeEvents = async (events: WorkflowRuntimeEventV2[]): Promise<void> => {
-    const workflowId = getState().workflowId;
-    if (!workflowId) return;
-    const workflowEvents = events.filter((event) => event.workflow_id === workflowId);
-    const plan = createV2SynchronizationRefreshPlan(workflowEvents);
-    if (plan.refreshSelectedScreenplay) {
-      await refreshSelected();
+    const workflowId = events.find((event) => isV2SynchronizationEvent(event.event_type))?.workflow_id;
+    if (workflowId) {
+      const workflowEvents = events.filter((event) => event.workflow_id === workflowId);
+      const plan = createV2SynchronizationRefreshPlan(workflowEvents);
+      await coordinateSynchronizationRefresh(workflowId, plan);
       return;
     }
-    if (plan.refreshScreenplayHistory) {
-      await refreshHistory();
-      return;
-    }
+    const openWorkflowId = getState().workflowId;
+    if (!openWorkflowId) return;
+    const workflowEvents = events.filter((event) => event.workflow_id === openWorkflowId);
     if (workflowEvents.some(isScreenplayRuntimeEvent)) await refreshSelected();
+  };
+
+  const coordinateSynchronizationRefresh = async (
+    workflowId: string,
+    plan: V2SynchronizationRefreshPlan,
+    options: { localSelection?: boolean; linkedContext?: V2LinkedContextSummary } = {},
+  ) => {
+    const state = getState();
+    const screenplayOpen = state.isOpen && state.workflowId === workflowId;
+    await synchronizationCoordinator.coordinate(workflowId, plan, {
+      refreshHistory: screenplayOpen ? refreshHistory : undefined,
+      refreshSelectedScreenplay: screenplayOpen
+        ? options.localSelection
+          ? refreshHistory
+          : refreshSelected
+        : undefined,
+      refreshWorkflow: refreshSynchronizationWorkflow || refreshWorkflow
+        ? (scopes) => refreshSynchronizationWorkflow?.(workflowId, scopes)
+          ?? refreshWorkflow?.(workflowId, options.linkedContext ?? linkedContextFromPlan(plan))
+        : undefined,
+    });
   };
 
   return {
@@ -414,6 +460,8 @@ export function useV2ScreenplayController(options: UseV2ScreenplayControllerOpti
       },
       refreshWorkflow: (...args) => optionsRef.current.refreshWorkflow?.(...args),
       refreshRuntime: (...args) => optionsRef.current.refreshRuntime?.(...args),
+      refreshSynchronizationWorkflow: (...args) => optionsRef.current.refreshSynchronizationWorkflow?.(...args),
+      synchronizationCoordinator: options.synchronizationCoordinator,
     });
   }
   stateRef.current = state;
@@ -485,14 +533,27 @@ function isScreenplayRuntimeEvent(event: WorkflowRuntimeEventV2): boolean {
   return /(^|[.:_])script([.:_]|$)|screenplay/i.test(event.event_type);
 }
 
-async function notifyLinkedRefresh(
+async function notifyRuntimeRefresh(
   workflowId: string,
   linkedContext: V2LinkedContextSummary,
-  refreshWorkflow: V2ScreenplayControllerCallbacks["refreshWorkflow"],
   refreshRuntime: V2ScreenplayControllerCallbacks["refreshRuntime"],
 ): Promise<void> {
-  await Promise.allSettled([
-    refreshWorkflow?.(workflowId, linkedContext),
-    refreshRuntime?.(workflowId, linkedContext),
-  ]);
+  await Promise.allSettled([refreshRuntime?.(workflowId, linkedContext)]);
+}
+
+function linkedContextFromPlan(plan: V2SynchronizationRefreshPlan): V2LinkedContextSummary {
+  return {
+    updated_node_ids: plan.nodeIds,
+    updated_item_ids: plan.itemIds,
+    updated_slot_ids: plan.slotIds,
+    updated_fields: [],
+    selected_asset_versions_changed: false,
+    provider_execution_started: false,
+    refresh: [
+      ...(plan.refreshWorkflow || plan.refreshWorkflowStructure ? ["workflow"] : []),
+      ...(plan.refreshSlotPrompts ? ["slot_prompts"] : []),
+      ...(plan.refreshReferences ? ["references"] : []),
+      ...(plan.refreshAssets ? ["assets"] : []),
+    ],
+  };
 }
