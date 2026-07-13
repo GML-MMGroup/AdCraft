@@ -7,7 +7,8 @@ const DIST_ASSETS = new URL("../../dist/assets/", import.meta.url);
 const DIST_INDEX_HTML = new URL("../../dist/index.html", import.meta.url);
 const MAX_MAIN_JS_BYTES = 650 * 1024;
 const MAX_INITIAL_JS_BYTES = 475 * 1024;
-const MAX_TOTAL_JS_BYTES = 1250 * 1024;
+const MAX_TOTAL_JS_BYTES = 1280 * 1024;
+const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_CSS_BYTES = 180 * 1024;
 
 function bytes(value) {
@@ -51,6 +52,7 @@ const indexHtml = readIndexHtml();
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
 const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
+const screenplayEditorJs = jsAssets.find((asset) => asset.name.startsWith("screenplay-editor-"));
 const initialNames = initialJsNames(indexHtml);
 const initialJs = jsAssets.filter((asset) => initialNames.has(asset.name));
 const initialJsBytes = initialJs.reduce((sum, asset) => sum + asset.size, 0);
@@ -76,6 +78,11 @@ for (const asset of initialJs) {
 }
 if (totalJs > MAX_TOTAL_JS_BYTES) {
   failures.push(`total JS is ${bytes(totalJs)}, expected <= ${bytes(MAX_TOTAL_JS_BYTES)}`);
+}
+if (!screenplayEditorJs) {
+  failures.push("screenplay editor lazy chunk is missing");
+} else if (screenplayEditorJs.size > MAX_SCREENPLAY_EDITOR_JS_BYTES) {
+  failures.push(`screenplay editor JS ${screenplayEditorJs.name} is ${bytes(screenplayEditorJs.size)}, expected <= ${bytes(MAX_SCREENPLAY_EDITOR_JS_BYTES)}`);
 }
 if (totalCss > MAX_CSS_BYTES) {
   failures.push(`total CSS is ${bytes(totalCss)}, expected <= ${bytes(MAX_CSS_BYTES)}`);

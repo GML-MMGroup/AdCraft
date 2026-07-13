@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type MutableRefObject, type ReactNode } from "react";
 import type { WorkflowItemV2 } from "../../../types-v2.ts";
-import { V2ScreenplayDrawer } from "../v2/screenplay/V2ScreenplayDrawer.tsx";
+import { LazyV2ScreenplayDrawer } from "./LazyV2ScreenplayDrawer.tsx";
 import {
   useV2ScreenplayController,
   type V2ScreenplayController,
@@ -88,7 +88,7 @@ export function useWorkflowPageScreenplay({
   }, [activeWorkflowId, controller.state.workflowId, discardDraftAndClose]);
 
   const panel = activeWorkflowId && controller.state.workflowId === activeWorkflowId
-    ? <V2ScreenplayDrawer controller={controller} productOptions={productOptions} returnFocusRef={triggerElementRef} />
+    ? <LazyV2ScreenplayDrawer controller={controller} productOptions={productOptions} returnFocusRef={triggerElementRef} />
     : null;
 
   return { controllerRef, actionsRef, openScreenplay, panel };
