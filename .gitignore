@@ -27,6 +27,8 @@ apps/*/.env.*
 !apps/*/.env.example
 
 # Local caches and generated indexes
+.codex/
+.superpowers/
 .codegraph/
 apps/*/.codegraph/
 .pytest_cache/

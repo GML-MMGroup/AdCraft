@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { buildVideoTimeline } from "../final-composition/finalCompositionTimelineModel.ts";
 import { useV2SlotOperations } from "../v2/slots/useV2SlotOperations.ts";
 import { useLocalRevisionOperations } from "../assets/useLocalRevisionOperations.ts";
@@ -7,6 +7,7 @@ import { useDynamicMediaOperations } from "../assets/useDynamicMediaOperations.t
 import { canShowLocalRevisionActions } from "./workflowPageNodeGuards.ts";
 import { getWorkflowNodeType } from "../canvas/workflowNodeModel.ts";
 import { useWorkflowV2DerivedState } from "../v2/useWorkflowV2DerivedState.ts";
+import { deriveV2SlotRebaseSnapshot } from "../v2/slots/v2SlotRebaseSnapshot.ts";
 
 // Adapter value bag used while the page model is being decomposed into stable controllers.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -42,6 +43,15 @@ export function useWorkflowPageAssetActionControllers(args: WorkflowPageAssetAct
     selectedFreeGenerationMediaType,
     selectedFreeAbsorbTargetNodes,
   } = v2DerivedState;
+  const rebaseV2SlotDrafts = args.v2SlotMicroEdit.rebaseSlots;
+  const slotRebaseSnapshot = useMemo(
+    () => deriveV2SlotRebaseSnapshot(args.workflowV2Model.workflowV2 ?? args.workflowV2Model.workflow, allV2Slots),
+    [allV2Slots, args.workflowV2Model.workflow, args.workflowV2Model.workflowV2],
+  );
+
+  useEffect(() => {
+    rebaseV2SlotDrafts(slotRebaseSnapshot.slots, slotRebaseSnapshot);
+  }, [rebaseV2SlotDrafts, slotRebaseSnapshot]);
 
   const v2SlotOperations = useV2SlotOperations({
     workflowId: args.workflow?.workflow_id,
@@ -65,6 +75,8 @@ export function useWorkflowPageAssetActionControllers(args: WorkflowPageAssetAct
     setDynamicItemPromptDrafts: args.setDynamicItemPromptDrafts,
     setV2SlotVersionsById: args.setV2SlotVersionsById,
     applyWorkflowV2: args.applyWorkflowV2,
+    captureV2WorkflowApplicationRevision: args.captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision: args.isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph: args.refreshV2WorkflowGraph,
     syncV2Snapshot: (requestWorkflowId: string) => args.v2Runtime.syncSnapshot(requestWorkflowId),
     refreshV2AssetsAndRetryMissing: args.refreshV2AssetsAndRetryMissing,

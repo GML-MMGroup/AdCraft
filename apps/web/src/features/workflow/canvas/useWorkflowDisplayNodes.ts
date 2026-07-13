@@ -15,6 +15,7 @@ type WorkflowDisplayNodeCallbacks = Pick<
   WorkflowNodeData,
   | "onOpenMedia"
   | "onSelectDynamicItem"
+  | "onOpenScreenplay"
   | "onOpenV2SlotEditor"
   | "onOpenV2StoryboardPrompt"
   | "onChangeV2SlotPrompt"

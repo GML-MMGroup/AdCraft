@@ -127,6 +127,8 @@ export interface WorkflowSlotV2 {
   required: boolean;
   status: WorkflowSlotStatusV2 | string;
   slot_prompt?: string;
+  system_suggested_prompt?: string;
+  user_prompt?: string;
   negative_prompt?: string;
   media_prompt_asset_ids?: string[];
   implicit_reference_ids?: string[];
@@ -146,6 +148,17 @@ export interface WorkflowSlotV2 {
   negative_constraints?: string | null;
   warnings?: Array<{ code?: string; message?: string; [key: string]: unknown }>;
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Returns the editable prompt layer while preserving user-authored whitespace.
+ * Whitespace is normalized only to decide whether a layer is present.
+ */
+export function effectiveSlotPrompt(slot: Pick<WorkflowSlotV2, "slot_prompt" | "system_suggested_prompt" | "user_prompt">): string {
+  for (const prompt of [slot.user_prompt, slot.system_suggested_prompt, slot.slot_prompt]) {
+    if (typeof prompt === "string" && prompt.trim()) return prompt;
+  }
+  return "";
 }
 
 export interface AssetVersionV2 {
@@ -591,6 +604,12 @@ export interface V2PlanFromChatRequest {
 export interface V2PlanFromChatResponse {
   front_desk: FrontDeskResponse;
   workflow: WorkflowV2 | null;
+  normalized_v2_request?: Record<string, unknown> | null;
+  status?: string | null;
+  error_code?: string | null;
+  message?: string | null;
+  details: Record<string, unknown>;
+  suggested_actions: Array<Record<string, unknown>>;
 }
 
 export interface WorkflowV2RunResponse {
@@ -782,4 +801,231 @@ export interface V2WorkflowErrorDetail {
   code?: string;
   message?: string;
   [key: string]: unknown;
+}
+
+export type V2ScriptSourceAction = "initial_planning" | "script_editor_confirm" | "agent_chat_edit";
+
+export type V2ScriptAspectRatio = "16:9" | "9:16" | "4:3" | "3:4" | "1:1" | "21:9";
+
+export interface V2ScriptDialogueLine {
+  dialogue_id: string;
+  character_id: string;
+  performance_cue: string | null;
+  text: string;
+}
+
+export interface V2ScriptShot {
+  shot_id: string;
+  scene_id: string;
+  shot_index: number;
+  product_ids: string[];
+  character_ids: string[];
+  scene_ids: string[];
+  reference_item_ids: string[];
+  description: string;
+  dialogue: V2ScriptDialogueLine[];
+  narration: string | null;
+  visual_prompt: string;
+  duration_seconds: number;
+}
+
+export interface V2ScriptScene {
+  scene_id: string;
+  title: string;
+  description: string;
+  location_id: string | null;
+  shot_ids: string[];
+  duration_seconds: number;
+  location_type: string | null;
+  time_of_day: string | null;
+  setting_type: "interior" | "exterior" | null;
+}
+
+export interface V2ScriptCharacter {
+  character_id: string;
+  display_name: string;
+  description: string;
+  role: string;
+  visual_notes: string;
+  gender: string | null;
+}
+
+export interface V2ScriptLocation {
+  location_id: string;
+  display_name: string;
+  description: string;
+  visual_notes: string;
+  location_type: string | null;
+  time_of_day: string | null;
+  setting_type: "interior" | "exterior" | null;
+}
+
+export interface V2ScriptPlan {
+  script_plan_version: 2;
+  script_brief_id: string;
+  script_version_id: string;
+  language: string;
+  script_title: string;
+  script_text: string;
+  scenes: V2ScriptScene[];
+  shots: V2ScriptShot[];
+  characters: V2ScriptCharacter[];
+  locations: V2ScriptLocation[];
+  product_beats: string[];
+  tone: string;
+  visual_style: string;
+  duration_seconds: number;
+  aspect_ratio: V2ScriptAspectRatio;
+  materializer_mode: "real" | "mock";
+  model_id: string | null;
+  selected_skill_ids: string[];
+  selected_skill_paths: string[];
+  skill_context_warnings: Array<Record<string, unknown>>;
+  quality_notes: string[];
+  materializer_version: string | null;
+  metadata: Record<string, unknown>;
+  warnings: Array<Record<string, unknown>>;
+}
+
+export interface V2EditableScriptDialogue {
+  dialogue_id?: string | null;
+  client_key?: string | null;
+  character_id: string;
+  performance_cue?: string | null;
+  text: string;
+}
+
+export interface V2EditableScriptShot {
+  shot_id?: string | null;
+  client_key?: string | null;
+  product_ids?: string[];
+  character_ids?: string[];
+  scene_ids?: string[];
+  description: string;
+  dialogue?: V2EditableScriptDialogue[];
+  narration?: string | null;
+  visual_prompt: string;
+  duration_seconds: number;
+}
+
+export interface V2EditableScriptScene {
+  scene_id?: string | null;
+  client_key?: string | null;
+  title: string;
+  description: string;
+  location_id?: string | null;
+  location_type?: string | null;
+  time_of_day?: string | null;
+  setting_type?: "interior" | "exterior" | null;
+  shots: V2EditableScriptShot[];
+}
+
+export interface V2EditableScriptCharacter {
+  character_id?: string | null;
+  client_key?: string | null;
+  display_name: string;
+  description: string;
+  role: string;
+  visual_notes: string;
+  gender?: string | null;
+}
+
+export interface V2EditableScriptLocation {
+  location_id?: string | null;
+  client_key?: string | null;
+  display_name: string;
+  description: string;
+  visual_notes: string;
+  location_type?: string | null;
+  time_of_day?: string | null;
+  setting_type?: "interior" | "exterior" | null;
+}
+
+export interface V2EditableScriptDocument {
+  script_title: string;
+  language: string;
+  characters?: V2EditableScriptCharacter[];
+  locations?: V2EditableScriptLocation[];
+  scenes: V2EditableScriptScene[];
+  product_beats?: string[];
+  tone: string;
+  visual_style: string;
+  aspect_ratio: V2ScriptAspectRatio;
+}
+
+export interface V2ScriptConfirmRequest {
+  base_script_version_id: string;
+  document: V2EditableScriptDocument;
+  source_action?: "script_editor_confirm" | "agent_chat_edit";
+}
+
+export interface V2ScriptSelectVersionRequest {
+  base_selected_script_version_id: string;
+}
+
+export interface V2ScriptStructuralDiff {
+  added_character_ids: string[];
+  archived_character_ids: string[];
+  reactivated_character_ids: string[];
+  updated_character_ids: string[];
+  added_location_ids: string[];
+  archived_location_ids: string[];
+  reactivated_location_ids: string[];
+  updated_location_ids: string[];
+  added_scene_ids: string[];
+  archived_scene_ids: string[];
+  reactivated_scene_ids: string[];
+  updated_scene_ids: string[];
+  added_shot_ids: string[];
+  archived_shot_ids: string[];
+  reactivated_shot_ids: string[];
+  updated_shot_ids: string[];
+  added_dialogue_ids: string[];
+  archived_dialogue_ids: string[];
+  updated_dialogue_ids: string[];
+  order_changed: boolean;
+}
+
+export interface V2LinkedContextSummary {
+  updated_node_ids: string[];
+  updated_item_ids: string[];
+  updated_slot_ids: string[];
+  updated_fields: string[];
+  selected_asset_versions_changed: false;
+  provider_execution_started: false;
+  refresh: string[];
+}
+
+export interface V2ScriptReadResponse {
+  workflow_id: string;
+  selected_script_version_id: string;
+  script: V2ScriptPlan;
+  events_cursor: number;
+}
+
+export interface V2ScriptConfirmResponse extends V2ScriptReadResponse {
+  structural_diff: V2ScriptStructuralDiff;
+  linked_context: V2LinkedContextSummary;
+}
+
+export interface V2ScriptVersionSummary {
+  script_version_id: string;
+  parent_script_version_id: string | null;
+  created_at: string;
+  source_action: V2ScriptSourceAction;
+  script_title: string;
+  content_hash: string;
+  structural_diff_summary: Record<string, unknown>;
+}
+
+export interface V2ScriptVersionListResponse {
+  workflow_id: string;
+  selected_script_version_id: string;
+  versions: V2ScriptVersionSummary[];
+  events_cursor: number;
+}
+
+export interface V2ScriptSelectVersionResponse extends V2ScriptReadResponse {
+  structural_diff: V2ScriptStructuralDiff;
+  linked_context: V2LinkedContextSummary;
 }

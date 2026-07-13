@@ -65,6 +65,7 @@ export type WorkflowNodeData = {
   outputPorts: NodePort[];
   onOpenMedia?: (asset: UploadedAsset) => void;
   onSelectDynamicItem?: (nodeId: string, itemId: string) => void;
+  onOpenScreenplay?: (trigger: HTMLElement) => void;
   projectId?: string | null;
   workflowId?: string | null;
   version?: number;

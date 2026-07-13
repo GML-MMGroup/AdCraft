@@ -72,6 +72,7 @@ export function useWorkflowPageLifecycle({
   setSelectedNodeRun: Dispatch<SetStateAction<NodeRunResult | null>>;
 }) {
   const flowNodesRef = useRef(flowNodes);
+  const hydratedWorkflowIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     flowNodesRef.current = flowNodes;
@@ -79,6 +80,7 @@ export function useWorkflowPageLifecycle({
 
   useEffect(() => {
     if (isRestoringWorkspace) {
+      hydratedWorkflowIdRef.current = null;
       setCanvasNodes([]);
       setFlowNodes([]);
       setFlowEdges([]);
@@ -87,15 +89,23 @@ export function useWorkflowPageLifecycle({
       return;
     }
     const baseNodes = workflow?.nodes?.length ? workflow.nodes : demoNodes;
+    const isSameV2WorkflowRefresh = Boolean(
+      workflow?.workflow_id &&
+      hydratedWorkflowIdRef.current === workflow.workflow_id &&
+      (isV2WorkflowId(workflow.workflow_id) || currentWorkflowIsV2()),
+    );
     const currentFlowNodes = currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current);
     const baseFlowNodes = mapWorkflowNodes(baseNodes, nodeRunByType, currentFlowNodes);
     const baseEdges = workflow?.edges?.length ? mapWorkflowEdges(workflow.edges, baseFlowNodes) : mapWorkflowEdges(demoEdges, baseFlowNodes);
-    const baseLayoutNodes = layoutNodes(baseFlowNodes, baseEdges, {
-      preservePositionNodeIds: positionedNodeIds(baseNodes, currentFlowNodes),
-    });
+    const baseLayoutNodes = isSameV2WorkflowRefresh
+      ? baseFlowNodes
+      : layoutNodes(baseFlowNodes, baseEdges, {
+          preservePositionNodeIds: positionedNodeIds(baseNodes, currentFlowNodes),
+        });
     const snapshot = loadSnapshot(workflowId);
+    hydratedWorkflowIdRef.current = workflow?.workflow_id ?? null;
 
-    if (snapshot?.nodes?.length && isSnapshotCompatibleWithWorkflow(snapshot, workflow)) {
+    if (!isSameV2WorkflowRefresh && snapshot?.nodes?.length && isSnapshotCompatibleWithWorkflow(snapshot, workflow)) {
       const isCurrentV2Workflow = isV2WorkflowId(workflow?.workflow_id) || currentWorkflowIsV2();
       if (isCurrentV2Workflow) {
         const restored = applyV2SnapshotLayoutOnly(
@@ -108,7 +118,7 @@ export function useWorkflowPageLifecycle({
         setFlowEdges(normalizeFlowEdges(snapshot.edges.length ? snapshot.edges : baseEdges, restored.flowNodes));
         setWorkflowVariables(workflow?.variables ?? []);
         setSavedAt(snapshot.savedAt);
-        setSelectedNodeId(firstVisibleWorkflowNodeId(restored.nodes, "prompt"));
+        setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(restored.nodes, current) : firstVisibleWorkflowNodeId(restored.nodes, "prompt"));
         return;
       }
       const snapshotFlowNodes = normalizeFlowNodes(snapshot.flowNodes.length ? snapshot.flowNodes : mapWorkflowNodes(snapshot.nodes, nodeRunByType, []));
@@ -117,7 +127,7 @@ export function useWorkflowPageLifecycle({
       setFlowEdges(normalizeFlowEdges(snapshot.edges, snapshotFlowNodes));
       setWorkflowVariables(workflow?.variables ?? []);
       setSavedAt(snapshot.savedAt);
-      setSelectedNodeId(firstVisibleWorkflowNodeId(snapshot.nodes, "prompt"));
+      setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(snapshot.nodes, current) : firstVisibleWorkflowNodeId(snapshot.nodes, "prompt"));
       return;
     }
     if (snapshot?.nodes?.length && workflow?.workflow_id) clearSnapshot(workflow.workflow_id);
@@ -126,7 +136,7 @@ export function useWorkflowPageLifecycle({
     setFlowNodes(baseLayoutNodes);
     setFlowEdges(baseEdges);
     setWorkflowVariables(workflow?.variables ?? []);
-    setSelectedNodeId(firstVisibleWorkflowNodeId(baseNodes, "prompt"));
+    setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(baseNodes, current) : firstVisibleWorkflowNodeId(baseNodes, "prompt"));
   }, [
     activeProjectId,
     currentWorkflowIsV2,
@@ -190,4 +200,10 @@ function positionedNodeIds(nodes: WorkflowNode[], flowNodes: CanvasNode[]) {
 
 function hasCanvasPosition(position?: CanvasPosition) {
   return Number.isFinite(position?.x) && Number.isFinite(position?.y);
+}
+
+function preserveSelectedNodeId(nodes: WorkflowNode[], selectedNodeId: string) {
+  return nodes.some((node) => node.id === selectedNodeId)
+    ? selectedNodeId
+    : firstVisibleWorkflowNodeId(nodes, "prompt");
 }

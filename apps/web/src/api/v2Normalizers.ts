@@ -10,7 +10,20 @@ import type {
   V2AssetLocatorResponse,
   V2AssetOwnerDisplay,
   V2ChatActionResponse,
+  V2LinkedContextSummary,
   V2RegisterReferenceResponse,
+  V2ScriptCharacter,
+  V2ScriptConfirmResponse,
+  V2ScriptDialogueLine,
+  V2ScriptLocation,
+  V2ScriptPlan,
+  V2ScriptReadResponse,
+  V2ScriptScene,
+  V2ScriptSelectVersionResponse,
+  V2ScriptShot,
+  V2ScriptStructuralDiff,
+  V2ScriptVersionListResponse,
+  V2ScriptVersionSummary,
   V2Warning,
   WorkflowAssetListResponseV2,
   WorkflowAssetListRowV2,
@@ -110,6 +123,274 @@ function numberOrNull(value: unknown): number | null | undefined {
 function stringOrNull(value: unknown): string | null | undefined {
   if (value === null) return null;
   return stringValue(value) || undefined;
+}
+
+function invalidScriptPayload(): never {
+  throw new Error("invalid_v2_script_payload");
+}
+
+function requiredScriptRecord(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptString(record: Record<string, unknown>, key: string): string {
+  const value = stringValue(record[key]).trim();
+  if (!value) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptAspectRatio(record: Record<string, unknown>): V2ScriptPlan["aspect_ratio"] {
+  const value = requiredScriptString(record, "aspect_ratio");
+  if (!(["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"] as const).includes(value as V2ScriptPlan["aspect_ratio"])) {
+    invalidScriptPayload();
+  }
+  return value as V2ScriptPlan["aspect_ratio"];
+}
+
+function requiredScriptMaterializerMode(record: Record<string, unknown>): V2ScriptPlan["materializer_mode"] {
+  const value = requiredScriptString(record, "materializer_mode");
+  if (value !== "real" && value !== "mock") invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptSourceAction(record: Record<string, unknown>): V2ScriptVersionSummary["source_action"] {
+  const value = requiredScriptString(record, "source_action");
+  if (value !== "initial_planning" && value !== "script_editor_confirm" && value !== "agent_chat_edit") invalidScriptPayload();
+  return value;
+}
+
+function nullableScriptString(value: unknown): string | null {
+  return value === null ? null : stringValue(value) || null;
+}
+
+function nullableScriptSettingType(value: unknown): "interior" | "exterior" | null {
+  return value === "interior" || value === "exterior" ? value : null;
+}
+
+function requiredScriptInteger(record: Record<string, unknown>, key: string, minimum: number): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptArray(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (!Array.isArray(value) || value.length === 0) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptStringArray(record: Record<string, unknown>, key: string): string[] {
+  const value = record[key];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) invalidScriptPayload();
+  return value;
+}
+
+function requiredScriptBoolean(record: Record<string, unknown>, key: string): boolean {
+  if (typeof record[key] !== "boolean") invalidScriptPayload();
+  return record[key];
+}
+
+function requiredScriptFalse(record: Record<string, unknown>, key: string): false {
+  if (record[key] !== false) invalidScriptPayload();
+  return false;
+}
+
+function optionalScriptArray(value: unknown): unknown[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) invalidScriptPayload();
+  return value;
+}
+
+function scriptRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => isRecord(item)) : [];
+}
+
+function normalizeV2ScriptDialogueLine(value: unknown): V2ScriptDialogueLine {
+  const record = requiredScriptRecord(value);
+  return {
+    dialogue_id: requiredScriptString(record, "dialogue_id"),
+    character_id: requiredScriptString(record, "character_id"),
+    performance_cue: nullableScriptString(record.performance_cue),
+    text: requiredScriptString(record, "text"),
+  };
+}
+
+function normalizeV2ScriptShot(value: unknown): V2ScriptShot {
+  const record = requiredScriptRecord(value);
+  return {
+    shot_id: requiredScriptString(record, "shot_id"),
+    scene_id: requiredScriptString(record, "scene_id"),
+    shot_index: requiredScriptInteger(record, "shot_index", 1),
+    product_ids: stringArray(record.product_ids),
+    character_ids: stringArray(record.character_ids),
+    scene_ids: stringArray(record.scene_ids),
+    reference_item_ids: stringArray(record.reference_item_ids),
+    description: requiredScriptString(record, "description"),
+    dialogue: optionalScriptArray(record.dialogue).map(normalizeV2ScriptDialogueLine),
+    narration: nullableScriptString(record.narration),
+    visual_prompt: requiredScriptString(record, "visual_prompt"),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
+  };
+}
+
+function normalizeV2ScriptScene(value: unknown): V2ScriptScene {
+  const record = requiredScriptRecord(value);
+  return {
+    scene_id: requiredScriptString(record, "scene_id"),
+    title: requiredScriptString(record, "title"),
+    description: requiredScriptString(record, "description"),
+    location_id: nullableScriptString(record.location_id),
+    shot_ids: stringArray(record.shot_ids),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
+    location_type: nullableScriptString(record.location_type),
+    time_of_day: nullableScriptString(record.time_of_day),
+    setting_type: nullableScriptSettingType(record.setting_type),
+  };
+}
+
+function normalizeV2ScriptCharacter(value: unknown): V2ScriptCharacter {
+  const record = requiredScriptRecord(value);
+  return {
+    character_id: requiredScriptString(record, "character_id"),
+    display_name: requiredScriptString(record, "display_name"),
+    description: requiredScriptString(record, "description"),
+    role: requiredScriptString(record, "role"),
+    visual_notes: requiredScriptString(record, "visual_notes"),
+    gender: nullableScriptString(record.gender),
+  };
+}
+
+function normalizeV2ScriptLocation(value: unknown): V2ScriptLocation {
+  const record = requiredScriptRecord(value);
+  return {
+    location_id: requiredScriptString(record, "location_id"),
+    display_name: requiredScriptString(record, "display_name"),
+    description: requiredScriptString(record, "description"),
+    visual_notes: requiredScriptString(record, "visual_notes"),
+    location_type: nullableScriptString(record.location_type),
+    time_of_day: nullableScriptString(record.time_of_day),
+    setting_type: nullableScriptSettingType(record.setting_type),
+  };
+}
+
+export function normalizeV2ScriptPlan(value: unknown): V2ScriptPlan {
+  const record = requiredScriptRecord(value);
+  if (record.script_plan_version !== 2) invalidScriptPayload();
+  return {
+    script_plan_version: 2,
+    script_brief_id: requiredScriptString(record, "script_brief_id"),
+    script_version_id: requiredScriptString(record, "script_version_id"),
+    language: requiredScriptString(record, "language"),
+    script_title: requiredScriptString(record, "script_title"),
+    script_text: stringValue(record.script_text),
+    scenes: requiredScriptArray(record, "scenes").map(normalizeV2ScriptScene),
+    shots: requiredScriptArray(record, "shots").map(normalizeV2ScriptShot),
+    characters: scriptRecordArray(record.characters).map(normalizeV2ScriptCharacter),
+    locations: scriptRecordArray(record.locations).map(normalizeV2ScriptLocation),
+    product_beats: stringArray(record.product_beats),
+    tone: requiredScriptString(record, "tone"),
+    visual_style: requiredScriptString(record, "visual_style"),
+    duration_seconds: requiredScriptInteger(record, "duration_seconds", 1),
+    aspect_ratio: requiredScriptAspectRatio(record),
+    materializer_mode: requiredScriptMaterializerMode(record),
+    model_id: nullableScriptString(record.model_id),
+    selected_skill_ids: stringArray(record.selected_skill_ids),
+    selected_skill_paths: stringArray(record.selected_skill_paths),
+    skill_context_warnings: scriptRecordArray(record.skill_context_warnings),
+    quality_notes: stringArray(record.quality_notes),
+    materializer_version: nullableScriptString(record.materializer_version),
+    metadata: recordValue(record.metadata) ?? {},
+    warnings: scriptRecordArray(record.warnings),
+  };
+}
+
+function normalizeV2ScriptStructuralDiff(value: unknown): V2ScriptStructuralDiff {
+  const record = requiredScriptRecord(value);
+  return {
+    added_character_ids: requiredScriptStringArray(record, "added_character_ids"),
+    archived_character_ids: requiredScriptStringArray(record, "archived_character_ids"),
+    reactivated_character_ids: requiredScriptStringArray(record, "reactivated_character_ids"),
+    updated_character_ids: requiredScriptStringArray(record, "updated_character_ids"),
+    added_location_ids: requiredScriptStringArray(record, "added_location_ids"),
+    archived_location_ids: requiredScriptStringArray(record, "archived_location_ids"),
+    reactivated_location_ids: requiredScriptStringArray(record, "reactivated_location_ids"),
+    updated_location_ids: requiredScriptStringArray(record, "updated_location_ids"),
+    added_scene_ids: requiredScriptStringArray(record, "added_scene_ids"),
+    archived_scene_ids: requiredScriptStringArray(record, "archived_scene_ids"),
+    reactivated_scene_ids: requiredScriptStringArray(record, "reactivated_scene_ids"),
+    updated_scene_ids: requiredScriptStringArray(record, "updated_scene_ids"),
+    added_shot_ids: requiredScriptStringArray(record, "added_shot_ids"),
+    archived_shot_ids: requiredScriptStringArray(record, "archived_shot_ids"),
+    reactivated_shot_ids: requiredScriptStringArray(record, "reactivated_shot_ids"),
+    updated_shot_ids: requiredScriptStringArray(record, "updated_shot_ids"),
+    added_dialogue_ids: requiredScriptStringArray(record, "added_dialogue_ids"),
+    archived_dialogue_ids: requiredScriptStringArray(record, "archived_dialogue_ids"),
+    updated_dialogue_ids: requiredScriptStringArray(record, "updated_dialogue_ids"),
+    order_changed: requiredScriptBoolean(record, "order_changed"),
+  };
+}
+
+function normalizeV2LinkedContextSummary(value: unknown): V2LinkedContextSummary {
+  const record = requiredScriptRecord(value);
+  return {
+    updated_node_ids: requiredScriptStringArray(record, "updated_node_ids"),
+    updated_item_ids: requiredScriptStringArray(record, "updated_item_ids"),
+    updated_slot_ids: requiredScriptStringArray(record, "updated_slot_ids"),
+    updated_fields: requiredScriptStringArray(record, "updated_fields"),
+    selected_asset_versions_changed: requiredScriptFalse(record, "selected_asset_versions_changed"),
+    provider_execution_started: requiredScriptFalse(record, "provider_execution_started"),
+    refresh: requiredScriptStringArray(record, "refresh"),
+  };
+}
+
+export function normalizeV2ScriptReadResponse(value: unknown): V2ScriptReadResponse {
+  const record = requiredScriptRecord(value);
+  const selectedScriptVersionId = requiredScriptString(record, "selected_script_version_id");
+  const script = normalizeV2ScriptPlan(record.script);
+  if (selectedScriptVersionId !== script.script_version_id) invalidScriptPayload();
+  return {
+    workflow_id: requiredScriptString(record, "workflow_id"),
+    selected_script_version_id: selectedScriptVersionId,
+    script,
+    events_cursor: requiredScriptInteger(record, "events_cursor", 0),
+  };
+}
+
+export function normalizeV2ScriptConfirmResponse(value: unknown): V2ScriptConfirmResponse {
+  const record = requiredScriptRecord(value);
+  return {
+    ...normalizeV2ScriptReadResponse(record),
+    structural_diff: normalizeV2ScriptStructuralDiff(record.structural_diff),
+    linked_context: normalizeV2LinkedContextSummary(record.linked_context),
+  };
+}
+
+export function normalizeV2ScriptSelectVersionResponse(value: unknown): V2ScriptSelectVersionResponse {
+  return normalizeV2ScriptConfirmResponse(value);
+}
+
+function normalizeV2ScriptVersionSummary(value: unknown): V2ScriptVersionSummary {
+  const record = requiredScriptRecord(value);
+  return {
+    script_version_id: requiredScriptString(record, "script_version_id"),
+    parent_script_version_id: nullableScriptString(record.parent_script_version_id),
+    created_at: requiredScriptString(record, "created_at"),
+    source_action: requiredScriptSourceAction(record),
+    script_title: requiredScriptString(record, "script_title"),
+    content_hash: requiredScriptString(record, "content_hash"),
+    structural_diff_summary: recordValue(record.structural_diff_summary) ?? {},
+  };
+}
+
+export function normalizeV2ScriptVersionListResponse(value: unknown): V2ScriptVersionListResponse {
+  const record = requiredScriptRecord(value);
+  return {
+    workflow_id: requiredScriptString(record, "workflow_id"),
+    selected_script_version_id: requiredScriptString(record, "selected_script_version_id"),
+    versions: scriptRecordArray(record.versions).map(normalizeV2ScriptVersionSummary),
+    events_cursor: requiredScriptInteger(record, "events_cursor", 0),
+  };
 }
 
 export function isWorkflowV2(value: unknown): value is WorkflowV2 {
@@ -311,6 +592,8 @@ export function normalizeWorkflowSlotV2(value: unknown): WorkflowSlotV2 {
     required: typeof record.required === "boolean" ? record.required : true,
     status: stringValue(record.status, "empty"),
     slot_prompt: stringValue(record.slot_prompt) || undefined,
+    system_suggested_prompt: typeof record.system_suggested_prompt === "string" ? record.system_suggested_prompt : undefined,
+    user_prompt: typeof record.user_prompt === "string" ? record.user_prompt : undefined,
     negative_prompt: stringValue(record.negative_prompt) || undefined,
     media_prompt_asset_ids: stringArray(record.media_prompt_asset_ids),
     implicit_reference_ids: stringArray(record.implicit_reference_ids),

@@ -24,6 +24,12 @@ import type {
   V2RegisterReferenceResponse,
   V2ReferenceAttachRequest,
   V2ReferenceMutationResponse,
+  V2ScriptConfirmRequest,
+  V2ScriptConfirmResponse,
+  V2ScriptReadResponse,
+  V2ScriptSelectVersionRequest,
+  V2ScriptSelectVersionResponse,
+  V2ScriptVersionListResponse,
   V2SelectSlotVersionRequest,
   V2SlotPromptUpdateRequest,
   V2SlotReferenceUploadResponse,
@@ -51,6 +57,10 @@ import {
   normalizeWorkflowV2ReferenceMutationResponse,
   normalizeWorkflowV2RunResponse,
   normalizeV2RegisterReferenceResponse,
+  normalizeV2ScriptConfirmResponse,
+  normalizeV2ScriptReadResponse,
+  normalizeV2ScriptSelectVersionResponse,
+  normalizeV2ScriptVersionListResponse,
   normalizeV2SlotReferenceUploadResponse,
   normalizeV2InputAssetUploadResponse,
   normalizeWorkflowAssetListResponseV2,
@@ -59,31 +69,103 @@ import {
 
 const API_V2_BASE = "/api/v2";
 
+export class V2ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly details: Record<string, unknown>;
+  readonly stage?: string;
+  readonly violations: unknown[];
+  readonly suggestedActions: Array<Record<string, unknown>>;
+  readonly payload: unknown;
+
+  constructor({
+    status,
+    code,
+    message,
+    details,
+    stage,
+    violations,
+    suggestedActions,
+    payload,
+  }: {
+    status: number;
+    code?: string;
+    message: string;
+    details: Record<string, unknown>;
+    stage?: string;
+    violations: unknown[];
+    suggestedActions: Array<Record<string, unknown>>;
+    payload: unknown;
+  }) {
+    super(message);
+    this.name = "V2ApiError";
+    this.status = status;
+    this.code = code;
+    this.details = details;
+    this.stage = stage;
+    this.violations = violations;
+    this.suggestedActions = suggestedActions;
+    this.payload = payload;
+  }
+}
+
+export class V2NetworkError extends Error {
+  override readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "Network request failed");
+    this.name = "V2NetworkError";
+    this.cause = cause;
+  }
+}
+
+export function isV2ApiError(value: unknown): value is V2ApiError {
+  return value instanceof V2ApiError;
+}
+
+export function isNetworkError(value: unknown): value is V2NetworkError {
+  return value instanceof V2NetworkError;
+}
+
 async function requestV2<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<T> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
-  const response = await fetch(`${API_V2_BASE}${path}`, {
-    headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
-    ...options,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_V2_BASE}${path}`, {
+      headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
+      ...options,
+    });
+  } catch (error) {
+    throw new V2NetworkError(error);
+  }
   const payload = response.status === 204 ? null : await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : payload;
-    const detailRecord = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null;
+    const detailRecord = asRecord(detail);
     const code = typeof detailRecord?.code === "string" ? detailRecord.code : undefined;
     const message = detailRecord && "message" in detailRecord
       ? String(detailRecord.message)
       : typeof detail === "string"
         ? detail
         : `Request failed with status ${response.status}`;
-    const error = new Error(code ? `${code}: ${message}` : message) as Error & {
-      code?: string;
-      payload?: unknown;
-      status?: number;
-    };
-    error.code = code;
-    error.payload = payload;
-    error.status = response.status;
-    throw error;
+    const details = asRecord(detailRecord?.details) ?? {};
+    const violations = Array.isArray(detailRecord?.violations)
+      ? detailRecord.violations
+      : Array.isArray(details.violations)
+        ? details.violations
+        : [];
+    const suggestedActions = recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions);
+    const stage = firstString(detailRecord?.stage, details.stage);
+    throw new V2ApiError({
+      status: response.status,
+      code,
+      message,
+      details,
+      stage,
+      violations,
+      suggestedActions,
+      payload,
+    });
   }
   return normalize ? normalize(payload) : (payload as T);
 }
@@ -107,6 +189,34 @@ export const v2Api = {
 
   runtime(workflowId: string): Promise<WorkflowRuntimeV2> {
     return requestV2(`/workflows/${encodeURIComponent(workflowId)}/runtime`, {}, normalizeWorkflowRuntimeV2);
+  },
+
+  script(workflowId: string): Promise<V2ScriptReadResponse> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/script`, {}, normalizeV2ScriptReadResponse);
+  },
+
+  confirmScript(workflowId: string, request: V2ScriptConfirmRequest): Promise<V2ScriptConfirmResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/script/confirm`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeV2ScriptConfirmResponse,
+    );
+  },
+
+  scriptVersions(workflowId: string): Promise<V2ScriptVersionListResponse> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/script/versions`, {}, normalizeV2ScriptVersionListResponse);
+  },
+
+  selectScriptVersion(
+    workflowId: string,
+    versionId: string,
+    request: V2ScriptSelectVersionRequest,
+  ): Promise<V2ScriptSelectVersionResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/script/versions/${encodeURIComponent(versionId)}/select`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeV2ScriptSelectVersionResponse,
+    );
   },
 
   async events(workflowId: string, afterSeq = 0): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
@@ -372,7 +482,25 @@ function normalizeWorkflowV2PlanFromChatResponse(value: unknown): V2PlanFromChat
   return {
     front_desk: (record.front_desk ?? {}) as V2PlanFromChatResponse["front_desk"],
     workflow: record.workflow ? normalizeWorkflowV2(record.workflow) : null,
+    normalized_v2_request: asRecord(record.normalized_v2_request),
+    status: typeof record.status === "string" ? record.status : null,
+    error_code: typeof record.error_code === "string" ? record.error_code : null,
+    message: typeof record.message === "string" ? record.message : null,
+    details: asRecord(record.details) ?? {},
+    suggested_actions: recordsFrom(record.suggested_actions),
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function recordsFrom(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(asRecord(item))) : [];
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string");
 }
 
 function normalizeWorkflowV2ChatTargetResponse(value: unknown): V2ChatTargetResponse {

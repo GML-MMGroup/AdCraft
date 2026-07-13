@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties } from "react";
 import { ImageIcon, VideoIcon } from "../../../icons";
 import type { AssetVersionV2, WorkflowItemV2, WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { isCompleteV2Asset } from "../../../workflow-v2/assets.ts";
 import { usableAssetVersionUrl } from "../../../workflow-v2/selectors.ts";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
@@ -23,6 +24,7 @@ export type V2RegionCardPreviewProps = {
   openStoryboardItemId?: string | null;
   slotDraftsById?: Record<string, SlotMicroEditDraft>;
   referenceAssetsBySlotId?: Record<string, AssetVersionV2[]>;
+  onOpenScreenplay?: (trigger: HTMLElement) => void;
   onOpenSlotEditor?: (slotId: string) => void;
   onOpenStoryboardPrompt?: (itemId: string) => void;
   onSelectSlotVersion?: (slotId: string, versionId: string) => void;
@@ -43,6 +45,7 @@ export function V2RegionCardPreview({
   openStoryboardItemId = null,
   slotDraftsById = {},
   referenceAssetsBySlotId = {},
+  onOpenScreenplay,
   onOpenSlotEditor,
   onOpenStoryboardPrompt,
   onSelectSlotVersion,
@@ -65,7 +68,7 @@ export function V2RegionCardPreview({
   );
 
   if (scriptText !== null) {
-    return <V2ScriptTextCard scriptText={scriptText} />;
+    return <V2ScriptTextCard scriptText={scriptText} onOpenScreenplay={onOpenScreenplay} />;
   }
 
   if (!region.items.length) {
@@ -118,11 +121,20 @@ function scriptTextFromItems(items: WorkflowItemV2[]): string | null {
   return typeof scriptText === "string" ? scriptText : "";
 }
 
-function V2ScriptTextCard({ scriptText }: { scriptText: string }) {
+function V2ScriptTextCard({ scriptText, onOpenScreenplay }: { scriptText: string; onOpenScreenplay?: (trigger: HTMLElement) => void }) {
   return (
-    <div className="workflow-card-preview v2-script-text-card nodrag" aria-label="Script text">
+    <button
+      type="button"
+      className="workflow-card-preview v2-script-text-card nodrag"
+      aria-label="Open screenplay editor"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpenScreenplay?.(event.currentTarget);
+      }}
+    >
       <pre>{scriptText}</pre>
-    </div>
+    </button>
   );
 }
 
@@ -300,7 +312,6 @@ function V2StoryboardFunctionalItemCard({
                 slotView={slot}
                 onOpenSlotEditor={onOpenSlotEditor}
                 isSubmitting={slotDraftsById[slot.slot.slot_id]?.isSubmitting}
-                interactive
               />
             ))
           ) : (
@@ -330,7 +341,7 @@ function V2RegionSlotEditor({
   const slotId = slotView.slot.slot_id;
   return (
     <div className={`v2-region-slot-editor ${isOpen ? "is-open" : ""}`} data-slot-editor-id={slotId}>
-      <V2RegionSlotPreview slotView={slotView} onOpenSlotEditor={onOpenSlotEditor} isSubmitting={draft.isSubmitting} interactive />
+      <V2RegionSlotPreview slotView={slotView} onOpenSlotEditor={onOpenSlotEditor} isSubmitting={draft.isSubmitting} />
       {isOpen && slotView.workingAsset && slotView.hasUnselectedWorkingVersion ? (
         <div className="v2-region-working-version-actions">
           <span>Working version not used in current workflow</span>
@@ -356,12 +367,10 @@ function V2RegionSlotPreview({
   slotView,
   onOpenSlotEditor,
   isSubmitting,
-  interactive = true,
 }: {
   slotView: V2RegionFunctionalSlotView;
   onOpenSlotEditor?: (slotId: string) => void;
   isSubmitting?: boolean;
-  interactive?: boolean;
 }) {
   const { slot, previewAsset, runtimeStatus, displayRole } = slotView;
   const isActive = Boolean(isSubmitting) || runtimeStatus === "running" || runtimeStatus === "waiting";
@@ -376,19 +385,6 @@ function V2RegionSlotPreview({
       {loading}
     </>
   );
-  if (!interactive) {
-    return (
-      <div
-        className={`v2-region-slot-media ${roleClassName}`}
-        data-slot-status={runtimeStatus}
-        style={aspectRatioStyle}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
-      >
-        {content}
-      </div>
-    );
-  }
   return (
     <button
       type="button"
@@ -432,7 +428,7 @@ function SlotAssetPreview({ slot, asset }: { slot: WorkflowSlotV2; asset?: Asset
 
 function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
   return {
-    prompt: slot.slot_prompt ?? "",
+    prompt: effectiveSlotPrompt(slot),
     negative_prompt: slot.negative_prompt ?? "",
     reference_asset_ids: [...(slot.explicit_reference_ids ?? [])],
     uploaded_asset_ids: [],
@@ -444,6 +440,10 @@ function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
       status: "attached",
     })),
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: effectiveSlotPrompt(slot),
+    base_negative_prompt: slot.negative_prompt ?? "",
     isSubmitting: false,
   };
 }

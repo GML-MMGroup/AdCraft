@@ -77,7 +77,6 @@ import {
 } from "../runtime/resolvedInputsViewModel.ts";
 import { promptFromNodePatch } from "../v2/v2PromptModel.ts";
 import { v2RegionItemsForNode } from "../v2/v2RegionNode.ts";
-import { workflowV2ToWorkflowGraph } from "../../../workflow-v2/pageAdapter.ts";
 import { splitAssetLibraryTags } from "../assets/assetLibraryReferenceModel.ts";
 import type { SaveCanvasOptions, WorkflowGraphMutationControllerArgs } from "./workflowGraphMutationControllerTypes.ts";
 
@@ -266,7 +265,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
         try {
           const nextWorkflow = await v2Api.updateItemPrompt(current.workflow.workflow_id, item.item_id, { item_prompt: prompt });
           if (!shouldApplyWorkflowScopedResult(current.workflow.workflow_id, current.activeWorkflowIdRef.current)) return;
-          current.setWorkflow(workflowV2ToWorkflowGraph(nextWorkflow));
+          await current.refreshV2WorkflowGraph(nextWorkflow.workflow_id);
           current.setStatus(`${item.display_name || current.selectedPlanNode.title} prompt saved`);
         } catch (error) {
           current.setStatus(error instanceof Error ? error.message : "V2 item prompt update failed");
