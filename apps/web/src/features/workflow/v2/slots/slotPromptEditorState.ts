@@ -24,12 +24,16 @@ export function rebaseSlotPromptEditorState(current: SlotPromptEditorState, serv
 }
 
 export async function saveSlotPromptEditorState(
-  current: SlotPromptEditorState,
+  submitted: SlotPromptEditorState,
   save: () => Promise<SlotPromptSaveResult> | SlotPromptSaveResult,
+  latest: () => SlotPromptEditorState = () => submitted,
 ) {
   const result = await save();
-  if (!result.ok) return { saved: false as const, state: current };
-  return { saved: true as const, state: createSlotPromptEditorState(result.slot) };
+  if (!result.ok) return { saved: false as const, state: latest() };
+  return {
+    saved: true as const,
+    state: reconcileSuccessfulSlotPromptSave(submitted, latest(), createSlotPromptEditorState(result.slot)),
+  };
 }
 
 export async function runSlotPromptEditorGeneration(
@@ -41,4 +45,20 @@ export async function runSlotPromptEditorGeneration(
   if (!saved.saved) return saved;
   await generate();
   return saved;
+}
+
+function reconcileSuccessfulSlotPromptSave(
+  submitted: SlotPromptEditorState,
+  latest: SlotPromptEditorState,
+  server: SlotPromptEditorState,
+): SlotPromptEditorState {
+  const prompt = latest.prompt === submitted.prompt ? server.prompt : latest.prompt;
+  const negativePrompt = latest.negativePrompt === submitted.negativePrompt ? server.negativePrompt : latest.negativePrompt;
+  return {
+    prompt,
+    negativePrompt,
+    basePrompt: server.basePrompt,
+    baseNegativePrompt: server.baseNegativePrompt,
+    dirty: prompt !== server.basePrompt || negativePrompt !== server.baseNegativePrompt,
+  };
 }

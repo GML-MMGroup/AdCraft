@@ -120,6 +120,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function requireFreshReferenceMutation(workflowId: string, capture: V2WorkflowApplicationCapture) {
     const reconciled = await applySlotMutationWorkflow(workflowId, capture, null);
     requireFreshSlotMutation(reconciled);
+    return reconciled;
   }
 
   async function saveV2ItemPrompt(item: WorkflowItemV2, prompt: string) {
@@ -246,17 +247,17 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     if (nextWorkflow) {
       const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
       requireFreshSlotMutation(reconciled);
-      return;
+      return reconciled.workflow;
     }
     if (!assets.length && !relations.length) {
-      await requireFreshReferenceMutation(workflowId, capture);
-      return;
+      return (await requireFreshReferenceMutation(workflowId, capture)).workflow;
     }
-    await requireFreshReferenceMutation(workflowId, capture);
-    const currentWorkflow = argsRef.current.workflowV2;
-    if (!currentWorkflow) return;
+    const freshness = await requireFreshReferenceMutation(workflowId, capture);
+    const currentWorkflow = freshness.workflow ?? argsRef.current.workflowV2;
+    if (!currentWorkflow) return null;
     const reconciled = await applySlotMutationWorkflow(workflowId, capture, mergeV2ReferenceArtifacts(currentWorkflow, assets, relations));
     requireFreshSlotMutation(reconciled);
+    return reconciled.workflow;
   }
 
   async function applyRegisteredV2SlotReference(
@@ -267,8 +268,8 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     capture: V2WorkflowApplicationCapture,
   ) {
     if (registered.workflow || registered.relation) {
-      await applyV2ReferenceArtifacts(workflowId, capture, registered.workflow, [registered.asset], registered.relation ? [registered.relation] : []);
-      return registered.relation ?? null;
+      const workflow = await applyV2ReferenceArtifacts(workflowId, capture, registered.workflow, [registered.asset], registered.relation ? [registered.relation] : []);
+      return { relation: registered.relation ?? null, workflow };
     }
     const sourceAssetId = registered.source_asset_id || registered.asset.asset_id;
     const sourceVersionId = registered.asset.version_id || registered.asset.asset_id || sourceAssetId;
@@ -282,17 +283,20 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       ),
     );
     await requireFreshReferenceMutation(workflowId, attachCapture);
-    await argsRef.current.refreshV2WorkflowGraph(workflowId);
+    const workflow = await argsRef.current.refreshV2WorkflowGraph(workflowId);
     await argsRef.current.syncV2Snapshot(workflowId);
     return {
-      relation_id: typeof attached.relation_id === "string" ? attached.relation_id : null,
-      relation_type: "reference_for_slot",
-      workflow_id: workflowId,
-      slot_id: slotId,
-      source_asset_id: sourceAssetId,
-      asset_id: sourceAssetId,
-      version_id: sourceVersionId,
-      semantic_type: semanticType ?? null,
+      relation: {
+        relation_id: typeof attached.relation_id === "string" ? attached.relation_id : null,
+        relation_type: "reference_for_slot",
+        workflow_id: workflowId,
+        slot_id: slotId,
+        source_asset_id: sourceAssetId,
+        asset_id: sourceAssetId,
+        version_id: sourceVersionId,
+        semantic_type: semanticType ?? null,
+      },
+      workflow,
     };
   }
 
@@ -371,7 +375,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       formData.append("use_as_prompt", "true");
       const capture = captureSlotMutation(workflowId);
       const response = await v2Api.uploadSlotReferenceAsset(workflowId, slotId, formData);
-      await applyV2ReferenceArtifacts(workflowId, capture, response.workflow, response.assets, response.relations);
+      const appliedWorkflow = await applyV2ReferenceArtifacts(workflowId, capture, response.workflow, response.assets, response.relations);
       response.source_asset_ids.forEach((sourceAssetId, index) => {
         const asset = response.assets.find((candidate) => candidate.asset_id === sourceAssetId) ?? response.assets[index];
         const relation = relationForSourceAsset(response.relations, sourceAssetId, slotId);
@@ -384,6 +388,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
           error: undefined,
         });
       });
+      settleSuccessfulReferenceMutation(slotId, appliedWorkflow, response.source_asset_ids);
       argsRef.current.setStatus(`${slot.slot_type} reference uploaded`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot reference upload failed";
@@ -408,6 +413,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       semantic_type: slot.slot_type,
       status: "registering",
     });
+    argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
     try {
       const capture = captureSlotMutation(workflowId);
       const registered = await v2Api.registerLibraryReference(
@@ -421,21 +427,24 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         status: "registered",
         error: undefined,
       });
-      const relation = await applyRegisteredV2SlotReference(workflowId, slotId, slot.slot_type, registered, capture);
+      const applied = await applyRegisteredV2SlotReference(workflowId, slotId, slot.slot_type, registered, capture);
       argsRef.current.v2SlotMicroEdit.updateAttachment(slotId, attachmentId, {
         source_asset_id: registered.source_asset_id,
-        relation_id: relation?.relation_id,
+        relation_id: applied.relation?.relation_id,
         preview_url: assetPreviewUrl(registered.asset),
-        status: relation?.relation_id ? "attached" : "registered",
+        status: applied.relation?.relation_id ? "attached" : "registered",
         error: undefined,
       });
+      settleSuccessfulReferenceMutation(slotId, applied.workflow, [registered.source_asset_id]);
       argsRef.current.setStatus("V2 slot reference attached");
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot reference registration failed";
       argsRef.current.v2SlotMicroEdit.updateAttachment(slotId, attachmentId, { status: "failed", error: message });
       argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false, message);
       argsRef.current.setStatus(message);
+      return;
     }
+    argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false);
   }
 
   async function replaceV2SlotWithLibraryEntity(slotId: string, entity: AssetLibraryEntitySummary) {
@@ -487,11 +496,17 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
 
   async function removeV2SlotReference(slotId: string, reference: V2SlotReferenceRemoval) {
     const workflowId = activeWorkflowId();
+    const removedSourceAssetId = reference.asset_id ?? argsRef.current.v2SlotMicroEdit.state.draftsBySlotId[slotId]?.attachments.find((attachment) =>
+      attachment.relation_id === reference.relation_id ||
+      (reference.entity_id && attachment.library_entity_id === reference.entity_id)
+    )?.source_asset_id;
     if (reference.relation_id && workflowId) {
+      argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
       try {
         const capture = captureSlotMutation(workflowId);
         const response = await v2Api.removeReference(workflowId, reference.relation_id);
-        await applyV2ReferenceArtifacts(workflowId, capture, response.workflow, response.assets ?? [], []);
+        const appliedWorkflow = await applyV2ReferenceArtifacts(workflowId, capture, response.workflow, response.assets ?? [], []);
+        settleSuccessfulReferenceMutation(slotId, appliedWorkflow, [], removedSourceAssetId ? [removedSourceAssetId] : []);
         await argsRef.current.syncV2Snapshot(workflowId);
         await loadV2SlotVersions(slotId);
       } catch (error) {
@@ -500,6 +515,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         argsRef.current.setStatus(message);
         return;
       }
+      argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false);
     }
     if (reference.source === "library_entity" && reference.entity_id) {
       argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "library_entity", entity_id: reference.entity_id, library_asset_id: reference.library_asset_id, relation_id: reference.relation_id });
@@ -524,7 +540,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         workflowId,
         buildSlotReferenceAssetRegistration(slotId, { source_type: "v1_upload", upload_asset_id: uploadAssetId }, slot.slot_type),
       );
-      const relation = await applyRegisteredV2SlotReference(workflowId, slotId, slot.slot_type, registered, capture);
+      const { relation } = await applyRegisteredV2SlotReference(workflowId, slotId, slot.slot_type, registered, capture);
       argsRef.current.v2SlotMicroEdit.addAttachment(slotId, {
         id: `registered-upload:${slotId}:${uploadAssetId}`,
         source: "reference_asset",
@@ -533,7 +549,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         preview_url: assetPreviewUrl(registered.asset),
         semantic_type: slot.slot_type,
         status: relation?.relation_id ? "attached" : "registered",
-      });
+      }, false);
     }
     for (const attachment of draft.attachments) {
       if (attachment.status === "failed") throw new Error(attachment.error || "V2 slot reference registration failed");
@@ -551,7 +567,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
           status: "registered",
           error: undefined,
         });
-        const relation = await applyRegisteredV2SlotReference(workflowId, slotId, attachment.semantic_type || slot.slot_type, registered, capture);
+        const { relation } = await applyRegisteredV2SlotReference(workflowId, slotId, attachment.semantic_type || slot.slot_type, registered, capture);
         argsRef.current.v2SlotMicroEdit.updateAttachment(slotId, attachment.id, {
           source_asset_id: registered.source_asset_id,
           relation_id: relation?.relation_id,
@@ -570,6 +586,28 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         error: undefined,
       });
     }
+  }
+
+  function settleSuccessfulReferenceMutation(
+    slotId: string,
+    workflow: WorkflowV2 | null | undefined,
+    addedSourceAssetIds: string[] = [],
+    removedSourceAssetIds: string[] = [],
+  ) {
+    const slot = workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? v2SlotById(slotId);
+    if (!slot) {
+      argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, false);
+      return;
+    }
+    const removed = new Set(removedSourceAssetIds.filter(Boolean));
+    const explicitReferenceIds = Array.from(new Set([
+      ...(slot.explicit_reference_ids ?? []),
+      ...addedSourceAssetIds,
+    ].filter((assetId) => assetId && !removed.has(assetId))));
+    argsRef.current.v2SlotMicroEdit.markClean(slotId, {
+      ...slot,
+      explicit_reference_ids: explicitReferenceIds,
+    }, false, true);
   }
 
   async function loadV2SlotVersions(slotId: string) {

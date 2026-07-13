@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
@@ -111,8 +111,13 @@ export function V2SlotCard({
     [negative_prompt, slot_prompt, system_suggested_prompt, user_prompt],
   );
   const [promptState, setPromptState] = useState(serverPromptState);
+  const promptStateRef = useRef(promptState);
   useEffect(() => {
-    setPromptState((current) => rebaseSlotPromptEditorState(current, serverPromptState));
+    setPromptState((current) => {
+      const next = rebaseSlotPromptEditorState(current, serverPromptState);
+      promptStateRef.current = next;
+      return next;
+    });
   }, [serverPromptState]);
   const workingIsSelected = Boolean(workingVersion && selectedAsset && workingVersion.asset_id === selectedAsset.asset_id);
   const versionHistory = dedupeSlotVersionAssets(slotVersions?.versions?.length ? slotVersions.versions : historyVersions);
@@ -155,17 +160,31 @@ export function V2SlotCard({
   const { prompt: slotPrompt, negativePrompt, dirty: promptDirty } = promptState;
 
   function changeSlotPrompt(prompt: string) {
-    setPromptState((current) => ({ ...current, prompt, dirty: prompt !== current.basePrompt || current.negativePrompt !== current.baseNegativePrompt }));
+    setPromptState((current) => {
+      const next = { ...current, prompt, dirty: prompt !== current.basePrompt || current.negativePrompt !== current.baseNegativePrompt };
+      promptStateRef.current = next;
+      return next;
+    });
   }
 
   function changeNegativePrompt(nextNegativePrompt: string) {
-    setPromptState((current) => ({ ...current, negativePrompt: nextNegativePrompt, dirty: current.prompt !== current.basePrompt || nextNegativePrompt !== current.baseNegativePrompt }));
+    setPromptState((current) => {
+      const next = { ...current, negativePrompt: nextNegativePrompt, dirty: current.prompt !== current.basePrompt || nextNegativePrompt !== current.baseNegativePrompt };
+      promptStateRef.current = next;
+      return next;
+    });
   }
 
   async function savePrompt() {
     if (!onSavePrompt) return false;
-    const saved = await saveSlotPromptEditorState(promptState, () => onSavePrompt(slot.slot_id, slotPrompt, negativePrompt));
+    const submitted = promptStateRef.current;
+    const saved = await saveSlotPromptEditorState(
+      submitted,
+      () => onSavePrompt(slot.slot_id, submitted.prompt, submitted.negativePrompt),
+      () => promptStateRef.current,
+    );
     if (!saved.saved) return false;
+    promptStateRef.current = saved.state;
     setPromptState(saved.state);
     return true;
   }
