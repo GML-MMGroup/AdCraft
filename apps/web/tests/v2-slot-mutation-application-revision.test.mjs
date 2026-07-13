@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createV2WorkflowApplicationRevisionGuard } from "../src/features/workflow/graph/v2WorkflowApplicationRevisionGuard.ts";
+import { createV2WorkflowHydrationRequestGuard } from "../src/features/workflow/graph/v2WorkflowHydrationRequestGuard.ts";
 import { reconcileV2SlotMutationWorkflow } from "../src/features/workflow/v2/slots/v2SlotMutationWorkflowGuard.ts";
 
 function workflow(id, prompt) {
@@ -114,4 +115,61 @@ test("a failed slot mutation settles against the latest linked workflow without 
   assert.equal(failed.stale, true);
   assert.equal(failed.workflow.slots[0].user_prompt, "linked-B");
   assert.deepEqual(applied.map((entry) => entry.slots[0].user_prompt), ["linked-B"]);
+});
+
+test("an attachment response uses its request-time capture and cannot apply after linked context", async () => {
+  const revision = createV2WorkflowApplicationRevisionGuard();
+  revision.activateWorkflow("workflow-1");
+  let latest = workflow("workflow-1", "initial");
+  const applied = [];
+  const applyWorkflowV2 = async (next) => {
+    revision.appliedWorkflow(next.workflow_id);
+    latest = next;
+    applied.push(next);
+  };
+  const attachmentCapture = revision.capture("workflow-1");
+
+  await applyWorkflowV2(workflow("workflow-1", "linked-B"));
+  const reconciled = await reconcileV2SlotMutationWorkflow({
+    workflowId: "workflow-1",
+    capture: attachmentCapture,
+    activeWorkflowId: "workflow-1",
+    isCurrentRevision: revision.isCurrent,
+    returnedWorkflow: workflow("workflow-1", "stale-A-attachment"),
+    applyWorkflowV2,
+    refreshLatestWorkflow: async () => latest,
+  });
+
+  assert.equal(reconciled.stale, true);
+  assert.equal(reconciled.workflow.slots[0].user_prompt, "linked-B");
+  assert.deepEqual(applied.map((entry) => entry.slots[0].user_prompt), ["linked-B"]);
+});
+
+test("a reconciliation GET cannot apply after a newer direct workflow application", async () => {
+  const hydration = createV2WorkflowHydrationRequestGuard();
+  const application = createV2WorkflowApplicationRevisionGuard();
+  hydration.activateWorkflow("workflow-1");
+  application.activateWorkflow("workflow-1");
+  const getC = Promise.withResolvers();
+  const applied = [];
+
+  const reconcile = async () => {
+    const hydrationToken = hydration.begin("workflow-1");
+    const applicationCapture = application.capture("workflow-1");
+    await getC.promise;
+    if (
+      hydration.isCurrent(hydrationToken, "workflow-1") &&
+      application.isCurrent(applicationCapture, "workflow-1")
+    ) {
+      application.appliedWorkflow("workflow-1");
+      applied.push("C");
+    }
+  };
+  const requestC = reconcile();
+  application.appliedWorkflow("workflow-1");
+  applied.push("D");
+  getC.resolve();
+  await requestC;
+
+  assert.deepEqual(applied, ["D"]);
 });

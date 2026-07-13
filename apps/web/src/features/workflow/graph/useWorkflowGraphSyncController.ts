@@ -193,11 +193,13 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     options: { refreshRuntime?: boolean; refreshAssets?: boolean } = {},
   ) {
     const requestToken = hydrationRequestGuard.begin(id);
+    const applicationCapture = workflowApplicationRevisionGuard.capture(id);
     try {
       const nextWorkflow = await v2Api.workflow(id);
       const current = argsRef.current;
       if (
         !hydrationRequestGuard.isCurrent(requestToken, current.activeWorkflowIdRef.current) ||
+        !workflowApplicationRevisionGuard.isCurrent(applicationCapture, current.activeWorkflowIdRef.current) ||
         !shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)
       ) return null;
       const graph = workflowV2ToWorkflowGraph(nextWorkflow);
