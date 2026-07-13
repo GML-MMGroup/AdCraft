@@ -489,7 +489,6 @@ export function applyWorkflowRuntimeEventV2(current: WorkflowRuntimeStoreV2, eve
     event.event_type === "prompt_updated" ||
     event.event_type === "item_prompt_updated" ||
     event.event_type === "slot_prompt_updated" ||
-    event.event_type === "slot_marked_stale" ||
     event.event_type === "reference_attached" ||
     event.event_type === "reference_removed" ||
     event.event_type === "slot_working_version_discarded" ||

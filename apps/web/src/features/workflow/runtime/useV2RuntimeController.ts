@@ -49,7 +49,6 @@ export const V2_RUNTIME_EVENT_STREAM_TYPES = [
   "prompt_updated",
   "item_prompt_updated",
   "slot_prompt_updated",
-  "slot_marked_stale",
   "reference_attached",
   "reference_removed",
   "slot_history_updated",
