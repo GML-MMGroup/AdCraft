@@ -15,7 +15,7 @@ import {
   buildSlotReferenceAttachRequest,
   slotReferenceUploadFormData,
 } from "../../../../workflow-v2/slotControls.ts";
-import { useSlotMicroEdit } from "./useSlotMicroEdit.ts";
+import { slotDraftHasPromptChanges, useSlotMicroEdit } from "./useSlotMicroEdit.ts";
 
 export type V2SlotAction =
   | { type: "open"; slotId: string }
@@ -136,10 +136,13 @@ export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2Slo
           slot,
           action.sourceAction ?? "slot_micro_prompt_send",
         );
-        await v2Api.updateSlotPrompt(args.workflowId, action.slotId, {
-          slot_prompt: request.slot_prompt,
-          negative_prompt: request.negative_prompt,
-        });
+        const promptPersisted = Boolean(draft && slotDraftHasPromptChanges(draft));
+        if (promptPersisted) {
+          await v2Api.updateSlotPrompt(args.workflowId, action.slotId, {
+            slot_prompt: request.slot_prompt,
+            negative_prompt: request.negative_prompt,
+          });
+        }
         await ensureV2SlotDraftReferences(args, slot);
         for (const libraryEntityId of request.library_entity_ids) {
           await v2Api.registerLibraryReference(
@@ -155,6 +158,7 @@ export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2Slo
           await v2Api.attachReference(args.workflowId, buildSlotReferenceAttachRequest(action.slotId, sourceAssetId, slot.slot_type));
         }
         await v2Api.regenerateSlot(args.workflowId, action.slotId);
+        microEdit.markClean(action.slotId, undefined, promptPersisted);
         await refreshSlot(action.slotId);
         await args.onAssetRefresh();
         return;

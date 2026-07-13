@@ -660,6 +660,10 @@ function draftFromV2Slot(slot: WorkflowSlotV2): SlotMicroEditDraft {
       status: "attached",
     })),
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: effectiveSlotPrompt(slot),
+    base_negative_prompt: slot.negative_prompt ?? "",
     isSubmitting: false,
   };
 }

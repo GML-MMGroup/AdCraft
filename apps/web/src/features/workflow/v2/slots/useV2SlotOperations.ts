@@ -35,7 +35,7 @@ import {
   isV2StoryboardShotItem,
   v2EditableItemPrompt,
 } from "../v2PromptModel.ts";
-import type { SlotMicroEditAttachment, SlotMicroEditDraft, useSlotMicroEdit } from "./useSlotMicroEdit.ts";
+import { slotDraftHasPromptChanges, type SlotMicroEditAttachment, type SlotMicroEditDraft, type useSlotMicroEdit } from "./useSlotMicroEdit.ts";
 import { collectDirtyV2SlotDraftFlushes } from "./slotPromptFlush.ts";
 import {
   assetLibraryEntityTypeForV2ImageSlot,
@@ -552,7 +552,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
           await ensureV2SlotDraftReferences(workflowId, flush.slotId, flush.draft);
           if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
         }
-        argsRef.current.v2SlotMicroEdit.markClean(flush.slotId, savedSlot);
+        argsRef.current.v2SlotMicroEdit.markClean(flush.slotId, savedSlot, Boolean(flush.promptPatch));
       } catch (error) {
         const message = error instanceof Error ? error.message : "V2 slot draft flush failed";
         argsRef.current.v2SlotMicroEdit.setSubmitting(flush.slotId, false, message);
@@ -594,7 +594,8 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
     argsRef.current.setStatus(sourceAction === "run_current_only" ? "Generating working candidate for current slot..." : `Generating working candidate for ${slot.slot_type}...`);
     try {
-      if (draft.dirty) {
+      const promptPersisted = slotDraftHasPromptChanges(draft);
+      if (promptPersisted) {
         const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
           slot_prompt: request.slot_prompt,
           negative_prompt: request.negative_prompt || undefined,
@@ -612,7 +613,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       await argsRef.current.refreshV2AssetsAndRetryMissing(workflowId, response.workflow ? "slot-run-completed" : "slot-run-started", response.workflow ?? null);
       await argsRef.current.syncV2Snapshot(workflowId);
       await loadV2SlotVersions(slotId);
-      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot);
+      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
       argsRef.current.setStatus(`${slot.slot_type} working candidate generated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot candidate generation failed";
@@ -636,17 +637,21 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       return;
     }
     const nextPrompt = prompt;
+    const promptPersisted = nextPrompt !== effectiveSlotPrompt(slot);
     argsRef.current.v2SlotMicroEdit.updatePrompt(slotId, nextPrompt);
     argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
     argsRef.current.setStatus(`Generating working candidate for ${slot.slot_type}...`);
     try {
-      const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
-        slot_prompt: nextPrompt,
-        negative_prompt: slot.negative_prompt ?? undefined,
-      });
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      await argsRef.current.applyWorkflowV2(nextWorkflow);
-      const savedSlot = nextWorkflow.slots.find((candidate) => candidate.slot_id === slotId);
+      let savedSlot: WorkflowSlotV2 | undefined;
+      if (promptPersisted) {
+        const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
+          slot_prompt: nextPrompt,
+          negative_prompt: slot.negative_prompt ?? undefined,
+        });
+        if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
+        await argsRef.current.applyWorkflowV2(nextWorkflow);
+        savedSlot = nextWorkflow.slots.find((candidate) => candidate.slot_id === slotId);
+      }
       await attachPromptReferencesToSlot(workflowId, slot, context);
       const response = await v2Api.regenerateSlot(workflowId, slotId);
       if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
@@ -656,7 +661,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       await argsRef.current.refreshV2AssetsAndRetryMissing(workflowId, response.workflow ? "slot-run-completed" : "slot-run-started", response.workflow ?? null);
       await argsRef.current.syncV2Snapshot(workflowId);
       await loadV2SlotVersions(slotId);
-      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot);
+      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
       argsRef.current.setStatus(`${slot.slot_type} working candidate generated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot candidate generation failed";

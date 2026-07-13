@@ -1,6 +1,6 @@
 import { effectiveSlotPrompt, type V2SlotPromptUpdateRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import type { SlotMicroEditDraft } from "./useSlotMicroEdit.ts";
-import { slotDraftSubmitPayload } from "./useSlotMicroEdit.ts";
+import { slotDraftHasPromptChanges, slotDraftSubmitPayload } from "./useSlotMicroEdit.ts";
 
 export type V2SlotDraftFlush = {
   slotId: string;
@@ -31,6 +31,7 @@ export function collectDirtyV2SlotDraftFlushes(
 }
 
 export function buildDirtyV2SlotPromptPatch(slot: WorkflowSlotV2, draft: SlotMicroEditDraft): V2SlotPromptUpdateRequest | null {
+  if (!slotDraftHasPromptChanges(draft)) return null;
   const payload = slotDraftSubmitPayload(draft);
   const nextPrompt = payload.slot_prompt;
   const nextNegativePrompt = payload.negative_prompt ?? "";

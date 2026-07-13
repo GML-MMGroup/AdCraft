@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, outdatedHintForSlot, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
@@ -9,6 +9,7 @@ import { V2ProviderTaskPanel } from "../provider/V2ProviderTaskPanel.tsx";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
 import { V2SlotReferenceComposer } from "./V2SlotReferenceComposer.tsx";
 import { V2SlotVersionActions } from "./V2SlotVersionActions.tsx";
+import { createSlotPromptEditorState, rebaseSlotPromptEditorState } from "./slotPromptEditorState.ts";
 
 type V2SlotCardProps = {
   slot: WorkflowSlotV2;
@@ -104,12 +105,15 @@ export function V2SlotCard({
   onAttachReference,
 }: V2SlotCardProps) {
   const effectivePrompt = effectiveSlotPrompt(slot);
-  const [slotPrompt, setSlotPrompt] = useState(effectivePrompt);
-  const [negativePrompt, setNegativePrompt] = useState(slot.negative_prompt ?? "");
+  const { slot_prompt, system_suggested_prompt, user_prompt, negative_prompt } = slot;
+  const serverPromptState = useMemo(
+    () => createSlotPromptEditorState({ slot_prompt, system_suggested_prompt, user_prompt, negative_prompt }),
+    [negative_prompt, slot_prompt, system_suggested_prompt, user_prompt],
+  );
+  const [promptState, setPromptState] = useState(serverPromptState);
   useEffect(() => {
-    setSlotPrompt(effectivePrompt);
-    setNegativePrompt(slot.negative_prompt ?? "");
-  }, [effectivePrompt, slot.slot_id, slot.negative_prompt]);
+    setPromptState((current) => rebaseSlotPromptEditorState(current, serverPromptState));
+  }, [serverPromptState]);
   const workingIsSelected = Boolean(workingVersion && selectedAsset && workingVersion.asset_id === selectedAsset.asset_id);
   const versionHistory = dedupeSlotVersionAssets(slotVersions?.versions?.length ? slotVersions.versions : historyVersions);
   const referenceAttachments = slotReferencesAsAttachments(slot, referenceAssets);
@@ -149,11 +153,24 @@ export function V2SlotCard({
   const slotWaiting = providerWaiting || runtimeStatus === "waiting" || slot.status === "waiting";
   const referenceAudit = referenceAuditForSlot(slot, runtimeRecord, workingVersion ?? selectedAsset);
   const slotLabel = SLOT_LABELS[slot.slot_type] ?? slot.slot_type.replace(/_/g, " ");
-  const promptDirty = slotPrompt !== effectivePrompt || negativePrompt !== (slot.negative_prompt ?? "");
+  const { prompt: slotPrompt, negativePrompt, dirty: promptDirty } = promptState;
+
+  function changeSlotPrompt(prompt: string) {
+    setPromptState((current) => ({ ...current, prompt, dirty: prompt !== current.basePrompt || current.negativePrompt !== current.baseNegativePrompt }));
+  }
+
+  function changeNegativePrompt(nextNegativePrompt: string) {
+    setPromptState((current) => ({ ...current, negativePrompt: nextNegativePrompt, dirty: current.prompt !== current.basePrompt || nextNegativePrompt !== current.baseNegativePrompt }));
+  }
+
+  async function savePrompt() {
+    await onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt);
+    setPromptState((current) => ({ ...current, basePrompt: current.prompt, baseNegativePrompt: current.negativePrompt, dirty: false }));
+  }
 
   async function generateSlotVersion() {
     if (promptDirty) {
-      await onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt);
+      await savePrompt();
     }
     await onGenerate?.(slot.slot_id);
   }
@@ -273,7 +290,7 @@ export function V2SlotCard({
           attachments={referenceAttachments}
           libraryOptions={libraryOptions}
           semanticType={slot.slot_type}
-          onPromptChange={setSlotPrompt}
+          onPromptChange={changeSlotPrompt}
           onRefreshReferences={async () => {
             onLoadVersions?.(slot.slot_id);
             await onRefreshWorkflow?.();
@@ -282,7 +299,7 @@ export function V2SlotCard({
       ) : (
         <label className="v2-slot-prompt">
           <span>Slot prompt</span>
-          <textarea value={slotPrompt} onChange={(event) => setSlotPrompt(event.target.value)} />
+          <textarea value={slotPrompt} onChange={(event) => changeSlotPrompt(event.target.value)} />
         </label>
       )}
       <V2ReferenceAuditPanel audit={referenceAudit} />
@@ -302,10 +319,10 @@ export function V2SlotCard({
       {slot.negative_prompt !== undefined ? (
         <label className="v2-slot-prompt">
           <span>Negative prompt</span>
-          <textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} />
+          <textarea value={negativePrompt} onChange={(event) => changeNegativePrompt(event.target.value)} />
         </label>
       ) : null}
-      <button type="button" onClick={() => onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt)}>
+      <button type="button" onClick={() => void savePrompt()}>
         Save slot prompt
       </button>
       {advancedPromptFields.length || providerPromptSnapshot || agentRouteSnapshot || providerPayloadSnapshot ? (
@@ -367,6 +384,7 @@ export function V2SlotCard({
     </article>
   );
 }
+
 
 function formatProviderWarning(value: string | Record<string, unknown>) {
   if (typeof value === "string") return value;

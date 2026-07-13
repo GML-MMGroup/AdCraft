@@ -27,9 +27,14 @@ export interface SlotMicroEditDraft {
   library_entity_ids: string[];
   attachments: SlotMicroEditAttachment[];
   dirty: boolean;
+  promptDirty: boolean;
+  referenceDirty: boolean;
+  base_prompt: string;
+  base_negative_prompt: string;
   isSubmitting: boolean;
   error?: string;
   serverBaseline?: SlotMicroEditServerBaseline;
+  pendingRebase?: SlotMicroEditServerBaseline;
 }
 
 export interface SlotMicroEditServerBaseline {
@@ -74,14 +79,27 @@ export function closeSlotMicroEdit(state: SlotMicroEditState): SlotMicroEditStat
 /** Reconciles one existing draft with a fresh server slot without creating drafts. */
 export function rebaseSlotMicroEditDraft(state: SlotMicroEditState, slot: WorkflowSlotV2): SlotMicroEditState {
   const draft = state.draftsBySlotId[slot.slot_id];
-  if (!draft || draft.isSubmitting) return state;
+  if (!draft) return state;
 
   const serverBaseline = serverBaselineFromSlot(slot);
-  const nextDraft = draft.dirty
-    ? sameServerBaseline(draft.serverBaseline, serverBaseline)
-      ? draft
-      : { ...draft, serverBaseline }
-    : draftFromSlot(slot);
+  if (draft.isSubmitting) {
+    const nextDraft = sameServerBaseline(draft.pendingRebase, serverBaseline) ? draft : { ...draft, pendingRebase: serverBaseline };
+    return sameDraft(draft, nextDraft) ? state : updateDraft(state, slot.slot_id, nextDraft);
+  }
+  const nextDraft = draft.promptDirty
+    ? { ...draft, serverBaseline }
+    : {
+      ...draft,
+      prompt: serverBaseline.prompt,
+      negative_prompt: serverBaseline.negative_prompt,
+      base_prompt: serverBaseline.prompt,
+      base_negative_prompt: serverBaseline.negative_prompt,
+      promptDirty: false,
+      reference_asset_ids: draft.referenceDirty ? draft.reference_asset_ids : serverBaseline.reference_asset_ids,
+      attachments: draft.referenceDirty ? draft.attachments : serverBaseline.attachments,
+      dirty: draft.referenceDirty,
+      serverBaseline,
+    };
   if (sameDraft(draft, nextDraft)) return state;
   return {
     ...state,
@@ -90,16 +108,22 @@ export function rebaseSlotMicroEditDraft(state: SlotMicroEditState, slot: Workfl
 }
 
 /** Reconciles existing drafts with a fresh slot collection and removes archived slots. */
-export function rebaseSlotMicroEditState(state: SlotMicroEditState, slots: WorkflowSlotV2[]): SlotMicroEditState {
+export function rebaseSlotMicroEditState(
+  state: SlotMicroEditState,
+  slots: WorkflowSlotV2[],
+  options: { authoritative?: boolean; archivedSlotIds?: string[]; removedSlotIds?: string[] } = {},
+): SlotMicroEditState {
   const slotsById = new Map(slots.map((slot) => [slot.slot_id, slot]));
+  const removedSlotIds = new Set([...(options.archivedSlotIds ?? []), ...(options.removedSlotIds ?? [])]);
   let nextState = state;
 
   for (const slotId of Object.keys(state.draftsBySlotId)) {
     const slot = slotsById.get(slotId);
-    if (slot) {
+    if (slot && !removedSlotIds.has(slotId)) {
       nextState = rebaseSlotMicroEditDraft(nextState, slot);
       continue;
     }
+    if (!removedSlotIds.has(slotId) && !options.authoritative) continue;
     const { [slotId]: _removed, ...remainingDrafts } = nextState.draftsBySlotId;
     nextState = {
       ...nextState,
@@ -108,7 +132,7 @@ export function rebaseSlotMicroEditState(state: SlotMicroEditState, slots: Workf
     };
   }
 
-  if (nextState.openSlotId && !slotsById.has(nextState.openSlotId)) {
+  if (nextState.openSlotId && (removedSlotIds.has(nextState.openSlotId) || (options.authoritative && !slotsById.has(nextState.openSlotId)))) {
     return { ...nextState, openSlotId: null };
   }
   return nextState;
@@ -116,22 +140,24 @@ export function rebaseSlotMicroEditState(state: SlotMicroEditState, slots: Workf
 
 export function updateSlotMicroEditPrompt(state: SlotMicroEditState, slotId: string, prompt: string): SlotMicroEditState {
   const draft = ensureDraft(state, slotId);
+  const promptDirty = prompt !== draft.base_prompt;
   return {
     ...state,
     draftsBySlotId: {
       ...state.draftsBySlotId,
-      [slotId]: { ...draft, prompt, dirty: true, error: undefined },
+      [slotId]: { ...draft, prompt, promptDirty, dirty: promptDirty || draft.referenceDirty, error: undefined },
     },
   };
 }
 
 export function updateSlotMicroEditNegativePrompt(state: SlotMicroEditState, slotId: string, negativePrompt: string): SlotMicroEditState {
   const draft = ensureDraft(state, slotId);
+  const promptDirty = draft.prompt !== draft.base_prompt || negativePrompt !== draft.base_negative_prompt;
   return {
     ...state,
     draftsBySlotId: {
       ...state.draftsBySlotId,
-      [slotId]: { ...draft, negative_prompt: negativePrompt, dirty: true, error: undefined },
+      [slotId]: { ...draft, negative_prompt: negativePrompt, promptDirty, dirty: promptDirty || draft.referenceDirty, error: undefined },
     },
   };
 }
@@ -144,6 +170,7 @@ export function addSlotDraftReference(state: SlotMicroEditState, slotId: string,
     uploaded_asset_ids: reference.source === "uploaded_asset" ? addUnique(draft.uploaded_asset_ids, reference.asset_id) : draft.uploaded_asset_ids,
     library_entity_ids: reference.source === "library_entity" ? addUnique(draft.library_entity_ids, reference.entity_id) : draft.library_entity_ids,
     attachments: upsertAttachment(draft.attachments, attachmentFromDraftReference(reference)),
+    referenceDirty: true,
     dirty: true,
     error: undefined,
   });
@@ -158,6 +185,7 @@ export function addSlotDraftAttachment(state: SlotMicroEditState, slotId: string
     syncDraftReferenceArrays({
       ...draft,
       attachments: upsertAttachment(draft.attachments, normalizeAttachment(attachment)),
+      referenceDirty: true,
       dirty: true,
       error: undefined,
     }),
@@ -179,6 +207,7 @@ export function updateSlotDraftAttachment(
       attachments: draft.attachments.map((attachment) =>
         attachment.id === attachmentId ? normalizeAttachment({ ...attachment, ...patch }) : attachment,
       ),
+      referenceDirty: true,
       dirty: true,
       error: patch.status === "failed" ? patch.error : undefined,
     }),
@@ -194,6 +223,7 @@ export function removeSlotDraftReference(state: SlotMicroEditState, slotId: stri
     uploaded_asset_ids: reference.source === "uploaded_asset" ? withoutValue(draft.uploaded_asset_ids, reference.asset_id) : draft.uploaded_asset_ids,
     library_entity_ids: reference.source === "library_entity" ? withoutValue(draft.library_entity_ids, reference.entity_id) : draft.library_entity_ids,
     attachments: draft.attachments.filter((attachment) => !attachmentMatchesReference(attachment, reference)),
+    referenceDirty: true,
     dirty: true,
     error: undefined,
   }));
@@ -201,13 +231,51 @@ export function removeSlotDraftReference(state: SlotMicroEditState, slotId: stri
 
 export function setSlotDraftSubmitting(state: SlotMicroEditState, slotId: string, isSubmitting: boolean, error?: string): SlotMicroEditState {
   const draft = ensureDraft(state, slotId);
+  if (!isSubmitting && (draft.pendingRebase || error)) return completeSlotDraftSubmission(state, slotId, { error });
   return updateDraft(state, slotId, { ...draft, isSubmitting, error });
 }
 
-export function markSlotDraftClean(state: SlotMicroEditState, slotId: string, slot?: WorkflowSlotV2): SlotMicroEditState {
+export function completeSlotDraftSubmission(
+  state: SlotMicroEditState,
+  slotId: string,
+  options: { slot?: WorkflowSlotV2; promptPersisted?: boolean; error?: string } = {},
+): SlotMicroEditState {
   const draft = ensureDraft(state, slotId);
-  const nextDraft = slot ? draftFromSlot(slot) : { ...draft, dirty: false, isSubmitting: false, error: undefined };
+  const incoming = draft.pendingRebase ?? (options.slot ? serverBaselineFromSlot(options.slot) : draft.serverBaseline);
+  if (!incoming) return updateDraft(state, slotId, { ...draft, isSubmitting: false, error: options.error });
+  const promptPersisted = Boolean(options.promptPersisted);
+  const serverBaseline = promptPersisted
+    ? { ...incoming, prompt: draft.prompt, user_prompt: draft.prompt, negative_prompt: draft.negative_prompt ?? "" }
+    : incoming;
+  const keepPrompt = Boolean(options.error) || draft.promptDirty;
+  const prompt = keepPrompt ? draft.prompt : serverBaseline.prompt;
+  const negative_prompt = keepPrompt ? draft.negative_prompt : serverBaseline.negative_prompt;
+  const base_prompt = promptPersisted ? draft.prompt : keepPrompt ? draft.base_prompt : serverBaseline.prompt;
+  const base_negative_prompt = promptPersisted ? (draft.negative_prompt ?? "") : keepPrompt ? draft.base_negative_prompt : serverBaseline.negative_prompt;
+  const nextDraft: SlotMicroEditDraft = {
+    ...draft,
+    prompt,
+    negative_prompt,
+    base_prompt,
+    base_negative_prompt,
+    promptDirty: options.error ? draft.promptDirty : promptPersisted ? false : prompt !== base_prompt || (negative_prompt ?? "") !== base_negative_prompt,
+    referenceDirty: options.error ? draft.referenceDirty : false,
+    dirty: options.error ? draft.dirty : false,
+    isSubmitting: false,
+    error: options.error,
+    serverBaseline,
+    pendingRebase: undefined,
+  };
+  nextDraft.dirty = nextDraft.promptDirty || nextDraft.referenceDirty;
   return sameDraft(draft, nextDraft) ? state : updateDraft(state, slotId, nextDraft);
+}
+
+export function markSlotDraftClean(state: SlotMicroEditState, slotId: string, slot?: WorkflowSlotV2, promptPersisted = true): SlotMicroEditState {
+  return completeSlotDraftSubmission(state, slotId, { slot, promptPersisted });
+}
+
+export function slotDraftHasPromptChanges(draft: Pick<SlotMicroEditDraft, "promptDirty">) {
+  return draft.promptDirty;
 }
 
 export function slotDraftSubmitPayload(draft: SlotMicroEditDraft) {
@@ -234,8 +302,8 @@ export function useSlotMicroEdit(initialState: SlotMicroEditState = createInitia
   const addAttachment = useCallback((slotId: string, attachment: SlotMicroEditAttachment) => setState((current) => addSlotDraftAttachment(current, slotId, attachment)), []);
   const updateAttachment = useCallback((slotId: string, attachmentId: string, patch: Partial<SlotMicroEditAttachment>) => setState((current) => updateSlotDraftAttachment(current, slotId, attachmentId, patch)), []);
   const setSubmitting = useCallback((slotId: string, isSubmitting: boolean, error?: string) => setState((current) => setSlotDraftSubmitting(current, slotId, isSubmitting, error)), []);
-  const markClean = useCallback((slotId: string, slot?: WorkflowSlotV2) => setState((current) => markSlotDraftClean(current, slotId, slot)), []);
-  const rebaseSlots = useCallback((slots: WorkflowSlotV2[]) => setState((current) => rebaseSlotMicroEditState(current, slots)), []);
+  const markClean = useCallback((slotId: string, slot?: WorkflowSlotV2, promptPersisted = true) => setState((current) => markSlotDraftClean(current, slotId, slot, promptPersisted)), []);
+  const rebaseSlots = useCallback((slots: WorkflowSlotV2[], options?: { authoritative?: boolean; archivedSlotIds?: string[]; removedSlotIds?: string[] }) => setState((current) => rebaseSlotMicroEditState(current, slots, options)), []);
   return { state, setState, openSlot, closeSlot, updatePrompt, updateNegativePrompt, addReference, removeReference, addAttachment, updateAttachment, setSubmitting, markClean, rebaseSlots };
 }
 
@@ -249,6 +317,10 @@ function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
     library_entity_ids: [],
     attachments: serverBaseline.attachments,
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: serverBaseline.prompt,
+    base_negative_prompt: serverBaseline.negative_prompt,
     isSubmitting: false,
     serverBaseline,
   };
@@ -276,14 +348,19 @@ function sameDraft(left: SlotMicroEditDraft, right: SlotMicroEditDraft) {
   return left === right || (
     left.prompt === right.prompt &&
     left.negative_prompt === right.negative_prompt &&
+    left.base_prompt === right.base_prompt &&
+    left.base_negative_prompt === right.base_negative_prompt &&
     left.dirty === right.dirty &&
+    left.promptDirty === right.promptDirty &&
+    left.referenceDirty === right.referenceDirty &&
     left.isSubmitting === right.isSubmitting &&
     left.error === right.error &&
     sameStrings(left.reference_asset_ids, right.reference_asset_ids) &&
     sameStrings(left.uploaded_asset_ids, right.uploaded_asset_ids) &&
     sameStrings(left.library_entity_ids, right.library_entity_ids) &&
     sameAttachments(left.attachments, right.attachments) &&
-    sameServerBaseline(left.serverBaseline, right.serverBaseline)
+    sameServerBaseline(left.serverBaseline, right.serverBaseline) &&
+    sameServerBaseline(left.pendingRebase, right.pendingRebase)
   );
 }
 
@@ -321,6 +398,10 @@ function ensureDraft(state: SlotMicroEditState, slotId: string): SlotMicroEditDr
     library_entity_ids: [],
     attachments: [],
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: "",
+    base_negative_prompt: "",
     isSubmitting: false,
   };
 }
