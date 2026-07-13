@@ -445,6 +445,8 @@ export function useWorkflowPageModel() {
   const {
     applyWorkflowGraph,
     applyWorkflowV2,
+    captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph,
     refreshV2WorkflowStructure,
     refreshV2AssetsAndRetryMissing,
@@ -772,6 +774,8 @@ export function useWorkflowPageModel() {
     setDynamicItemPromptDrafts,
     setV2SlotVersionsById,
     applyWorkflowV2,
+    captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph,
     v2Runtime,
     refreshV2AssetsAndRetryMissing,

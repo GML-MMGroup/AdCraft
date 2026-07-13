@@ -69,6 +69,7 @@ import {
   mergeOutputPreservingQuality,
 } from "../quality/qualityReviewViewModel";
 import { createV2WorkflowHydrationRequestGuard } from "./v2WorkflowHydrationRequestGuard.ts";
+import { createV2WorkflowApplicationRevisionGuard } from "./v2WorkflowApplicationRevisionGuard.ts";
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
@@ -112,6 +113,11 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     hydrationRequestGuardRef.current = createV2WorkflowHydrationRequestGuard();
   }
   const hydrationRequestGuard = hydrationRequestGuardRef.current;
+  const workflowApplicationRevisionGuardRef = useRef<ReturnType<typeof createV2WorkflowApplicationRevisionGuard> | null>(null);
+  if (!workflowApplicationRevisionGuardRef.current) {
+    workflowApplicationRevisionGuardRef.current = createV2WorkflowApplicationRevisionGuard();
+  }
+  const workflowApplicationRevisionGuard = workflowApplicationRevisionGuardRef.current;
 
   useEffect(() => {
     argsRef.current = args;
@@ -119,8 +125,12 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
 
   useEffect(() => {
     hydrationRequestGuard.activateWorkflow(args.workflow?.workflow_id ?? null);
-    return () => hydrationRequestGuard.invalidate();
-  }, [args.workflow?.workflow_id, hydrationRequestGuard]);
+    workflowApplicationRevisionGuard.activateWorkflow(args.workflow?.workflow_id ?? null);
+    return () => {
+      hydrationRequestGuard.invalidate();
+      workflowApplicationRevisionGuard.invalidate();
+    };
+  }, [args.workflow?.workflow_id, hydrationRequestGuard, workflowApplicationRevisionGuard]);
 
   async function applyWorkflowGraph(nextWorkflow: WorkflowGraph) {
     const current = argsRef.current;
@@ -147,6 +157,7 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     options: { refreshAssetsReason?: string | false; preserveViewport?: boolean; refreshRuntime?: boolean } = {},
   ) {
     const current = argsRef.current;
+    workflowApplicationRevisionGuard.appliedWorkflow(nextWorkflow.workflow_id);
     const graph = workflowV2ToWorkflowGraph(nextWorkflow);
     current.activeWorkflowIdRef.current = nextWorkflow.workflow_id;
     clearSnapshot(nextWorkflow.workflow_id);
@@ -209,6 +220,17 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
 
   function refreshV2WorkflowStructure(id: string) {
     return refreshV2WorkflowGraph(id, { refreshRuntime: false, refreshAssets: false });
+  }
+
+  function captureV2WorkflowApplicationRevision(workflowId: string) {
+    return workflowApplicationRevisionGuard.capture(workflowId);
+  }
+
+  function isCurrentV2WorkflowApplicationRevision(
+    capture: ReturnType<typeof captureV2WorkflowApplicationRevision>,
+    currentActiveWorkflowId: string | null,
+  ) {
+    return workflowApplicationRevisionGuard.isCurrent(capture, currentActiveWorkflowId);
   }
 
   async function refreshV2AssetsAndRetryMissing(
@@ -515,6 +537,8 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
   const actionsRef = useRef<{
     applyWorkflowGraph: typeof applyWorkflowGraph;
     applyWorkflowV2: typeof applyWorkflowV2;
+    captureV2WorkflowApplicationRevision: typeof captureV2WorkflowApplicationRevision;
+    isCurrentV2WorkflowApplicationRevision: typeof isCurrentV2WorkflowApplicationRevision;
     refreshV2WorkflowGraph: typeof refreshV2WorkflowGraph;
     refreshV2WorkflowStructure: typeof refreshV2WorkflowStructure;
     refreshV2AssetsAndRetryMissing: typeof refreshV2AssetsAndRetryMissing;
@@ -536,6 +560,8 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     actionsRef.current = {
       applyWorkflowGraph,
       applyWorkflowV2,
+      captureV2WorkflowApplicationRevision,
+      isCurrentV2WorkflowApplicationRevision,
       refreshV2WorkflowGraph,
       refreshV2WorkflowStructure,
       refreshV2AssetsAndRetryMissing,

@@ -75,6 +75,8 @@ export function useWorkflowPageAssetActionControllers(args: WorkflowPageAssetAct
     setDynamicItemPromptDrafts: args.setDynamicItemPromptDrafts,
     setV2SlotVersionsById: args.setV2SlotVersionsById,
     applyWorkflowV2: args.applyWorkflowV2,
+    captureV2WorkflowApplicationRevision: args.captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision: args.isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph: args.refreshV2WorkflowGraph,
     syncV2Snapshot: (requestWorkflowId: string) => args.v2Runtime.syncSnapshot(requestWorkflowId),
     refreshV2AssetsAndRetryMissing: args.refreshV2AssetsAndRetryMissing,

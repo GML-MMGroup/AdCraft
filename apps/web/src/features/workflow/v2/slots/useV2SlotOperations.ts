@@ -15,6 +15,7 @@ import type {
 } from "../../../../types-v2.ts";
 import type { V2SlotReferenceRemoval } from "../../types.ts";
 import { shouldApplyWorkflowScopedResult } from "../../../../workflow/sessionGuards.ts";
+import type { V2WorkflowApplicationCapture } from "../../graph/v2WorkflowApplicationRevisionGuard.ts";
 import { isAllowedFreeAbsorbTarget } from "../../../../workflow-v2/agentRouting.ts";
 import {
   buildAddSlotReferenceRequest,
@@ -37,6 +38,7 @@ import {
 } from "../v2PromptModel.ts";
 import { slotDraftHasPromptChanges, type SlotMicroEditAttachment, type SlotMicroEditDraft, type useSlotMicroEdit } from "./useSlotMicroEdit.ts";
 import { collectDirtyV2SlotDraftFlushes } from "./slotPromptFlush.ts";
+import { reconcileV2SlotMutationWorkflow } from "./v2SlotMutationWorkflowGuard.ts";
 import {
   assetLibraryEntityTypeForV2ImageSlot,
   v2ImageSlotMatchesAssetLibraryEntity,
@@ -69,6 +71,8 @@ type V2SlotOperationsArgs = {
   refreshV2WorkflowGraph: (workflowId: string) => Promise<WorkflowV2 | null>;
   syncV2Snapshot: (workflowId: string) => Promise<unknown>;
   refreshV2AssetsAndRetryMissing: (workflowId: string, reason: string, workflow?: WorkflowV2 | null) => Promise<unknown>;
+  captureV2WorkflowApplicationRevision: (workflowId: string) => V2WorkflowApplicationCapture;
+  isCurrentV2WorkflowApplicationRevision: (capture: V2WorkflowApplicationCapture, currentActiveWorkflowId: string | null) => boolean;
   selectedNodeIdRef: React.MutableRefObject<string>;
 };
 
@@ -82,6 +86,35 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   function activeWorkflowId() {
     const workflowId = argsRef.current.workflowId;
     return workflowId && argsRef.current.currentWorkflowIsV2() ? workflowId : null;
+  }
+
+  function captureSlotMutation(workflowId: string) {
+    return argsRef.current.captureV2WorkflowApplicationRevision(workflowId);
+  }
+
+  async function applySlotMutationWorkflow(
+    workflowId: string,
+    capture: V2WorkflowApplicationCapture,
+    workflow: WorkflowV2 | null,
+    options?: { refreshAssetsReason?: string | false },
+  ) {
+    const reconciled = await reconcileV2SlotMutationWorkflow({
+      workflowId,
+      capture,
+      activeWorkflowId: argsRef.current.activeWorkflowIdRef.current,
+      isCurrentRevision: argsRef.current.isCurrentV2WorkflowApplicationRevision,
+      returnedWorkflow: workflow,
+      applyWorkflowV2: (nextWorkflow) => argsRef.current.applyWorkflowV2(nextWorkflow, options),
+      refreshLatestWorkflow: () => argsRef.current.refreshV2WorkflowGraph(workflowId),
+    });
+    if (reconciled.stale && !reconciled.workflow) {
+      throw new Error("V2 slot changed while this request was in flight. Review the latest state and retry.");
+    }
+    return reconciled;
+  }
+
+  function requireFreshSlotMutation(result: { stale: boolean }) {
+    if (result.stale) throw new Error("V2 slot changed while this request was in flight. Latest state loaded; review and retry.");
   }
 
   async function saveV2ItemPrompt(item: WorkflowItemV2, prompt: string) {
@@ -111,18 +144,22 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function saveV2SlotPrompt(slotId: string, prompt: string, negativePrompt?: string) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return { ok: false } as const;
+    const capture = captureSlotMutation(workflowId);
     try {
       const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
         slot_prompt: prompt,
         negative_prompt: negativePrompt,
       });
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return { ok: false } as const;
-      const savedSlot = nextWorkflow.slots.find((slot) => slot.slot_id === slotId);
+      const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+      if (reconciled.stale) {
+        argsRef.current.setStatus(`${slotId} changed while saving; latest state loaded. Review and retry.`);
+        return { ok: false } as const;
+      }
+      const savedSlot = reconciled.workflow?.slots.find((slot) => slot.slot_id === slotId);
       if (!savedSlot) {
         argsRef.current.setStatus(`V2 slot prompt update did not return ${slotId}.`);
         return { ok: false } as const;
       }
-      await argsRef.current.applyWorkflowV2(nextWorkflow);
       argsRef.current.setStatus(`${slotId} prompt saved`);
       return { ok: true, slot: savedSlot } as const;
     } catch (error) {
@@ -198,9 +235,10 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     nextWorkflow: WorkflowV2 | null | undefined,
     assets: AssetVersionV2[] = [],
     relations: WorkflowAssetRelationV2[] = [],
+    capture?: V2WorkflowApplicationCapture,
   ) {
     if (nextWorkflow) {
-      await argsRef.current.applyWorkflowV2(nextWorkflow);
+      await applySlotMutationWorkflow(nextWorkflow.workflow_id, capture ?? captureSlotMutation(nextWorkflow.workflow_id), nextWorkflow);
       return;
     }
     if (!assets.length && !relations.length) return;
@@ -549,10 +587,11 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
       current.v2SlotMicroEdit.setSubmitting(flush.slotId, true);
       try {
         if (flush.promptPatch) {
+          const capture = captureSlotMutation(workflowId);
           const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, flush.slotId, flush.promptPatch);
-          if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-          await argsRef.current.applyWorkflowV2(nextWorkflow);
-          savedSlot = nextWorkflow.slots.find((slot) => slot.slot_id === flush.slotId);
+          const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+          requireFreshSlotMutation(reconciled);
+          savedSlot = reconciled.workflow?.slots.find((slot) => slot.slot_id === flush.slotId);
         }
         if (flush.hasPendingReferences) {
           await ensureV2SlotDraftReferences(workflowId, flush.slotId, flush.draft);
@@ -602,24 +641,24 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     try {
       const promptPersisted = slotDraftHasPromptChanges(draft);
       if (promptPersisted) {
+        const capture = captureSlotMutation(workflowId);
         const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
           slot_prompt: request.slot_prompt,
           negative_prompt: request.negative_prompt,
         });
-        if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-        await argsRef.current.applyWorkflowV2(nextWorkflow);
-        savedSlot = nextWorkflow.slots.find((candidate) => candidate.slot_id === slotId);
+        const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+        requireFreshSlotMutation(reconciled);
+        savedSlot = reconciled.workflow?.slots.find((candidate) => candidate.slot_id === slotId);
       }
       await ensureV2SlotDraftReferences(workflowId, slotId, draft);
+      const regenerateCapture = captureSlotMutation(workflowId);
       const response = await v2Api.regenerateSlot(workflowId, slotId);
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      if (response.workflow) {
-        await argsRef.current.applyWorkflowV2(response.workflow, { refreshAssetsReason: false });
-      }
+      const regenerated = await applySlotMutationWorkflow(workflowId, regenerateCapture, response.workflow ?? null, { refreshAssetsReason: false });
+      requireFreshSlotMutation(regenerated);
       await argsRef.current.refreshV2AssetsAndRetryMissing(workflowId, response.workflow ? "slot-run-completed" : "slot-run-started", response.workflow ?? null);
       await argsRef.current.syncV2Snapshot(workflowId);
       await loadV2SlotVersions(slotId);
-      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
+      argsRef.current.v2SlotMicroEdit.markClean(slotId, regenerated.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
       argsRef.current.setStatus(`${slot.slot_type} working candidate generated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot candidate generation failed";
@@ -650,24 +689,24 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     try {
       let savedSlot: WorkflowSlotV2 | undefined;
       if (promptPersisted) {
+        const capture = captureSlotMutation(workflowId);
         const nextWorkflow = await v2Api.updateSlotPrompt(workflowId, slotId, {
           slot_prompt: nextPrompt,
           negative_prompt: slot.negative_prompt,
         });
-        if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-        await argsRef.current.applyWorkflowV2(nextWorkflow);
-        savedSlot = nextWorkflow.slots.find((candidate) => candidate.slot_id === slotId);
+        const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+        requireFreshSlotMutation(reconciled);
+        savedSlot = reconciled.workflow?.slots.find((candidate) => candidate.slot_id === slotId);
       }
       await attachPromptReferencesToSlot(workflowId, slot, context);
+      const regenerateCapture = captureSlotMutation(workflowId);
       const response = await v2Api.regenerateSlot(workflowId, slotId);
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      if (response.workflow) {
-        await argsRef.current.applyWorkflowV2(response.workflow, { refreshAssetsReason: false });
-      }
+      const regenerated = await applySlotMutationWorkflow(workflowId, regenerateCapture, response.workflow ?? null, { refreshAssetsReason: false });
+      requireFreshSlotMutation(regenerated);
       await argsRef.current.refreshV2AssetsAndRetryMissing(workflowId, response.workflow ? "slot-run-completed" : "slot-run-started", response.workflow ?? null);
       await argsRef.current.syncV2Snapshot(workflowId);
       await loadV2SlotVersions(slotId);
-      argsRef.current.v2SlotMicroEdit.markClean(slotId, response.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
+      argsRef.current.v2SlotMicroEdit.markClean(slotId, regenerated.workflow?.slots.find((candidate) => candidate.slot_id === slotId) ?? savedSlot, promptPersisted);
       argsRef.current.setStatus(`${slot.slot_type} working candidate generated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "V2 slot candidate generation failed";
@@ -795,10 +834,14 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function discardV2WorkingVersion(slotId: string) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
+    const capture = captureSlotMutation(workflowId);
     try {
       const nextWorkflow = await v2Api.discardWorkingVersion(workflowId, slotId);
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      await argsRef.current.applyWorkflowV2(nextWorkflow);
+      const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+      if (reconciled.stale) {
+        argsRef.current.setStatus(`${slotId} changed while discarding; latest state loaded`);
+        return;
+      }
       await loadV2SlotVersions(slotId);
       argsRef.current.setStatus(`${slotId} working version discarded`);
     } catch (error) {
@@ -809,10 +852,14 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function deleteV2SelectedSlotAsset(slotId: string) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
+    const capture = captureSlotMutation(workflowId);
     try {
       const nextWorkflow = await v2Api.deleteSelectedSlotAsset(workflowId, slotId);
-      if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      await argsRef.current.applyWorkflowV2(nextWorkflow);
+      const reconciled = await applySlotMutationWorkflow(workflowId, capture, nextWorkflow);
+      if (reconciled.stale) {
+        argsRef.current.setStatus(`${slotId} changed while deleting; latest state loaded`);
+        return;
+      }
       await loadV2SlotVersions(slotId);
       argsRef.current.setStatus(`${slotId} selected asset removed`);
     } catch (error) {
@@ -823,10 +870,11 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function attachV2Reference(request: V2ReferenceAttachRequest) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
+    const capture = captureSlotMutation(workflowId);
     try {
       const response = await v2Api.attachReference(workflowId, request);
       if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      await applyV2ReferenceArtifacts(response.workflow, response.assets ?? [], response.relation ? [response.relation] : []);
+      await applyV2ReferenceArtifacts(response.workflow, response.assets ?? [], response.relation ? [response.relation] : [], capture);
       argsRef.current.setStatus("V2 reference attached");
     } catch (error) {
       argsRef.current.setStatus(error instanceof Error ? error.message : "V2 reference attach failed");
@@ -836,10 +884,11 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function removeV2Reference(relationId: string) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
+    const capture = captureSlotMutation(workflowId);
     try {
       const response = await v2Api.removeReference(workflowId, relationId);
       if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
-      await applyV2ReferenceArtifacts(response.workflow, response.assets ?? [], []);
+      await applyV2ReferenceArtifacts(response.workflow, response.assets ?? [], [], capture);
       argsRef.current.setStatus("V2 reference removed");
     } catch (error) {
       argsRef.current.setStatus(error instanceof Error ? error.message : "V2 reference remove failed");
