@@ -1,4 +1,5 @@
 import { lazy, Suspense, type MutableRefObject } from "react";
+import { createPortal } from "react-dom";
 import type { ScreenplayProductOption } from "../v2/screenplay/screenplayUiHelpers.ts";
 import type { V2ScreenplayController } from "../v2/screenplay/useV2ScreenplayController.ts";
 
@@ -14,9 +15,12 @@ export function LazyV2ScreenplayDrawer({
   productOptions: ScreenplayProductOption[];
   returnFocusRef: MutableRefObject<HTMLElement | null>;
 }) {
-  return <Suspense fallback={<ScreenplayDrawerLoading />}>
-    <V2ScreenplayDrawer controller={controller} productOptions={productOptions} returnFocusRef={returnFocusRef} />
-  </Suspense>;
+  return createPortal(
+    <Suspense fallback={<ScreenplayDrawerLoading />}>
+      <V2ScreenplayDrawer controller={controller} productOptions={productOptions} returnFocusRef={returnFocusRef} />
+    </Suspense>,
+    document.body,
+  );
 }
 
 function ScreenplayDrawerLoading() {

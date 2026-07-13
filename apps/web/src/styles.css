@@ -105,12 +105,19 @@ body::before {
   background: rgba(247, 249, 253, 0.98);
 }
 
+.v2-screenplay-drawer__header > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
 .v2-screenplay-drawer__header p,
 .v2-screenplay-history p,
 .v2-screenplay-conflict p,
 .v2-screenplay-discard-confirmation p { margin: 0; color: var(--muted); font-size: 13px; }
+.v2-screenplay-drawer__header p { line-height: 1.2; }
 .v2-screenplay-drawer h2, .v2-screenplay-section h3, .v2-screenplay-history h3, .v2-screenplay-section h4, .v2-screenplay-dialogue h5 { margin: 0; letter-spacing: 0; }
-.v2-screenplay-drawer h2 { font-size: 20px; }
+.v2-screenplay-drawer h2 { font-size: 20px; line-height: 1.2; }
 .v2-screenplay-drawer h2:focus { outline: 2px solid var(--iris); outline-offset: 3px; }
 
 .v2-screenplay-icon-button,
