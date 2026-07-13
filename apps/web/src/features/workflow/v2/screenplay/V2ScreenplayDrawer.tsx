@@ -1,20 +1,37 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { CloseIcon, DocumentIcon, HistoryIcon, SaveIcon } from "../../../../icons.tsx";
 import { V2ScreenplaySceneEditor } from "./V2ScreenplaySceneEditor.tsx";
+import { nextFocusableIndex, nextTabIndex, selectionGate, summarizeValidationIssues, type ScreenplayProductOption, type ScreenplayVersionTarget } from "./screenplayUiHelpers.ts";
 import { V2ScreenplayVersionHistory } from "./V2ScreenplayVersionHistory.tsx";
 import type { V2ScreenplayController } from "./useV2ScreenplayController.ts";
 
+type Operation =
+  | { kind: "initial_load" }
+  | { kind: "selected_refresh" }
+  | { kind: "history_refresh" }
+  | { kind: "confirm" }
+  | { kind: "select"; target: ScreenplayVersionTarget };
+
 type Props = {
   controller: V2ScreenplayController;
+  productOptions?: readonly ScreenplayProductOption[];
   returnFocusRef?: RefObject<HTMLElement | null>;
   returnFocusElement?: HTMLElement | null;
 };
 
-export function V2ScreenplayDrawer({ controller, returnFocusRef, returnFocusElement }: Props) {
+const tabs = ["editor", "history"] as const;
+type Tab = typeof tabs[number];
+
+export function V2ScreenplayDrawer({ controller, productOptions = [], returnFocusRef, returnFocusElement }: Props) {
   const { state } = controller;
-  const [tab, setTab] = useState<"editor" | "history">("editor");
+  const [tab, setTab] = useState<Tab>("editor");
+  const [pendingVersion, setPendingVersion] = useState<ScreenplayVersionTarget | null>(null);
+  const [lastFailedOperation, setLastFailedOperation] = useState<Operation | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wasOpenRef = useRef(false);
+  const dialogReturnFocusRef = useRef<HTMLElement | null>(null);
+  const requestedOperationRef = useRef<Operation | null>(null);
 
   useEffect(() => {
     if (state.isOpen) {
@@ -29,51 +46,122 @@ export function V2ScreenplayDrawer({ controller, returnFocusRef, returnFocusElem
   }, [returnFocusElement, returnFocusRef, state.isOpen]);
 
   useEffect(() => {
+    if (!state.requestError) return;
+    setLastFailedOperation(operationForRequest(state.requestError.operation, requestedOperationRef.current));
+  }, [state.requestError]);
+
+  useEffect(() => {
     if (!state.isOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || pendingVersion || state.closeState === "confirmation_required") return;
       event.preventDefault();
+      dialogReturnFocusRef.current = activeElement();
       controller.close();
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [controller, state.isOpen]);
+  }, [controller, pendingVersion, state.closeState, state.isOpen]);
 
   if (!state.isOpen) return null;
+  const validationIssues = summarizeValidationIssues(state.validationErrors);
+  const errorOperation = lastFailedOperation ?? (state.requestError ? operationForRequest(state.requestError.operation) : null);
   const errorViolations = requestViolations(state.requestError?.details);
-  const onCloseRequest = () => controller.close();
+
+  const requestClose = () => {
+    dialogReturnFocusRef.current = activeElement();
+    controller.close();
+  };
+
+  const runOperation = (operation: Operation) => {
+    requestedOperationRef.current = operation;
+    setLastFailedOperation(null);
+    if (operation.kind === "initial_load" || operation.kind === "selected_refresh") void controller.refreshSelected();
+    if (operation.kind === "history_refresh") void controller.refreshHistory();
+    if (operation.kind === "confirm") void controller.confirm();
+    if (operation.kind === "select") void controller.selectVersion(operation.target.script_version_id);
+  };
+
+  const requestVersionSelection = (target: ScreenplayVersionTarget, trigger: HTMLButtonElement) => {
+    dialogReturnFocusRef.current = trigger;
+    const decision = selectionGate(state.dirty, target);
+    if (decision.action === "confirm_discard") {
+      setPendingVersion(decision.target);
+      return;
+    }
+    runOperation({ kind: "select", target: decision.target });
+  };
+
+  const finishDialog = (action: () => void) => {
+    action();
+    const target = dialogReturnFocusRef.current;
+    dialogReturnFocusRef.current = null;
+    requestAnimationFrame(() => target?.focus());
+  };
+
+  const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const next = nextTabIndex(event.key, index, tabs.length);
+    if (next === null) return;
+    event.preventDefault();
+    setTab(tabs[next]);
+    tabRefs.current[next]?.focus();
+  };
 
   return <div className="v2-screenplay-drawer-backdrop">
     <aside className="v2-screenplay-drawer" role="dialog" aria-modal="true" aria-labelledby="v2-screenplay-drawer-title">
-      <header className="v2-screenplay-drawer__header">
-        <div><p>Screenplay</p><h2 id="v2-screenplay-drawer-title" ref={headingRef} tabIndex={-1}>Edit script</h2></div>
-        <button className="v2-screenplay-icon-button" type="button" aria-label="Close screenplay editor" title="Close screenplay editor" onClick={onCloseRequest}><CloseIcon /></button>
-      </header>
-      <div className="v2-screenplay-tabs" role="tablist" aria-label="Screenplay views">
-        <button id="v2-screenplay-editor-tab" role="tab" type="button" aria-selected={tab === "editor"} aria-controls="v2-screenplay-editor-panel" onClick={() => setTab("editor")}><DocumentIcon /> Editor</button>
-        <button id="v2-screenplay-history-tab" role="tab" type="button" aria-selected={tab === "history"} aria-controls="v2-screenplay-history-panel" onClick={() => setTab("history")}><HistoryIcon /> Version history</button>
+      <div className="v2-screenplay-drawer__top">
+        <header className="v2-screenplay-drawer__header">
+          <div><p>Screenplay</p><h2 id="v2-screenplay-drawer-title" ref={headingRef} tabIndex={-1}>Edit script</h2></div>
+          <button className="v2-screenplay-icon-button" type="button" aria-label="Close screenplay editor" title="Close screenplay editor" onClick={requestClose}><CloseIcon /></button>
+        </header>
+        <div className="v2-screenplay-tabs" role="tablist" aria-label="Screenplay views">
+          {tabs.map((item, index) => <button key={item} ref={(node) => { tabRefs.current[index] = node; }} id={`v2-screenplay-${item}-tab`} role="tab" type="button" tabIndex={tab === item ? 0 : -1} aria-selected={tab === item} aria-controls={`v2-screenplay-${item}-panel`} onKeyDown={(event) => onTabKeyDown(event, index)} onClick={() => setTab(item)}>{item === "editor" ? <DocumentIcon /> : <HistoryIcon />}{item === "editor" ? "Editor" : "Version history"}</button>)}
+        </div>
       </div>
-      {state.conflict ? <section className="v2-screenplay-conflict" role="alert"><strong>Latest script changed on the server.</strong><p>{state.conflict.message}</p><div><button className="v2-screenplay-secondary-action" type="button" onClick={() => controller.keepReviewingLocalDraft()}>Keep reviewing local draft</button><button className="v2-screenplay-danger-action" type="button" onClick={() => controller.discardLocalDraftAndReloadLatest()}>Reload and discard local draft</button></div></section> : null}
       <div className="v2-screenplay-drawer__body">
-        {state.requestError ? <section className="v2-screenplay-request-error" role="alert"><strong>{state.requestError.message}</strong>{errorViolations.map((violation) => <p key={`${violation.field}:${violation.message}`}><b>{violation.field}</b>: {violation.message}</p>)}<button className="v2-screenplay-secondary-action" type="button" onClick={() => void controller.refreshSelected()}>Retry loading script</button></section> : null}
+        {state.conflict ? <section className="v2-screenplay-conflict" role="alert"><strong>Latest script changed on the server.</strong><p>{state.conflict.message}</p><div><button className="v2-screenplay-secondary-action" type="button" onClick={() => controller.keepReviewingLocalDraft()}>Keep reviewing local draft</button><button className="v2-screenplay-danger-action" type="button" onClick={() => controller.discardLocalDraftAndReloadLatest()}>Reload and discard local draft</button></div></section> : null}
+        {state.requestError ? <RequestErrorNotice error={state.requestError.message} violations={errorViolations} operation={errorOperation} onRetry={() => { if (errorOperation) runOperation(errorOperation); }} /> : null}
+        {validationIssues.length ? <section className="v2-screenplay-validation-summary" aria-live="polite" role="status"><strong>Fix these fields before confirming:</strong><ul>{validationIssues.map((issue) => <li key={`${issue.path}:${issue.message}`}><code>{issue.path}</code>: {issue.message}</li>)}</ul></section> : null}
         {state.isLoading && !state.draft ? <p className="v2-screenplay-status">Loading screenplay...</p> : null}
-        {tab === "editor" ? <div id="v2-screenplay-editor-panel" role="tabpanel" aria-labelledby="v2-screenplay-editor-tab">{state.draft ? <V2ScreenplaySceneEditor document={state.draft} validationErrors={state.validationErrors} onChange={controller.updateDraft} /> : !state.isLoading ? <p className="v2-screenplay-empty">No screenplay draft is available.</p> : null}</div> : <div id="v2-screenplay-history-panel" role="tabpanel" aria-labelledby="v2-screenplay-history-tab"><V2ScreenplayVersionHistory controller={controller} /></div>}
+        {tab === "editor" ? <div id="v2-screenplay-editor-panel" role="tabpanel" aria-labelledby="v2-screenplay-editor-tab">{state.draft ? <V2ScreenplaySceneEditor document={state.draft} validationErrors={validationIssues} onChange={controller.updateDraft} productOptions={productOptions} /> : !state.isLoading ? <p className="v2-screenplay-empty">No screenplay draft is available.</p> : null}</div> : <div id="v2-screenplay-history-panel" role="tabpanel" aria-labelledby="v2-screenplay-history-tab"><V2ScreenplayVersionHistory controller={controller} pendingVersionId={pendingVersion?.script_version_id} onRequestSelect={requestVersionSelection} onRefreshHistory={() => runOperation({ kind: "history_refresh" })} /></div>}
       </div>
       <footer className="v2-screenplay-drawer__footer">
-        {state.validationErrors.length ? <span className="v2-screenplay-validation-summary">{state.validationErrors.length} field {state.validationErrors.length === 1 ? "needs" : "need"} attention.</span> : <span>{state.dirty ? "Unsaved changes" : "All changes saved"}</span>}
-        <button className="v2-screenplay-confirm" type="button" disabled={!state.draft || state.isSaving || state.isSelecting || Boolean(state.conflict)} onClick={() => void controller.confirm()}><SaveIcon /> {state.isSaving ? "Confirming script..." : "Confirm script"}</button>
+        <span>{state.dirty ? "Unsaved changes" : "All changes saved"}</span>
+        <button className="v2-screenplay-confirm" type="button" disabled={!state.draft || state.isSaving || state.isSelecting || Boolean(state.conflict)} onClick={() => runOperation({ kind: "confirm" })}><SaveIcon /> {state.isSaving ? "Confirming script..." : "Confirm script"}</button>
       </footer>
-      {state.closeState === "confirmation_required" ? <div className="v2-screenplay-discard-confirmation" role="alertdialog" aria-modal="true" aria-labelledby="v2-screenplay-discard-title"><div><h3 id="v2-screenplay-discard-title">Discard unsaved screenplay changes?</h3><p>Your local draft has changes that have not been confirmed.</p><div><button className="v2-screenplay-secondary-action" type="button" onClick={() => controller.cancelClose()}>Keep editing</button><button className="v2-screenplay-danger-action" type="button" onClick={() => controller.discardDraftAndClose()}>Discard changes</button></div></div></div> : null}
+      {state.closeState === "confirmation_required" ? <ConfirmationDialog title="Discard unsaved screenplay changes?" description="Your local draft has changes that have not been confirmed." confirmLabel="Discard changes" onCancel={() => finishDialog(() => controller.cancelClose())} onConfirm={() => finishDialog(() => controller.discardDraftAndClose())} /> : null}
+      {pendingVersion ? <ConfirmationDialog title={`Use ${pendingVersion.script_title}?`} description="Your unsaved changes will be discarded and this saved script version will become selected." confirmLabel="Use this script version" onCancel={() => finishDialog(() => setPendingVersion(null))} onConfirm={() => finishDialog(() => { const target = pendingVersion; setPendingVersion(null); runOperation({ kind: "select", target }); })} /> : null}
     </aside>
   </div>;
 }
 
-function requestViolations(details: Record<string, unknown> | undefined): Array<{ field: string; message: string }> {
-  const raw = details?.violations;
-  if (!Array.isArray(raw)) return [];
-  return raw.flatMap((entry) => {
-    if (!entry || typeof entry !== "object") return [];
-    const value = entry as Record<string, unknown>;
-    return typeof value.message === "string" ? [{ field: typeof value.field === "string" ? value.field : "Screenplay", message: value.message }] : [];
-  });
+function ConfirmationDialog({ title, description, confirmLabel, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; onCancel: () => void; onConfirm: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { cancelRef.current?.focus(); }, []);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trapFocus = (event: KeyboardEvent) => {
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); return; }
+    if (event.key !== "Tab") return;
+    const focusable = [...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])")];
+    if (!focusable.length) return;
+    event.preventDefault();
+    const current = focusable.indexOf(document.activeElement as HTMLElement);
+    focusable[nextFocusableIndex(current < 0 ? 0 : current, focusable.length, event.shiftKey)]?.focus();
+    };
+    dialog.addEventListener("keydown", trapFocus);
+    return () => dialog.removeEventListener("keydown", trapFocus);
+  }, [onCancel]);
+  return <div className="v2-screenplay-discard-confirmation" role="presentation"><dialog ref={dialogRef} open role="alertdialog" aria-modal="true" aria-labelledby="v2-screenplay-confirmation-title" tabIndex={-1}><h3 id="v2-screenplay-confirmation-title">{title}</h3><p>{description}</p><div><button ref={cancelRef} className="v2-screenplay-secondary-action" type="button" onClick={onCancel}>Cancel</button><button className="v2-screenplay-danger-action" type="button" onClick={onConfirm}>{confirmLabel}</button></div></dialog></div>;
 }
+
+function RequestErrorNotice({ error, violations, operation, onRetry }: { error: string; violations: Array<{ field: string; message: string }>; operation: Operation | null; onRetry: () => void }) {
+  return <section className="v2-screenplay-request-error" role="alert"><strong>{operationLabel(operation)}</strong><p>{error}</p>{violations.map((violation) => <p key={`${violation.field}:${violation.message}`}><b>{violation.field}</b>: {violation.message}</p>)}{operation ? <button className="v2-screenplay-secondary-action" type="button" onClick={onRetry}>{retryLabel(operation)}</button> : null}</section>;
+}
+
+function operationForRequest(operation: "open" | "confirm" | "select" | "refresh_selected" | "refresh_history", requested?: Operation | null): Operation { if (operation === "select" && requested?.kind === "select") return requested; return operation === "open" ? { kind: "initial_load" } : operation === "confirm" ? { kind: "confirm" } : operation === "select" ? { kind: "select", target: { script_version_id: "", script_title: "script version" } } : operation === "refresh_history" ? { kind: "history_refresh" } : { kind: "selected_refresh" }; }
+function operationLabel(operation: Operation | null): string { return operation?.kind === "confirm" ? "Unable to confirm screenplay." : operation?.kind === "select" ? "Unable to select script version." : operation?.kind === "history_refresh" ? "Unable to refresh version history." : operation?.kind === "selected_refresh" ? "Unable to refresh selected screenplay." : "Unable to load screenplay."; }
+function retryLabel(operation: Operation): string { return operation.kind === "confirm" ? "Retry confirmation" : operation.kind === "select" ? "Retry version selection" : operation.kind === "history_refresh" ? "Retry version history" : operation.kind === "selected_refresh" ? "Retry selected screenplay refresh" : "Retry loading screenplay"; }
+function activeElement(): HTMLElement | null { return document.activeElement instanceof HTMLElement ? document.activeElement : null; }
+function requestViolations(details: Record<string, unknown> | undefined): Array<{ field: string; message: string }> { const raw = details?.violations; if (!Array.isArray(raw)) return []; return raw.flatMap((entry) => { if (!entry || typeof entry !== "object") return []; const value = entry as Record<string, unknown>; return typeof value.message === "string" ? [{ field: typeof value.field === "string" ? value.field : "Screenplay", message: value.message }] : []; }); }

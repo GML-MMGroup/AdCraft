@@ -73,10 +73,11 @@ body::before {
 }
 
 .v2-screenplay-drawer {
+  position: relative;
   display: grid;
   width: min(760px, 92vw);
   height: 100dvh;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   border-left: 1px solid rgba(108, 93, 171, 0.2);
   background: rgba(247, 249, 253, 0.98);
   box-shadow: -18px 0 50px rgba(32, 34, 53, 0.2);
@@ -88,15 +89,15 @@ body::before {
 .v2-screenplay-item-heading,
 .v2-screenplay-tabs,
 .v2-screenplay-conflict > div,
-.v2-screenplay-discard-confirmation > div > div,
+.v2-screenplay-discard-confirmation > dialog > div,
 .v2-screenplay-version-heading {
   display: flex;
   align-items: center;
 }
 
+.v2-screenplay-drawer__top { min-width: 0; }
+
 .v2-screenplay-drawer__header {
-  position: sticky;
-  top: 0;
   z-index: 2;
   justify-content: space-between;
   padding: 18px 22px;
@@ -154,9 +155,13 @@ body::before {
 .v2-screenplay-beat { padding: 10px 0; border-top: 1px solid rgba(108, 93, 171, .12); }
 .v2-screenplay-dialogue h5 { font-size: 13px; }
 .v2-screenplay-empty, .v2-screenplay-status, .v2-screenplay-hint { margin: 10px 0; color: var(--muted); font-size: 13px; }
-.v2-screenplay-validation-summary { color: #a42e40; }
+.v2-screenplay-empty em { display: block; margin-top: 5px; color: #a42e40; font-style: normal; }
+.v2-screenplay-validation-summary { margin: 0 0 12px; padding: 12px; border: 1px solid rgba(171, 71, 87, .36); border-radius: 4px; background: rgba(255, 236, 238, .66); color: #8d2335; font-size: 13px; }
+.v2-screenplay-validation-summary ul { margin: 8px 0 0; padding-left: 20px; }
+.v2-screenplay-validation-summary li + li { margin-top: 4px; }
+.v2-screenplay-validation-summary code { overflow-wrap: anywhere; }
 
-.v2-screenplay-conflict, .v2-screenplay-request-error { margin: 12px 22px 0; padding: 12px; border: 1px solid rgba(180, 126, 48, .38); border-radius: 4px; background: rgba(254, 233, 161, .34); font-size: 13px; }
+.v2-screenplay-conflict, .v2-screenplay-request-error { margin: 0 0 12px; padding: 12px; border: 1px solid rgba(180, 126, 48, .38); border-radius: 4px; background: rgba(254, 233, 161, .34); font-size: 13px; }
 .v2-screenplay-request-error { border-color: rgba(171, 71, 87, .36); background: rgba(255, 236, 238, .66); }
 .v2-screenplay-request-error p { margin: 6px 0; }
 .v2-screenplay-conflict > div { flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -172,9 +177,9 @@ body::before {
 .v2-screenplay-version dd { min-width: 0; margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 .v2-screenplay-discard-confirmation { position: absolute; z-index: 4; inset: 0; display: grid; place-items: center; padding: 22px; background: rgba(32, 34, 53, .38); }
-.v2-screenplay-discard-confirmation > div { max-width: 410px; padding: 18px; border-radius: 4px; background: #fff; box-shadow: var(--shadow-soft); }
+.v2-screenplay-discard-confirmation > dialog { max-width: 410px; margin: 0; padding: 18px; border: 0; border-radius: 4px; background: #fff; box-shadow: var(--shadow-soft); }
 .v2-screenplay-discard-confirmation h3 { margin: 0 0 7px; font-size: 16px; }
-.v2-screenplay-discard-confirmation > div > div { flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.v2-screenplay-discard-confirmation > dialog > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 @media (max-width: 700px) {
   .v2-screenplay-drawer { width: 100%; border-left: 0; }

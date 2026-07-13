@@ -1,26 +1,28 @@
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon, TrashIcon } from "../../../../icons.tsx";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type {
   V2EditableScriptDialogue,
   V2EditableScriptDocument,
   V2EditableScriptShot,
 } from "../../../../types-v2.ts";
 import { createEditableDialogue, createEditableShot, reorderItem } from "./screenplayModel.ts";
+import { mergeProductOptions, parsePositiveDuration, type ScreenplayProductOption } from "./screenplayUiHelpers.ts";
 
 type Props = {
   document: V2EditableScriptDocument;
   sceneIndex: number;
   validationErrors: ReadonlyArray<{ path: string; message: string }>;
   onChange: (update: (document: V2EditableScriptDocument) => V2EditableScriptDocument) => void;
+  productOptions?: readonly ScreenplayProductOption[];
 };
 
-export function V2ScreenplayShotEditor({ document, sceneIndex, validationErrors, onChange }: Props) {
+export function V2ScreenplayShotEditor({ document, sceneIndex, validationErrors, onChange, productOptions = [] }: Props) {
   const scene = document.scenes[sceneIndex];
   if (!scene) return null;
   const sceneIdentity = entityId(scene);
   const characterOptions = (document.characters ?? []).map((character) => ({ value: entityId(character), label: character.display_name || "Untitled character" }));
   const sceneOptions = document.scenes.map((entry) => ({ value: entityId(entry), label: entry.title || "Untitled scene" }));
-  const productOptions = [...new Set(document.scenes.flatMap((entry) => entry.shots.flatMap((shot) => shot.product_ids ?? [])))];
+  const availableProductOptions = mergeProductOptions(productOptions, document.scenes.flatMap((entry) => entry.shots.flatMap((shot) => shot.product_ids ?? [])));
 
   const changeShot = (shotIndex: number, update: (shot: V2EditableScriptShot) => void) => onChange((next) => {
     const shot = next.scenes[sceneIndex]?.shots[shotIndex];
@@ -54,7 +56,7 @@ export function V2ScreenplayShotEditor({ document, sceneIndex, validationErrors,
           <PlusIcon /> Add shot
         </button>
       </div>
-      {scene.shots.length === 0 ? <p className="v2-screenplay-empty">No shots yet.</p> : null}
+      {scene.shots.length === 0 ? <p className="v2-screenplay-empty">No shots yet.{errorAt(validationErrors, `scenes.${sceneIndex}.shots`) ? <em>{errorAt(validationErrors, `scenes.${sceneIndex}.shots`)}</em> : null}</p> : null}
       {scene.shots.map((shot, shotIndex) => {
         const path = `scenes.${sceneIndex}.shots.${shotIndex}`;
         return (
@@ -76,13 +78,11 @@ export function V2ScreenplayShotEditor({ document, sceneIndex, validationErrors,
               <Field label="Visual prompt" error={errorAt(validationErrors, `${path}.visual_prompt`)}>
                 <textarea value={shot.visual_prompt} onChange={(event) => changeShot(shotIndex, (next) => { next.visual_prompt = event.target.value; })} />
               </Field>
-              <Field label="Duration (seconds)" error={errorAt(validationErrors, `${path}.duration_seconds`)}>
-                <input title="Enter a positive duration in seconds" min="1" step="1" type="number" value={shot.duration_seconds} onChange={(event) => changeShot(shotIndex, (next) => { next.duration_seconds = Number(event.target.value); })} />
-              </Field>
+              <DurationField value={shot.duration_seconds} error={errorAt(validationErrors, `${path}.duration_seconds`)} onCommit={(duration) => changeShot(shotIndex, (next) => { next.duration_seconds = duration; })} />
               <Field label="Narration">
                 <textarea value={shot.narration ?? ""} onChange={(event) => changeShot(shotIndex, (next) => { next.narration = event.target.value || null; })} />
               </Field>
-              <ReferenceSelect label="Product references" options={productOptions.map((value) => ({ value, label: value }))} value={shot.product_ids ?? []} onChange={(values) => changeShot(shotIndex, (next) => { next.product_ids = values; })} />
+              <ReferenceSelect label="Product references" options={availableProductOptions.map((option) => ({ value: option.id, label: option.label ?? option.id }))} value={shot.product_ids ?? []} onChange={(values) => changeShot(shotIndex, (next) => { next.product_ids = values; })} />
               <ReferenceSelect label="Character references" options={characterOptions} value={shot.character_ids ?? []} error={errorAt(validationErrors, `${path}.character_ids`)} onChange={(values) => changeShot(shotIndex, (next) => { next.character_ids = values; })} />
               <ReferenceSelect label="Scene references" options={sceneOptions} value={shot.scene_ids ?? [sceneIdentity]} error={errorAt(validationErrors, `${path}.scene_ids`)} onChange={(values) => changeShot(shotIndex, (next) => { next.scene_ids = values; })} />
             </div>
@@ -149,6 +149,21 @@ function ReferenceSelect({ label, options, value, error, onChange }: { label: st
     <select multiple value={value} onChange={(event) => onChange([...event.currentTarget.selectedOptions].map((option) => option.value))}>
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
+  </Field>;
+}
+
+function DurationField({ value, error, onCommit }: { value: number; error?: string; onCommit: (value: number) => void }) {
+  const [text, setText] = useState(String(value));
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { setText(String(value)); }, [value]);
+  const localError = touched && parsePositiveDuration(text) === null ? "Enter a positive whole-number duration." : undefined;
+  const commitIfValid = () => {
+    setTouched(true);
+    const duration = parsePositiveDuration(text);
+    if (duration !== null && duration !== value) onCommit(duration);
+  };
+  return <Field label="Duration (seconds)" error={error ?? localError}>
+    <input title="Enter a positive duration in seconds" min="1" step="1" inputMode="numeric" type="number" value={text} onChange={(event) => { setText(event.target.value); const duration = parsePositiveDuration(event.target.value); if (duration !== null && duration !== value) onCommit(duration); }} onBlur={commitIfValid} />
   </Field>;
 }
 

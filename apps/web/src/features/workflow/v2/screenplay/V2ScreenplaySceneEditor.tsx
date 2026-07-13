@@ -1,19 +1,21 @@
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon, TrashIcon } from "../../../../icons.tsx";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { V2EditableScriptCharacter, V2EditableScriptDocument, V2EditableScriptLocation, V2ScriptAspectRatio } from "../../../../types-v2.ts";
 import { createEditableScene, reorderItem } from "./screenplayModel.ts";
+import { createProductBeatRows, reconcileProductBeatRows, type ProductBeatRow, type ScreenplayProductOption } from "./screenplayUiHelpers.ts";
 import { V2ScreenplayShotEditor } from "./V2ScreenplayShotEditor.tsx";
 
 type Props = {
   document: V2EditableScriptDocument;
   validationErrors: ReadonlyArray<{ path: string; message: string }>;
   onChange: (update: (document: V2EditableScriptDocument) => V2EditableScriptDocument) => void;
+  productOptions?: readonly ScreenplayProductOption[];
 };
 
 let clientKeyCounter = 0;
 const aspectRatios: V2ScriptAspectRatio[] = ["16:9", "9:16", "4:3", "3:4", "1:1", "21:9"];
 
-export function V2ScreenplaySceneEditor({ document, validationErrors, onChange }: Props) {
+export function V2ScreenplaySceneEditor({ document, validationErrors, onChange, productOptions = [] }: Props) {
   const characters = document.characters ?? [];
   const locations = document.locations ?? [];
   const change = (update: (next: V2EditableScriptDocument) => void) => onChange((next) => { update(next); return next; });
@@ -61,7 +63,7 @@ export function V2ScreenplaySceneEditor({ document, validationErrors, onChange }
       </article>)}
     </EntitySection>
     <EntitySection title="Scenes" addLabel="Add scene" onAdd={() => change((next) => { next.scenes.push(createEditableScene()); })}>
-      {document.scenes.length === 0 ? <Empty label="No scenes yet." /> : document.scenes.map((scene, index) => <article className="v2-screenplay-scene" key={entityId(scene)}>
+      {document.scenes.length === 0 ? <Empty label="No scenes yet." error={errorAt(validationErrors, "scenes")} /> : document.scenes.map((scene, index) => <article className="v2-screenplay-scene" key={entityId(scene)}>
         <ItemHeading label={`Scene ${index + 1}`} prefix="scene" index={index} count={document.scenes.length} onMove={(from, to) => change((next) => { next.scenes = reorderItem(next.scenes, from, to); })} onRemove={() => change((next) => removeSceneReferences(next, entityId(scene)))} />
         <div className="v2-screenplay-fields">
           <Field label="Scene title" error={errorAt(validationErrors, `scenes.${index}.title`)}><input value={scene.title} onChange={(event) => change((next) => updateEntity(next.scenes, index, (item) => { item.title = event.target.value; }))} /></Field>
@@ -71,17 +73,34 @@ export function V2ScreenplaySceneEditor({ document, validationErrors, onChange }
           <Field label="Time of day"><input value={scene.time_of_day ?? ""} onChange={(event) => change((next) => updateEntity(next.scenes, index, (item) => { item.time_of_day = event.target.value || null; }))} /></Field>
           <SettingField value={scene.setting_type ?? ""} error={errorAt(validationErrors, `scenes.${index}.setting_type`)} onChange={(value) => change((next) => updateEntity(next.scenes, index, (item) => { item.setting_type = value; }))} />
         </div>
-        <V2ScreenplayShotEditor document={document} sceneIndex={index} validationErrors={validationErrors} onChange={onChange} />
+        <V2ScreenplayShotEditor document={document} sceneIndex={index} validationErrors={validationErrors} onChange={onChange} productOptions={productOptions} />
       </article>)}
     </EntitySection>
   </div>;
 }
 
 function EntitySection({ title, addLabel, onAdd, children }: { title: string; addLabel: string; onAdd: () => void; children: ReactNode }) { return <section className="v2-screenplay-section"><div className="v2-screenplay-section-heading"><h3>{title}</h3><button className="v2-screenplay-add" type="button" onClick={onAdd}><PlusIcon /> {addLabel}</button></div>{children}</section>; }
-function Empty({ label }: { label: string }) { return <p className="v2-screenplay-empty">{label}</p>; }
+function Empty({ label, error }: { label: string; error?: string }) { return <p className="v2-screenplay-empty">{label}{error ? <em>{error}</em> : null}</p>; }
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) { return <label className="v2-screenplay-field"><span>{label}</span>{children}{error ? <em>{error}</em> : null}</label>; }
 function SettingField({ value, error, onChange }: { value: "" | "interior" | "exterior"; error?: string; onChange: (value: "interior" | "exterior" | null) => void }) { return <Field label="Setting" error={error}><select value={value} onChange={(event) => onChange((event.target.value || null) as "interior" | "exterior" | null)}><option value="">Unspecified</option><option value="interior">Interior</option><option value="exterior">Exterior</option></select></Field>; }
-function ProductBeatsEditor({ beats, onChange }: { beats: string[]; onChange: (beats: string[]) => void }) { return <section className="v2-screenplay-product-beats"><div className="v2-screenplay-section-heading"><h4>Product beats</h4><button className="v2-screenplay-add" type="button" onClick={() => onChange([...beats, "Describe the product beat."])}><PlusIcon /> Add product beat</button></div>{beats.length === 0 ? <Empty label="No product beats yet." /> : beats.map((beat, index) => <div className="v2-screenplay-beat" key={index}><ItemHeading label={`Product beat ${index + 1}`} prefix="product beat" index={index} count={beats.length} onMove={(from, to) => onChange(reorderItem(beats, from, to))} onRemove={() => onChange(beats.filter((_, itemIndex) => itemIndex !== index))} /><Field label="Product beat"><textarea value={beat} onChange={(event) => onChange(beats.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} /></Field></div>)}</section>; }
+function ProductBeatsEditor({ beats, onChange }: { beats: string[]; onChange: (beats: string[]) => void }) {
+  const sequence = useRef(0);
+  const createKey = () => `product-beat-ui-${++sequence.current}`;
+  const [rows, setRows] = useState<ProductBeatRow[]>(() => createProductBeatRows(beats, createKey));
+
+  useEffect(() => {
+    setRows((current) => current.map((row) => row.value).join("\u0000") === beats.join("\u0000")
+      ? current
+      : reconcileProductBeatRows(current, beats, createKey));
+  }, [beats]);
+
+  const publish = (next: ProductBeatRow[]) => {
+    setRows(next);
+    onChange(next.map((row) => row.value));
+  };
+
+  return <section className="v2-screenplay-product-beats"><div className="v2-screenplay-section-heading"><h4>Product beats</h4><button className="v2-screenplay-add" type="button" onClick={() => publish([...rows, { key: createKey(), value: "Describe the product beat." }])}><PlusIcon /> Add product beat</button></div>{rows.length === 0 ? <Empty label="No product beats yet." /> : rows.map((row, index) => <div className="v2-screenplay-beat" key={row.key}><ItemHeading label={`Product beat ${index + 1}`} prefix="product beat" index={index} count={rows.length} onMove={(from, to) => publish(reorderItem(rows, from, to))} onRemove={() => publish(rows.filter((_, itemIndex) => itemIndex !== index))} /><Field label="Product beat"><textarea value={row.value} onChange={(event) => publish(rows.map((item, itemIndex) => itemIndex === index ? { ...item, value: event.target.value } : item))} /></Field></div>)}</section>;
+}
 function ItemHeading({ label, prefix, index, count, onMove, onRemove }: { label: string; prefix: string; index: number; count: number; onMove: (from: number, to: number) => void; onRemove: () => void }) { return <div className="v2-screenplay-item-heading"><strong>{label}</strong><div className="v2-screenplay-icon-actions"><button type="button" aria-label={`Move ${prefix} up`} title={`Move ${label} up`} disabled={index === 0} onClick={() => onMove(index, index - 1)}><ChevronUpIcon /></button><button type="button" aria-label={`Move ${prefix} down`} title={`Move ${label} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}><ChevronDownIcon /></button><button type="button" aria-label={`Remove ${prefix}`} title={`Remove ${label}`} onClick={onRemove}><TrashIcon /></button></div></div>; }
 function updateEntity<T>(items: T[], index: number, update: (item: T) => void) { if (items[index]) update(items[index]); }
 function errorAt(errors: ReadonlyArray<{ path: string; message: string }>, path: string): string | undefined { return errors.find((error) => error.path === path || error.path.startsWith(`${path}.`))?.message; }
