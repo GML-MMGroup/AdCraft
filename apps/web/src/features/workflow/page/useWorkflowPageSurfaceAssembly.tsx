@@ -633,7 +633,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       },
       canvas,
       copilot: null,
-      panels: null,
+      panels: args.screenplay.panel,
       modals: null,
     },
     actions: {

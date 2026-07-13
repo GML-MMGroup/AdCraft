@@ -10,6 +10,7 @@ type WorkflowDisplayNodeCallbacks = Pick<
   WorkflowNodeData,
   | "onOpenMedia"
   | "onSelectDynamicItem"
+  | "onOpenScreenplay"
   | "onOpenV2SlotEditor"
   | "onOpenV2StoryboardPrompt"
   | "onChangeV2SlotPrompt"
@@ -31,6 +32,7 @@ export function useWorkflowDisplayNodeCallbacks({
   setSelectedNodeId,
   setDetailsOpen,
   setMediaLightbox,
+  onOpenScreenplay: openScreenplay,
   workflowV2Items,
   setActiveV2StoryboardItemId,
   openV2SlotEditor,
@@ -52,6 +54,7 @@ export function useWorkflowDisplayNodeCallbacks({
   setSelectedNodeId: (nodeId: string) => void;
   setDetailsOpen: (open: boolean) => void;
   setMediaLightbox: (asset: MediaLightboxState | null) => void;
+  onOpenScreenplay: NonNullable<WorkflowDisplayNodeCallbacks["onOpenScreenplay"]>;
   workflowV2Items?: WorkflowItemV2[];
   setActiveV2StoryboardItemId: (itemId: string | null) => void;
   openV2SlotEditor: NonNullable<WorkflowDisplayNodeCallbacks["onOpenV2SlotEditor"]>;
@@ -126,6 +129,7 @@ export function useWorkflowDisplayNodeCallbacks({
     () => ({
       onOpenMedia: openMediaLightbox,
       onSelectDynamicItem: selectCanvasDynamicItem,
+      onOpenScreenplay: openScreenplay,
       onOpenV2SlotEditor: openV2SlotEditorFromCanvas,
       onOpenV2StoryboardPrompt: openV2StoryboardPrompt,
       onChangeV2SlotPrompt: changeV2SlotPrompt,
@@ -150,6 +154,7 @@ export function useWorkflowDisplayNodeCallbacks({
       discardV2WorkingVersion,
       loadV2SlotVersions,
       openMediaLightbox,
+      openScreenplay,
       openV2SlotAssetLibraryReplace,
       openV2SlotAssetLibrarySave,
       openV2SlotEditorFromCanvas,

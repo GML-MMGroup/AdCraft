@@ -4294,6 +4294,7 @@ button.workflow-card-preview:focus-visible {
   place-items: initial;
   text-align: left;
   overscroll-behavior: contain;
+  cursor: pointer;
 }
 
 .workflow-card-preview.v2-script-text-card pre {
