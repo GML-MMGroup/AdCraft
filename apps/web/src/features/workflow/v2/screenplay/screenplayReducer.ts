@@ -25,7 +25,7 @@ export type ScreenplayConflict = {
   serverScriptVersionId: string | null;
 };
 
-export type ScreenplayCloseState = "idle" | "confirmation_required" | "closed";
+export type ScreenplayCloseState = "idle" | "confirmation_required" | "ready_to_close" | "closed";
 
 export type V2ScreenplayState = {
   workflowId: string | null;
@@ -37,6 +37,7 @@ export type V2ScreenplayState = {
   selectedScriptVersionId: string | null;
   versions: ReadonlyArray<V2ScriptVersionSummary>;
   draft: V2EditableScriptDocument | null;
+  draftBaseScriptVersionId: string | null;
   dirty: boolean;
   validationErrors: ReadonlyArray<EditableScriptValidationIssue>;
   requestError: ScreenplayRequestError | null;
@@ -73,7 +74,7 @@ export type ScreenplayReducerAction =
   | { type: "DISCARD_LOCAL_DRAFT_AND_RELOAD_LATEST" }
   | { type: "CLOSE_REQUESTED" }
   | { type: "CLOSE_CANCELLED" }
-  | { type: "CLOSE_CONFIRMED" };
+  | { type: "CLOSE_CONFIRMED"; generation: number };
 
 export function createV2ScreenplayState(): V2ScreenplayState {
   return {
@@ -86,6 +87,7 @@ export function createV2ScreenplayState(): V2ScreenplayState {
     selectedScriptVersionId: null,
     versions: freezeVersions([]),
     draft: null,
+    draftBaseScriptVersionId: null,
     dirty: false,
     validationErrors: [],
     requestError: null,
@@ -149,7 +151,17 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       };
     case "CONFIRM_STARTED":
       if (!matchesWorkflowAndGeneration(state, action)) return state;
-      return { ...state, isSaving: true, saveRequestToken: action.requestToken, requestError: null, validationErrors: [] };
+      return {
+        ...state,
+        isLoading: false,
+        isSaving: true,
+        isSelecting: false,
+        selectedRequestToken: action.requestToken,
+        saveRequestToken: action.requestToken,
+        selectRequestToken: null,
+        requestError: null,
+        validationErrors: [],
+      };
     case "CONFIRM_SUCCEEDED":
       if (!matchesSaveRequest(state, action)) return state;
       return adoptServerScript({
@@ -181,7 +193,16 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       };
     case "SELECT_STARTED":
       if (!matchesWorkflowAndGeneration(state, action)) return state;
-      return { ...state, isSelecting: true, selectRequestToken: action.requestToken, requestError: null };
+      return {
+        ...state,
+        isLoading: false,
+        isSaving: false,
+        isSelecting: true,
+        selectedRequestToken: action.requestToken,
+        saveRequestToken: null,
+        selectRequestToken: action.requestToken,
+        requestError: null,
+      };
     case "SELECT_SUCCEEDED":
       if (!matchesSelectRequest(state, action)) return state;
       return adoptServerScript({
@@ -199,7 +220,16 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       return { ...state, isSelecting: false, selectRequestToken: null, requestError: action.error };
     case "SELECTED_REFRESH_STARTED":
       if (!matchesWorkflowAndGeneration(state, action)) return state;
-      return { ...state, isLoading: true, selectedRequestToken: action.requestToken, requestError: null };
+      return {
+        ...state,
+        isLoading: true,
+        isSaving: false,
+        isSelecting: false,
+        selectedRequestToken: action.requestToken,
+        saveRequestToken: null,
+        selectRequestToken: null,
+        requestError: null,
+      };
     case "SELECTED_REFRESH_SUCCEEDED":
       if (!matchesSelectedRefreshRequest(state, action)) return state;
       return adoptServerScript({
@@ -228,6 +258,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       return {
         ...state,
         draft: scriptToEditableDocument(state.selectedScript),
+        draftBaseScriptVersionId: state.selectedScriptVersionId,
         dirty: false,
         validationErrors: [],
         requestError: null,
@@ -238,7 +269,7 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       if (!state.isOpen) return state;
       return state.dirty
         ? { ...state, closeState: "confirmation_required" }
-        : { ...state, isOpen: false, closeState: "closed" };
+        : { ...state, closeState: "ready_to_close" };
     case "CLOSE_CANCELLED":
       return state.closeState === "confirmation_required" ? { ...state, closeState: "idle" } : state;
     case "CLOSE_CONFIRMED":
@@ -246,11 +277,20 @@ export function screenplayReducer(state: V2ScreenplayState, action: ScreenplayRe
       return {
         ...state,
         isOpen: false,
+        isLoading: false,
+        isSaving: false,
+        isSelecting: false,
         closeState: "closed",
         draft: state.selectedScript ? scriptToEditableDocument(state.selectedScript) : state.draft,
+        draftBaseScriptVersionId: state.selectedScriptVersionId,
         dirty: false,
         validationErrors: [],
         conflict: null,
+        generation: action.generation,
+        selectedRequestToken: null,
+        historyRequestToken: null,
+        saveRequestToken: null,
+        selectRequestToken: null,
       };
   }
 }
@@ -269,6 +309,7 @@ function adoptServerScript(
     selectedScript: script,
     selectedScriptVersionId,
     draft: replaceDraft ? scriptToEditableDocument(script) : state.draft,
+    draftBaseScriptVersionId: replaceDraft ? selectedScriptVersionId : state.draftBaseScriptVersionId,
     conflict,
   };
 }
@@ -304,14 +345,18 @@ function matchesSaveRequest(
   state: V2ScreenplayState,
   action: { workflowId: string; generation: number; requestToken: number },
 ): boolean {
-  return matchesWorkflowAndGeneration(state, action) && state.saveRequestToken === action.requestToken;
+  return matchesWorkflowAndGeneration(state, action)
+    && state.selectedRequestToken === action.requestToken
+    && state.saveRequestToken === action.requestToken;
 }
 
 function matchesSelectRequest(
   state: V2ScreenplayState,
   action: { workflowId: string; generation: number; requestToken: number },
 ): boolean {
-  return matchesWorkflowAndGeneration(state, action) && state.selectRequestToken === action.requestToken;
+  return matchesWorkflowAndGeneration(state, action)
+    && state.selectedRequestToken === action.requestToken
+    && state.selectRequestToken === action.requestToken;
 }
 
 function matchesSelectedRefreshRequest(

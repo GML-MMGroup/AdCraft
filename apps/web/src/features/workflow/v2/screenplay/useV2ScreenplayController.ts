@@ -62,7 +62,7 @@ export function createV2ScreenplayControllerRuntime({
   refreshWorkflow,
   refreshRuntime,
 }: V2ScreenplayControllerRuntimeOptions): V2ScreenplayControllerRuntime {
-  let generation = 0;
+  let sessionGeneration = 0;
   let requestToken = 0;
 
   const nextRequestToken = () => {
@@ -70,13 +70,31 @@ export function createV2ScreenplayControllerRuntime({
     return requestToken;
   };
 
+  const isSessionActive = (workflowId: string, generation: number): boolean => {
+    const state = getState();
+    return state.isOpen && state.workflowId === workflowId && state.generation === generation;
+  };
+
+  const isSelectedRequestActive = (workflowId: string, generation: number, request: number): boolean => {
+    return isSessionActive(workflowId, generation) && getState().selectedRequestToken === request;
+  };
+
+  const isHistoryRequestActive = (workflowId: string, generation: number, request: number): boolean => {
+    return isSessionActive(workflowId, generation) && getState().historyRequestToken === request;
+  };
+
+  const isOpenRequestActive = (workflowId: string, generation: number, request: number): boolean => {
+    return isSelectedRequestActive(workflowId, generation, request) && getState().historyRequestToken === request;
+  };
+
   const open = async (workflowId: string): Promise<void> => {
-    generation += 1;
+    const generation = ++sessionGeneration;
     const request = nextRequestToken();
     dispatch({ type: "OPEN_STARTED", workflowId, generation, requestToken: request });
     try {
       const [selected, history] = await Promise.all([api.script(workflowId), api.scriptVersions(workflowId)]);
       assertCoherentOpenResponse(workflowId, selected, history);
+      if (!isOpenRequestActive(workflowId, generation, request)) return;
       dispatch({
         type: "OPEN_SUCCEEDED",
         workflowId,
@@ -87,6 +105,7 @@ export function createV2ScreenplayControllerRuntime({
         versions: history.versions,
       });
     } catch (error) {
+      if (!isOpenRequestActive(workflowId, generation, request)) return;
       dispatch({ type: "OPEN_FAILED", workflowId, generation, requestToken: request, error: toRequestError("open", error) });
     }
   };
@@ -108,6 +127,7 @@ export function createV2ScreenplayControllerRuntime({
     try {
       const response = await api.script(workflowId);
       assertWorkflowResponse(workflowId, response);
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "SELECTED_REFRESH_SUCCEEDED",
         workflowId,
@@ -117,6 +137,7 @@ export function createV2ScreenplayControllerRuntime({
         selectedScriptVersionId: response.selected_script_version_id,
       });
     } catch (error) {
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "SELECTED_REFRESH_FAILED",
         workflowId,
@@ -136,6 +157,7 @@ export function createV2ScreenplayControllerRuntime({
     try {
       const response = await api.scriptVersions(workflowId);
       if (response.workflow_id !== workflowId) throw new Error("Screenplay history response belongs to a different workflow.");
+      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "HISTORY_REFRESH_SUCCEEDED",
         workflowId,
@@ -144,6 +166,7 @@ export function createV2ScreenplayControllerRuntime({
         versions: response.versions,
       });
     } catch (error) {
+      if (!isHistoryRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "HISTORY_REFRESH_FAILED",
         workflowId,
@@ -156,7 +179,7 @@ export function createV2ScreenplayControllerRuntime({
 
   const confirm = async (): Promise<void> => {
     const state = getState();
-    if (!state.workflowId || !state.selectedScriptVersionId || !state.draft || !state.isOpen) return;
+    if (!state.workflowId || !state.draftBaseScriptVersionId || !state.draft || !state.isOpen) return;
     const validationErrors = validateEditableScript(state.draft);
     if (validationErrors.length > 0) {
       dispatch({ type: "VALIDATION_FAILED", validationErrors });
@@ -164,7 +187,7 @@ export function createV2ScreenplayControllerRuntime({
     }
 
     const workflowId = state.workflowId;
-    const baseScriptVersionId = state.selectedScriptVersionId;
+    const baseScriptVersionId = state.draftBaseScriptVersionId;
     const document = structuredClone(state.draft);
     const request = nextRequestToken();
     dispatch({ type: "CONFIRM_STARTED", workflowId, generation: state.generation, requestToken: request });
@@ -175,6 +198,7 @@ export function createV2ScreenplayControllerRuntime({
         source_action: "script_editor_confirm",
       });
       assertWorkflowResponse(workflowId, response);
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "CONFIRM_SUCCEEDED",
         workflowId,
@@ -185,8 +209,10 @@ export function createV2ScreenplayControllerRuntime({
         structuralDiff: response.structural_diff,
       });
       await refreshHistory();
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       await notifyLinkedRefresh(workflowId, response.linked_context, refreshWorkflow, refreshRuntime);
     } catch (error) {
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       if (isScriptVersionConflict(error)) {
         dispatch({
           type: "CONFLICT_DETECTED",
@@ -221,6 +247,7 @@ export function createV2ScreenplayControllerRuntime({
         base_selected_script_version_id: state.selectedScriptVersionId,
       });
       assertWorkflowResponse(workflowId, response);
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({
         type: "SELECT_SUCCEEDED",
         workflowId,
@@ -231,19 +258,27 @@ export function createV2ScreenplayControllerRuntime({
         structuralDiff: response.structural_diff,
       });
       await refreshHistory();
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       await notifyLinkedRefresh(workflowId, response.linked_context, refreshWorkflow, refreshRuntime);
     } catch (error) {
+      if (!isSelectedRequestActive(workflowId, state.generation, request)) return;
       dispatch({ type: "SELECT_FAILED", workflowId, generation: state.generation, requestToken: request, error: toRequestError("select", error) });
     }
   };
 
   const close = (): "closed" | "confirmation_required" => {
     dispatch({ type: "CLOSE_REQUESTED" });
-    return getState().closeState === "confirmation_required" ? "confirmation_required" : "closed";
+    if (getState().closeState === "confirmation_required") return "confirmation_required";
+    finishClose();
+    return "closed";
   };
 
   const cancelClose = (): void => dispatch({ type: "CLOSE_CANCELLED" });
-  const discardDraftAndClose = (): void => dispatch({ type: "CLOSE_CONFIRMED" });
+  const finishClose = (): void => {
+    if (!getState().isOpen) return;
+    dispatch({ type: "CLOSE_CONFIRMED", generation: ++sessionGeneration });
+  };
+  const discardDraftAndClose = (): void => finishClose();
   const keepReviewingLocalDraft = (): void => dispatch({ type: "KEEP_REVIEWING_LOCAL_DRAFT" });
   const discardLocalDraftAndReloadLatest = (): void => dispatch({ type: "DISCARD_LOCAL_DRAFT_AND_RELOAD_LATEST" });
 
