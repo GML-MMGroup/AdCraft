@@ -94,13 +94,14 @@ export function useWorkflowPageLifecycle({
       hydratedWorkflowIdRef.current === workflow.workflow_id &&
       (isV2WorkflowId(workflow.workflow_id) || currentWorkflowIsV2()),
     );
-    const currentFlowNodes = currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current);
+    const canReuseCurrentFlowNodes = hydratedWorkflowIdRef.current === workflow?.workflow_id;
+    const currentFlowNodes = canReuseCurrentFlowNodes ? currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current) : [];
     const baseFlowNodes = mapWorkflowNodes(baseNodes, nodeRunByType, currentFlowNodes);
     const baseEdges = workflow?.edges?.length ? mapWorkflowEdges(workflow.edges, baseFlowNodes) : mapWorkflowEdges(demoEdges, baseFlowNodes);
     const baseLayoutNodes = isSameV2WorkflowRefresh
       ? baseFlowNodes
       : layoutNodes(baseFlowNodes, baseEdges, {
-          preservePositionNodeIds: positionedNodeIds(baseNodes, currentFlowNodes),
+          preservePositionNodeIds: positionedNodeIds(currentFlowNodes),
         });
     const snapshot = loadSnapshot(workflowId);
     hydratedWorkflowIdRef.current = workflow?.workflow_id ?? null;
@@ -187,11 +188,8 @@ function currentFlowNodesForWorkflow(nodes: WorkflowNode[], flowNodes: CanvasNod
   return flowNodes.filter((node) => nodeIds.has(node.id) && hasCanvasPosition(node.position));
 }
 
-function positionedNodeIds(nodes: WorkflowNode[], flowNodes: CanvasNode[]) {
+function positionedNodeIds(flowNodes: CanvasNode[]) {
   const ids = new Set<string>();
-  nodes.forEach((node) => {
-    if (hasCanvasPosition(node.position)) ids.add(node.id);
-  });
   flowNodes.forEach((node) => {
     if (hasCanvasPosition(node.position)) ids.add(node.id);
   });

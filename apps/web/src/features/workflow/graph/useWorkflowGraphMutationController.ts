@@ -49,6 +49,7 @@ import {
   getWorkflowNodeType,
 } from "../canvas/workflowNodeModel.ts";
 import {
+  DEFAULT_LAYOUT_VIEWPORT_PADDING,
   edgeStyle,
   getConnectionDataType,
   getConnectionLabel,
@@ -208,7 +209,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.setMediaLightbox(null);
     current.clearCanvasHistory();
     current.setStatus("New project ready");
-    window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
 
   async function flushNodePatch(nodeId: string) {
@@ -644,7 +645,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.setFlowNodes(ordered);
     current.setCanvasNodes((nodes) => syncWorkflowNodePositions(nodes, ordered));
     current.setStatus("Canvas arranged by DAG");
-    window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
 
   function persistNodePosition(node: CanvasNode) {

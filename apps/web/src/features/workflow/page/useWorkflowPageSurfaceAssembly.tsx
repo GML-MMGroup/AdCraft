@@ -11,7 +11,7 @@ import { finalCompositionTimelineTargetAsset } from "../final-composition/useFin
 import { getTimelineClipCount } from "../final-composition/finalCompositionTimelineModel.ts";
 import { MediaLightbox } from "../panels/WorkflowDebugSections.tsx";
 import { localRevisionStateKey } from "../../../workflow/localRevision.ts";
-import { validateConnection } from "../canvas/workflowCanvasModel.ts";
+import { DEFAULT_LAYOUT_VIEWPORT_PADDING, validateConnection } from "../canvas/workflowCanvasModel.ts";
 import { formatCanvasRuntimeConnectionState } from "../canvas/WorkflowCanvasNodeModel.ts";
 import { WorkflowBottomToolbar, type WorkflowBottomToolbarActions, type WorkflowBottomToolbarModel } from "./WorkflowBottomToolbar.tsx";
 import { WorkflowCanvasSurface, type WorkflowCanvasSurfaceActions, type WorkflowCanvasSurfaceModel } from "./WorkflowCanvasSurface.tsx";
@@ -358,7 +358,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     redoCanvas: args.redoCanvas,
     deleteSelection: args.deleteSelection,
     autoLayout: args.autoLayout,
-    fitView: () => args.reactFlow?.fitView({ padding: 0.28 }),
+    fitView: () => args.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }),
   } as WorkflowBottomToolbarActions;
 
   const workflowSidePanelsModel = {
