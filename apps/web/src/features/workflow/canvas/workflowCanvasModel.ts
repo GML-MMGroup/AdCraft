@@ -554,7 +554,7 @@ export type LayoutNodesOptions = {
 
 const LAYOUT_ORIGIN_X = 420;
 const LAYOUT_ORIGIN_Y = 90;
-const LAYOUT_COLUMN_GAP = 132;
+const LAYOUT_COLUMN_GAP = 180;
 const LAYOUT_ROW_GAP = 72;
 const DEFAULT_LAYOUT_NODE_DIMENSIONS = { width: 252, height: 184 };
 export const DEFAULT_LAYOUT_VIEWPORT_PADDING = 0.18;
@@ -739,10 +739,33 @@ function layoutNodeDimensions(node: CanvasNode) {
   };
 }
 
+export function hasCanvasNodeOverlap(nodes: CanvasNode[]) {
+  for (let index = 0; index < nodes.length; index += 1) {
+    const current = nodes[index];
+    if (current.hidden) continue;
+    const currentDimensions = layoutNodeDimensions(current);
+    const currentRight = current.position.x + currentDimensions.width;
+    const currentBottom = current.position.y + currentDimensions.height;
+    for (let otherIndex = index + 1; otherIndex < nodes.length; otherIndex += 1) {
+      const other = nodes[otherIndex];
+      if (other.hidden) continue;
+      const otherDimensions = layoutNodeDimensions(other);
+      const overlaps =
+        current.position.x < other.position.x + otherDimensions.width &&
+        currentRight > other.position.x &&
+        current.position.y < other.position.y + otherDimensions.height &&
+        currentBottom > other.position.y;
+      if (overlaps) return true;
+    }
+  }
+  return false;
+}
+
 function fallbackLayoutNodeDimensions(node: CanvasNode) {
   const kind = `${node.data.kind} ${node.data.nodeType} ${node.data.category}`.toLowerCase();
-  if (node.data.isV2Region && kind.includes("script")) return { width: 360, height: 560 };
-  if (node.data.isV2Region) return { width: 760, height: 560 };
+  if (node.data.isV2Region && kind.includes("script")) return { width: 360, height: 600 };
+  if (node.data.isV2Region && (kind.includes("final") || kind.includes("composition"))) return { width: 760, height: 520 };
+  if (node.data.isV2Region) return { width: 980, height: 640 };
   if (node.data.family === "Image" || node.data.family === "Video" || node.data.family === "Preview") return { width: 252, height: 238 };
   if (node.data.family === "Comment") return { width: 252, height: 124 };
   return DEFAULT_LAYOUT_NODE_DIMENSIONS;

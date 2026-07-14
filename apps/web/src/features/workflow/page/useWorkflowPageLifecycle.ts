@@ -1,10 +1,13 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import type { ReactFlowInstance } from "@xyflow/react";
 import type { CanvasPosition, NodeRunResult, WorkflowEdge, WorkflowGraph, WorkflowNode, WorkflowVariable } from "../../../types";
 import { createNodeRunMap } from "../../../workflow/runtimeResults.ts";
 import { firstVisibleWorkflowNodeId } from "../../../workflow/visibility.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
 import { isV2WorkflowId } from "../../../workflow-v2/pageAdapter.ts";
 import {
+  DEFAULT_LAYOUT_VIEWPORT_PADDING,
+  hasCanvasNodeOverlap,
   layoutNodes,
   mapWorkflowEdges,
   mapWorkflowNodes,
@@ -31,7 +34,9 @@ export function useWorkflowPageLifecycle({
   nodeRunByType,
   canvasNodes,
   flowNodes,
+  flowEdges,
   selectedNodeId,
+  reactFlow,
   demoNodes,
   demoEdges,
   setCanvasNodes,
@@ -56,7 +61,9 @@ export function useWorkflowPageLifecycle({
   nodeRunByType: ReturnType<typeof createNodeRunMap>;
   canvasNodes: WorkflowNode[];
   flowNodes: CanvasNode[];
+  flowEdges: CanvasEdge[];
   selectedNodeId: string;
+  reactFlow: ReactFlowInstance<CanvasNode, CanvasEdge> | null;
   demoNodes: WorkflowGraph["nodes"];
   demoEdges: WorkflowEdge[];
   setCanvasNodes: Dispatch<SetStateAction<WorkflowNode[]>>;
@@ -73,6 +80,8 @@ export function useWorkflowPageLifecycle({
 }) {
   const flowNodesRef = useRef(flowNodes);
   const hydratedWorkflowIdRef = useRef<string | null>(null);
+  const initialLayoutSourceRef = useRef<{ workflowId: string; source: "default" | "snapshot" } | null>(null);
+  const measuredLayoutWorkflowIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     flowNodesRef.current = flowNodes;
@@ -81,6 +90,8 @@ export function useWorkflowPageLifecycle({
   useEffect(() => {
     if (isRestoringWorkspace) {
       hydratedWorkflowIdRef.current = null;
+      initialLayoutSourceRef.current = null;
+      measuredLayoutWorkflowIdRef.current = null;
       setCanvasNodes([]);
       setFlowNodes([]);
       setFlowEdges([]);
@@ -109,6 +120,8 @@ export function useWorkflowPageLifecycle({
     if (!isSameV2WorkflowRefresh && snapshot?.nodes?.length && isSnapshotCompatibleWithWorkflow(snapshot, workflow)) {
       const isCurrentV2Workflow = isV2WorkflowId(workflow?.workflow_id) || currentWorkflowIsV2();
       if (isCurrentV2Workflow) {
+        initialLayoutSourceRef.current = { workflowId, source: "snapshot" };
+        measuredLayoutWorkflowIdRef.current = null;
         const restored = applyV2SnapshotLayoutOnly(
           syncWorkflowNodePositions(baseNodes, baseLayoutNodes),
           baseLayoutNodes,
@@ -133,6 +146,10 @@ export function useWorkflowPageLifecycle({
     }
     if (snapshot?.nodes?.length && workflow?.workflow_id) clearSnapshot(workflow.workflow_id);
 
+    if (!isSameV2WorkflowRefresh) {
+      initialLayoutSourceRef.current = { workflowId, source: "default" };
+      measuredLayoutWorkflowIdRef.current = null;
+    }
     setCanvasNodes(syncWorkflowNodePositions(baseNodes, baseLayoutNodes));
     setFlowNodes(baseLayoutNodes);
     setFlowEdges(baseEdges);
@@ -155,6 +172,23 @@ export function useWorkflowPageLifecycle({
     workflow,
     workflowId,
   ]);
+
+  useEffect(() => {
+    const initialLayout = initialLayoutSourceRef.current;
+    const isV2Workflow = isV2WorkflowId(workflow?.workflow_id) || currentWorkflowIsV2();
+    if (!initialLayout || initialLayout.workflowId !== workflowId || !isV2Workflow) return;
+    if (measuredLayoutWorkflowIdRef.current === workflowId) return;
+    if (!flowNodes.length || !flowNodes.every(hasMeasuredCanvasDimensions)) return;
+
+    const shouldReflow = initialLayout.source === "default" || hasCanvasNodeOverlap(flowNodes);
+    measuredLayoutWorkflowIdRef.current = workflowId;
+    if (!shouldReflow) return;
+
+    const measuredLayoutNodes = layoutNodes(flowNodes, flowEdges);
+    setCanvasNodes((nodes) => syncWorkflowNodePositions(nodes, measuredLayoutNodes));
+    setFlowNodes(measuredLayoutNodes);
+    window.requestAnimationFrame(() => reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }));
+  }, [currentWorkflowIsV2, flowEdges, flowNodes, reactFlow, setCanvasNodes, setFlowNodes, workflow?.workflow_id, workflowId]);
 
   useEffect(() => {
     setFlowNodes((current) => mergeNodeRuntimeData(current, canvasNodes, nodeRunByType));
@@ -198,6 +232,17 @@ function positionedNodeIds(flowNodes: CanvasNode[]) {
 
 function hasCanvasPosition(position?: CanvasPosition) {
   return Number.isFinite(position?.x) && Number.isFinite(position?.y);
+}
+
+function hasMeasuredCanvasDimensions(node: CanvasNode) {
+  const measured = node as CanvasNode & {
+    measured?: { width?: number | null; height?: number | null };
+    width?: number | null;
+    height?: number | null;
+  };
+  const width = measured.measured?.width ?? measured.width;
+  const height = measured.measured?.height ?? measured.height;
+  return Number.isFinite(width) && Number.isFinite(height);
 }
 
 function preserveSelectedNodeId(nodes: WorkflowNode[], selectedNodeId: string) {
