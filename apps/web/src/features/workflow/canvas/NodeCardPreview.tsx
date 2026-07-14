@@ -26,6 +26,7 @@ export function NodeCardPreview({ data, isRunning }: NodeCardPreviewProps) {
         onOpenScreenplay={data.onOpenScreenplay}
         onOpenSlotEditor={data.onOpenV2SlotEditor}
         onOpenStoryboardPrompt={data.onOpenV2StoryboardPrompt}
+        onOpenStoryboardVideoPreview={data.onOpenV2StoryboardVideoPreview}
         onSelectSlotVersion={data.onSelectV2SlotVersion}
         onDiscardSlotWorkingVersion={data.onDiscardV2SlotWorkingVersion}
       />

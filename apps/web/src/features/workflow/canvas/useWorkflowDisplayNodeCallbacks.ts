@@ -4,7 +4,7 @@ import type { UploadedAsset } from "../../../types";
 import type { WorkflowItemV2 } from "../../../types-v2.ts";
 import { mediaAssetOriginalPath, mediaAssetPosterPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import type { MediaLightboxState } from "../page/workflowPageTypes.ts";
-import type { WorkflowNodeData } from "../types.ts";
+import type { V2StoryboardVideoPreviewTarget, WorkflowNodeData } from "../types.ts";
 
 type WorkflowDisplayNodeCallbacks = Pick<
   WorkflowNodeData,
@@ -13,6 +13,7 @@ type WorkflowDisplayNodeCallbacks = Pick<
   | "onOpenScreenplay"
   | "onOpenV2SlotEditor"
   | "onOpenV2StoryboardPrompt"
+  | "onOpenV2StoryboardVideoPreview"
   | "onChangeV2SlotPrompt"
   | "onChangeV2SlotNegativePrompt"
   | "onUploadV2SlotReference"
@@ -125,6 +126,10 @@ export function useWorkflowDisplayNodeCallbacks({
     selectedNodeIdRef.current = item.node_id;
   }, [selectedNodeIdRef, setActiveV2SlotId, setActiveV2StoryboardItemId, setSelectedNodeId, workflowV2Items]);
 
+  const openV2StoryboardVideoPreview = useCallback((preview: V2StoryboardVideoPreviewTarget) => {
+    setMediaLightbox({ type: "video", ...preview });
+  }, [setMediaLightbox]);
+
   const displayNodeCallbacks = useMemo<WorkflowDisplayNodeCallbacks>(
     () => ({
       onOpenMedia: openMediaLightbox,
@@ -132,6 +137,7 @@ export function useWorkflowDisplayNodeCallbacks({
       onOpenScreenplay: openScreenplay,
       onOpenV2SlotEditor: openV2SlotEditorFromCanvas,
       onOpenV2StoryboardPrompt: openV2StoryboardPrompt,
+      onOpenV2StoryboardVideoPreview: openV2StoryboardVideoPreview,
       onChangeV2SlotPrompt: changeV2SlotPrompt,
       onChangeV2SlotNegativePrompt: changeV2SlotNegativePrompt,
       onUploadV2SlotReference: uploadV2SlotReference,
@@ -159,6 +165,7 @@ export function useWorkflowDisplayNodeCallbacks({
       openV2SlotAssetLibrarySave,
       openV2SlotEditorFromCanvas,
       openV2StoryboardPrompt,
+      openV2StoryboardVideoPreview,
       removeV2SlotReference,
       saveV2ItemPrompt,
       selectCanvasDynamicItem,

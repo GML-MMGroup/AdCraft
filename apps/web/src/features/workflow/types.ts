@@ -44,6 +44,12 @@ export type V2LibraryReferenceOption = {
   semantic_type?: string | null;
 };
 
+export type V2StoryboardVideoPreviewTarget = {
+  src: string;
+  poster?: string;
+  title: string;
+};
+
 export type WorkflowNodeData = {
   title: string;
   description: string;
@@ -86,6 +92,7 @@ export type WorkflowNodeData = {
   v2LibraryReferenceOptions?: V2LibraryReferenceOption[];
   onOpenV2SlotEditor?: (slotId: string) => void;
   onOpenV2StoryboardPrompt?: (itemId: string) => void;
+  onOpenV2StoryboardVideoPreview?: (preview: V2StoryboardVideoPreviewTarget) => void;
   onChangeV2SlotPrompt?: (slotId: string, prompt: string) => void;
   onChangeV2SlotNegativePrompt?: (slotId: string, negativePrompt: string) => void;
   onUploadV2SlotReference?: (slotId: string, files: FileList) => void;
