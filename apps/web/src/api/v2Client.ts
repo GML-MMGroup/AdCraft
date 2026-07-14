@@ -35,6 +35,11 @@ import type {
   V2SlotReferenceUploadResponse,
   V2TimelineClipCreateRequest,
   V2TimelineClipMutationResponse,
+  V2FinalCompositionTimelineRenderRequest,
+  V2FinalCompositionTimelineRenderResponse,
+  V2FinalCompositionTimelineResponse,
+  V2FinalCompositionTimelineUpdateRequest,
+  V2FinalCompositionTimelineUpdateResponse,
   V2WorkflowAssetFilters,
   WorkflowAssetListResponseV2,
   WorkflowAssetVersionsResponseV2,
@@ -63,6 +68,9 @@ import {
   normalizeV2ScriptVersionListResponse,
   normalizeV2SlotReferenceUploadResponse,
   normalizeV2InputAssetUploadResponse,
+  normalizeV2FinalCompositionTimelineRenderResponse,
+  normalizeV2FinalCompositionTimelineResponse,
+  normalizeV2FinalCompositionTimelineUpdateResponse,
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
@@ -473,6 +481,36 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline/clips/${encodeURIComponent(clipId)}`,
       { method: "DELETE" },
       normalizeWorkflowV2TimelineClipMutationResponse,
+    );
+  },
+
+  finalCompositionTimeline(workflowId: string): Promise<V2FinalCompositionTimelineResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline`,
+      {},
+      normalizeV2FinalCompositionTimelineResponse,
+    );
+  },
+
+  saveFinalCompositionTimeline(
+    workflowId: string,
+    body: V2FinalCompositionTimelineUpdateRequest,
+  ): Promise<V2FinalCompositionTimelineUpdateResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      normalizeV2FinalCompositionTimelineUpdateResponse,
+    );
+  },
+
+  renderFinalCompositionTimeline(
+    workflowId: string,
+    body: V2FinalCompositionTimelineRenderRequest,
+  ): Promise<V2FinalCompositionTimelineRenderResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/render`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeV2FinalCompositionTimelineRenderResponse,
     );
   },
 };

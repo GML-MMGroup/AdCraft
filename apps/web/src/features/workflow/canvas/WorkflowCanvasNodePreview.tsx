@@ -136,6 +136,7 @@ export function NodeCardPreview({
         openSlotId={data.v2OpenSlotId}
         slotDraftsById={data.v2SlotDraftsById}
         referenceAssetsBySlotId={data.v2ReferenceAssetsBySlotId}
+        workflowId={data.workflowId}
         onOpenScreenplay={data.onOpenScreenplay}
         onOpenSlotEditor={data.onOpenV2SlotEditor}
         onSelectSlotVersion={data.onSelectV2SlotVersion}

@@ -23,6 +23,7 @@ export function NodeCardPreview({ data, isRunning }: NodeCardPreviewProps) {
         openStoryboardItemId={data.v2OpenStoryboardItemId}
         slotDraftsById={data.v2SlotDraftsById}
         referenceAssetsBySlotId={data.v2ReferenceAssetsBySlotId}
+        workflowId={data.workflowId}
         onOpenScreenplay={data.onOpenScreenplay}
         onOpenSlotEditor={data.onOpenV2SlotEditor}
         onOpenStoryboardPrompt={data.onOpenV2StoryboardPrompt}

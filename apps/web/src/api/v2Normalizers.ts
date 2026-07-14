@@ -40,6 +40,10 @@ import type {
   WorkflowV2SlotRuntime,
   WorkflowV2,
   V2SlotReferenceUploadResponse,
+  V2FinalCompositionTimeline,
+  V2FinalCompositionTimelineRenderResponse,
+  V2FinalCompositionTimelineResponse,
+  V2FinalCompositionTimelineUpdateResponse,
 } from "../types-v2.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -991,6 +995,49 @@ export function normalizeV2InputAssetUploadResponse(value: unknown): V2InputAsse
   return {
     assets: recordArray(record.assets).map(normalizeV2InputAssetUploadItem),
   };
+}
+
+export function normalizeV2FinalCompositionTimelineResponse(value: unknown): V2FinalCompositionTimelineResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    node_id: stringValue(record.node_id, "final-composition"),
+    item_id: stringValue(record.item_id),
+    timeline: timelineValue(record.timeline),
+    source: stringValue(record.source, "default"),
+    runtime: recordValue(record.runtime),
+  };
+}
+
+export function normalizeV2FinalCompositionTimelineUpdateResponse(value: unknown): V2FinalCompositionTimelineUpdateResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    timeline: timelineValue(record.timeline),
+    changed_clip_ids: stringArray(record.changed_clip_ids),
+    runtime: recordValue(record.runtime),
+  };
+}
+
+export function normalizeV2FinalCompositionTimelineRenderResponse(value: unknown): V2FinalCompositionTimelineRenderResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    render_id: stringValue(record.render_id),
+    slot_id: stringValue(record.slot_id),
+    asset_id: stringValue(record.asset_id),
+    version_id: stringValue(record.version_id),
+    status: stringValue(record.status, "failed"),
+    public_url: stringOrNull(record.public_url),
+    timeline_id: stringValue(record.timeline_id),
+    timeline_version: numberValue(record.timeline_version, 0),
+    runtime: recordValue(record.runtime),
+    metadata: recordValue(record.metadata),
+  };
+}
+
+function timelineValue(value: unknown): V2FinalCompositionTimeline {
+  return (isRecord(value) ? value : {}) as unknown as V2FinalCompositionTimeline;
 }
 
 function normalizeV2InputAssetUploadItem(value: unknown): V2InputAssetUploadItem {

@@ -1,13 +1,10 @@
 import { DynamicMediaItemPanel } from "../../../components/DynamicMediaItemPanel";
-import { FinalCompositionPanel } from "../../../components/FinalCompositionPanel";
 import { NodeOutputAssetsPanel } from "../../../components/NodeOutputAssetsPanel";
 import { DynamicMediaItemList } from "../assets/DynamicMediaItemList.tsx";
 import { AssetLibrarySaveModal, AssetRevisionPanel } from "../assets/AssetLibraryPanels.tsx";
 import { AssetRevisionHistoryPanel, NodeAssetHistoryPreview } from "../assets/AssetRevisionPanels.tsx";
 import { dynamicItemActionAsset } from "../assets/dynamicItemAssetModel.ts";
 import { localRevisionStateKey } from "../../../workflow/localRevision.ts";
-import { FinalCompositionTimelinePanel } from "../final-composition/FinalCompositionTimelinePanel.tsx";
-import { finalCompositionRenderDisabledReason } from "../final-composition/useFinalCompositionPageController.ts";
 import type { WorkflowWorkbenchSurfaceActions, WorkflowWorkbenchSurfaceModel } from "./WorkflowWorkbenchSurface.tsx";
 
 export function WorkflowWorkbenchAssetsSection({
@@ -23,13 +20,8 @@ export function WorkflowWorkbenchAssetsSection({
     selectedOutputAssets,
     selectedActiveOutputWarning,
     selectedStrictReferenceFailure,
-    selectedNodeId,
-    finalCompositionTimelineState,
-    finalCompositionTimelineDraft,
-    finalCompositionRevisionState,
     revisionCandidateBusyById,
     qualityOverrideRevisionId,
-    finalCompositionTargetAsset,
     selectedDynamicMediaItems,
     dynamicItemPromptDrafts,
     dynamicItemPromptSavingById,
@@ -51,18 +43,7 @@ export function WorkflowWorkbenchAssetsSection({
     canSaveNodeToAssetLibrary,
   } = model;
   const {
-    currentWorkflowIsV2,
     openAssetLibrarySaveDialog,
-    loadFinalCompositionTimeline,
-    saveFinalCompositionTimeline,
-    renderFinalCompositionTimeline,
-    moveFinalCompositionClip,
-    toggleFinalCompositionClip,
-    changeFinalCompositionClipNumber,
-    changeFinalCompositionSubtitleText,
-    selectFinalCompositionAudioSource,
-    addFinalCompositionSourceAsImageClip,
-    removeFinalCompositionClip,
     openMediaLightbox,
     acceptLocalRevisionCandidate,
     rejectLocalRevisionCandidate,
@@ -117,40 +98,6 @@ export function WorkflowWorkbenchAssetsSection({
           <strong>Strict reference constraints failed.</strong>
           <span>Change provider, reduce reference count, choose one primary reference, or remove the conflicting reference.</span>
         </div>
-      ) : null}
-      {!currentWorkflowIsV2() && workflow?.workflow_id && selectedNodeId === "final-composition" ? (
-        <FinalCompositionPanel>
-          <FinalCompositionTimelinePanel
-            state={finalCompositionTimelineState}
-            timeline={finalCompositionTimelineDraft}
-            activeAsset={finalCompositionRevisionState?.activeAsset ?? selectedOutputAssets[0] ?? null}
-            revisionState={finalCompositionRevisionState}
-            busyByRevisionId={revisionCandidateBusyById}
-            qualityOverrideRevisionId={qualityOverrideRevisionId}
-            renderDisabledReason={finalCompositionRenderDisabledReason(finalCompositionTimelineDraft, finalCompositionTimelineState)}
-            onRefresh={() => void loadFinalCompositionTimeline(workflow.workflow_id)}
-            onSave={() => void saveFinalCompositionTimeline()}
-            onRender={() => void renderFinalCompositionTimeline()}
-            onMoveClip={moveFinalCompositionClip}
-            onToggleClip={toggleFinalCompositionClip}
-            onChangeClipNumber={changeFinalCompositionClipNumber}
-            onChangeSubtitleText={changeFinalCompositionSubtitleText}
-            onSelectAudioSource={selectFinalCompositionAudioSource}
-            onAddSourceAsImageClip={addFinalCompositionSourceAsImageClip}
-            onRemoveClip={removeFinalCompositionClip}
-            onOpenAsset={openMediaLightbox}
-            onAcceptCandidate={(revision, overrideQualityFailure) => {
-              if (finalCompositionTargetAsset) void acceptLocalRevisionCandidate(finalCompositionTargetAsset, revision, overrideQualityFailure);
-            }}
-            onRejectCandidate={(revision) => {
-              if (finalCompositionTargetAsset) void rejectLocalRevisionCandidate(finalCompositionTargetAsset, revision);
-            }}
-            onUseVersion={(asset) => {
-              if (finalCompositionTargetAsset) void selectLocalAssetHistoryVersion(finalCompositionTargetAsset, asset);
-            }}
-            onCancelQualityOverride={() => setQualityOverrideRevisionId(null)}
-          />
-        </FinalCompositionPanel>
       ) : null}
       {selectedDynamicMediaItems.length ? (
         <DynamicMediaItemPanel>
@@ -271,4 +218,3 @@ export function WorkflowWorkbenchAssetsSection({
     </NodeOutputAssetsPanel>
   );
 }
-

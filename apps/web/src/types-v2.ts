@@ -797,6 +797,84 @@ export interface V2TimelineClipMutationResponse {
   removed_clip_id?: string | null;
 }
 
+export type V2TimelineTrackType = "video" | "audio" | "subtitle" | "image";
+
+export interface V2FinalCompositionTimelineTrack {
+  track_id: string;
+  track_type: V2TimelineTrackType;
+  order: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimelineClip {
+  clip_id: string;
+  track_id: string;
+  clip_type: V2TimelineTrackType;
+  source_asset_id?: string | null;
+  source_version_id?: string | null;
+  source_slot_id?: string | null;
+  start_time: number;
+  duration: number;
+  trim_in: number;
+  trim_out?: number | null;
+  volume: number;
+  muted: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimeline {
+  timeline_id: string;
+  version: number;
+  duration_seconds: number;
+  aspect_ratio: string;
+  resolution: Record<string, number>;
+  fps: number;
+  tracks: V2FinalCompositionTimelineTrack[];
+  clips: V2FinalCompositionTimelineClip[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimelineResponse {
+  workflow_id: string;
+  node_id: string;
+  item_id: string;
+  timeline: V2FinalCompositionTimeline;
+  source: "default" | "saved" | string;
+  runtime?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimelineUpdateRequest {
+  expected_version: number;
+  timeline: V2FinalCompositionTimeline;
+}
+
+export interface V2FinalCompositionTimelineUpdateResponse {
+  workflow_id: string;
+  timeline: V2FinalCompositionTimeline;
+  changed_clip_ids: string[];
+  runtime?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimelineRenderRequest {
+  timeline_id: string;
+  timeline_version: number;
+  render_settings?: Record<string, unknown>;
+}
+
+export interface V2FinalCompositionTimelineRenderResponse {
+  workflow_id: string;
+  render_id: string;
+  slot_id: string;
+  asset_id: string;
+  version_id: string;
+  status: string;
+  public_url?: string | null;
+  timeline_id: string;
+  timeline_version: number;
+  runtime?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface V2WorkflowErrorDetail {
   code?: string;
   message?: string;

@@ -6,6 +6,7 @@ import { isCompleteV2Asset } from "../../../workflow-v2/assets.ts";
 import { usableAssetVersionUrl } from "../../../workflow-v2/selectors.ts";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
 import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
+import { V2FinalCompositionTimelineEditor } from "../v2/V2FinalCompositionTimelineEditor.tsx";
 import {
   buildV2RegionFunctionalModel,
   type V2RegionFunctionalItemView,
@@ -19,6 +20,7 @@ export type V2RegionCardPreviewProps = {
   runtime?: WorkflowRuntimeV2;
   v2SlotRuntimeStatusById?: Record<string, string>;
   title: string;
+  workflowId?: string | null;
   isRunning?: boolean;
   openSlotId?: string | null;
   openStoryboardItemId?: string | null;
@@ -40,6 +42,7 @@ export function V2RegionCardPreview({
   runtime,
   v2SlotRuntimeStatusById = {},
   title,
+  workflowId,
   isRunning,
   openSlotId = null,
   openStoryboardItemId = null,
@@ -69,6 +72,10 @@ export function V2RegionCardPreview({
 
   if (scriptText !== null) {
     return <V2ScriptTextCard scriptText={scriptText} onOpenScreenplay={onOpenScreenplay} />;
+  }
+
+  if (items.some((item) => item.node_id === "final-composition" || item.item_type === "final_composition")) {
+    return <V2FinalCompositionTimelineEditor workflowId={workflowId} />;
   }
 
   if (!region.items.length) {
