@@ -9,6 +9,13 @@ import type {
   V2FreeNodeGenerateRequest,
   V2GlobalRunRequest,
   V2InputAssetUploadResponse,
+  V2FinalTimelineRenderRequest,
+  V2FinalTimelineRenderResponse,
+  V2FinalTimelineResponse,
+  V2FinalTimelineSourceImportRequest,
+  V2FinalTimelineSourceImportResponse,
+  V2FinalTimelineUpdateRequest,
+  V2FinalTimelineUpdateResponse,
   V2AssetLocatorResponse,
   V2ChatActionRequest,
   V2ChatActionResponse,
@@ -63,6 +70,10 @@ import {
   normalizeV2ScriptVersionListResponse,
   normalizeV2SlotReferenceUploadResponse,
   normalizeV2InputAssetUploadResponse,
+  normalizeV2FinalTimelineRenderResponse,
+  normalizeV2FinalTimelineResponse,
+  normalizeV2FinalTimelineSourceImportResponse,
+  normalizeV2FinalTimelineUpdateResponse,
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
@@ -473,6 +484,34 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline/clips/${encodeURIComponent(clipId)}`,
       { method: "DELETE" },
       normalizeWorkflowV2TimelineClipMutationResponse,
+    );
+  },
+
+  getFinalTimeline(workflowId: string): Promise<V2FinalTimelineResponse> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline`, {}, normalizeV2FinalTimelineResponse);
+  },
+
+  saveFinalTimeline(workflowId: string, body: V2FinalTimelineUpdateRequest): Promise<V2FinalTimelineUpdateResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline`,
+      { method: "PATCH", body: JSON.stringify(body) },
+      normalizeV2FinalTimelineUpdateResponse,
+    );
+  },
+
+  importFinalTimelineSource(workflowId: string, body: V2FinalTimelineSourceImportRequest): Promise<V2FinalTimelineSourceImportResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/timeline/sources`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeV2FinalTimelineSourceImportResponse,
+    );
+  },
+
+  renderFinalTimeline(workflowId: string, body: V2FinalTimelineRenderRequest): Promise<V2FinalTimelineRenderResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/render`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeV2FinalTimelineRenderResponse,
     );
   },
 };

@@ -7,6 +7,12 @@ import type {
   SlotVersionsResponseV2,
   V2InputAssetUploadItem,
   V2InputAssetUploadResponse,
+  V2FinalCompositionTimeline,
+  V2FinalTimelineClip,
+  V2FinalTimelineResponse,
+  V2FinalTimelineSource,
+  V2FinalTimelineSourceImportResponse,
+  V2FinalTimelineUpdateResponse,
   V2AssetLocatorResponse,
   V2AssetOwnerDisplay,
   V2ChatActionResponse,
@@ -647,6 +653,135 @@ export function normalizeAssetVersionV2(value: unknown): AssetVersionV2 {
     created_by: record.created_by === null ? null : stringValue(record.created_by) || undefined,
     metadata: recordValue(record.metadata),
   };
+}
+
+export function normalizeV2FinalTimelineResponse(value: unknown): V2FinalTimelineResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    node_id: "final-composition",
+    item_id: stringValue(record.item_id),
+    source: stringValue(record.source, "saved"),
+    timeline: normalizeV2FinalCompositionTimeline(record.timeline),
+    available_sources: recordArray(record.available_sources).map(normalizeV2FinalTimelineSource),
+    runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+  };
+}
+
+export function normalizeV2FinalTimelineUpdateResponse(value: unknown): V2FinalTimelineUpdateResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    timeline: normalizeV2FinalCompositionTimeline(record.timeline),
+    changed_clip_ids: stringArray(record.changed_clip_ids),
+    runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+  };
+}
+
+export function normalizeV2FinalTimelineSourceImportResponse(value: unknown): V2FinalTimelineSourceImportResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    source: normalizeV2FinalTimelineSource(record.source),
+  };
+}
+
+export function normalizeV2FinalTimelineRenderResponse(value: unknown) {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    render_id: stringValue(record.render_id),
+    slot_id: stringValue(record.slot_id),
+    asset_id: stringValue(record.asset_id),
+    version_id: stringValue(record.version_id),
+    status: stringValue(record.status),
+    public_url: stringOrNull(record.public_url),
+    timeline_id: stringValue(record.timeline_id),
+    timeline_version: numberValue(record.timeline_version),
+    runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+  };
+}
+
+function normalizeV2FinalCompositionTimeline(value: unknown): V2FinalCompositionTimeline {
+  const record = isRecord(value) ? value : {};
+  const resolution = recordValue(record.resolution);
+  return {
+    timeline_id: stringValue(record.timeline_id),
+    version: numberValue(record.version, 1),
+    duration_seconds: numberValue(record.duration_seconds),
+    aspect_ratio: stringValue(record.aspect_ratio, "16:9"),
+    resolution: {
+      width: numberValue(resolution?.width, 1280),
+      height: numberValue(resolution?.height, 720),
+    },
+    fps: numberValue(record.fps, 24),
+    render_settings: recordValue(record.render_settings) ?? {},
+    tracks: recordArray(record.tracks).map((track, index) => ({
+      track_id: stringValue(track.track_id, `track-${index + 1}`),
+      track_type: normalizeTimelineTrackType(track.track_type),
+      name: stringOrNull(track.name) ?? undefined,
+      order: numberValue(track.order, index + 1),
+      enabled: track.enabled !== false,
+      muted: Boolean(track.muted),
+      locked: Boolean(track.locked),
+    })),
+    clips: recordArray(record.clips).map(normalizeV2FinalTimelineClip),
+  };
+}
+
+function normalizeV2FinalTimelineClip(record: Record<string, unknown>, index: number): V2FinalTimelineClip {
+  const transform = recordValue(record.transform);
+  const audio = recordValue(record.audio);
+  const color = recordValue(record.color);
+  const style = recordValue(record.style);
+  return {
+    clip_id: stringValue(record.clip_id, `clip-${index + 1}`),
+    track_id: stringValue(record.track_id),
+    clip_type: normalizeTimelineTrackType(record.clip_type),
+    source_asset_id: stringOrNull(record.source_asset_id),
+    source_version_id: stringOrNull(record.source_version_id),
+    source_slot_id: stringOrNull(record.source_slot_id),
+    start_time: numberValue(record.start_time),
+    duration: numberValue(record.duration),
+    trim_in: numberOrNull(record.trim_in),
+    trim_out: numberOrNull(record.trim_out),
+    enabled: record.enabled !== false,
+    transform: transform ? {
+      x: numberValue(transform.x), y: numberValue(transform.y), scale_x: numberValue(transform.scale_x, 1), scale_y: numberValue(transform.scale_y, 1), rotation: numberValue(transform.rotation), opacity: numberValue(transform.opacity, 1), fit: transform.fit === "contain" ? "contain" : "cover",
+    } : undefined,
+    audio: audio ? {
+      volume: numberValue(audio.volume, 1), muted: Boolean(audio.muted), fade_in: numberValue(audio.fade_in), fade_out: numberValue(audio.fade_out),
+    } : undefined,
+    color: color ? {
+      preset_id: normalizeTimelineColorPreset(color.preset_id), brightness: numberValue(color.brightness), contrast: numberValue(color.contrast, 1), saturation: numberValue(color.saturation, 1), exposure: numberValue(color.exposure), temperature: numberValue(color.temperature), tint: numberValue(color.tint), hue: numberValue(color.hue),
+    } : undefined,
+    text: stringOrNull(record.text),
+    style: style ? {
+      font_size: numberValue(style.font_size, 42), color: stringValue(style.color, "#FFFFFF"), position: style.position === "top_center" || style.position === "center" ? style.position : "bottom_center",
+    } : undefined,
+  };
+}
+
+function normalizeV2FinalTimelineSource(value: unknown): V2FinalTimelineSource {
+  const record = isRecord(value) ? value : {};
+  return {
+    asset_id: stringValue(record.asset_id),
+    version_id: stringValue(record.version_id),
+    media_type: record.media_type === "audio" || record.media_type === "image" ? record.media_type : "video",
+    display_name: stringValue(record.display_name, stringValue(record.asset_id)),
+    public_url: stringOrNull(record.public_url),
+    thumbnail_url: stringOrNull(record.thumbnail_url ?? record.thumbnail_path),
+    duration_seconds: numberOrNull(record.duration_seconds),
+    origin: stringValue(record.origin, "workflow"),
+  };
+}
+
+function normalizeTimelineTrackType(value: unknown): "video" | "audio" | "image" | "subtitle" {
+  return value === "audio" || value === "image" || value === "subtitle" ? value : "video";
+}
+
+function normalizeTimelineColorPreset(value: unknown): "none" | "warm" | "cool" | "high_contrast" | "muted" {
+  return value === "warm" || value === "cool" || value === "high_contrast" || value === "muted" ? value : "none";
 }
 
 export function normalizeWorkflowAssetListRowV2(value: unknown): WorkflowAssetListRowV2 {

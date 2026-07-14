@@ -95,6 +95,10 @@ export const V2_WORKFLOW_REFRESH_EVENT_TYPES = new Set([
   "asset_owner_resolved",
   "storyboard_summary_refined",
   "chat_action_applied",
+  "final_timeline_created",
+  "final_timeline_updated",
+  "final_composition_render_completed",
+  "final_composition_render_failed",
 ]);
 
 const V2_ASSET_REFRESH_EVENT_TYPES = new Set([
@@ -118,6 +122,7 @@ const V2_ASSET_REFRESH_EVENT_TYPES = new Set([
   "chat_action_applied",
   "item_working_version_updated",
   "item_selected_version_updated",
+  "final_composition_render_completed",
 ]);
 
 export const V2_SLOT_VERSION_REFRESH_EVENT_TYPES = new Set([

@@ -60,6 +60,11 @@ export const V2_RUNTIME_EVENT_STREAM_TYPES = [
   "script_selected_version_updated",
   "workflow_structure_updated",
   "linked_context_updated",
+  "final_timeline_created",
+  "final_timeline_updated",
+  "final_composition_render_started",
+  "final_composition_render_completed",
+  "final_composition_render_failed",
 ] as const;
 
 export function useV2RuntimeController(options: {

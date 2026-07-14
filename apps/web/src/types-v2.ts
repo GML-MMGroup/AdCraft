@@ -797,6 +797,155 @@ export interface V2TimelineClipMutationResponse {
   removed_clip_id?: string | null;
 }
 
+export type V2TimelineTrackType = "video" | "audio" | "image" | "subtitle";
+
+export type V2TimelineColorPreset = "none" | "warm" | "cool" | "high_contrast" | "muted";
+
+export interface V2TimelineTransform {
+  x: number;
+  y: number;
+  scale_x: number;
+  scale_y: number;
+  rotation: number;
+  opacity: number;
+  fit: "cover" | "contain";
+}
+
+export interface V2TimelineAudio {
+  volume: number;
+  muted: boolean;
+  fade_in: number;
+  fade_out: number;
+}
+
+export interface V2TimelineColor {
+  preset_id: V2TimelineColorPreset;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  exposure: number;
+  temperature: number;
+  tint: number;
+  hue: number;
+}
+
+export interface V2TimelineSubtitleStyle {
+  font_size: number;
+  color: string;
+  position: "top_center" | "center" | "bottom_center";
+}
+
+export interface V2FinalTimelineTrack {
+  track_id: string;
+  track_type: V2TimelineTrackType;
+  name?: string;
+  order: number;
+  enabled: boolean;
+  muted: boolean;
+  locked: boolean;
+}
+
+export interface V2FinalTimelineClip {
+  clip_id: string;
+  track_id: string;
+  clip_type: V2TimelineTrackType;
+  source_asset_id?: string | null;
+  source_version_id?: string | null;
+  source_slot_id?: string | null;
+  start_time: number;
+  duration: number;
+  trim_in?: number | null;
+  trim_out?: number | null;
+  enabled: boolean;
+  transform?: V2TimelineTransform;
+  audio?: V2TimelineAudio;
+  color?: V2TimelineColor;
+  text?: string | null;
+  style?: V2TimelineSubtitleStyle;
+}
+
+export interface V2FinalTimelineRenderSettings {
+  video_codec?: string;
+  audio_codec?: string;
+  video_bitrate?: string;
+  audio_bitrate?: string;
+}
+
+export interface V2FinalCompositionTimeline {
+  timeline_id: string;
+  version: number;
+  duration_seconds: number;
+  aspect_ratio: string;
+  resolution: { width: number; height: number };
+  fps: number;
+  render_settings: V2FinalTimelineRenderSettings;
+  tracks: V2FinalTimelineTrack[];
+  clips: V2FinalTimelineClip[];
+}
+
+export interface V2FinalTimelineSource {
+  asset_id: string;
+  version_id: string;
+  media_type: "video" | "audio" | "image";
+  display_name: string;
+  public_url?: string | null;
+  thumbnail_url?: string | null;
+  duration_seconds?: number | null;
+  origin: "workflow" | "asset_library" | "upload" | string;
+}
+
+export interface V2FinalTimelineResponse {
+  workflow_id: string;
+  node_id: "final-composition";
+  item_id: string;
+  source: "default" | "saved" | string;
+  timeline: V2FinalCompositionTimeline;
+  available_sources: V2FinalTimelineSource[];
+  runtime?: WorkflowRuntimeV2 | null;
+}
+
+export interface V2FinalTimelineUpdateRequest {
+  expected_version: number;
+  timeline: V2FinalCompositionTimeline;
+}
+
+export interface V2FinalTimelineUpdateResponse {
+  workflow_id: string;
+  timeline: V2FinalCompositionTimeline;
+  changed_clip_ids: string[];
+  runtime?: WorkflowRuntimeV2 | null;
+}
+
+export interface V2FinalTimelineSourceImportRequest {
+  library_entity_id?: string | null;
+  library_asset_id: string;
+  expected_media_type: "video" | "audio";
+}
+
+export interface V2FinalTimelineSourceImportResponse {
+  workflow_id: string;
+  source: V2FinalTimelineSource;
+}
+
+export interface V2FinalTimelineRenderRequest {
+  timeline_id: string;
+  timeline_version: number;
+  render_settings?: V2FinalTimelineRenderSettings;
+}
+
+export interface V2FinalTimelineRenderResponse {
+  workflow_id: string;
+  render_id: string;
+  slot_id: string;
+  asset_id: string;
+  version_id: string;
+  status: "completed" | string;
+  public_url?: string | null;
+  timeline_id: string;
+  timeline_version: number;
+  runtime?: WorkflowRuntimeV2 | null;
+}
+
 export interface V2WorkflowErrorDetail {
   code?: string;
   message?: string;

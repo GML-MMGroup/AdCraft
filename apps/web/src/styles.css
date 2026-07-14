@@ -7172,6 +7172,149 @@ button.canvas-entity-media {
   height: 38px;
 }
 
+.v2-composition-editor {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  color: rgba(29, 32, 48, 0.9);
+}
+
+.v2-composition-editor-toolbar,
+.v2-composition-panel-heading,
+.v2-composition-toolbar-actions,
+.v2-composition-source-actions,
+.v2-composition-inspector-actions,
+.v2-composition-add-track,
+.v2-composition-transport {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.v2-composition-editor-toolbar {
+  justify-content: space-between;
+  padding: 9px 10px;
+  border: 1px solid rgba(104, 91, 165, 0.16);
+  border-radius: 8px;
+  background: rgba(252, 253, 255, 0.8);
+}
+
+.v2-composition-editor-toolbar > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.v2-composition-editor-toolbar strong { font-size: 13px; }
+.v2-composition-editor-toolbar span,
+.v2-composition-panel-heading span,
+.v2-composition-source em,
+.v2-composition-add-track > span { color: rgba(74, 82, 111, 0.66); font-size: 10px; font-style: normal; }
+
+.v2-composition-icon-button {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid rgba(103, 91, 162, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  color: rgba(69, 61, 117, 0.88);
+  cursor: pointer;
+}
+
+.v2-composition-icon-button svg { width: 16px; height: 16px; }
+.v2-composition-icon-button:hover:not(:disabled) { background: rgba(229, 224, 255, 0.9); border-color: rgba(103, 91, 162, 0.36); }
+.v2-composition-icon-button:disabled { opacity: 0.42; cursor: not-allowed; }
+
+.v2-composition-feedback { margin: 0; padding: 8px 9px; border-radius: 7px; background: rgba(236, 234, 255, 0.65); color: rgba(61, 56, 101, 0.84); font-size: 11px; }
+.v2-composition-feedback.is-error { background: rgba(255, 232, 236, 0.75); color: rgba(139, 51, 68, 0.94); }
+
+.v2-composition-editor-layout {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(126px, 0.55fr) minmax(360px, 2.2fr) minmax(178px, 0.75fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.v2-composition-source-panel,
+.v2-composition-inspector,
+.v2-composition-preview,
+.v2-composition-timeline {
+  min-width: 0;
+  border: 1px solid rgba(104, 91, 165, 0.15);
+  border-radius: 8px;
+  background: rgba(252, 253, 255, 0.68);
+}
+
+.v2-composition-source-panel,
+.v2-composition-inspector { display: grid; gap: 9px; padding: 9px; }
+.v2-composition-panel-heading { justify-content: space-between; }
+.v2-composition-panel-heading strong { font-size: 11px; }
+.v2-composition-source-list { display: grid; gap: 6px; max-height: 400px; overflow: auto; }
+
+.v2-composition-source {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 32px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid rgba(104, 91, 165, 0.11);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.v2-composition-source:hover { border-color: rgba(104, 91, 165, 0.35); }
+.v2-composition-source > span:nth-child(2) { display: grid; min-width: 0; gap: 1px; }
+.v2-composition-source strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.v2-composition-source > svg { width: 14px; height: 14px; color: rgba(96, 79, 167, 0.8); }
+.v2-composition-source-thumb { display: grid; width: 32px; height: 32px; place-items: center; overflow: hidden; border-radius: 5px; background: rgba(225, 224, 237, 0.76); color: rgba(87, 78, 132, 0.84); }
+.v2-composition-source-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.v2-composition-source-thumb svg { width: 15px; height: 15px; }
+
+.v2-composition-editor-main { display: grid; min-width: 0; gap: 10px; }
+.v2-composition-preview { padding: 10px; }
+.v2-composition-preview-stage { position: relative; display: grid; width: 100%; max-height: 380px; place-items: center; overflow: hidden; border-radius: 6px; background: #161824; }
+.v2-composition-preview-stage video,
+.v2-composition-preview-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.v2-composition-preview-empty { color: rgba(239, 241, 255, 0.66); font-size: 12px; text-align: center; }
+.v2-composition-preview-play { position: absolute; left: 50%; top: 50%; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255, 255, 255, 0.52); border-radius: 50%; background: rgba(20, 22, 35, 0.6); color: white; cursor: pointer; transform: translate(-50%, -50%); }
+.v2-composition-preview-play svg { width: 20px; height: 20px; margin-left: 2px; }
+.v2-composition-subtitle { position: absolute; bottom: 9%; max-width: 82%; color: #fff; font-size: clamp(12px, 2vw, 24px); font-weight: 800; line-height: 1.25; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); }
+.v2-composition-transport { padding-top: 8px; }
+.v2-composition-transport input { min-width: 0; flex: 1; accent-color: #7a6ac4; }
+.v2-composition-transport span { flex: 0 0 auto; color: rgba(71, 75, 99, 0.75); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.v2-composition-timeline { overflow: auto; padding: 8px; }
+.v2-composition-timeline-ruler { position: relative; height: 21px; margin-left: 76px; border-bottom: 1px solid rgba(104, 91, 165, 0.16); cursor: crosshair; }
+.v2-composition-timeline-ruler span { position: absolute; top: 2px; color: rgba(72, 76, 102, 0.62); font-size: 9px; transform: translateX(2px); }
+.v2-composition-track-list { display: grid; min-width: max-content; gap: 4px; padding-top: 5px; }
+.v2-composition-timeline-track { display: grid; grid-template-columns: 70px auto; min-height: 42px; }
+.v2-composition-track-label { display: grid; min-width: 0; align-content: center; gap: 3px; padding: 0 5px; color: rgba(57, 61, 84, 0.8); font-size: 10px; font-weight: 800; overflow: hidden; }.v2-composition-track-label input { width: 100%; min-width: 0; border: 0; background: transparent; color: inherit; font: inherit; font-size: 10px; font-weight: 800; outline: none; }.v2-composition-track-label input:focus { box-shadow: inset 0 -1px 0 rgba(80, 63, 160, 0.65); }.v2-composition-track-label > span { display: flex; gap: 3px; }.v2-composition-track-label button { width: 15px; height: 15px; padding: 0; border: 0; background: transparent; color: rgba(72, 62, 126, 0.75); cursor: pointer; font-size: 10px; line-height: 1; }.v2-composition-track-label button:hover { color: rgba(72, 52, 157, 1); }.v2-composition-timeline-track.is-disabled .v2-composition-track-lane { opacity: 0.48; }
+.v2-composition-track-lane { position: relative; min-height: 42px; background-color: rgba(236, 237, 248, 0.56); background-image: linear-gradient(90deg, rgba(107, 98, 165, 0.08) 1px, transparent 1px); background-size: 52px 100%; }
+.v2-composition-timeline-track.is-over .v2-composition-track-lane { box-shadow: inset 0 0 0 2px rgba(111, 92, 188, 0.55); }
+.v2-composition-playhead { position: absolute; z-index: 3; top: -5px; bottom: -5px; width: 1px; background: rgba(219, 91, 107, 0.92); pointer-events: none; }
+.v2-composition-timeline-clip { position: absolute; z-index: 2; top: 4px; bottom: 4px; display: block; overflow: hidden; border: 1px solid transparent; border-radius: 5px; color: rgba(34, 35, 50, 0.9); cursor: grab; font-size: 10px; font-weight: 800; text-align: left; }
+.v2-composition-timeline-clip span { display: block; overflow: hidden; padding: 5px 6px; text-overflow: ellipsis; white-space: nowrap; }
+.v2-composition-timeline-clip.is-video { background: rgba(154, 196, 244, 0.85); }.v2-composition-timeline-clip.is-image { background: rgba(176, 217, 180, 0.85); }.v2-composition-timeline-clip.is-audio { background: rgba(235, 187, 135, 0.88); }.v2-composition-timeline-clip.is-subtitle { background: rgba(210, 188, 234, 0.9); }
+.v2-composition-timeline-clip.is-selected { border-color: rgba(79, 57, 157, 0.94); box-shadow: 0 0 0 2px rgba(114, 89, 204, 0.28); }.v2-composition-timeline-clip.is-dragging { z-index: 5; opacity: 0.76; cursor: grabbing; }
+
+.v2-composition-inspector-fields { display: grid; gap: 8px; }.v2-composition-number-field,.v2-composition-text-field,.v2-composition-range-field { display: grid; min-width: 0; gap: 3px; }.v2-composition-number-field span,.v2-composition-text-field span,.v2-composition-range-field span { display: flex; justify-content: space-between; color: rgba(74, 82, 111, 0.68); font-size: 9px; font-weight: 800; }.v2-composition-range-field b { color: rgba(59, 52, 105, 0.86); font-variant-numeric: tabular-nums; }
+.v2-composition-number-field input,.v2-composition-text-field textarea,.v2-composition-fieldset select { width: 100%; border: 1px solid rgba(104, 91, 165, 0.16); border-radius: 5px; background: rgba(255, 255, 255, 0.8); color: rgba(38, 40, 56, 0.9); font: inherit; font-size: 10px; padding: 5px; }.v2-composition-text-field textarea { min-height: 58px; resize: vertical; }
+.v2-composition-color-field { display: flex; align-items: center; justify-content: space-between; color: rgba(74, 82, 111, 0.68); font-size: 9px; font-weight: 800; }.v2-composition-color-field input { width: 28px; height: 20px; padding: 1px; border: 1px solid rgba(104, 91, 165, 0.16); border-radius: 4px; background: rgba(255, 255, 255, 0.8); }
+.v2-composition-fieldset { display: grid; min-width: 0; gap: 7px; margin: 0; padding: 7px; border: 1px solid rgba(104, 91, 165, 0.13); border-radius: 6px; }.v2-composition-fieldset legend { padding: 0 3px; color: rgba(58, 52, 99, 0.88); font-size: 9px; font-weight: 900; }.v2-composition-checkbox { color: rgba(52, 56, 75, 0.86); font-size: 10px; }.v2-composition-checkbox input { accent-color: #7866bf; }.v2-composition-range-field input { width: 100%; accent-color: #7866bf; }.v2-composition-add-track { flex-wrap: wrap; padding-top: 4px; border-top: 1px solid rgba(104, 91, 165, 0.12); }
+.v2-composition-empty { margin: 0; color: rgba(74, 82, 111, 0.64); font-size: 11px; line-height: 1.45; }
+
+@media (max-width: 1100px) { .v2-composition-editor-layout { grid-template-columns: minmax(120px, 0.5fr) minmax(320px, 2fr); }.v2-composition-inspector { grid-column: 1 / -1; }.v2-composition-inspector-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }.v2-composition-fieldset,.v2-composition-text-field,.v2-composition-inspector-actions,.v2-composition-add-track { grid-column: 1 / -1; } }
+@media (max-width: 720px) { .v2-composition-editor-layout { grid-template-columns: 1fr; }.v2-composition-source-panel { max-height: 210px; }.v2-composition-source-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }.v2-composition-inspector-fields { grid-template-columns: 1fr; }.v2-composition-editor-toolbar { align-items: flex-start; }.v2-composition-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; } }
+
 @media (max-width: 720px) {
   .final-composition-clip,
   .final-composition-source-item {

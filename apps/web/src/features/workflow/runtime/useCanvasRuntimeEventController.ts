@@ -652,6 +652,18 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
+    const finalCompositionEvents = events.filter((event) => [
+      "final_timeline_created",
+      "final_timeline_updated",
+      "final_composition_render_started",
+      "final_composition_render_completed",
+      "final_composition_render_failed",
+    ].includes(event.event_type));
+    if (workflowId && finalCompositionEvents.length) {
+      window.dispatchEvent(new CustomEvent("v2-final-composition-events", {
+        detail: { workflowId, eventTypes: finalCompositionEvents.map((event) => event.event_type) },
+      }));
+    }
     const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));
     const latestExecutionEvent = [...events].reverse().find((event) =>
       [
