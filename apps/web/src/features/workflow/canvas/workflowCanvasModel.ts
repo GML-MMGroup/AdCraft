@@ -574,6 +574,10 @@ const STORYBOARD_UPSTREAM_LAYOUT_ORDER_BY_TYPE = new Map<string, number>([
   ["product-generation", 2],
 ]);
 
+export function layoutInitialWorkflowNodes(nodes: CanvasNode[], edges: CanvasEdge[]) {
+  return layoutNodes(nodes, edges);
+}
+
 export function layoutNodes(nodes: CanvasNode[], edges: CanvasEdge[], options: LayoutNodesOptions = {}) {
   const indegree = new Map(nodes.map((node) => [node.id, 0]));
   const children = new Map<string, string[]>();

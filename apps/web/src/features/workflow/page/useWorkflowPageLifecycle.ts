@@ -5,7 +5,7 @@ import { firstVisibleWorkflowNodeId } from "../../../workflow/visibility.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
 import { isV2WorkflowId } from "../../../workflow-v2/pageAdapter.ts";
 import {
-  layoutNodes,
+  layoutInitialWorkflowNodes,
   mapWorkflowEdges,
   mapWorkflowNodes,
   mergeNodeRuntimeData,
@@ -89,23 +89,20 @@ export function useWorkflowPageLifecycle({
       return;
     }
     const baseNodes = workflow?.nodes?.length ? workflow.nodes : demoNodes;
-    const isSameV2WorkflowRefresh = Boolean(
+    const isSameWorkflowRefresh = Boolean(
       workflow?.workflow_id &&
-      hydratedWorkflowIdRef.current === workflow.workflow_id &&
-      (isV2WorkflowId(workflow.workflow_id) || currentWorkflowIsV2()),
+      hydratedWorkflowIdRef.current === workflow.workflow_id,
     );
-    const currentFlowNodes = currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current);
+    const currentFlowNodes = isSameWorkflowRefresh ? currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current) : [];
     const baseFlowNodes = mapWorkflowNodes(baseNodes, nodeRunByType, currentFlowNodes);
     const baseEdges = workflow?.edges?.length ? mapWorkflowEdges(workflow.edges, baseFlowNodes) : mapWorkflowEdges(demoEdges, baseFlowNodes);
-    const baseLayoutNodes = isSameV2WorkflowRefresh
+    const baseLayoutNodes = isSameWorkflowRefresh
       ? baseFlowNodes
-      : layoutNodes(baseFlowNodes, baseEdges, {
-          preservePositionNodeIds: positionedNodeIds(baseNodes, currentFlowNodes),
-        });
+      : layoutInitialWorkflowNodes(baseFlowNodes, baseEdges);
     const snapshot = loadSnapshot(workflowId);
     hydratedWorkflowIdRef.current = workflow?.workflow_id ?? null;
 
-    if (!isSameV2WorkflowRefresh && snapshot?.nodes?.length && isSnapshotCompatibleWithWorkflow(snapshot, workflow)) {
+    if (!isSameWorkflowRefresh && snapshot?.nodes?.length && isSnapshotCompatibleWithWorkflow(snapshot, workflow)) {
       const isCurrentV2Workflow = isV2WorkflowId(workflow?.workflow_id) || currentWorkflowIsV2();
       if (isCurrentV2Workflow) {
         const restored = applyV2SnapshotLayoutOnly(
@@ -118,7 +115,7 @@ export function useWorkflowPageLifecycle({
         setFlowEdges(normalizeFlowEdges(snapshot.edges.length ? snapshot.edges : baseEdges, restored.flowNodes));
         setWorkflowVariables(workflow?.variables ?? []);
         setSavedAt(snapshot.savedAt);
-        setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(restored.nodes, current) : firstVisibleWorkflowNodeId(restored.nodes, "prompt"));
+        setSelectedNodeId((current) => isSameWorkflowRefresh ? preserveSelectedNodeId(restored.nodes, current) : firstVisibleWorkflowNodeId(restored.nodes, "prompt"));
         return;
       }
       const snapshotFlowNodes = normalizeFlowNodes(snapshot.flowNodes.length ? snapshot.flowNodes : mapWorkflowNodes(snapshot.nodes, nodeRunByType, []));
@@ -127,7 +124,7 @@ export function useWorkflowPageLifecycle({
       setFlowEdges(normalizeFlowEdges(snapshot.edges, snapshotFlowNodes));
       setWorkflowVariables(workflow?.variables ?? []);
       setSavedAt(snapshot.savedAt);
-      setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(snapshot.nodes, current) : firstVisibleWorkflowNodeId(snapshot.nodes, "prompt"));
+      setSelectedNodeId((current) => isSameWorkflowRefresh ? preserveSelectedNodeId(snapshot.nodes, current) : firstVisibleWorkflowNodeId(snapshot.nodes, "prompt"));
       return;
     }
     if (snapshot?.nodes?.length && workflow?.workflow_id) clearSnapshot(workflow.workflow_id);
@@ -136,7 +133,7 @@ export function useWorkflowPageLifecycle({
     setFlowNodes(baseLayoutNodes);
     setFlowEdges(baseEdges);
     setWorkflowVariables(workflow?.variables ?? []);
-    setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(baseNodes, current) : firstVisibleWorkflowNodeId(baseNodes, "prompt"));
+    setSelectedNodeId((current) => isSameWorkflowRefresh ? preserveSelectedNodeId(baseNodes, current) : firstVisibleWorkflowNodeId(baseNodes, "prompt"));
   }, [
     activeProjectId,
     currentWorkflowIsV2,
@@ -185,17 +182,6 @@ export function useWorkflowPageLifecycle({
 function currentFlowNodesForWorkflow(nodes: WorkflowNode[], flowNodes: CanvasNode[]) {
   const nodeIds = new Set(nodes.map((node) => node.id));
   return flowNodes.filter((node) => nodeIds.has(node.id) && hasCanvasPosition(node.position));
-}
-
-function positionedNodeIds(nodes: WorkflowNode[], flowNodes: CanvasNode[]) {
-  const ids = new Set<string>();
-  nodes.forEach((node) => {
-    if (hasCanvasPosition(node.position)) ids.add(node.id);
-  });
-  flowNodes.forEach((node) => {
-    if (hasCanvasPosition(node.position)) ids.add(node.id);
-  });
-  return ids;
 }
 
 function hasCanvasPosition(position?: CanvasPosition) {

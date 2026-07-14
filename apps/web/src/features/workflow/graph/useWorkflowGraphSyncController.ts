@@ -159,23 +159,23 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     const current = argsRef.current;
     workflowApplicationRevisionGuard.appliedWorkflow(nextWorkflow.workflow_id);
     const graph = workflowV2ToWorkflowGraph(nextWorkflow);
+    const preserveCanvasLayout = Boolean(options.preserveViewport || current.workflow?.workflow_id === nextWorkflow.workflow_id);
     current.activeWorkflowIdRef.current = nextWorkflow.workflow_id;
-    clearSnapshot(nextWorkflow.workflow_id);
     current.setWorkflow(graph);
     syncWorkflowAdRequest(graph);
     current.setWorkflowVariables(graph.variables ?? []);
-    const nextFlowNodes = mapWorkflowNodes(graph.nodes, current.nodeRunByType, options.preserveViewport ? current.flowNodes : []);
+    const nextFlowNodes = mapWorkflowNodes(graph.nodes, current.nodeRunByType, preserveCanvasLayout ? current.flowNodes : []);
     const nextFlowEdges = mapWorkflowEdges(graph.edges, nextFlowNodes);
-    const nextLayoutNodes = options.preserveViewport ? nextFlowNodes : layoutNodes(nextFlowNodes, nextFlowEdges);
+    const nextLayoutNodes = preserveCanvasLayout ? nextFlowNodes : layoutNodes(nextFlowNodes, nextFlowEdges);
     current.setCanvasNodes(syncWorkflowNodePositions(graph.nodes, nextLayoutNodes));
     current.setFlowNodes(nextLayoutNodes);
     current.setFlowEdges(nextFlowEdges);
     current.setSelectedNodeId((selectedNodeId) =>
-      options.preserveViewport && selectedNodeId && graph.nodes.some((node) => node.id === selectedNodeId && isUserVisibleWorkflowNode(node))
+      preserveCanvasLayout && selectedNodeId && graph.nodes.some((node) => node.id === selectedNodeId && isUserVisibleWorkflowNode(node))
         ? selectedNodeId
         : firstVisibleWorkflowNodeId(graph.nodes),
     );
-    if (!options.preserveViewport) {
+    if (!preserveCanvasLayout) {
       current.setDetailsOpen(true);
     }
     const refreshAssetsReason = options.refreshAssetsReason ?? "apply-workflow";
@@ -183,7 +183,7 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
       await refreshV2AssetsAndRetryMissing(nextWorkflow.workflow_id, refreshAssetsReason, nextWorkflow);
     }
     if (options.refreshRuntime !== false) await current.syncV2RuntimeSnapshot(nextWorkflow.workflow_id);
-    if (!options.preserveViewport) {
+    if (!preserveCanvasLayout) {
       window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
     }
   }

@@ -641,8 +641,10 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     const current = argsRef.current;
     current.captureCanvasHistory();
     const ordered = layoutNodes(current.flowNodes, current.flowEdges);
+    const positionedCanvasNodes = syncWorkflowNodePositions(current.canvasNodes, ordered);
     current.setFlowNodes(ordered);
-    current.setCanvasNodes((nodes) => syncWorkflowNodePositions(nodes, ordered));
+    current.setCanvasNodes(positionedCanvasNodes);
+    current.persistNodePositionSnapshot(positionedCanvasNodes, { flowNodes: ordered });
     current.setStatus("Canvas arranged by DAG");
     window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
   }
