@@ -99,7 +99,8 @@ export function useWorkflowPageLifecycle({
       setStatus("Restoring current project...");
       return;
     }
-    const baseNodes = workflow?.nodes?.length ? workflow.nodes : demoNodes;
+    const shouldUseDemoGraph = Boolean(!activeProjectId && !workflow);
+    const baseNodes = workflow?.nodes?.length ? workflow.nodes : shouldUseDemoGraph ? demoNodes : [];
     const isSameV2WorkflowRefresh = Boolean(
       workflow?.workflow_id &&
       hydratedWorkflowIdRef.current === workflow.workflow_id &&
@@ -108,7 +109,9 @@ export function useWorkflowPageLifecycle({
     const canReuseCurrentFlowNodes = hydratedWorkflowIdRef.current === workflow?.workflow_id;
     const currentFlowNodes = canReuseCurrentFlowNodes ? currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current) : [];
     const baseFlowNodes = mapWorkflowNodes(baseNodes, nodeRunByType, currentFlowNodes);
-    const baseEdges = workflow?.edges?.length ? mapWorkflowEdges(workflow.edges, baseFlowNodes) : mapWorkflowEdges(demoEdges, baseFlowNodes);
+    const baseEdges = workflow?.edges?.length
+      ? mapWorkflowEdges(workflow.edges, baseFlowNodes)
+      : shouldUseDemoGraph ? mapWorkflowEdges(demoEdges, baseFlowNodes) : [];
     const baseLayoutNodes = isSameV2WorkflowRefresh
       ? baseFlowNodes
       : layoutNodes(baseFlowNodes, baseEdges, {

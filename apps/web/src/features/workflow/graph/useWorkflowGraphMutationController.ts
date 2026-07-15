@@ -42,7 +42,6 @@ import {
   buildOptimizeOnlyNodeRunRequest,
 } from "../../../workflow/nodeRunContext.ts";
 import {
-  firstVisibleWorkflowNodeId,
   isUserVisibleWorkflowNode,
 } from "../../../workflow/visibility.ts";
 import {
@@ -183,15 +182,11 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.persistLocalSnapshot(undefined, { immediate: true });
     current.activeWorkflowIdRef.current = null;
     current.startNewProject();
-    const emptyRunMap = new Map<string, NodeRunResult>();
-    const nextFlowNodes = mapWorkflowNodes(current.demoNodes, emptyRunMap, []);
-    const nextFlowEdges = mapWorkflowEdges(current.demoEdges, nextFlowNodes);
-    const nextLayoutNodes = layoutNodes(nextFlowNodes, nextFlowEdges);
-    current.setCanvasNodes(syncWorkflowNodePositions(current.demoNodes, nextLayoutNodes));
-    current.setFlowNodes(nextLayoutNodes);
-    current.setFlowEdges(nextFlowEdges);
+    current.setCanvasNodes([]);
+    current.setFlowNodes([]);
+    current.setFlowEdges([]);
     current.setWorkflowVariables([]);
-    current.setSelectedNodeId(firstVisibleWorkflowNodeId(current.demoNodes, "prompt"));
+    current.setSelectedNodeId("");
     current.setSelectedNodeRun(null);
     current.setSelectedResolvedInputs(null);
     current.setMediaStatus(null);

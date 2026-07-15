@@ -172,9 +172,11 @@ export function useWorkflowPageModel() {
     setStaleReason,
     setWorkflowVariables,
   } = workflowRuntime.actions;
+  const shouldUseDemoCanvasNodes = !activeProjectId && !workflow;
+  const initialCanvasNodes = shouldUseDemoCanvasNodes ? demoNodes : workflow?.nodes ?? [];
   const workflowCanvas = useWorkflowCanvasController({
     workflow,
-    initialNodes: demoNodes,
+    initialNodes: initialCanvasNodes,
   });
   const {
     selectedNodeId,
