@@ -115,7 +115,7 @@ export function useWorkflowPageLifecycle({
       ? baseFlowNodes
       : layoutNodes(baseFlowNodes, baseEdges, {
           preservePositionNodeIds: positionedNodeIds(currentFlowNodes),
-        });
+          });
     const snapshot = loadSnapshot(workflowId);
     hydratedWorkflowIdRef.current = workflow?.workflow_id ?? null;
 
