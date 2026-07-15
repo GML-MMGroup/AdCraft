@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AssetVersionV2, SlotFunctionalCardViewModel, WorkflowItemV2 } from "../../../../types-v2.ts";
 import { formatV2AssetLocator } from "../../../../workflow-v2/assetLocators.ts";
+import { usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
 import { SlotFunctionalCard } from "../slots/SlotFunctionalCard.tsx";
 import type { SlotMicroEditDraft } from "../slots/useSlotMicroEdit.ts";
@@ -72,7 +73,7 @@ export function MediaItemFunctionalCard({
           <div className="v2-product-reference-list" aria-label={`${item.display_name || item.item_id} uploaded product references`}>
             {productReferences.map((asset) => (
               <span className="product-reference-chip" key={asset.version_id || asset.asset_id} data-asset-id={asset.asset_id}>
-                {asset.public_url && asset.media_type === "image" ? <img src={asset.public_url} alt="Uploaded product reference" loading="lazy" decoding="async" /> : null}
+                {asset.media_type === "image" && usableAssetVersionUrl(asset) ? <img src={usableAssetVersionUrl(asset)} alt="Uploaded product reference" loading="lazy" decoding="async" /> : null}
                 <em>{asset.semantic_type || "product_reference"}</em>
                 <button
                   type="button"

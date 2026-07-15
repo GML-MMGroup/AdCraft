@@ -79,6 +79,7 @@ import {
 } from "./v2Normalizers.ts";
 
 const API_V2_BASE = "/api/v2";
+const inFlightMetadataReads = new Map<string, Promise<unknown>>();
 
 export class V2ApiError extends Error {
   readonly status: number;
@@ -138,13 +139,15 @@ export function isNetworkError(value: unknown): value is V2NetworkError {
   return value instanceof V2NetworkError;
 }
 
-async function requestV2<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<T> {
+async function requestV2Payload(path: string, options: RequestInit = {}): Promise<unknown> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+  const method = (options.method ?? "GET").toUpperCase();
   let response: Response;
   try {
     response = await fetch(`${API_V2_BASE}${path}`, {
-      headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
       ...options,
+      cache: method === "GET" ? "no-store" : options.cache,
+      headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
     });
   } catch (error) {
     throw new V2NetworkError(error);
@@ -178,6 +181,33 @@ async function requestV2<T>(path: string, options: RequestInit = {}, normalize?:
       payload,
     });
   }
+  return payload;
+}
+
+function metadataReadKey(path: string, options: RequestInit) {
+  const headers = new Headers(options.headers);
+  const headerKey = Array.from(headers.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${value}`)
+    .join("|");
+  return `${path}|${headerKey}`;
+}
+
+async function requestV2<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const canDedupe = method === "GET" && !options.signal;
+  const key = canDedupe ? metadataReadKey(path, options) : null;
+  let payloadRequest = key ? inFlightMetadataReads.get(key) : undefined;
+  if (!payloadRequest) {
+    payloadRequest = requestV2Payload(path, options);
+    if (key) {
+      inFlightMetadataReads.set(key, payloadRequest);
+      void payloadRequest.finally(() => {
+        if (inFlightMetadataReads.get(key) === payloadRequest) inFlightMetadataReads.delete(key);
+      }).catch(() => {});
+    }
+  }
+  const payload = await payloadRequest;
   return normalize ? normalize(payload) : (payload as T);
 }
 

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
+import { DeferredVideo } from "../../../../components/media/DeferredVideo.tsx";
+import { versionedMediaPath } from "../../../../workflow/mediaPreview.ts";
 import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
@@ -77,7 +79,7 @@ function V2AssetVersionPreview({ asset, label }: { asset?: AssetVersionV2; label
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Right-click copies the V2 asset locator; normal image click behavior is unchanged.
     return <img src={url} alt={label} loading="lazy" decoding="async" onContextMenu={onContextMenu} />;
   }
-  if (asset.media_type === "video") return <video src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
+  if (asset.media_type === "video") return <DeferredVideo src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
   if (asset.media_type === "audio") return <audio src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
   return <span>{url}</span>;
 }
@@ -418,7 +420,7 @@ function slotReferencesAsAttachments(
       sourceVersionId: asset?.version_id ?? null,
       displayName: asset?.display_name || assetId,
       mediaType: referenceMediaType(asset?.media_type),
-      previewUrl: asset?.preview_url ?? asset?.public_url ?? null,
+      previewUrl: asset ? versionedMediaPath(asset.preview_url ?? asset.public_url, asset) || null : null,
       semanticType: slot.slot_type,
       source: "workflow_asset",
     };

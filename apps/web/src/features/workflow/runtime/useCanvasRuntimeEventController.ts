@@ -89,7 +89,10 @@ export type CanvasRuntimeEventControllerArgs = {
   onRefreshSelectedResolvedInputs: (nodeId: string, options?: { force?: boolean }) => Promise<unknown>;
   onRefreshWorkflowGraph: (workflowId: string) => Promise<unknown>;
   onRefreshMediaStatus: (workflowId: string) => Promise<MediaStatus | null>;
-  onRefreshV2WorkflowGraph: (workflowId: string) => Promise<WorkflowV2 | null>;
+  onRefreshV2WorkflowGraph: (
+    workflowId: string,
+    options?: { refreshRuntime?: boolean; refreshAssets?: boolean },
+  ) => Promise<WorkflowV2 | null>;
   onRefreshV2AssetsAndRetryMissing: (workflowId: string, reason: string, workflow?: WorkflowV2 | null) => Promise<unknown>;
   onLoadV2SlotVersions: (slotId: string) => Promise<unknown> | void;
   onLoadLocalAssetHistory: (workflowId: string, nodeId: string, asset: UploadedAsset) => Promise<unknown>;
@@ -709,7 +712,9 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
     if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
       void (async () => {
         if (shouldRefreshRuntime || shouldRefreshAssets) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
-        const refreshedWorkflow = shouldRefreshWorkflow ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId) : null;
+        const refreshedWorkflow = shouldRefreshWorkflow
+          ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId, { refreshRuntime: false })
+          : null;
         if (shouldRefreshAssets) {
           await argsRef.current.onRefreshV2AssetsAndRetryMissing(workflowId, "runtime-event", refreshedWorkflow ?? argsRef.current.getWorkflowV2());
         }

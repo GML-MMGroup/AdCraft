@@ -10,6 +10,7 @@ import type {
   WorkflowSlotV2,
   WorkflowV2,
 } from "../types-v2.ts";
+import { versionedMediaPath } from "../workflow/mediaPreview.ts";
 import { effectiveSlotPrompt } from "../types-v2.ts";
 import { chooseMoreCompleteV2Asset } from "./assets.ts";
 
@@ -167,7 +168,7 @@ export function isIdOnlyAssetVersion(asset?: AssetVersionV2 | null) {
 
 export function usableAssetVersionUrl(asset?: AssetVersionV2 | null) {
   if (!asset || isIdOnlyAssetVersion(asset)) return "";
-  return asset.public_url || asset.proxy_path || asset.thumbnail_path || asset.file_path || "";
+  return versionedMediaPath(asset.public_url || asset.proxy_path || asset.thumbnail_path || asset.file_path, asset);
 }
 
 export function productReferenceAssetsForItem(

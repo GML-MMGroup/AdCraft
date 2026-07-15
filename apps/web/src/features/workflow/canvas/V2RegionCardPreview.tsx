@@ -4,6 +4,8 @@ import type { AssetVersionV2, WorkflowItemV2, WorkflowRuntimeV2, WorkflowSlotV2 
 import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { isCompleteV2Asset } from "../../../workflow-v2/assets.ts";
 import { usableAssetVersionUrl } from "../../../workflow-v2/selectors.ts";
+import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
+import { DeferredVideo } from "../../../components/media/DeferredVideo.tsx";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
 import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
 import { storyboardVideoPreview } from "./storyboardVideoPreviewModel.ts";
@@ -478,7 +480,7 @@ function SlotAssetPreview({ slot, asset }: { slot: WorkflowSlotV2; asset?: Asset
   const url = usableAssetVersionUrl(asset);
   if (!url) return <span className="v2-region-slot-syncing">Asset metadata syncing</span>;
   if (asset.media_type === "image") return <img src={url} alt={slot.slot_type} loading="lazy" decoding="async" />;
-  if (asset.media_type === "video") return <video src={url} poster={asset.thumbnail_path ?? undefined} preload="metadata" muted playsInline />;
+  if (asset.media_type === "video") return <DeferredVideo src={url} poster={versionedMediaPath(asset.thumbnail_path, asset) || undefined} preload="metadata" muted playsInline />;
   if (asset.media_type === "audio") return <span className="v2-region-slot-empty">Audio</span>;
   return <span className="v2-region-slot-empty">{asset.media_type}</span>;
 }
