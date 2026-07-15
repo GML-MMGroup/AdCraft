@@ -425,13 +425,15 @@ export function PromptComposer({
   );
 }
 
-export function LocalPromptComposer(props: Omit<PromptComposerProps, "compact" | "className" | "clearOnGenerate">) {
+type LocalPromptComposerProps = Omit<PromptComposerProps, "compact" | "className">
+
+export function LocalPromptComposer({ clearOnGenerate = true, ...props }: LocalPromptComposerProps) {
   return (
     <PromptComposer
       {...props}
       compact
       className="local-prompt-composer"
-      clearOnGenerate={false}
+      clearOnGenerate={clearOnGenerate}
     />
   );
 }
