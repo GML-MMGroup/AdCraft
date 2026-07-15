@@ -103,8 +103,7 @@ export function useWorkflowPageLifecycle({
     const baseNodes = workflow?.nodes?.length ? workflow.nodes : shouldUseDemoGraph ? demoNodes : [];
     const isSameV2WorkflowRefresh = Boolean(
       workflow?.workflow_id &&
-      hydratedWorkflowIdRef.current === workflow.workflow_id &&
-      (isV2WorkflowId(workflow.workflow_id) || currentWorkflowIsV2()),
+      hydratedWorkflowIdRef.current === workflow.workflow_id,
     );
     const canReuseCurrentFlowNodes = hydratedWorkflowIdRef.current === workflow?.workflow_id;
     const currentFlowNodes = canReuseCurrentFlowNodes ? currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current) : [];
