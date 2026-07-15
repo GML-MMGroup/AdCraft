@@ -4,6 +4,7 @@ import { ASSET_LIBRARY_UPLOAD_EVENT, assetLibraryUploadOptionsForKind, isSupport
 import { mediaAssetOriginalPath, mediaAssetPreviewPath } from "../workflow/mediaPreview";
 import { formatV2AssetLocator } from "../workflow-v2/assetLocators.ts";
 import { PageHeader } from "../components/Layout";
+import { DeferredVideo } from "../components/media/DeferredVideo";
 import type {
   AssetLibraryEntityDetail,
   AssetLibraryEntitySummary,
@@ -576,7 +577,7 @@ function AssetLibraryMediaTile({ asset }: { asset: UploadedAsset }) {
   return (
     <figure className={`asset-library-media-tile is-${asset.asset_type}`}>
       {asset.asset_type === "video" ? (
-        <video src={mediaUrl(originalPath)} poster={previewPath ? mediaUrl(previewPath) : undefined} controls preload="metadata" />
+        <DeferredVideo src={mediaUrl(originalPath)} poster={previewPath ? mediaUrl(previewPath) : undefined} controls preload="metadata" />
       ) : asset.asset_type === "audio" ? (
         <audio src={mediaUrl(originalPath)} controls preload="metadata" />
       ) : previewPath ? (

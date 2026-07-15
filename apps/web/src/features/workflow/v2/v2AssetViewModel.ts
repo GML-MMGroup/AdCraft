@@ -1,5 +1,6 @@
 import type { AssetVersionV2, WorkflowAssetRelationV2, WorkflowV2 } from "../../../types-v2.ts";
 import type { QualityReviewStatus, UploadedAsset } from "../../../types.ts";
+import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
 
 export function mergeV2ReferenceArtifacts(workflow: WorkflowV2, assets: AssetVersionV2[], relations: WorkflowAssetRelationV2[]): WorkflowV2 {
   const assetKey = (asset: AssetVersionV2) => `${asset.asset_id}:${asset.version_id}`;
@@ -27,7 +28,8 @@ export function relationForSourceAsset(relations: WorkflowAssetRelationV2[], sou
 }
 
 export function assetPreviewUrl(asset?: AssetVersionV2 | null) {
-  return asset?.public_url || asset?.thumbnail_path || asset?.proxy_path || null;
+  if (!asset) return null;
+  return versionedMediaPath(asset.public_url || asset.thumbnail_path || asset.proxy_path, asset) || null;
 }
 
 export function dedupeV2AssetVersions(assets: AssetVersionV2[]) {

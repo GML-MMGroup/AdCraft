@@ -1,7 +1,26 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import type { IncomingMessage } from "node:http";
+import { API_METADATA_CACHE_CONTROL, mediaCacheControl } from "./mediaCachePolicy";
 
 const FRONTEND_PORT = 5189;
+
+type ProxyWithResponseEvents = {
+  on(event: "proxyRes", listener: (proxyResponse: IncomingMessage, request: IncomingMessage) => void): void;
+};
+
+function configureApiMetadataProxy(proxy: ProxyWithResponseEvents) {
+  proxy.on("proxyRes", (proxyResponse) => {
+    proxyResponse.headers["cache-control"] = API_METADATA_CACHE_CONTROL;
+    proxyResponse.headers.pragma = "no-cache";
+  });
+}
+
+function configureMediaProxy(proxy: ProxyWithResponseEvents) {
+  proxy.on("proxyRes", (proxyResponse, request) => {
+    proxyResponse.headers["cache-control"] = mediaCacheControl(request.url ?? "");
+  });
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -65,10 +84,12 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
+        configure: configureApiMetadataProxy,
       },
       "/media": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
+        configure: configureMediaProxy,
       },
     },
   },
