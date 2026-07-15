@@ -33,6 +33,12 @@ export default defineConfig({
           ) {
             return "app-core";
           }
+          if (
+            id.includes("/src/features/workflow/v2/screenplay/V2Screenplay") ||
+            id.includes("/src/features/workflow/v2/screenplay/screenplayUiHelpers")
+          ) {
+            return "screenplay-editor";
+          }
           if (id.includes("/src/features/workflow/") || id.includes("/src/workflow-v2/")) {
             return "workflow";
           }

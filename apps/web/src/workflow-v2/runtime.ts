@@ -9,6 +9,17 @@ import type {
 export type V2RuntimeConnectionState = "connecting" | "connected" | "reconnecting" | "degraded_polling" | "disconnected";
 export type V2ConnectionState = V2RuntimeConnectionState;
 
+export const V2_SYNCHRONIZATION_EVENT_TYPES = new Set([
+  "script_version_created",
+  "script_selected_version_updated",
+  "workflow_structure_updated",
+  "linked_context_updated",
+]);
+
+export function isV2SynchronizationEvent(eventType: string): boolean {
+  return V2_SYNCHRONIZATION_EVENT_TYPES.has(eventType);
+}
+
 export interface WorkflowRuntimeStoreV2 {
   connectionState: V2RuntimeConnectionState;
   lastEventSeq: number;
@@ -240,6 +251,17 @@ export function applyWorkflowRuntimeEventV2(current: WorkflowRuntimeStoreV2, eve
     refreshSlotVersions: false,
     refreshResolvedInputs: false,
   };
+  if (isV2SynchronizationEvent(event.event_type)) {
+    const refresh = refreshHints(event);
+    return {
+      ...next,
+      refreshWorkflow:
+        event.event_type === "script_selected_version_updated" ||
+        event.event_type === "workflow_structure_updated" ||
+        (event.event_type === "linked_context_updated" &&
+          refresh.some((hint) => hint === "workflow" || hint === "slot_prompts" || hint === "references")),
+    };
+  }
   const slotId = event.slot_id;
   const itemId = event.item_id ?? (slotId ? next.slotItemIds[slotId] : undefined);
   const nodeId = event.node_id ?? (slotId ? next.slotNodeIds[slotId] : undefined);
@@ -467,7 +489,6 @@ export function applyWorkflowRuntimeEventV2(current: WorkflowRuntimeStoreV2, eve
     event.event_type === "prompt_updated" ||
     event.event_type === "item_prompt_updated" ||
     event.event_type === "slot_prompt_updated" ||
-    event.event_type === "slot_marked_stale" ||
     event.event_type === "reference_attached" ||
     event.event_type === "reference_removed" ||
     event.event_type === "slot_working_version_discarded" ||
@@ -475,10 +496,6 @@ export function applyWorkflowRuntimeEventV2(current: WorkflowRuntimeStoreV2, eve
     event.event_type === "asset_history_updated" ||
     event.event_type === "workflow_updated" ||
     event.event_type === "resolved_inputs_updated" ||
-    event.event_type === "slot_outdated_hint_added" ||
-    event.event_type === "item_outdated_hint_added" ||
-    event.event_type === "node_outdated_hint_added" ||
-    event.event_type === "slot_outdated_hint_cleared" ||
     event.event_type === "storyboard_summary_refined"
   ) {
     const refresh = refreshHints(event);

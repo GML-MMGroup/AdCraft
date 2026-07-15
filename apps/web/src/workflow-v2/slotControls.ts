@@ -23,7 +23,7 @@ export function buildSlotCandidateRegenerateRequest(
   sourceAction: V2SlotCandidateRegenerateRequest["source_action"] = "slot_micro_prompt_send",
 ): V2SlotCandidateRegenerateRequest {
   return {
-    slot_prompt: stripInlineBase64(draft.prompt || slot.slot_prompt || ""),
+    slot_prompt: stripInlineBase64(draft.prompt),
     negative_prompt: stripInlineBase64(draft.negative_prompt ?? slot.negative_prompt ?? ""),
     reference_asset_ids: uniqueStrings([...(draft.reference_asset_ids ?? []), ...(draft.uploaded_asset_ids ?? [])]),
     library_entity_ids: uniqueStrings(draft.library_entity_ids ?? []),

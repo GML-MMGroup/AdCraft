@@ -42,13 +42,13 @@ import {
   buildOptimizeOnlyNodeRunRequest,
 } from "../../../workflow/nodeRunContext.ts";
 import {
-  firstVisibleWorkflowNodeId,
   isUserVisibleWorkflowNode,
 } from "../../../workflow/visibility.ts";
 import {
   getWorkflowNodeType,
 } from "../canvas/workflowNodeModel.ts";
 import {
+  DEFAULT_LAYOUT_VIEWPORT_PADDING,
   edgeStyle,
   getConnectionDataType,
   getConnectionLabel,
@@ -77,7 +77,6 @@ import {
 } from "../runtime/resolvedInputsViewModel.ts";
 import { promptFromNodePatch } from "../v2/v2PromptModel.ts";
 import { v2RegionItemsForNode } from "../v2/v2RegionNode.ts";
-import { workflowV2ToWorkflowGraph } from "../../../workflow-v2/pageAdapter.ts";
 import { splitAssetLibraryTags } from "../assets/assetLibraryReferenceModel.ts";
 import type { SaveCanvasOptions, WorkflowGraphMutationControllerArgs } from "./workflowGraphMutationControllerTypes.ts";
 
@@ -183,15 +182,11 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.persistLocalSnapshot(undefined, { immediate: true });
     current.activeWorkflowIdRef.current = null;
     current.startNewProject();
-    const emptyRunMap = new Map<string, NodeRunResult>();
-    const nextFlowNodes = mapWorkflowNodes(current.demoNodes, emptyRunMap, []);
-    const nextFlowEdges = mapWorkflowEdges(current.demoEdges, nextFlowNodes);
-    const nextLayoutNodes = layoutNodes(nextFlowNodes, nextFlowEdges);
-    current.setCanvasNodes(syncWorkflowNodePositions(current.demoNodes, nextLayoutNodes));
-    current.setFlowNodes(nextLayoutNodes);
-    current.setFlowEdges(nextFlowEdges);
+    current.setCanvasNodes([]);
+    current.setFlowNodes([]);
+    current.setFlowEdges([]);
     current.setWorkflowVariables([]);
-    current.setSelectedNodeId(firstVisibleWorkflowNodeId(current.demoNodes, "prompt"));
+    current.setSelectedNodeId("");
     current.setSelectedNodeRun(null);
     current.setSelectedResolvedInputs(null);
     current.setMediaStatus(null);
@@ -209,7 +204,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.setMediaLightbox(null);
     current.clearCanvasHistory();
     current.setStatus("New project ready");
-    window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
 
   async function flushNodePatch(nodeId: string) {
@@ -266,7 +261,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
         try {
           const nextWorkflow = await v2Api.updateItemPrompt(current.workflow.workflow_id, item.item_id, { item_prompt: prompt });
           if (!shouldApplyWorkflowScopedResult(current.workflow.workflow_id, current.activeWorkflowIdRef.current)) return;
-          current.setWorkflow(workflowV2ToWorkflowGraph(nextWorkflow));
+          await current.refreshV2WorkflowGraph(nextWorkflow.workflow_id);
           current.setStatus(`${item.display_name || current.selectedPlanNode.title} prompt saved`);
         } catch (error) {
           current.setStatus(error instanceof Error ? error.message : "V2 item prompt update failed");
@@ -645,7 +640,7 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     current.setFlowNodes(ordered);
     current.setCanvasNodes((nodes) => syncWorkflowNodePositions(nodes, ordered));
     current.setStatus("Canvas arranged by DAG");
-    window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
 
   function persistNodePosition(node: CanvasNode) {

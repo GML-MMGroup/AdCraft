@@ -554,9 +554,10 @@ export type LayoutNodesOptions = {
 
 const LAYOUT_ORIGIN_X = 420;
 const LAYOUT_ORIGIN_Y = 90;
-const LAYOUT_COLUMN_GAP = 108;
-const LAYOUT_ROW_GAP = 64;
+const LAYOUT_COLUMN_GAP = 180;
+const LAYOUT_ROW_GAP = 72;
 const DEFAULT_LAYOUT_NODE_DIMENSIONS = { width: 252, height: 184 };
+export const DEFAULT_LAYOUT_VIEWPORT_PADDING = 0.18;
 const STORYBOARD_UPSTREAM_LAYOUT_ORDER_BY_HANDLE = new Map<string, number>([
   ["prompt", -2],
   ["script", -1],
@@ -572,6 +573,7 @@ const STORYBOARD_UPSTREAM_LAYOUT_ORDER_BY_TYPE = new Map<string, number>([
   ["character-generation", 0],
   ["scene-generation", 1],
   ["product-generation", 2],
+  ["bgm", 3],
 ]);
 
 export function layoutNodes(nodes: CanvasNode[], edges: CanvasEdge[], options: LayoutNodesOptions = {}) {
@@ -648,7 +650,62 @@ export function layoutNodes(nodes: CanvasNode[], edges: CanvasEdge[], options: L
       });
     });
 
+  alignStandardWorkflowColumns(positioned, nodes, edges, dimensionsById, levels, levelsByNumber);
+
   return nodes.map((node) => options.preservePositionNodeIds?.has(node.id) ? node : positioned.get(node.id) ?? node);
+}
+
+function alignStandardWorkflowColumns(
+  positioned: Map<string, CanvasNode>,
+  nodes: CanvasNode[],
+  edges: CanvasEdge[],
+  dimensionsById: Map<string, { width: number; height: number }>,
+  levels: Map<string, number>,
+  levelsByNumber: Map<number, CanvasNode[]>,
+) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const parentIdsByNodeId = new Map<string, string[]>();
+  const childIdsByNodeId = new Map<string, string[]>();
+  for (const edge of edges) {
+    parentIdsByNodeId.set(edge.target, [...(parentIdsByNodeId.get(edge.target) ?? []), edge.source]);
+    childIdsByNodeId.set(edge.source, [...(childIdsByNodeId.get(edge.source) ?? []), edge.target]);
+  }
+
+  for (const node of nodes) {
+    const columnNodes = levelsByNumber.get(levels.get(node.id) ?? -1) ?? [];
+    if (columnNodes.length !== 1) continue;
+
+    const nodeType = getCanvasNodeType(node);
+    const relatedIds = nodeType === "script"
+      ? childIdsByNodeId.get(node.id) ?? []
+      : nodeType === "storyboard"
+        ? (parentIdsByNodeId.get(node.id) ?? []).filter((id) => isStoryboardVisualInput(nodeById.get(id)))
+        : nodeType === "final-composition"
+          ? parentIdsByNodeId.get(node.id) ?? []
+          : [];
+    const relatedNodes = relatedIds
+      .map((id) => positioned.get(id))
+      .filter((item): item is CanvasNode => Boolean(item));
+    if (!relatedNodes.length) continue;
+
+    const top = Math.min(...relatedNodes.map((item) => item.position.y));
+    const bottom = Math.max(...relatedNodes.map((item) => item.position.y + (dimensionsById.get(item.id)?.height ?? DEFAULT_LAYOUT_NODE_DIMENSIONS.height)));
+    const current = positioned.get(node.id);
+    if (!current) continue;
+    const height = dimensionsById.get(node.id)?.height ?? DEFAULT_LAYOUT_NODE_DIMENSIONS.height;
+    positioned.set(node.id, {
+      ...current,
+      position: {
+        ...current.position,
+        y: top + (bottom - top - height) / 2,
+      },
+    });
+  }
+}
+
+function isStoryboardVisualInput(node: CanvasNode | undefined) {
+  const nodeType = getCanvasNodeType(node);
+  return nodeType === "character-generation" || nodeType === "scene-generation" || nodeType === "product-generation";
 }
 
 function storyboardUpstreamLayoutOrderById(nodes: CanvasNode[], edges: CanvasEdge[]) {
@@ -682,10 +739,33 @@ function layoutNodeDimensions(node: CanvasNode) {
   };
 }
 
+export function hasCanvasNodeOverlap(nodes: CanvasNode[]) {
+  for (let index = 0; index < nodes.length; index += 1) {
+    const current = nodes[index];
+    if (current.hidden) continue;
+    const currentDimensions = layoutNodeDimensions(current);
+    const currentRight = current.position.x + currentDimensions.width;
+    const currentBottom = current.position.y + currentDimensions.height;
+    for (let otherIndex = index + 1; otherIndex < nodes.length; otherIndex += 1) {
+      const other = nodes[otherIndex];
+      if (other.hidden) continue;
+      const otherDimensions = layoutNodeDimensions(other);
+      const overlaps =
+        current.position.x < other.position.x + otherDimensions.width &&
+        currentRight > other.position.x &&
+        current.position.y < other.position.y + otherDimensions.height &&
+        currentBottom > other.position.y;
+      if (overlaps) return true;
+    }
+  }
+  return false;
+}
+
 function fallbackLayoutNodeDimensions(node: CanvasNode) {
   const kind = `${node.data.kind} ${node.data.nodeType} ${node.data.category}`.toLowerCase();
-  if (node.data.isV2Region && kind.includes("script")) return { width: 360, height: 560 };
-  if (node.data.isV2Region) return { width: 760, height: 560 };
+  if (node.data.isV2Region && kind.includes("script")) return { width: 360, height: 600 };
+  if (node.data.isV2Region && (kind.includes("final") || kind.includes("composition"))) return { width: 760, height: 520 };
+  if (node.data.isV2Region) return { width: 980, height: 640 };
   if (node.data.family === "Image" || node.data.family === "Video" || node.data.family === "Preview") return { width: 252, height: 238 };
   if (node.data.family === "Comment") return { width: 252, height: 124 };
   return DEFAULT_LAYOUT_NODE_DIMENSIONS;

@@ -30,6 +30,7 @@ import {
 import { localRevisionStateKey, pendingVisibleRevisionCandidates } from "../../../workflow/localRevision.ts";
 import { shouldApplyWorkflowScopedResult } from "../../../workflow/sessionGuards.ts";
 import { isV2WorkflowId } from "../../../workflow-v2/pageAdapter.ts";
+import { isV2SynchronizationEvent } from "../../../workflow-v2/runtime.ts";
 import { frontDeskConversationId } from "../copilot/agentConversationPanelModel.ts";
 import { assetLibraryRefreshDetailFromEvent, patchAssetLibraryState } from "../assets/dynamicItemAssetModel.ts";
 import { assetTypeFromSemanticType, latestLocalRevisionPromptMetadata, localRevisionTargetsMatch, revisionMatchesCanvasCandidate } from "../assets/localRevisionViewModel.ts";
@@ -651,6 +652,19 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
+    const finalCompositionEvents = events.filter((event) => [
+      "final_timeline_created",
+      "final_timeline_updated",
+      "final_composition_render_started",
+      "final_composition_render_completed",
+      "final_composition_render_failed",
+    ].includes(event.event_type));
+    if (workflowId && finalCompositionEvents.length) {
+      window.dispatchEvent(new CustomEvent("v2-final-composition-events", {
+        detail: { workflowId, eventTypes: finalCompositionEvents.map((event) => event.event_type) },
+      }));
+    }
+    const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));
     const latestExecutionEvent = [...events].reverse().find((event) =>
       [
         "execution_queued",
@@ -686,12 +700,12 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
         argsRef.current.setWorkflowRunning(true);
       }
     }
-    const shouldRefreshRuntime = events.some(v2EventShouldRefreshRuntime);
-    const shouldRefreshWorkflow = events.some((event) =>
+    const shouldRefreshRuntime = runtimeEvents.some(v2EventShouldRefreshRuntime);
+    const shouldRefreshWorkflow = runtimeEvents.some((event) =>
       V2_WORKFLOW_REFRESH_EVENT_TYPES.has(event.event_type) ||
       v2EventRefreshHints(event).some((hint) => hint === "workflow" || hint === "slot_versions"),
     );
-    const shouldRefreshAssets = events.some(v2EventShouldRefreshAssets);
+    const shouldRefreshAssets = runtimeEvents.some(v2EventShouldRefreshAssets);
     if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
       void (async () => {
         if (shouldRefreshRuntime || shouldRefreshAssets) await argsRef.current.v2Runtime.syncSnapshot(workflowId);

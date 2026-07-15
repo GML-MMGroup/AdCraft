@@ -3,13 +3,23 @@ import type { CSSProperties } from "react";
 import { useApp } from "../AppContextValue";
 import { SectionTitle } from "../components/Cards";
 import { HomePromptComposer, type HomePromptGenerateContext } from "../components/HomePromptComposer";
+import { PlanningErrorNotice } from "../components/PlanningErrorNotice";
 import { demoProjects, images, imageSrc } from "../data";
 import { PlayIcon } from "../icons";
-import type { RouteName } from "../types";
+import type { FrontDeskMessage, RouteName } from "../types";
 import type { V2InputAssetUploadItem } from "../types-v2.ts";
+import type { PlanningFailureState } from "./homeWorkflowPlanning";
+
+type PendingPlanningRequest = {
+  prompt: string;
+  context: HomePromptGenerateContext;
+  history: FrontDeskMessage[];
+};
 
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [planningError, setPlanningError] = useState<PlanningFailureState | null>(null);
+  const [pendingPlanningRequest, setPendingPlanningRequest] = useState<PendingPlanningRequest | null>(null);
   const { messages, promptLibraryEntities, setMessages, setWorkflow } = useApp();
 
   const discoverCards: Array<[string, string, number]> = [
@@ -32,15 +42,17 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
     return response.assets;
   }
 
-  async function generate(prompt: string, context: HomePromptGenerateContext = {}) {
-    const nextMessages = [...messages, { role: "user" as const, content: prompt }];
-    setMessages(nextMessages);
+  async function generate(prompt: string, context: HomePromptGenerateContext = {}, retry = false) {
+    const history = retry && pendingPlanningRequest ? pendingPlanningRequest.history : messages;
+    const nextMessages = retry ? messages : [...messages, { role: "user" as const, content: prompt }];
+    if (!retry) setMessages(nextMessages);
+    setPlanningError(null);
 
     try {
       const { planHomeWorkflow } = await import("./homeWorkflowPlanning");
       const response = await planHomeWorkflow({
         prompt,
-        history: messages,
+        history,
         inputAssets: [...(context.input_asset_locators ?? []), ...(context.asset_locators ?? [])],
         libraryEntities: promptLibraryEntities,
       });
@@ -51,16 +63,16 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
       } else if (!response.shouldStartWorkflow) {
         navigate("workflow");
       }
-    } catch {
-      setMessages([
-        ...nextMessages,
-        {
-          role: "assistant",
-          content: "Backend is not available yet, so I opened the demo workflow canvas.",
-        },
-      ]);
-      navigate("workflow");
+      setPendingPlanningRequest(null);
+    } catch (error) {
+      const { planningFailureState } = await import("./homeWorkflowPlanning");
+      setPlanningError(planningFailureState(error));
+      setPendingPlanningRequest({ prompt, context, history });
     }
+  }
+
+  function retryPlanning() {
+    if (pendingPlanningRequest) void generate(pendingPlanningRequest.prompt, pendingPlanningRequest.context, true);
   }
 
   return (
@@ -73,6 +85,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
             onGenerate={generate}
             onUploadInputAsset={uploadPromptInputAsset}
           />
+          {planningError ? <PlanningErrorNotice error={planningError} onRetry={retryPlanning} /> : null}
           <div className="mode-row">
             {["Video", "Image", "Storyboard", "Character", "Scene"].map((mode, index) => (
               <button key={mode} className={`mode ${index === 0 ? "is-active" : ""}`}>

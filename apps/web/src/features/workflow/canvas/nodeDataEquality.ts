@@ -99,6 +99,8 @@ export function sameV2Slots(left: WorkflowSlotV2[] = [], right: WorkflowSlotV2[]
       slot.current_working_asset_id === other.current_working_asset_id &&
       slot.current_working_version_id === other.current_working_version_id &&
       slot.slot_prompt === other.slot_prompt &&
+      slot.system_suggested_prompt === other.system_suggested_prompt &&
+      slot.user_prompt === other.user_prompt &&
       slot.negative_prompt === other.negative_prompt &&
       slot.prompt_source === other.prompt_source &&
       slot.manual_prompt_dirty === other.manual_prompt_dirty &&

@@ -7,6 +7,7 @@ import { AssetRevisionHistoryPanel, NodeAssetHistoryPreview } from "../assets/As
 import { dynamicItemActionAsset } from "../assets/dynamicItemAssetModel.ts";
 import { localRevisionStateKey } from "../../../workflow/localRevision.ts";
 import { FinalCompositionTimelinePanel } from "../final-composition/FinalCompositionTimelinePanel.tsx";
+import { V2FinalCompositionEditor } from "../final-composition/V2FinalCompositionEditor.tsx";
 import { finalCompositionRenderDisabledReason } from "../final-composition/useFinalCompositionPageController.ts";
 import type { WorkflowWorkbenchSurfaceActions, WorkflowWorkbenchSurfaceModel } from "./WorkflowWorkbenchSurface.tsx";
 
@@ -52,6 +53,7 @@ export function WorkflowWorkbenchAssetsSection({
   } = model;
   const {
     currentWorkflowIsV2,
+    refreshV2WorkflowGraph,
     openAssetLibrarySaveDialog,
     loadFinalCompositionTimeline,
     saveFinalCompositionTimeline,
@@ -151,6 +153,13 @@ export function WorkflowWorkbenchAssetsSection({
             onCancelQualityOverride={() => setQualityOverrideRevisionId(null)}
           />
         </FinalCompositionPanel>
+      ) : null}
+      {currentWorkflowIsV2() && workflow?.workflow_id && selectedNodeId === "final-composition" ? (
+        <V2FinalCompositionEditor
+          workflowId={workflow.workflow_id}
+          active
+          onWorkflowRefresh={(workflowId) => refreshV2WorkflowGraph(workflowId)}
+        />
       ) : null}
       {selectedDynamicMediaItems.length ? (
         <DynamicMediaItemPanel>
@@ -271,4 +280,3 @@ export function WorkflowWorkbenchAssetsSection({
     </NodeOutputAssetsPanel>
   );
 }
-

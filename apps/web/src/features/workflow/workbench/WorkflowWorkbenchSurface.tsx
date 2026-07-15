@@ -45,6 +45,7 @@ import { WorkflowWorkbenchV2Section } from "./WorkflowWorkbenchV2Section.tsx";
 import { WorkflowWorkbenchPromptSection } from "./WorkflowWorkbenchPromptSection.tsx";
 import { WorkflowWorkbenchAssetsSection } from "./WorkflowWorkbenchAssetsSection.tsx";
 import { WorkflowWorkbenchDebugSection } from "./WorkflowWorkbenchDebugSection.tsx";
+import type { SlotPromptSaveResult } from "../v2/slots/slotPromptEditorState.ts";
 
 type StateSetter<T> = (value: T | ((current: T) => T)) => void;
 type MaybePromise<T = unknown> = T | Promise<T>;
@@ -157,7 +158,7 @@ export type WorkflowWorkbenchSurfaceActions = {
   deleteV2FinalTimelineClip: (clipId: string) => MaybePromise;
   runSelectedV2Slot: (slotId?: string) => MaybePromise;
   loadV2SlotVersions: (slotId: string) => MaybePromise;
-  saveV2SlotPrompt: (slotId: string, prompt: string, negativePrompt?: string) => MaybePromise;
+  saveV2SlotPrompt: (slotId: string, prompt: string, negativePrompt?: string) => MaybePromise<SlotPromptSaveResult>;
   selectV2SlotVersion: (slotId: string, versionId: string) => MaybePromise;
   discardV2WorkingVersion: (slotId: string) => MaybePromise;
   deleteV2SelectedSlotAsset: (slotId: string) => MaybePromise;

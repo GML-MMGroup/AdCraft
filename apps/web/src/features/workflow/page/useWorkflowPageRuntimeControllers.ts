@@ -126,6 +126,7 @@ export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeContr
     onEvents: async (eventWorkflowId, events) => {
       if (!shouldApplyWorkflowScopedResult(eventWorkflowId, args.activeWorkflowIdRef.current)) return;
       canvasRuntimeEvents.actions.applyV2RuntimeEventsToPage(events);
+      await args.screenplayActionsRef.current?.handleRuntimeEvents(events);
     },
     onSnapshot: (snapshotWorkflowId, runtime) => {
       if (!shouldApplyWorkflowScopedResult(snapshotWorkflowId, args.activeWorkflowIdRef.current)) return;

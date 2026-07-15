@@ -19,6 +19,7 @@ import { useWorkflowPageLifecycle } from "./useWorkflowPageLifecycle.ts";
 import { useWorkflowPageRuntimeControllers } from "./useWorkflowPageRuntimeControllers.ts";
 import { useWorkflowPageRuntimeSummaries } from "./useWorkflowPageRuntimeSummaries.ts";
 import { useWorkflowPageSurfaceAssembly } from "./useWorkflowPageSurfaceAssembly.tsx";
+import { useWorkflowPageScreenplay } from "./useWorkflowPageScreenplay.tsx";
 import { useWorkflowPageRunGraphControllers } from "./useWorkflowPageRunGraphControllers.ts";
 import { useWorkflowPageSelectionState } from "./useWorkflowPageSelectionState.ts";
 import { useWorkflowPageAssetUiState } from "./useWorkflowPageAssetUiState.ts";
@@ -48,6 +49,7 @@ import { useWorkflowWorkbenchModel } from "../workbench/useWorkflowWorkbenchMode
 import { useFinalCompositionPageController } from "../final-composition/useFinalCompositionPageController.ts";
 import { useFinalCompositionOperations } from "../final-composition/useFinalCompositionOperations.ts";
 import { useV2WorkflowAssets } from "../v2/assets/useV2WorkflowAssets.ts";
+import { v2RegionItemsForNode } from "../v2/v2RegionNode.ts";
 import { isV2WorkflowId, useWorkflowV2Model } from "../../../workflow-v2/pageAdapter.ts";
 import { selectedAssetForSlot } from "../../../workflow-v2/selectors.ts";
 import {
@@ -170,9 +172,11 @@ export function useWorkflowPageModel() {
     setStaleReason,
     setWorkflowVariables,
   } = workflowRuntime.actions;
+  const shouldUseDemoCanvasNodes = !activeProjectId && !workflow;
+  const initialCanvasNodes = shouldUseDemoCanvasNodes ? demoNodes : workflow?.nodes ?? [];
   const workflowCanvas = useWorkflowCanvasController({
     workflow,
-    initialNodes: demoNodes,
+    initialNodes: initialCanvasNodes,
   });
   const {
     selectedNodeId,
@@ -443,7 +447,10 @@ export function useWorkflowPageModel() {
   const {
     applyWorkflowGraph,
     applyWorkflowV2,
+    captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
     refreshV2AssetsAndRetryMissing,
     currentWorkflowIsV2,
     assertNotV2WorkflowForV1Api,
@@ -458,6 +465,13 @@ export function useWorkflowPageModel() {
     syncWorkflowAdRequest,
     applyNodeRunsToCanvas,
   } = workflowGraphSync.actions;
+  const screenplay = useWorkflowPageScreenplay({
+    activeWorkflowId: workflowV2Model.isV2 ? workflow?.workflow_id ?? null : null,
+    workflowItems: workflowV2Model.workflowV2?.items ?? canvasNodes.flatMap(v2RegionItemsForNode),
+    refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
+    syncV2RuntimeSnapshot: async (requestWorkflowId) => v2RuntimeRef.current?.syncSnapshot(requestWorkflowId),
+  });
   const {
     selectedResolvedInputs,
     setSelectedResolvedInputs,
@@ -570,6 +584,7 @@ export function useWorkflowPageModel() {
     refreshWorkflowGraph,
     refreshMediaStatus,
     refreshV2WorkflowGraph,
+    refreshV2WorkflowStructure,
     refreshV2AssetsAndRetryMissing,
     noteAffected,
     timelineLoadStarted,
@@ -584,6 +599,7 @@ export function useWorkflowPageModel() {
     handleNodePromptUpdatedEvent,
     handleItemPromptUpdatedEvent,
     handleRevisionConversationEvent,
+    screenplayActionsRef: screenplay.actionsRef,
   });
   const { canvasRuntimeEvents, v2Runtime, workflowV2Controller, v2NodeRuntimeStatusById, v2ActiveEdgeSourceNodeIds, v2SlotRuntimeStatusById } = workflowPageRuntimeControllers;
   const {
@@ -760,6 +776,8 @@ export function useWorkflowPageModel() {
     setDynamicItemPromptDrafts,
     setV2SlotVersionsById,
     applyWorkflowV2,
+    captureV2WorkflowApplicationRevision,
+    isCurrentV2WorkflowApplicationRevision,
     refreshV2WorkflowGraph,
     v2Runtime,
     refreshV2AssetsAndRetryMissing,
@@ -1054,6 +1072,7 @@ export function useWorkflowPageModel() {
     setSelectedNodeId,
     setDetailsOpen,
     setMediaLightbox,
+    onOpenScreenplay: screenplay.openScreenplay,
     workflowV2Items: workflowV2Model.workflowV2?.items,
     setActiveV2StoryboardItemId,
     openV2SlotEditor,
@@ -1146,7 +1165,9 @@ export function useWorkflowPageModel() {
     nodeRunByType,
     canvasNodes,
     flowNodes,
+    flowEdges,
     selectedNodeId,
+    reactFlow,
     demoNodes,
     demoEdges,
     setCanvasNodes,
@@ -1181,7 +1202,7 @@ export function useWorkflowPageModel() {
     ...dynamicItemDrafts.state, ...dynamicItemDrafts.actions,
     ...finalCompositionPage.state, ...finalCompositionPage.actions,
     ...workflowConversation.state, ...workflowConversation.actions,
-    workflow, workflowV2Model, workflowWorkbenchModel, v2Runtime,
+    workflow, workflowV2Model, workflowWorkbenchModel, v2Runtime, screenplay,
     displayNodes, displayEdges, nodeTypes, isRestoringWorkspace, workspaceRestoreError,
     selectedPlanNode, selectedRun, selectedAssets, selectedOutputAssets, selectedNodeId, selectedEdgeId,
     selectedV2Items, selectedV2SlotsByItemId, selectedV2AssetVersions, selectedV2ReferenceAssets,

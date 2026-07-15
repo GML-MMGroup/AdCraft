@@ -1,6 +1,5 @@
 import { AssetMentionInput } from "../../../components/PromptComposer";
 import { WorkflowCopilotPanel } from "../../../components/WorkflowCopilotPanel";
-import { WorkflowDraggablePanel } from "../../../components/WorkflowDraggablePanel";
 import type { DraggablePanelKey, PanelOffset } from "../../../components/WorkflowDraggablePanel";
 import type { PromptGenerateContext } from "../../../components/PromptComposer";
 import type {
@@ -384,84 +383,6 @@ export function WorkflowSidePanelsSurface({
         </div>
       ) : null}
 
-      {!model.runPanelOpen ? (
-        <button className="run-controls-toggle" title="Show run controls" aria-label="Show run controls" onClick={() => actions.setRunPanelOpen(true)}>
-          ⚙
-        </button>
-      ) : null}
-
-      {model.runPanelOpen ? (
-        <WorkflowDraggablePanel
-          panelKey="run"
-          offset={model.panelOffsets.run}
-          className="node-run-panel"
-          headingClassName="run-controls-heading"
-          onOffsetCommit={actions.commitPanelOffset}
-          heading={
-            <>
-            <strong>Run controls</strong>
-            <span className="panel-drag-grip" aria-hidden="true">::</span>
-            <button className="small-action" onClick={() => actions.setRunPanelOpen(false)}>
-              Hide
-            </button>
-            </>
-          }
-        >
-          <select
-            value={model.selectedNodeId}
-            onChange={(event) => {
-              actions.setSelectedNodeId(event.target.value);
-              actions.setDetailsOpen(true);
-            }}
-          >
-            {model.visibleCanvasNodes.map((node) => (
-              <option key={node.id} value={node.id}>
-                {node.title}
-              </option>
-            ))}
-          </select>
-          <AssetMentionInput
-            value={model.overridePrompt}
-            placeholder="Override prompt for this run..."
-            mentionReferences={model.overrideMentionReferences}
-            workflowId={model.workflowId}
-            nodeId={model.selectedPlanNodeId}
-            onChange={(nextValue, nextReferences) => {
-              actions.setOverridePrompt(nextValue);
-              actions.setOverrideMentionReferences(nextReferences);
-            }}
-          />
-          <label className="run-toggle">
-            <input type="checkbox" checked={Boolean(model.runSettings.only_missing)} onChange={(event) => actions.setRunSettings((current) => ({ ...current, only_missing: event.target.checked }))} />
-            <span>Only missing / stale</span>
-          </label>
-          <label className="run-toggle">
-            <input type="checkbox" checked={Boolean(model.runSettings.force_rerun)} onChange={(event) => actions.setRunSettings((current) => ({ ...current, force_rerun: event.target.checked }))} />
-            <span>Force rerun</span>
-          </label>
-          <label className="run-toggle">
-            <input type="checkbox" checked={Boolean(model.runSettings.download_media)} onChange={(event) => actions.setRunSettings((current) => ({ ...current, download_media: event.target.checked }))} />
-            <span>Download media</span>
-          </label>
-          <label className="run-toggle">
-            <input type="checkbox" checked={Boolean(model.runSettings.compose_when_ready)} onChange={(event) => actions.setRunSettings((current) => ({ ...current, compose_when_ready: event.target.checked }))} />
-            <span>Compose when ready</span>
-          </label>
-          <button className="small-action" onClick={() => void actions.validateBackendGraph()}>
-            Validate graph
-          </button>
-          <button
-            className="small-action"
-            disabled={model.workflowRunning || model.currentNodeRunning || (model.currentWorkflowIsV2 && model.selectedNodeUsesV2InlineRegionEditing && !model.activeV2SlotId)}
-            onClick={() => model.currentWorkflowIsV2 ? void actions.runSelectedV2Slot(model.activeV2SlotId ?? "") : void actions.runNode({ useRunPanelOverride: true })}
-          >
-            Run current only
-          </button>
-          <button className="small-action" disabled={model.workflowRunning} onClick={() => void actions.runFromSelected()}>
-            Run downstream from here
-          </button>
-        </WorkflowDraggablePanel>
-      ) : null}
     </>
   );
 }
