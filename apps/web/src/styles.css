@@ -7179,6 +7179,84 @@ button.canvas-entity-media {
   color: rgba(29, 32, 48, 0.9);
 }
 
+.v2-final-composition-panel {
+  position: absolute;
+  inset: 72px 28px 96px 92px;
+  z-index: 31;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 18px;
+  background: rgba(246, 248, 252, 0.9);
+  box-shadow: 0 24px 72px rgba(42, 48, 76, 0.24);
+  backdrop-filter: blur(24px) saturate(1.12);
+}
+
+.v2-final-composition-panel-heading {
+  min-width: 0;
+  min-height: 44px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 16px;
+  border-bottom: 1px solid rgba(104, 91, 165, 0.14);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.v2-final-composition-panel-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.v2-final-composition-panel-title strong {
+  overflow: hidden;
+  color: rgba(43, 45, 62, 0.9);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-final-composition-panel-title .panel-drag-grip {
+  color: rgba(76, 80, 105, 0.42);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.v2-final-composition-panel-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border: 1px solid rgba(104, 91, 165, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: rgba(71, 68, 96, 0.72);
+  cursor: pointer;
+}
+
+.v2-final-composition-panel-close:hover {
+  border-color: rgba(104, 91, 165, 0.34);
+  background: rgba(235, 232, 255, 0.9);
+  color: rgba(65, 54, 121, 0.94);
+}
+
+.v2-final-composition-panel-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.v2-final-composition-panel-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
 .v2-composition-editor-toolbar,
 .v2-composition-panel-heading,
 .v2-composition-toolbar-actions,
@@ -7314,6 +7392,16 @@ button.canvas-entity-media {
 
 @media (max-width: 1100px) { .v2-composition-editor-layout { grid-template-columns: minmax(120px, 0.5fr) minmax(320px, 2fr); }.v2-composition-inspector { grid-column: 1 / -1; }.v2-composition-inspector-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }.v2-composition-fieldset,.v2-composition-text-field,.v2-composition-inspector-actions,.v2-composition-add-track { grid-column: 1 / -1; } }
 @media (max-width: 720px) { .v2-composition-editor-layout { grid-template-columns: 1fr; }.v2-composition-source-panel { max-height: 210px; }.v2-composition-source-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }.v2-composition-inspector-fields { grid-template-columns: 1fr; }.v2-composition-editor-toolbar { align-items: flex-start; }.v2-composition-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; } }
+
+@media (max-width: 720px) {
+  .v2-final-composition-panel {
+    inset: 66px 12px 88px 76px;
+  }
+
+  .v2-final-composition-panel-body {
+    padding: 8px;
+  }
+}
 
 @media (max-width: 720px) {
   .final-composition-clip,
