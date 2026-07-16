@@ -7,6 +7,7 @@ import type { WorkflowItemV2, WorkflowSlotV2 } from "../../../types-v2.ts";
 import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { AssetLibraryPicker, AssetLibrarySaveModal } from "../assets/AssetLibraryPanels.tsx";
 import { canSaveNodeToAssetLibrary } from "../assets/assetLibraryReferenceModel.ts";
+import { V2FinalCompositionPanel } from "../final-composition/V2FinalCompositionPanel.tsx";
 import { finalCompositionTimelineTargetAsset } from "../final-composition/useFinalCompositionOperations.ts";
 import { getTimelineClipCount } from "../final-composition/finalCompositionTimelineModel.ts";
 import { MediaLightbox } from "../panels/WorkflowDebugSections.tsx";
@@ -315,11 +316,18 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     onNodeClick: (_event, node) => {
       args.setSelectedEdgeId(null);
       args.setSelectedNodeId(node.id);
-      if (!args.currentWorkflowIsV2()) args.setDetailsOpen(true);
+      if (args.currentWorkflowIsV2()) {
+        args.setActiveV2SlotId(null);
+        args.setActiveV2StoryboardItemId?.(null);
+        args.setDetailsOpen(node.id === "final-composition");
+      } else {
+        args.setDetailsOpen(true);
+      }
     },
     onEdgeClick: (event, edge) => {
       event.stopPropagation();
       args.setSelectedEdgeId(edge.id);
+      if (args.currentWorkflowIsV2()) args.setDetailsOpen(false);
       args.setFlowEdges((current: Array<{ id: string }>) => current.map((item) => ({ ...item, selected: item.id === edge.id })));
     },
     onNodeDragStop: (_event, node) => args.persistNodePosition(node),
@@ -327,6 +335,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       args.setSelectedEdgeId(null);
       args.setActiveV2SlotId(null);
       args.setActiveV2StoryboardItemId?.(null);
+      args.setDetailsOpen(false);
     },
     onNodesDelete: (deleted) => {
       const ids = new Set(deleted.map((node) => node.id));
@@ -458,6 +467,16 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       <WorkflowSidePanelsSurface model={workflowSidePanelsModel} actions={workflowSidePanelsActions} />
 
       {!args.currentWorkflowIsV2() ? <WorkflowWorkbenchSurface model={workflowWorkbenchSurfaceModel} actions={workflowWorkbenchSurfaceActions} /> : null}
+
+      {args.currentWorkflowIsV2() && args.detailsOpen && args.selectedNodeId === "final-composition" && args.workflow?.workflow_id ? (
+        <V2FinalCompositionPanel
+          workflowId={args.workflow.workflow_id}
+          offset={args.panelOffsets.detail}
+          onOffsetCommit={args.commitPanelOffset}
+          onClose={() => args.setDetailsOpen(false)}
+          onWorkflowRefresh={(workflowId) => args.refreshV2WorkflowGraph(workflowId)}
+        />
+      ) : null}
 
       {showV2FloatingSlotComposer && activeV2SlotComposerAnchor && activeV2Slot && activeV2SlotId && activeV2SlotDraft ? (
         <WorkflowDraggablePanel

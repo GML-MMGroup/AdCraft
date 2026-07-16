@@ -1150,9 +1150,9 @@ export function useWorkflowPageModel() {
   }, [selectedNodeId, resetDynamicItemState, setNodePromptMentionReferences, setOverrideMentionReferences]);
 
   useEffect(() => {
-    if (!detailsOpen || !workflow?.workflow_id || selectedNodeId !== "final-composition") return;
+    if (currentWorkflowIsV2() || !detailsOpen || !workflow?.workflow_id || selectedNodeId !== "final-composition") return;
     void loadFinalCompositionTimeline(workflow.workflow_id);
-  }, [detailsOpen, workflow?.workflow_id, selectedNodeId, loadFinalCompositionTimeline]);
+  }, [currentWorkflowIsV2, detailsOpen, workflow?.workflow_id, selectedNodeId, loadFinalCompositionTimeline]);
 
   useWorkflowPageLifecycle({
     workflow,

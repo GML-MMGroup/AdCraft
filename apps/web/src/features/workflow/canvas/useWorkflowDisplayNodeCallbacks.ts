@@ -113,9 +113,26 @@ export function useWorkflowDisplayNodeCallbacks({
   }, [selectedNodeIdRef, setDetailsOpen, setSelectedNodeId]);
 
   const openV2SlotEditorFromCanvas = useCallback((slotId: string) => {
+    const item = workflowV2Items?.find((candidate) => (candidate.slots ?? []).some((slot) => slot.slot_id === slotId));
     setActiveV2StoryboardItemId(null);
+    if (item?.node_id === "final-composition") {
+      setActiveV2SlotId(null);
+      setSelectedNodeId("final-composition");
+      selectedNodeIdRef.current = "final-composition";
+      setDetailsOpen(true);
+      return;
+    }
+    setDetailsOpen(false);
     openV2SlotEditor(slotId);
-  }, [openV2SlotEditor, setActiveV2StoryboardItemId]);
+  }, [
+    openV2SlotEditor,
+    selectedNodeIdRef,
+    setActiveV2SlotId,
+    setActiveV2StoryboardItemId,
+    setDetailsOpen,
+    setSelectedNodeId,
+    workflowV2Items,
+  ]);
 
   const openV2StoryboardPrompt = useCallback((itemId: string) => {
     const item = workflowV2Items?.find((candidate) => candidate.item_id === itemId);
