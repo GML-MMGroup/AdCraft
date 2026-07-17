@@ -14,6 +14,7 @@ import {
   reorderShotLane,
   splitShotClip,
   trimShotClip,
+  validateShotTimeline,
   type ShotTimelineMutation,
   type ShotTimelineSnapTarget,
 } from "./shotTimelineDomain.ts";
@@ -21,13 +22,17 @@ import {
   commitShotTimelineHistory,
   createLatestSaveQueue,
   createLoadedShotTimelineSession,
+  createRemoteStateEpoch,
   createShotTimelineHistory,
+  createTimelineSessionGuard,
+  finalizeShotTimelineHistory,
+  reconcileReloadedTimeline,
   reconcileSavedTimeline,
   redoShotTimelineHistory,
-  resolveTimelineConflict,
   shotTimelineEquals,
   undoShotTimelineHistory,
   type ShotTimelineHistory,
+  type TimelineSessionToken,
 } from "./shotTimelineHistory.ts";
 import {
   addV2TimelineTrack,
@@ -60,13 +65,13 @@ type LibrarySourceSelection = {
 };
 
 type TimelineSaveSnapshot = {
-  workflowId: string;
+  session: TimelineSessionToken;
   baseline: V2FinalCompositionTimeline;
   draft: V2FinalCompositionTimeline;
 };
 
 type TimelineSaveQueue = {
-  request: () => Promise<V2FinalTimelineUpdateResponse | null>;
+  request: (session: TimelineSessionToken) => Promise<V2FinalTimelineUpdateResponse | null>;
   isRunning: () => boolean;
 };
 
@@ -113,6 +118,48 @@ function clampZoom(value: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
 }
 
+export function moveTimelineClipToTrack(
+  timeline: V2FinalCompositionTimeline,
+  clipId: string,
+  trackId: string,
+  startTime: number,
+): ShotTimelineMutation {
+  const clip = timeline.clips.find((candidate) => candidate.clip_id === clipId);
+  if (!clip) return rejectedTrackMove(timeline, `Clip ${clipId} does not exist.`);
+  const sourceTrack = timeline.tracks.find((candidate) => candidate.track_id === clip.track_id);
+  const targetTrack = timeline.tracks.find((candidate) => candidate.track_id === trackId);
+  if (!sourceTrack || !targetTrack) return rejectedTrackMove(timeline, `Track ${trackId} does not exist.`);
+  if (clip.clip_type !== targetTrack.track_type) {
+    return rejectedTrackMove(timeline, "Clip type must match the target track type.");
+  }
+  if (trackLocked(sourceTrack) || trackLocked(targetTrack)) {
+    return rejectedTrackMove(timeline, "Locked tracks cannot accept clip moves.");
+  }
+  if (!Number.isFinite(startTime) || startTime < 0) {
+    return rejectedTrackMove(timeline, "Clip start time is invalid.");
+  }
+  const moved = moveV2TimelineClip(timeline, clipId, { trackId, startTime });
+  const candidate = { ...moved, duration_seconds: v2TimelineDuration(moved) };
+  const validation = validateShotTimeline(candidate);
+  if (!validation.valid) return rejectedTrackMove(timeline, validation.warnings.join(" "));
+  return {
+    timeline: candidate,
+    changedClipIds: shotTimelineEquals(candidate, timeline) ? [] : [clipId],
+    snapTarget: null,
+    warning: null,
+  };
+}
+
+function rejectedTrackMove(timeline: V2FinalCompositionTimeline, warning: string): ShotTimelineMutation {
+  return { timeline, changedClipIds: [], snapTarget: null, warning };
+}
+
+function trackLocked(track: V2FinalCompositionTimeline["tracks"][number]) {
+  const editor = track.metadata.editor;
+  return typeof editor === "object" && editor !== null && !Array.isArray(editor)
+    && (editor as Record<string, unknown>).locked === true;
+}
+
 export function useV2FinalCompositionEditor({
   workflowId,
   active,
@@ -150,25 +197,38 @@ export function useV2FinalCompositionEditor({
   const editModeRef = useRef(editMode);
   const snapEnabledRef = useRef(snapEnabled);
   const zoomRef = useRef(zoom);
-  const workflowIdRef = useRef(workflowId ?? null);
   const conflictRef = useRef(conflict);
   const renderingRef = useRef(rendering);
   const onWorkflowRefreshRef = useRef(onWorkflowRefresh);
   const loadRequestRef = useRef(0);
+  const editRevisionRef = useRef(0);
+  const sessionGuardRef = useRef(createTimelineSessionGuard());
+  const remoteStateEpochRef = useRef(createRemoteStateEpoch());
   const performSaveRef = useRef<(snapshot: TimelineSaveSnapshot) => Promise<V2FinalTimelineUpdateResponse | null>>(async () => null);
   const saveQueueRef = useRef<TimelineSaveQueue | null>(null);
 
-  baselineRef.current = baseline;
-  historyRef.current = history;
-  draftRef.current = draft;
+  const sessionTransition = sessionGuardRef.current.update(workflowId ?? null);
+  if (sessionTransition.changed) {
+    remoteStateEpochRef.current.invalidate();
+    loadRequestRef.current += 1;
+    editRevisionRef.current += 1;
+    baselineRef.current = null;
+    historyRef.current = null;
+    draftRef.current = null;
+    conflictRef.current = null;
+    renderingRef.current = false;
+  } else {
+    baselineRef.current = baseline;
+    historyRef.current = history;
+    draftRef.current = draft;
+    conflictRef.current = conflict;
+    renderingRef.current = rendering;
+  }
   selectedClipIdsRef.current = selectedClipIdsState;
   playheadRef.current = playheadSeconds;
   editModeRef.current = editMode;
   snapEnabledRef.current = snapEnabled;
   zoomRef.current = zoom;
-  workflowIdRef.current = workflowId ?? null;
-  conflictRef.current = conflict;
-  renderingRef.current = rendering;
   onWorkflowRefreshRef.current = onWorkflowRefresh;
 
   const assignBaseline = useCallback((next: V2FinalCompositionTimeline | null) => {
@@ -201,14 +261,18 @@ export function useV2FinalCompositionEditor({
   }, [assignHistory]);
 
   const load = useCallback(async ({ preserveDraft = false }: { preserveDraft?: boolean } = {}) => {
-    const requestedWorkflowId = workflowIdRef.current;
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
     if (!requestedWorkflowId) return null;
     const requestId = ++loadRequestRef.current;
+    const remoteEpoch = remoteStateEpochRef.current.claim();
     setLoading(true);
     setError("");
     try {
       const response = await v2Api.getFinalTimeline(requestedWorkflowId);
-      if (requestId !== loadRequestRef.current || workflowIdRef.current !== requestedWorkflowId) return null;
+      if (requestId !== loadRequestRef.current
+        || !sessionGuardRef.current.isCurrent(session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
       const loaded = createLoadedShotTimelineSession(response.timeline);
       const currentDraft = draftRef.current;
       const previousBaseline = baselineRef.current;
@@ -229,14 +293,30 @@ export function useV2FinalCompositionEditor({
       }
       return response;
     } catch (loadError) {
-      if (requestId === loadRequestRef.current && workflowIdRef.current === requestedWorkflowId) {
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
         setError(readableError(loadError));
       }
       return null;
     } finally {
-      if (requestId === loadRequestRef.current && workflowIdRef.current === requestedWorkflowId) setLoading(false);
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
   }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds]);
+
+  useEffect(() => {
+    assignBaseline(null);
+    assignHistory(null);
+    assignSelectedClipIds([]);
+    assignConflict(null);
+    setSources([]);
+    setRenderJob(null);
+    setExternalUpdate(false);
+    setLoading(false);
+    setSaving(false);
+    setRendering(false);
+    setError("");
+    setWarning("");
+    setSnapTarget(null);
+  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds, workflowId]);
 
   useEffect(() => {
     if (!active || !workflowId) return;
@@ -259,8 +339,17 @@ export function useV2FinalCompositionEditor({
   const commitTimeline = useCallback((timeline: V2FinalCompositionTimeline, coalesceKey: string | null = null) => {
     const current = historyRef.current;
     if (!current) return;
-    assignHistory(commitShotTimelineHistory(current, timeline, coalesceKey));
+    const next = commitShotTimelineHistory(current, timeline, coalesceKey);
+    if (next === current) return;
+    editRevisionRef.current += 1;
+    assignHistory(next);
     setExternalUpdate(false);
+  }, [assignHistory]);
+
+  const finalizeGesture = useCallback(() => {
+    const current = historyRef.current;
+    if (!current) return;
+    assignHistory(finalizeShotTimelineHistory(current));
   }, [assignHistory]);
 
   const applyMutation = useCallback((mutation: ShotTimelineMutation, coalesceKey: string | null = null) => {
@@ -294,6 +383,7 @@ export function useV2FinalCompositionEditor({
     if (!current) return;
     const next = undoShotTimelineHistory(current);
     if (next === current) return;
+    editRevisionRef.current += 1;
     assignHistory(next);
     assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => next.present.clips.some((clip) => clip.clip_id === clipId)));
     setWarning("");
@@ -305,6 +395,7 @@ export function useV2FinalCompositionEditor({
     if (!current) return;
     const next = redoShotTimelineHistory(current);
     if (next === current) return;
+    editRevisionRef.current += 1;
     assignHistory(next);
     assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => next.present.clips.some((clip) => clip.clip_id === clipId)));
     setWarning("");
@@ -324,6 +415,9 @@ export function useV2FinalCompositionEditor({
       ? startTimeOrCoalesceKey
       : coalesceKey;
     if (typeof startTime !== "number") return null;
+    if (typeof trackIdOrStartTime === "string") {
+      return applyMutation(moveTimelineClipToTrack(current, clipId, trackIdOrStartTime, startTime), key);
+    }
     return applyMutation(moveShotClip(current, clipId, startTime, editOptions()), key);
   }, [applyMutation, editOptions]);
 
@@ -385,27 +479,31 @@ export function useV2FinalCompositionEditor({
   }, []);
 
   if (!saveQueueRef.current) {
-    saveQueueRef.current = createLatestSaveQueue<TimelineSaveSnapshot, V2FinalTimelineUpdateResponse | null>(
-      () => {
-        const currentWorkflowId = workflowIdRef.current;
+    saveQueueRef.current = createLatestSaveQueue<TimelineSaveSnapshot, V2FinalTimelineUpdateResponse | null, TimelineSessionToken>(
+      (session) => {
+        if (!sessionGuardRef.current.isCurrent(session)) return null;
         const currentBaseline = baselineRef.current;
         const currentDraft = draftRef.current;
-        if (!currentWorkflowId || !currentBaseline || !currentDraft || conflictRef.current) return null;
+        if (!session.workflowId || !currentBaseline || !currentDraft || conflictRef.current) return null;
         if (shotTimelineEquals(currentDraft, currentBaseline)) return null;
-        return { workflowId: currentWorkflowId, baseline: currentBaseline, draft: currentDraft };
+        return { session, baseline: currentBaseline, draft: currentDraft };
       },
       (snapshot) => performSaveRef.current(snapshot),
     );
   }
 
   performSaveRef.current = async (snapshot) => {
+    const workflowId = snapshot.session.workflowId;
+    if (!workflowId || !sessionGuardRef.current.isCurrent(snapshot.session)) return null;
+    remoteStateEpochRef.current.claim();
     setError("");
     try {
-      const response = await v2Api.saveFinalTimeline(snapshot.workflowId, {
+      const response = await v2Api.saveFinalTimeline(workflowId, {
         expected_version: snapshot.baseline.version,
         timeline: snapshot.draft,
       });
-      if (workflowIdRef.current !== snapshot.workflowId) return response;
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
+      remoteStateEpochRef.current.invalidate();
       const responseTimeline = cloneV2Timeline(response.timeline);
       const currentDraft = draftRef.current;
       if (!currentDraft) return response;
@@ -420,7 +518,7 @@ export function useV2FinalCompositionEditor({
       assignConflict(null);
       return response;
     } catch (saveError) {
-      if (workflowIdRef.current !== snapshot.workflowId) return null;
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
       if (saveError instanceof V2ApiError && saveError.status === 409) {
         const message = "Timeline changed elsewhere. Choose Keep local to rebase your draft or Reload remote to discard it.";
         assignConflict({ kind: "version-conflict", message });
@@ -434,53 +532,65 @@ export function useV2FinalCompositionEditor({
   };
 
   const save = useCallback(() => {
+    const session = sessionGuardRef.current.capture();
     const queue = saveQueueRef.current!;
-    const pending = queue.request();
+    const pending = queue.request(session);
     setSaving(true);
     void pending.then(
       () => {
-        if (!queue.isRunning()) setSaving(false);
+        if (sessionGuardRef.current.isCurrent(session) && !queue.isRunning()) setSaving(false);
       },
       (saveError) => {
-        if (!queue.isRunning()) setSaving(false);
-        setError(readableError(saveError));
+        if (sessionGuardRef.current.isCurrent(session)) {
+          if (!queue.isRunning()) setSaving(false);
+          setError(readableError(saveError));
+        }
       },
     );
     return pending;
   }, []);
 
   const resolveConflictWithRemote = useCallback(async (resolution: "keep-local" | "reload-remote") => {
-    const requestedWorkflowId = workflowIdRef.current;
-    const localDraft = draftRef.current;
-    if (!requestedWorkflowId || !localDraft || !conflictRef.current) return null;
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
+    const requestDraft = draftRef.current;
+    if (!requestedWorkflowId || !requestDraft || !conflictRef.current) return null;
     const requestId = ++loadRequestRef.current;
+    const remoteEpoch = remoteStateEpochRef.current.claim();
+    const requestEditRevision = editRevisionRef.current;
     setLoading(true);
     setError("");
     try {
       const response = await v2Api.getFinalTimeline(requestedWorkflowId);
-      if (requestId !== loadRequestRef.current || workflowIdRef.current !== requestedWorkflowId) return null;
+      if (requestId !== loadRequestRef.current
+        || !sessionGuardRef.current.isCurrent(session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
       const loaded = createLoadedShotTimelineSession(response.timeline);
-      const resolved = resolveTimelineConflict({
-        localDraft,
-        remoteTimeline: loaded.baseline,
-        resolution,
-      });
-      assignBaseline(resolved.baseline);
+      const currentDraft = draftRef.current;
+      if (!currentDraft) return null;
+      assignBaseline(loaded.baseline);
       setSources(response.available_sources);
       if (resolution === "reload-remote") {
-        assignHistory(loaded.history);
+        const reconciled = reconcileReloadedTimeline({
+          requestDraft,
+          currentDraft,
+          remoteTimeline: loaded.draft,
+        });
+        assignHistory(editRevisionRef.current === requestEditRevision
+          ? loaded.history
+          : createShotTimelineHistory(reconciled.draft));
         assignSelectedClipIds([]);
       }
       setExternalUpdate(false);
       assignConflict(null);
       return response;
     } catch (loadError) {
-      if (requestId === loadRequestRef.current && workflowIdRef.current === requestedWorkflowId) {
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
         setError(readableError(loadError));
       }
       return null;
     } finally {
-      if (requestId === loadRequestRef.current && workflowIdRef.current === requestedWorkflowId) setLoading(false);
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
   }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds]);
 
@@ -488,11 +598,12 @@ export function useV2FinalCompositionEditor({
   const reloadRemote = useCallback(() => resolveConflictWithRemote("reload-remote"), [resolveConflictWithRemote]);
 
   const render = useCallback(async () => {
-    const requestedWorkflowId = workflowIdRef.current;
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
     if (!requestedWorkflowId || !draftRef.current || !baselineRef.current || renderingRef.current) return null;
     if (!shotTimelineEquals(draftRef.current, baselineRef.current)) {
       await save();
-      if (workflowIdRef.current !== requestedWorkflowId) return null;
+      if (!sessionGuardRef.current.isCurrent(session)) return null;
       if (!draftRef.current || !baselineRef.current || !shotTimelineEquals(draftRef.current, baselineRef.current)) return null;
     }
     const timeline = baselineRef.current;
@@ -504,11 +615,12 @@ export function useV2FinalCompositionEditor({
         timeline_id: timeline.timeline_id,
         timeline_version: timeline.version,
       });
-      if (workflowIdRef.current === requestedWorkflowId) setRenderJob(response);
+      if (!sessionGuardRef.current.isCurrent(session)) return null;
+      setRenderJob(response);
       await onWorkflowRefreshRef.current?.(requestedWorkflowId);
       return response;
     } catch (renderError) {
-      if (workflowIdRef.current === requestedWorkflowId) {
+      if (sessionGuardRef.current.isCurrent(session)) {
         if (renderError instanceof V2ApiError && renderError.status === 409) {
           const message = "Timeline changed elsewhere. Resolve the version conflict before rendering.";
           assignConflict({ kind: "version-conflict", message });
@@ -518,8 +630,10 @@ export function useV2FinalCompositionEditor({
       }
       return null;
     } finally {
-      renderingRef.current = false;
-      setRendering(false);
+      if (sessionGuardRef.current.isCurrent(session)) {
+        renderingRef.current = false;
+        setRendering(false);
+      }
     }
   }, [assignConflict, save]);
 
@@ -536,7 +650,8 @@ export function useV2FinalCompositionEditor({
   }, [updateDraft]);
 
   const importLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
-    const currentWorkflowId = workflowIdRef.current;
+    const session = sessionGuardRef.current.capture();
+    const currentWorkflowId = session.workflowId;
     if (!currentWorkflowId) return null;
     setError("");
     try {
@@ -545,12 +660,12 @@ export function useV2FinalCompositionEditor({
         library_asset_id: selection.assetId,
         expected_media_type: selection.mediaType,
       });
-      if (workflowIdRef.current !== currentWorkflowId) return null;
+      if (!sessionGuardRef.current.isCurrent(session)) return null;
       setSources((current) => [...current.filter((item) => item.version_id !== response.source.version_id), response.source]);
       addSource(response.source);
       return response.source;
     } catch (importError) {
-      if (workflowIdRef.current === currentWorkflowId) setError(readableError(importError));
+      if (sessionGuardRef.current.isCurrent(session)) setError(readableError(importError));
       return null;
     }
   }, [addSource]);
@@ -600,6 +715,7 @@ export function useV2FinalCompositionEditor({
     keepLocal,
     undo,
     redo,
+    finalizeGesture,
     moveClip,
     trimClip,
     splitAtPlayhead,
@@ -642,6 +758,9 @@ export function useV2FinalCompositionEditor({
         clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", source_asset_id: null, source_version_id: null, source_slot_id: null, start_time: startTime, duration, trim_in: 0, trim_out: null, volume: 1, muted: false, enabled: true, transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" }, audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 }, color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 }, text: "New subtitle", subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" }, metadata: {} }],
       };
     }),
-    moveClipToTrack: (clipId: string, trackId: string, startTime: number) => updateDraft((timeline) => moveV2TimelineClip(timeline, clipId, { trackId, startTime })),
+    moveClipToTrack: (clipId: string, trackId: string, startTime: number) => {
+      const current = draftRef.current;
+      return current ? applyMutation(moveTimelineClipToTrack(current, clipId, trackId, startTime)) : null;
+    },
   };
 }
