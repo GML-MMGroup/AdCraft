@@ -2,7 +2,7 @@ import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css";
 /* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { mediaUrl } from "../../../api/client.ts";
-import { AssetsIcon, PlusIcon, VideoIcon } from "../../../icons.tsx";
+import { AssetsIcon, CloseIcon, PlusIcon, VideoIcon } from "../../../icons.tsx";
 import type { V2FinalCompositionTimeline, V2FinalTimelineSource } from "../../../types-v2.ts";
 import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
 import { AssetLibraryPicker } from "../assets/AssetLibraryPanels.tsx";
@@ -13,6 +13,7 @@ import {
 } from "./V2CompositionPreview.tsx";
 import { fitShotTimelineZoom, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
+import { isFinalRenderActive } from "./finalRenderSession.ts";
 import {
   resolveScopedTimelineSource,
   useV2FinalCompositionEditor,
@@ -184,6 +185,12 @@ export function V2FinalCompositionEditor({
     if (routeScopedSourceAdd(pendingRegisteredSource)) setPendingRegisteredSource(null);
   }, [editor.sources, pendingRegisteredSource, routeScopedSourceAdd]);
 
+  const renderStatus = editor.renderHint?.status ?? editor.renderState?.status ?? editor.renderJob?.status ?? null;
+  const renderProgressPercent = editor.renderHint?.progressPercent ?? editor.renderState?.progress_percent ?? null;
+  const renderId = editor.renderState?.render_id ?? editor.renderJob?.render_id ?? null;
+  const renderIsActive = renderStatus ? isFinalRenderActive(renderStatus) : false;
+  const renderCanRetry = renderStatus === "failed" || renderStatus === "cancelled";
+
   if (!active) return null;
   return (
     <section className="v2-composition-editor" aria-label="Final Composition editor">
@@ -238,8 +245,34 @@ export function V2FinalCompositionEditor({
           A newer saved timeline is available. Your local edits remain unchanged until you refresh or save.
         </p>
       ) : null}
-      {editor.renderJob ? (
-        <p className="v2-composition-feedback">Render {editor.renderJob.status}: {editor.renderJob.render_id}</p>
+      {renderStatus && renderId ? (
+        <div className={`v2-composition-feedback${renderStatus === "failed" ? " is-error" : ""}`}>
+          <span>
+            {renderStatusLabel(renderStatus)}
+            {typeof renderProgressPercent === "number"
+              && (renderStatus === "running" || renderStatus === "cancellation_requested")
+              ? ` · ${Math.round(Math.min(100, Math.max(0, renderProgressPercent)))}%`
+              : ""}
+            {renderStatus === "failed" && (editor.renderState?.error_code || editor.renderState?.error_message)
+              ? ` · ${[editor.renderState.error_code, editor.renderState.error_message].filter(Boolean).join(": ")}`
+              : ""}
+          </span>
+          {renderIsActive ? (
+            <button
+              className="v2-composition-icon-button"
+              type="button"
+              aria-label="Cancel final render"
+              title="Cancel final render"
+              disabled={editor.cancellingRender || renderStatus === "cancellation_requested"}
+              onClick={() => void editor.cancelRender()}
+            >
+              <CloseIcon />
+            </button>
+          ) : null}
+          {renderCanRetry ? (
+            <button type="button" onClick={() => void editor.render()}>Retry final render</button>
+          ) : null}
+        </div>
       ) : null}
       {editor.loading && !editor.draft ? (
         <p className="v2-composition-feedback">Loading Final Composition timeline...</p>
@@ -448,4 +481,14 @@ function formatTime(value: number) {
   const minutes = Math.floor(Math.max(0, value) / 60);
   const seconds = Math.floor(Math.max(0, value) % 60);
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function renderStatusLabel(status: string) {
+  if (status === "queued") return "Render queued";
+  if (status === "running") return "Rendering final video";
+  if (status === "cancellation_requested") return "Render cancellation requested";
+  if (status === "completed") return "Render completed";
+  if (status === "failed") return "Render failed";
+  if (status === "cancelled") return "Render cancelled";
+  return "Render status unavailable";
 }
