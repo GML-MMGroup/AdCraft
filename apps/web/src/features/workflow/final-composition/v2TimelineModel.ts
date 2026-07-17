@@ -116,6 +116,8 @@ export function updateV2TimelineTrack(
 export function setV2TimelineClipAudio(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineAudio>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
+    volume: update.volume === undefined ? clip.volume : update.volume,
+    muted: update.muted === undefined ? clip.muted : update.muted,
     audio: { ...clip.audio, ...update },
   }));
 }

@@ -738,7 +738,7 @@ function normalizeV2FinalCompositionTimeline(value: unknown): V2FinalComposition
     tracks: recordArray(record.tracks).map((track, index) => ({
       track_id: stringValue(track.track_id, `track-${index + 1}`),
       track_type: normalizeTimelineTrackType(track.track_type),
-      order: numberValue(track.order, index + 1),
+      order: numberValue(track.order, 1),
       enabled: track.enabled !== false,
       metadata: recordValue(track.metadata) ?? {},
     })),
