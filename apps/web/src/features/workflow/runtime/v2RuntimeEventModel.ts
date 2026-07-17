@@ -21,6 +21,15 @@ export type V2SynchronizationRefreshPlan = {
   scriptVersionIds: string[];
 };
 
+export const V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES = new Set([
+  "final_composition_render_queued",
+  "final_composition_render_started",
+  "final_composition_render_progress",
+  "final_composition_render_completed",
+  "final_composition_render_failed",
+  "final_composition_render_cancelled",
+]);
+
 const V2_SLOT_OPERATION_REFRESH_EVENTS = new Set([
   "slot_working_version_updated",
   "slot_selected_version_updated",
