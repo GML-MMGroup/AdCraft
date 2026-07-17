@@ -14,11 +14,11 @@ import {
   claimFinalRenderCompletion,
   finalRenderCancelAction,
   finalRenderEventHints,
+  finalRenderGetFailureAction,
   finalRenderSessionMatches,
   flushTimelineForRender,
   isFinalRenderTerminal,
   nextFinalRenderPoll,
-  shouldRetryFinalRenderGet,
   type FinalCompositionEventDetail,
   type FinalRenderEventHint,
   type FinalRenderSessionIdentity,
@@ -193,6 +193,7 @@ export function useV2FinalCompositionEditor({
   const [renderJob, setRenderJob] = useState<V2FinalTimelineRenderStartResponse | null>(null);
   const [renderState, setRenderState] = useState<V2FinalTimelineRenderStateResponse | null>(null);
   const [renderHint, setRenderHint] = useState<FinalRenderEventHint | null>(null);
+  const [renderSessionError, setRenderSessionError] = useState("");
   const [cancellingRender, setCancellingRender] = useState(false);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -274,10 +275,24 @@ export function useV2FinalCompositionEditor({
   }, [clearRenderPollTimer]);
 
   useLayoutEffect(() => {
-    const sessionTransition = sessionGuardRef.current.update(workflowId ?? null);
-    const wasActive = activeRef.current;
+    const sessionGuard = sessionGuardRef.current;
+    const remoteStateEpoch = remoteStateEpochRef.current;
+    return () => {
+      activeRef.current = false;
+      sessionGuard.update(null);
+      invalidateRenderSession();
+      remoteStateEpoch.invalidate();
+      loadRequestRef.current += 1;
+      editRevisionRef.current += 1;
+    };
+  }, [active, invalidateRenderSession, workflowId]);
+
+  useLayoutEffect(() => {
+    const sessionTransition = active
+      ? sessionGuardRef.current.update(workflowId ?? null)
+      : sessionGuardRef.current.update(null);
     activeRef.current = active;
-    if (sessionTransition.changed || (wasActive && !active)) {
+    if (sessionTransition.changed || !active) {
       invalidateRenderSession();
       remoteStateEpochRef.current.invalidate();
       loadRequestRef.current += 1;
@@ -296,6 +311,7 @@ export function useV2FinalCompositionEditor({
       setRenderJob(null);
       setRenderState(null);
       setRenderHint(null);
+      setRenderSessionError("");
       setCancellingRender(false);
       setExternalUpdate(false);
       setLoading(false);
@@ -338,11 +354,6 @@ export function useV2FinalCompositionEditor({
     invalidateRenderSession,
   ]);
 
-  useEffect(() => () => {
-    activeRef.current = false;
-    invalidateRenderSession();
-  }, [invalidateRenderSession]);
-
   const replaceHistoryPresent = useCallback((timeline: V2FinalCompositionTimeline) => {
     const current = historyRef.current;
     assignHistory(current
@@ -382,6 +393,7 @@ export function useV2FinalCompositionEditor({
           setRenderJob(null);
           setRenderState(null);
           setRenderHint(null);
+          setRenderSessionError("");
           setCancellingRender(false);
         }
         setExternalUpdate(false);
@@ -432,6 +444,7 @@ export function useV2FinalCompositionEditor({
     renderStateRef.current = state;
     setRenderState(state);
     setRenderHint(null);
+    setRenderSessionError("");
     setError("");
     if (isFinalRenderTerminal(state.status)) {
       clearRenderPollTimer();
@@ -465,13 +478,23 @@ export function useV2FinalCompositionEditor({
     } catch (pollError) {
       if (requestId !== renderStateRequestRef.current || !renderIdentityIsCurrent(identity)) return;
       const status = pollError instanceof V2ApiError ? pollError.status : null;
-      if (shouldRetryFinalRenderGet(status)) {
+      if (finalRenderGetFailureAction(status) === "retry") {
         scheduleRenderPoll(identity);
       } else {
-        setError(readableError(pollError));
+        const message = status === 404
+          ? "Final render is no longer available. Start a new render to retry."
+          : `Final render status could not be loaded: ${readableError(pollError)} Start a new render to retry.`;
+        invalidateRenderSession();
+        setRenderJob(null);
+        setRenderState(null);
+        setRenderHint(null);
+        setRendering(false);
+        setCancellingRender(false);
+        setRenderSessionError(message);
+        setError("");
       }
     }
-  }, [applyAuthoritativeRenderState, clearRenderPollTimer, renderIdentityIsCurrent, scheduleRenderPoll]);
+  }, [applyAuthoritativeRenderState, clearRenderPollTimer, invalidateRenderSession, renderIdentityIsCurrent, scheduleRenderPoll]);
   pollRenderRef.current = pollRender;
 
   useEffect(() => {
@@ -787,6 +810,7 @@ export function useV2FinalCompositionEditor({
     setRenderJob(start);
     setRenderState(null);
     setRenderHint(null);
+    setRenderSessionError("");
     setCancellingRender(false);
     setRendering(true);
     void pollRenderRef.current(identity, true);
@@ -815,6 +839,7 @@ export function useV2FinalCompositionEditor({
     setRenderJob(null);
     setRenderState(null);
     setRenderHint(null);
+    setRenderSessionError("");
     setError("");
     const timeline = await flushTimelineForRender({
       session,
@@ -996,6 +1021,7 @@ export function useV2FinalCompositionEditor({
     renderJob,
     renderState,
     renderHint,
+    renderSessionError,
     error,
     warning,
     snapTarget,

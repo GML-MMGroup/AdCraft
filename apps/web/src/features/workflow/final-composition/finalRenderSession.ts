@@ -62,6 +62,10 @@ export function shouldRetryFinalRenderGet(status: number | null) {
   return status === null || status === 408 || status === 429 || status >= 500;
 }
 
+export function finalRenderGetFailureAction(status: number | null) {
+  return shouldRetryFinalRenderGet(status) ? "retry" as const : "terminate" as const;
+}
+
 export function finalRenderCancelAction(status: V2FinalTimelineRenderStateResponse["status"]) {
   if (status === "cancellation_requested") return "poll" as const;
   if (isFinalRenderTerminal(status)) return "terminal" as const;

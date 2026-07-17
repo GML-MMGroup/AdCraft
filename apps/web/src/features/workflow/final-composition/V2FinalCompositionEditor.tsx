@@ -234,6 +234,12 @@ export function V2FinalCompositionEditor({
       />
       {editor.error ? <p className="v2-composition-feedback is-error">{editor.error}</p> : null}
       {editor.warning ? <p className="v2-composition-feedback">{editor.warning}</p> : null}
+      {editor.renderSessionError ? (
+        <div className="v2-composition-feedback is-error">
+          <span role="alert" aria-atomic="true">{editor.renderSessionError}</span>
+          <button type="button" onClick={() => void editor.render()}>Retry final render</button>
+        </div>
+      ) : null}
       {editor.conflict ? (
         <div className="v2-composition-feedback is-error">
           <span>{editor.conflict.message}</span>
@@ -247,16 +253,12 @@ export function V2FinalCompositionEditor({
       ) : null}
       {renderStatus && renderId ? (
         <div className={`v2-composition-feedback${renderStatus === "failed" ? " is-error" : ""}`}>
-          <span>
-            {renderStatusLabel(renderStatus)}
-            {typeof renderProgressPercent === "number"
-              && (renderStatus === "running" || renderStatus === "cancellation_requested")
-              ? ` · ${Math.round(Math.min(100, Math.max(0, renderProgressPercent)))}%`
-              : ""}
-            {renderStatus === "failed" && (editor.renderState?.error_code || editor.renderState?.error_message)
-              ? ` · ${[editor.renderState.error_code, editor.renderState.error_message].filter(Boolean).join(": ")}`
-              : ""}
-          </span>
+          <RenderStatusAnnouncement
+            status={renderStatus}
+            progressPercent={renderProgressPercent}
+            errorCode={editor.renderState?.error_code}
+            errorMessage={editor.renderState?.error_message}
+          />
           {renderIsActive ? (
             <button
               className="v2-composition-icon-button"
@@ -491,4 +493,44 @@ function renderStatusLabel(status: string) {
   if (status === "failed") return "Render failed";
   if (status === "cancelled") return "Render cancelled";
   return "Render status unavailable";
+}
+
+function RenderStatusAnnouncement({
+  status,
+  progressPercent,
+  errorCode,
+  errorMessage,
+}: {
+  status: string;
+  progressPercent: number | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+}) {
+  const showsProgress = typeof progressPercent === "number"
+    && (status === "running" || status === "cancellation_requested");
+  const boundedProgress = showsProgress
+    ? Math.min(100, Math.max(0, progressPercent))
+    : null;
+  const failureDetail = status === "failed"
+    ? [errorCode, errorMessage].filter(Boolean).join(": ")
+    : "";
+  const content = (
+    <>
+      <span>
+        {renderStatusLabel(status)}
+        {boundedProgress !== null ? ` · ${Math.round(boundedProgress)}%` : ""}
+        {failureDetail ? ` · ${failureDetail}` : ""}
+      </span>
+      {boundedProgress !== null ? (
+        <progress aria-label="Final render progress" max={100} value={boundedProgress}>
+          {Math.round(boundedProgress)}%
+        </progress>
+      ) : null}
+    </>
+  );
+  return status === "failed" ? (
+    <span role="alert" aria-atomic="true">{content}</span>
+  ) : (
+    <span role="status" aria-live="polite" aria-atomic="true">{content}</span>
+  );
 }
