@@ -156,6 +156,7 @@ export function reconcileReloadedTimeline({
 export function createLatestSaveQueue<TSnapshot, TResult, TRequest = void>(
   readSnapshot: (request: TRequest) => TSnapshot | null,
   saveSnapshot: (snapshot: TSnapshot) => Promise<TResult>,
+  sameContext: (left: TRequest, right: TRequest) => boolean = () => true,
 ) {
   type Waiter = {
     request: number;
@@ -173,9 +174,16 @@ export function createLatestSaveQueue<TSnapshot, TResult, TRequest = void>(
     running = true;
     try {
       while (processed < requested) {
-        const batch = requested;
+        const firstPending = waiters.find((waiter) => waiter.request > processed)!;
+        const batchWaiters: Waiter[] = [];
+        for (const waiter of waiters) {
+          if (waiter.request <= processed) continue;
+          if (batchWaiters.length > 0 && !sameContext(firstPending.context, waiter.context)) break;
+          batchWaiters.push(waiter);
+        }
+        const latestRequest = batchWaiters.at(-1)!;
+        const batch = latestRequest.request;
         try {
-          const latestRequest = waiters.findLast((waiter) => waiter.request <= batch)!;
           const snapshot = readSnapshot(latestRequest.context);
           const result = snapshot === null ? null : await saveSnapshot(snapshot);
           processed = batch;

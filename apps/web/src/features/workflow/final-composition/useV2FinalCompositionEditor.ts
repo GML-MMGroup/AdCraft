@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { V2ApiError, v2Api } from "../../../api/v2Client.ts";
 import type {
   V2FinalCompositionTimeline,
@@ -207,30 +207,6 @@ export function useV2FinalCompositionEditor({
   const performSaveRef = useRef<(snapshot: TimelineSaveSnapshot) => Promise<V2FinalTimelineUpdateResponse | null>>(async () => null);
   const saveQueueRef = useRef<TimelineSaveQueue | null>(null);
 
-  const sessionTransition = sessionGuardRef.current.update(workflowId ?? null);
-  if (sessionTransition.changed) {
-    remoteStateEpochRef.current.invalidate();
-    loadRequestRef.current += 1;
-    editRevisionRef.current += 1;
-    baselineRef.current = null;
-    historyRef.current = null;
-    draftRef.current = null;
-    conflictRef.current = null;
-    renderingRef.current = false;
-  } else {
-    baselineRef.current = baseline;
-    historyRef.current = history;
-    draftRef.current = draft;
-    conflictRef.current = conflict;
-    renderingRef.current = rendering;
-  }
-  selectedClipIdsRef.current = selectedClipIdsState;
-  playheadRef.current = playheadSeconds;
-  editModeRef.current = editMode;
-  snapEnabledRef.current = snapEnabled;
-  zoomRef.current = zoom;
-  onWorkflowRefreshRef.current = onWorkflowRefresh;
-
   const assignBaseline = useCallback((next: V2FinalCompositionTimeline | null) => {
     baselineRef.current = next;
     setBaseline(next);
@@ -252,6 +228,59 @@ export function useV2FinalCompositionEditor({
     selectedClipIdsRef.current = next;
     setSelectedClipIdsState(next);
   }, []);
+
+  useLayoutEffect(() => {
+    const sessionTransition = sessionGuardRef.current.update(workflowId ?? null);
+    onWorkflowRefreshRef.current = onWorkflowRefresh;
+    if (sessionTransition.changed) {
+      remoteStateEpochRef.current.invalidate();
+      loadRequestRef.current += 1;
+      editRevisionRef.current += 1;
+      baselineRef.current = null;
+      historyRef.current = null;
+      draftRef.current = null;
+      selectedClipIdsRef.current = [];
+      conflictRef.current = null;
+      renderingRef.current = false;
+      setBaseline(null);
+      setHistory(null);
+      setSelectedClipIdsState([]);
+      setConflict(null);
+      setSources([]);
+      setRenderJob(null);
+      setExternalUpdate(false);
+      setLoading(false);
+      setSaving(false);
+      setRendering(false);
+      setError("");
+      setWarning("");
+      setSnapTarget(null);
+      return;
+    }
+    baselineRef.current = baseline;
+    historyRef.current = history;
+    draftRef.current = draft;
+    selectedClipIdsRef.current = selectedClipIdsState;
+    playheadRef.current = playheadSeconds;
+    editModeRef.current = editMode;
+    snapEnabledRef.current = snapEnabled;
+    zoomRef.current = zoom;
+    conflictRef.current = conflict;
+    renderingRef.current = rendering;
+  }, [
+    baseline,
+    conflict,
+    draft,
+    editMode,
+    history,
+    onWorkflowRefresh,
+    playheadSeconds,
+    rendering,
+    selectedClipIdsState,
+    snapEnabled,
+    workflowId,
+    zoom,
+  ]);
 
   const replaceHistoryPresent = useCallback((timeline: V2FinalCompositionTimeline) => {
     const current = historyRef.current;
@@ -293,7 +322,9 @@ export function useV2FinalCompositionEditor({
       }
       return response;
     } catch (loadError) {
-      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
+      if (requestId === loadRequestRef.current
+        && sessionGuardRef.current.isCurrent(session)
+        && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
         setError(readableError(loadError));
       }
       return null;
@@ -301,22 +332,6 @@ export function useV2FinalCompositionEditor({
       if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
   }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds]);
-
-  useEffect(() => {
-    assignBaseline(null);
-    assignHistory(null);
-    assignSelectedClipIds([]);
-    assignConflict(null);
-    setSources([]);
-    setRenderJob(null);
-    setExternalUpdate(false);
-    setLoading(false);
-    setSaving(false);
-    setRendering(false);
-    setError("");
-    setWarning("");
-    setSnapTarget(null);
-  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds, workflowId]);
 
   useEffect(() => {
     if (!active || !workflowId) return;
@@ -489,6 +504,7 @@ export function useV2FinalCompositionEditor({
         return { session, baseline: currentBaseline, draft: currentDraft };
       },
       (snapshot) => performSaveRef.current(snapshot),
+      (left, right) => left.workflowId === right.workflowId && left.generation === right.generation,
     );
   }
 
