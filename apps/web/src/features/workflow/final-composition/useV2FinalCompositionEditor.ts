@@ -651,7 +651,7 @@ export function useV2FinalCompositionEditor({
     return mutation;
   }, [applyMutation, assignSelectedClipIds]);
 
-  const importLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
+  const registerLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
     const session = sessionGuardRef.current.capture();
     const currentWorkflowId = session.workflowId;
     if (!currentWorkflowId) return null;
@@ -664,13 +664,12 @@ export function useV2FinalCompositionEditor({
       });
       if (!sessionGuardRef.current.isCurrent(session)) return null;
       setSources((current) => [...current.filter((item) => item.version_id !== response.source.version_id), response.source]);
-      addSource(response.source);
       return response.source;
     } catch (importError) {
       if (sessionGuardRef.current.isCurrent(session)) setError(readableError(importError));
       return null;
     }
-  }, [addSource]);
+  }, []);
 
   const selectedClipIds = selectedClipIdsState;
   const selectedClipId = selectedClipIds[0] ?? null;
@@ -725,7 +724,8 @@ export function useV2FinalCompositionEditor({
     reorderLane,
     fitTimeline,
     addSource,
-    importLibrarySource,
+    registerLibrarySource,
+    importLibrarySource: registerLibrarySource,
     removeImportedLane,
     addTrack: (type: V2TimelineTrackType) => updateDraft((timeline) => addV2TimelineTrack(timeline, type)),
     updateTrack: (trackId: string, update: Parameters<typeof updateV2TimelineTrack>[2]) => updateDraft((timeline) => updateV2TimelineTrack(timeline, trackId, update)),

@@ -17,12 +17,19 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   PreviewIcon,
+  TrashIcon,
 } from "../../../icons.tsx";
 import type {
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
+  V2FinalTimelineSource,
   V2FinalTimelineTrack,
 } from "../../../types-v2.ts";
+import {
+  findTimelineSource,
+  timelineSourceKey,
+  useTimelineMediaVisuals,
+} from "./useTimelineMediaVisuals.ts";
 import type { V2FinalCompositionTool } from "./useV2FinalCompositionEditor.ts";
 
 const ROW_HEIGHT = 48;
@@ -73,7 +80,9 @@ type TimelineGestureController = {
 };
 
 type V2ShotTimelineProps = TimelineGestureController & {
+  workflowId: string;
   timeline: V2FinalCompositionTimeline;
+  sources: V2FinalTimelineSource[];
   selectedClipIds: string[];
   playheadSeconds: number;
   zoom: number;
@@ -86,6 +95,8 @@ type V2ShotTimelineProps = TimelineGestureController & {
   onUpdateTrack: (trackId: string, update: Partial<V2FinalTimelineTrack>) => void;
   onSetClipAudio: (clipId: string, update: { muted?: boolean; volume?: number }) => void;
   onReorderLane: (trackId: string, targetIndex: number) => unknown;
+  onRemoveImportedLane: (trackId: string) => unknown;
+  mediaUrl: (path?: string | null) => string;
 };
 
 const TIMELINE_EFFECTS = {
@@ -116,7 +127,7 @@ export function toShotTimelineRows(
         end: clip.start_time + clip.duration,
         effectId: clip.clip_type === "audio" ? "bgm" : "shot",
         selected: selected.has(clip.clip_id),
-        flexible: clip.clip_type === "video" && track.enabled && clip.enabled && !locked,
+        flexible: (clip.clip_type === "video" || clip.clip_type === "audio") && track.enabled && clip.enabled && !locked,
         movable: track.enabled && clip.enabled && !locked,
         disable: !track.enabled || !clip.enabled,
         minStart: 0,
@@ -204,7 +215,7 @@ export function commitTimelineActionChange(
     return mutation;
   }
 
-  if (clip.clip_type !== "video") {
+  if (clip.clip_type !== "video" && clip.clip_type !== "audio") {
     controller.finalizeGesture();
     return;
   }
@@ -239,7 +250,9 @@ export function completeTimelineGesture(
 }
 
 export function V2ShotTimeline({
+  workflowId,
   timeline,
+  sources,
   selectedClipIds,
   playheadSeconds,
   zoom,
@@ -252,6 +265,8 @@ export function V2ShotTimeline({
   onUpdateTrack,
   onSetClipAudio,
   onReorderLane,
+  onRemoveImportedLane,
+  mediaUrl,
   moveClip,
   trimClip,
   finalizeGesture,
@@ -274,6 +289,14 @@ export function V2ShotTimeline({
   );
   const displayedDuration = displayedShotTimelineDuration(timeline);
   const effectiveScaleCount = effectiveShotTimelineScaleCount(timeline);
+  const mediaVisuals = useTimelineMediaVisuals({
+    workflowId,
+    timeline,
+    sources,
+    selectedClipIds,
+    playheadSeconds,
+    mediaUrl,
+  });
 
   useLayoutEffect(() => {
     setRows(projectedRows);
@@ -353,6 +376,7 @@ export function V2ShotTimeline({
               onUpdateTrack={onUpdateTrack}
               onSetClipAudio={onSetClipAudio}
               onReorderLane={onReorderLane}
+              onRemoveImportedLane={onRemoveImportedLane}
             />
           ))}
         </div>
@@ -377,12 +401,28 @@ export function V2ShotTimeline({
           getActionRender={(action) => {
             const clip = clipsById.get(action.id);
             if (!clip) return null;
+            const source = findTimelineSource(sources, clip);
+            const sourceKey = source ? timelineSourceKey(source) : "";
+            const posterUrl = sourceKey ? mediaVisuals.posterUrls.get(sourceKey) : undefined;
+            const waveform = sourceKey ? mediaVisuals.waveforms.get(sourceKey) : undefined;
             return (
               <div
                 className={`v2-composition-timeline-clip is-${clip.clip_type} ${action.selected ? "is-selected" : ""}`}
                 title={`${displayClipName(clip, visibleTracks)} - ${clip.duration.toFixed(2)} seconds`}
               >
                 <span className="v2-shot-trim-handle is-left" aria-hidden="true" />
+                {clip.clip_type === "video" && posterUrl ? (
+                  <span className="v2-shot-poster-strip" aria-hidden="true">
+                    {[0, 1, 2].map((index) => <img key={index} src={posterUrl} alt="" draggable={false} />)}
+                  </span>
+                ) : null}
+                {clip.clip_type === "audio" && waveform ? (
+                  <span className="v2-shot-waveform" aria-hidden="true">
+                    {waveform.map((height, index) => (
+                      <i key={index} style={{ height: `${Math.round(height * 100)}%` }} />
+                    ))}
+                  </span>
+                ) : null}
                 <span>{displayClipName(clip, visibleTracks)} · {clip.duration.toFixed(2)}s</span>
                 {!clip.muted ? <span className="v2-shot-source-audio" aria-hidden="true">A</span> : null}
                 <span className="v2-shot-trim-handle is-right" aria-hidden="true" />
@@ -395,7 +435,8 @@ export function V2ShotTimeline({
             commitAtGestureEnd({ ...action, start, end } as ShotTimelineAction, "move");
           }}
           onActionResizeStart={() => undefined}
-          onActionResizing={({ action, row }) => action.effectId === "shot" && row.id === clipsById.get(action.id)?.track_id}
+          onActionResizing={({ action, row }) => (action.effectId === "shot" || action.effectId === "bgm")
+            && row.id === clipsById.get(action.id)?.track_id}
           onActionResizeEnd={({ action, start, end, dir }) => {
             commitAtGestureEnd({ ...action, start, end } as ShotTimelineAction, dir);
           }}
@@ -430,6 +471,7 @@ function LaneHeader({
   onUpdateTrack,
   onSetClipAudio,
   onReorderLane,
+  onRemoveImportedLane,
 }: {
   track: V2FinalTimelineTrack;
   clips: V2FinalTimelineClip[];
@@ -438,19 +480,23 @@ function LaneHeader({
   onUpdateTrack: (trackId: string, update: Partial<V2FinalTimelineTrack>) => void;
   onSetClipAudio: (clipId: string, update: { muted?: boolean; volume?: number }) => void;
   onReorderLane: (trackId: string, targetIndex: number) => unknown;
+  onRemoveImportedLane: (trackId: string) => unknown;
 }) {
   const locked = isTrackLocked(track);
   const editor = editorMetadata(track);
   const allMuted = clips.length > 0 && clips.every((clip) => clip.muted || clip.audio.muted);
   const shotIndex = shotTracks.findIndex((candidate) => candidate.track_id === track.track_id);
   const label = displayTrackName(track, index);
+  const imported = track.track_type === "video" && editor.imported === true;
 
   return (
     <div
       className={`v2-composition-track-label ${track.enabled ? "" : "is-disabled"}`}
       style={{ height: ROW_HEIGHT }}
     >
-      <strong title={label}>{label}</strong>
+      {imported ? (
+        <EditableImportedLaneName track={track} label={label} onUpdateTrack={onUpdateTrack} />
+      ) : <strong title={label}>{label}</strong>}
       <span>
         {track.track_type === "video" ? (
           <>
@@ -517,8 +563,54 @@ function LaneHeader({
         >
           <AssetsIcon />
         </LaneButton>
+        {imported ? (
+          <LaneButton
+            label={`Remove imported lane ${label}`}
+            disabled={locked}
+            onClick={() => onRemoveImportedLane(track.track_id)}
+          >
+            <TrashIcon />
+          </LaneButton>
+        ) : null}
       </span>
     </div>
+  );
+}
+
+function EditableImportedLaneName({
+  track,
+  label,
+  onUpdateTrack,
+}: {
+  track: V2FinalTimelineTrack;
+  label: string;
+  onUpdateTrack: (trackId: string, update: Partial<V2FinalTimelineTrack>) => void;
+}) {
+  const [draft, setDraft] = useState(label);
+  useEffect(() => setDraft(label), [label]);
+  const commit = () => {
+    const name = draft.trim() || "Imported video";
+    setDraft(name);
+    if (name === label) return;
+    onUpdateTrack(track.track_id, {
+      metadata: { ...track.metadata, editor: { ...editorMetadata(track), name } },
+    });
+  };
+  return (
+    <input
+      aria-label="Imported video name"
+      title="Imported video name"
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Escape") {
+          setDraft(label);
+          event.currentTarget.blur();
+        }
+      }}
+    />
   );
 }
 

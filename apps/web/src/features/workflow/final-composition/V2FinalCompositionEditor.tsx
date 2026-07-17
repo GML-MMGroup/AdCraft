@@ -1,28 +1,18 @@
 import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css";
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { mediaUrl } from "../../../api/client.ts";
-import {
-  AssetsIcon,
-  PlayIcon,
-  PlusIcon,
-  TrashIcon,
-  VideoIcon,
-} from "../../../icons.tsx";
-import type {
-  V2FinalCompositionTimeline,
-  V2FinalTimelineClip,
-  V2FinalTimelineSource,
-} from "../../../types-v2.ts";
+import { AssetsIcon, PlusIcon, VideoIcon } from "../../../icons.tsx";
+import type { V2FinalCompositionTimeline, V2FinalTimelineSource } from "../../../types-v2.ts";
 import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
 import { AssetLibraryPicker } from "../assets/AssetLibraryPanels.tsx";
+import { V2CompositionInspector } from "./V2CompositionInspector.tsx";
 import {
-  activeCompatibilityPreviewClips,
-  fitShotTimelineZoom,
-  V2ShotTimeline,
-} from "./V2ShotTimeline.tsx";
+  V2CompositionPreview,
+  type V2CompositionPreviewHandle,
+} from "./V2CompositionPreview.tsx";
+import { fitShotTimelineZoom, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
-import { v2TimelineDuration } from "./v2TimelineModel.ts";
 import { useV2FinalCompositionEditor } from "./useV2FinalCompositionEditor.ts";
 
 export function isTimelineKeyboardTarget(target: EventTarget | null) {
@@ -45,9 +35,11 @@ export function V2FinalCompositionEditor({
 }) {
   const editor = useV2FinalCompositionEditor({ workflowId, active, onWorkflowRefresh });
   const editorRef = useRef(editor);
+  const previewRef = useRef<V2CompositionPreviewHandle>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const [libraryType, setLibraryType] = useState<"video" | "audio" | null>(null);
   const [playing, setPlaying] = useState(false);
+  const [pendingBgmSource, setPendingBgmSource] = useState<V2FinalTimelineSource | null>(null);
   const sources = useMemo(
     () => editor.sources.filter((source) => source.media_type === "video" || source.media_type === "audio"),
     [editor.sources],
@@ -67,7 +59,7 @@ export function V2FinalCompositionEditor({
 
       if (event.code === "Space") {
         event.preventDefault();
-        if (!event.repeat) setPlaying((value) => !value);
+        if (!event.repeat) previewRef.current?.togglePlayback();
         return;
       }
       if (command && key === "b") {
@@ -93,6 +85,7 @@ export function V2FinalCompositionEditor({
       }
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
+        previewRef.current?.pause();
         const direction = event.key === "ArrowLeft" ? -1 : 1;
         const step = event.shiftKey ? 1 : 1 / Math.max(1, current.draft?.fps ?? 24);
         current.setPlayheadSeconds(Math.min(
@@ -126,8 +119,29 @@ export function V2FinalCompositionEditor({
   }, [active]);
 
   useEffect(() => {
-    if (!active) setPlaying(false);
+    if (!active) {
+      previewRef.current?.pause();
+      setPlaying(false);
+      setPendingBgmSource(null);
+    }
   }, [active]);
+
+  useEffect(() => {
+    if (!pendingBgmSource) return;
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPendingBgmSource(null);
+    };
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [pendingBgmSource]);
+
+  const requestSourceAdd = (source: V2FinalTimelineSource) => {
+    if (source.media_type === "audio" && editor.draft && hasMarkedBgm(editor.draft)) {
+      setPendingBgmSource(source);
+      return;
+    }
+    editor.addSource(source);
+  };
 
   if (!active) return null;
   return (
@@ -165,7 +179,7 @@ export function V2FinalCompositionEditor({
         onFitTimeline={() => editor.setZoom(editor.draft
           ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - 132))
           : 1)}
-        onTogglePlaying={() => setPlaying((value) => !value)}
+        onTogglePlaying={() => previewRef.current?.togglePlayback()}
         onRefresh={() => void editor.load({ preserveDraft: true })}
         onSave={() => void editor.save()}
         onRender={() => void editor.render()}
@@ -206,7 +220,7 @@ export function V2FinalCompositionEditor({
                 <SourceCard
                   key={`${source.asset_id}-${source.version_id}`}
                   source={source}
-                  onAdd={() => editor.addSource(source)}
+                  onAdd={() => requestSourceAdd(source)}
                 />
               ))}
               {!sources.length ? <span className="v2-composition-empty">No timeline-ready media yet.</span> : null}
@@ -214,6 +228,7 @@ export function V2FinalCompositionEditor({
           </aside>
           <div ref={mainRef} className="v2-composition-editor-main">
             <V2CompositionPreview
+              ref={previewRef}
               timeline={editor.draft}
               sources={editor.sources}
               playheadSeconds={editor.playheadSeconds}
@@ -224,7 +239,9 @@ export function V2FinalCompositionEditor({
               onSelectClip={editor.setSelectedClipId}
             />
             <V2ShotTimeline
+              workflowId={workflowId}
               timeline={editor.draft}
+              sources={editor.sources}
               selectedClipIds={editor.selectedClipIds}
               playheadSeconds={editor.playheadSeconds}
               zoom={editor.zoom}
@@ -237,17 +254,20 @@ export function V2FinalCompositionEditor({
               onUpdateTrack={editor.updateTrack}
               onSetClipAudio={editor.setClipAudio}
               onReorderLane={editor.reorderLane}
+              onRemoveImportedLane={editor.removeImportedLane}
+              mediaUrl={mediaUrl}
               moveClip={editor.moveClip}
               trimClip={editor.trimClip}
               finalizeGesture={editor.finalizeGesture}
             />
           </div>
-          <V2ClipInspector
+          <V2CompositionInspector
             clip={editor.selectedClip?.clip_type === "video" || editor.selectedClip?.clip_type === "audio"
               ? editor.selectedClip
               : null}
             onMoveClip={editor.moveClip}
             onTrimClip={editor.trimClip}
+            onFinalizeGesture={editor.finalizeGesture}
             onUpdateClip={editor.updateClip}
             onSetAudio={editor.setClipAudio}
             onSetColor={editor.setClipColor}
@@ -265,295 +285,49 @@ export function V2FinalCompositionEditor({
           onToggle={(entity) => {
             const assetId = entity.asset_ids?.[0] ?? entity.assets?.[0]?.asset_id;
             if (!assetId) return;
-            void editor.importLibrarySource({
+            void editor.registerLibrarySource({
               entityId: entity.entity_id,
               assetId,
               mediaType: libraryType,
             }).then((source) => {
-              if (source) setLibraryType(null);
+              if (!source) return;
+              setLibraryType(null);
+              requestSourceAdd(source);
             });
           }}
         />
       ) : null}
-    </section>
-  );
-}
-
-function V2CompositionPreview({
-  timeline,
-  sources,
-  playheadSeconds,
-  playing,
-  onPlayingChange,
-  onPlayheadChange,
-  selectedClipId,
-  onSelectClip,
-}: {
-  timeline: V2FinalCompositionTimeline;
-  sources: V2FinalTimelineSource[];
-  playheadSeconds: number;
-  playing: boolean;
-  onPlayingChange: (playing: boolean) => void;
-  onPlayheadChange: (value: number) => void;
-  selectedClipId: string | null;
-  onSelectClip: (value: string | null) => void;
-}) {
-  const videos = useRef(new Map<string, HTMLVideoElement>());
-  const activePreview = useMemo(
-    () => activeCompatibilityPreviewClips(timeline, playheadSeconds),
-    [playheadSeconds, timeline],
-  );
-  const activeClips = activePreview.visualClips;
-  const activeSubtitleClips = activePreview.subtitleClips;
-  const activeVideoClip = activeClips.findLast((clip) => clip.clip_type === "video" && sources.some(
-    (source) => source.asset_id === clip.source_asset_id
-      && source.version_id === clip.source_version_id
-      && source.media_type === "video"
-      && Boolean(source.public_url),
-  )) ?? null;
-  const duration = Math.max(v2TimelineDuration(timeline), 0.01);
-
-  useEffect(() => {
-    activeClips.forEach((clip) => {
-      const element = videos.current.get(clip.clip_id);
-      if (!element) return;
-      const localTime = Math.max(0, playheadSeconds - clip.start_time + clip.trim_in);
-      if (Math.abs(element.currentTime - localTime) > 0.25) element.currentTime = localTime;
-    });
-  }, [activeClips, playheadSeconds]);
-
-  useEffect(() => {
-    videos.current.forEach((element) => {
-      if (playing) void element.play().catch(() => onPlayingChange(false));
-      else element.pause();
-    });
-  }, [activeClips, onPlayingChange, playing]);
-
-  useEffect(() => {
-    const hasActiveVideo = activeVideoClip !== null;
-    if (!playing || hasActiveVideo) return;
-    const frame = window.setInterval(
-      () => onPlayheadChange(Math.min(duration, playheadSeconds + 0.04)),
-      40,
-    );
-    return () => window.clearInterval(frame);
-  }, [activeVideoClip, duration, onPlayheadChange, playheadSeconds, playing]);
-
-  useEffect(() => {
-    if (playheadSeconds >= duration && playing) onPlayingChange(false);
-  }, [duration, onPlayingChange, playheadSeconds, playing]);
-
-  return (
-    <section className="v2-composition-preview" aria-label="Composition preview">
-      <div
-        className="v2-composition-preview-stage"
-        style={{ aspectRatio: timeline.aspect_ratio.replace(":", " / ") }}
-      >
-        {activeClips.map((clip) => {
-          const source = sources.find(
-            (item) => item.asset_id === clip.source_asset_id && item.version_id === clip.source_version_id,
-          );
-          if (!source?.public_url) return null;
-          const sourceUrl = mediaUrl(versionedMediaPath(source.public_url, source));
-          const mediaStyle = styleForVisualClip(clip);
-          if (clip.clip_type === "video" && source.media_type === "video") return (
-            <video
-              key={clip.clip_id}
-              ref={(element) => {
-                if (element) videos.current.set(clip.clip_id, element);
-                else videos.current.delete(clip.clip_id);
-              }}
-              src={sourceUrl}
-              muted
-              playsInline
-              preload="metadata"
-              style={mediaStyle}
-              onTimeUpdate={(event) => {
-                if (playing && clip.clip_id === activeVideoClip?.clip_id) {
-                  onPlayheadChange(Math.min(
-                    duration,
-                    clip.start_time + event.currentTarget.currentTime - clip.trim_in,
-                  ));
-                }
-              }}
-            />
-          );
-          if (clip.clip_type === "image" && source.media_type === "image") return (
-            <img
-              key={clip.clip_id}
-              src={sourceUrl}
-              alt={source.display_name}
-              style={mediaStyle}
-            />
-          );
-          return null;
-        })}
-        {!activeClips.length && !activeSubtitleClips.length ? (
-          <span className="v2-composition-preview-empty">Place a video on the timeline to preview it.</span>
-        ) : null}
-        {activeSubtitleClips.map((clip) => (
-          <span className="v2-composition-subtitle" key={clip.clip_id}>{clip.text}</span>
-        ))}
-        <button
-          className="v2-composition-preview-play"
-          type="button"
-          aria-label={playing ? "Pause preview" : "Play preview"}
-          title={playing ? "Pause preview" : "Play preview"}
-          onClick={() => {
-            onPlayingChange(!playing);
-            onSelectClip(activeVideoClip?.clip_id ?? selectedClipId);
-          }}
+      {pendingBgmSource ? (
+        <div
+          className="v2-composition-bgm-confirmation"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="v2-bgm-confirmation-title"
+          aria-describedby="v2-bgm-confirmation-description"
         >
-          {playing ? <span aria-hidden="true">II</span> : <PlayIcon />}
-        </button>
-      </div>
-      <div className="v2-composition-transport">
-        <input
-          aria-label="Preview playhead"
-          type="range"
-          min="0"
-          max={duration}
-          step={1 / timeline.fps}
-          value={Math.min(playheadSeconds, duration)}
-          onChange={(event) => onPlayheadChange(Number(event.target.value))}
-        />
-        <span>{formatTime(playheadSeconds)} / {formatTime(duration)}</span>
-      </div>
-    </section>
-  );
-}
-
-function V2ClipInspector({
-  clip,
-  onMoveClip,
-  onTrimClip,
-  onUpdateClip,
-  onSetAudio,
-  onSetColor,
-  onSplitAtPlayhead,
-  onRemove,
-}: {
-  clip: V2FinalTimelineClip | null;
-  onMoveClip: (clipId: string, startTime: number) => unknown;
-  onTrimClip: (clipId: string, edge: "left" | "right", sourceTime: number) => unknown;
-  onUpdateClip: (clipId: string, updater: (clip: V2FinalTimelineClip) => V2FinalTimelineClip) => void;
-  onSetAudio: (clipId: string, update: Record<string, number | boolean>) => void;
-  onSetColor: (clipId: string, update: Record<string, number | string>) => void;
-  onSplitAtPlayhead: (clipId?: string) => unknown;
-  onRemove: (clipId: string) => void;
-}) {
-  return (
-    <aside className="v2-composition-inspector" aria-label="Clip inspector">
-      <div className="v2-composition-panel-heading">
-        <strong>Inspector</strong>
-        {clip ? <span>{clip.clip_type === "audio" ? "BGM" : "Shot"}</span> : null}
-      </div>
-      {!clip ? (
-        <p className="v2-composition-empty">Select a clip to edit timing, color, audio, and transforms.</p>
-      ) : (
-        <div className="v2-composition-inspector-fields">
-          {clip.clip_type === "video" ? (
-            <>
-              <NumericField label="Start" value={clip.start_time} min={0} onChange={(value) => onMoveClip(clip.clip_id, value)} />
-              <NumericField label="Duration" value={clip.duration} min={0.01} onChange={(value) => onTrimClip(clip.clip_id, "right", clip.trim_in + value)} />
-              <NumericField label="Trim in" value={clip.trim_in} min={0} onChange={(value) => onTrimClip(clip.clip_id, "left", value)} />
-              <NumericField label="Trim out" value={clip.trim_out ?? clip.trim_in + clip.duration} min={0.01} onChange={(value) => onTrimClip(clip.clip_id, "right", value)} />
-            </>
-          ) : null}
-          {clip.clip_type === "video" ? <ColorFields clip={clip} onSetColor={onSetColor} /> : null}
-          <AudioFields clip={clip} onSetAudio={onSetAudio} />
-          {clip.clip_type === "video" ? <TransformFields clip={clip} onUpdate={onUpdateClip} /> : null}
-          <div className="v2-composition-inspector-actions">
-            {clip.clip_type === "video" ? (
-              <IconButton label="Split selected clip at playhead" onClick={() => onSplitAtPlayhead(clip.clip_id)}>
-                <span aria-hidden="true">B</span>
-              </IconButton>
-            ) : null}
-            <IconButton label="Delete selected clip" onClick={() => onRemove(clip.clip_id)}>
-              <TrashIcon />
-            </IconButton>
+          <div className="v2-composition-bgm-confirmation-content">
+            <strong id="v2-bgm-confirmation-title">Replace current BGM?</strong>
+            <p id="v2-bgm-confirmation-description">
+              Replace the current BGM with {pendingBgmSource.display_name}. Existing BGM timing is updated only after confirmation.
+            </p>
+            <div className="v2-composition-bgm-confirmation-actions">
+              <button type="button" onClick={() => setPendingBgmSource(null)}>Cancel</button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => {
+                  const source = pendingBgmSource;
+                  setPendingBgmSource(null);
+                  editor.addSource(source);
+                }}
+              >
+                Replace BGM
+              </button>
+            </div>
           </div>
         </div>
-      )}
-    </aside>
-  );
-}
-
-function ColorFields({
-  clip,
-  onSetColor,
-}: {
-  clip: V2FinalTimelineClip;
-  onSetColor: (clipId: string, update: Record<string, number | string>) => void;
-}) {
-  const color = clip.color;
-  return (
-    <fieldset className="v2-composition-fieldset">
-      <legend>Color</legend>
-      <select value={color.preset_id} onChange={(event) => onSetColor(clip.clip_id, { preset_id: event.target.value })}>
-        <option value="none">Neutral</option>
-        <option value="warm">Warm</option>
-        <option value="cool">Cool</option>
-        <option value="high_contrast">High contrast</option>
-        <option value="muted">Muted</option>
-      </select>
-      <RangeField label="Brightness" value={color.brightness} min={-1} max={1} step={0.05} onChange={(value) => onSetColor(clip.clip_id, { brightness: value })} />
-      <RangeField label="Contrast" value={color.contrast} min={0} max={3} step={0.05} onChange={(value) => onSetColor(clip.clip_id, { contrast: value })} />
-      <RangeField label="Saturation" value={color.saturation} min={0} max={3} step={0.05} onChange={(value) => onSetColor(clip.clip_id, { saturation: value })} />
-      <RangeField label="Exposure" value={color.exposure} min={-4} max={4} step={0.1} onChange={(value) => onSetColor(clip.clip_id, { exposure: value })} />
-      <RangeField label="Temperature" value={color.temperature} min={-100} max={100} step={1} onChange={(value) => onSetColor(clip.clip_id, { temperature: value })} />
-      <RangeField label="Tint" value={color.tint} min={-100} max={100} step={1} onChange={(value) => onSetColor(clip.clip_id, { tint: value })} />
-      <RangeField label="Hue" value={color.hue} min={-180} max={180} step={1} onChange={(value) => onSetColor(clip.clip_id, { hue: value })} />
-    </fieldset>
-  );
-}
-
-function AudioFields({
-  clip,
-  onSetAudio,
-}: {
-  clip: V2FinalTimelineClip;
-  onSetAudio: (clipId: string, update: Record<string, number | boolean>) => void;
-}) {
-  const audio = clip.audio;
-  return (
-    <fieldset className="v2-composition-fieldset">
-      <legend>Audio</legend>
-      <RangeField label="Volume" value={audio.volume} min={0} max={4} step={0.05} onChange={(value) => onSetAudio(clip.clip_id, { volume: value })} />
-      <label className="v2-composition-checkbox">
-        <input type="checkbox" checked={audio.muted} onChange={(event) => onSetAudio(clip.clip_id, { muted: event.target.checked })} /> Mute
-      </label>
-      <NumericField label="Fade in" value={audio.fade_in_seconds} min={0} onChange={(value) => onSetAudio(clip.clip_id, { fade_in_seconds: value })} />
-      <NumericField label="Fade out" value={audio.fade_out_seconds} min={0} onChange={(value) => onSetAudio(clip.clip_id, { fade_out_seconds: value })} />
-    </fieldset>
-  );
-}
-
-function TransformFields({
-  clip,
-  onUpdate,
-}: {
-  clip: V2FinalTimelineClip;
-  onUpdate: (clipId: string, updater: (clip: V2FinalTimelineClip) => V2FinalTimelineClip) => void;
-}) {
-  const transform = clip.transform;
-  const update = (patch: Partial<typeof transform>) => onUpdate(clip.clip_id, (current) => ({
-    ...current,
-    transform: { ...transform, ...patch },
-  }));
-  return (
-    <fieldset className="v2-composition-fieldset">
-      <legend>Transform</legend>
-      <RangeField label="Scale" value={transform.scale_x} min={0.1} max={4} step={0.05} onChange={(value) => update({ scale_x: value, scale_y: value })} />
-      <RangeField label="X" value={transform.x} min={-1} max={1} step={0.05} onChange={(value) => update({ x: value })} />
-      <RangeField label="Y" value={transform.y} min={-1} max={1} step={0.05} onChange={(value) => update({ y: value })} />
-      <RangeField label="Rotation" value={transform.rotation_degrees} min={-360} max={360} step={1} onChange={(value) => update({ rotation_degrees: value })} />
-      <RangeField label="Opacity" value={transform.opacity} min={0} max={1} step={0.05} onChange={(value) => update({ opacity: value })} />
-      <select value={transform.fit} onChange={(event) => update({ fit: event.target.value === "cover" ? "cover" : "contain" })}>
-        <option value="contain">Contain</option>
-        <option value="cover">Cover</option>
-      </select>
-    </fieldset>
+      ) : null}
+    </section>
   );
 }
 
@@ -561,7 +335,7 @@ function SourceCard({ source, onAdd }: { source: V2FinalTimelineSource; onAdd: (
   return (
     <button className="v2-composition-source" type="button" onClick={onAdd}>
       <span className="v2-composition-source-thumb">
-        {source.thumbnail_url || source.public_url ? (
+        {source.thumbnail_url || (source.media_type !== "audio" && source.public_url) ? (
           <img
             src={mediaUrl(versionedMediaPath(source.thumbnail_url ?? source.public_url, source))}
             alt=""
@@ -604,63 +378,20 @@ function IconButton({
   );
 }
 
-function NumericField({
-  label,
-  value,
-  min,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="v2-composition-number-field">
-      <span>{label}</span>
-      <input
-        type="number"
-        min={min}
-        step="0.01"
-        value={Number.isFinite(value) ? value : 0}
-        onChange={(event) => onChange(Math.max(min, Number(event.target.value) || 0))}
-      />
-    </label>
-  );
+function hasMarkedBgm(timeline: V2FinalCompositionTimeline) {
+  return timeline.tracks.some((track) => {
+    if (track.track_type !== "audio") return false;
+    const editor = recordValue(track.metadata.editor);
+    if (editor.bgm === true || editor.role === "bgm" || track.metadata.role === "bgm") return true;
+    return timeline.clips.some((clip) => clip.track_id === track.track_id
+      && (clip.metadata.role === "bgm" || recordValue(clip.metadata.editor).bgm === true));
+  });
 }
 
-function RangeField({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="v2-composition-range-field">
-      <span>{label}<b>{value.toFixed(2)}</b></span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
-    </label>
-  );
-}
-
-function styleForVisualClip(clip: V2FinalTimelineClip): CSSProperties {
-  const color = clip.color;
-  const transform = clip.transform;
-  return {
-    filter: `brightness(${Math.max(0, 1 + color.brightness + color.exposure / 4)}) contrast(${color.contrast}) saturate(${color.saturation}) hue-rotate(${color.hue}deg)`,
-    opacity: transform.opacity,
-    objectFit: transform.fit,
-    transform: `translate(${transform.x * 50}%, ${transform.y * 50}%) scale(${transform.scale_x}, ${transform.scale_y}) rotate(${transform.rotation_degrees}deg)`,
-  };
+function recordValue(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
 }
 
 function formatTime(value: number) {
