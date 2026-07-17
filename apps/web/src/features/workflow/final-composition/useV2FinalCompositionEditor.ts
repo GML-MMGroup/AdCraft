@@ -51,14 +51,19 @@ function makeClip(source: V2FinalTimelineSource, trackId: string, startTime: num
     clip_type: trackTypeForSource(source),
     source_asset_id: source.asset_id,
     source_version_id: source.version_id,
+    source_slot_id: null,
     start_time: startTime,
     duration,
     trim_in: 0,
     trim_out: duration,
+    volume: 1,
+    muted: false,
     enabled: true,
-    transform: source.media_type === "audio" ? undefined : { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" },
-    audio: source.media_type === "audio" || source.media_type === "video" ? { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 } : undefined,
-    color: source.media_type === "audio" ? undefined : { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
+    transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" },
+    audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 },
+    color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
+    text: null,
+    subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" },
     metadata: {},
   };
 }
@@ -268,7 +273,7 @@ export function useV2FinalCompositionEditor({
       return {
         ...nextTimeline,
         duration_seconds: Math.max(nextTimeline.duration_seconds, startTime + duration),
-        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", start_time: startTime, duration, enabled: true, text: "New subtitle", subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" }, metadata: {} }],
+        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", source_asset_id: null, source_version_id: null, source_slot_id: null, start_time: startTime, duration, trim_in: 0, trim_out: null, volume: 1, muted: false, enabled: true, transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" }, audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 }, color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 }, text: "New subtitle", subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" }, metadata: {} }],
       };
     }),
   };

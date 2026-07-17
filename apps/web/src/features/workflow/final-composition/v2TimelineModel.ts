@@ -17,10 +17,10 @@ export function cloneV2Timeline(timeline: V2FinalCompositionTimeline): V2FinalCo
     tracks: timeline.tracks.map((track) => ({ ...track, metadata: { ...track.metadata } })),
     clips: timeline.clips.map((clip) => ({
       ...clip,
-      transform: clip.transform ? { ...clip.transform } : undefined,
-      audio: clip.audio ? { ...clip.audio } : undefined,
-      color: clip.color ? { ...clip.color } : undefined,
-      subtitle_style: clip.subtitle_style ? { ...clip.subtitle_style } : undefined,
+      transform: { ...clip.transform },
+      audio: { ...clip.audio },
+      color: { ...clip.color },
+      subtitle_style: { ...clip.subtitle_style },
       metadata: { ...clip.metadata },
     })),
   };
@@ -116,14 +116,14 @@ export function updateV2TimelineTrack(
 export function setV2TimelineClipAudio(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineAudio>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
-    audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0, ...clip.audio, ...update },
+    audio: { ...clip.audio, ...update },
   }));
 }
 
 export function setV2TimelineClipColor(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineColor>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
-    color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0, ...clip.color, ...update },
+    color: { ...clip.color, ...update },
   }));
 }
 
@@ -134,10 +134,10 @@ export function v2TimelineDuration(timeline: V2FinalCompositionTimeline) {
 function cloneV2TimelineClip(clip: V2FinalTimelineClip): V2FinalTimelineClip {
   return {
     ...clip,
-    transform: clip.transform ? { ...clip.transform } : undefined,
-    audio: clip.audio ? { ...clip.audio } : undefined,
-    color: clip.color ? { ...clip.color } : undefined,
-    subtitle_style: clip.subtitle_style ? { ...clip.subtitle_style } : undefined,
+    transform: { ...clip.transform },
+    audio: { ...clip.audio },
+    color: { ...clip.color },
+    subtitle_style: { ...clip.subtitle_style },
     metadata: { ...clip.metadata },
   };
 }

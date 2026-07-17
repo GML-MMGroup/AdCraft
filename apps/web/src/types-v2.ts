@@ -847,27 +847,29 @@ export interface V2FinalTimelineClip {
   clip_id: string;
   track_id: string;
   clip_type: V2TimelineTrackType;
-  source_asset_id?: string | null;
-  source_version_id?: string | null;
-  source_slot_id?: string | null;
+  source_asset_id: string | null;
+  source_version_id: string | null;
+  source_slot_id: string | null;
   start_time: number;
   duration: number;
-  trim_in?: number | null;
-  trim_out?: number | null;
+  trim_in: number;
+  trim_out: number | null;
+  volume: number;
+  muted: boolean;
   enabled: boolean;
-  transform?: V2TimelineTransform;
-  audio?: V2TimelineAudio;
-  color?: V2TimelineColor;
-  text?: string | null;
-  subtitle_style?: V2TimelineSubtitleStyle;
+  transform: V2TimelineTransform;
+  audio: V2TimelineAudio;
+  color: V2TimelineColor;
+  text: string | null;
+  subtitle_style: V2TimelineSubtitleStyle;
   metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineRenderSettings {
-  video_codec?: string;
-  audio_codec?: string;
-  video_bitrate?: string;
-  audio_bitrate?: string;
+  video_codec: string | null;
+  audio_codec: "aac";
+  video_bitrate: string | null;
+  audio_bitrate: string | null;
 }
 
 export interface V2FinalTimelineRenderRequest {
@@ -938,19 +940,26 @@ export interface V2FinalTimelineRenderStartResponse {
   status: "queued";
   timeline_id: string;
   timeline_version: number;
+  events_cursor: number;
 }
 
 export interface V2FinalTimelineRenderStateResponse {
   workflow_id: string;
   render_id: string;
   slot_id: string;
-  asset_id: string;
-  version_id: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled";
-  public_url?: string | null;
+  status: "queued" | "running" | "completed" | "failed" | "cancellation_requested" | "cancelled";
   timeline_id: string;
   timeline_version: number;
-  runtime?: WorkflowRuntimeV2 | null;
+  events_cursor: number;
+  progress_seconds: number | null;
+  total_seconds: number | null;
+  progress_percent: number | null;
+  asset_id: string | null;
+  version_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface V2WorkflowErrorDetail {
