@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from "react";
 import { mediaUrl } from "../../../api/client.ts";
@@ -22,10 +23,13 @@ import {
   activeSubtitleClips,
   boundedClipLocalTime,
   clipFadeGain,
-  findTimelineSource,
   mediaCleanupDecision,
+  previewMediaStatus,
+  pruneMediaRefCallbacks,
+  requestTrackedMediaPlay,
   shouldCorrectMediaDrift,
   timelineSourceUrls,
+  type TrackedMediaPlayRequest,
 } from "./useTimelineMediaVisuals.ts";
 
 export type V2CompositionPreviewHandle = {
@@ -46,6 +50,7 @@ type PreviewProps = {
 };
 
 type MediaElement = HTMLVideoElement | HTMLAudioElement;
+const EMPTY_MEDIA_FAILURES = new Set<string>();
 
 export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, PreviewProps>(function V2CompositionPreview({
   timeline,
@@ -60,8 +65,11 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
   const mediaElements = useRef(new Map<string, MediaElement>());
   const mediaRefCallbacks = useRef(new Map<string, (element: MediaElement | null) => void>());
   const timelineRef = useRef(timeline);
+  const sourcesRef = useRef(sources);
   const playheadRef = useRef(playheadSeconds);
-  const playRequestsRef = useRef(new Set<MediaElement>());
+  const playRequestsRef = useRef(new Map<MediaElement, TrackedMediaPlayRequest>());
+  const [failedMediaKeys, setFailedMediaKeys] = useState<Set<string>>(() => new Set());
+  const failedMediaKeysRef = useRef(failedMediaKeys);
   const playingRef = useRef(false);
   const clockStartedAtMsRef = useRef(0);
   const playheadAtStartRef = useRef(0);
@@ -74,26 +82,57 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
     () => activeCompositionClips(timeline, playheadSeconds),
     [playheadSeconds, timeline],
   );
-  const activeVisualIds = useMemo(() => new Set(activeVisuals.map((clip) => clip.clip_id)), [activeVisuals]);
   const activeSubtitles = useMemo(
     () => activeSubtitleClips(timeline, playheadSeconds),
     [playheadSeconds, timeline],
   );
   const topVideo = [...activeVisuals].reverse().find((clip) => clip.clip_type === "video") ?? null;
   const videos = useMemo(
-    () => timeline.clips.filter((clip) => clip.clip_type === "video" && findTimelineSource(sources, clip)?.media_type === "video"),
-    [sources, timeline.clips],
+    () => timeline.clips.filter((clip) => clip.clip_type === "video"),
+    [timeline.clips],
   );
   const audioClips = useMemo(
-    () => timeline.clips.filter((clip) => clip.clip_type === "audio" && findTimelineSource(sources, clip)?.media_type === "audio"),
-    [sources, timeline.clips],
+    () => timeline.clips.filter((clip) => clip.clip_type === "audio"),
+    [timeline.clips],
   );
+  const mediaClips = useMemo(
+    () => timeline.clips.filter((clip) => clip.clip_type === "video"
+      || clip.clip_type === "audio"
+      || clip.clip_type === "image"),
+    [timeline.clips],
+  );
+  const mediaIdentityKeys = useMemo(
+    () => new Set(mediaClips.map((clip) => previewMediaStatus(sources, clip, EMPTY_MEDIA_FAILURES).key)),
+    [mediaClips, sources],
+  );
+  const mediaCallbackKeys = useMemo(
+    () => new Set([...videos, ...audioClips]
+      .map((clip) => previewMediaStatus(sources, clip, EMPTY_MEDIA_FAILURES))
+      .filter((status) => status.status !== "missing")
+      .map((status) => status.key)),
+    [audioClips, sources, videos],
+  );
+  const mediaCallbackSignature = useMemo(() => [...mediaCallbackKeys].sort().join("\u0000"), [mediaCallbackKeys]);
 
   useLayoutEffect(() => {
     timelineRef.current = timeline;
+    sourcesRef.current = sources;
     playheadRef.current = playheadSeconds;
     callbacksRef.current = { onPlayingChange, onPlayheadChange };
   });
+
+  useEffect(() => {
+    pruneMediaRefCallbacks(mediaRefCallbacks.current, mediaCallbackKeys);
+  }, [mediaCallbackKeys, mediaCallbackSignature]);
+
+  useEffect(() => {
+    setFailedMediaKeys((current) => {
+      const next = new Set([...current].filter((key) => mediaIdentityKeys.has(key)));
+      if (next.size === current.size) return current;
+      failedMediaKeysRef.current = next;
+      return next;
+    });
+  }, [mediaIdentityKeys]);
 
   const pauseAllMedia = useCallback((reset: boolean) => {
     playRequestsRef.current.clear();
@@ -120,7 +159,10 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
     mediaElements.current.forEach((element, clipId) => {
       const clip = clips.get(clipId);
       const track = clip ? tracks.get(clip.track_id) : null;
-      const isActive = Boolean(clip && clip.enabled && track?.enabled && activeIds.has(clipId));
+      const playable = clip
+        ? previewMediaStatus(sourcesRef.current, clip, failedMediaKeysRef.current).status === "ready"
+        : false;
+      const isActive = Boolean(clip && playable && clip.enabled && track?.enabled && activeIds.has(clipId));
       const cleanup = mediaCleanupDecision(isActive);
       if (!clip || cleanup.pause) {
         playRequestsRef.current.delete(element);
@@ -168,10 +210,11 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
       callbacksRef.current.onPlayheadChange(next);
       const newlyActive = synchronizeMedia(next, true);
       newlyActive.forEach((element) => {
+        if (!playingRef.current) return;
         if (!element.paused || playRequestsRef.current.has(element)) return;
-        playRequestsRef.current.add(element);
-        void element.play().catch(() => {
-          playRequestsRef.current.delete(element);
+        const attempt = playbackAttemptRef.current;
+        requestTrackedMediaPlay(playRequestsRef.current, element, attempt, (settledAttempt) => {
+          if (!mountedRef.current || playbackAttemptRef.current !== settledAttempt) return;
           if (playingRef.current) stopPlayback(false);
         });
       });
@@ -195,22 +238,20 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
     playheadAtStartRef.current = startPlayhead;
     clockStartedAtMsRef.current = performance.now();
 
-    const activeElements = synchronizeMedia(startPlayhead, true);
-    const playAttempts = activeElements.map((element) => {
-      playRequestsRef.current.add(element);
-      return element.play();
-    });
     playingRef.current = true;
     callbacksRef.current.onPlayingChange(true);
-    scheduleFrame();
-    if (!playAttempts.length) return;
-    void Promise.all(playAttempts).catch(() => {
-      if (!mountedRef.current || playbackAttemptRef.current !== attempt) return;
-      stopPlayback(false);
-      playheadRef.current = previousPlayhead;
-      callbacksRef.current.onPlayheadChange(previousPlayhead);
-      synchronizeMedia(previousPlayhead, false);
+    const activeElements = synchronizeMedia(startPlayhead, true);
+    activeElements.forEach((element) => {
+      if (!playingRef.current || playbackAttemptRef.current !== attempt) return;
+      requestTrackedMediaPlay(playRequestsRef.current, element, attempt, (settledAttempt) => {
+        if (!mountedRef.current || playbackAttemptRef.current !== settledAttempt) return;
+        stopPlayback(false);
+        playheadRef.current = previousPlayhead;
+        callbacksRef.current.onPlayheadChange(previousPlayhead);
+        synchronizeMedia(previousPlayhead, false);
+      });
     });
+    if (playingRef.current && playbackAttemptRef.current === attempt) scheduleFrame();
   }, [scheduleFrame, stopPlayback, synchronizeMedia]);
 
   const pause = useCallback(() => stopPlayback(false), [stopPlayback]);
@@ -243,6 +284,7 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
   }, [timeline.timeline_id, stopPlayback]);
 
   useEffect(() => {
+    const refCallbacks = mediaRefCallbacks.current;
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -250,8 +292,29 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
       if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
       pauseAllMedia(true);
+      refCallbacks.clear();
     };
   }, [pauseAllMedia]);
+
+  const markMediaFailed = useCallback((clipId: string, mediaKey: string) => {
+    const next = new Set(failedMediaKeysRef.current).add(mediaKey);
+    failedMediaKeysRef.current = next;
+    setFailedMediaKeys(next);
+    const element = mediaElements.current.get(clipId);
+    if (!element) return;
+    playRequestsRef.current.delete(element);
+    element.pause();
+    element.muted = true;
+    element.volume = 0;
+  }, []);
+
+  const clearMediaFailure = useCallback((mediaKey: string) => {
+    if (!failedMediaKeysRef.current.has(mediaKey)) return;
+    const next = new Set(failedMediaKeysRef.current);
+    next.delete(mediaKey);
+    failedMediaKeysRef.current = next;
+    setFailedMediaKeys(next);
+  }, []);
 
   const updateMediaRef = useCallback((clipId: string, element: MediaElement | null) => {
     if (!element) {
@@ -268,19 +331,19 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
     mediaElements.current.set(clipId, element);
     const activeElements = synchronizeMedia(playheadRef.current, playingRef.current);
     if (playingRef.current && activeElements.includes(element) && !playRequestsRef.current.has(element)) {
-      playRequestsRef.current.add(element);
-      void element.play().catch(() => {
-        playRequestsRef.current.delete(element);
+      const attempt = playbackAttemptRef.current;
+      requestTrackedMediaPlay(playRequestsRef.current, element, attempt, (settledAttempt) => {
+        if (!mountedRef.current || playbackAttemptRef.current !== settledAttempt) return;
         if (playingRef.current) stopPlayback(false);
       });
     }
   }, [stopPlayback, synchronizeMedia]);
 
-  const mediaRefCallback = (clipId: string) => {
-    const existing = mediaRefCallbacks.current.get(clipId);
+  const mediaRefCallback = (clipId: string, mediaKey: string) => {
+    const existing = mediaRefCallbacks.current.get(mediaKey);
     if (existing) return existing;
     const callback = (element: MediaElement | null) => updateMediaRef(clipId, element);
-    mediaRefCallbacks.current.set(clipId, callback);
+    mediaRefCallbacks.current.set(mediaKey, callback);
     return callback;
   };
 
@@ -291,16 +354,17 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
         style={{ aspectRatio: timeline.aspect_ratio.replace(":", " / ") }}
       >
         {videos.map((clip) => {
-          const source = findTimelineSource(sources, clip);
-          if (!source?.public_url) return null;
+          const mediaStatus = previewMediaStatus(sources, clip, failedMediaKeys);
+          const source = mediaStatus.source;
+          if (mediaStatus.status === "missing" || !source) return null;
           const urls = timelineSourceUrls(source, mediaUrl);
           const activeIndex = activeVisuals.findIndex((active) => active.clip_id === clip.clip_id);
           const active = activeIndex >= 0;
           return (
             <video
-              key={clip.clip_id}
-              ref={mediaRefCallback(clip.clip_id)}
-              className={`v2-composition-preview-media is-video ${active ? "is-active" : "is-inactive"}`}
+              key={mediaStatus.key}
+              ref={mediaRefCallback(clip.clip_id, mediaStatus.key)}
+              className={`v2-composition-preview-media is-video ${active && mediaStatus.status === "ready" ? "is-active" : "is-inactive"}`}
               data-source-in={clip.trim_in}
               data-source-out={clip.trim_out ?? clip.trim_in + clip.duration}
               src={urls.original}
@@ -308,37 +372,72 @@ export const V2CompositionPreview = forwardRef<V2CompositionPreviewHandle, Previ
               muted={clip.audio.muted || clip.muted}
               playsInline
               preload={shouldPreloadClip(clip, playheadSeconds, selectedClipId) ? "metadata" : "none"}
-              style={{ ...styleForVisualClip(clip), display: active ? "block" : "none", zIndex: activeIndex + 1 }}
+              style={{
+                ...styleForVisualClip(clip),
+                display: active && mediaStatus.status === "ready" ? "block" : "none",
+                zIndex: activeIndex + 1,
+              }}
+              onError={() => markMediaFailed(clip.clip_id, mediaStatus.key)}
+              onLoadedData={() => clearMediaFailure(mediaStatus.key)}
+              onCanPlay={() => clearMediaFailure(mediaStatus.key)}
               onClick={() => onSelectClip(clip.clip_id)}
             />
           );
         })}
         {activeVisuals.filter((clip) => clip.clip_type === "image").map((clip) => {
-          const source = findTimelineSource(sources, clip);
-          if (!source?.public_url || source.media_type !== "image") return null;
+          const mediaStatus = previewMediaStatus(sources, clip, failedMediaKeys);
+          const source = mediaStatus.source;
+          if (mediaStatus.status === "missing" || !source) return null;
           return (
+            // Media lifecycle events are not user interaction handlers.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
             <img
-              key={clip.clip_id}
+              key={mediaStatus.key}
               className="v2-composition-preview-media is-image is-active"
               src={timelineSourceUrls(source, mediaUrl).original}
               alt={source.display_name}
-              style={{ ...styleForVisualClip(clip), zIndex: activeVisuals.findIndex((active) => active.clip_id === clip.clip_id) + 1 }}
+              style={{
+                ...styleForVisualClip(clip),
+                display: mediaStatus.status === "ready" ? "block" : "none",
+                zIndex: activeVisuals.findIndex((active) => active.clip_id === clip.clip_id) + 1,
+              }}
+              onError={() => markMediaFailed(clip.clip_id, mediaStatus.key)}
+              onLoad={() => clearMediaFailure(mediaStatus.key)}
             />
           );
         })}
         {audioClips.map((clip) => {
-          const source = findTimelineSource(sources, clip);
-          if (!source?.public_url) return null;
+          const mediaStatus = previewMediaStatus(sources, clip, failedMediaKeys);
+          const source = mediaStatus.source;
+          if (mediaStatus.status === "missing" || !source) return null;
           return (
             <audio
-              key={clip.clip_id}
-              ref={mediaRefCallback(clip.clip_id)}
+              key={mediaStatus.key}
+              ref={mediaRefCallback(clip.clip_id, mediaStatus.key)}
               src={timelineSourceUrls(source, mediaUrl).original}
               preload={shouldPreloadClip(clip, playheadSeconds, selectedClipId) ? "metadata" : "none"}
+              onError={() => markMediaFailed(clip.clip_id, mediaStatus.key)}
+              onLoadedData={() => clearMediaFailure(mediaStatus.key)}
+              onCanPlay={() => clearMediaFailure(mediaStatus.key)}
             />
           );
         })}
-        {!activeVisualIds.size && !activeSubtitles.length ? (
+        {activeVisuals.map((clip, activeIndex) => {
+          const mediaStatus = previewMediaStatus(sources, clip, failedMediaKeys);
+          if (mediaStatus.status === "ready") return null;
+          return (
+            <span
+              key={`${mediaStatus.key}-fallback`}
+              className={`v2-composition-preview-media-fallback is-${mediaStatus.status}`}
+              role="img"
+              aria-label={`${clip.clip_type === "image" ? "Image" : "Video"} media unavailable`}
+              style={{ ...styleForVisualClip(clip), zIndex: activeIndex + 1 }}
+            >
+              <span>Media unavailable</span>
+            </span>
+          );
+        })}
+        {!activeVisuals.length && !activeSubtitles.length ? (
           <span className="v2-composition-preview-empty">Place a video on the timeline to preview it.</span>
         ) : null}
         {activeSubtitles.map((clip) => (

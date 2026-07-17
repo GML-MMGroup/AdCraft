@@ -11,9 +11,24 @@ const DEFAULT_WAVEFORM_BARS = 48;
 const MEDIA_DRIFT_SECONDS = 0.12;
 
 type ClipSourcePin = Pick<V2FinalTimelineClip, "source_asset_id" | "source_version_id">;
+type PreviewMediaClip = Pick<
+  V2FinalTimelineClip,
+  "clip_id" | "clip_type" | "source_asset_id" | "source_version_id"
+>;
 type LocalTimeClip = Pick<V2FinalTimelineClip, "start_time" | "duration" | "trim_in" | "trim_out">;
 type FadeClip = Pick<V2FinalTimelineClip, "start_time" | "duration" | "audio">;
 type MediaUrlMapper = (path?: string | null) => string;
+
+export type TrackedMediaPlayRequest = {
+  attempt: number;
+  token: symbol;
+};
+
+export type PreviewMediaStatus = {
+  key: string;
+  source: V2FinalTimelineSource | null;
+  status: "ready" | "missing" | "failed";
+};
 
 export type TimelineMediaVisuals = {
   posterUrls: ReadonlyMap<string, string>;
@@ -37,6 +52,60 @@ export function timelineSourceUrls(source: V2FinalTimelineSource, mediaUrl: Medi
     original: source.public_url ? mediaUrl(versionedMediaPath(source.public_url, source)) : "",
     thumbnail: source.thumbnail_url ? mediaUrl(versionedMediaPath(source.thumbnail_url, source)) : "",
   };
+}
+
+export function requestTrackedMediaPlay<T extends { play: () => Promise<void> }>(
+  requests: Map<T, TrackedMediaPlayRequest>,
+  element: T,
+  attempt: number,
+  onRejected: (attempt: number) => void,
+) {
+  const request: TrackedMediaPlayRequest = { attempt, token: Symbol("media-play-request") };
+  requests.set(element, request);
+  const settle = () => {
+    if (requests.get(element) !== request) return false;
+    requests.delete(element);
+    return true;
+  };
+  try {
+    void element.play().then(
+      () => settle(),
+      () => {
+        if (settle()) onRejected(attempt);
+      },
+    );
+  } catch {
+    if (settle()) onRejected(attempt);
+  }
+  return request;
+}
+
+export function previewMediaStatus(
+  sources: V2FinalTimelineSource[],
+  clip: PreviewMediaClip,
+  failedKeys: ReadonlySet<string>,
+): PreviewMediaStatus {
+  const source = findTimelineSource(sources, clip);
+  const key = [
+    clip.clip_id,
+    clip.clip_type,
+    clip.source_asset_id ?? "",
+    clip.source_version_id ?? "",
+    source?.public_url ?? "",
+  ].join("\u0000");
+  const expectedMediaType = clip.clip_type === "video" || clip.clip_type === "audio" || clip.clip_type === "image"
+    ? clip.clip_type
+    : null;
+  if (!source || !source.public_url || !expectedMediaType || source.media_type !== expectedMediaType) {
+    return { key, source, status: "missing" };
+  }
+  return { key, source, status: failedKeys.has(key) ? "failed" : "ready" };
+}
+
+export function pruneMediaRefCallbacks<T>(callbacks: Map<string, T>, activeKeys: ReadonlySet<string>) {
+  callbacks.forEach((_callback, key) => {
+    if (!activeKeys.has(key)) callbacks.delete(key);
+  });
 }
 
 export function activeCompositionClips(timeline: V2FinalCompositionTimeline, time: number) {

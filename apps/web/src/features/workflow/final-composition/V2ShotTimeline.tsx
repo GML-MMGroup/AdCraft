@@ -423,7 +423,9 @@ export function V2ShotTimeline({
                     ))}
                   </span>
                 ) : null}
-                <span>{displayClipName(clip, visibleTracks)} · {clip.duration.toFixed(2)}s</span>
+                <span className="v2-shot-clip-label">
+                  {displayClipName(clip, visibleTracks)} · {clip.duration.toFixed(2)}s
+                </span>
                 {!clip.muted ? <span className="v2-shot-source-audio" aria-hidden="true">A</span> : null}
                 <span className="v2-shot-trim-handle is-right" aria-hidden="true" />
               </div>
@@ -587,8 +589,16 @@ function EditableImportedLaneName({
   onUpdateTrack: (trackId: string, update: Partial<V2FinalTimelineTrack>) => void;
 }) {
   const [draft, setDraft] = useState(label);
-  useEffect(() => setDraft(label), [label]);
+  const cancelRenameCommitRef = useRef(false);
+  useEffect(() => {
+    cancelRenameCommitRef.current = false;
+    setDraft(label);
+  }, [label]);
   const commit = () => {
+    if (cancelRenameCommitRef.current) {
+      cancelRenameCommitRef.current = false;
+      return;
+    }
     const name = draft.trim() || "Imported video";
     setDraft(name);
     if (name === label) return;
@@ -602,10 +612,18 @@ function EditableImportedLaneName({
       title="Imported video name"
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
+      onFocus={() => {
+        cancelRenameCommitRef.current = false;
+      }}
       onBlur={commit}
       onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
         if (event.key === "Escape") {
+          event.preventDefault();
+          cancelRenameCommitRef.current = true;
           setDraft(label);
           event.currentTarget.blur();
         }

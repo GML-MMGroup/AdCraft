@@ -1,6 +1,6 @@
 import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css";
 /* eslint-disable react-refresh/only-export-components */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { mediaUrl } from "../../../api/client.ts";
 import { AssetsIcon, PlusIcon, VideoIcon } from "../../../icons.tsx";
 import type { V2FinalCompositionTimeline, V2FinalTimelineSource } from "../../../types-v2.ts";
@@ -13,7 +13,12 @@ import {
 } from "./V2CompositionPreview.tsx";
 import { fitShotTimelineZoom, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
-import { useV2FinalCompositionEditor } from "./useV2FinalCompositionEditor.ts";
+import {
+  resolveScopedTimelineSource,
+  useV2FinalCompositionEditor,
+  type CompositionEditorSession,
+  type ScopedTimelineSource,
+} from "./useV2FinalCompositionEditor.ts";
 
 export function isTimelineKeyboardTarget(target: EventTarget | null) {
   const element = target as HTMLElement | null;
@@ -39,15 +44,24 @@ export function V2FinalCompositionEditor({
   const mainRef = useRef<HTMLDivElement>(null);
   const [libraryType, setLibraryType] = useState<"video" | "audio" | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [pendingBgmSource, setPendingBgmSource] = useState<V2FinalTimelineSource | null>(null);
+  const editorSessionRef = useRef<CompositionEditorSession>({ workflowId, generation: 0, active });
+  const [pendingBgmSource, setPendingBgmSource] = useState<ScopedTimelineSource | null>(null);
+  const [pendingRegisteredSource, setPendingRegisteredSource] = useState<ScopedTimelineSource | null>(null);
   const sources = useMemo(
     () => editor.sources.filter((source) => source.media_type === "video" || source.media_type === "audio"),
     [editor.sources],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const previousSession = editorSessionRef.current;
+    const changed = previousSession.workflowId !== workflowId || previousSession.active !== active;
+    editorSessionRef.current = {
+      workflowId,
+      active,
+      generation: changed ? previousSession.generation + 1 : previousSession.generation,
+    };
     editorRef.current = editor;
-  }, [editor]);
+  }, [active, editor, workflowId]);
 
   useEffect(() => {
     if (!active) return;
@@ -119,12 +133,14 @@ export function V2FinalCompositionEditor({
   }, [active]);
 
   useEffect(() => {
+    setPendingBgmSource(null);
+    setPendingRegisteredSource(null);
+    setLibraryType(null);
     if (!active) {
       previewRef.current?.pause();
       setPlaying(false);
-      setPendingBgmSource(null);
     }
-  }, [active]);
+  }, [active, workflowId]);
 
   useEffect(() => {
     if (!pendingBgmSource) return;
@@ -135,13 +151,38 @@ export function V2FinalCompositionEditor({
     return () => window.removeEventListener("keydown", cancelOnEscape);
   }, [pendingBgmSource]);
 
+  const routeScopedSourceAdd = useCallback((scopedSource: ScopedTimelineSource) => {
+    const currentEditor = editorRef.current;
+    const source = resolveScopedTimelineSource(
+      scopedSource,
+      editorSessionRef.current,
+      currentEditor.sources,
+    );
+    if (!source) return false;
+    const currentScopedSource = { ...scopedSource, source };
+    if (source.media_type === "audio" && currentEditor.draft && hasMarkedBgm(currentEditor.draft)) {
+      setPendingBgmSource(currentScopedSource);
+      return true;
+    }
+    currentEditor.addSource(source);
+    return true;
+  }, []);
+
   const requestSourceAdd = (source: V2FinalTimelineSource) => {
-    if (source.media_type === "audio" && editor.draft && hasMarkedBgm(editor.draft)) {
-      setPendingBgmSource(source);
+    routeScopedSourceAdd({ session: editorSessionRef.current, source });
+  };
+
+  useEffect(() => {
+    if (!pendingRegisteredSource) return;
+    const currentSession = editorSessionRef.current;
+    if (pendingRegisteredSource.session.workflowId !== currentSession.workflowId
+      || pendingRegisteredSource.session.generation !== currentSession.generation
+      || !currentSession.active) {
+      setPendingRegisteredSource(null);
       return;
     }
-    editor.addSource(source);
-  };
+    if (routeScopedSourceAdd(pendingRegisteredSource)) setPendingRegisteredSource(null);
+  }, [editor.sources, pendingRegisteredSource, routeScopedSourceAdd]);
 
   if (!active) return null;
   return (
@@ -285,14 +326,18 @@ export function V2FinalCompositionEditor({
           onToggle={(entity) => {
             const assetId = entity.asset_ids?.[0] ?? entity.assets?.[0]?.asset_id;
             if (!assetId) return;
+            const registrationSession = editorSessionRef.current;
+            const registrationMediaType = libraryType;
             void editor.registerLibrarySource({
               entityId: entity.entity_id,
               assetId,
-              mediaType: libraryType,
+              mediaType: registrationMediaType,
             }).then((source) => {
               if (!source) return;
+              const scopedSource = { session: registrationSession, source };
+              if (!resolveScopedTimelineSource(scopedSource, editorSessionRef.current, [source])) return;
               setLibraryType(null);
-              requestSourceAdd(source);
+              setPendingRegisteredSource(scopedSource);
             });
           }}
         />
@@ -308,7 +353,7 @@ export function V2FinalCompositionEditor({
           <div className="v2-composition-bgm-confirmation-content">
             <strong id="v2-bgm-confirmation-title">Replace current BGM?</strong>
             <p id="v2-bgm-confirmation-description">
-              Replace the current BGM with {pendingBgmSource.display_name}. Existing BGM timing is updated only after confirmation.
+              Replace the current BGM with {pendingBgmSource.source.display_name}. Existing BGM timing is updated only after confirmation.
             </p>
             <div className="v2-composition-bgm-confirmation-actions">
               <button type="button" onClick={() => setPendingBgmSource(null)}>Cancel</button>
@@ -316,9 +361,14 @@ export function V2FinalCompositionEditor({
                 type="button"
                 autoFocus
                 onClick={() => {
-                  const source = pendingBgmSource;
+                  const pending = pendingBgmSource;
                   setPendingBgmSource(null);
-                  editor.addSource(source);
+                  const source = resolveScopedTimelineSource(
+                    pending,
+                    editorSessionRef.current,
+                    editorRef.current.sources,
+                  );
+                  if (source?.media_type === "audio") editorRef.current.addSource(source);
                 }}
               >
                 Replace BGM

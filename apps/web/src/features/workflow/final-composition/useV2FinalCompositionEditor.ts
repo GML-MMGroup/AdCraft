@@ -67,6 +67,32 @@ type LibrarySourceSelection = {
   mediaType: "video" | "audio";
 };
 
+export type CompositionEditorSession = {
+  workflowId: string;
+  generation: number;
+  active: boolean;
+};
+
+export type ScopedTimelineSource = {
+  session: CompositionEditorSession;
+  source: V2FinalTimelineSource;
+};
+
+export function resolveScopedTimelineSource(
+  pending: ScopedTimelineSource | null,
+  currentSession: CompositionEditorSession,
+  sources: V2FinalTimelineSource[],
+) {
+  if (!pending
+    || !pending.session.active
+    || !currentSession.active
+    || pending.session.workflowId !== currentSession.workflowId
+    || pending.session.generation !== currentSession.generation) return null;
+  return sources.find((source) => source.asset_id === pending.source.asset_id
+    && source.version_id === pending.source.version_id
+    && source.media_type === pending.source.media_type) ?? null;
+}
+
 type TimelineSaveSnapshot = {
   session: TimelineSessionToken;
   baseline: V2FinalCompositionTimeline;
