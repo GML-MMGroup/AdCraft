@@ -72,12 +72,20 @@ export function commitShotTimelineHistory(
   timeline: V2FinalCompositionTimeline,
   coalesceKey: string | null = null,
 ): ShotTimelineHistory {
-  if (timelineEquals(history.present, timeline)) return history;
-  const coalescing = coalesceKey !== null && coalesceKey === history.coalesceKey;
+  const current = history.coalesceKey !== null && history.coalesceKey !== coalesceKey
+    ? finalizeShotTimelineHistory(history)
+    : history;
+  if (timelineEquals(current.present, timeline)) return current;
+  const coalescing = coalesceKey !== null && coalesceKey === current.coalesceKey;
   const past = coalescing
-    ? history.past
-    : [...history.past, history.present].slice(-HISTORY_LIMIT);
-  return { past, present: timeline, future: [], coalesceKey };
+    ? current.past
+    : [...current.past, current.present].slice(-HISTORY_LIMIT);
+  return {
+    past,
+    present: timeline,
+    future: coalesceKey === null ? [] : current.future,
+    coalesceKey,
+  };
 }
 
 export function finalizeShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
@@ -85,27 +93,29 @@ export function finalizeShotTimelineHistory(history: ShotTimelineHistory): ShotT
   const gestureOrigin = history.past.at(-1);
   return gestureOrigin && timelineEquals(gestureOrigin, history.present)
     ? { ...history, past: history.past.slice(0, -1), coalesceKey: null }
-    : { ...history, coalesceKey: null };
+    : { ...history, future: [], coalesceKey: null };
 }
 
 export function undoShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
-  const previous = history.past.at(-1);
-  if (!previous) return history;
+  const current = finalizeShotTimelineHistory(history);
+  const previous = current.past.at(-1);
+  if (!previous) return current;
   return {
-    past: history.past.slice(0, -1),
+    past: current.past.slice(0, -1),
     present: previous,
-    future: [history.present, ...history.future],
+    future: [current.present, ...current.future],
     coalesceKey: null,
   };
 }
 
 export function redoShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
-  const next = history.future[0];
-  if (!next) return history;
+  const current = finalizeShotTimelineHistory(history);
+  const next = current.future[0];
+  if (!next) return current;
   return {
-    past: [...history.past, history.present].slice(-HISTORY_LIMIT),
+    past: [...current.past, current.present].slice(-HISTORY_LIMIT),
     present: next,
-    future: history.future.slice(1),
+    future: current.future.slice(1),
     coalesceKey: null,
   };
 }
