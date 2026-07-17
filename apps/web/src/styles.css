@@ -9295,3 +9295,257 @@ button.canvas-entity-media {
     font-size: 50px;
   }
 }
+
+/* Final Composition editor containment and responsive tool layout. */
+.v2-final-composition-panel {
+  border-radius: 8px;
+}
+
+.v2-final-composition-panel-body {
+  display: grid;
+  overflow: hidden;
+}
+
+.v2-composition-editor {
+  min-height: 0;
+  height: 100%;
+  align-content: start;
+  overflow: hidden;
+}
+
+.v2-composition-editor-loading {
+  display: grid;
+  min-height: 160px;
+  margin: 0;
+  place-items: center;
+  border: 1px solid rgba(89, 96, 112, 0.2);
+  border-radius: 8px;
+  background: rgba(252, 253, 255, 0.82);
+  color: rgba(45, 51, 65, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.v2-final-composition-panel :is(button, input, textarea, select):focus-visible,
+.v2-composition-source:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+}
+
+.v2-composition-feedback {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.v2-composition-feedback button {
+  min-height: 30px;
+  border: 1px solid rgba(89, 96, 112, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.74);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.v2-composition-editor-layout {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.v2-composition-source-panel,
+.v2-composition-inspector {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-source-list,
+.v2-composition-inspector-fields {
+  min-height: 0;
+  overflow: auto;
+}
+
+.v2-composition-inspector-fields {
+  padding-right: 2px;
+}
+
+.v2-composition-editor-main {
+  min-height: 0;
+  grid-template-rows: minmax(168px, 0.9fr) minmax(210px, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-preview-stage {
+  height: 100%;
+  min-height: 148px;
+}
+
+.v2-composition-timeline {
+  min-height: 210px;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.v2-composition-timeline-track,
+.v2-composition-track-label,
+.v2-composition-shot-lane,
+.v2-shot-timeline-row-video,
+.v2-shot-timeline-row-bgm,
+.v2-composition-track-lane {
+  min-height: 48px;
+}
+
+.v2-composition-timeline-track {
+  grid-template-columns: 132px auto;
+}
+
+.v2-composition-track-label button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 5px;
+}
+
+.v2-composition-track-label button:hover {
+  background: rgba(216, 221, 231, 0.68);
+  color: rgba(48, 55, 71, 1);
+}
+
+.v2-composition-bgm-confirmation {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(28, 32, 42, 0.42);
+}
+
+.v2-composition-bgm-confirmation-content {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(89, 96, 112, 0.24);
+  border-radius: 8px;
+  background: #fbfcfe;
+  box-shadow: 0 18px 48px rgba(28, 32, 42, 0.28);
+  color: rgba(35, 41, 52, 0.94);
+}
+
+.v2-composition-bgm-confirmation-content p {
+  margin: 0;
+  color: rgba(62, 68, 82, 0.84);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.v2-composition-bgm-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.v2-composition-bgm-confirmation-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(89, 96, 112, 0.24);
+  border-radius: 6px;
+  background: rgba(239, 242, 246, 0.9);
+  color: rgba(35, 41, 52, 0.94);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.v2-composition-bgm-confirmation-actions button:last-child {
+  border-color: rgba(35, 93, 108, 0.46);
+  background: #2d6978;
+  color: #fff;
+}
+
+@media (max-width: 1100px) {
+  .v2-composition-editor-layout {
+    grid-template-rows: minmax(220px, 1fr) minmax(190px, 0.8fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .v2-final-composition-panel {
+    inset: 8px;
+  }
+
+  .v2-composition-editor {
+    overflow: auto;
+  }
+
+  .v2-composition-editor-layout {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  .v2-composition-editor-main {
+    grid-template-rows: minmax(180px, auto) minmax(230px, auto);
+    overflow: visible;
+  }
+
+  .v2-composition-source-panel {
+    max-height: 240px;
+  }
+
+  .v2-composition-inspector {
+    max-height: 420px;
+  }
+
+  .v2-composition-editor-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .v2-composition-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+
+.v2-composition-trim-handle,
+.v2-shot-trim-handle {
+  min-width: 5px;
+}
+
+.v2-composition-inspector-fields {
+  overflow: auto;
+}
+
+.v2-composition-icon-button:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+}
+
+
+.v2-composition-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.v2-composition-editor-layout {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 720px) {
+  .v2-composition-editor-layout {
+    flex: 0 0 auto;
+  }
+}

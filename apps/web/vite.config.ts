@@ -38,6 +38,9 @@ export default defineConfig({
           if (id.includes("node_modules/@xyflow/react")) {
             return "vendor-react-flow";
           }
+          if (id.includes("node_modules/@xzdarcy/react-timeline-editor")) {
+            return "timeline-editor";
+          }
           if (
             id.includes("/src/AppContextValue") ||
             id.includes("/src/icons") ||
@@ -58,7 +61,11 @@ export default defineConfig({
           ) {
             return "screenplay-editor";
           }
-          if (id.includes("/src/features/workflow/") || id.includes("/src/workflow-v2/")) {
+          if (
+            (id.includes("/src/features/workflow/")
+              && !id.includes("/src/features/workflow/final-composition/"))
+            || id.includes("/src/workflow-v2/")
+          ) {
             return "workflow";
           }
           return undefined;

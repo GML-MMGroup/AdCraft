@@ -4,7 +4,11 @@ import {
   type PanelOffset,
 } from "../../../components/WorkflowDraggablePanel.tsx";
 import { CloseIcon } from "../../../icons.tsx";
-import { V2FinalCompositionEditor } from "./V2FinalCompositionEditor.tsx";
+import { lazy, Suspense } from "react";
+
+const V2FinalCompositionEditor = lazy(() => import("./V2FinalCompositionEditor.tsx").then((module) => ({
+  default: module.V2FinalCompositionEditor,
+})));
 
 export type V2FinalCompositionPanelProps = {
   workflowId: string;
@@ -52,12 +56,18 @@ export function V2FinalCompositionPanel({
       onOffsetCommit={onOffsetCommit}
     >
       <div className="v2-final-composition-panel-body">
-        <V2FinalCompositionEditor
-          workflowId={workflowId}
-          active
-          onWorkflowRefresh={onWorkflowRefresh}
-        />
+        <Suspense fallback={<V2FinalCompositionEditorLoading />}>
+          <V2FinalCompositionEditor
+            workflowId={workflowId}
+            active
+            onWorkflowRefresh={onWorkflowRefresh}
+          />
+        </Suspense>
       </div>
     </WorkflowDraggablePanel>
   );
+}
+
+function V2FinalCompositionEditorLoading() {
+  return <p className="v2-composition-editor-loading">Loading Final Composition editor...</p>;
 }
