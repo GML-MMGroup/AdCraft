@@ -9,11 +9,14 @@ import type {
   V2TimelineTrackType,
 } from "../../../types-v2.ts";
 import {
+  addImportedVideoLane,
+  addOrReplaceBgm,
   deleteShotClips,
   moveShotClip,
+  removeImportedVideoLane,
   reorderShotLane,
   splitShotClip,
-  trimShotClip,
+  trimTimelineMediaClip,
   validateShotTimeline,
   type ShotTimelineMutation,
   type ShotTimelineSnapTarget,
@@ -78,40 +81,6 @@ type TimelineSaveQueue = {
 function readableError(error: unknown) {
   if (error instanceof V2ApiError) return error.message || error.code || "Timeline request failed.";
   return error instanceof Error ? error.message : "Timeline request failed.";
-}
-
-function defaultDurationFor(source: V2FinalTimelineSource) {
-  if (typeof source.duration_seconds === "number" && source.duration_seconds > 0) return Math.round(source.duration_seconds * 100) / 100;
-  return source.media_type === "audio" ? 12 : 5;
-}
-
-function trackTypeForSource(source: V2FinalTimelineSource): V2TimelineTrackType {
-  return source.media_type === "audio" ? "audio" : source.media_type === "image" ? "image" : "video";
-}
-
-function makeClip(source: V2FinalTimelineSource, trackId: string, startTime: number): V2FinalTimelineClip {
-  const duration = defaultDurationFor(source);
-  return {
-    clip_id: `clip-${source.asset_id}-${source.version_id}-${Date.now().toString(36)}`,
-    track_id: trackId,
-    clip_type: trackTypeForSource(source),
-    source_asset_id: source.asset_id,
-    source_version_id: source.version_id,
-    source_slot_id: null,
-    start_time: startTime,
-    duration,
-    trim_in: 0,
-    trim_out: duration,
-    volume: 1,
-    muted: false,
-    enabled: true,
-    transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" },
-    audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 },
-    color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
-    text: null,
-    subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" },
-    metadata: {},
-  };
 }
 
 function clampZoom(value: number) {
@@ -439,7 +408,7 @@ export function useV2FinalCompositionEditor({
   const trimClip = useCallback((clipId: string, edge: "left" | "right", sourceTime: number, coalesceKey: string | null = null) => {
     const current = draftRef.current;
     if (!current) return null;
-    return applyMutation(trimShotClip(current, clipId, edge, sourceTime, editOptions()), coalesceKey);
+    return applyMutation(trimTimelineMediaClip(current, clipId, edge, sourceTime, editOptions()), coalesceKey);
   }, [applyMutation, editOptions]);
 
   const splitAtPlayhead = useCallback((clipId = selectedClipIdsRef.current[0]) => {
@@ -653,16 +622,34 @@ export function useV2FinalCompositionEditor({
   }, [assignConflict, save]);
 
   const addSource = useCallback((source: V2FinalTimelineSource) => {
-    updateDraft((timeline) => {
-      const trackType = trackTypeForSource(source);
-      const matchingTracks = timeline.tracks.filter((track) => track.track_type === trackType).sort((a, b) => a.order - b.order);
-      const nextTimeline = matchingTracks.length ? cloneV2Timeline(timeline) : addV2TimelineTrack(timeline, trackType);
-      const track = (matchingTracks[0] ?? nextTimeline.tracks.find((candidate) => candidate.track_type === trackType))!;
-      const startTime = trackType === "audio" ? 0 : Math.max(0, ...nextTimeline.clips.filter((clip) => clip.track_id === track.track_id).map((clip) => clip.start_time + clip.duration));
-      const clip = makeClip(source, track.track_id, Math.round(startTime * 100) / 100);
-      return { ...nextTimeline, duration_seconds: Math.max(nextTimeline.duration_seconds, clip.start_time + clip.duration), clips: [...nextTimeline.clips, clip] };
-    });
-  }, [updateDraft]);
+    const current = draftRef.current;
+    if (!current) return null;
+    const mutation = source.media_type === "video"
+      ? addImportedVideoLane(current, source, playheadRef.current)
+      : source.media_type === "audio"
+        ? addOrReplaceBgm(current, source)
+        : null;
+    if (!mutation) {
+      setWarning("Only video and audio sources can be added to Final Composition.");
+      return null;
+    }
+    const result = applyMutation(mutation);
+    if (result.timeline !== current) {
+      const selected = result.changedClipIds.find((clipId) => result.timeline.clips.some((clip) => clip.clip_id === clipId));
+      if (selected) assignSelectedClipIds([selected]);
+    }
+    return result;
+  }, [applyMutation, assignSelectedClipIds]);
+
+  const removeImportedLane = useCallback((trackId: string) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    const mutation = applyMutation(removeImportedVideoLane(current, trackId));
+    if (mutation.timeline !== current) {
+      assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => mutation.timeline.clips.some((clip) => clip.clip_id === clipId)));
+    }
+    return mutation;
+  }, [applyMutation, assignSelectedClipIds]);
 
   const importLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
     const session = sessionGuardRef.current.capture();
@@ -739,6 +726,7 @@ export function useV2FinalCompositionEditor({
     fitTimeline,
     addSource,
     importLibrarySource,
+    removeImportedLane,
     addTrack: (type: V2TimelineTrackType) => updateDraft((timeline) => addV2TimelineTrack(timeline, type)),
     updateTrack: (trackId: string, update: Parameters<typeof updateV2TimelineTrack>[2]) => updateDraft((timeline) => updateV2TimelineTrack(timeline, trackId, update)),
     splitClip: (clipId: string, at: number) => {

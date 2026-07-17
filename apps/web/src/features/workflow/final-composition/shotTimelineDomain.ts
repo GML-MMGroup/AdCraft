@@ -1,6 +1,7 @@
 import type {
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
+  V2FinalTimelineSource,
   V2FinalTimelineTrack,
 } from "../../../types-v2.ts";
 import {
@@ -129,14 +130,14 @@ export function moveShotClip(
   return finishMutation(timeline, next, [clipId], snapped.target, null);
 }
 
-export function trimShotClip(
+export function trimTimelineMediaClip(
   timeline: V2FinalCompositionTimeline,
   clipId: string,
   edge: TrimEdge,
   sourceTime: number,
   options: ShotTimelineEditOptions,
 ): ShotTimelineMutation {
-  const setup = editableVideoClip(timeline, clipId, options);
+  const setup = editableMediaClip(timeline, clipId, options);
   if (typeof setup === "string") return unchanged(timeline, setup);
   if (!Number.isFinite(sourceTime)) return unchanged(timeline, "Trim time is invalid.");
 
@@ -182,10 +183,24 @@ export function trimShotClip(
   const changed = new Set<string>([clipId]);
   let warning: string | null = null;
   const durationDelta = snapV2TimelineToFrame(edited.duration - clip.duration, fps);
-  if (options.ripple && !nearlyEqual(durationDelta, 0)) {
+  if (clip.clip_type === "video" && options.ripple && !nearlyEqual(durationDelta, 0)) {
     warning = shiftLaterVideoClips(next, timeline, originalEnd, durationDelta, new Set([clipId]), changed, fps);
   }
   return finishMutation(timeline, next, orderedClipIds(timeline, changed), null, warning);
+}
+
+export function trimShotClip(
+  timeline: V2FinalCompositionTimeline,
+  clipId: string,
+  edge: TrimEdge,
+  sourceTime: number,
+  options: ShotTimelineEditOptions,
+): ShotTimelineMutation {
+  const clip = findClip(timeline, clipId);
+  if (clip && clip.clip_type !== "video") {
+    return unchanged(timeline, "Only video shot clips can be edited by this command.");
+  }
+  return trimTimelineMediaClip(timeline, clipId, edge, sourceTime, options);
 }
 
 export function splitShotClip(
@@ -314,6 +329,140 @@ export function reorderShotLane(
   });
   next.tracks = canonicalTrackOrder(next.tracks);
   return finishMutation(timeline, next, [], null, null);
+}
+
+export function addImportedVideoLane(
+  timeline: V2FinalCompositionTimeline,
+  source: V2FinalTimelineSource,
+  playheadSeconds: number,
+): ShotTimelineMutation {
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return unchanged(timeline, preflightWarning);
+  if (source.media_type !== "video") return unchanged(timeline, "Only video sources can create imported video lanes.");
+  if (!validSourcePin(source)) return unchanged(timeline, "Imported video source pin is invalid.");
+  if (!Number.isFinite(playheadSeconds) || playheadSeconds < 0) {
+    return unchanged(timeline, "Imported video playhead time is invalid.");
+  }
+
+  const duration = sourceClipDuration(source, timeline.fps, 5);
+  if (duration === null) return unchanged(timeline, "Imported video source is shorter than one timeline frame.");
+  const reservedTrackIds = new Set(timeline.tracks.map((track) => track.track_id));
+  const trackId = uniqueTrackId(`video-import-${sanitizeIdPart(source.asset_id)}`, reservedTrackIds);
+  const track: V2FinalTimelineTrack = {
+    track_id: trackId,
+    track_type: "video",
+    order: nextTrackOrder(timeline),
+    enabled: true,
+    metadata: {
+      editor: {
+        name: source.display_name || "Imported video",
+        locked: false,
+        hidden: false,
+        imported: true,
+      },
+    },
+  };
+  const clip = mediaSourceClip(
+    timeline,
+    source,
+    trackId,
+    snapV2TimelineToFrame(playheadSeconds, timeline.fps),
+    duration,
+    `${trackId}-clip`,
+  );
+  const next = cloneV2Timeline(timeline);
+  next.tracks = canonicalTrackOrder([...next.tracks, track]);
+  next.clips.push(clip);
+  return finishMutation(timeline, next, [clip.clip_id], null, null);
+}
+
+export function addOrReplaceBgm(
+  timeline: V2FinalCompositionTimeline,
+  source: V2FinalTimelineSource,
+): ShotTimelineMutation {
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return unchanged(timeline, preflightWarning);
+  if (source.media_type !== "audio") return unchanged(timeline, "Only audio sources can be used as BGM.");
+  if (!validSourcePin(source)) return unchanged(timeline, "BGM source pin is invalid.");
+
+  const duration = sourceClipDuration(source, timeline.fps, 12);
+  if (duration === null) return unchanged(timeline, "BGM source is shorter than one timeline frame.");
+  const currentTrack = timeline.tracks.find((track) => isBgmTrack(timeline, track));
+  if (currentTrack && isTrackLocked(currentTrack)) {
+    return unchanged(timeline, `Audio lane ${displayTrackName(currentTrack)} is locked.`);
+  }
+
+  const next = cloneV2Timeline(timeline);
+  let track = currentTrack ? findTrack(next, currentTrack.track_id)! : null;
+  if (!track) {
+    const trackId = uniqueTrackId("audio-bgm", new Set(next.tracks.map((candidate) => candidate.track_id)));
+    track = {
+      track_id: trackId,
+      track_type: "audio",
+      order: nextTrackOrder(next),
+      enabled: true,
+      metadata: {
+        role: "bgm",
+        editor: { name: "BGM", locked: false, hidden: false, bgm: true },
+      },
+    };
+    next.tracks = canonicalTrackOrder([...next.tracks, track]);
+  } else {
+    const editor = editorMetadata(track);
+    track.metadata = {
+      ...track.metadata,
+      editor: {
+        ...editor,
+        name: typeof editor.name === "string" && editor.name ? editor.name : "BGM",
+        locked: editor.locked === true,
+        hidden: editor.hidden === true,
+        bgm: true,
+      },
+    };
+  }
+
+  const existing = next.clips
+    .filter((clip) => clip.track_id === track.track_id)
+    .sort((left, right) => left.start_time - right.start_time || left.clip_id.localeCompare(right.clip_id));
+  const primary = existing[0];
+  const replacement = primary
+    ? {
+        ...cloneV2TimelineClip(primary),
+        source_asset_id: source.asset_id,
+        source_version_id: source.version_id,
+        source_slot_id: null,
+        start_time: 0,
+        duration,
+        trim_in: 0,
+        trim_out: duration,
+        audio: audioWithinDuration(primary.audio, duration),
+        metadata: sourceClipMetadata(primary.metadata, source, true),
+      }
+    : mediaSourceClip(next, source, track.track_id, 0, duration, `${track.track_id}-clip`, true);
+  const replacedIds = new Set(existing.map((clip) => clip.clip_id));
+  next.clips = next.clips.filter((clip) => !replacedIds.has(clip.clip_id));
+  next.clips.push(replacement);
+  const changedClipIds = [replacement.clip_id, ...existing.slice(1).map((clip) => clip.clip_id)];
+  return finishMutation(timeline, next, changedClipIds, null, null);
+}
+
+export function removeImportedVideoLane(
+  timeline: V2FinalCompositionTimeline,
+  trackId: string,
+): ShotTimelineMutation {
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return unchanged(timeline, preflightWarning);
+  const track = findTrack(timeline, trackId);
+  if (!track || track.track_type !== "video" || editorMetadata(track).imported !== true) {
+    return unchanged(timeline, "Only metadata-marked imported video lanes can be removed.");
+  }
+  if (isTrackLocked(track)) return unchanged(timeline, `Imported lane ${displayTrackName(track)} is locked.`);
+
+  const removedClipIds = timeline.clips.filter((clip) => clip.track_id === trackId).map((clip) => clip.clip_id);
+  const next = cloneV2Timeline(timeline);
+  next.tracks = next.tracks.filter((candidate) => candidate.track_id !== trackId);
+  next.clips = next.clips.filter((clip) => clip.track_id !== trackId);
+  return finishMutation(timeline, next, removedClipIds, null, null);
 }
 
 export function shotTimelineDuration(timeline: V2FinalCompositionTimeline) {
@@ -491,6 +640,27 @@ function editableVideoClip(
   return { clip, track };
 }
 
+function editableMediaClip(
+  timeline: V2FinalCompositionTimeline,
+  clipId: string,
+  options: ShotTimelineEditOptions,
+): { clip: V2FinalTimelineClip; track: V2FinalTimelineTrack } | string {
+  const optionWarning = validateOptions(options);
+  if (optionWarning) return optionWarning;
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return preflightWarning;
+  const clip = findClip(timeline, clipId);
+  if (!clip) return `Media clip ${clipId} does not exist.`;
+  if (clip.clip_type !== "video" && clip.clip_type !== "audio") {
+    return "Only video and audio clips can be trimmed by this command.";
+  }
+  const track = findTrack(timeline, clip.track_id);
+  if (!track) return `Media clip ${clipId} references a missing track.`;
+  if (track.track_type !== clip.clip_type) return `Media clip ${clipId} does not match its track type.`;
+  if (isTrackLocked(track)) return `${clip.clip_type === "video" ? "Shot" : "Audio"} lane ${displayTrackName(track)} is locked.`;
+  return { clip, track };
+}
+
 function validateOptions(options: ShotTimelineEditOptions) {
   if (!Number.isInteger(options.fps) || options.fps < 1 || options.fps > 120) return "Timeline fps must be an integer from 1 to 120.";
   if (options.snap && (!Number.isFinite(options.snap.thresholdSeconds) || options.snap.thresholdSeconds < 0)) {
@@ -650,6 +820,107 @@ function uniqueTrackId(base: string, reserved: Set<string>) {
   let suffix = 2;
   while (reserved.has(`${base}-${suffix}`)) suffix += 1;
   return `${base}-${suffix}`;
+}
+
+function uniqueClipId(base: string, reserved: Set<string>) {
+  if (!reserved.has(base)) return base;
+  let suffix = 2;
+  while (reserved.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+function nextTrackOrder(timeline: V2FinalCompositionTimeline) {
+  return Math.max(0, ...timeline.tracks.map((track) => track.order)) + 1;
+}
+
+function sanitizeIdPart(value: string) {
+  const sanitized = value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return sanitized || "source";
+}
+
+function validSourcePin(source: V2FinalTimelineSource) {
+  return isNonEmptyString(source.asset_id) && isNonEmptyString(source.version_id);
+}
+
+function sourceClipDuration(source: V2FinalTimelineSource, fps: number, fallback: number) {
+  const requested = typeof source.duration_seconds === "number" && Number.isFinite(source.duration_seconds)
+    && source.duration_seconds > 0
+    ? source.duration_seconds
+    : fallback;
+  const duration = nonExpandingFrameBound(requested, fps);
+  return duration >= 1 / fps - EPSILON ? duration : null;
+}
+
+function mediaSourceClip(
+  timeline: V2FinalCompositionTimeline,
+  source: V2FinalTimelineSource,
+  trackId: string,
+  startTime: number,
+  duration: number,
+  idBase: string,
+  bgm = false,
+): V2FinalTimelineClip {
+  return {
+    clip_id: uniqueClipId(idBase, new Set(timeline.clips.map((clip) => clip.clip_id))),
+    track_id: trackId,
+    clip_type: source.media_type === "audio" ? "audio" : "video",
+    source_asset_id: source.asset_id,
+    source_version_id: source.version_id,
+    source_slot_id: null,
+    start_time: startTime,
+    duration,
+    trim_in: 0,
+    trim_out: duration,
+    volume: 1,
+    muted: false,
+    enabled: true,
+    transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" },
+    audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 },
+    color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
+    text: null,
+    subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" },
+    metadata: sourceClipMetadata({}, source, bgm),
+  };
+}
+
+function sourceClipMetadata(
+  metadata: Record<string, unknown>,
+  source: V2FinalTimelineSource,
+  bgm: boolean,
+) {
+  const next = cloneRecord(metadata);
+  if (typeof source.duration_seconds === "number" && Number.isFinite(source.duration_seconds) && source.duration_seconds > 0) {
+    next.source_duration_seconds = source.duration_seconds;
+  } else {
+    delete next.source_duration_seconds;
+    delete next.sourceDurationSeconds;
+  }
+  if (bgm) next.role = "bgm";
+  return next;
+}
+
+function audioWithinDuration(audio: V2FinalTimelineClip["audio"], duration: number) {
+  const totalFade = audio.fade_in_seconds + audio.fade_out_seconds;
+  if (totalFade <= duration + EPSILON || totalFade <= EPSILON) return { ...audio };
+  const scale = duration / totalFade;
+  return {
+    ...audio,
+    fade_in_seconds: audio.fade_in_seconds * scale,
+    fade_out_seconds: audio.fade_out_seconds * scale,
+  };
+}
+
+function isBgmTrack(timeline: V2FinalCompositionTimeline, track: V2FinalTimelineTrack) {
+  if (track.track_type !== "audio") return false;
+  const editor = editorMetadata(track);
+  if (editor.bgm === true || editor.role === "bgm" || track.metadata.role === "bgm") return true;
+  return timeline.clips.some((clip) => clip.track_id === track.track_id
+    && (clip.metadata.role === "bgm" || recordValue(clip.metadata.editor).bgm === true));
 }
 
 function isTrackLocked(track: V2FinalTimelineTrack) {
