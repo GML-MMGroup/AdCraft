@@ -26,7 +26,7 @@ import {
   createShotTimelineHistory,
   createTimelineSessionGuard,
   finalizeShotTimelineHistory,
-  reconcileReloadedTimeline,
+  rebaseReloadedShotTimelineHistory,
   reconcileSavedTimeline,
   redoShotTimelineHistory,
   shotTimelineEquals,
@@ -587,14 +587,13 @@ export function useV2FinalCompositionEditor({
       assignBaseline(loaded.baseline);
       setSources(response.available_sources);
       if (resolution === "reload-remote") {
-        const reconciled = reconcileReloadedTimeline({
-          requestDraft,
-          currentDraft,
-          remoteTimeline: loaded.draft,
-        });
         assignHistory(editRevisionRef.current === requestEditRevision
           ? loaded.history
-          : createShotTimelineHistory(reconciled.draft));
+          : rebaseReloadedShotTimelineHistory({
+            history: historyRef.current ?? createShotTimelineHistory(requestDraft),
+            requestDraft,
+            remoteTimeline: loaded.draft,
+          }));
         assignSelectedClipIds([]);
       }
       setExternalUpdate(false);

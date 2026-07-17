@@ -81,7 +81,11 @@ export function commitShotTimelineHistory(
 }
 
 export function finalizeShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
-  return history.coalesceKey === null ? history : { ...history, coalesceKey: null };
+  if (history.coalesceKey === null) return history;
+  const gestureOrigin = history.past.at(-1);
+  return gestureOrigin && timelineEquals(gestureOrigin, history.present)
+    ? { ...history, past: history.past.slice(0, -1), coalesceKey: null }
+    : { ...history, coalesceKey: null };
 }
 
 export function undoShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
@@ -150,6 +154,40 @@ export function reconcileReloadedTimeline({
     draft: timelineEquals(requestDraft, currentDraft)
       ? remoteTimeline
       : mergeReloadEdits(requestDraft, currentDraft, remoteTimeline),
+  };
+}
+
+export function rebaseReloadedShotTimelineHistory({
+  history,
+  requestDraft,
+  remoteTimeline,
+}: {
+  history: ShotTimelineHistory;
+  requestDraft: V2FinalCompositionTimeline;
+  remoteTimeline: V2FinalCompositionTimeline;
+}): ShotTimelineHistory {
+  const requestIndex = findLastTimelineIndex(history.past, requestDraft);
+  const rebase = (timeline: V2FinalCompositionTimeline) => reconcileReloadedTimeline({
+    requestDraft,
+    currentDraft: timeline,
+    remoteTimeline,
+  }).draft;
+
+  if (requestIndex === -1) {
+    const present = rebase(history.present);
+    return timelineEquals(present, remoteTimeline)
+      ? createShotTimelineHistory(remoteTimeline)
+      : commitShotTimelineHistory(createShotTimelineHistory(remoteTimeline), present);
+  }
+
+  const retainedPast = history.past.slice(requestIndex + 1).map(rebase);
+  const present = rebase(history.present);
+  const hasRetainedHistory = retainedPast.length > 0 || !timelineEquals(present, remoteTimeline);
+  return {
+    past: hasRetainedHistory ? [remoteTimeline, ...retainedPast].slice(-HISTORY_LIMIT) : [],
+    present,
+    future: history.future.map(rebase),
+    coalesceKey: hasRetainedHistory ? history.coalesceKey : null,
   };
 }
 
@@ -229,6 +267,13 @@ export function shotTimelineEquals(
 
 function timelineEquals(left: V2FinalCompositionTimeline, right: V2FinalCompositionTimeline) {
   return left === right || shotTimelineEquals(left, right);
+}
+
+function findLastTimelineIndex(timelines: V2FinalCompositionTimeline[], candidate: V2FinalCompositionTimeline) {
+  for (let index = timelines.length - 1; index >= 0; index -= 1) {
+    if (timelineEquals(timelines[index], candidate)) return index;
+  }
+  return -1;
 }
 
 function mergeReloadEdits(
