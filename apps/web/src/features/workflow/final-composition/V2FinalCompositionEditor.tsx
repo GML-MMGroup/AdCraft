@@ -16,7 +16,11 @@ import type {
 } from "../../../types-v2.ts";
 import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
 import { AssetLibraryPicker } from "../assets/AssetLibraryPanels.tsx";
-import { V2ShotTimeline } from "./V2ShotTimeline.tsx";
+import {
+  activeCompatibilityPreviewClips,
+  fitShotTimelineZoom,
+  V2ShotTimeline,
+} from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
 import { v2TimelineDuration } from "./v2TimelineModel.ts";
 import { useV2FinalCompositionEditor } from "./useV2FinalCompositionEditor.ts";
@@ -158,7 +162,9 @@ export function V2FinalCompositionEditor({
         onRedo={editor.redo}
         onZoomOut={() => editor.setZoom(editor.zoom / 1.25)}
         onZoomIn={() => editor.setZoom(editor.zoom * 1.25)}
-        onFitTimeline={() => editor.fitTimeline(Math.max(160, (mainRef.current?.clientWidth ?? 0) - 132))}
+        onFitTimeline={() => editor.setZoom(editor.draft
+          ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - 132))
+          : 1)}
         onTogglePlaying={() => setPlaying((value) => !value)}
         onRefresh={() => void editor.load({ preserveDraft: true })}
         onSave={() => void editor.save()}
@@ -237,7 +243,9 @@ export function V2FinalCompositionEditor({
             />
           </div>
           <V2ClipInspector
-            clip={editor.selectedClip}
+            clip={editor.selectedClip?.clip_type === "video" || editor.selectedClip?.clip_type === "audio"
+              ? editor.selectedClip
+              : null}
             onMoveClip={editor.moveClip}
             onTrimClip={editor.trimClip}
             onUpdateClip={editor.updateClip}
@@ -291,11 +299,18 @@ function V2CompositionPreview({
   onSelectClip: (value: string | null) => void;
 }) {
   const videos = useRef(new Map<string, HTMLVideoElement>());
-  const activeClips = useMemo(
-    () => activeVisualClips(timeline, playheadSeconds),
+  const activePreview = useMemo(
+    () => activeCompatibilityPreviewClips(timeline, playheadSeconds),
     [playheadSeconds, timeline],
   );
-  const activeClip = activeClips.at(-1) ?? null;
+  const activeClips = activePreview.visualClips;
+  const activeSubtitleClips = activePreview.subtitleClips;
+  const activeVideoClip = activeClips.findLast((clip) => clip.clip_type === "video" && sources.some(
+    (source) => source.asset_id === clip.source_asset_id
+      && source.version_id === clip.source_version_id
+      && source.media_type === "video"
+      && Boolean(source.public_url),
+  )) ?? null;
   const duration = Math.max(v2TimelineDuration(timeline), 0.01);
 
   useEffect(() => {
@@ -315,18 +330,14 @@ function V2CompositionPreview({
   }, [activeClips, onPlayingChange, playing]);
 
   useEffect(() => {
-    const hasActiveVideo = activeClips.some((clip) => sources.some(
-      (source) => source.asset_id === clip.source_asset_id
-        && source.version_id === clip.source_version_id
-        && source.media_type === "video",
-    ));
+    const hasActiveVideo = activeVideoClip !== null;
     if (!playing || hasActiveVideo) return;
     const frame = window.setInterval(
       () => onPlayheadChange(Math.min(duration, playheadSeconds + 0.04)),
       40,
     );
     return () => window.clearInterval(frame);
-  }, [activeClips, duration, onPlayheadChange, playheadSeconds, playing, sources]);
+  }, [activeVideoClip, duration, onPlayheadChange, playheadSeconds, playing]);
 
   useEffect(() => {
     if (playheadSeconds >= duration && playing) onPlayingChange(false);
@@ -342,21 +353,23 @@ function V2CompositionPreview({
           const source = sources.find(
             (item) => item.asset_id === clip.source_asset_id && item.version_id === clip.source_version_id,
           );
-          if (!source?.public_url || source.media_type !== "video") return null;
-          return (
+          if (!source?.public_url) return null;
+          const sourceUrl = mediaUrl(versionedMediaPath(source.public_url, source));
+          const mediaStyle = styleForVisualClip(clip);
+          if (clip.clip_type === "video" && source.media_type === "video") return (
             <video
               key={clip.clip_id}
               ref={(element) => {
                 if (element) videos.current.set(clip.clip_id, element);
                 else videos.current.delete(clip.clip_id);
               }}
-              src={mediaUrl(versionedMediaPath(source.public_url, source))}
+              src={sourceUrl}
               muted
               playsInline
               preload="metadata"
-              style={styleForVisualClip(clip)}
+              style={mediaStyle}
               onTimeUpdate={(event) => {
-                if (playing && clip.clip_id === activeClip?.clip_id) {
+                if (playing && clip.clip_id === activeVideoClip?.clip_id) {
                   onPlayheadChange(Math.min(
                     duration,
                     clip.start_time + event.currentTarget.currentTime - clip.trim_in,
@@ -365,10 +378,22 @@ function V2CompositionPreview({
               }}
             />
           );
+          if (clip.clip_type === "image" && source.media_type === "image") return (
+            <img
+              key={clip.clip_id}
+              src={sourceUrl}
+              alt={source.display_name}
+              style={mediaStyle}
+            />
+          );
+          return null;
         })}
-        {!activeClips.length ? (
+        {!activeClips.length && !activeSubtitleClips.length ? (
           <span className="v2-composition-preview-empty">Place a video on the timeline to preview it.</span>
         ) : null}
+        {activeSubtitleClips.map((clip) => (
+          <span className="v2-composition-subtitle" key={clip.clip_id}>{clip.text}</span>
+        ))}
         <button
           className="v2-composition-preview-play"
           type="button"
@@ -376,7 +401,7 @@ function V2CompositionPreview({
           title={playing ? "Pause preview" : "Play preview"}
           onClick={() => {
             onPlayingChange(!playing);
-            onSelectClip(activeClip?.clip_id ?? selectedClipId);
+            onSelectClip(activeVideoClip?.clip_id ?? selectedClipId);
           }}
         >
           {playing ? <span aria-hidden="true">II</span> : <PlayIcon />}
@@ -625,20 +650,6 @@ function RangeField({
       <input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
-}
-
-function activeVisualClips(timeline: V2FinalCompositionTimeline, time: number) {
-  return timeline.clips
-    .filter((clip) => clip.enabled
-      && clip.clip_type === "video"
-      && timeline.tracks.find((track) => track.track_id === clip.track_id)?.enabled !== false
-      && time >= clip.start_time
-      && time < clip.start_time + clip.duration)
-    .sort((left, right) => trackOrder(timeline, left.track_id) - trackOrder(timeline, right.track_id));
-}
-
-function trackOrder(timeline: V2FinalCompositionTimeline, trackId: string) {
-  return timeline.tracks.find((track) => track.track_id === trackId)?.order ?? 0;
 }
 
 function styleForVisualClip(clip: V2FinalTimelineClip): CSSProperties {

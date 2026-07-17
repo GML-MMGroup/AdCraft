@@ -5,6 +5,7 @@ import type { TimelineEditor, TimelineState } from "@xzdarcy/react-timeline-edit
 import { Timeline } from "@xzdarcy/react-timeline-editor/dist/index.cjs.js";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,6 +27,7 @@ import type { V2FinalCompositionTool } from "./useV2FinalCompositionEditor.ts";
 
 const ROW_HEIGHT = 48;
 const BASE_SCALE_WIDTH = 52;
+const MIN_DISPLAYED_DURATION_SECONDS = 12;
 const EPSILON = 1e-6;
 const TimelineComponent = Timeline as ForwardRefExoticComponent<
   TimelineEditor & RefAttributes<TimelineState>
@@ -51,17 +53,21 @@ export type ShotTimelineRow = {
   classNames?: string[];
 };
 
+type TimelineGestureMutation = {
+  timeline: V2FinalCompositionTimeline;
+};
+
 type TimelineGestureController = {
   moveClip: (
     clipId: string,
     trackIdOrStartTime: string | number,
     startTime?: number,
-  ) => unknown;
+  ) => TimelineGestureMutation | null | void;
   trimClip: (
     clipId: string,
     edge: "left" | "right",
     sourceTime: number,
-  ) => unknown;
+  ) => TimelineGestureMutation | null | void;
   finalizeGesture: () => void;
 };
 
@@ -128,6 +134,41 @@ export function toShotTimelineRows(
   });
 }
 
+export function displayedShotTimelineDuration(timeline: V2FinalCompositionTimeline) {
+  return Math.max(
+    MIN_DISPLAYED_DURATION_SECONDS,
+    timeline.duration_seconds,
+    ...timeline.clips.map((clip) => clip.start_time + clip.duration),
+  );
+}
+
+export function fitShotTimelineZoom(
+  timeline: V2FinalCompositionTimeline,
+  viewportWidth: number,
+) {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return 1;
+  return viewportWidth / (displayedShotTimelineDuration(timeline) * BASE_SCALE_WIDTH);
+}
+
+export function activeCompatibilityPreviewClips(
+  timeline: V2FinalCompositionTimeline,
+  time: number,
+) {
+  const tracksById = new Map(timeline.tracks.map((track) => [track.track_id, track]));
+  const activeClips = timeline.clips
+    .filter((clip) => clip.enabled
+      && tracksById.get(clip.track_id)?.enabled === true
+      && time >= clip.start_time
+      && time < clip.start_time + clip.duration)
+    .sort((left, right) => (
+      (tracksById.get(left.track_id)?.order ?? 0) - (tracksById.get(right.track_id)?.order ?? 0)
+    ));
+  return {
+    visualClips: activeClips.filter((clip) => clip.clip_type === "video" || clip.clip_type === "image"),
+    subtitleClips: activeClips.filter((clip) => clip.clip_type === "subtitle"),
+  };
+}
+
 export function commitTimelineActionChange(
   timeline: V2FinalCompositionTimeline,
   action: Pick<ShotTimelineAction, "id" | "start" | "end" | "effectId">,
@@ -141,12 +182,14 @@ export function commitTimelineActionChange(
   }
 
   if (gesture === "move") {
+    let mutation: TimelineGestureMutation | null | void = undefined;
     if (Math.abs(action.start - clip.start_time) > EPSILON) {
-      if (clip.clip_type === "audio") controller.moveClip(clip.clip_id, clip.track_id, action.start);
-      else controller.moveClip(clip.clip_id, action.start);
+      mutation = clip.clip_type === "audio"
+        ? controller.moveClip(clip.clip_id, clip.track_id, action.start)
+        : controller.moveClip(clip.clip_id, action.start);
     }
     controller.finalizeGesture();
-    return;
+    return mutation;
   }
 
   if (clip.clip_type !== "video") {
@@ -156,16 +199,31 @@ export function commitTimelineActionChange(
   const edge = gesture === "left" || gesture === "right"
     ? gesture
     : Math.abs(action.start - clip.start_time) > EPSILON ? "left" : "right";
+  let mutation: TimelineGestureMutation | null | void = undefined;
   if (edge === "left") {
-    const sourceTime = clip.trim_in + (action.start - clip.start_time);
-    controller.trimClip(clip.clip_id, "left", sourceTime);
-  } else {
+    if (Math.abs(action.start - clip.start_time) > EPSILON) {
+      const sourceTime = clip.trim_in + (action.start - clip.start_time);
+      mutation = controller.trimClip(clip.clip_id, "left", sourceTime);
+    }
+  } else if (Math.abs(action.end - (clip.start_time + clip.duration)) > EPSILON) {
     const originalEnd = clip.start_time + clip.duration;
     const originalTrimOut = clip.trim_out ?? clip.trim_in + clip.duration;
     const sourceTime = originalTrimOut + (action.end - originalEnd);
-    controller.trimClip(clip.clip_id, "right", sourceTime);
+    mutation = controller.trimClip(clip.clip_id, "right", sourceTime);
   }
   controller.finalizeGesture();
+  return mutation;
+}
+
+export function completeTimelineGesture(
+  timeline: V2FinalCompositionTimeline,
+  action: Pick<ShotTimelineAction, "id" | "start" | "end" | "effectId">,
+  gesture: "move" | "resize" | "left" | "right",
+  controller: TimelineGestureController,
+  selectedClipIds: string[] = [],
+) {
+  const mutation = commitTimelineActionChange(timeline, action, gesture, controller);
+  return toShotTimelineRows(mutation?.timeline ?? timeline, selectedClipIds);
 }
 
 export function V2ShotTimeline({
@@ -189,10 +247,11 @@ export function V2ShotTimeline({
   const timelineRef = useRef<TimelineState>(null);
   const snapSuppressedRef = useRef(false);
   const [snapSuppressed, setSnapSuppressed] = useState(false);
-  const rows = useMemo(
+  const projectedRows = useMemo(
     () => toShotTimelineRows(timeline, selectedClipIds),
     [selectedClipIds, timeline],
   );
+  const [rows, setRows] = useState(projectedRows);
   const visibleTracks = useMemo(
     () => rows.map((row) => timeline.tracks.find((track) => track.track_id === row.id)!).filter(Boolean),
     [rows, timeline.tracks],
@@ -201,15 +260,15 @@ export function V2ShotTimeline({
     () => new Map(timeline.clips.map((clip) => [clip.clip_id, clip])),
     [timeline.clips],
   );
-  const duration = Math.max(
-    12,
-    timeline.duration_seconds,
-    ...timeline.clips.map((clip) => clip.start_time + clip.duration),
-  );
+  const displayedDuration = displayedShotTimelineDuration(timeline);
+
+  useLayoutEffect(() => {
+    setRows(projectedRows);
+  }, [projectedRows]);
 
   useEffect(() => {
-    timelineRef.current?.setTime(Math.min(playheadSeconds, duration));
-  }, [duration, playheadSeconds]);
+    timelineRef.current?.setTime(Math.min(playheadSeconds, displayedDuration));
+  }, [displayedDuration, playheadSeconds]);
 
   useEffect(() => {
     const suppressSnap = (event: KeyboardEvent) => {
@@ -247,7 +306,7 @@ export function V2ShotTimeline({
   ) => {
     const temporarilyDisableSnap = snapEnabled && snapSuppressedRef.current;
     if (temporarilyDisableSnap) onSetSnapEnabled(false);
-    commitTimelineActionChange(timeline, action, gesture, controller);
+    setRows(completeTimelineGesture(timeline, action, gesture, controller, selectedClipIds));
     if (temporarilyDisableSnap) onSetSnapEnabled(true);
   };
 
@@ -291,7 +350,7 @@ export function V2ShotTimeline({
           scale={1}
           scaleSplitCount={Math.max(1, Math.min(timeline.fps, 30))}
           scaleWidth={BASE_SCALE_WIDTH * zoom}
-          minScaleCount={Math.ceil(duration)}
+          minScaleCount={Math.ceil(displayedDuration)}
           maxScaleCount={86400}
           startLeft={0}
           rowHeight={ROW_HEIGHT}
@@ -328,12 +387,12 @@ export function V2ShotTimeline({
             commitAtGestureEnd({ ...action, start, end } as ShotTimelineAction, dir);
           }}
           onClickTimeArea={(time) => {
-            onSetPlayheadSeconds(Math.max(0, Math.min(duration, time)));
+            onSetPlayheadSeconds(Math.max(0, Math.min(displayedDuration, time)));
             return true;
           }}
-          onCursorDrag={(time) => onSetPlayheadSeconds(Math.max(0, Math.min(duration, time)))}
-          onCursorDragEnd={(time) => onSetPlayheadSeconds(Math.max(0, Math.min(duration, time)))}
-          onClickRow={(_event, { time }) => onSetPlayheadSeconds(Math.max(0, Math.min(duration, time)))}
+          onCursorDrag={(time) => onSetPlayheadSeconds(Math.max(0, Math.min(displayedDuration, time)))}
+          onCursorDragEnd={(time) => onSetPlayheadSeconds(Math.max(0, Math.min(displayedDuration, time)))}
+          onClickRow={(_event, { time }) => onSetPlayheadSeconds(Math.max(0, Math.min(displayedDuration, time)))}
           onClickActionOnly={(event, { action, time }) => {
             event.stopPropagation();
             if (tool === "blade" && action.effectId === "shot") {
