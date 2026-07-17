@@ -7278,7 +7278,7 @@ button.canvas-entity-media {
   background: rgba(252, 253, 255, 0.8);
 }
 
-.v2-composition-editor-toolbar > div:first-child {
+.v2-composition-editor-summary {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -9301,6 +9301,11 @@ button.canvas-entity-media {
   border-radius: 8px;
 }
 
+body:has(.v2-final-composition-panel) .floating-rail {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .v2-final-composition-panel-body {
   display: grid;
   overflow: hidden;
@@ -9359,10 +9364,15 @@ button.canvas-entity-media {
   overflow: hidden;
 }
 
-.v2-composition-source-panel,
-.v2-composition-inspector {
+.v2-composition-source-panel {
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-inspector {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -9403,11 +9413,18 @@ button.canvas-entity-media {
 }
 
 .v2-composition-timeline-track {
-  grid-template-columns: 132px auto;
+  grid-template-columns: 228px auto;
+}
+
+.v2-composition-track-label > span {
+  min-width: max-content;
+  flex-wrap: nowrap;
+  overflow: visible;
 }
 
 .v2-composition-track-label button {
   display: grid;
+  flex: 0 0 30px;
   width: 30px;
   height: 30px;
   place-items: center;
@@ -9417,6 +9434,48 @@ button.canvas-entity-media {
 .v2-composition-track-label button:hover {
   background: rgba(216, 221, 231, 0.68);
   color: rgba(48, 55, 71, 1);
+}
+
+.v2-composition-timeline-clip:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(45, 105, 120, 0.24);
+}
+
+.v2-composition-editor-load-error {
+  display: grid;
+  min-height: 160px;
+  align-content: center;
+  justify-items: start;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid rgba(154, 48, 67, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 248, 249, 0.92);
+  color: #72283a;
+}
+
+.v2-composition-editor-load-error p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.v2-composition-editor-load-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.v2-composition-editor-load-error-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(114, 40, 58, 0.28);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.84);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .v2-composition-bgm-confirmation {
@@ -9482,6 +9541,7 @@ button.canvas-entity-media {
 @media (max-width: 720px) {
   .v2-final-composition-panel {
     inset: 8px;
+    z-index: 45;
   }
 
   .v2-composition-editor {

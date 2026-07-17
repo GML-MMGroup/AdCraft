@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type ForwardRefExoticComponent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type RefAttributes,
 } from "react";
 import {
@@ -33,6 +34,7 @@ import {
 import type { V2FinalCompositionTool } from "./useV2FinalCompositionEditor.ts";
 
 const ROW_HEIGHT = 48;
+export const SHOT_TIMELINE_HEADER_WIDTH = 228;
 const BASE_SCALE_WIDTH = 52;
 const MIN_DISPLAYED_DURATION_SECONDS = 12;
 const LIBRARY_ACTION_END_PADDING_SCALE_COUNT = 5;
@@ -358,11 +360,42 @@ export function V2ShotTimeline({
     );
   };
 
+  const handleTimelineClipKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    clip: V2FinalTimelineClip,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      event.stopPropagation();
+      handleClipSelection(clip.clip_id, event.shiftKey || event.metaKey || event.ctrlKey);
+      return;
+    }
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleClipSelection(clip.clip_id, false);
+
+    const track = timeline.tracks.find((candidate) => candidate.track_id === clip.track_id);
+    if (!track?.enabled || !clip.enabled || isTrackLocked(track)) return;
+    const direction = event.key === "ArrowLeft" ? -1 : 1;
+    const step = (event.ctrlKey || event.metaKey ? 1 : 1 / Math.max(1, timeline.fps)) * direction;
+    if (event.altKey) {
+      trimClip(clip.clip_id, "left", Math.max(0, clip.trim_in + step));
+    } else if (event.shiftKey) {
+      trimClip(clip.clip_id, "right", Math.max(0, (clip.trim_out ?? clip.trim_in + clip.duration) + step));
+    } else if (clip.clip_type === "audio") {
+      moveClip(clip.clip_id, clip.track_id, Math.max(0, clip.start_time + step));
+    } else {
+      moveClip(clip.clip_id, Math.max(0, clip.start_time + step));
+    }
+    finalizeGesture();
+  };
+
   return (
     <section className="v2-composition-timeline v2-shot-timeline" aria-label="Shot timeline editor">
       <div
         className="v2-shot-timeline-grid"
-        style={{ display: "grid", gridTemplateColumns: "132px minmax(0, 1fr)", minWidth: 0 }}
+        style={{ display: "grid", gridTemplateColumns: `${SHOT_TIMELINE_HEADER_WIDTH}px minmax(0, 1fr)`, minWidth: 0 }}
       >
         <div className="v2-shot-timeline-headers" aria-label="Timeline lanes">
           <div aria-hidden="true" style={{ height: 42 }} />
@@ -409,6 +442,14 @@ export function V2ShotTimeline({
               <div
                 className={`v2-composition-timeline-clip is-${clip.clip_type} ${action.selected ? "is-selected" : ""}`}
                 title={`${displayClipName(clip, visibleTracks)} - ${clip.duration.toFixed(2)} seconds`}
+                role="button"
+                tabIndex={0}
+                aria-pressed={Boolean(action.selected)}
+                aria-disabled={Boolean(action.disable)}
+                aria-label={`${displayClipName(clip, visibleTracks)}, starts at ${clip.start_time.toFixed(2)} seconds, duration ${clip.duration.toFixed(2)} seconds`}
+                aria-keyshortcuts="Enter Space ArrowLeft ArrowRight Shift+ArrowLeft Shift+ArrowRight Alt+ArrowLeft Alt+ArrowRight"
+                onFocus={() => handleClipSelection(clip.clip_id, false)}
+                onKeyDown={(event) => handleTimelineClipKeyDown(event, clip)}
               >
                 <span className="v2-shot-trim-handle is-left" aria-hidden="true" />
                 {clip.clip_type === "video" && posterUrl ? (

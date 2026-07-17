@@ -11,7 +11,7 @@ import {
   V2CompositionPreview,
   type V2CompositionPreviewHandle,
 } from "./V2CompositionPreview.tsx";
-import { fitShotTimelineZoom, V2ShotTimeline } from "./V2ShotTimeline.tsx";
+import { fitShotTimelineZoom, SHOT_TIMELINE_HEADER_WIDTH, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
 import { isFinalRenderActive } from "./finalRenderSession.ts";
 import {
@@ -48,6 +48,8 @@ export function V2FinalCompositionEditor({
   const editorSessionRef = useRef<CompositionEditorSession>({ workflowId, generation: 0, active });
   const [pendingBgmSource, setPendingBgmSource] = useState<ScopedTimelineSource | null>(null);
   const [pendingRegisteredSource, setPendingRegisteredSource] = useState<ScopedTimelineSource | null>(null);
+  const bgmDialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const sources = useMemo(
     () => editor.sources.filter((source) => source.media_type === "video" || source.media_type === "audio"),
     [editor.sources],
@@ -135,6 +137,7 @@ export function V2FinalCompositionEditor({
 
   useEffect(() => {
     setPendingBgmSource(null);
+    previousFocusRef.current = null;
     setPendingRegisteredSource(null);
     setLibraryType(null);
     if (!active) {
@@ -143,14 +146,47 @@ export function V2FinalCompositionEditor({
     }
   }, [active, workflowId]);
 
+  const restoreBgmDialogFocus = useCallback(() => {
+    setPendingBgmSource(null);
+    const previous = previousFocusRef.current;
+    previousFocusRef.current = null;
+    window.requestAnimationFrame(() => {
+      if (previous?.isConnected) previous.focus();
+      else document.querySelector<HTMLElement>('.v2-composition-source-actions button[aria-label="Import BGM from Asset Library"]')?.focus();
+    });
+  }, []);
+
+  const handleBgmDialogKeyDown = useCallback((event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      restoreBgmDialogFocus();
+      return;
+    }
+    if (event.key === "Tab") {
+      const elements = focusableDialogElements(bgmDialogRef.current);
+      if (!elements.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !bgmDialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !bgmDialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }, [restoreBgmDialogFocus]);
+
   useEffect(() => {
-    if (!pendingBgmSource) return;
-    const cancelOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPendingBgmSource(null);
-    };
-    window.addEventListener("keydown", cancelOnEscape);
-    return () => window.removeEventListener("keydown", cancelOnEscape);
-  }, [pendingBgmSource]);
+    const dialog = bgmDialogRef.current;
+    if (!pendingBgmSource || !dialog) return;
+    dialog.addEventListener("keydown", handleBgmDialogKeyDown);
+    return () => dialog.removeEventListener("keydown", handleBgmDialogKeyDown);
+  }, [handleBgmDialogKeyDown, pendingBgmSource]);
 
   const routeScopedSourceAdd = useCallback((scopedSource: ScopedTimelineSource) => {
     const currentEditor = editorRef.current;
@@ -162,6 +198,7 @@ export function V2FinalCompositionEditor({
     if (!source) return false;
     const currentScopedSource = { ...scopedSource, source };
     if (source.media_type === "audio" && currentEditor.draft && hasMarkedBgm(currentEditor.draft)) {
+      previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setPendingBgmSource(currentScopedSource);
       return true;
     }
@@ -195,7 +232,7 @@ export function V2FinalCompositionEditor({
   return (
     <section className="v2-composition-editor" aria-label="Final Composition editor">
       <header className="v2-composition-editor-toolbar">
-        <div>
+        <div className="v2-composition-editor-summary">
           <strong>Final Composition</strong>
           <span>
             {editor.draft
@@ -225,7 +262,7 @@ export function V2FinalCompositionEditor({
         onZoomOut={() => editor.setZoom(editor.zoom / 1.25)}
         onZoomIn={() => editor.setZoom(editor.zoom * 1.25)}
         onFitTimeline={() => editor.setZoom(editor.draft
-          ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - 132))
+          ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - SHOT_TIMELINE_HEADER_WIDTH))
           : 1)}
         onTogglePlaying={() => previewRef.current?.togglePlayback()}
         onRefresh={() => void editor.load({ preserveDraft: true })}
@@ -379,6 +416,7 @@ export function V2FinalCompositionEditor({
       ) : null}
       {pendingBgmSource ? (
         <div
+          ref={bgmDialogRef}
           className="v2-composition-bgm-confirmation"
           role="alertdialog"
           aria-modal="true"
@@ -391,13 +429,13 @@ export function V2FinalCompositionEditor({
               Replace the current BGM with {pendingBgmSource.source.display_name}. Existing BGM timing is updated only after confirmation.
             </p>
             <div className="v2-composition-bgm-confirmation-actions">
-              <button type="button" onClick={() => setPendingBgmSource(null)}>Cancel</button>
+              <button type="button" onClick={restoreBgmDialogFocus}>Cancel</button>
               <button
                 type="button"
                 autoFocus
                 onClick={() => {
                   const pending = pendingBgmSource;
-                  setPendingBgmSource(null);
+                  restoreBgmDialogFocus();
                   const source = resolveScopedTimelineSource(
                     pending,
                     editorSessionRef.current,
@@ -414,6 +452,13 @@ export function V2FinalCompositionEditor({
       ) : null}
     </section>
   );
+}
+
+function focusableDialogElements(dialog: HTMLElement | null) {
+  if (!dialog) return [];
+  return [...dialog.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+  )].filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
 }
 
 function SourceCard({ source, onAdd }: { source: V2FinalTimelineSource; onAdd: () => void }) {
