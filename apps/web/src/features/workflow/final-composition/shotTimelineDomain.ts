@@ -12,6 +12,9 @@ import {
 } from "./v2TimelineModel.ts";
 
 const EPSILON = 1e-9;
+const TRACK_TYPES = ["video", "audio", "image", "subtitle"] as const;
+const COLOR_PRESETS = ["none", "warm", "cool", "high_contrast", "muted"] as const;
+const SUBTITLE_POSITIONS = ["top_center", "center", "bottom_center"] as const;
 
 export type ShotTimelineEditOptions = {
   ripple: boolean;
@@ -42,7 +45,7 @@ type TrimEdge = "left" | "right";
 export function projectDefaultTimelineToShotLanes(
   timeline: V2FinalCompositionTimeline,
 ): V2FinalCompositionTimeline {
-  const videoTracks = timeline.tracks.filter((track) => track.track_type === "video");
+  const videoTracks = canonicalTrackOrder(timeline.tracks.filter((track) => track.track_type === "video"));
   if (videoTracks.length !== 1) return cloneV2Timeline(timeline);
 
   const sourceTrack = videoTracks[0];
@@ -54,9 +57,13 @@ export function projectDefaultTimelineToShotLanes(
   const projected = cloneV2Timeline(timeline);
   const sourceEditor = editorMetadata(sourceTrack);
   const laneByClipId = new Map<string, string>();
+  const reservedTrackIds = new Set(
+    projected.tracks.filter((track) => track.track_type !== "video").map((track) => track.track_id),
+  );
   const lanes = shotClips.map((clip, index): V2FinalTimelineTrack => {
     const shotNumber = index + 1;
-    const trackId = `shot-${String(shotNumber).padStart(2, "0")}`;
+    const trackId = uniqueTrackId(`shot-${String(shotNumber).padStart(2, "0")}`, reservedTrackIds);
+    reservedTrackIds.add(trackId);
     laneByClipId.set(clip.clip_id, trackId);
     return {
       ...sourceTrack,
@@ -73,13 +80,13 @@ export function projectDefaultTimelineToShotLanes(
       },
     };
   });
-  const nonVideoTracks = projected.tracks
-    .filter((track) => track.track_type !== "video")
-    .map((track, index) => {
+  const retainedTracks = canonicalTrackOrder(projected.tracks.filter((track) => track.track_type !== "video"));
+  const nonVideoTracks = retainedTracks
+    .map((track, index): V2FinalTimelineTrack => {
       const editor = editorMetadata(track);
       return {
         ...track,
-        order: lanes.length + index + 1,
+        order: lanes.length + retainedTracks.length - index,
         metadata: {
           ...track.metadata,
           editor: {
@@ -92,12 +99,13 @@ export function projectDefaultTimelineToShotLanes(
       };
     });
 
-  projected.tracks = [...lanes].reverse().concat(nonVideoTracks);
+  projected.tracks = nonVideoTracks.concat([...lanes].reverse());
   projected.clips = projected.clips.map((clip) => {
     const trackId = laneByClipId.get(clip.clip_id);
     return trackId ? { ...clip, track_id: trackId } : clip;
   });
-  return withV2TimelineDuration(projected);
+  const candidate = withV2TimelineDuration(projected);
+  return validateShotTimeline(candidate).valid ? candidate : cloneV2Timeline(timeline);
 }
 
 export function moveShotClip(
@@ -145,10 +153,12 @@ export function trimShotClip(
     return unchanged(timeline, "Trim must leave at least one frame of source media.");
   }
 
-  if (edge === "right" && nextTrim > trimOut + EPSILON) {
+  if (edge === "right") {
     const sourceDuration = knownSourceDuration(clip);
-    if (sourceDuration === null) return unchanged(timeline, "Source duration is required before extending this trim.");
-    if (nextTrim > snapV2TimelineToFrame(sourceDuration, fps) + EPSILON) {
+    if (nextTrim > trimOut + EPSILON && sourceDuration === null) {
+      return unchanged(timeline, "Source duration is required before extending this trim.");
+    }
+    if (sourceDuration !== null && nextTrim > nonExpandingFrameBound(sourceDuration, fps) + EPSILON) {
       return unchanged(timeline, "Trim exceeds the source duration.");
     }
   }
@@ -191,16 +201,16 @@ export function splitShotClip(
   const clip = setup.clip;
   const frame = 1 / options.fps;
   const splitAt = snapV2TimelineToFrame(splitTime, options.fps);
-  const clipEnd = snapV2TimelineToFrame(clip.start_time + clip.duration, options.fps);
+  const clipEnd = clip.start_time + clip.duration;
   if (splitAt - clip.start_time <= frame + EPSILON || clipEnd - splitAt <= frame + EPSILON) {
     return unchanged(timeline, "Split must be more than one frame from either clip boundary.");
   }
 
-  const leftDuration = snapV2TimelineToFrame(splitAt - clip.start_time, options.fps);
-  const rightDuration = snapV2TimelineToFrame(clip.duration - leftDuration, options.fps);
-  const trimIn = snapV2TimelineToFrame(clip.trim_in, options.fps);
-  const trimOut = snapV2TimelineToFrame(clip.trim_out ?? trimIn + clip.duration, options.fps);
-  const splitTrim = snapV2TimelineToFrame(trimIn + leftDuration, options.fps);
+  const leftDuration = splitAt - clip.start_time;
+  const rightDuration = clip.duration - leftDuration;
+  const trimIn = clip.trim_in;
+  const trimOut = clip.trim_out ?? trimIn + clip.duration;
+  const splitTrim = trimIn + leftDuration;
   const newClipId = uniqueSplitId(timeline, clipId, splitAt, options.fps);
   const first: V2FinalTimelineClip = {
     ...cloneV2TimelineClip(clip),
@@ -231,6 +241,8 @@ export function deleteShotClips(
   if (!uniqueIds.length) return unchanged(timeline, "Select at least one shot to delete.");
   const optionWarning = validateOptions(options);
   if (optionWarning) return unchanged(timeline, optionWarning);
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return unchanged(timeline, preflightWarning);
 
   const selected: V2FinalTimelineClip[] = [];
   for (const clipId of uniqueIds) {
@@ -279,10 +291,12 @@ export function reorderShotLane(
   trackId: string,
   targetIndex: number,
 ): ShotTimelineMutation {
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return unchanged(timeline, preflightWarning);
   const track = findTrack(timeline, trackId);
   if (!track || track.track_type !== "video") return unchanged(timeline, "Shot lane does not exist.");
   if (isTrackLocked(track)) return unchanged(timeline, `Shot lane ${displayTrackName(track)} is locked.`);
-  const videoTracks = timeline.tracks.filter((candidate) => candidate.track_type === "video");
+  const videoTracks = canonicalTrackOrder(timeline.tracks.filter((candidate) => candidate.track_type === "video"));
   if (!Number.isInteger(targetIndex) || targetIndex < 0 || targetIndex >= videoTracks.length) {
     return unchanged(timeline, "Shot lane position is invalid.");
   }
@@ -290,17 +304,15 @@ export function reorderShotLane(
   if (sourceIndex === targetIndex) return { timeline, changedClipIds: [], snapTarget: null, warning: null };
 
   const next = cloneV2Timeline(timeline);
-  const reordered = next.tracks.filter((candidate) => candidate.track_type === "video");
+  const nextTracks = new Map(next.tracks.map((candidate) => [candidate.track_id, candidate]));
+  const reordered = videoTracks.map((candidate) => nextTracks.get(candidate.track_id)!);
+  const videoOrders = videoTracks.map((candidate) => candidate.order);
   const [moved] = reordered.splice(sourceIndex, 1);
   reordered.splice(targetIndex, 0, moved);
   reordered.forEach((candidate, index) => {
-    candidate.order = reordered.length - index;
+    candidate.order = videoOrders[index];
   });
-  const nonVideo = next.tracks.filter((candidate) => candidate.track_type !== "video");
-  nonVideo.forEach((candidate, index) => {
-    candidate.order = reordered.length + index + 1;
-  });
-  next.tracks = reordered.concat(nonVideo);
+  next.tracks = canonicalTrackOrder(next.tracks);
   return finishMutation(timeline, next, [], null, null);
 }
 
@@ -310,50 +322,133 @@ export function shotTimelineDuration(timeline: V2FinalCompositionTimeline) {
 
 export function validateShotTimeline(timeline: V2FinalCompositionTimeline): ShotTimelineValidation {
   const warnings: string[] = [];
+  if (!isNonEmptyString(timeline.timeline_id)) warnings.push("Timeline timeline_id must be non-empty.");
+  validateNumber(warnings, timeline.version, "Timeline version", { integer: true, min: 1 });
+  validateNumber(warnings, timeline.duration_seconds, "Timeline duration_seconds", { min: 0 });
+  if (!isNonEmptyString(timeline.aspect_ratio)) warnings.push("Timeline aspect_ratio must be non-empty.");
+  if (!isRecord(timeline.resolution)) warnings.push("Timeline resolution must be an object.");
+  validateNumber(warnings, timeline.fps, "Timeline fps", { integer: true, min: 1, max: 120 });
+  if (!isRecord(timeline.metadata)) warnings.push("Timeline metadata must be an object.");
+
+  const timelineTracks = Array.isArray(timeline.tracks) ? timeline.tracks : [];
+  const timelineClips = Array.isArray(timeline.clips) ? timeline.clips : [];
+  if (!Array.isArray(timeline.tracks)) warnings.push("Timeline tracks must be an array.");
+  if (!Array.isArray(timeline.clips)) warnings.push("Timeline clips must be an array.");
   const trackIds = new Set<string>();
   const trackOrders = new Set<number>();
   const tracks = new Map<string, V2FinalTimelineTrack>();
-  for (const track of timeline.tracks) {
-    if (!track.track_id || trackIds.has(track.track_id)) warnings.push("Timeline track ids must be unique and non-empty.");
-    trackIds.add(track.track_id);
+  for (const track of timelineTracks) {
+    if (!isNonEmptyString(track.track_id) || trackIds.has(track.track_id)) {
+      warnings.push("Timeline track ids must be unique and non-empty.");
+    }
+    if (isNonEmptyString(track.track_id)) trackIds.add(track.track_id);
+    if (!isOneOf(track.track_type, TRACK_TYPES)) warnings.push(`Track ${track.track_id} has an invalid track_type.`);
     if (!Number.isInteger(track.order) || track.order < 1 || trackOrders.has(track.order)) {
       warnings.push("Timeline track order values must be unique integers greater than or equal to 1.");
     }
-    trackOrders.add(track.order);
-    tracks.set(track.track_id, track);
+    if (Number.isInteger(track.order)) trackOrders.add(track.order);
+    if (typeof track.enabled !== "boolean") warnings.push(`Track ${track.track_id} enabled must be boolean.`);
+    if (!isRecord(track.metadata)) warnings.push(`Track ${track.track_id} metadata must be an object.`);
+    if (isNonEmptyString(track.track_id) && !tracks.has(track.track_id)) tracks.set(track.track_id, track);
   }
 
   const clipIds = new Set<string>();
-  for (const clip of timeline.clips) {
-    if (!clip.clip_id || clipIds.has(clip.clip_id)) warnings.push("Timeline clip ids must be unique and non-empty.");
-    clipIds.add(clip.clip_id);
+  for (const clip of timelineClips) {
+    if (!isNonEmptyString(clip.clip_id) || clipIds.has(clip.clip_id)) {
+      warnings.push("Timeline clip ids must be unique and non-empty.");
+    }
+    if (isNonEmptyString(clip.clip_id)) clipIds.add(clip.clip_id);
+    if (!isNonEmptyString(clip.track_id)) warnings.push(`Clip ${clip.clip_id} track_id must be non-empty.`);
+    if (!isOneOf(clip.clip_type, TRACK_TYPES)) warnings.push(`Clip ${clip.clip_id} has an invalid clip_type.`);
     const track = tracks.get(clip.track_id);
     if (!track) {
       warnings.push(`Clip ${clip.clip_id} references a missing track.`);
-      continue;
+    } else if (clip.clip_type !== track.track_type) {
+      warnings.push(`Clip ${clip.clip_id} type must match its track type.`);
     }
-    if (clip.clip_type !== track.track_type) warnings.push(`Clip ${clip.clip_id} type must match its track type.`);
-    if (!Number.isFinite(clip.start_time) || clip.start_time < 0 || !Number.isFinite(clip.duration) || clip.duration <= 0) {
-      warnings.push(`Clip ${clip.clip_id} has invalid timeline timing.`);
+
+    validateNumber(warnings, clip.start_time, `Clip ${clip.clip_id} start_time`, { min: 0 });
+    validateNumber(warnings, clip.duration, `Clip ${clip.clip_id} duration`, { exclusiveMin: 0 });
+    validateNumber(warnings, clip.trim_in, `Clip ${clip.clip_id} trim_in`, { min: 0 });
+    if (clip.trim_out !== null) {
+      validateNumber(warnings, clip.trim_out, `Clip ${clip.clip_id} trim_out`, { exclusiveMin: 0 });
+      if (isFiniteNumber(clip.trim_in) && isFiniteNumber(clip.trim_out) && clip.trim_out <= clip.trim_in) {
+        warnings.push(`Clip ${clip.clip_id} trim_out must be greater than trim_in.`);
+      }
     }
-    if (["video", "audio", "image"].includes(clip.clip_type) && (!clip.source_asset_id || !clip.source_version_id)) {
+    validateNumber(warnings, clip.volume, `Clip ${clip.clip_id} volume`, { min: 0, max: 4 });
+    if (typeof clip.muted !== "boolean") warnings.push(`Clip ${clip.clip_id} muted must be boolean.`);
+    if (typeof clip.enabled !== "boolean") warnings.push(`Clip ${clip.clip_id} enabled must be boolean.`);
+    if (!isRecord(clip.metadata)) warnings.push(`Clip ${clip.clip_id} metadata must be an object.`);
+
+    if (isOneOf(clip.clip_type, ["video", "audio", "image"] as const)
+      && (!isNonEmptyString(clip.source_asset_id) || !isNonEmptyString(clip.source_version_id))) {
       warnings.push(`Clip ${clip.clip_id} is missing its media source pin.`);
     }
-    if (clip.clip_type === "subtitle" && clip.enabled && !clip.text) warnings.push(`Clip ${clip.clip_id} requires subtitle text.`);
+    if (clip.clip_type === "subtitle"
+      && (!isNonEmptyString(clip.text) || clip.text.length > 1000)) {
+      warnings.push(`Clip ${clip.clip_id} subtitle text must contain 1 to 1000 characters.`);
+    }
     if (clip.clip_type === "video" || clip.clip_type === "audio") {
-      if (clip.trim_out === null || !nearlyEqual(clip.duration, clip.trim_out - clip.trim_in, 0.01)) {
+      if (clip.trim_out === null
+        || !isFiniteNumber(clip.duration)
+        || !isFiniteNumber(clip.trim_in)
+        || !isFiniteNumber(clip.trim_out)
+        || !nearlyEqual(clip.duration, clip.trim_out - clip.trim_in, 0.01)) {
         warnings.push(`Clip ${clip.clip_id} duration must equal trim_out - trim_in.`);
       }
     }
-    if (clip.audio.fade_in_seconds + clip.audio.fade_out_seconds > clip.duration + 0.01) {
+
+    const transform = requiredRecord(warnings, clip.transform, `Clip ${clip.clip_id} transform`);
+    validateNumber(warnings, transform.x, `Clip ${clip.clip_id} transform.x`, { min: -1, max: 1 });
+    validateNumber(warnings, transform.y, `Clip ${clip.clip_id} transform.y`, { min: -1, max: 1 });
+    validateNumber(warnings, transform.scale_x, `Clip ${clip.clip_id} transform.scale_x`, { exclusiveMin: 0, max: 4 });
+    validateNumber(warnings, transform.scale_y, `Clip ${clip.clip_id} transform.scale_y`, { exclusiveMin: 0, max: 4 });
+    validateNumber(warnings, transform.rotation_degrees, `Clip ${clip.clip_id} transform.rotation_degrees`, { min: -360, max: 360 });
+    validateNumber(warnings, transform.opacity, `Clip ${clip.clip_id} transform.opacity`, { min: 0, max: 1 });
+    if (!isOneOf(transform.fit, ["cover", "contain"] as const)) {
+      warnings.push(`Clip ${clip.clip_id} transform.fit is invalid.`);
+    }
+
+    const audio = requiredRecord(warnings, clip.audio, `Clip ${clip.clip_id} audio`);
+    validateNumber(warnings, audio.volume, `Clip ${clip.clip_id} audio.volume`, { min: 0, max: 4 });
+    if (typeof audio.muted !== "boolean") warnings.push(`Clip ${clip.clip_id} audio.muted must be boolean.`);
+    validateNumber(warnings, audio.fade_in_seconds, `Clip ${clip.clip_id} audio.fade_in_seconds`, { min: 0 });
+    validateNumber(warnings, audio.fade_out_seconds, `Clip ${clip.clip_id} audio.fade_out_seconds`, { min: 0 });
+    if (isFiniteNumber(audio.fade_in_seconds)
+      && isFiniteNumber(audio.fade_out_seconds)
+      && isFiniteNumber(clip.duration)
+      && audio.fade_in_seconds + audio.fade_out_seconds > clip.duration + 0.01) {
       warnings.push(`Clip ${clip.clip_id} audio fades cannot exceed clip duration.`);
+    }
+
+    const color = requiredRecord(warnings, clip.color, `Clip ${clip.clip_id} color`);
+    if (!isOneOf(color.preset_id, COLOR_PRESETS)) warnings.push(`Clip ${clip.clip_id} color.preset_id is invalid.`);
+    validateNumber(warnings, color.brightness, `Clip ${clip.clip_id} color.brightness`, { min: -1, max: 1 });
+    validateNumber(warnings, color.contrast, `Clip ${clip.clip_id} color.contrast`, { min: 0, max: 3 });
+    validateNumber(warnings, color.saturation, `Clip ${clip.clip_id} color.saturation`, { min: 0, max: 3 });
+    validateNumber(warnings, color.exposure, `Clip ${clip.clip_id} color.exposure`, { min: -4, max: 4 });
+    validateNumber(warnings, color.temperature, `Clip ${clip.clip_id} color.temperature`, { min: -100, max: 100 });
+    validateNumber(warnings, color.tint, `Clip ${clip.clip_id} color.tint`, { min: -100, max: 100 });
+    validateNumber(warnings, color.hue, `Clip ${clip.clip_id} color.hue`, { min: -180, max: 180 });
+
+    const subtitleStyle = requiredRecord(warnings, clip.subtitle_style, `Clip ${clip.clip_id} subtitle_style`);
+    validateNumber(warnings, subtitleStyle.font_size, `Clip ${clip.clip_id} subtitle_style.font_size`, { integer: true, min: 12, max: 96 });
+    if (typeof subtitleStyle.color !== "string" || !/^#[0-9A-Fa-f]{6}$/.test(subtitleStyle.color)) {
+      warnings.push(`Clip ${clip.clip_id} subtitle_style.color must be #RRGGBB.`);
+    }
+    if (!isOneOf(subtitleStyle.position, SUBTITLE_POSITIONS)) {
+      warnings.push(`Clip ${clip.clip_id} subtitle_style.position is invalid.`);
     }
   }
 
-  for (const track of timeline.tracks) {
-    if (track.track_type === "audio" || !track.enabled) continue;
-    const intervals = timeline.clips
-      .filter((clip) => clip.track_id === track.track_id && clip.enabled)
+  for (const track of timelineTracks) {
+    if (track.track_type === "audio" || track.enabled !== true) continue;
+    const intervals = timelineClips
+      .filter((clip) => clip.track_id === track.track_id
+        && clip.enabled === true
+        && isFiniteNumber(clip.start_time)
+        && isFiniteNumber(clip.duration))
       .map((clip) => ({ id: clip.clip_id, start: clip.start_time, end: clip.start_time + clip.duration }))
       .sort((left, right) => left.start - right.start || left.id.localeCompare(right.id));
     for (let index = 1; index < intervals.length; index += 1) {
@@ -363,8 +458,12 @@ export function validateShotTimeline(timeline: V2FinalCompositionTimeline): Shot
     }
   }
 
-  const computedDuration = shotTimelineDuration(timeline);
-  if (!nearlyEqual(timeline.duration_seconds, computedDuration, 0.01)) {
+  const computedDuration = Array.isArray(timeline.tracks) && Array.isArray(timeline.clips)
+    ? shotTimelineDuration(timeline)
+    : Number.NaN;
+  if (!isFiniteNumber(timeline.duration_seconds)
+    || !isFiniteNumber(computedDuration)
+    || !nearlyEqual(timeline.duration_seconds, computedDuration, 0.01)) {
     warnings.push("Timeline duration_seconds must match enabled clip duration.");
   }
   return { valid: warnings.length === 0, warnings };
@@ -377,6 +476,8 @@ function editableVideoClip(
 ): { clip: V2FinalTimelineClip; track: V2FinalTimelineTrack } | string {
   const optionWarning = validateOptions(options);
   if (optionWarning) return optionWarning;
+  const preflightWarning = canonicalPreflightWarning(timeline);
+  if (preflightWarning) return preflightWarning;
   const clip = findClip(timeline, clipId);
   if (!clip) return `Shot clip ${clipId} does not exist.`;
   if (clip.clip_type !== "video") return "Only video shot clips can be edited by this command.";
@@ -447,9 +548,11 @@ function shiftLaterVideoClips(
   let skippedLocked = false;
   for (const candidate of next.clips) {
     if (candidate.clip_type !== "video" || excluded.has(candidate.clip_id)) continue;
-    const originalClip = findClip(original, candidate.clip_id)!;
+    const originalClip = findClip(original, candidate.clip_id);
+    if (!originalClip) return `Timeline is invalid: clip ${candidate.clip_id} is missing from the canonical input.`;
     if (originalClip.start_time < editPoint - EPSILON) continue;
-    const track = findTrack(next, candidate.track_id)!;
+    const track = findTrack(next, candidate.track_id);
+    if (!track) return `Timeline is invalid: clip ${candidate.clip_id} references a missing track.`;
     if (isTrackLocked(track)) {
       skippedLocked = true;
       continue;
@@ -526,6 +629,26 @@ function knownSourceDuration(clip: V2FinalTimelineClip): number | null {
   return duration ?? null;
 }
 
+function nonExpandingFrameBound(value: number, fps: number) {
+  return Math.floor((value + EPSILON) * fps) / fps;
+}
+
+function canonicalPreflightWarning(timeline: V2FinalCompositionTimeline) {
+  const validation = validateShotTimeline(timeline);
+  return validation.valid ? null : `Timeline is invalid: ${validation.warnings.join(" ")}`;
+}
+
+function canonicalTrackOrder(tracks: V2FinalTimelineTrack[]) {
+  return [...tracks].sort((left, right) => right.order - left.order || left.track_id.localeCompare(right.track_id));
+}
+
+function uniqueTrackId(base: string, reserved: Set<string>) {
+  if (!reserved.has(base)) return base;
+  let suffix = 2;
+  while (reserved.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
 function isTrackLocked(track: V2FinalTimelineTrack) {
   return editorMetadata(track).locked === true;
 }
@@ -540,7 +663,50 @@ function editorMetadata(track: V2FinalTimelineTrack) {
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return isRecord(value) ? value : {};
+}
+
+type NumberConstraints = {
+  integer?: boolean;
+  min?: number;
+  exclusiveMin?: number;
+  max?: number;
+};
+
+function validateNumber(
+  warnings: string[],
+  value: unknown,
+  label: string,
+  constraints: NumberConstraints,
+) {
+  const valid = isFiniteNumber(value)
+    && (!constraints.integer || Number.isInteger(value))
+    && (constraints.min === undefined || value >= constraints.min)
+    && (constraints.exclusiveMin === undefined || value > constraints.exclusiveMin)
+    && (constraints.max === undefined || value <= constraints.max);
+  if (!valid) warnings.push(`${label} is invalid.`);
+}
+
+function requiredRecord(warnings: string[], value: unknown, label: string) {
+  if (isRecord(value)) return value;
+  warnings.push(`${label} must be an object.`);
+  return {};
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === "string" && values.includes(value as T);
 }
 
 function cloneRecord(value: Record<string, unknown>): Record<string, unknown> {
