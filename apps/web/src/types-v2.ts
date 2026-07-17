@@ -806,7 +806,7 @@ export interface V2TimelineTransform {
   y: number;
   scale_x: number;
   scale_y: number;
-  rotation: number;
+  rotation_degrees: number;
   opacity: number;
   fit: "cover" | "contain";
 }
@@ -814,8 +814,8 @@ export interface V2TimelineTransform {
 export interface V2TimelineAudio {
   volume: number;
   muted: boolean;
-  fade_in: number;
-  fade_out: number;
+  fade_in_seconds: number;
+  fade_out_seconds: number;
 }
 
 export interface V2TimelineColor {
@@ -838,11 +838,9 @@ export interface V2TimelineSubtitleStyle {
 export interface V2FinalTimelineTrack {
   track_id: string;
   track_type: V2TimelineTrackType;
-  name?: string;
   order: number;
   enabled: boolean;
-  muted: boolean;
-  locked: boolean;
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineClip {
@@ -861,7 +859,8 @@ export interface V2FinalTimelineClip {
   audio?: V2TimelineAudio;
   color?: V2TimelineColor;
   text?: string | null;
-  style?: V2TimelineSubtitleStyle;
+  subtitle_style?: V2TimelineSubtitleStyle;
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineRenderSettings {
@@ -871,6 +870,12 @@ export interface V2FinalTimelineRenderSettings {
   audio_bitrate?: string;
 }
 
+export interface V2FinalTimelineRenderRequest {
+  timeline_id: string;
+  timeline_version: number;
+  render_settings?: V2FinalTimelineRenderSettings;
+}
+
 export interface V2FinalCompositionTimeline {
   timeline_id: string;
   version: number;
@@ -878,9 +883,9 @@ export interface V2FinalCompositionTimeline {
   aspect_ratio: string;
   resolution: { width: number; height: number };
   fps: number;
-  render_settings: V2FinalTimelineRenderSettings;
   tracks: V2FinalTimelineTrack[];
   clips: V2FinalTimelineClip[];
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineSource {
@@ -927,19 +932,21 @@ export interface V2FinalTimelineSourceImportResponse {
   source: V2FinalTimelineSource;
 }
 
-export interface V2FinalTimelineRenderRequest {
+export interface V2FinalTimelineRenderStartResponse {
+  workflow_id: string;
+  render_id: string;
+  status: "queued";
   timeline_id: string;
   timeline_version: number;
-  render_settings?: V2FinalTimelineRenderSettings;
 }
 
-export interface V2FinalTimelineRenderResponse {
+export interface V2FinalTimelineRenderStateResponse {
   workflow_id: string;
   render_id: string;
   slot_id: string;
   asset_id: string;
   version_id: string;
-  status: "completed" | string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   public_url?: string | null;
   timeline_id: string;
   timeline_version: number;

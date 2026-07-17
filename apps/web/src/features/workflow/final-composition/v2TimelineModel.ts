@@ -13,14 +13,15 @@ export function cloneV2Timeline(timeline: V2FinalCompositionTimeline): V2FinalCo
   return {
     ...timeline,
     resolution: { ...timeline.resolution },
-    render_settings: { ...timeline.render_settings },
-    tracks: timeline.tracks.map((track) => ({ ...track })),
+    metadata: { ...timeline.metadata },
+    tracks: timeline.tracks.map((track) => ({ ...track, metadata: { ...track.metadata } })),
     clips: timeline.clips.map((clip) => ({
       ...clip,
       transform: clip.transform ? { ...clip.transform } : undefined,
       audio: clip.audio ? { ...clip.audio } : undefined,
       color: clip.color ? { ...clip.color } : undefined,
-      style: clip.style ? { ...clip.style } : undefined,
+      subtitle_style: clip.subtitle_style ? { ...clip.subtitle_style } : undefined,
+      metadata: { ...clip.metadata },
     })),
   };
 }
@@ -90,13 +91,11 @@ export function addV2TimelineTrack(timeline: V2FinalCompositionTimeline, type: V
   const track: V2FinalTimelineTrack = {
     track_id: `${type}-${nextIndex}`,
     track_type: type,
-    name: `${type[0].toUpperCase()}${type.slice(1)} ${nextIndex}`,
     order: nextOrder,
     enabled: true,
-    muted: false,
-    locked: false,
+    metadata: {},
   };
-  return { ...cloneV2Timeline(timeline), tracks: [...timeline.tracks.map((item) => ({ ...item })), track] };
+  return { ...cloneV2Timeline(timeline), tracks: [...timeline.tracks.map((item) => ({ ...item, metadata: { ...item.metadata } })), track] };
 }
 
 export function removeV2TimelineClip(timeline: V2FinalCompositionTimeline, clipId: string): V2FinalCompositionTimeline {
@@ -117,7 +116,7 @@ export function updateV2TimelineTrack(
 export function setV2TimelineClipAudio(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineAudio>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
-    audio: { volume: 1, muted: false, fade_in: 0, fade_out: 0, ...clip.audio, ...update },
+    audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0, ...clip.audio, ...update },
   }));
 }
 
@@ -138,6 +137,7 @@ function cloneV2TimelineClip(clip: V2FinalTimelineClip): V2FinalTimelineClip {
     transform: clip.transform ? { ...clip.transform } : undefined,
     audio: clip.audio ? { ...clip.audio } : undefined,
     color: clip.color ? { ...clip.color } : undefined,
-    style: clip.style ? { ...clip.style } : undefined,
+    subtitle_style: clip.subtitle_style ? { ...clip.subtitle_style } : undefined,
+    metadata: { ...clip.metadata },
   };
 }

@@ -56,9 +56,10 @@ function makeClip(source: V2FinalTimelineSource, trackId: string, startTime: num
     trim_in: 0,
     trim_out: duration,
     enabled: true,
-    transform: source.media_type === "audio" ? undefined : { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1, fit: "contain" },
-    audio: source.media_type === "audio" || source.media_type === "video" ? { volume: 1, muted: false, fade_in: 0, fade_out: 0 } : undefined,
+    transform: source.media_type === "audio" ? undefined : { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" },
+    audio: source.media_type === "audio" || source.media_type === "video" ? { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 } : undefined,
     color: source.media_type === "audio" ? undefined : { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
+    metadata: {},
   };
 }
 
@@ -181,7 +182,6 @@ export function useV2FinalCompositionEditor({
       const response = await v2Api.renderFinalTimeline(workflowId, {
         timeline_id: timeline.timeline_id,
         timeline_version: timeline.version,
-        render_settings: timeline.render_settings,
       });
       await onWorkflowRefresh?.(workflowId);
       return response;
@@ -200,7 +200,7 @@ export function useV2FinalCompositionEditor({
   const addSource = useCallback((source: V2FinalTimelineSource) => {
     updateDraft((timeline) => {
       const trackType = trackTypeForSource(source);
-      const matchingTracks = timeline.tracks.filter((track) => track.track_type === trackType && !track.locked).sort((a, b) => a.order - b.order);
+      const matchingTracks = timeline.tracks.filter((track) => track.track_type === trackType).sort((a, b) => a.order - b.order);
       const nextTimeline = matchingTracks.length ? cloneV2Timeline(timeline) : addV2TimelineTrack(timeline, trackType);
       const track = (matchingTracks[0] ?? nextTimeline.tracks.find((candidate) => candidate.track_type === trackType))!;
       const startTime = trackType === "audio" ? 0 : Math.max(0, ...nextTimeline.clips.filter((clip) => clip.track_id === track.track_id).map((clip) => clip.start_time + clip.duration));
@@ -260,7 +260,7 @@ export function useV2FinalCompositionEditor({
     setClipAudio: (clipId: string, update: Parameters<typeof setV2TimelineClipAudio>[2]) => updateDraft((timeline) => setV2TimelineClipAudio(timeline, clipId, update)),
     setClipColor: (clipId: string, update: Parameters<typeof setV2TimelineClipColor>[2]) => updateDraft((timeline) => setV2TimelineClipColor(timeline, clipId, update)),
     addSubtitle: () => updateDraft((timeline) => {
-      const existingTrack = timeline.tracks.find((track) => track.track_type === "subtitle" && !track.locked);
+      const existingTrack = timeline.tracks.find((track) => track.track_type === "subtitle");
       const nextTimeline = existingTrack ? cloneV2Timeline(timeline) : addV2TimelineTrack(timeline, "subtitle");
       const track = existingTrack ?? nextTimeline.tracks.find((candidate) => candidate.track_type === "subtitle")!;
       const startTime = Math.max(0, ...nextTimeline.clips.filter((clip) => clip.track_id === track.track_id).map((clip) => clip.start_time + clip.duration));
@@ -268,7 +268,7 @@ export function useV2FinalCompositionEditor({
       return {
         ...nextTimeline,
         duration_seconds: Math.max(nextTimeline.duration_seconds, startTime + duration),
-        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", start_time: startTime, duration, enabled: true, text: "New subtitle", style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" } }],
+        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", start_time: startTime, duration, enabled: true, text: "New subtitle", subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" }, metadata: {} }],
       };
     }),
   };
