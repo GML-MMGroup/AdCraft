@@ -326,7 +326,11 @@ export function validateShotTimeline(timeline: V2FinalCompositionTimeline): Shot
   validateNumber(warnings, timeline.version, "Timeline version", { integer: true, min: 1 });
   validateNumber(warnings, timeline.duration_seconds, "Timeline duration_seconds", { min: 0 });
   if (!isNonEmptyString(timeline.aspect_ratio)) warnings.push("Timeline aspect_ratio must be non-empty.");
-  if (!isRecord(timeline.resolution)) warnings.push("Timeline resolution must be an object.");
+  if (!isRecord(timeline.resolution)) {
+    warnings.push("Timeline resolution must be an object.");
+  } else if (!Object.values(timeline.resolution).every(isFiniteInteger)) {
+    warnings.push("Timeline resolution values must be finite integers.");
+  }
   validateNumber(warnings, timeline.fps, "Timeline fps", { integer: true, min: 1, max: 120 });
   if (!isRecord(timeline.metadata)) warnings.push("Timeline metadata must be an object.");
 
@@ -376,7 +380,7 @@ export function validateShotTimeline(timeline: V2FinalCompositionTimeline): Shot
         warnings.push(`Clip ${clip.clip_id} trim_out must be greater than trim_in.`);
       }
     }
-    validateNumber(warnings, clip.volume, `Clip ${clip.clip_id} volume`, { min: 0, max: 4 });
+    validateNumber(warnings, clip.volume, `Clip ${clip.clip_id} volume`, { min: 0 });
     if (typeof clip.muted !== "boolean") warnings.push(`Clip ${clip.clip_id} muted must be boolean.`);
     if (typeof clip.enabled !== "boolean") warnings.push(`Clip ${clip.clip_id} enabled must be boolean.`);
     if (!isRecord(clip.metadata)) warnings.push(`Clip ${clip.clip_id} metadata must be an object.`);
@@ -385,9 +389,8 @@ export function validateShotTimeline(timeline: V2FinalCompositionTimeline): Shot
       && (!isNonEmptyString(clip.source_asset_id) || !isNonEmptyString(clip.source_version_id))) {
       warnings.push(`Clip ${clip.clip_id} is missing its media source pin.`);
     }
-    if (clip.clip_type === "subtitle"
-      && (!isNonEmptyString(clip.text) || clip.text.length > 1000)) {
-      warnings.push(`Clip ${clip.clip_id} subtitle text must contain 1 to 1000 characters.`);
+    if (clip.clip_type === "subtitle" && clip.enabled && !isNonEmptyString(clip.text)) {
+      warnings.push(`Clip ${clip.clip_id} enabled subtitle text must be non-empty.`);
     }
     if (clip.clip_type === "video" || clip.clip_type === "audio") {
       if (clip.trim_out === null
@@ -699,6 +702,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isFiniteInteger(value: unknown): value is number {
+  return isFiniteNumber(value) && Number.isInteger(value);
 }
 
 function isNonEmptyString(value: unknown): value is string {
