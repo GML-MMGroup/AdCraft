@@ -28,6 +28,7 @@ import type { V2FinalCompositionTool } from "./useV2FinalCompositionEditor.ts";
 const ROW_HEIGHT = 48;
 const BASE_SCALE_WIDTH = 52;
 const MIN_DISPLAYED_DURATION_SECONDS = 12;
+const LIBRARY_ACTION_END_PADDING_SCALE_COUNT = 5;
 const EPSILON = 1e-6;
 const TimelineComponent = Timeline as ForwardRefExoticComponent<
   TimelineEditor & RefAttributes<TimelineState>
@@ -142,12 +143,23 @@ export function displayedShotTimelineDuration(timeline: V2FinalCompositionTimeli
   );
 }
 
+export function effectiveShotTimelineScaleCount(timeline: V2FinalCompositionTimeline) {
+  const maxActionEnd = Math.max(
+    0,
+    ...toShotTimelineRows(timeline).flatMap((row) => row.actions.map((action) => action.end)),
+  );
+  return Math.max(
+    Math.ceil(displayedShotTimelineDuration(timeline)),
+    Math.ceil(maxActionEnd) + LIBRARY_ACTION_END_PADDING_SCALE_COUNT,
+  );
+}
+
 export function fitShotTimelineZoom(
   timeline: V2FinalCompositionTimeline,
   viewportWidth: number,
 ) {
   if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) return 1;
-  return viewportWidth / (displayedShotTimelineDuration(timeline) * BASE_SCALE_WIDTH);
+  return viewportWidth / (effectiveShotTimelineScaleCount(timeline) * BASE_SCALE_WIDTH);
 }
 
 export function activeCompatibilityPreviewClips(
@@ -261,6 +273,7 @@ export function V2ShotTimeline({
     [timeline.clips],
   );
   const displayedDuration = displayedShotTimelineDuration(timeline);
+  const effectiveScaleCount = effectiveShotTimelineScaleCount(timeline);
 
   useLayoutEffect(() => {
     setRows(projectedRows);
@@ -350,7 +363,7 @@ export function V2ShotTimeline({
           scale={1}
           scaleSplitCount={Math.max(1, Math.min(timeline.fps, 30))}
           scaleWidth={BASE_SCALE_WIDTH * zoom}
-          minScaleCount={Math.ceil(displayedDuration)}
+          minScaleCount={effectiveScaleCount}
           maxScaleCount={86400}
           startLeft={0}
           rowHeight={ROW_HEIGHT}
