@@ -36,6 +36,7 @@ import { assetLibraryRefreshDetailFromEvent, patchAssetLibraryState } from "../a
 import { assetTypeFromSemanticType, latestLocalRevisionPromptMetadata, localRevisionTargetsMatch, revisionMatchesCanvasCandidate } from "../assets/localRevisionViewModel.ts";
 import type { CanvasCandidateSummaryState, LocalRevisionCardState } from "../assets/useWorkflowAssetOperations.ts";
 import {
+  V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES,
   V2_SLOT_VERSION_REFRESH_EVENT_TYPES,
   V2_WORKFLOW_REFRESH_EVENT_TYPES,
   v2EventRefreshHints,
@@ -655,16 +656,18 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
-    const finalCompositionEvents = events.filter((event) => [
-      "final_timeline_created",
-      "final_timeline_updated",
-      "final_composition_render_started",
-      "final_composition_render_completed",
-      "final_composition_render_failed",
-    ].includes(event.event_type));
+    const finalCompositionEvents = events.filter((event) =>
+      event.event_type === "final_timeline_created" ||
+      event.event_type === "final_timeline_updated" ||
+      V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES.has(event.event_type),
+    );
     if (workflowId && finalCompositionEvents.length) {
       window.dispatchEvent(new CustomEvent("v2-final-composition-events", {
-        detail: { workflowId, eventTypes: finalCompositionEvents.map((event) => event.event_type) },
+        detail: {
+          workflowId,
+          events: finalCompositionEvents,
+          eventTypes: finalCompositionEvents.map((event) => event.event_type),
+        },
       }));
     }
     const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));

@@ -9,6 +9,8 @@ import type {
   V2InputAssetUploadResponse,
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
+  V2FinalTimelineRenderStartResponse,
+  V2FinalTimelineRenderStateResponse,
   V2FinalTimelineResponse,
   V2FinalTimelineSource,
   V2FinalTimelineSourceImportResponse,
@@ -686,19 +688,37 @@ export function normalizeV2FinalTimelineSourceImportResponse(value: unknown): V2
   };
 }
 
-export function normalizeV2FinalTimelineRenderResponse(value: unknown) {
+export function normalizeV2FinalTimelineRenderStartResponse(value: unknown): V2FinalTimelineRenderStartResponse {
+  const record = isRecord(value) ? value : {};
+  return {
+    workflow_id: stringValue(record.workflow_id),
+    render_id: stringValue(record.render_id),
+    status: "queued",
+    timeline_id: stringValue(record.timeline_id),
+    timeline_version: numberValue(record.timeline_version),
+    events_cursor: numberValue(record.events_cursor),
+  };
+}
+
+export function normalizeV2FinalTimelineRenderStateResponse(value: unknown): V2FinalTimelineRenderStateResponse {
   const record = isRecord(value) ? value : {};
   return {
     workflow_id: stringValue(record.workflow_id),
     render_id: stringValue(record.render_id),
     slot_id: stringValue(record.slot_id),
-    asset_id: stringValue(record.asset_id),
-    version_id: stringValue(record.version_id),
-    status: stringValue(record.status),
-    public_url: stringOrNull(record.public_url),
+    status: normalizeV2FinalTimelineRenderStatus(record.status),
     timeline_id: stringValue(record.timeline_id),
     timeline_version: numberValue(record.timeline_version),
-    runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+    events_cursor: numberValue(record.events_cursor),
+    progress_seconds: numberOrNull(record.progress_seconds) ?? null,
+    total_seconds: numberOrNull(record.total_seconds) ?? null,
+    progress_percent: numberOrNull(record.progress_percent) ?? null,
+    asset_id: stringOrNull(record.asset_id) ?? null,
+    version_id: stringOrNull(record.version_id) ?? null,
+    error_code: stringOrNull(record.error_code) ?? null,
+    error_message: stringOrNull(record.error_message) ?? null,
+    created_at: stringValue(record.created_at),
+    updated_at: stringValue(record.updated_at),
   };
 }
 
@@ -715,17 +735,15 @@ function normalizeV2FinalCompositionTimeline(value: unknown): V2FinalComposition
       height: numberValue(resolution?.height, 720),
     },
     fps: numberValue(record.fps, 24),
-    render_settings: recordValue(record.render_settings) ?? {},
     tracks: recordArray(record.tracks).map((track, index) => ({
       track_id: stringValue(track.track_id, `track-${index + 1}`),
       track_type: normalizeTimelineTrackType(track.track_type),
-      name: stringOrNull(track.name) ?? undefined,
-      order: numberValue(track.order, index + 1),
+      order: numberValue(track.order, 1),
       enabled: track.enabled !== false,
-      muted: Boolean(track.muted),
-      locked: Boolean(track.locked),
+      metadata: recordValue(track.metadata) ?? {},
     })),
     clips: recordArray(record.clips).map(normalizeV2FinalTimelineClip),
+    metadata: recordValue(record.metadata) ?? {},
   };
 }
 
@@ -733,32 +751,35 @@ function normalizeV2FinalTimelineClip(record: Record<string, unknown>, index: nu
   const transform = recordValue(record.transform);
   const audio = recordValue(record.audio);
   const color = recordValue(record.color);
-  const style = recordValue(record.style);
+  const subtitleStyle = recordValue(record.subtitle_style);
   return {
     clip_id: stringValue(record.clip_id, `clip-${index + 1}`),
     track_id: stringValue(record.track_id),
     clip_type: normalizeTimelineTrackType(record.clip_type),
-    source_asset_id: stringOrNull(record.source_asset_id),
-    source_version_id: stringOrNull(record.source_version_id),
-    source_slot_id: stringOrNull(record.source_slot_id),
+    source_asset_id: stringOrNull(record.source_asset_id) ?? null,
+    source_version_id: stringOrNull(record.source_version_id) ?? null,
+    source_slot_id: stringOrNull(record.source_slot_id) ?? null,
     start_time: numberValue(record.start_time),
     duration: numberValue(record.duration),
-    trim_in: numberOrNull(record.trim_in),
-    trim_out: numberOrNull(record.trim_out),
+    trim_in: numberValue(record.trim_in),
+    trim_out: numberOrNull(record.trim_out) ?? null,
+    volume: numberValue(record.volume, 1),
+    muted: Boolean(record.muted),
     enabled: record.enabled !== false,
-    transform: transform ? {
-      x: numberValue(transform.x), y: numberValue(transform.y), scale_x: numberValue(transform.scale_x, 1), scale_y: numberValue(transform.scale_y, 1), rotation: numberValue(transform.rotation), opacity: numberValue(transform.opacity, 1), fit: transform.fit === "contain" ? "contain" : "cover",
-    } : undefined,
-    audio: audio ? {
-      volume: numberValue(audio.volume, 1), muted: Boolean(audio.muted), fade_in: numberValue(audio.fade_in), fade_out: numberValue(audio.fade_out),
-    } : undefined,
-    color: color ? {
-      preset_id: normalizeTimelineColorPreset(color.preset_id), brightness: numberValue(color.brightness), contrast: numberValue(color.contrast, 1), saturation: numberValue(color.saturation, 1), exposure: numberValue(color.exposure), temperature: numberValue(color.temperature), tint: numberValue(color.tint), hue: numberValue(color.hue),
-    } : undefined,
-    text: stringOrNull(record.text),
-    style: style ? {
-      font_size: numberValue(style.font_size, 42), color: stringValue(style.color, "#FFFFFF"), position: style.position === "top_center" || style.position === "center" ? style.position : "bottom_center",
-    } : undefined,
+    transform: {
+      x: numberValue(transform?.x), y: numberValue(transform?.y), scale_x: numberValue(transform?.scale_x, 1), scale_y: numberValue(transform?.scale_y, 1), rotation_degrees: numberValue(transform?.rotation_degrees), opacity: numberValue(transform?.opacity, 1), fit: transform?.fit === "cover" ? "cover" : "contain",
+    },
+    audio: {
+      volume: numberValue(audio?.volume, 1), muted: Boolean(audio?.muted), fade_in_seconds: numberValue(audio?.fade_in_seconds), fade_out_seconds: numberValue(audio?.fade_out_seconds),
+    },
+    color: {
+      preset_id: normalizeTimelineColorPreset(color?.preset_id), brightness: numberValue(color?.brightness), contrast: numberValue(color?.contrast, 1), saturation: numberValue(color?.saturation, 1), exposure: numberValue(color?.exposure), temperature: numberValue(color?.temperature), tint: numberValue(color?.tint), hue: numberValue(color?.hue),
+    },
+    text: stringOrNull(record.text) ?? null,
+    subtitle_style: {
+      font_size: numberValue(subtitleStyle?.font_size, 42), color: stringValue(subtitleStyle?.color, "#FFFFFF"), position: subtitleStyle?.position === "top_center" || subtitleStyle?.position === "center" ? subtitleStyle.position : "bottom_center",
+    },
+    metadata: recordValue(record.metadata) ?? {},
   };
 }
 
@@ -778,6 +799,11 @@ function normalizeV2FinalTimelineSource(value: unknown): V2FinalTimelineSource {
 
 function normalizeTimelineTrackType(value: unknown): "video" | "audio" | "image" | "subtitle" {
   return value === "audio" || value === "image" || value === "subtitle" ? value : "video";
+}
+
+function normalizeV2FinalTimelineRenderStatus(value: unknown): V2FinalTimelineRenderStateResponse["status"] {
+  if (value === "queued" || value === "running" || value === "completed" || value === "failed" || value === "cancellation_requested" || value === "cancelled") return value;
+  throw new Error(`Invalid final timeline render status: ${String(value)}`);
 }
 
 function normalizeTimelineColorPreset(value: unknown): "none" | "warm" | "cool" | "high_contrast" | "muted" {

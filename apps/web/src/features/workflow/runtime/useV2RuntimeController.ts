@@ -4,6 +4,7 @@ import { normalizeWorkflowRuntimeEventV2 } from "../../../api/v2Normalizers.ts";
 import type { WorkflowRuntimeEventV2, WorkflowRuntimeV2 } from "../../../types-v2.ts";
 import { createRuntimeEventBatcher } from "../../../workflow-v2/runtimeBatch.ts";
 import { createV2RuntimeSnapshotCoordinator } from "./v2RuntimeSnapshotCoordinator.ts";
+import { V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES } from "./v2RuntimeEventModel.ts";
 import {
   applyV2RuntimeSnapshot,
   createInitialV2RuntimeStore,
@@ -63,9 +64,7 @@ export const V2_RUNTIME_EVENT_STREAM_TYPES = [
   "linked_context_updated",
   "final_timeline_created",
   "final_timeline_updated",
-  "final_composition_render_started",
-  "final_composition_render_completed",
-  "final_composition_render_failed",
+  ...V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES,
 ] as const;
 
 export function useV2RuntimeController(options: {

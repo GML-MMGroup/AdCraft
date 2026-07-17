@@ -7278,7 +7278,7 @@ button.canvas-entity-media {
   background: rgba(252, 253, 255, 0.8);
 }
 
-.v2-composition-editor-toolbar > div:first-child {
+.v2-composition-editor-summary {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -7363,9 +7363,11 @@ button.canvas-entity-media {
 .v2-composition-preview-stage video,
 .v2-composition-preview-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .v2-composition-preview-empty { color: rgba(239, 241, 255, 0.66); font-size: 12px; text-align: center; }
-.v2-composition-preview-play { position: absolute; left: 50%; top: 50%; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255, 255, 255, 0.52); border-radius: 50%; background: rgba(20, 22, 35, 0.6); color: white; cursor: pointer; transform: translate(-50%, -50%); }
+.v2-composition-preview-media-fallback { position: absolute; inset: 0; display: grid; overflow: hidden; place-items: center; background: #282b39; color: rgba(239, 241, 255, 0.76); font-size: 11px; font-weight: 800; pointer-events: none; }
+.v2-composition-preview-media-fallback > span { padding: 6px 9px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 5px; background: rgba(16, 18, 28, 0.72); }
+.v2-composition-preview-play { position: absolute; left: 50%; top: 50%; z-index: 20; display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(255, 255, 255, 0.52); border-radius: 50%; background: rgba(20, 22, 35, 0.6); color: white; cursor: pointer; transform: translate(-50%, -50%); }
 .v2-composition-preview-play svg { width: 20px; height: 20px; margin-left: 2px; }
-.v2-composition-subtitle { position: absolute; bottom: 9%; max-width: 82%; color: #fff; font-size: clamp(12px, 2vw, 24px); font-weight: 800; line-height: 1.25; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); }
+.v2-composition-subtitle { position: absolute; bottom: 9%; z-index: 10; max-width: 82%; color: #fff; font-size: clamp(12px, 2vw, 24px); font-weight: 800; line-height: 1.25; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); }
 .v2-composition-transport { padding-top: 8px; }
 .v2-composition-transport input { min-width: 0; flex: 1; accent-color: #7a6ac4; }
 .v2-composition-transport span { flex: 0 0 auto; color: rgba(71, 75, 99, 0.75); font-size: 10px; font-variant-numeric: tabular-nums; }
@@ -7383,6 +7385,14 @@ button.canvas-entity-media {
 .v2-composition-timeline-clip span { display: block; overflow: hidden; padding: 5px 6px; text-overflow: ellipsis; white-space: nowrap; }
 .v2-composition-timeline-clip.is-video { background: rgba(154, 196, 244, 0.85); }.v2-composition-timeline-clip.is-image { background: rgba(176, 217, 180, 0.85); }.v2-composition-timeline-clip.is-audio { background: rgba(235, 187, 135, 0.88); }.v2-composition-timeline-clip.is-subtitle { background: rgba(210, 188, 234, 0.9); }
 .v2-composition-timeline-clip.is-selected { border-color: rgba(79, 57, 157, 0.94); box-shadow: 0 0 0 2px rgba(114, 89, 204, 0.28); }.v2-composition-timeline-clip.is-dragging { z-index: 5; opacity: 0.76; cursor: grabbing; }
+.v2-shot-poster-strip { position: absolute; z-index: 0; inset: 0; display: flex; min-width: 0; overflow: hidden; padding: 0; opacity: 0.62; pointer-events: none; }
+.v2-shot-poster-strip img { flex: 1 1 0; width: 34%; min-width: 0; height: 100%; object-fit: cover; }
+.v2-shot-waveform { position: absolute; z-index: 0; inset: 0; display: flex; min-width: 0; align-items: center; gap: 1px; overflow: hidden; padding: 6px 7px; opacity: 0.66; pointer-events: none; }
+.v2-shot-waveform i { display: block; flex: 1 1 0; width: 2px; min-width: 1px; max-width: 3px; border-radius: 1px; background: rgba(83, 54, 28, 0.72); }
+.v2-shot-clip-label { position: relative; z-index: 2; max-width: calc(100% - 14px); background: rgba(255, 255, 255, 0.48); }
+.v2-shot-source-audio { position: absolute; right: 4px; bottom: 3px; z-index: 2; padding: 1px 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.62); font-size: 8px; line-height: 1; }
+.v2-shot-trim-handle { position: absolute; top: 0; bottom: 0; z-index: 3; width: 5px; padding: 0; border-color: rgba(59, 44, 119, 0.52); pointer-events: none; }
+.v2-shot-trim-handle.is-left { left: 0; border-left: 2px solid; }.v2-shot-trim-handle.is-right { right: 0; border-right: 2px solid; }
 
 .v2-composition-inspector-fields { display: grid; gap: 8px; }.v2-composition-number-field,.v2-composition-text-field,.v2-composition-range-field { display: grid; min-width: 0; gap: 3px; }.v2-composition-number-field span,.v2-composition-text-field span,.v2-composition-range-field span { display: flex; justify-content: space-between; color: rgba(74, 82, 111, 0.68); font-size: 9px; font-weight: 800; }.v2-composition-range-field b { color: rgba(59, 52, 105, 0.86); font-variant-numeric: tabular-nums; }
 .v2-composition-number-field input,.v2-composition-text-field textarea,.v2-composition-fieldset select { width: 100%; border: 1px solid rgba(104, 91, 165, 0.16); border-radius: 5px; background: rgba(255, 255, 255, 0.8); color: rgba(38, 40, 56, 0.9); font: inherit; font-size: 10px; padding: 5px; }.v2-composition-text-field textarea { min-height: 58px; resize: vertical; }
@@ -9283,5 +9293,319 @@ button.canvas-entity-media {
 
   .hero h1 {
     font-size: 50px;
+  }
+}
+
+/* Final Composition editor containment and responsive tool layout. */
+.v2-final-composition-panel {
+  border-radius: 8px;
+}
+
+body:has(.v2-final-composition-panel) .floating-rail {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.v2-final-composition-panel-body {
+  display: grid;
+  overflow: hidden;
+}
+
+.v2-composition-editor {
+  min-height: 0;
+  height: 100%;
+  align-content: start;
+  overflow: hidden;
+}
+
+.v2-composition-editor-loading {
+  display: grid;
+  min-height: 160px;
+  margin: 0;
+  place-items: center;
+  border: 1px solid rgba(89, 96, 112, 0.2);
+  border-radius: 8px;
+  background: rgba(252, 253, 255, 0.82);
+  color: rgba(45, 51, 65, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.v2-final-composition-panel :is(button, input, textarea, select):focus-visible,
+.v2-composition-source:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+}
+
+.v2-composition-feedback {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.v2-composition-feedback button {
+  min-height: 30px;
+  border: 1px solid rgba(89, 96, 112, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.74);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.v2-composition-editor-layout {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.v2-composition-source-panel {
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-inspector {
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-source-list,
+.v2-composition-inspector-fields {
+  min-height: 0;
+  overflow: auto;
+}
+
+.v2-composition-inspector-fields {
+  padding-right: 2px;
+}
+
+.v2-composition-editor-main {
+  min-height: 0;
+  grid-template-rows: minmax(168px, 0.9fr) minmax(210px, 1fr);
+  overflow: hidden;
+}
+
+.v2-composition-preview-stage {
+  height: 100%;
+  min-height: 148px;
+}
+
+.v2-composition-timeline {
+  min-height: 210px;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.v2-composition-timeline-track,
+.v2-composition-track-label,
+.v2-composition-shot-lane,
+.v2-shot-timeline-row-video,
+.v2-shot-timeline-row-bgm,
+.v2-composition-track-lane {
+  min-height: 48px;
+}
+
+.v2-composition-timeline-track {
+  grid-template-columns: 228px auto;
+}
+
+.v2-composition-track-label > span {
+  min-width: max-content;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+.v2-composition-track-label button {
+  display: grid;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 5px;
+}
+
+.v2-composition-track-label button:hover {
+  background: rgba(216, 221, 231, 0.68);
+  color: rgba(48, 55, 71, 1);
+}
+
+.v2-composition-timeline-clip:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(45, 105, 120, 0.24);
+}
+
+.v2-composition-editor-load-error {
+  display: grid;
+  min-height: 160px;
+  align-content: center;
+  justify-items: start;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid rgba(154, 48, 67, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 248, 249, 0.92);
+  color: #72283a;
+}
+
+.v2-composition-editor-load-error p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.v2-composition-editor-load-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.v2-composition-editor-load-error-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(114, 40, 58, 0.28);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.84);
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.v2-composition-bgm-confirmation {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(28, 32, 42, 0.42);
+}
+
+.v2-composition-bgm-confirmation-content {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(89, 96, 112, 0.24);
+  border-radius: 8px;
+  background: #fbfcfe;
+  box-shadow: 0 18px 48px rgba(28, 32, 42, 0.28);
+  color: rgba(35, 41, 52, 0.94);
+}
+
+.v2-composition-bgm-confirmation-content p {
+  margin: 0;
+  color: rgba(62, 68, 82, 0.84);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.v2-composition-bgm-confirmation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.v2-composition-bgm-confirmation-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(89, 96, 112, 0.24);
+  border-radius: 6px;
+  background: rgba(239, 242, 246, 0.9);
+  color: rgba(35, 41, 52, 0.94);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.v2-composition-bgm-confirmation-actions button:last-child {
+  border-color: rgba(35, 93, 108, 0.46);
+  background: #2d6978;
+  color: #fff;
+}
+
+@media (max-width: 1100px) {
+  .v2-composition-editor-layout {
+    grid-template-rows: minmax(220px, 1fr) minmax(190px, 0.8fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .v2-final-composition-panel {
+    inset: 8px;
+    z-index: 45;
+  }
+
+  .v2-composition-editor {
+    overflow: auto;
+  }
+
+  .v2-composition-editor-layout {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  .v2-composition-editor-main {
+    grid-template-rows: minmax(180px, auto) minmax(230px, auto);
+    overflow: visible;
+  }
+
+  .v2-composition-source-panel {
+    max-height: 240px;
+  }
+
+  .v2-composition-inspector {
+    max-height: 420px;
+  }
+
+  .v2-composition-editor-toolbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .v2-composition-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+
+.v2-composition-trim-handle,
+.v2-shot-trim-handle {
+  min-width: 5px;
+}
+
+.v2-composition-inspector-fields {
+  overflow: auto;
+}
+
+.v2-composition-icon-button:focus-visible {
+  outline: 2px solid #2d6978;
+  outline-offset: 2px;
+}
+
+
+.v2-composition-editor {
+  display: flex;
+  flex-direction: column;
+}
+
+.v2-composition-editor-layout {
+  flex: 1 1 auto;
+}
+
+@media (max-width: 720px) {
+  .v2-composition-editor-layout {
+    flex: 0 0 auto;
   }
 }

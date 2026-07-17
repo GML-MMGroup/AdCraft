@@ -1,11 +1,57 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { V2ApiError, v2Api } from "../../../api/v2Client.ts";
 import type {
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
+  V2FinalTimelineRenderStartResponse,
+  V2FinalTimelineRenderStateResponse,
   V2FinalTimelineSource,
+  V2FinalTimelineUpdateResponse,
   V2TimelineTrackType,
 } from "../../../types-v2.ts";
+import {
+  activeRenderIdFromPayload,
+  claimFinalRenderCompletion,
+  finalRenderCancelAction,
+  finalRenderEventHints,
+  finalRenderGetFailureAction,
+  finalRenderSessionMatches,
+  flushTimelineForRender,
+  isFinalRenderTerminal,
+  nextFinalRenderPoll,
+  type FinalCompositionEventDetail,
+  type FinalRenderEventHint,
+  type FinalRenderSessionIdentity,
+} from "./finalRenderSession.ts";
+import {
+  addImportedVideoLane,
+  addOrReplaceBgm,
+  deleteShotClips,
+  moveShotClip,
+  removeImportedVideoLane,
+  reorderShotLane,
+  splitShotClip,
+  trimTimelineMediaClip,
+  validateShotTimeline,
+  type ShotTimelineMutation,
+  type ShotTimelineSnapTarget,
+} from "./shotTimelineDomain.ts";
+import {
+  commitShotTimelineHistory,
+  createLatestSaveQueue,
+  createLoadedShotTimelineSession,
+  createRemoteStateEpoch,
+  createShotTimelineHistory,
+  createTimelineSessionGuard,
+  finalizeShotTimelineHistory,
+  rebaseReloadedShotTimelineHistory,
+  reconcileSavedTimeline,
+  redoShotTimelineHistory,
+  shotTimelineEquals,
+  undoShotTimelineHistory,
+  type ShotTimelineHistory,
+  type TimelineSessionToken,
+} from "./shotTimelineHistory.ts";
 import {
   addV2TimelineTrack,
   cloneV2Timeline,
@@ -19,218 +65,950 @@ import {
   v2TimelineDuration,
 } from "./v2TimelineModel.ts";
 
+const BASE_PIXELS_PER_SECOND = 52;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+
+export type V2FinalCompositionTool = "select" | "blade";
+export type V2FinalCompositionEditMode = "normal" | "ripple";
+export type V2FinalCompositionConflict = {
+  kind: "version-conflict";
+  message: string;
+};
+
 type LibrarySourceSelection = {
   entityId: string;
   assetId: string;
   mediaType: "video" | "audio";
 };
 
-function timelineEquals(left: V2FinalCompositionTimeline | null, right: V2FinalCompositionTimeline | null) {
-  return JSON.stringify(left) === JSON.stringify(right);
+export type CompositionEditorSession = {
+  workflowId: string;
+  generation: number;
+  active: boolean;
+};
+
+export type ScopedTimelineSource = {
+  session: CompositionEditorSession;
+  source: V2FinalTimelineSource;
+};
+
+export function resolveScopedTimelineSource(
+  pending: ScopedTimelineSource | null,
+  currentSession: CompositionEditorSession,
+  sources: V2FinalTimelineSource[],
+) {
+  if (!pending
+    || !pending.session.active
+    || !currentSession.active
+    || pending.session.workflowId !== currentSession.workflowId
+    || pending.session.generation !== currentSession.generation) return null;
+  return sources.find((source) => source.asset_id === pending.source.asset_id
+    && source.version_id === pending.source.version_id
+    && source.media_type === pending.source.media_type) ?? null;
 }
+
+type TimelineSaveSnapshot = {
+  session: TimelineSessionToken;
+  baseline: V2FinalCompositionTimeline;
+  draft: V2FinalCompositionTimeline;
+};
+
+type TimelineSaveQueue = {
+  request: (session: TimelineSessionToken) => Promise<V2FinalTimelineUpdateResponse | null>;
+  isRunning: () => boolean;
+};
 
 function readableError(error: unknown) {
   if (error instanceof V2ApiError) return error.message || error.code || "Timeline request failed.";
   return error instanceof Error ? error.message : "Timeline request failed.";
 }
 
-function defaultDurationFor(source: V2FinalTimelineSource) {
-  if (typeof source.duration_seconds === "number" && source.duration_seconds > 0) return Math.round(source.duration_seconds * 100) / 100;
-  return source.media_type === "audio" ? 12 : 5;
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
 }
 
-function trackTypeForSource(source: V2FinalTimelineSource): V2TimelineTrackType {
-  return source.media_type === "audio" ? "audio" : source.media_type === "image" ? "image" : "video";
-}
-
-function makeClip(source: V2FinalTimelineSource, trackId: string, startTime: number): V2FinalTimelineClip {
-  const duration = defaultDurationFor(source);
+export function moveTimelineClipToTrack(
+  timeline: V2FinalCompositionTimeline,
+  clipId: string,
+  trackId: string,
+  startTime: number,
+): ShotTimelineMutation {
+  const clip = timeline.clips.find((candidate) => candidate.clip_id === clipId);
+  if (!clip) return rejectedTrackMove(timeline, `Clip ${clipId} does not exist.`);
+  const sourceTrack = timeline.tracks.find((candidate) => candidate.track_id === clip.track_id);
+  const targetTrack = timeline.tracks.find((candidate) => candidate.track_id === trackId);
+  if (!sourceTrack || !targetTrack) return rejectedTrackMove(timeline, `Track ${trackId} does not exist.`);
+  if (clip.clip_type !== targetTrack.track_type) {
+    return rejectedTrackMove(timeline, "Clip type must match the target track type.");
+  }
+  if (trackLocked(sourceTrack) || trackLocked(targetTrack)) {
+    return rejectedTrackMove(timeline, "Locked tracks cannot accept clip moves.");
+  }
+  if (!Number.isFinite(startTime) || startTime < 0) {
+    return rejectedTrackMove(timeline, "Clip start time is invalid.");
+  }
+  const moved = moveV2TimelineClip(timeline, clipId, { trackId, startTime });
+  const candidate = { ...moved, duration_seconds: v2TimelineDuration(moved) };
+  const validation = validateShotTimeline(candidate);
+  if (!validation.valid) return rejectedTrackMove(timeline, validation.warnings.join(" "));
   return {
-    clip_id: `clip-${source.asset_id}-${source.version_id}-${Date.now().toString(36)}`,
-    track_id: trackId,
-    clip_type: trackTypeForSource(source),
-    source_asset_id: source.asset_id,
-    source_version_id: source.version_id,
-    start_time: startTime,
-    duration,
-    trim_in: 0,
-    trim_out: duration,
-    enabled: true,
-    transform: source.media_type === "audio" ? undefined : { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation: 0, opacity: 1, fit: "contain" },
-    audio: source.media_type === "audio" || source.media_type === "video" ? { volume: 1, muted: false, fade_in: 0, fade_out: 0 } : undefined,
-    color: source.media_type === "audio" ? undefined : { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 },
+    timeline: candidate,
+    changedClipIds: shotTimelineEquals(candidate, timeline) ? [] : [clipId],
+    snapTarget: null,
+    warning: null,
   };
+}
+
+function rejectedTrackMove(timeline: V2FinalCompositionTimeline, warning: string): ShotTimelineMutation {
+  return { timeline, changedClipIds: [], snapTarget: null, warning };
+}
+
+function trackLocked(track: V2FinalCompositionTimeline["tracks"][number]) {
+  const editor = track.metadata.editor;
+  return typeof editor === "object" && editor !== null && !Array.isArray(editor)
+    && (editor as Record<string, unknown>).locked === true;
 }
 
 export function useV2FinalCompositionEditor({
   workflowId,
   active,
-  onWorkflowRefresh,
 }: {
   workflowId?: string | null;
   active: boolean;
   onWorkflowRefresh?: (workflowId: string) => Promise<unknown> | unknown;
 }) {
   const [baseline, setBaseline] = useState<V2FinalCompositionTimeline | null>(null);
-  const [draft, setDraft] = useState<V2FinalCompositionTimeline | null>(null);
+  const [history, setHistory] = useState<ShotTimelineHistory | null>(null);
   const [sources, setSources] = useState<V2FinalTimelineSource[]>([]);
-  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [playheadSeconds, setPlayheadSeconds] = useState(0);
+  const [selectedClipIdsState, setSelectedClipIdsState] = useState<string[]>([]);
+  const [playheadSeconds, setPlayheadSecondsState] = useState(0);
+  const [tool, setToolState] = useState<V2FinalCompositionTool>("select");
+  const [editMode, setEditModeState] = useState<V2FinalCompositionEditMode>("normal");
+  const [snapEnabled, setSnapEnabledState] = useState(true);
+  const [zoom, setZoomState] = useState(1);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rendering, setRendering] = useState(false);
+  const [renderJob, setRenderJob] = useState<V2FinalTimelineRenderStartResponse | null>(null);
+  const [renderState, setRenderState] = useState<V2FinalTimelineRenderStateResponse | null>(null);
+  const [renderHint, setRenderHint] = useState<FinalRenderEventHint | null>(null);
+  const [renderSessionError, setRenderSessionError] = useState("");
+  const [cancellingRender, setCancellingRender] = useState(false);
   const [error, setError] = useState("");
+  const [warning, setWarning] = useState("");
+  const [snapTarget, setSnapTarget] = useState<ShotTimelineSnapTarget | null>(null);
   const [externalUpdate, setExternalUpdate] = useState(false);
-  const currentWorkflowId = useRef<string | null>(null);
-  const baselineRef = useRef<V2FinalCompositionTimeline | null>(null);
+  const [conflict, setConflict] = useState<V2FinalCompositionConflict | null>(null);
 
-  useEffect(() => {
+  const draft = history?.present ?? null;
+  const baselineRef = useRef(baseline);
+  const historyRef = useRef(history);
+  const draftRef = useRef(draft);
+  const selectedClipIdsRef = useRef(selectedClipIdsState);
+  const playheadRef = useRef(playheadSeconds);
+  const editModeRef = useRef(editMode);
+  const snapEnabledRef = useRef(snapEnabled);
+  const zoomRef = useRef(zoom);
+  const conflictRef = useRef(conflict);
+  const renderingRef = useRef(rendering);
+  const activeRef = useRef(active);
+  const renderJobRef = useRef(renderJob);
+  const renderStateRef = useRef(renderState);
+  const renderSessionRef = useRef<FinalRenderSessionIdentity | null>(null);
+  const renderGenerationRef = useRef(0);
+  const renderStateRequestRef = useRef(0);
+  const renderCancelRequestRef = useRef(0);
+  const renderPollBackoffRef = useRef(0);
+  const renderPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancellingRenderRef = useRef(false);
+  const completedRenderSessionsRef = useRef(new Set<string>());
+  const pollRenderRef = useRef<(identity: FinalRenderSessionIdentity, resetBackoff?: boolean) => Promise<void>>(async () => {});
+  const loadRequestRef = useRef(0);
+  const editRevisionRef = useRef(0);
+  const sessionGuardRef = useRef(createTimelineSessionGuard());
+  const remoteStateEpochRef = useRef(createRemoteStateEpoch());
+  const performSaveRef = useRef<(snapshot: TimelineSaveSnapshot) => Promise<V2FinalTimelineUpdateResponse | null>>(async () => null);
+  const saveQueueRef = useRef<TimelineSaveQueue | null>(null);
+
+  const assignBaseline = useCallback((next: V2FinalCompositionTimeline | null) => {
+    baselineRef.current = next;
+    setBaseline(next);
+  }, []);
+
+  const assignHistory = useCallback((next: ShotTimelineHistory | null) => {
+    historyRef.current = next;
+    draftRef.current = next?.present ?? null;
+    setHistory(next);
+  }, []);
+
+  const assignConflict = useCallback((next: V2FinalCompositionConflict | null) => {
+    conflictRef.current = next;
+    setConflict(next);
+  }, []);
+
+  const assignSelectedClipIds = useCallback((ids: string[]) => {
+    const next = [...new Set(ids)];
+    selectedClipIdsRef.current = next;
+    setSelectedClipIdsState(next);
+  }, []);
+
+  const clearRenderPollTimer = useCallback(() => {
+    if (renderPollTimerRef.current !== null) {
+      clearTimeout(renderPollTimerRef.current);
+      renderPollTimerRef.current = null;
+    }
+  }, []);
+
+  const invalidateRenderSession = useCallback(() => {
+    clearRenderPollTimer();
+    renderGenerationRef.current += 1;
+    renderStateRequestRef.current += 1;
+    renderCancelRequestRef.current += 1;
+    renderPollBackoffRef.current = 0;
+    renderSessionRef.current = null;
+    renderJobRef.current = null;
+    renderStateRef.current = null;
+    renderingRef.current = false;
+    cancellingRenderRef.current = false;
+    completedRenderSessionsRef.current.clear();
+  }, [clearRenderPollTimer]);
+
+  useLayoutEffect(() => {
+    const sessionGuard = sessionGuardRef.current;
+    const remoteStateEpoch = remoteStateEpochRef.current;
+    return () => {
+      activeRef.current = false;
+      sessionGuard.update(null);
+      invalidateRenderSession();
+      remoteStateEpoch.invalidate();
+      loadRequestRef.current += 1;
+      editRevisionRef.current += 1;
+    };
+  }, [active, invalidateRenderSession, workflowId]);
+
+  useLayoutEffect(() => {
+    const sessionTransition = active
+      ? sessionGuardRef.current.update(workflowId ?? null)
+      : sessionGuardRef.current.update(null);
+    activeRef.current = active;
+    if (sessionTransition.changed || !active) {
+      invalidateRenderSession();
+      remoteStateEpochRef.current.invalidate();
+      loadRequestRef.current += 1;
+      editRevisionRef.current += 1;
+      baselineRef.current = null;
+      historyRef.current = null;
+      draftRef.current = null;
+      selectedClipIdsRef.current = [];
+      conflictRef.current = null;
+      renderingRef.current = false;
+      setBaseline(null);
+      setHistory(null);
+      setSelectedClipIdsState([]);
+      setConflict(null);
+      setSources([]);
+      setRenderJob(null);
+      setRenderState(null);
+      setRenderHint(null);
+      setRenderSessionError("");
+      setCancellingRender(false);
+      setExternalUpdate(false);
+      setLoading(false);
+      setSaving(false);
+      setRendering(false);
+      setError("");
+      setWarning("");
+      setSnapTarget(null);
+      return;
+    }
     baselineRef.current = baseline;
-  }, [baseline]);
+    historyRef.current = history;
+    draftRef.current = draft;
+    selectedClipIdsRef.current = selectedClipIdsState;
+    playheadRef.current = playheadSeconds;
+    editModeRef.current = editMode;
+    snapEnabledRef.current = snapEnabled;
+    zoomRef.current = zoom;
+    conflictRef.current = conflict;
+    renderingRef.current = rendering;
+    renderJobRef.current = renderJob;
+    renderStateRef.current = renderState;
+    cancellingRenderRef.current = cancellingRender;
+  }, [
+    active,
+    baseline,
+    conflict,
+    cancellingRender,
+    draft,
+    editMode,
+    history,
+    playheadSeconds,
+    renderJob,
+    renderState,
+    rendering,
+    selectedClipIdsState,
+    snapEnabled,
+    workflowId,
+    zoom,
+    invalidateRenderSession,
+  ]);
 
-  const isDirty = useMemo(() => !timelineEquals(draft, baseline), [baseline, draft]);
-  const selectedClip = useMemo(() => draft?.clips.find((clip) => clip.clip_id === selectedClipId) ?? null, [draft, selectedClipId]);
+  const replaceHistoryPresent = useCallback((timeline: V2FinalCompositionTimeline) => {
+    const current = historyRef.current;
+    assignHistory(current
+      ? { ...current, present: timeline, coalesceKey: null }
+      : createShotTimelineHistory(timeline));
+  }, [assignHistory]);
 
   const load = useCallback(async ({ preserveDraft = false }: { preserveDraft?: boolean } = {}) => {
-    if (!workflowId) return null;
-    currentWorkflowId.current = workflowId;
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
+    if (!requestedWorkflowId) return null;
+    const requestId = ++loadRequestRef.current;
+    const remoteEpoch = remoteStateEpochRef.current.claim();
     setLoading(true);
     setError("");
     try {
-      const response = await v2Api.getFinalTimeline(workflowId);
-      if (currentWorkflowId.current !== workflowId) return null;
-      const nextBaseline = cloneV2Timeline(response.timeline);
-      setBaseline(nextBaseline);
+      const response = await v2Api.getFinalTimeline(requestedWorkflowId);
+      if (requestId !== loadRequestRef.current
+        || !sessionGuardRef.current.isCurrent(session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
+      const loaded = createLoadedShotTimelineSession(response.timeline);
+      const currentDraft = draftRef.current;
+      const previousBaseline = baselineRef.current;
+      const keepDraft = preserveDraft
+        && currentDraft !== null
+        && previousBaseline !== null
+        && !shotTimelineEquals(currentDraft, previousBaseline);
+      assignBaseline(loaded.baseline);
       setSources(response.available_sources);
-      setDraft((current) => {
-        if (preserveDraft && current && !timelineEquals(current, baselineRef.current)) {
-          setExternalUpdate(true);
-          return current;
+      if (keepDraft) {
+        setExternalUpdate(true);
+      } else {
+        assignHistory(loaded.history);
+        assignSelectedClipIds([]);
+        if (!preserveDraft) {
+          invalidateRenderSession();
+          setRenderJob(null);
+          setRenderState(null);
+          setRenderHint(null);
+          setRenderSessionError("");
+          setCancellingRender(false);
         }
         setExternalUpdate(false);
-        return cloneV2Timeline(nextBaseline);
-      });
+        assignConflict(null);
+      }
       return response;
     } catch (loadError) {
-      if (currentWorkflowId.current === workflowId) setError(readableError(loadError));
+      if (requestId === loadRequestRef.current
+        && sessionGuardRef.current.isCurrent(session)
+        && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
+        setError(readableError(loadError));
+      }
       return null;
     } finally {
-      if (currentWorkflowId.current === workflowId) setLoading(false);
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
-  }, [workflowId]);
+  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds, invalidateRenderSession]);
 
   useEffect(() => {
     if (!active || !workflowId) return;
     void load();
   }, [active, load, workflowId]);
 
-  useEffect(() => {
-    const handleTimelineEvent = (event: Event) => {
-      const detail = (event as CustomEvent<{ workflowId?: string; eventTypes?: string[] }>).detail;
-      if (detail?.workflowId !== workflowId) return;
-      const eventTypes = detail.eventTypes ?? [];
-      if (eventTypes.some((eventType) => eventType === "final_timeline_created" || eventType === "final_timeline_updated" || eventType === "final_composition_render_completed")) {
+  const renderIdentityIsCurrent = useCallback((identity: FinalRenderSessionIdentity) => (
+    sessionGuardRef.current.isCurrent(identity.session)
+    && finalRenderSessionMatches(renderSessionRef.current, identity, activeRef.current)
+  ), []);
+
+  const scheduleRenderPoll = useCallback((identity: FinalRenderSessionIdentity, resetBackoff = false) => {
+    if (!renderIdentityIsCurrent(identity)) return;
+    clearRenderPollTimer();
+    const next = nextFinalRenderPoll(renderPollBackoffRef.current, resetBackoff);
+    renderPollBackoffRef.current = next.nextBackoffIndex;
+    renderPollTimerRef.current = setTimeout(() => {
+      renderPollTimerRef.current = null;
+      void pollRenderRef.current(identity);
+    }, next.delayMs);
+  }, [clearRenderPollTimer, renderIdentityIsCurrent]);
+
+  const applyAuthoritativeRenderState = useCallback((
+    identity: FinalRenderSessionIdentity,
+    state: V2FinalTimelineRenderStateResponse,
+    resetBackoff = false,
+  ) => {
+    if (!renderIdentityIsCurrent(identity)
+      || state.workflow_id !== identity.session.workflowId
+      || state.render_id !== identity.renderId) return false;
+    renderStateRef.current = state;
+    setRenderState(state);
+    setRenderHint(null);
+    setRenderSessionError("");
+    setError("");
+    if (isFinalRenderTerminal(state.status)) {
+      clearRenderPollTimer();
+      renderingRef.current = false;
+      cancellingRenderRef.current = false;
+      setRendering(false);
+      setCancellingRender(false);
+      if (state.status === "completed"
+        && claimFinalRenderCompletion(completedRenderSessionsRef.current, identity)) {
         void load({ preserveDraft: true });
       }
+      return true;
+    }
+    renderingRef.current = true;
+    cancellingRenderRef.current = state.status === "cancellation_requested";
+    setRendering(true);
+    setCancellingRender(state.status === "cancellation_requested");
+    scheduleRenderPoll(identity, resetBackoff);
+    return true;
+  }, [clearRenderPollTimer, load, renderIdentityIsCurrent, scheduleRenderPoll]);
+
+  const pollRender = useCallback(async (identity: FinalRenderSessionIdentity, resetBackoff = false) => {
+    if (!renderIdentityIsCurrent(identity) || !identity.session.workflowId) return;
+    clearRenderPollTimer();
+    if (resetBackoff) renderPollBackoffRef.current = 0;
+    const requestId = ++renderStateRequestRef.current;
+    try {
+      const state = await v2Api.getFinalTimelineRender(identity.session.workflowId, identity.renderId);
+      if (requestId !== renderStateRequestRef.current || !renderIdentityIsCurrent(identity)) return;
+      applyAuthoritativeRenderState(identity, state, resetBackoff);
+    } catch (pollError) {
+      if (requestId !== renderStateRequestRef.current || !renderIdentityIsCurrent(identity)) return;
+      const status = pollError instanceof V2ApiError ? pollError.status : null;
+      if (finalRenderGetFailureAction(status) === "retry") {
+        scheduleRenderPoll(identity);
+      } else {
+        const message = status === 404
+          ? "Final render is no longer available. Start a new render to retry."
+          : `Final render status could not be loaded: ${readableError(pollError)} Start a new render to retry.`;
+        invalidateRenderSession();
+        setRenderJob(null);
+        setRenderState(null);
+        setRenderHint(null);
+        setRendering(false);
+        setCancellingRender(false);
+        setRenderSessionError(message);
+        setError("");
+      }
+    }
+  }, [applyAuthoritativeRenderState, clearRenderPollTimer, invalidateRenderSession, renderIdentityIsCurrent, scheduleRenderPoll]);
+  pollRenderRef.current = pollRender;
+
+  useEffect(() => {
+    const handleTimelineEvent = (event: Event) => {
+      const detail = (event as CustomEvent<FinalCompositionEventDetail>).detail;
+      if (!activeRef.current || detail?.workflowId !== workflowId) return;
+      const eventTypes = detail.events?.map((item) => item.event_type) ?? detail.eventTypes ?? [];
+      if (eventTypes.some((eventType) => eventType === "final_timeline_created" || eventType === "final_timeline_updated")) {
+        void load({ preserveDraft: true });
+      }
+      const identity = renderSessionRef.current;
+      if (!identity || !renderIdentityIsCurrent(identity)) return;
+      const hints = finalRenderEventHints(detail, identity, activeRef.current);
+      if (!hints.length) return;
+      const fastHint = [...hints].reverse().find((hint) => hint.kind === "fast-state");
+      if (fastHint && !isFinalRenderTerminal(renderStateRef.current?.status ?? "")) {
+        setRenderHint(fastHint);
+        renderingRef.current = true;
+        setRendering(true);
+      }
+      clearRenderPollTimer();
+      const terminalHint = hints.some((hint) => hint.kind === "authoritative-get");
+      const resetBackoff = !terminalHint && hints.some((hint) => hint.resetBackoff);
+      void pollRenderRef.current(identity, resetBackoff);
     };
     window.addEventListener("v2-final-composition-events", handleTimelineEvent);
     return () => window.removeEventListener("v2-final-composition-events", handleTimelineEvent);
-  }, [load, workflowId]);
+  }, [clearRenderPollTimer, load, renderIdentityIsCurrent, workflowId]);
 
-  const updateDraft = useCallback((updater: (timeline: V2FinalCompositionTimeline) => V2FinalCompositionTimeline) => {
-    setDraft((current) => current ? updater(current) : current);
+  const commitTimeline = useCallback((timeline: V2FinalCompositionTimeline, coalesceKey: string | null = null) => {
+    const current = historyRef.current;
+    if (!current) return;
+    const next = commitShotTimelineHistory(current, timeline, coalesceKey);
+    if (next === current) return;
+    editRevisionRef.current += 1;
+    assignHistory(next);
     setExternalUpdate(false);
+  }, [assignHistory]);
+
+  const finalizeGesture = useCallback(() => {
+    const current = historyRef.current;
+    if (!current) return;
+    assignHistory(finalizeShotTimelineHistory(current));
+  }, [assignHistory]);
+
+  const applyMutation = useCallback((mutation: ShotTimelineMutation, coalesceKey: string | null = null) => {
+    setWarning(mutation.warning ?? "");
+    setSnapTarget(mutation.snapTarget);
+    if (mutation.timeline !== draftRef.current) commitTimeline(mutation.timeline, coalesceKey);
+    return mutation;
+  }, [commitTimeline]);
+
+  const editOptions = useCallback(() => {
+    const current = draftRef.current;
+    return {
+      ripple: editModeRef.current === "ripple",
+      fps: current?.fps ?? 24,
+      snap: {
+        enabled: snapEnabledRef.current,
+        thresholdSeconds: 8 / (BASE_PIXELS_PER_SECOND * zoomRef.current),
+        playhead: playheadRef.current,
+      },
+    };
   }, []);
 
-  const save = useCallback(async () => {
-    if (!workflowId || !draft || !baseline || saving) return null;
-    setSaving(true);
+  const updateDraft = useCallback((updater: (timeline: V2FinalCompositionTimeline) => V2FinalCompositionTimeline, coalesceKey: string | null = null) => {
+    const current = draftRef.current;
+    if (!current) return;
+    commitTimeline(updater(current), coalesceKey);
+  }, [commitTimeline]);
+
+  const undo = useCallback(() => {
+    const current = historyRef.current;
+    if (!current) return;
+    const next = undoShotTimelineHistory(current);
+    if (next === current) return;
+    editRevisionRef.current += 1;
+    assignHistory(next);
+    assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => next.present.clips.some((clip) => clip.clip_id === clipId)));
+    setWarning("");
+    setSnapTarget(null);
+  }, [assignHistory, assignSelectedClipIds]);
+
+  const redo = useCallback(() => {
+    const current = historyRef.current;
+    if (!current) return;
+    const next = redoShotTimelineHistory(current);
+    if (next === current) return;
+    editRevisionRef.current += 1;
+    assignHistory(next);
+    assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => next.present.clips.some((clip) => clip.clip_id === clipId)));
+    setWarning("");
+    setSnapTarget(null);
+  }, [assignHistory, assignSelectedClipIds]);
+
+  const moveClip = useCallback((
+    clipId: string,
+    trackIdOrStartTime: string | number,
+    startTimeOrCoalesceKey?: number | string,
+    coalesceKey: string | null = null,
+  ) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    const startTime = typeof trackIdOrStartTime === "number" ? trackIdOrStartTime : startTimeOrCoalesceKey;
+    const key = typeof trackIdOrStartTime === "number" && typeof startTimeOrCoalesceKey === "string"
+      ? startTimeOrCoalesceKey
+      : coalesceKey;
+    if (typeof startTime !== "number") return null;
+    if (typeof trackIdOrStartTime === "string") {
+      return applyMutation(moveTimelineClipToTrack(current, clipId, trackIdOrStartTime, startTime), key);
+    }
+    return applyMutation(moveShotClip(current, clipId, startTime, editOptions()), key);
+  }, [applyMutation, editOptions]);
+
+  const trimClip = useCallback((clipId: string, edge: "left" | "right", sourceTime: number, coalesceKey: string | null = null) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    return applyMutation(trimTimelineMediaClip(current, clipId, edge, sourceTime, editOptions()), coalesceKey);
+  }, [applyMutation, editOptions]);
+
+  const splitAtPlayhead = useCallback((clipId = selectedClipIdsRef.current[0]) => {
+    const current = draftRef.current;
+    if (!current || !clipId) return null;
+    return applyMutation(splitShotClip(current, clipId, playheadRef.current, editOptions()));
+  }, [applyMutation, editOptions]);
+
+  const deleteSelection = useCallback(() => {
+    const current = draftRef.current;
+    if (!current) return null;
+    const mutation = applyMutation(deleteShotClips(current, selectedClipIdsRef.current, editOptions()));
+    if (mutation.timeline !== current) assignSelectedClipIds([]);
+    return mutation;
+  }, [applyMutation, assignSelectedClipIds, editOptions]);
+
+  const reorderLane = useCallback((trackId: string, targetIndex: number) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    return applyMutation(reorderShotLane(current, trackId, targetIndex));
+  }, [applyMutation]);
+
+  const setTool = useCallback((next: V2FinalCompositionTool) => setToolState(next), []);
+  const setEditMode = useCallback((next: V2FinalCompositionEditMode) => {
+    editModeRef.current = next;
+    setEditModeState(next);
+  }, []);
+  const setSnapEnabled = useCallback((next: boolean) => {
+    snapEnabledRef.current = next;
+    setSnapEnabledState(next);
+  }, []);
+  const setZoom = useCallback((next: number) => {
+    const clamped = clampZoom(next);
+    zoomRef.current = clamped;
+    setZoomState(clamped);
+  }, []);
+  const fitTimeline = useCallback((viewportWidth?: number) => {
+    const duration = draftRef.current ? v2TimelineDuration(draftRef.current) : 0;
+    const next = viewportWidth && duration > 0
+      ? clampZoom(viewportWidth / (duration * BASE_PIXELS_PER_SECOND))
+      : 1;
+    zoomRef.current = next;
+    setZoomState(next);
+    return next;
+  }, []);
+  const setSelectedClipIds = useCallback((ids: string[]) => assignSelectedClipIds(ids), [assignSelectedClipIds]);
+  const setSelectedClipId = useCallback((clipId: string | null) => assignSelectedClipIds(clipId ? [clipId] : []), [assignSelectedClipIds]);
+  const setPlayheadSeconds = useCallback((seconds: number) => {
+    const next = Math.max(0, seconds);
+    playheadRef.current = next;
+    setPlayheadSecondsState(next);
+  }, []);
+
+  if (!saveQueueRef.current) {
+    saveQueueRef.current = createLatestSaveQueue<TimelineSaveSnapshot, V2FinalTimelineUpdateResponse | null, TimelineSessionToken>(
+      (session) => {
+        if (!sessionGuardRef.current.isCurrent(session)) return null;
+        const currentBaseline = baselineRef.current;
+        const currentDraft = draftRef.current;
+        if (!session.workflowId || !currentBaseline || !currentDraft || conflictRef.current) return null;
+        if (shotTimelineEquals(currentDraft, currentBaseline)) return null;
+        return { session, baseline: currentBaseline, draft: currentDraft };
+      },
+      (snapshot) => performSaveRef.current(snapshot),
+      (left, right) => left.workflowId === right.workflowId && left.generation === right.generation,
+    );
+  }
+
+  performSaveRef.current = async (snapshot) => {
+    const workflowId = snapshot.session.workflowId;
+    if (!workflowId || !sessionGuardRef.current.isCurrent(snapshot.session)) return null;
+    remoteStateEpochRef.current.claim();
     setError("");
     try {
-      const response = await v2Api.saveFinalTimeline(workflowId, { expected_version: baseline.version, timeline: draft });
-      const next = cloneV2Timeline(response.timeline);
-      setBaseline(next);
-      setDraft(cloneV2Timeline(next));
+      const response = await v2Api.saveFinalTimeline(workflowId, {
+        expected_version: snapshot.baseline.version,
+        timeline: snapshot.draft,
+      });
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
+      remoteStateEpochRef.current.invalidate();
+      const responseTimeline = cloneV2Timeline(response.timeline);
+      const currentDraft = draftRef.current;
+      if (!currentDraft) return response;
+      const reconciled = reconcileSavedTimeline({
+        requestDraft: snapshot.draft,
+        responseTimeline,
+        currentDraft,
+      });
+      assignBaseline(reconciled.baseline);
+      if (reconciled.draft !== currentDraft) replaceHistoryPresent(reconciled.draft);
       setExternalUpdate(false);
+      assignConflict(null);
       return response;
     } catch (saveError) {
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
       if (saveError instanceof V2ApiError && saveError.status === 409) {
+        const message = "Timeline changed elsewhere. Choose Keep local to rebase your draft or Reload remote to discard it.";
+        assignConflict({ kind: "version-conflict", message });
         setExternalUpdate(true);
-        setError("Timeline changed elsewhere. Your local draft is retained; refresh to compare before saving again.");
-        void load({ preserveDraft: true });
+        setError(message);
       } else {
         setError(readableError(saveError));
       }
       return null;
-    } finally {
-      setSaving(false);
     }
-  }, [baseline, draft, load, saving, workflowId]);
+  };
 
-  const render = useCallback(async () => {
-    if (!workflowId || !draft || !baseline || rendering) return null;
-    let timeline = baseline;
-    if (!timelineEquals(draft, baseline)) {
-      const saved = await save();
-      if (!saved) return null;
-      timeline = saved.timeline;
-    }
-    setRendering(true);
+  const save = useCallback(() => {
+    const session = sessionGuardRef.current.capture();
+    const queue = saveQueueRef.current!;
+    const pending = queue.request(session);
+    setSaving(true);
+    void pending.then(
+      () => {
+        if (sessionGuardRef.current.isCurrent(session) && !queue.isRunning()) setSaving(false);
+      },
+      (saveError) => {
+        if (sessionGuardRef.current.isCurrent(session)) {
+          if (!queue.isRunning()) setSaving(false);
+          setError(readableError(saveError));
+        }
+      },
+    );
+    return pending;
+  }, []);
+
+  const resolveConflictWithRemote = useCallback(async (resolution: "keep-local" | "reload-remote") => {
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
+    const requestDraft = draftRef.current;
+    if (!requestedWorkflowId || !requestDraft || !conflictRef.current) return null;
+    const requestId = ++loadRequestRef.current;
+    const remoteEpoch = remoteStateEpochRef.current.claim();
+    const requestEditRevision = editRevisionRef.current;
+    setLoading(true);
     setError("");
     try {
-      const response = await v2Api.renderFinalTimeline(workflowId, {
-        timeline_id: timeline.timeline_id,
-        timeline_version: timeline.version,
-        render_settings: timeline.render_settings,
-      });
-      await onWorkflowRefresh?.(workflowId);
-      return response;
-    } catch (renderError) {
-      if (renderError instanceof V2ApiError && renderError.status === 409) {
-        setExternalUpdate(true);
-        void load({ preserveDraft: true });
+      const response = await v2Api.getFinalTimeline(requestedWorkflowId);
+      if (requestId !== loadRequestRef.current
+        || !sessionGuardRef.current.isCurrent(session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
+      const loaded = createLoadedShotTimelineSession(response.timeline);
+      const currentDraft = draftRef.current;
+      if (!currentDraft) return null;
+      assignBaseline(loaded.baseline);
+      setSources(response.available_sources);
+      if (resolution === "reload-remote") {
+        assignHistory(editRevisionRef.current === requestEditRevision
+          ? loaded.history
+          : rebaseReloadedShotTimelineHistory({
+            history: historyRef.current ?? createShotTimelineHistory(requestDraft),
+            requestDraft,
+            remoteTimeline: loaded.draft,
+          }));
+        assignSelectedClipIds([]);
       }
-      setError(readableError(renderError));
+      setExternalUpdate(false);
+      assignConflict(null);
+      return response;
+    } catch (loadError) {
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
+        setError(readableError(loadError));
+      }
       return null;
     } finally {
-      setRendering(false);
+      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
-  }, [baseline, draft, load, onWorkflowRefresh, rendering, save, workflowId]);
+  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds]);
 
-  const addSource = useCallback((source: V2FinalTimelineSource) => {
-    updateDraft((timeline) => {
-      const trackType = trackTypeForSource(source);
-      const matchingTracks = timeline.tracks.filter((track) => track.track_type === trackType && !track.locked).sort((a, b) => a.order - b.order);
-      const nextTimeline = matchingTracks.length ? cloneV2Timeline(timeline) : addV2TimelineTrack(timeline, trackType);
-      const track = (matchingTracks[0] ?? nextTimeline.tracks.find((candidate) => candidate.track_type === trackType))!;
-      const startTime = trackType === "audio" ? 0 : Math.max(0, ...nextTimeline.clips.filter((clip) => clip.track_id === track.track_id).map((clip) => clip.start_time + clip.duration));
-      const clip = makeClip(source, track.track_id, Math.round(startTime * 100) / 100);
-      return { ...nextTimeline, duration_seconds: Math.max(nextTimeline.duration_seconds, clip.start_time + clip.duration), clips: [...nextTimeline.clips, clip] };
+  const keepLocal = useCallback(() => resolveConflictWithRemote("keep-local"), [resolveConflictWithRemote]);
+  const reloadRemote = useCallback(() => resolveConflictWithRemote("reload-remote"), [resolveConflictWithRemote]);
+
+  const beginRenderSession = useCallback((
+    session: TimelineSessionToken,
+    renderGeneration: number,
+    start: V2FinalTimelineRenderStartResponse,
+  ) => {
+    if (!activeRef.current
+      || !sessionGuardRef.current.isCurrent(session)
+      || renderGenerationRef.current !== renderGeneration
+      || start.workflow_id !== session.workflowId) return null;
+    clearRenderPollTimer();
+    renderStateRequestRef.current += 1;
+    renderPollBackoffRef.current = 0;
+    const identity: FinalRenderSessionIdentity = {
+      session,
+      renderGeneration,
+      renderId: start.render_id,
+    };
+    renderSessionRef.current = identity;
+    renderJobRef.current = start;
+    renderStateRef.current = null;
+    renderingRef.current = true;
+    cancellingRenderRef.current = false;
+    setRenderJob(start);
+    setRenderState(null);
+    setRenderHint(null);
+    setRenderSessionError("");
+    setCancellingRender(false);
+    setRendering(true);
+    void pollRenderRef.current(identity, true);
+    return identity;
+  }, [clearRenderPollTimer]);
+
+  const render = useCallback(async () => {
+    const session = sessionGuardRef.current.capture();
+    const requestedWorkflowId = session.workflowId;
+    if (!activeRef.current
+      || !requestedWorkflowId
+      || !draftRef.current
+      || !baselineRef.current
+      || renderingRef.current) return null;
+    const renderGeneration = ++renderGenerationRef.current;
+    clearRenderPollTimer();
+    renderStateRequestRef.current += 1;
+    renderCancelRequestRef.current += 1;
+    renderSessionRef.current = null;
+    renderJobRef.current = null;
+    renderStateRef.current = null;
+    renderingRef.current = true;
+    cancellingRenderRef.current = false;
+    setRendering(true);
+    setCancellingRender(false);
+    setRenderJob(null);
+    setRenderState(null);
+    setRenderHint(null);
+    setRenderSessionError("");
+    setError("");
+    const timeline = await flushTimelineForRender({
+      session,
+      isSessionCurrent: (candidate) => activeRef.current
+        && renderGenerationRef.current === renderGeneration
+        && sessionGuardRef.current.isCurrent(candidate),
+      finalizeGesture,
+      readDraft: () => draftRef.current,
+      readBaseline: () => baselineRef.current,
+      equals: shotTimelineEquals,
+      hasConflict: () => conflictRef.current !== null,
+      save,
     });
-  }, [updateDraft]);
+    if (!timeline
+      || !activeRef.current
+      || renderGenerationRef.current !== renderGeneration
+      || !sessionGuardRef.current.isCurrent(session)) {
+      if (renderGenerationRef.current === renderGeneration) {
+        renderingRef.current = false;
+        setRendering(false);
+      }
+      return null;
+    }
+    let attached = false;
+    try {
+      const response = await v2Api.renderFinalTimeline(requestedWorkflowId, {
+        timeline_id: timeline.timeline_id,
+        timeline_version: timeline.version,
+      });
+      attached = beginRenderSession(session, renderGeneration, response) !== null;
+      return response;
+    } catch (renderError) {
+      if (activeRef.current
+        && renderGenerationRef.current === renderGeneration
+        && sessionGuardRef.current.isCurrent(session)) {
+        const activeRenderId = renderError instanceof V2ApiError
+          ? activeRenderIdFromPayload(renderError.payload)
+          : null;
+        if (activeRenderId) {
+          const activeStart: V2FinalTimelineRenderStartResponse = {
+            workflow_id: requestedWorkflowId,
+            render_id: activeRenderId,
+            status: "queued",
+            timeline_id: timeline.timeline_id,
+            timeline_version: timeline.version,
+            events_cursor: 0,
+          };
+          attached = beginRenderSession(session, renderGeneration, activeStart) !== null;
+          if (attached) return activeStart;
+        } else if (renderError instanceof V2ApiError
+          && renderError.status === 409
+          && renderError.code === "v2_timeline_version_conflict") {
+          const message = "Timeline changed elsewhere. Resolve the version conflict before rendering.";
+          assignConflict({ kind: "version-conflict", message });
+          setExternalUpdate(true);
+        }
+        setError(readableError(renderError));
+      }
+      return null;
+    } finally {
+      if (!attached
+        && renderGenerationRef.current === renderGeneration
+        && sessionGuardRef.current.isCurrent(session)) {
+        renderingRef.current = false;
+        setRendering(false);
+      }
+    }
+  }, [assignConflict, beginRenderSession, clearRenderPollTimer, finalizeGesture, save]);
 
-  const importLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
+  const cancelRender = useCallback(async () => {
+    const identity = renderSessionRef.current;
+    if (!identity || !renderIdentityIsCurrent(identity)) return null;
+    const currentState = renderStateRef.current;
+    const currentStatus = currentState?.status ?? renderJobRef.current?.status ?? "queued";
+    const cancelAction = finalRenderCancelAction(currentStatus);
+    if (cancelAction === "terminal" || cancelAction === "poll" || cancellingRenderRef.current) return currentState;
+    const workflowId = identity.session.workflowId;
     if (!workflowId) return null;
+    clearRenderPollTimer();
+    renderStateRequestRef.current += 1;
+    const requestId = ++renderCancelRequestRef.current;
+    cancellingRenderRef.current = true;
+    setCancellingRender(true);
     setError("");
     try {
-      const response = await v2Api.importFinalTimelineSource(workflowId, {
+      const state = await v2Api.cancelFinalTimelineRender(workflowId, identity.renderId);
+      if (requestId !== renderCancelRequestRef.current || !renderIdentityIsCurrent(identity)) return null;
+      applyAuthoritativeRenderState(identity, state, state.status === "cancellation_requested");
+      return state;
+    } catch (cancelError) {
+      if (requestId === renderCancelRequestRef.current && renderIdentityIsCurrent(identity)) {
+        cancellingRenderRef.current = false;
+        setCancellingRender(false);
+        setError(readableError(cancelError));
+        scheduleRenderPoll(identity, true);
+      }
+      return null;
+    }
+  }, [applyAuthoritativeRenderState, clearRenderPollTimer, renderIdentityIsCurrent, scheduleRenderPoll]);
+
+  const addSource = useCallback((source: V2FinalTimelineSource) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    const mutation = source.media_type === "video"
+      ? addImportedVideoLane(current, source, playheadRef.current)
+      : source.media_type === "audio"
+        ? addOrReplaceBgm(current, source)
+        : null;
+    if (!mutation) {
+      setWarning("Only video and audio sources can be added to Final Composition.");
+      return null;
+    }
+    const result = applyMutation(mutation);
+    if (result.timeline !== current) {
+      const selected = result.changedClipIds.find((clipId) => result.timeline.clips.some((clip) => clip.clip_id === clipId));
+      if (selected) assignSelectedClipIds([selected]);
+    }
+    return result;
+  }, [applyMutation, assignSelectedClipIds]);
+
+  const removeImportedLane = useCallback((trackId: string) => {
+    const current = draftRef.current;
+    if (!current) return null;
+    const mutation = applyMutation(removeImportedVideoLane(current, trackId));
+    if (mutation.timeline !== current) {
+      assignSelectedClipIds(selectedClipIdsRef.current.filter((clipId) => mutation.timeline.clips.some((clip) => clip.clip_id === clipId)));
+    }
+    return mutation;
+  }, [applyMutation, assignSelectedClipIds]);
+
+  const registerLibrarySource = useCallback(async (selection: LibrarySourceSelection) => {
+    const session = sessionGuardRef.current.capture();
+    const currentWorkflowId = session.workflowId;
+    if (!currentWorkflowId) return null;
+    setError("");
+    try {
+      const response = await v2Api.importFinalTimelineSource(currentWorkflowId, {
         library_entity_id: selection.entityId,
         library_asset_id: selection.assetId,
         expected_media_type: selection.mediaType,
       });
+      if (!sessionGuardRef.current.isCurrent(session)) return null;
       setSources((current) => [...current.filter((item) => item.version_id !== response.source.version_id), response.source]);
-      addSource(response.source);
       return response.source;
     } catch (importError) {
-      setError(readableError(importError));
+      if (sessionGuardRef.current.isCurrent(session)) setError(readableError(importError));
       return null;
     }
-  }, [addSource, workflowId]);
+  }, []);
+
+  const selectedClipIds = selectedClipIdsState;
+  const selectedClipId = selectedClipIds[0] ?? null;
+  const selectedClip = useMemo(() => draft?.clips.find((clip) => clip.clip_id === selectedClipId) ?? null, [draft, selectedClipId]);
+  const isDirty = useMemo(() => !shotTimelineEquals(draft, baseline), [baseline, draft]);
 
   return {
     baseline,
     draft,
     sources,
+    tool,
+    setTool,
+    editMode,
+    setEditMode,
+    snapEnabled,
+    setSnapEnabled,
+    zoom,
+    setZoom,
+    selectedClipIds,
+    setSelectedClipIds,
     selectedClip,
     selectedClipId,
     setSelectedClipId,
@@ -239,28 +1017,63 @@ export function useV2FinalCompositionEditor({
     loading,
     saving,
     rendering,
+    cancellingRender,
+    renderJob,
+    renderState,
+    renderHint,
+    renderSessionError,
     error,
+    warning,
+    snapTarget,
     externalUpdate,
+    conflict,
     isDirty,
+    canUndo: (history?.past.length ?? 0) > 0,
+    canRedo: (history?.future.length ?? 0) > 0,
     durationSeconds: draft ? v2TimelineDuration(draft) : 0,
     load,
     save,
     render,
+    cancelRender,
+    reloadRemote,
+    keepLocal,
+    undo,
+    redo,
+    finalizeGesture,
+    moveClip,
+    trimClip,
+    splitAtPlayhead,
+    deleteSelection,
+    reorderLane,
+    fitTimeline,
     addSource,
-    importLibrarySource,
+    registerLibrarySource,
+    importLibrarySource: registerLibrarySource,
+    removeImportedLane,
     addTrack: (type: V2TimelineTrackType) => updateDraft((timeline) => addV2TimelineTrack(timeline, type)),
     updateTrack: (trackId: string, update: Parameters<typeof updateV2TimelineTrack>[2]) => updateDraft((timeline) => updateV2TimelineTrack(timeline, trackId, update)),
-    moveClip: (clipId: string, trackId: string, startTime: number) => updateDraft((timeline) => moveV2TimelineClip(timeline, clipId, { trackId, startTime })),
-    splitClip: (clipId: string, at: number) => updateDraft((timeline) => splitV2TimelineClip(timeline, clipId, at)),
+    splitClip: (clipId: string, at: number) => {
+      const current = draftRef.current;
+      if (!current) return;
+      const clip = current.clips.find((candidate) => candidate.clip_id === clipId);
+      if (clip?.clip_type === "video") applyMutation(splitShotClip(current, clipId, at, editOptions()));
+      else updateDraft((timeline) => splitV2TimelineClip(timeline, clipId, at));
+    },
     removeClip: (clipId: string) => {
-      updateDraft((timeline) => removeV2TimelineClip(timeline, clipId));
-      setSelectedClipId((current) => current === clipId ? null : current);
+      const current = draftRef.current;
+      const clip = current?.clips.find((candidate) => candidate.clip_id === clipId);
+      if (current && clip?.clip_type === "video") {
+        applyMutation(deleteShotClips(current, [clipId], editOptions()));
+      } else {
+        updateDraft((timeline) => removeV2TimelineClip(timeline, clipId));
+      }
+      assignSelectedClipIds(selectedClipIdsRef.current.filter((currentId) => currentId !== clipId));
     },
     updateClip: (clipId: string, updater: (clip: V2FinalTimelineClip) => V2FinalTimelineClip) => updateDraft((timeline) => updateV2TimelineClip(timeline, clipId, updater)),
     setClipAudio: (clipId: string, update: Parameters<typeof setV2TimelineClipAudio>[2]) => updateDraft((timeline) => setV2TimelineClipAudio(timeline, clipId, update)),
     setClipColor: (clipId: string, update: Parameters<typeof setV2TimelineClipColor>[2]) => updateDraft((timeline) => setV2TimelineClipColor(timeline, clipId, update)),
     addSubtitle: () => updateDraft((timeline) => {
-      const existingTrack = timeline.tracks.find((track) => track.track_type === "subtitle" && !track.locked);
+      const existingTrack = timeline.tracks.find((track) => track.track_type === "subtitle");
       const nextTimeline = existingTrack ? cloneV2Timeline(timeline) : addV2TimelineTrack(timeline, "subtitle");
       const track = existingTrack ?? nextTimeline.tracks.find((candidate) => candidate.track_type === "subtitle")!;
       const startTime = Math.max(0, ...nextTimeline.clips.filter((clip) => clip.track_id === track.track_id).map((clip) => clip.start_time + clip.duration));
@@ -268,8 +1081,12 @@ export function useV2FinalCompositionEditor({
       return {
         ...nextTimeline,
         duration_seconds: Math.max(nextTimeline.duration_seconds, startTime + duration),
-        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", start_time: startTime, duration, enabled: true, text: "New subtitle", style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" } }],
+        clips: [...nextTimeline.clips, { clip_id: `subtitle-${Date.now().toString(36)}`, track_id: track.track_id, clip_type: "subtitle", source_asset_id: null, source_version_id: null, source_slot_id: null, start_time: startTime, duration, trim_in: 0, trim_out: null, volume: 1, muted: false, enabled: true, transform: { x: 0, y: 0, scale_x: 1, scale_y: 1, rotation_degrees: 0, opacity: 1, fit: "contain" }, audio: { volume: 1, muted: false, fade_in_seconds: 0, fade_out_seconds: 0 }, color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0 }, text: "New subtitle", subtitle_style: { font_size: 42, color: "#FFFFFF", position: "bottom_center" }, metadata: {} }],
       };
     }),
+    moveClipToTrack: (clipId: string, trackId: string, startTime: number) => {
+      const current = draftRef.current;
+      return current ? applyMutation(moveTimelineClipToTrack(current, clipId, trackId, startTime)) : null;
+    },
   };
 }

@@ -13,14 +13,15 @@ export function cloneV2Timeline(timeline: V2FinalCompositionTimeline): V2FinalCo
   return {
     ...timeline,
     resolution: { ...timeline.resolution },
-    render_settings: { ...timeline.render_settings },
-    tracks: timeline.tracks.map((track) => ({ ...track })),
+    metadata: cloneV2TimelineMetadata(timeline.metadata),
+    tracks: timeline.tracks.map((track) => ({ ...track, metadata: cloneV2TimelineMetadata(track.metadata) })),
     clips: timeline.clips.map((clip) => ({
       ...clip,
-      transform: clip.transform ? { ...clip.transform } : undefined,
-      audio: clip.audio ? { ...clip.audio } : undefined,
-      color: clip.color ? { ...clip.color } : undefined,
-      style: clip.style ? { ...clip.style } : undefined,
+      transform: { ...clip.transform },
+      audio: { ...clip.audio },
+      color: { ...clip.color },
+      subtitle_style: { ...clip.subtitle_style },
+      metadata: cloneV2TimelineMetadata(clip.metadata),
     })),
   };
 }
@@ -90,13 +91,11 @@ export function addV2TimelineTrack(timeline: V2FinalCompositionTimeline, type: V
   const track: V2FinalTimelineTrack = {
     track_id: `${type}-${nextIndex}`,
     track_type: type,
-    name: `${type[0].toUpperCase()}${type.slice(1)} ${nextIndex}`,
     order: nextOrder,
     enabled: true,
-    muted: false,
-    locked: false,
+    metadata: {},
   };
-  return { ...cloneV2Timeline(timeline), tracks: [...timeline.tracks.map((item) => ({ ...item })), track] };
+  return { ...cloneV2Timeline(timeline), tracks: [...timeline.tracks.map((item) => ({ ...item, metadata: { ...item.metadata } })), track] };
 }
 
 export function removeV2TimelineClip(timeline: V2FinalCompositionTimeline, clipId: string): V2FinalCompositionTimeline {
@@ -117,27 +116,56 @@ export function updateV2TimelineTrack(
 export function setV2TimelineClipAudio(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineAudio>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
-    audio: { volume: 1, muted: false, fade_in: 0, fade_out: 0, ...clip.audio, ...update },
+    volume: update.volume === undefined ? clip.volume : update.volume,
+    muted: update.muted === undefined ? clip.muted : update.muted,
+    audio: { ...clip.audio, ...update },
   }));
 }
 
 export function setV2TimelineClipColor(timeline: V2FinalCompositionTimeline, clipId: string, update: Partial<V2TimelineColor>) {
   return updateV2TimelineClip(timeline, clipId, (clip) => ({
     ...clip,
-    color: { preset_id: "none", brightness: 0, contrast: 1, saturation: 1, exposure: 0, temperature: 0, tint: 0, hue: 0, ...clip.color, ...update },
+    color: { ...clip.color, ...update },
   }));
 }
 
 export function v2TimelineDuration(timeline: V2FinalCompositionTimeline) {
-  return Math.max(timeline.duration_seconds, ...timeline.clips.map((clip) => clip.start_time + clip.duration), 0);
+  const enabledTracks = new Set(timeline.tracks.filter((track) => track.enabled).map((track) => track.track_id));
+  return Math.max(
+    0,
+    ...timeline.clips
+      .filter((clip) => clip.enabled && enabledTracks.has(clip.track_id))
+      .map((clip) => clip.start_time + clip.duration),
+  );
 }
 
-function cloneV2TimelineClip(clip: V2FinalTimelineClip): V2FinalTimelineClip {
+export function withV2TimelineDuration(timeline: V2FinalCompositionTimeline): V2FinalCompositionTimeline {
+  return { ...timeline, duration_seconds: v2TimelineDuration(timeline) };
+}
+
+export function snapV2TimelineToFrame(value: number, fps: number) {
+  return Math.round(value * fps) / fps;
+}
+
+export function cloneV2TimelineClip(clip: V2FinalTimelineClip): V2FinalTimelineClip {
   return {
     ...clip,
-    transform: clip.transform ? { ...clip.transform } : undefined,
-    audio: clip.audio ? { ...clip.audio } : undefined,
-    color: clip.color ? { ...clip.color } : undefined,
-    style: clip.style ? { ...clip.style } : undefined,
+    transform: { ...clip.transform },
+    audio: { ...clip.audio },
+    color: { ...clip.color },
+    subtitle_style: { ...clip.subtitle_style },
+    metadata: cloneV2TimelineMetadata(clip.metadata),
   };
+}
+
+function cloneV2TimelineMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(metadata).map(([key, value]) => [key, cloneMetadataValue(value)]));
+}
+
+function cloneMetadataValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(cloneMetadataValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cloneMetadataValue(item)]));
+  }
+  return value;
 }

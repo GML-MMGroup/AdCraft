@@ -806,7 +806,7 @@ export interface V2TimelineTransform {
   y: number;
   scale_x: number;
   scale_y: number;
-  rotation: number;
+  rotation_degrees: number;
   opacity: number;
   fit: "cover" | "contain";
 }
@@ -814,8 +814,8 @@ export interface V2TimelineTransform {
 export interface V2TimelineAudio {
   volume: number;
   muted: boolean;
-  fade_in: number;
-  fade_out: number;
+  fade_in_seconds: number;
+  fade_out_seconds: number;
 }
 
 export interface V2TimelineColor {
@@ -838,37 +838,44 @@ export interface V2TimelineSubtitleStyle {
 export interface V2FinalTimelineTrack {
   track_id: string;
   track_type: V2TimelineTrackType;
-  name?: string;
   order: number;
   enabled: boolean;
-  muted: boolean;
-  locked: boolean;
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineClip {
   clip_id: string;
   track_id: string;
   clip_type: V2TimelineTrackType;
-  source_asset_id?: string | null;
-  source_version_id?: string | null;
-  source_slot_id?: string | null;
+  source_asset_id: string | null;
+  source_version_id: string | null;
+  source_slot_id: string | null;
   start_time: number;
   duration: number;
-  trim_in?: number | null;
-  trim_out?: number | null;
+  trim_in: number;
+  trim_out: number | null;
+  volume: number;
+  muted: boolean;
   enabled: boolean;
-  transform?: V2TimelineTransform;
-  audio?: V2TimelineAudio;
-  color?: V2TimelineColor;
-  text?: string | null;
-  style?: V2TimelineSubtitleStyle;
+  transform: V2TimelineTransform;
+  audio: V2TimelineAudio;
+  color: V2TimelineColor;
+  text: string | null;
+  subtitle_style: V2TimelineSubtitleStyle;
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineRenderSettings {
-  video_codec?: string;
-  audio_codec?: string;
-  video_bitrate?: string;
-  audio_bitrate?: string;
+  video_codec: string | null;
+  audio_codec: "aac";
+  video_bitrate: string | null;
+  audio_bitrate: string | null;
+}
+
+export interface V2FinalTimelineRenderRequest {
+  timeline_id: string;
+  timeline_version: number;
+  render_settings?: V2FinalTimelineRenderSettings;
 }
 
 export interface V2FinalCompositionTimeline {
@@ -878,9 +885,9 @@ export interface V2FinalCompositionTimeline {
   aspect_ratio: string;
   resolution: { width: number; height: number };
   fps: number;
-  render_settings: V2FinalTimelineRenderSettings;
   tracks: V2FinalTimelineTrack[];
   clips: V2FinalTimelineClip[];
+  metadata: Record<string, unknown>;
 }
 
 export interface V2FinalTimelineSource {
@@ -927,23 +934,32 @@ export interface V2FinalTimelineSourceImportResponse {
   source: V2FinalTimelineSource;
 }
 
-export interface V2FinalTimelineRenderRequest {
+export interface V2FinalTimelineRenderStartResponse {
+  workflow_id: string;
+  render_id: string;
+  status: "queued";
   timeline_id: string;
   timeline_version: number;
-  render_settings?: V2FinalTimelineRenderSettings;
+  events_cursor: number;
 }
 
-export interface V2FinalTimelineRenderResponse {
+export interface V2FinalTimelineRenderStateResponse {
   workflow_id: string;
   render_id: string;
   slot_id: string;
-  asset_id: string;
-  version_id: string;
-  status: "completed" | string;
-  public_url?: string | null;
+  status: "queued" | "running" | "completed" | "failed" | "cancellation_requested" | "cancelled";
   timeline_id: string;
   timeline_version: number;
-  runtime?: WorkflowRuntimeV2 | null;
+  events_cursor: number;
+  progress_seconds: number | null;
+  total_seconds: number | null;
+  progress_percent: number | null;
+  asset_id: string | null;
+  version_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface V2WorkflowErrorDetail {

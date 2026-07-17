@@ -10,7 +10,8 @@ import type {
   V2GlobalRunRequest,
   V2InputAssetUploadResponse,
   V2FinalTimelineRenderRequest,
-  V2FinalTimelineRenderResponse,
+  V2FinalTimelineRenderStartResponse,
+  V2FinalTimelineRenderStateResponse,
   V2FinalTimelineResponse,
   V2FinalTimelineSourceImportRequest,
   V2FinalTimelineSourceImportResponse,
@@ -70,7 +71,8 @@ import {
   normalizeV2ScriptVersionListResponse,
   normalizeV2SlotReferenceUploadResponse,
   normalizeV2InputAssetUploadResponse,
-  normalizeV2FinalTimelineRenderResponse,
+  normalizeV2FinalTimelineRenderStartResponse,
+  normalizeV2FinalTimelineRenderStateResponse,
   normalizeV2FinalTimelineResponse,
   normalizeV2FinalTimelineSourceImportResponse,
   normalizeV2FinalTimelineUpdateResponse,
@@ -537,11 +539,27 @@ export const v2Api = {
     );
   },
 
-  renderFinalTimeline(workflowId: string, body: V2FinalTimelineRenderRequest): Promise<V2FinalTimelineRenderResponse> {
+  renderFinalTimeline(workflowId: string, body: V2FinalTimelineRenderRequest): Promise<V2FinalTimelineRenderStartResponse> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/final-composition/render`,
       { method: "POST", body: JSON.stringify(body) },
-      normalizeV2FinalTimelineRenderResponse,
+      normalizeV2FinalTimelineRenderStartResponse,
+    );
+  },
+
+  getFinalTimelineRender(workflowId: string, renderId: string): Promise<V2FinalTimelineRenderStateResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/renders/${encodeURIComponent(renderId)}`,
+      {},
+      normalizeV2FinalTimelineRenderStateResponse,
+    );
+  },
+
+  cancelFinalTimelineRender(workflowId: string, renderId: string): Promise<V2FinalTimelineRenderStateResponse> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/final-composition/renders/${encodeURIComponent(renderId)}/cancel`,
+      { method: "POST" },
+      normalizeV2FinalTimelineRenderStateResponse,
     );
   },
 };
