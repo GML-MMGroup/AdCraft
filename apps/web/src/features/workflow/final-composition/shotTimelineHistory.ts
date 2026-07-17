@@ -79,9 +79,9 @@ export function commitShotTimelineHistory(
   const coalescing = coalesceKey !== null && coalesceKey === current.coalesceKey;
   const past = coalescing
     ? current.past
-    : [...current.past, current.present].slice(-HISTORY_LIMIT);
+    : [...current.past, current.present];
   return {
-    past,
+    past: coalesceKey === null ? past.slice(-HISTORY_LIMIT) : past,
     present: timeline,
     future: coalesceKey === null ? [] : current.future,
     coalesceKey,
@@ -93,7 +93,12 @@ export function finalizeShotTimelineHistory(history: ShotTimelineHistory): ShotT
   const gestureOrigin = history.past.at(-1);
   return gestureOrigin && timelineEquals(gestureOrigin, history.present)
     ? { ...history, past: history.past.slice(0, -1), coalesceKey: null }
-    : { ...history, future: [], coalesceKey: null };
+    : {
+      ...history,
+      past: history.past.slice(-HISTORY_LIMIT),
+      future: [],
+      coalesceKey: null,
+    };
 }
 
 export function undoShotTimelineHistory(history: ShotTimelineHistory): ShotTimelineHistory {
@@ -193,11 +198,13 @@ export function rebaseReloadedShotTimelineHistory({
   const retainedPast = history.past.slice(requestIndex + 1).map(rebase);
   const present = rebase(history.present);
   const hasRetainedHistory = retainedPast.length > 0 || !timelineEquals(present, remoteTimeline);
+  const coalesceKey = hasRetainedHistory ? history.coalesceKey : null;
+  const past = hasRetainedHistory ? [remoteTimeline, ...retainedPast] : [];
   return {
-    past: hasRetainedHistory ? [remoteTimeline, ...retainedPast].slice(-HISTORY_LIMIT) : [],
+    past: past.slice(-(coalesceKey === null ? HISTORY_LIMIT : HISTORY_LIMIT + 1)),
     present,
     future: history.future.map(rebase),
-    coalesceKey: hasRetainedHistory ? history.coalesceKey : null,
+    coalesceKey,
   };
 }
 
