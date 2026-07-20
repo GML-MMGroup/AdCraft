@@ -26,11 +26,11 @@ apps/*/.env
 apps/*/.env.*
 !apps/*/.env.example
 
+# Python backend local runtime
+apps/api/.venv/
+apps/api/data/
+
 # Local caches and generated indexes
-.codex/
-.superpowers/
-.codegraph/
-apps/*/.codegraph/
 .pytest_cache/
 .ruff_cache/
 __pycache__/
@@ -40,3 +40,13 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Docker deployment runtime state
+runtime-data/
+
+# Local agent, skill, planning, and code-intelligence artifacts
+.superpowers/
+.codex/
+docs/superpowers/
+.codegraph/
+apps/*/.codegraph/
