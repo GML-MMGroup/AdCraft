@@ -25,6 +25,7 @@ class V2IdentitySpecError(ValueError):
 class V2ItemIdentitySpecBuilder:
     def build_product(self, brief: Any) -> ProductIdentitySpec:
         name = _clean_text(getattr(brief, "display_name", None), "Product")
+        constraints = _product_identity_constraints(getattr(brief, "metadata", None))
         text = _combined_text(
             name,
             getattr(brief, "description", None),
@@ -35,7 +36,7 @@ class V2ItemIdentitySpecBuilder:
         return ProductIdentitySpec(
             product_name=name,
             product_category=category,
-            recognizable_features=_product_features(name, category, text),
+            recognizable_features=_unique([*_product_features(name, category, text), *constraints]),
             silhouette=_product_silhouette(name, category, text),
             material_finish=_product_material_finish(category, text),
             brand_or_packaging_cues=_product_brand_cues(name, text),
@@ -301,6 +302,30 @@ def _product_category(name: str, text: str) -> str:
     if "bottle" in normalized or "tea" in normalized or "drink" in normalized:
         return "packaged beverage"
     return "advertised product"
+
+
+def _product_identity_constraints(metadata: Any) -> list[str]:
+    if not isinstance(metadata, dict):
+        return []
+    raw_constraints = metadata.get("product_identity_constraints")
+    if not isinstance(raw_constraints, list):
+        return []
+    constraints: list[str] = []
+    seen: set[str] = set()
+    for value in raw_constraints:
+        if not isinstance(value, str):
+            continue
+        text = value.strip()[:500]
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        constraints.append(text)
+        seen.add(key)
+        if len(constraints) == 10:
+            break
+    return constraints
 
 
 def _product_features(name: str, category: str, text: str) -> list[str]:
