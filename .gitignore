@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+apps/*/node_modules/
+
+# Frontend build output
+apps/web/dist/
+apps/web/.vite/
+apps/web/coverage/
+
+# Frontend local docs, tests, and agent workspace files
+apps/web/.codex/
+apps/web/docs/
+apps/web/frontend
+apps/web/frontend/
+apps/web/task
+apps/web/task/
+apps/web/task_v2/
+apps/web/tests/
+apps/web/*.md
+
+# Environment files
+.env
+.env.*
+!.env.example
+apps/*/.env
+apps/*/.env.*
+!apps/*/.env.example
+
+# Local caches and generated indexes
+.codex/
+.superpowers/
+.codegraph/
+apps/*/.codegraph/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# OS and editor files
+.DS_Store
+.idea/
+.vscode/

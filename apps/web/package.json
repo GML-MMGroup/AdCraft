@@ -1,0 +1,43 @@
+{
+  "name": "ad-workflow-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -p tsconfig.json && vite build",
+    "lint": "eslint .",
+    "lint:react": "eslint \"src/**/*.{ts,tsx}\"",
+    "perf:bundle": "node scripts/perf/check-build-budget.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "codegraph:init": "codegraph init .",
+    "codegraph:index": "codegraph index .",
+    "codegraph:sync": "codegraph sync .",
+    "codegraph:status": "codegraph status .",
+    "codegraph:query": "codegraph query"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@xyflow/react": "^12.11.0",
+    "@xzdarcy/react-timeline-editor": "^1.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.18.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  },
+  "devDependencies": {
+    "@colbymchenry/codegraph": "^1.0.1",
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "eslint": "^9.39.4",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "tsx": "^4.22.5",
+    "typescript-eslint": "^8.62.1"
+  }
+}
