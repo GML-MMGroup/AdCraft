@@ -4,6 +4,7 @@ import type { IncomingMessage } from "node:http";
 import { API_METADATA_CACHE_CONTROL, mediaCacheControl } from "./mediaCachePolicy";
 
 const FRONTEND_PORT = 5189;
+const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN?.trim() || "http://127.0.0.1:8888";
 
 type ProxyWithResponseEvents = {
   on(event: "proxyRes", listener: (proxyResponse: IncomingMessage, request: IncomingMessage) => void): void;
@@ -89,12 +90,12 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_ORIGIN,
         changeOrigin: true,
         configure: configureApiMetadataProxy,
       },
       "/media": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_ORIGIN,
         changeOrigin: true,
         configure: configureMediaProxy,
       },
