@@ -597,13 +597,12 @@ def _boundary_message(slot_type: str, detected: list[str]) -> str:
 def _detect_phrases(text: str, phrases: tuple[str, ...]) -> list[str]:
     detected: list[str] = []
     for phrase in phrases:
-        start = text.find(phrase)
-        while start >= 0:
-            prefix = text[max(0, start - 40) : start]
+        pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(phrase)}(?![A-Za-z0-9_])")
+        for match in pattern.finditer(text):
+            prefix = text[max(0, match.start() - 40) : match.start()]
             if not re.search(r"\b(no|without|avoid|exclude|not|never)\b", prefix):
                 detected.append(phrase)
                 break
-            start = text.find(phrase, start + len(phrase))
     return detected
 
 
