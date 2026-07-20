@@ -87,6 +87,7 @@
 | Windows 提示需要管理员权限。 | 右键 `scripts\\deploy-windows.cmd`，选择 **Run as administrator**。 | 启动器可以检查前置条件并继续。 |
 | Windows 启用 WSL 2 或要求重启。 | 重启 Windows，然后再次以管理员身份运行同一个 `scripts\\deploy-windows.cmd` 文件。 | 第二次运行时 WSL 2 已可用。 |
 | Docker Desktop 缺失、未就绪，或正在使用 Windows containers。 | 保持网络连接，让启动器完成设置；若提示则启动 Docker Desktop，并切换到 Linux containers 模式。之后重新运行启动器。 | 启动器可以使用 Docker 和 Docker Compose。 |
+| 拉取 Docker 镜像时出现 `EOF`、匿名令牌错误，或无法连接 `auth.docker.io`。 | 保持代理客户端运行。在 Docker Desktop 中打开 **Settings → Resources → Proxies**，选择手动配置，只在 HTTP/HTTPS Proxy 输入框中填写代理 URL（例如 FlClash 正在该地址监听时填写 `http://127.0.0.1:7890`；不要填写 `HTTP Proxy:` 之类的前缀）。如有需要，在 FlClash 中启用 TUN/全局模式，并让 `docker.io`、`docker.com`、`dockerusercontent.com` 走代理。应用设置或重启 Docker Desktop 后，在命令提示符运行 `docker pull docker/dockerfile:1.7`；仅在该命令成功后重新运行启动器。 | Docker 可以拉取构建所需的 Dockerfile 前端和镜像层。 |
 | Windows 版本被拒绝。 | 使用 64 位 Windows 10 22H2 build 19045+，或 Windows 11 23H2 build 22631+。 | 通过受支持平台检查。 |
 | Linux 启动器拒绝当前操作系统。 | 此部署路径请使用 Ubuntu 或 Debian。 | 启动器可以识别受支持的系统版本。 |
 | 出现 Linux `sudo` 提示。 | 仅在该提示处输入本地账户密码；不要输入 API 密钥。 | 启动器可安装或启动所需系统服务。 |
@@ -101,5 +102,6 @@
 - 此部署路径仅面向上文列出的受支持 Windows 和 Linux 桌面系统；它不配置公共服务器、远程访问、TLS、用户账户或共享网络访问。
 - Web 端口绑定到 `127.0.0.1`，因此只能在部署该实例的计算机上打开打印出的 URL。除非已另行设计并保护该变更，否则不要通过修改部署配置把它暴露到网络上。
 - 请保持 `apps/api/.env`、`apps/web/.env` 和 `runtime-data/` 私密。它们可能包含凭据、配置、部署状态及生成媒体。
+- 启动器不会修改代理设置，也不会保存代理凭据。请只在 Docker Desktop 或组织认可的网络客户端中配置代理。
 - 只能使用您有权使用的 API 密钥和媒体。保护服务商账户、关注服务商费用，并遵守组织的数据处理要求。
 - 除非已有认可的备份并了解可能丢失本地凭据、生成媒体或部署状态，否则不要为了排查更新问题而删除环境文件或 `runtime-data/`。
