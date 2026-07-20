@@ -1,0 +1,6 @@
+V2_PLANNER_VERSION = "v2-mainline-generation-correctness-13"
+V2_SCRIPT_WRITER_VERSION = "v2-script-writer-skill-quality-14"
+V2_EXPERT_BRIEF_BUILDER_VERSION = "v2-expert-brief-builder-skill-quality-14"
+V2_SPECIALIST_MATERIALIZER_VERSION = "v2-specialist-prompt-quality-14"
+V2_STORYBOARD_DETAIL_MATERIALIZER_VERSION = "v2-storyboard-detail-quality-14"
+V2_BACKEND_REVISION_EVIDENCE = "backend-v2-mainline-prompt-quality-2026-07-02"
