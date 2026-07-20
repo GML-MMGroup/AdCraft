@@ -8,7 +8,6 @@ import { NodePreviewLoading } from "./WorkflowCanvasNodePreview.tsx";
 function statusClass(value: string) {
   return value.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
 }
-
 function isNodeRunning(status?: string | null) {
   const normalized = (status ?? "").toLowerCase();
   return ["running", "waiting", "processing", "in_progress"].includes(normalized);
@@ -476,4 +475,3 @@ function CanvasEntityMedia({
     </button>
   );
 }
-

@@ -1,0 +1,1 @@
+"""AdCraft backend application."""

@@ -88,6 +88,13 @@ import {
 } from "./workflowNormalizers";
 import type { CanvasRuntimeEventsResponse, CanvasRuntimeSnapshot } from "../workflow/canvasRuntime.ts";
 import { assertV1WorkflowId } from "./v1WorkflowGuard";
+import type {
+  VolcengineCredentialStatusResponse,
+  VolcengineCredentialTestRequest,
+  VolcengineCredentialTestResponse,
+  VolcengineCredentialUpdateRequest,
+  VolcengineCredentialUpdateResponse,
+} from "../apiSpace/volcengineCredentials";
 
 export class ApiError extends Error {
   status: number;
@@ -331,6 +338,24 @@ async function optionalRequest<T>(path: string, init?: RequestInit): Promise<T |
 
 export const api = {
   baseUrl: API_BASE_URL,
+
+  getVolcengineCredentialStatus() {
+    return request<VolcengineCredentialStatusResponse>("/settings/providers/volcengine");
+  },
+
+  updateVolcengineCredentials(requestBody: VolcengineCredentialUpdateRequest) {
+    return request<VolcengineCredentialUpdateResponse>("/settings/providers/volcengine", {
+      method: "PUT",
+      body: JSON.stringify(requestBody),
+    });
+  },
+
+  testVolcengineCredential(requestBody: VolcengineCredentialTestRequest) {
+    return request<VolcengineCredentialTestResponse>("/settings/providers/volcengine/test", {
+      method: "POST",
+      body: JSON.stringify(requestBody),
+    });
+  },
 
   health() {
     return request<{ status: string; service: string; version: string; mode: string }>("/health");

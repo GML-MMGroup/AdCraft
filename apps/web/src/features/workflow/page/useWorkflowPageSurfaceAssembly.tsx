@@ -4,13 +4,15 @@ import { LocalPromptComposer, type PromptGenerateContext } from "../../../compon
 import { WorkflowDraggablePanel, type PanelOffset } from "../../../components/WorkflowDraggablePanel.tsx";
 import { AssetsIcon, CloseIcon, SaveIcon } from "../../../icons";
 import type { WorkflowItemV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { AssetLibraryPicker, AssetLibrarySaveModal } from "../assets/AssetLibraryPanels.tsx";
 import { canSaveNodeToAssetLibrary } from "../assets/assetLibraryReferenceModel.ts";
+import { V2FinalCompositionPanel } from "../final-composition/V2FinalCompositionPanel.tsx";
 import { finalCompositionTimelineTargetAsset } from "../final-composition/useFinalCompositionOperations.ts";
 import { getTimelineClipCount } from "../final-composition/finalCompositionTimelineModel.ts";
 import { MediaLightbox } from "../panels/WorkflowDebugSections.tsx";
 import { localRevisionStateKey } from "../../../workflow/localRevision.ts";
-import { validateConnection } from "../canvas/workflowCanvasModel.ts";
+import { DEFAULT_LAYOUT_VIEWPORT_PADDING, validateConnection } from "../canvas/workflowCanvasModel.ts";
 import { formatCanvasRuntimeConnectionState } from "../canvas/WorkflowCanvasNodeModel.ts";
 import { WorkflowBottomToolbar, type WorkflowBottomToolbarActions, type WorkflowBottomToolbarModel } from "./WorkflowBottomToolbar.tsx";
 import { WorkflowCanvasSurface, type WorkflowCanvasSurfaceActions, type WorkflowCanvasSurfaceModel } from "./WorkflowCanvasSurface.tsx";
@@ -314,11 +316,18 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     onNodeClick: (_event, node) => {
       args.setSelectedEdgeId(null);
       args.setSelectedNodeId(node.id);
-      if (!args.currentWorkflowIsV2()) args.setDetailsOpen(true);
+      if (args.currentWorkflowIsV2()) {
+        args.setActiveV2SlotId(null);
+        args.setActiveV2StoryboardItemId?.(null);
+        args.setDetailsOpen(node.id === "final-composition");
+      } else {
+        args.setDetailsOpen(true);
+      }
     },
     onEdgeClick: (event, edge) => {
       event.stopPropagation();
       args.setSelectedEdgeId(edge.id);
+      if (args.currentWorkflowIsV2()) args.setDetailsOpen(false);
       args.setFlowEdges((current: Array<{ id: string }>) => current.map((item) => ({ ...item, selected: item.id === edge.id })));
     },
     onNodeDragStop: (_event, node) => args.persistNodePosition(node),
@@ -326,6 +335,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       args.setSelectedEdgeId(null);
       args.setActiveV2SlotId(null);
       args.setActiveV2StoryboardItemId?.(null);
+      args.setDetailsOpen(false);
     },
     onNodesDelete: (deleted) => {
       const ids = new Set(deleted.map((node) => node.id));
@@ -357,7 +367,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     redoCanvas: args.redoCanvas,
     deleteSelection: args.deleteSelection,
     autoLayout: args.autoLayout,
-    fitView: () => args.reactFlow?.fitView({ padding: 0.28 }),
+    fitView: () => args.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }),
   } as WorkflowBottomToolbarActions;
 
   const workflowSidePanelsModel = {
@@ -457,6 +467,16 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       <WorkflowSidePanelsSurface model={workflowSidePanelsModel} actions={workflowSidePanelsActions} />
 
       {!args.currentWorkflowIsV2() ? <WorkflowWorkbenchSurface model={workflowWorkbenchSurfaceModel} actions={workflowWorkbenchSurfaceActions} /> : null}
+
+      {args.currentWorkflowIsV2() && args.detailsOpen && args.selectedNodeId === "final-composition" && args.workflow?.workflow_id ? (
+        <V2FinalCompositionPanel
+          workflowId={args.workflow.workflow_id}
+          offset={args.panelOffsets.detail}
+          onOffsetCommit={args.commitPanelOffset}
+          onClose={() => args.setDetailsOpen(false)}
+          onWorkflowRefresh={(workflowId) => args.refreshV2WorkflowGraph(workflowId)}
+        />
+      ) : null}
 
       {showV2FloatingSlotComposer && activeV2SlotComposerAnchor && activeV2Slot && activeV2SlotId && activeV2SlotDraft ? (
         <WorkflowDraggablePanel
@@ -633,7 +653,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
       },
       canvas,
       copilot: null,
-      panels: null,
+      panels: args.screenplay.panel,
       modals: null,
     },
     actions: {
@@ -647,7 +667,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
 
 function draftFromV2Slot(slot: WorkflowSlotV2): SlotMicroEditDraft {
   return {
-    prompt: slot.slot_prompt ?? "",
+    prompt: effectiveSlotPrompt(slot),
     negative_prompt: slot.negative_prompt ?? "",
     reference_asset_ids: [...(slot.explicit_reference_ids ?? [])],
     uploaded_asset_ids: [],
@@ -659,6 +679,10 @@ function draftFromV2Slot(slot: WorkflowSlotV2): SlotMicroEditDraft {
       status: "attached",
     })),
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: effectiveSlotPrompt(slot),
+    base_negative_prompt: slot.negative_prompt ?? "",
     isSubmitting: false,
   };
 }

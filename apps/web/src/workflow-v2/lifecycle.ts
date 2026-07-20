@@ -1,24 +1,6 @@
 import type { WorkflowMediaTypeV2 } from "../types-v2.ts";
 import { freeAbsorbTargetsForMedia } from "./agentRouting.ts";
 
-export type V2FreshnessHint = {
-  reference_outdated?: boolean;
-  linked_source_has_new_version?: boolean;
-  outdated_source_asset_id?: string;
-  latest_source_asset_id?: string;
-  reference_target_archived?: boolean;
-};
-
-export function shouldAutoRegenerateForFreshnessHint(_hint: V2FreshnessHint) {
-  return false;
-}
-
-export function referenceFreshnessLabel(hint: V2FreshnessHint) {
-  if (hint.reference_target_archived) return "Reference target archived";
-  if (hint.linked_source_has_new_version || hint.reference_outdated) return "Linked source has a newer version";
-  return "Reference is current";
-}
-
 export function absorbTargetsForFreeAsset(mediaType: WorkflowMediaTypeV2) {
   return freeAbsorbTargetsForMedia(mediaType);
 }

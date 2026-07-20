@@ -53,6 +53,7 @@ export function WorkflowWorkbenchPromptSection({
   } = actions;
 
   if (!selectedPlanNode) return null;
+  if (currentWorkflowIsV2() && selectedPlanNode.id === "final-composition") return null;
 
   return (
     <div className="prompt-composer is-compact node-workbench-composer">
@@ -156,4 +157,3 @@ export function WorkflowWorkbenchPromptSection({
     </div>
   );
 }
-

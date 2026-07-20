@@ -8,7 +8,7 @@ import {
   type ReactFlowProps,
 } from "@xyflow/react";
 import { WorkflowCanvas } from "../../../components/WorkflowCanvas";
-import { edgeStyle, portColor } from "../canvas/workflowCanvasModel.ts";
+import { DEFAULT_LAYOUT_VIEWPORT_PADDING, edgeStyle, portColor } from "../canvas/workflowCanvasModel.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
 
 type CanvasProps = ReactFlowProps<CanvasNode, CanvasEdge>;
@@ -65,7 +65,7 @@ export function WorkflowCanvasSurface({
         onNodesDelete={actions.onNodesDelete}
         onEdgesDelete={actions.onEdgesDelete}
         fitView
-        fitViewOptions={{ padding: 0.28 }}
+        fitViewOptions={{ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }}
         onlyRenderVisibleElements
         minZoom={0.05}
         maxZoom={2}
