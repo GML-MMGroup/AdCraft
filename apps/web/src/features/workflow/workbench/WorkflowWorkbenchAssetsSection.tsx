@@ -266,7 +266,7 @@ export function WorkflowWorkbenchAssetsSection({
         onChangeDisplayName={setAssetLibraryDisplayName}
         onChangeTags={setAssetLibraryTags}
         onCancel={() => setAssetLibrarySaveTarget(null)}
-        onSubmit={() => void saveAssetLibraryTarget()}
+        onSubmit={(category) => void saveAssetLibraryTarget(category)}
       />
     </NodeOutputAssetsPanel>
   );

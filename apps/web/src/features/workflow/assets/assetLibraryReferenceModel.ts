@@ -53,8 +53,10 @@ export function canSaveNodeToAssetLibrary(node?: WorkflowNode | null) {
 
 export function inferAssetLibraryEntityType(node: WorkflowNode): AssetLibraryEntityType | null {
   const nodeType = getWorkflowNodeType(node).toLowerCase();
+  if (nodeType === "product-generation") return "product";
   if (nodeType === "character-generation") return "character";
   if (nodeType === "scene-generation") return "scene";
+  if (nodeType === "free-generation") return "product";
   if (nodeType === "storyboard") return "storyboard_shot";
   if (nodeType === "storyboard-video-generation") return "video_clip";
   if (nodeType === "bgm") return "bgm";

@@ -2,6 +2,12 @@ import type {
   AssetOwnerRelationV2,
   AssetOwnerResponseV2,
   AssetVersionV2,
+  V2AssetLibraryCatalogSource,
+  V2AssetLibraryEntityDetail,
+  V2AssetLibraryEntitySummary,
+  V2AssetLibraryListResponse,
+  V2AssetLibraryMember,
+  V2AssetLibraryPreviewMember,
   ProviderTaskV2,
   SlotVersionRelationV2,
   SlotVersionsResponseV2,
@@ -20,6 +26,9 @@ import type {
   V2ChatActionResponse,
   V2LinkedContextSummary,
   V2RegisterReferenceResponse,
+  V2RecommendedCatalogStatus,
+  V2ReferenceBinding,
+  V2ReferenceSelectionsResponse,
   V2ScriptCharacter,
   V2ScriptConfirmResponse,
   V2ScriptDialogueLine,
@@ -860,7 +869,7 @@ export function normalizeWorkflowAssetVersionsResponseV2(value: unknown): Workfl
 export function normalizeSlotVersionRelationV2(value: unknown): SlotVersionRelationV2 {
   const record = isRecord(value) ? value : {};
   return {
-    relation_id: stringOrNull(record.relation_id ?? record.id),
+    relation_id: stringOrNull(record.relation_id ?? record.binding_id ?? record.id),
     relation_type: stringOrNull(record.relation_type ?? record.type),
     workflow_id: stringOrNull(record.workflow_id),
     node_id: stringOrNull(record.node_id),
@@ -876,7 +885,7 @@ export function normalizeSlotVersionRelationV2(value: unknown): SlotVersionRelat
 export function normalizeWorkflowAssetRelationV2(value: unknown): WorkflowAssetRelationV2 {
   const record = isRecord(value) ? value : {};
   return {
-    relation_id: stringOrNull(record.relation_id ?? record.id),
+    relation_id: stringOrNull(record.relation_id ?? record.binding_id ?? record.id),
     relation_type: stringOrNull(record.relation_type ?? record.type),
     workflow_id: stringOrNull(record.workflow_id),
     target_type: record.target_type === null ? null : stringValue(record.target_type) || undefined,
@@ -1129,6 +1138,130 @@ export function normalizeWorkflowV2ReferenceMutationResponse(value: unknown) {
   };
 }
 
+function normalizeV2AssetLibraryPreviewMember(value: unknown): V2AssetLibraryPreviewMember | null {
+  const record = recordValue(value);
+  if (!record) return null;
+  const memberId = stringValue(record.member_id);
+  const assetId = stringValue(record.asset_id);
+  const versionId = stringValue(record.version_id);
+  if (!memberId || !assetId || !versionId) return null;
+  return {
+    member_id: memberId,
+    semantic_type: stringValue(record.semantic_type, "reference"),
+    asset_id: assetId,
+    version_id: versionId,
+    public_url: stringOrNull(record.public_url),
+    thumbnail_url: stringOrNull(record.thumbnail_url),
+    media_type: stringOrNull(record.media_type),
+  };
+}
+
+function normalizeV2AssetLibraryCatalogSource(value: unknown): V2AssetLibraryCatalogSource | null {
+  const record = recordValue(value);
+  if (!record) return null;
+  const source = stringOrNull(record.source);
+  const license = stringOrNull(record.license);
+  const attribution = stringOrNull(record.attribution);
+  return source || license || attribution ? { source, license, attribution } : null;
+}
+
+function normalizeV2AssetLibraryEntitySummary(value: unknown): V2AssetLibraryEntitySummary {
+  const record = recordValue(value) ?? {};
+  const scope = stringValue(record.scope, "my");
+  const category = stringValue(record.library_category, "characters");
+  return {
+    entity_id: stringValue(record.entity_id),
+    scope: scope === "recommended" ? "recommended" : "my",
+    entity_type: stringValue(record.entity_type, "character"),
+    library_category: category === "scenes" || category === "props" ? category : "characters",
+    display_name: stringValue(record.display_name, stringValue(record.entity_id, "Untitled asset")),
+    description: stringOrNull(record.description),
+    tags: stringArray(record.tags),
+    is_favorite: typeof record.is_favorite === "boolean" ? record.is_favorite : false,
+    status: stringOrNull(record.status),
+    preview_member: normalizeV2AssetLibraryPreviewMember(record.preview_member),
+    member_count: numberValue(record.member_count),
+    catalog_source: normalizeV2AssetLibraryCatalogSource(record.catalog_source ?? record.source),
+  };
+}
+
+function normalizeV2AssetLibraryMember(value: unknown): V2AssetLibraryMember {
+  const record = recordValue(value) ?? {};
+  const preview = normalizeV2AssetLibraryPreviewMember(record) ?? {
+    member_id: stringValue(record.member_id),
+    semantic_type: stringValue(record.semantic_type, "reference"),
+    asset_id: stringValue(record.asset_id),
+    version_id: stringValue(record.version_id),
+  };
+  return {
+    ...preview,
+    is_primary: typeof record.is_primary === "boolean" ? record.is_primary : undefined,
+    is_default_reference: typeof record.is_default_reference === "boolean" ? record.is_default_reference : undefined,
+    sort_order: typeof record.sort_order === "number" ? record.sort_order : undefined,
+    display_name: stringOrNull(record.display_name),
+    mime_type: stringOrNull(record.mime_type),
+    width: numberOrNull(record.width),
+    height: numberOrNull(record.height),
+    duration_seconds: numberOrNull(record.duration_seconds),
+  };
+}
+
+export function normalizeV2AssetLibraryEntityDetail(value: unknown): V2AssetLibraryEntityDetail {
+  const record = recordValue(value) ?? {};
+  const summary = normalizeV2AssetLibraryEntitySummary(record.entity ?? record);
+  return {
+    ...summary,
+    members: recordArray(record.members ?? record.assets).map(normalizeV2AssetLibraryMember),
+    created_at: stringOrNull(record.created_at),
+    updated_at: stringOrNull(record.updated_at),
+  };
+}
+
+export function normalizeV2RecommendedCatalogStatus(value: unknown): V2RecommendedCatalogStatus {
+  const record = recordValue(value) ?? {};
+  return {
+    catalog_key: stringValue(record.catalog_key, "recommended"),
+    catalog_version: stringOrNull(record.catalog_version),
+    status: stringValue(record.status, "not_installed"),
+    progress_current: numberOrNull(record.progress_current),
+    progress_total: numberOrNull(record.progress_total),
+    last_error_code: stringOrNull(record.last_error_code),
+    message: stringOrNull(record.message),
+  };
+}
+
+export function normalizeV2AssetLibraryListResponse(value: unknown): V2AssetLibraryListResponse {
+  const record = recordValue(value) ?? {};
+  return {
+    entities: recordArray(record.entities).map(normalizeV2AssetLibraryEntitySummary),
+    next_cursor: stringOrNull(record.next_cursor),
+    catalog_status: record.catalog_status ? normalizeV2RecommendedCatalogStatus(record.catalog_status) : null,
+  };
+}
+
+function normalizeV2ReferenceBinding(value: unknown): V2ReferenceBinding {
+  const record = recordValue(value) ?? {};
+  return {
+    binding_id: stringValue(record.binding_id, stringValue(record.relation_id)),
+    source_entity_id: stringOrNull(record.source_entity_id),
+    asset_id: stringValue(record.asset_id),
+    version_id: stringValue(record.version_id),
+    reference_role: stringValue(record.reference_role, "visual_reference"),
+  };
+}
+
+export function normalizeV2ReferenceSelectionsResponse(value: unknown): V2ReferenceSelectionsResponse {
+  const record = recordValue(value) ?? {};
+  return {
+    workflow: record.workflow ? normalizeWorkflowV2(record.workflow) : null,
+    selection_group_id: stringOrNull(record.selection_group_id),
+    bindings: recordArray(record.bindings).map(normalizeV2ReferenceBinding),
+    removed_binding_id: stringOrNull(record.removed_binding_id ?? record.binding_id),
+    runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+    events: normalizeWorkflowRuntimeEventArrayV2(record.events, record),
+  };
+}
+
 export function normalizeV2SlotReferenceUploadResponse(value: unknown): V2SlotReferenceUploadResponse {
   const record = isRecord(value) ? value : {};
   const assets = recordArray(record.assets ?? record.asset_versions).map(normalizeAssetVersionV2);
@@ -1278,6 +1411,7 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
   return {
     workflow_id: stringValue(value.workflow_id),
     workflow_schema_version: 2,
+    state_version: typeof value.state_version === "number" && Number.isFinite(value.state_version) ? value.state_version : undefined,
     name: stringValue(value.name) || undefined,
     description: stringValue(value.description) || undefined,
     prompt: stringValue(value.prompt) || undefined,

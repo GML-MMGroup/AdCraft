@@ -30,16 +30,17 @@ import type {
   AssetVersionV2,
   SlotVersionsResponseV2,
   V2ReferenceAttachRequest,
+  V2AssetLibraryCategory,
   WorkflowItemV2,
   WorkflowRuntimeV2,
   WorkflowSlotV2,
+  WorkflowV2,
 } from "../../../types-v2.ts";
 import type { NodeDebugLoadState } from "../../../workflow/useWorkflowNodeDebugState.ts";
 import type { NodePanelModel } from "../../../workflow/nodePanelModel.ts";
 import type { AssetLibrarySaveTarget } from "../assets/useAssetLibrarySaveDialog.ts";
 import type { LocalRevisionCardState, RevisionCandidateBusyState } from "../assets/useWorkflowAssetOperations.ts";
 import type { FinalCompositionTimelineViewState } from "../final-composition/useFinalCompositionPageController.ts";
-import type { V2LibraryReferenceOption } from "../types.ts";
 import type { useWorkflowWorkbenchModel } from "./useWorkflowWorkbenchModel.ts";
 import { WorkflowWorkbenchV2Section } from "./WorkflowWorkbenchV2Section.tsx";
 import { WorkflowWorkbenchPromptSection } from "./WorkflowWorkbenchPromptSection.tsx";
@@ -73,9 +74,9 @@ export type WorkflowWorkbenchSurfaceModel = ReturnType<typeof useWorkflowWorkben
   selectedAssets: UploadedAsset[];
   selectedV2AssetVersions: Map<string, AssetVersionV2>;
   workflowV2Runtime?: WorkflowRuntimeV2;
+  workflowV2?: WorkflowV2 | null;
   v2SlotVersionsById: Record<string, SlotVersionsResponseV2 | undefined>;
   selectedV2ReferenceAssets: V2SlotReferenceAsset[];
-  v2LibraryReferenceOptions: V2LibraryReferenceOption[];
   v2ProviderTaskRefreshKeyBySlotId: Record<string, number | undefined>;
   selectedFreeGenerationMediaType?: string | null;
   selectedFreeAbsorbTargetNodes: WorkflowNode[];
@@ -224,7 +225,7 @@ export type WorkflowWorkbenchSurfaceActions = {
   setAssetLibraryDisplayName: (value: string) => void;
   setAssetLibraryTags: (value: string) => void;
   setAssetLibrarySaveTarget: StateSetter<AssetLibrarySaveTarget | null>;
-  saveAssetLibraryTarget: () => MaybePromise;
+  saveAssetLibraryTarget: (category?: V2AssetLibraryCategory) => MaybePromise;
   updateSelectedConfig: (value: string) => void;
   setStaleReason: (value: string) => void;
   getWorkflowNodeType: (node: WorkflowNode) => string;

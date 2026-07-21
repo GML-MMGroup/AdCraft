@@ -34,8 +34,6 @@ const V2_SLOT_OPERATION_REFRESH_EVENTS = new Set([
   "slot_working_version_updated",
   "slot_selected_version_updated",
   "slot_versions_updated",
-  "reference_attached",
-  "reference_removed",
   "asset_version_created",
   "provider_task_waiting",
   "provider_task_completed",
@@ -256,6 +254,7 @@ export function createV2LocalSynchronizationRefreshPlan(
 
 export function v2EventShouldRefreshRuntime(event: WorkflowRuntimeEventV2) {
   if (isV2SynchronizationEvent(event.event_type)) return false;
+  if (event.event_type === "reference_attached" || event.event_type === "reference_removed") return false;
   return V2_RUNTIME_REFRESH_EVENT_TYPES.has(event.event_type) ||
     v2EventRefreshHints(event).some((hint) => hint === "runtime" || hint === "workflow" || hint === "slot_versions" || hint === "assets");
 }
