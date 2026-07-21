@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
@@ -46,37 +46,35 @@ function Ensure-AdCraftWsl2 {
     }
 }
 
-function Find-AdCraftDockerDesktop {
-    foreach ($candidate in @(
-        'C:\Program Files\Docker\Docker\Docker Desktop.exe',
-        (Join-Path $env:LOCALAPPDATA 'Programs\Docker\Docker\Docker Desktop.exe')
-    )) {
-        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-            return $candidate
-        }
-    }
-    return $null
-}
-
 function Ensure-AdCraftDockerDesktop {
     if (-not (Test-AdCraftDockerReady)) {
-        $dockerDesktopPath = Find-AdCraftDockerDesktop
-        if ($null -eq $dockerDesktopPath) {
+        if ($null -eq (Get-Command docker -ErrorAction SilentlyContinue)) {
             if ($null -eq (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
                 Stop-AdCraft '未找到 winget。请从 Microsoft Store 安装 App Installer，然后重新运行本脚本。'
             }
 
             & winget.exe install --exact --id Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
             if ($LASTEXITCODE -ne 0) { Stop-AdCraft 'Docker Desktop 安装失败。' }
-
-            $dockerDesktopPath = Find-AdCraftDockerDesktop
-            if ($null -eq $dockerDesktopPath) {
-                Stop-AdCraft '未找到 Docker Desktop.exe。'
-            }
         }
 
-        Start-Process -FilePath $dockerDesktopPath
-        Wait-AdCraftDockerReady
+        $dockerDesktopPath = $null
+        foreach ($candidate in @(
+            'C:\Program Files\Docker\Docker\Docker Desktop.exe',
+            (Join-Path $env:LOCALAPPDATA 'Programs\Docker\Docker\Docker Desktop.exe')
+        )) {
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                $dockerDesktopPath = $candidate
+                break
+            }
+        }
+        if ($null -eq $dockerDesktopPath) {
+            Stop-AdCraft '未找到 Docker Desktop.exe。'
+        }
+
+        if (-not (Test-AdCraftDockerReady)) {
+            Start-Process -FilePath $dockerDesktopPath
+            Wait-AdCraftDockerReady
+        }
     }
 
     $osType = (& docker info --format '{{.OSType}}').Trim()

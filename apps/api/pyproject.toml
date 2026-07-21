@@ -5,12 +5,14 @@ description = "Production backend for AdCraft, a multi-agent advertising workflo
 requires-python = ">=3.10.12"
 dependencies = [
     "agno>=2.6.9",
+    "alembic>=1.13,<2",
     "fastapi>=0.136.3",
     "filelock>=3.30.2",
     "openai>=2.38.0",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "python-multipart>=0.0.30",
+    "sqlalchemy>=2.0,<3",
     "uvicorn>=0.48.0",
 ]
 
