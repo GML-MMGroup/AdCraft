@@ -3389,6 +3389,35 @@ a {
   overflow-wrap: anywhere;
 }
 
+.conversation-event.agent-message {
+  justify-self: start;
+}
+
+.conversation-event.agent-message.is-user {
+  justify-self: end;
+  border-color: rgba(108, 93, 171, 0.32);
+  background: rgba(229, 224, 250, 0.78);
+  box-shadow: 0 8px 20px rgba(90, 76, 143, 0.1);
+}
+
+.conversation-event.agent-message.is-user p {
+  color: rgba(62, 52, 108, 0.92);
+}
+
+.conversation-event.agent-message.is-user .agent-speaker-badge,
+.conversation-event.agent-message.is-user time {
+  justify-self: end;
+}
+
+.conversation-event.agent-message.is-user .agent-speaker-badge {
+  background: rgba(108, 93, 171, 0.18);
+  color: rgba(79, 66, 132, 0.98);
+}
+
+.conversation-event.agent-message.is-user time {
+  color: rgba(79, 66, 132, 0.76);
+}
+
 .conversation-event p {
   margin: 0;
   color: var(--muted);
