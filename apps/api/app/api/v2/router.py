@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from app.api.v2.persistence import require_v2_persistence
 from app.api.v2.endpoints import (
     health,
     input_assets,
@@ -11,7 +12,7 @@ from app.api.v2.endpoints import (
 )
 
 
-api_router = APIRouter()
+api_router = APIRouter(dependencies=[Depends(require_v2_persistence)])
 api_router.include_router(health.router)
 api_router.include_router(media_toolchain.router)
 api_router.include_router(provider_callbacks.router)

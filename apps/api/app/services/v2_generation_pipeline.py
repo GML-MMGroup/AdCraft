@@ -2578,6 +2578,7 @@ class V2GenerationPipeline:
         failure_metadata = sanitize_context_for_llm_text(metadata or {})
         if isinstance(failure_metadata, dict):
             slot.metadata.update(failure_metadata)
+        event_metadata = _event_safe_failure_metadata(failure_metadata)
         payload = {
             "error": message,
             "code": code,
@@ -2587,8 +2588,7 @@ class V2GenerationPipeline:
             "slot_type": slot.slot_type,
             "media_type": slot.media_type,
         }
-        if isinstance(failure_metadata, dict):
-            payload.update(failure_metadata)
+        payload.update(event_metadata)
         transition_slot(
             workflow,
             slot,
@@ -2822,6 +2822,14 @@ def _detected_media_metadata(quality_result: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, str) and value.strip():
             metadata[key] = value
     return metadata
+
+
+def _event_safe_failure_metadata(metadata: Any) -> dict[str, Any]:
+    """Drop renderer-only arguments before emitting a durable runtime event."""
+
+    if not isinstance(metadata, dict):
+        return {}
+    return {key: value for key, value in metadata.items() if key != "ffmpeg_args"}
 
 
 def _bgm_asset_metadata_from_payload(

@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from pathlib import Path
+import time
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -23,6 +24,8 @@ PROVIDER_RECOVERABLE_TIMEOUT = "provider_recoverable_timeout"
 PROVIDER_RECOVERABLE_RATE_LIMIT = "provider_recoverable_rate_limit"
 PROVIDER_RECOVERABLE_TEMPORARY_FAILURE = "provider_recoverable_temporary_failure"
 PROVIDER_RETRY_EXHAUSTED = "provider_retry_exhausted"
+_TRANSIENT_RETRY_BASE_DELAY_SECONDS = 0.5
+_TRANSIENT_RETRY_MAX_DELAY_SECONDS = 2.0
 
 RetryEventAppender = Callable[..., WorkflowV2Event]
 
@@ -105,6 +108,17 @@ class V2ProviderRecoveryPolicy:
         normalized_code = code.lower()
         if _is_terminal_provider_error(normalized_code, haystack):
             return None
+        if normalized_code == "provider_timeout":
+            return PROVIDER_RECOVERABLE_TIMEOUT
+        if normalized_code == "provider_rate_limited":
+            return PROVIDER_RECOVERABLE_RATE_LIMIT
+        if normalized_code in {
+            "provider_connection_reset",
+            "provider_temporary_unavailable",
+            "provider_5xx",
+            "provider_server_error",
+        }:
+            return PROVIDER_RECOVERABLE_TEMPORARY_FAILURE
         if "outputimagesensitivecontentdetected" in normalized_code or (
             "sensitive" in haystack and "content" in haystack
         ):
@@ -138,9 +152,16 @@ class V2ProviderRecoveryPolicy:
 
 
 class V2ProviderRecoveryRunner:
-    def __init__(self, *, settings: Settings, data_dir: Path) -> None:
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        data_dir: Path,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
         self._policy = V2ProviderRecoveryPolicy(settings)
         self._event_store = V2EventStore(data_dir)
+        self._sleep = sleep or time.sleep
 
     def execute(
         self,
@@ -204,6 +225,9 @@ class V2ProviderRecoveryRunner:
                 append_event=append_event,
             )
             retry_plan = _retry_plan(current_plan, slot, decision)
+            retry_delay = _provider_retry_delay_seconds(decision, retry_attempts_used)
+            if retry_delay > 0:
+                self._sleep(retry_delay)
             self._append_retry_event(
                 "provider_retry_started",
                 context,
@@ -343,6 +367,23 @@ def _is_terminal_provider_error(normalized_code: str, haystack: str) -> bool:
         "unsupported v2 provider media type",
     )
     return any(term in haystack for term in terminal_terms)
+
+
+def _provider_retry_delay_seconds(
+    decision: V2ProviderRecoveryDecision,
+    retry_attempts_used: int,
+) -> float:
+    if decision.reason_code not in {
+        PROVIDER_RECOVERABLE_TIMEOUT,
+        PROVIDER_RECOVERABLE_RATE_LIMIT,
+        PROVIDER_RECOVERABLE_TEMPORARY_FAILURE,
+    }:
+        return 0.0
+    exponent = max(0, retry_attempts_used - 1)
+    return min(
+        _TRANSIENT_RETRY_MAX_DELAY_SECONDS,
+        _TRANSIENT_RETRY_BASE_DELAY_SECONDS * (2**exponent),
+    )
 
 
 def _retry_metadata(
