@@ -274,16 +274,21 @@ export function PromptComposer({
       return;
     }
     try {
-      await onGenerate(prompt, draftContext(prompt));
-      if (clearOnGenerate) setValue("");
-      setMentionReferences([]);
-      setMentionNodeReferences([]);
-      setMentionTargetReferences([]);
-      setStructuredTargets([]);
-      setAttachments([]);
+      const context = draftContext(prompt);
+      if (clearOnGenerate) clearMessageDraft();
+      await onGenerate(prompt, context);
     } catch (event) {
       setError(event instanceof Error ? event.message : "Send failed");
     }
+  }
+
+  function clearMessageDraft() {
+    setValue("");
+    setMentionReferences([]);
+    setMentionNodeReferences([]);
+    setMentionTargetReferences([]);
+    setStructuredTargets([]);
+    setAttachments([]);
   }
 
   function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
