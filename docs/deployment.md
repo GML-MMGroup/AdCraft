@@ -4,6 +4,8 @@
 
 This guide starts AdCraft on your own computer. It is written for first-time users: the supplied launcher installs its required runtime when necessary, builds AdCraft, starts it, and prints the local address to open.
 
+If the one-click launcher cannot complete on your computer, follow the [manual step-by-step deployment guide](manual-deployment.md). It uses the same Docker configuration but lets you run and inspect every stage yourself.
+
 ## What You Need
 
 - A complete copy of the AdCraft project folder. Keep the folder together; do not run a script from a copied `scripts` folder.
