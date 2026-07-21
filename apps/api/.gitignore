@@ -32,6 +32,11 @@ openspec/.worksets/
 # Generated media artifacts
 data/
 
+# V2 SQLite persistence runtime
+/data/v2/adcraft.sqlite3
+/data/v2/adcraft.sqlite3-*
+/data/v2/.persistence.lock
+
 docs/
 change-logs/
 
