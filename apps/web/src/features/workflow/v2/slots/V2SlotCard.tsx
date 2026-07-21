@@ -1,6 +1,8 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
-import type { AssetVersionV2, RuntimeRecordV2, SlotVersionsResponseV2, V2ReferenceAttachRequest, WorkflowSlotV2 } from "../../../../types-v2.ts";
-import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, outdatedHintForSlot, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
+import { DeferredVideo } from "../../../../components/media/DeferredVideo.tsx";
+import { versionedMediaPath } from "../../../../workflow/mediaPreview.ts";
+import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
 import { V2ReferencePicker } from "../references/V2ReferencePicker.tsx";
@@ -9,6 +11,7 @@ import { V2ProviderTaskPanel } from "../provider/V2ProviderTaskPanel.tsx";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
 import { V2SlotReferenceComposer } from "./V2SlotReferenceComposer.tsx";
 import { V2SlotVersionActions } from "./V2SlotVersionActions.tsx";
+import { createSlotPromptEditorState, rebaseSlotPromptEditorState, saveSlotPromptEditorState, type SlotPromptSaveResult } from "./slotPromptEditorState.ts";
 
 type V2SlotCardProps = {
   slot: WorkflowSlotV2;
@@ -20,7 +23,7 @@ type V2SlotCardProps = {
   runtimeRecord?: RuntimeRecordV2;
   onGenerate?: (slotId: string) => Promise<unknown> | unknown;
   onLoadVersions?: (slotId: string) => void;
-  onSavePrompt?: (slotId: string, prompt: string, negativePrompt?: string) => Promise<unknown> | unknown;
+  onSavePrompt?: (slotId: string, prompt: string, negativePrompt?: string) => Promise<SlotPromptSaveResult> | SlotPromptSaveResult;
   onSelectCurrentVersion?: (slotId: string, versionId: string) => void;
   onDiscardWorkingVersion?: (slotId: string) => void;
   onDeleteSelectedAsset?: (slotId: string) => void;
@@ -76,7 +79,7 @@ function V2AssetVersionPreview({ asset, label }: { asset?: AssetVersionV2; label
     // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Right-click copies the V2 asset locator; normal image click behavior is unchanged.
     return <img src={url} alt={label} loading="lazy" decoding="async" onContextMenu={onContextMenu} />;
   }
-  if (asset.media_type === "video") return <video src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
+  if (asset.media_type === "video") return <DeferredVideo src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
   if (asset.media_type === "audio") return <audio src={url} controls preload="metadata" onContextMenu={onContextMenu} />;
   return <span>{url}</span>;
 }
@@ -103,12 +106,21 @@ export function V2SlotCard({
   libraryOptions = [],
   onAttachReference,
 }: V2SlotCardProps) {
-  const [slotPrompt, setSlotPrompt] = useState(slot.slot_prompt ?? "");
-  const [negativePrompt, setNegativePrompt] = useState(slot.negative_prompt ?? "");
+  const effectivePrompt = effectiveSlotPrompt(slot);
+  const { slot_prompt, system_suggested_prompt, user_prompt, negative_prompt } = slot;
+  const serverPromptState = useMemo(
+    () => createSlotPromptEditorState({ slot_prompt, system_suggested_prompt, user_prompt, negative_prompt }),
+    [negative_prompt, slot_prompt, system_suggested_prompt, user_prompt],
+  );
+  const [promptState, setPromptState] = useState(serverPromptState);
+  const promptStateRef = useRef(promptState);
   useEffect(() => {
-    setSlotPrompt(slot.slot_prompt ?? "");
-    setNegativePrompt(slot.negative_prompt ?? "");
-  }, [slot.slot_id, slot.slot_prompt, slot.negative_prompt]);
+    setPromptState((current) => {
+      const next = rebaseSlotPromptEditorState(current, serverPromptState);
+      promptStateRef.current = next;
+      return next;
+    });
+  }, [serverPromptState]);
   const workingIsSelected = Boolean(workingVersion && selectedAsset && workingVersion.asset_id === selectedAsset.asset_id);
   const versionHistory = dedupeSlotVersionAssets(slotVersions?.versions?.length ? slotVersions.versions : historyVersions);
   const referenceAttachments = slotReferencesAsAttachments(slot, referenceAssets);
@@ -120,7 +132,6 @@ export function V2SlotCard({
     history_versions: versionHistory,
     quality_status: workingVersion?.quality_status ?? selectedAsset?.quality_status,
   });
-  const outdatedHint = outdatedHintForSlot(slot);
   const advancedPromptFields = [
     ["Dialogue prompt", slot.dialogue_prompt],
     ["Audio description prompt", slot.audio_description_prompt],
@@ -148,12 +159,40 @@ export function V2SlotCard({
   const slotWaiting = providerWaiting || runtimeStatus === "waiting" || slot.status === "waiting";
   const referenceAudit = referenceAuditForSlot(slot, runtimeRecord, workingVersion ?? selectedAsset);
   const slotLabel = SLOT_LABELS[slot.slot_type] ?? slot.slot_type.replace(/_/g, " ");
-  const promptDirty = slotPrompt !== (slot.slot_prompt ?? "") || negativePrompt !== (slot.negative_prompt ?? "");
+  const { prompt: slotPrompt, negativePrompt, dirty: promptDirty } = promptState;
+
+  function changeSlotPrompt(prompt: string) {
+    setPromptState((current) => {
+      const next = { ...current, prompt, dirty: prompt !== current.basePrompt || current.negativePrompt !== current.baseNegativePrompt };
+      promptStateRef.current = next;
+      return next;
+    });
+  }
+
+  function changeNegativePrompt(nextNegativePrompt: string) {
+    setPromptState((current) => {
+      const next = { ...current, negativePrompt: nextNegativePrompt, dirty: current.prompt !== current.basePrompt || nextNegativePrompt !== current.baseNegativePrompt };
+      promptStateRef.current = next;
+      return next;
+    });
+  }
+
+  async function savePrompt() {
+    if (!onSavePrompt) return false;
+    const submitted = promptStateRef.current;
+    const saved = await saveSlotPromptEditorState(
+      submitted,
+      () => onSavePrompt(slot.slot_id, submitted.prompt, submitted.negativePrompt),
+      () => promptStateRef.current,
+    );
+    if (!saved.saved) return false;
+    promptStateRef.current = saved.state;
+    setPromptState(saved.state);
+    return true;
+  }
 
   async function generateSlotVersion() {
-    if (promptDirty) {
-      await onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt);
-    }
+    if (promptDirty && !await savePrompt()) return;
     await onGenerate?.(slot.slot_id);
   }
 
@@ -163,13 +202,6 @@ export function V2SlotCard({
         <span>{slotLabel}</span>
         <span className="v2-slot-status">{runtimeStatus || slot.status}</span>
       </header>
-      {outdatedHint.active ? (
-        <aside className="v2-slot-outdated-hint" aria-label="Reference updated">
-          <strong>{outdatedHint.label || "Reference updated"}</strong>
-          <span>Based on an older reference</span>
-          {outdatedHint.sources.length ? <small>{outdatedHint.sources.map((source) => source.source_slot_id || source.source_asset_id || source.reason).filter(Boolean).join(" · ")}</small> : null}
-        </aside>
-      ) : null}
       {providerStatusItems.length || materializerWarnings.length ? (
         <section className="v2-provider-status" aria-label="Provider task status">
           {providerWaiting ? <strong>Generating / waiting for provider</strong> : null}
@@ -272,7 +304,7 @@ export function V2SlotCard({
           attachments={referenceAttachments}
           libraryOptions={libraryOptions}
           semanticType={slot.slot_type}
-          onPromptChange={setSlotPrompt}
+          onPromptChange={changeSlotPrompt}
           onRefreshReferences={async () => {
             onLoadVersions?.(slot.slot_id);
             await onRefreshWorkflow?.();
@@ -281,7 +313,7 @@ export function V2SlotCard({
       ) : (
         <label className="v2-slot-prompt">
           <span>Slot prompt</span>
-          <textarea value={slotPrompt} onChange={(event) => setSlotPrompt(event.target.value)} />
+          <textarea value={slotPrompt} onChange={(event) => changeSlotPrompt(event.target.value)} />
         </label>
       )}
       <V2ReferenceAuditPanel audit={referenceAudit} />
@@ -301,10 +333,10 @@ export function V2SlotCard({
       {slot.negative_prompt !== undefined ? (
         <label className="v2-slot-prompt">
           <span>Negative prompt</span>
-          <textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} />
+          <textarea value={negativePrompt} onChange={(event) => changeNegativePrompt(event.target.value)} />
         </label>
       ) : null}
-      <button type="button" onClick={() => onSavePrompt?.(slot.slot_id, slotPrompt, negativePrompt)}>
+      <button type="button" onClick={() => void savePrompt()}>
         Save slot prompt
       </button>
       {advancedPromptFields.length || providerPromptSnapshot || agentRouteSnapshot || providerPayloadSnapshot ? (
@@ -367,6 +399,7 @@ export function V2SlotCard({
   );
 }
 
+
 function formatProviderWarning(value: string | Record<string, unknown>) {
   if (typeof value === "string") return value;
   const code = typeof value.code === "string" ? value.code : "";
@@ -387,7 +420,7 @@ function slotReferencesAsAttachments(
       sourceVersionId: asset?.version_id ?? null,
       displayName: asset?.display_name || assetId,
       mediaType: referenceMediaType(asset?.media_type),
-      previewUrl: asset?.preview_url ?? asset?.public_url ?? null,
+      previewUrl: asset ? versionedMediaPath(asset.preview_url ?? asset.public_url, asset) || null : null,
       semanticType: slot.slot_type,
       source: "workflow_asset",
     };

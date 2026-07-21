@@ -43,6 +43,7 @@ import {
   v2SlotsForDebug,
 } from "../v2/v2DebugViewModel";
 import {
+  DEFAULT_LAYOUT_VIEWPORT_PADDING,
   flowNodeToWorkflowNode,
   layoutNodes,
   mapWorkflowEdges,
@@ -68,6 +69,8 @@ import {
   isSuccessfulNodeStatus,
   mergeOutputPreservingQuality,
 } from "../quality/qualityReviewViewModel";
+import { createV2WorkflowHydrationRequestGuard } from "./v2WorkflowHydrationRequestGuard.ts";
+import { createV2WorkflowApplicationRevisionGuard } from "./v2WorkflowApplicationRevisionGuard.ts";
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
@@ -106,10 +109,29 @@ export type WorkflowGraphSyncControllerArgs = {
 
 export function useWorkflowGraphSyncController(args: WorkflowGraphSyncControllerArgs) {
   const argsRef = useRef(args);
+  const hydrationRequestGuardRef = useRef<ReturnType<typeof createV2WorkflowHydrationRequestGuard> | null>(null);
+  if (!hydrationRequestGuardRef.current) {
+    hydrationRequestGuardRef.current = createV2WorkflowHydrationRequestGuard();
+  }
+  const hydrationRequestGuard = hydrationRequestGuardRef.current;
+  const workflowApplicationRevisionGuardRef = useRef<ReturnType<typeof createV2WorkflowApplicationRevisionGuard> | null>(null);
+  if (!workflowApplicationRevisionGuardRef.current) {
+    workflowApplicationRevisionGuardRef.current = createV2WorkflowApplicationRevisionGuard();
+  }
+  const workflowApplicationRevisionGuard = workflowApplicationRevisionGuardRef.current;
 
   useEffect(() => {
     argsRef.current = args;
   }, [args]);
+
+  useEffect(() => {
+    hydrationRequestGuard.activateWorkflow(args.workflow?.workflow_id ?? null);
+    workflowApplicationRevisionGuard.activateWorkflow(args.workflow?.workflow_id ?? null);
+    return () => {
+      hydrationRequestGuard.invalidate();
+      workflowApplicationRevisionGuard.invalidate();
+    };
+  }, [args.workflow?.workflow_id, hydrationRequestGuard, workflowApplicationRevisionGuard]);
 
   async function applyWorkflowGraph(nextWorkflow: WorkflowGraph) {
     const current = argsRef.current;
@@ -128,55 +150,93 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     current.setDetailsOpen(true);
     await current.refreshWorkflowNodes(nextWorkflow.workflow_id);
     await current.refreshMediaStatus(nextWorkflow.workflow_id);
-    window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
 
   async function applyWorkflowV2(
     nextWorkflow: WorkflowV2,
-    options: { refreshAssetsReason?: string | false; preserveViewport?: boolean } = {},
+    options: { refreshAssetsReason?: string | false; preserveViewport?: boolean; refreshRuntime?: boolean } = {},
   ) {
     const current = argsRef.current;
+    workflowApplicationRevisionGuard.appliedWorkflow(nextWorkflow.workflow_id);
     const graph = workflowV2ToWorkflowGraph(nextWorkflow);
+    const preserveExistingLayout = Boolean(
+      options.preserveViewport ||
+      (current.workflow?.workflow_id === nextWorkflow.workflow_id && current.flowNodes.length),
+    );
     current.activeWorkflowIdRef.current = nextWorkflow.workflow_id;
-    clearSnapshot(nextWorkflow.workflow_id);
     current.setWorkflow(graph);
     syncWorkflowAdRequest(graph);
     current.setWorkflowVariables(graph.variables ?? []);
-    const nextFlowNodes = mapWorkflowNodes(graph.nodes, current.nodeRunByType, options.preserveViewport ? current.flowNodes : []);
+    const nextFlowNodes = mapWorkflowNodes(graph.nodes, current.nodeRunByType, preserveExistingLayout ? current.flowNodes : []);
     const nextFlowEdges = mapWorkflowEdges(graph.edges, nextFlowNodes);
-    const nextLayoutNodes = options.preserveViewport ? nextFlowNodes : layoutNodes(nextFlowNodes, nextFlowEdges);
+    const nextLayoutNodes = preserveExistingLayout ? nextFlowNodes : layoutNodes(nextFlowNodes, nextFlowEdges);
     current.setCanvasNodes(syncWorkflowNodePositions(graph.nodes, nextLayoutNodes));
     current.setFlowNodes(nextLayoutNodes);
     current.setFlowEdges(nextFlowEdges);
     current.setSelectedNodeId((selectedNodeId) =>
-      options.preserveViewport && selectedNodeId && graph.nodes.some((node) => node.id === selectedNodeId && isUserVisibleWorkflowNode(node))
+      preserveExistingLayout && selectedNodeId && graph.nodes.some((node) => node.id === selectedNodeId && isUserVisibleWorkflowNode(node))
         ? selectedNodeId
         : firstVisibleWorkflowNodeId(graph.nodes),
     );
-    current.setDetailsOpen(true);
+    if (!preserveExistingLayout) {
+      current.setDetailsOpen(true);
+    }
     const refreshAssetsReason = options.refreshAssetsReason ?? "apply-workflow";
     if (refreshAssetsReason) {
       await refreshV2AssetsAndRetryMissing(nextWorkflow.workflow_id, refreshAssetsReason, nextWorkflow);
     }
-    await current.syncV2RuntimeSnapshot(nextWorkflow.workflow_id);
-    if (!options.preserveViewport) {
-      window.setTimeout(() => current.reactFlow?.fitView({ padding: 0.28 }), 0);
+    if (options.refreshRuntime !== false) await current.syncV2RuntimeSnapshot(nextWorkflow.workflow_id);
+    if (!preserveExistingLayout) {
+      window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
     }
   }
 
-  async function refreshV2WorkflowGraph(id: string) {
+  async function refreshV2WorkflowGraph(
+    id: string,
+    options: { refreshRuntime?: boolean; refreshAssets?: boolean } = {},
+  ) {
+    const requestToken = hydrationRequestGuard.begin(id);
+    const applicationCapture = workflowApplicationRevisionGuard.capture(id);
     try {
       const nextWorkflow = await v2Api.workflow(id);
       const current = argsRef.current;
-      if (!shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)) return null;
+      if (
+        !hydrationRequestGuard.isCurrent(requestToken, current.activeWorkflowIdRef.current) ||
+        !workflowApplicationRevisionGuard.isCurrent(applicationCapture, current.activeWorkflowIdRef.current) ||
+        !shouldApplyWorkflowScopedResult(id, current.activeWorkflowIdRef.current)
+      ) return null;
       const graph = workflowV2ToWorkflowGraph(nextWorkflow);
-      await applyWorkflowV2(nextWorkflow, { refreshAssetsReason: false, preserveViewport: true });
+      await applyWorkflowV2(nextWorkflow, {
+        refreshAssetsReason: false,
+        preserveViewport: true,
+        refreshRuntime: options.refreshRuntime,
+      });
+      if (!hydrationRequestGuard.isCurrent(requestToken, argsRef.current.activeWorkflowIdRef.current)) return null;
       argsRef.current.setSavedAt(graph.updated_at ?? new Date().toISOString());
-      await refreshV2AssetsAndRetryMissing(id, "workflow-refresh", nextWorkflow);
+      if (options.refreshAssets !== false) {
+        await refreshV2AssetsAndRetryMissing(id, "workflow-refresh", nextWorkflow);
+      }
+      if (!hydrationRequestGuard.isCurrent(requestToken, argsRef.current.activeWorkflowIdRef.current)) return null;
       return nextWorkflow;
     } catch {
       return null;
     }
+  }
+
+  function refreshV2WorkflowStructure(id: string) {
+    return refreshV2WorkflowGraph(id, { refreshRuntime: false, refreshAssets: false });
+  }
+
+  function captureV2WorkflowApplicationRevision(workflowId: string) {
+    return workflowApplicationRevisionGuard.capture(workflowId);
+  }
+
+  function isCurrentV2WorkflowApplicationRevision(
+    capture: ReturnType<typeof captureV2WorkflowApplicationRevision>,
+    currentActiveWorkflowId: string | null,
+  ) {
+    return workflowApplicationRevisionGuard.isCurrent(capture, currentActiveWorkflowId);
   }
 
   async function refreshV2AssetsAndRetryMissing(
@@ -483,7 +543,10 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
   const actionsRef = useRef<{
     applyWorkflowGraph: typeof applyWorkflowGraph;
     applyWorkflowV2: typeof applyWorkflowV2;
+    captureV2WorkflowApplicationRevision: typeof captureV2WorkflowApplicationRevision;
+    isCurrentV2WorkflowApplicationRevision: typeof isCurrentV2WorkflowApplicationRevision;
     refreshV2WorkflowGraph: typeof refreshV2WorkflowGraph;
+    refreshV2WorkflowStructure: typeof refreshV2WorkflowStructure;
     refreshV2AssetsAndRetryMissing: typeof refreshV2AssetsAndRetryMissing;
     currentWorkflowIsV2: typeof currentWorkflowIsV2;
     assertNotV2WorkflowForV1Api: typeof assertNotV2WorkflowForV1Api;
@@ -503,7 +566,10 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     actionsRef.current = {
       applyWorkflowGraph,
       applyWorkflowV2,
+      captureV2WorkflowApplicationRevision,
+      isCurrentV2WorkflowApplicationRevision,
       refreshV2WorkflowGraph,
+      refreshV2WorkflowStructure,
       refreshV2AssetsAndRetryMissing,
       currentWorkflowIsV2,
       assertNotV2WorkflowForV1Api,

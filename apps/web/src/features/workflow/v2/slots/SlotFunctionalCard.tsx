@@ -1,4 +1,5 @@
 import type { AssetVersionV2, SlotFunctionalCardViewModel } from "../../../../types-v2.ts";
+import { DeferredVideo } from "../../../../components/media/DeferredVideo.tsx";
 import { formatV2AssetLocator } from "../../../../workflow-v2/assetLocators.ts";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
 import { isIdOnlyAssetVersion, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
@@ -158,7 +159,7 @@ function AssetPreview({ asset, label }: { asset?: AssetVersionV2 | null; label: 
   const url = usableAssetVersionUrl(asset);
   if (!asset || !url) return <span className="v2-slot-functional-placeholder">No media yet</span>;
   if (asset.media_type === "image") return <img src={url} alt={label} loading="lazy" decoding="async" />;
-  if (asset.media_type === "video") return <video src={url} muted playsInline preload="metadata" />;
+  if (asset.media_type === "video") return <DeferredVideo src={url} muted playsInline preload="metadata" />;
   if (asset.media_type === "audio") return <span className="v2-slot-functional-placeholder">Audio</span>;
   return <span className="v2-slot-functional-placeholder">{asset.media_type}</span>;
 }

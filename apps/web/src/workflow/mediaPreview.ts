@@ -1,6 +1,26 @@
-import type { UploadedAsset } from "../types";
-
-type MediaAssetLike = Partial<UploadedAsset>;
+export type MediaAssetLike = {
+  public_url?: string | null;
+  remote_url?: string | null;
+  url?: string | null;
+  local_path?: string | null;
+  thumbnail_path?: string | null;
+  thumbnail_url?: string | null;
+  poster_path?: string | null;
+  poster_url?: string | null;
+  preview_path?: string | null;
+  preview_url?: string | null;
+  file_path?: string | null;
+  proxy_path?: string | null;
+  content_hash?: string | number | null;
+  file_hash?: string | number | null;
+  output_hash?: string | number | null;
+  hash?: string | number | null;
+  etag?: string | number | null;
+  updated_at?: string | number | null;
+  node_run_id?: string | number | null;
+  version?: string | number | null;
+  version_id?: string | null;
+};
 
 const EXTERNAL_MEDIA_URL_PATTERN = /^(https?:\/\/|\/\/|data:|blob:)/i;
 
@@ -18,6 +38,10 @@ export function mediaAssetPreviewPath(asset?: MediaAssetLike | null) {
     asset?.preview_url,
   );
   return withMediaVersion(previewPath || firstMediaPath(asset?.public_url, asset?.remote_url, asset?.url, asset?.local_path), asset);
+}
+
+export function versionedMediaPath(path?: string | null, asset?: MediaAssetLike | null) {
+  return withMediaVersion(path ?? "", asset);
 }
 
 export function mediaAssetPosterPath(asset?: MediaAssetLike | null) {
@@ -45,6 +69,7 @@ function withMediaVersion(path: string, asset?: MediaAssetLike | null) {
 
 function mediaVersionKey(asset?: MediaAssetLike | null) {
   return firstMediaPath(
+    stringValue(asset?.version_id),
     stringValue(asset?.content_hash),
     stringValue(asset?.file_hash),
     stringValue(asset?.output_hash),

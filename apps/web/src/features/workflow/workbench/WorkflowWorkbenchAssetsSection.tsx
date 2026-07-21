@@ -271,4 +271,3 @@ export function WorkflowWorkbenchAssetsSection({
     </NodeOutputAssetsPanel>
   );
 }
-

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import { createDomTransformScheduler, translate3dTransform, writeElementTransform } from "../workflow/highFrequencyInteraction";
 
 export type DraggablePanelKey = "run" | "detail" | "v2-slot-composer" | "v2-storyboard-prompt-composer";
@@ -7,6 +7,27 @@ export type PanelOffset = {
   x: number;
   y: number;
 };
+
+const PANEL_VIEWPORT_MARGIN = 8;
+
+function clampPanelOffsetToViewport(
+  panel: HTMLElement | null,
+  requested: PanelOffset,
+  applied: PanelOffset,
+): PanelOffset {
+  if (!panel || typeof window === "undefined") return requested;
+  const rect = panel.getBoundingClientRect();
+  const baseLeft = rect.left - applied.x;
+  const baseTop = rect.top - applied.y;
+  const minX = PANEL_VIEWPORT_MARGIN - baseLeft;
+  const maxX = window.innerWidth - PANEL_VIEWPORT_MARGIN - baseLeft - rect.width;
+  const minY = PANEL_VIEWPORT_MARGIN - baseTop;
+  const maxY = window.innerHeight - PANEL_VIEWPORT_MARGIN - baseTop - rect.height;
+  return {
+    x: minX > maxX ? minX : Math.min(maxX, Math.max(minX, requested.x)),
+    y: minY > maxY ? minY : Math.min(maxY, Math.max(minY, requested.y)),
+  };
+}
 
 type PanelDragSession = {
   pointerId: number;
@@ -59,13 +80,30 @@ export const WorkflowDraggablePanel = memo(function WorkflowDraggablePanel({
     [],
   );
 
-  useEffect(() => {
-    committedOffsetRef.current = offset;
-    latestTransformOffsetRef.current = offset;
+  useLayoutEffect(() => {
+    const clamped = clampPanelOffsetToViewport(panelRef.current, offset, offset);
+    committedOffsetRef.current = clamped;
+    latestTransformOffsetRef.current = clamped;
     if (!dragSessionRef.current) {
-      writeElementTransform(panelRef.current, offset);
+      writeElementTransform(panelRef.current, clamped);
     }
-  }, [offset]);
+    if (clamped.x !== offset.x || clamped.y !== offset.y) onOffsetCommit(panelKey, clamped);
+  }, [offset, onOffsetCommit, panelKey]);
+
+  useEffect(() => {
+    const clampOnResize = () => {
+      if (dragSessionRef.current) return;
+      const current = committedOffsetRef.current;
+      const clamped = clampPanelOffsetToViewport(panelRef.current, current, latestTransformOffsetRef.current);
+      if (clamped.x === current.x && clamped.y === current.y) return;
+      committedOffsetRef.current = clamped;
+      latestTransformOffsetRef.current = clamped;
+      writeElementTransform(panelRef.current, clamped);
+      onOffsetCommit(panelKey, clamped);
+    };
+    window.addEventListener("resize", clampOnResize);
+    return () => window.removeEventListener("resize", clampOnResize);
+  }, [onOffsetCommit, panelKey]);
 
   useEffect(() => {
     return () => transformScheduler.cancel();
@@ -121,10 +159,15 @@ export const WorkflowDraggablePanel = memo(function WorkflowDraggablePanel({
     (event: PointerEvent<HTMLElement>) => {
       const session = dragSessionRef.current;
       if (!session || session.pointerId !== event.pointerId) return;
-      session.nextOffset = {
+      const requested = {
         x: session.originX + event.clientX - session.startX,
         y: session.originY + event.clientY - session.startY,
       };
+      session.nextOffset = clampPanelOffsetToViewport(
+        panelRef.current,
+        requested,
+        latestTransformOffsetRef.current,
+      );
       latestTransformOffsetRef.current = session.nextOffset;
       transformScheduler.schedule();
     },

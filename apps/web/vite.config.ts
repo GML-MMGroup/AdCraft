@@ -1,7 +1,27 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import type { IncomingMessage } from "node:http";
+import { API_METADATA_CACHE_CONTROL, mediaCacheControl } from "./mediaCachePolicy";
 
 const FRONTEND_PORT = 5189;
+const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN?.trim() || "http://127.0.0.1:8888";
+
+type ProxyWithResponseEvents = {
+  on(event: "proxyRes", listener: (proxyResponse: IncomingMessage, request: IncomingMessage) => void): void;
+};
+
+function configureApiMetadataProxy(proxy: ProxyWithResponseEvents) {
+  proxy.on("proxyRes", (proxyResponse) => {
+    proxyResponse.headers["cache-control"] = API_METADATA_CACHE_CONTROL;
+    proxyResponse.headers.pragma = "no-cache";
+  });
+}
+
+function configureMediaProxy(proxy: ProxyWithResponseEvents) {
+  proxy.on("proxyRes", (proxyResponse, request) => {
+    proxyResponse.headers["cache-control"] = mediaCacheControl(request.url ?? "");
+  });
+}
 
 export default defineConfig({
   plugins: [react()],
@@ -19,6 +39,9 @@ export default defineConfig({
           if (id.includes("node_modules/@xyflow/react")) {
             return "vendor-react-flow";
           }
+          if (id.includes("node_modules/@xzdarcy/react-timeline-editor")) {
+            return "timeline-editor";
+          }
           if (
             id.includes("/src/AppContextValue") ||
             id.includes("/src/icons") ||
@@ -33,7 +56,17 @@ export default defineConfig({
           ) {
             return "app-core";
           }
-          if (id.includes("/src/features/workflow/") || id.includes("/src/workflow-v2/")) {
+          if (
+            id.includes("/src/features/workflow/v2/screenplay/V2Screenplay") ||
+            id.includes("/src/features/workflow/v2/screenplay/screenplayUiHelpers")
+          ) {
+            return "screenplay-editor";
+          }
+          if (
+            (id.includes("/src/features/workflow/")
+              && !id.includes("/src/features/workflow/final-composition/"))
+            || id.includes("/src/workflow-v2/")
+          ) {
             return "workflow";
           }
           return undefined;
@@ -57,12 +90,14 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_ORIGIN,
         changeOrigin: true,
+        configure: configureApiMetadataProxy,
       },
       "/media": {
-        target: "http://127.0.0.1:8000",
+        target: BACKEND_ORIGIN,
         changeOrigin: true,
+        configure: configureMediaProxy,
       },
     },
   },

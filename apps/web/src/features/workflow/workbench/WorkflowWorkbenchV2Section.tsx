@@ -1,7 +1,6 @@
 import { V2SlotCard } from "../v2/slots/V2SlotCard.tsx";
 import { v2EditableItemPrompt, v2ItemPromptLabel } from "../v2/v2PromptModel.ts";
 import { runtimeForSlot, selectedAssetForSlot, workingVersionForSlot, historyVersionsForSlot } from "../../../workflow-v2/selectors.ts";
-import { stringFromUnknown } from "../runtime/resolvedInputsViewModel.ts";
 import type { WorkflowWorkbenchSurfaceActions, WorkflowWorkbenchSurfaceModel } from "./WorkflowWorkbenchSurface.tsx";
 
 export function WorkflowWorkbenchV2Section({
@@ -35,8 +34,6 @@ export function WorkflowWorkbenchV2Section({
     changeDynamicItemPrompt,
     saveV2ItemPrompt,
     confirmV2ShotSummary,
-    createV2FinalTimelineClip,
-    deleteV2FinalTimelineClip,
     runSelectedV2Slot,
     loadV2SlotVersions,
     saveV2SlotPrompt,
@@ -54,6 +51,7 @@ export function WorkflowWorkbenchV2Section({
   } = actions;
 
   if (!selectedPlanNode) return null;
+  if (currentWorkflowIsV2() && selectedPlanNode.id === "final-composition") return null;
 
   return (
     <>
@@ -91,7 +89,6 @@ export function WorkflowWorkbenchV2Section({
           {selectedV2Items.map((item) => {
             const itemSlots = selectedV2SlotsByItemId.get(item.item_id) ?? [];
             const itemPromptDraft = dynamicItemPromptDrafts[item.item_id] ?? v2EditableItemPrompt(item);
-            const timelineClips = Array.isArray(item.timeline_clips) ? item.timeline_clips : [];
             return (
               <article className="v2-workbench-item" key={item.item_id} data-v2-item-id={item.item_id}>
                 <header className="v2-workbench-item-heading">
@@ -112,24 +109,7 @@ export function WorkflowWorkbenchV2Section({
                       Confirm shot summary
                     </button>
                   ) : null}
-                  {selectedPlanNode.id === "final-composition" && selectedAssets[0] ? (
-                    <button className="small-action" type="button" onClick={() => void createV2FinalTimelineClip(selectedAssets[0].asset_id)}>
-                      Add selected asset to V2 timeline
-                    </button>
-                  ) : null}
                 </div>
-                {timelineClips.length ? (
-                  <div className="v2-timeline-clip-list">
-                    {timelineClips.map((clip, index) => {
-                      const clipId = stringFromUnknown(clip.clip_id) || stringFromUnknown(clip.id) || `${item.item_id}-clip-${index}`;
-                      return (
-                        <button className="small-action" type="button" key={clipId} onClick={() => void deleteV2FinalTimelineClip(clipId)}>
-                          Delete V2 timeline clip {clipId}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
                 <div className="v2-workbench-slot-list">
                   {itemSlots.map((slot) => {
                     const slotRuntimeRecord = runtimeForSlot(workflowV2Runtime, slot.slot_id);

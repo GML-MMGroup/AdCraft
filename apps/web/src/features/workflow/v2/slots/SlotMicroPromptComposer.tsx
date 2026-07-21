@@ -1,5 +1,7 @@
 import { AssetsIcon, CloseIcon, SaveIcon, SendIcon, UploadIcon } from "../../../../icons";
 import type { AssetVersionV2 } from "../../../../types-v2.ts";
+import { versionedMediaPath } from "../../../../workflow/mediaPreview.ts";
+import { usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import type { SlotMicroEditDraft } from "./useSlotMicroEdit.ts";
 
 type SlotMicroPromptComposerProps = {
@@ -90,7 +92,9 @@ export function SlotMicroPromptComposer({
       <div className="slot-micro-attachment-preview-strip" aria-label="Slot scoped attachment previews">
         {draft.attachments.map((attachment) => {
           const asset = attachment.source_asset_id ? referenceAssetById.get(attachment.source_asset_id) : undefined;
-          const previewUrl = attachment.preview_url ?? asset?.public_url ?? asset?.thumbnail_path ?? null;
+          const previewUrl = asset
+            ? versionedMediaPath(attachment.preview_url ?? asset.public_url ?? asset.thumbnail_path, asset)
+            : attachment.preview_url ?? null;
           const label = attachment.filename ?? asset?.semantic_type ?? attachment.library_entity_id ?? attachment.source_asset_id ?? attachment.source;
           return (
             <span className={`attachment-preview status-${attachment.status}`} key={attachment.id} data-asset-id={attachment.source_asset_id ?? undefined} data-relation-id={attachment.relation_id ?? undefined}>
@@ -118,7 +122,7 @@ export function SlotMicroPromptComposer({
         })}
         {legacyReferenceAssets.map((asset) => (
           <span className="attachment-preview" key={asset.asset_id} data-asset-id={asset.asset_id}>
-            {asset.public_url && asset.media_type === "image" ? <img src={asset.public_url} alt={asset.semantic_type || asset.asset_id} loading="lazy" decoding="async" /> : <i>{asset.media_type}</i>}
+            {asset.media_type === "image" && usableAssetVersionUrl(asset) ? <img src={usableAssetVersionUrl(asset)} alt={asset.semantic_type || asset.asset_id} loading="lazy" decoding="async" /> : <i>{asset.media_type}</i>}
             <button type="button" aria-label="Remove attachment" title="Remove attachment" onClick={() => onRemoveReference?.(slotId, { source: "reference_asset", asset_id: asset.asset_id })}>
               <CloseIcon />
             </button>

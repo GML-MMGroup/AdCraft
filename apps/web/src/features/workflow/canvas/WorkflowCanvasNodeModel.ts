@@ -50,6 +50,7 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
 	    previousData.v2SlotDraftsById === nextData.v2SlotDraftsById &&
 	    sameV2AssetVersionMap(previousData.v2ReferenceAssetsBySlotId, nextData.v2ReferenceAssetsBySlotId) &&
 	    sameV2LibraryReferenceOptions(previousData.v2LibraryReferenceOptions, nextData.v2LibraryReferenceOptions) &&
+	    previousData.onOpenScreenplay === nextData.onOpenScreenplay &&
 	    previousData.onOpenV2SlotEditor === nextData.onOpenV2SlotEditor &&
 	    previousData.onOpenV2StoryboardPrompt === nextData.onOpenV2StoryboardPrompt &&
 	    previousData.onChangeV2SlotPrompt === nextData.onChangeV2SlotPrompt &&

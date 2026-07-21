@@ -1,4 +1,5 @@
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
+import { DeferredVideo } from "../../../../components/media/DeferredVideo.tsx";
 
 type V2ReferenceAttachmentStripProps = {
   attachments: V2SlotAttachment[];
@@ -12,7 +13,7 @@ export function V2ReferenceAttachmentStrip({ attachments, onRemove }: V2Referenc
       {attachments.map((attachment) => (
         <figure className="v2-reference-attachment" key={`${attachment.sourceAssetId}:${attachment.sourceVersionId ?? "current"}`}>
           {attachment.mediaType === "image" && attachment.previewUrl ? <img src={attachment.previewUrl} alt={attachment.displayName} loading="lazy" decoding="async" /> : null}
-          {attachment.mediaType === "video" && attachment.previewUrl ? <video src={attachment.previewUrl} muted playsInline preload="metadata" /> : null}
+          {attachment.mediaType === "video" && attachment.previewUrl ? <DeferredVideo src={attachment.previewUrl} muted playsInline preload="metadata" /> : null}
           {attachment.mediaType === "audio" && attachment.previewUrl ? <audio src={attachment.previewUrl} controls preload="metadata" /> : null}
           {attachment.mediaType !== "image" && attachment.mediaType !== "video" && attachment.mediaType !== "audio" ? <span>{attachment.displayName}</span> : null}
           <figcaption>

@@ -4,14 +4,16 @@ import type { UploadedAsset } from "../../../types";
 import type { WorkflowItemV2 } from "../../../types-v2.ts";
 import { mediaAssetOriginalPath, mediaAssetPosterPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
 import type { MediaLightboxState } from "../page/workflowPageTypes.ts";
-import type { WorkflowNodeData } from "../types.ts";
+import type { V2StoryboardVideoPreviewTarget, WorkflowNodeData } from "../types.ts";
 
 type WorkflowDisplayNodeCallbacks = Pick<
   WorkflowNodeData,
   | "onOpenMedia"
   | "onSelectDynamicItem"
+  | "onOpenScreenplay"
   | "onOpenV2SlotEditor"
   | "onOpenV2StoryboardPrompt"
+  | "onOpenV2StoryboardVideoPreview"
   | "onChangeV2SlotPrompt"
   | "onChangeV2SlotNegativePrompt"
   | "onUploadV2SlotReference"
@@ -31,6 +33,7 @@ export function useWorkflowDisplayNodeCallbacks({
   setSelectedNodeId,
   setDetailsOpen,
   setMediaLightbox,
+  onOpenScreenplay: openScreenplay,
   workflowV2Items,
   setActiveV2StoryboardItemId,
   openV2SlotEditor,
@@ -52,6 +55,7 @@ export function useWorkflowDisplayNodeCallbacks({
   setSelectedNodeId: (nodeId: string) => void;
   setDetailsOpen: (open: boolean) => void;
   setMediaLightbox: (asset: MediaLightboxState | null) => void;
+  onOpenScreenplay: NonNullable<WorkflowDisplayNodeCallbacks["onOpenScreenplay"]>;
   workflowV2Items?: WorkflowItemV2[];
   setActiveV2StoryboardItemId: (itemId: string | null) => void;
   openV2SlotEditor: NonNullable<WorkflowDisplayNodeCallbacks["onOpenV2SlotEditor"]>;
@@ -109,9 +113,26 @@ export function useWorkflowDisplayNodeCallbacks({
   }, [selectedNodeIdRef, setDetailsOpen, setSelectedNodeId]);
 
   const openV2SlotEditorFromCanvas = useCallback((slotId: string) => {
+    const item = workflowV2Items?.find((candidate) => (candidate.slots ?? []).some((slot) => slot.slot_id === slotId));
     setActiveV2StoryboardItemId(null);
+    if (item?.node_id === "final-composition") {
+      setActiveV2SlotId(null);
+      setSelectedNodeId("final-composition");
+      selectedNodeIdRef.current = "final-composition";
+      setDetailsOpen(true);
+      return;
+    }
+    setDetailsOpen(false);
     openV2SlotEditor(slotId);
-  }, [openV2SlotEditor, setActiveV2StoryboardItemId]);
+  }, [
+    openV2SlotEditor,
+    selectedNodeIdRef,
+    setActiveV2SlotId,
+    setActiveV2StoryboardItemId,
+    setDetailsOpen,
+    setSelectedNodeId,
+    workflowV2Items,
+  ]);
 
   const openV2StoryboardPrompt = useCallback((itemId: string) => {
     const item = workflowV2Items?.find((candidate) => candidate.item_id === itemId);
@@ -122,12 +143,18 @@ export function useWorkflowDisplayNodeCallbacks({
     selectedNodeIdRef.current = item.node_id;
   }, [selectedNodeIdRef, setActiveV2SlotId, setActiveV2StoryboardItemId, setSelectedNodeId, workflowV2Items]);
 
+  const openV2StoryboardVideoPreview = useCallback((preview: V2StoryboardVideoPreviewTarget) => {
+    setMediaLightbox({ type: "video", ...preview });
+  }, [setMediaLightbox]);
+
   const displayNodeCallbacks = useMemo<WorkflowDisplayNodeCallbacks>(
     () => ({
       onOpenMedia: openMediaLightbox,
       onSelectDynamicItem: selectCanvasDynamicItem,
+      onOpenScreenplay: openScreenplay,
       onOpenV2SlotEditor: openV2SlotEditorFromCanvas,
       onOpenV2StoryboardPrompt: openV2StoryboardPrompt,
+      onOpenV2StoryboardVideoPreview: openV2StoryboardVideoPreview,
       onChangeV2SlotPrompt: changeV2SlotPrompt,
       onChangeV2SlotNegativePrompt: changeV2SlotNegativePrompt,
       onUploadV2SlotReference: uploadV2SlotReference,
@@ -150,10 +177,12 @@ export function useWorkflowDisplayNodeCallbacks({
       discardV2WorkingVersion,
       loadV2SlotVersions,
       openMediaLightbox,
+      openScreenplay,
       openV2SlotAssetLibraryReplace,
       openV2SlotAssetLibrarySave,
       openV2SlotEditorFromCanvas,
       openV2StoryboardPrompt,
+      openV2StoryboardVideoPreview,
       removeV2SlotReference,
       saveV2ItemPrompt,
       selectCanvasDynamicItem,

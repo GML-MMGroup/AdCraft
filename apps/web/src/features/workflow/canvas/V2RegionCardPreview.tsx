@@ -1,10 +1,15 @@
 import { useMemo, useState, type CSSProperties } from "react";
-import { ImageIcon, VideoIcon } from "../../../icons";
+import { ImageIcon, PlayIcon, VideoIcon } from "../../../icons";
 import type { AssetVersionV2, WorkflowItemV2, WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import { effectiveSlotPrompt } from "../../../types-v2.ts";
 import { isCompleteV2Asset } from "../../../workflow-v2/assets.ts";
 import { usableAssetVersionUrl } from "../../../workflow-v2/selectors.ts";
+import { versionedMediaPath } from "../../../workflow/mediaPreview.ts";
+import { DeferredVideo } from "../../../components/media/DeferredVideo.tsx";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
 import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
+import { storyboardVideoPreview } from "./storyboardVideoPreviewModel.ts";
+import type { V2StoryboardVideoPreviewTarget } from "../types.ts";
 import {
   buildV2RegionFunctionalModel,
   type V2RegionFunctionalItemView,
@@ -23,8 +28,10 @@ export type V2RegionCardPreviewProps = {
   openStoryboardItemId?: string | null;
   slotDraftsById?: Record<string, SlotMicroEditDraft>;
   referenceAssetsBySlotId?: Record<string, AssetVersionV2[]>;
+  onOpenScreenplay?: (trigger: HTMLElement) => void;
   onOpenSlotEditor?: (slotId: string) => void;
   onOpenStoryboardPrompt?: (itemId: string) => void;
+  onOpenStoryboardVideoPreview?: (preview: V2StoryboardVideoPreviewTarget) => void;
   onSelectSlotVersion?: (slotId: string, versionId: string) => void;
   onDiscardSlotWorkingVersion?: (slotId: string) => void;
 };
@@ -43,8 +50,10 @@ export function V2RegionCardPreview({
   openStoryboardItemId = null,
   slotDraftsById = {},
   referenceAssetsBySlotId = {},
+  onOpenScreenplay,
   onOpenSlotEditor,
   onOpenStoryboardPrompt,
+  onOpenStoryboardVideoPreview,
   onSelectSlotVersion,
   onDiscardSlotWorkingVersion,
 }: V2RegionCardPreviewProps) {
@@ -65,7 +74,7 @@ export function V2RegionCardPreview({
   );
 
   if (scriptText !== null) {
-    return <V2ScriptTextCard scriptText={scriptText} />;
+    return <V2ScriptTextCard scriptText={scriptText} onOpenScreenplay={onOpenScreenplay} />;
   }
 
   if (!region.items.length) {
@@ -102,6 +111,7 @@ export function V2RegionCardPreview({
             slotDraftsById={slotDraftsById}
             onOpenSlotEditor={onOpenSlotEditor}
             onOpenStoryboardPrompt={onOpenStoryboardPrompt}
+            onOpenStoryboardVideoPreview={onOpenStoryboardVideoPreview}
             onSelectSlotVersion={onSelectSlotVersion}
             onDiscardSlotWorkingVersion={onDiscardSlotWorkingVersion}
           />
@@ -118,11 +128,20 @@ function scriptTextFromItems(items: WorkflowItemV2[]): string | null {
   return typeof scriptText === "string" ? scriptText : "";
 }
 
-function V2ScriptTextCard({ scriptText }: { scriptText: string }) {
+function V2ScriptTextCard({ scriptText, onOpenScreenplay }: { scriptText: string; onOpenScreenplay?: (trigger: HTMLElement) => void }) {
   return (
-    <div className="workflow-card-preview v2-script-text-card nodrag" aria-label="Script text">
+    <button
+      type="button"
+      className="workflow-card-preview v2-script-text-card nodrag"
+      aria-label="Open screenplay editor"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpenScreenplay?.(event.currentTarget);
+      }}
+    >
       <pre>{scriptText}</pre>
-    </div>
+    </button>
   );
 }
 
@@ -135,6 +154,7 @@ function V2RegionFunctionalItemCard({
   slotDraftsById,
   onOpenSlotEditor,
   onOpenStoryboardPrompt,
+  onOpenStoryboardVideoPreview,
   onSelectSlotVersion,
   onDiscardSlotWorkingVersion,
 }: {
@@ -146,6 +166,7 @@ function V2RegionFunctionalItemCard({
   slotDraftsById: Record<string, SlotMicroEditDraft>;
   onOpenSlotEditor?: (slotId: string) => void;
   onOpenStoryboardPrompt?: (itemId: string) => void;
+  onOpenStoryboardVideoPreview?: (preview: V2StoryboardVideoPreviewTarget) => void;
   onSelectSlotVersion?: (slotId: string, versionId: string) => void;
   onDiscardSlotWorkingVersion?: (slotId: string) => void;
 }) {
@@ -159,6 +180,7 @@ function V2RegionFunctionalItemCard({
         slotDraftsById={slotDraftsById}
         onOpenSlotEditor={onOpenSlotEditor}
         onOpenStoryboardPrompt={onOpenStoryboardPrompt}
+        onOpenStoryboardVideoPreview={onOpenStoryboardVideoPreview}
       />
     );
   }
@@ -216,6 +238,7 @@ function V2StoryboardFunctionalItemCard({
   slotDraftsById,
   onOpenSlotEditor,
   onOpenStoryboardPrompt,
+  onOpenStoryboardVideoPreview,
 }: {
   item: V2RegionFunctionalItemView;
   isPromptOpen: boolean;
@@ -224,6 +247,7 @@ function V2StoryboardFunctionalItemCard({
   slotDraftsById: Record<string, SlotMicroEditDraft>;
   onOpenSlotEditor?: (slotId: string) => void;
   onOpenStoryboardPrompt?: (itemId: string) => void;
+  onOpenStoryboardVideoPreview?: (preview: V2StoryboardVideoPreviewTarget) => void;
 }) {
   const imageSlots = item.slots.filter((slot) => slot.slot.media_type === "image");
   const videoSlots = item.slots.filter((slot) => slot.slot.media_type === "video");
@@ -300,7 +324,9 @@ function V2StoryboardFunctionalItemCard({
                 slotView={slot}
                 onOpenSlotEditor={onOpenSlotEditor}
                 isSubmitting={slotDraftsById[slot.slot.slot_id]?.isSubmitting}
-                interactive
+                isStoryboardVideoPreview={activeMode === "video"}
+                previewTitle={`${itemLabel} video`}
+                onOpenStoryboardVideoPreview={onOpenStoryboardVideoPreview}
               />
             ))
           ) : (
@@ -330,7 +356,7 @@ function V2RegionSlotEditor({
   const slotId = slotView.slot.slot_id;
   return (
     <div className={`v2-region-slot-editor ${isOpen ? "is-open" : ""}`} data-slot-editor-id={slotId}>
-      <V2RegionSlotPreview slotView={slotView} onOpenSlotEditor={onOpenSlotEditor} isSubmitting={draft.isSubmitting} interactive />
+      <V2RegionSlotPreview slotView={slotView} onOpenSlotEditor={onOpenSlotEditor} isSubmitting={draft.isSubmitting} />
       {isOpen && slotView.workingAsset && slotView.hasUnselectedWorkingVersion ? (
         <div className="v2-region-working-version-actions">
           <span>Working version not used in current workflow</span>
@@ -356,18 +382,23 @@ function V2RegionSlotPreview({
   slotView,
   onOpenSlotEditor,
   isSubmitting,
-  interactive = true,
+  isStoryboardVideoPreview = false,
+  previewTitle,
+  onOpenStoryboardVideoPreview,
 }: {
   slotView: V2RegionFunctionalSlotView;
   onOpenSlotEditor?: (slotId: string) => void;
   isSubmitting?: boolean;
-  interactive?: boolean;
+  isStoryboardVideoPreview?: boolean;
+  previewTitle?: string;
+  onOpenStoryboardVideoPreview?: (preview: V2StoryboardVideoPreviewTarget) => void;
 }) {
   const { slot, previewAsset, runtimeStatus, displayRole } = slotView;
   const isActive = Boolean(isSubmitting) || runtimeStatus === "running" || runtimeStatus === "waiting";
   const loading = isActive ? <NodePreviewLoading type={slot.media_type === "image" || slot.media_type === "video" || slot.media_type === "audio" ? slot.media_type : "generic"} /> : null;
   const roleClassName = displayRole === "main" ? "is-main-slot" : displayRole === "multi_view" ? "is-multi-view-slot" : "is-supplemental-slot";
   const aspectRatioStyle = slotAspectRatioStyle(slot, previewAsset);
+  const videoPreview = isStoryboardVideoPreview ? storyboardVideoPreview(previewAsset, previewTitle ?? slot.slot_type) : null;
   const content = (
     <>
       <SlotAssetPreview slot={slot} asset={previewAsset} />
@@ -376,19 +407,43 @@ function V2RegionSlotPreview({
       {loading}
     </>
   );
-  if (!interactive) {
+  if (videoPreview) {
     return (
       <div
-        className={`v2-region-slot-media ${roleClassName}`}
+        className={`v2-region-slot-media v2-storyboard-video-slot ${roleClassName} nodrag`}
         data-slot-status={runtimeStatus}
+        data-slot-action-target={slot.slot_id}
         style={aspectRatioStyle}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={(event) => event.stopPropagation()}
       >
-        {content}
+        <button
+          type="button"
+          className="v2-storyboard-video-prompt-trigger"
+          aria-label={`Edit ${slot.slot_type} prompt`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenSlotEditor?.(slot.slot_id);
+          }}
+        >
+          {content}
+        </button>
+        <button
+          type="button"
+          className="v2-storyboard-video-play"
+          aria-label={`Play ${videoPreview.title}`}
+          title="Play video preview"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenStoryboardVideoPreview?.(videoPreview);
+          }}
+        >
+          <PlayIcon />
+        </button>
       </div>
     );
   }
+
   return (
     <button
       type="button"
@@ -425,14 +480,14 @@ function SlotAssetPreview({ slot, asset }: { slot: WorkflowSlotV2; asset?: Asset
   const url = usableAssetVersionUrl(asset);
   if (!url) return <span className="v2-region-slot-syncing">Asset metadata syncing</span>;
   if (asset.media_type === "image") return <img src={url} alt={slot.slot_type} loading="lazy" decoding="async" />;
-  if (asset.media_type === "video") return <video src={url} preload="metadata" muted playsInline />;
+  if (asset.media_type === "video") return <DeferredVideo src={url} poster={versionedMediaPath(asset.thumbnail_path, asset) || undefined} preload="metadata" muted playsInline />;
   if (asset.media_type === "audio") return <span className="v2-region-slot-empty">Audio</span>;
   return <span className="v2-region-slot-empty">{asset.media_type}</span>;
 }
 
 function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
   return {
-    prompt: slot.slot_prompt ?? "",
+    prompt: effectiveSlotPrompt(slot),
     negative_prompt: slot.negative_prompt ?? "",
     reference_asset_ids: [...(slot.explicit_reference_ids ?? [])],
     uploaded_asset_ids: [],
@@ -444,6 +499,10 @@ function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {
       status: "attached",
     })),
     dirty: false,
+    promptDirty: false,
+    referenceDirty: false,
+    base_prompt: effectiveSlotPrompt(slot),
+    base_negative_prompt: slot.negative_prompt ?? "",
     isSubmitting: false,
   };
 }
