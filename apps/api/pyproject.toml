@@ -1,0 +1,36 @@
+[project]
+name = "adworkflow"
+version = "1.0.0"
+description = "Production backend for AdCraft, a multi-agent advertising workflow platform"
+requires-python = ">=3.10.12"
+dependencies = [
+    "agno>=2.6.9",
+    "fastapi>=0.136.3",
+    "filelock>=3.30.2",
+    "openai>=2.38.0",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "python-multipart>=0.0.30",
+    "uvicorn>=0.48.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+    "ruff>=0.15.15",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "slow: tests taking more than about 1 second or known to dominate full-suite runtime",
+    "integration: tests crossing API/service/storage/runtime boundaries",
+    "media: tests involving generated media, provider tasks, ffmpeg, media polling, or media files",
+    "e2e: full workflow or near end-to-end workflow tests",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
