@@ -1,10 +1,14 @@
 from collections.abc import Callable
 from dataclasses import replace
 import hashlib
+from http.client import IncompleteRead, RemoteDisconnected
 import json
 from pathlib import Path
 import re
+import socket
+import ssl
 from typing import Any
+from urllib import error as urllib_error
 from urllib.parse import urlparse
 
 from app.core.config import Settings, get_settings
@@ -89,6 +93,48 @@ V2_LEGACY_PROMPT_FIELDS = {
     "actual_provider_prompt",
     "actual_provider_request_prompt",
 }
+
+
+def _provider_transport_failure(exc: BaseException) -> tuple[str, str] | None:
+    chain = _provider_exception_chain(exc)
+    for error in chain:
+        if isinstance(error, (TimeoutError, socket.timeout)):
+            return "provider_timeout", type(error).__name__
+    for error in chain:
+        if isinstance(
+            error,
+            (
+                RemoteDisconnected,
+                ConnectionError,
+                IncompleteRead,
+                ssl.SSLEOFError,
+                ssl.SSLZeroReturnError,
+            ),
+        ):
+            return "provider_connection_reset", type(error).__name__
+    return None
+
+
+def _provider_exception_chain(exc: BaseException) -> tuple[BaseException, ...]:
+    pending: list[BaseException] = [exc]
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        for nested in (
+            current.__cause__,
+            current.__context__,
+            current.reason if isinstance(current, urllib_error.URLError) else None,
+        ):
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+    return tuple(chain)
+
+
 _MAX_PROVIDER_DIAGNOSTIC_LENGTH = 2_048
 _URL_OR_DATA_URL_PATTERN = re.compile(r"(?i)\b(?:https?://|data:)[^\s\"'<>]+")
 _SENSITIVE_VALUE_PATTERN = re.compile(
@@ -656,6 +702,17 @@ class V2ProviderExecutor:
             )
         except Exception as exc:  # noqa: BLE001 - provider failures become result state.
             diagnostics, _ = _provider_submit_diagnostics(payload, None)
+            transport_failure = _provider_transport_failure(exc)
+            if transport_failure is not None:
+                error_code, transport_error_type = transport_failure
+                diagnostics.update(
+                    {
+                        "retryable": True,
+                        "transport_error_type": transport_error_type,
+                    }
+                )
+            else:
+                error_code = "provider_generation_failed"
             return self._with_reference_adaptation(
                 V2ProviderResult(
                     status="failed",
@@ -663,7 +720,7 @@ class V2ProviderExecutor:
                     provider=provider_id,
                     provider_payload_snapshot={"request_summary": diagnostics["request_summary"]},
                     reference_asset_ids=list(adaptation.submitted_reference_asset_ids),
-                    error_code="provider_generation_failed",
+                    error_code=error_code,
                     error_message=_bounded_provider_error_message(
                         str(exc),
                         _request_prompt_values((payload,)),

@@ -47,7 +47,10 @@ class V2VisualStyleService:
         request: Any,
         *,
         intent_plan: Any | None = None,
+        scoped_contract: V2VisualStyleContract | None = None,
     ) -> V2VisualStyleContract:
+        if scoped_contract is not None:
+            return scoped_contract
         explicit_style = _text(getattr(request, "visual_style", None))
         if explicit_style:
             return _contract_from_text(

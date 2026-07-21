@@ -72,6 +72,12 @@ _STAGE_POLICIES: Mapping[str, _StagePolicy] = MappingProxyType(
             45,
             4_096,
         ),
+        "visual_style_scope_repair": _StagePolicy(
+            V2LLMReasoningMode.DISABLED,
+            0,
+            45,
+            2_048,
+        ),
         "structured_repair": _StagePolicy(
             V2LLMReasoningMode.DISABLED,
             0,

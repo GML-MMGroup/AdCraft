@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:ProjectRoot = Split-Path -Parent $PSScriptRoot
@@ -39,7 +39,9 @@ function Read-AdCraftState {
         if ($values.ContainsKey($key)) { Stop-AdCraft "deployment.env 包含重复字段：$key。" }
         $values[$key] = [Int64]$value
     }
-    if ($values.Count -ne 3 -or @('ADCRAFT_PORT','ADCRAFT_UID','ADCRAFT_GID') | Where-Object { -not $values.ContainsKey($_) }) {
+    $requiredKeys = @('ADCRAFT_PORT', 'ADCRAFT_UID', 'ADCRAFT_GID')
+    $missingKeys = @($requiredKeys | Where-Object { -not $values.ContainsKey($_) })
+    if ($values.Count -ne $requiredKeys.Count -or $missingKeys.Count -gt 0) {
         Stop-AdCraft 'deployment.env 缺少字段。'
     }
     if ($values['ADCRAFT_PORT'] -lt 8080 -or $values['ADCRAFT_PORT'] -gt 8179) {
@@ -68,11 +70,8 @@ function Write-AdCraftState([int]$Port) {
     try {
         [System.IO.File]::WriteAllText($temporaryPath, $content, [System.Text.UTF8Encoding]::new($false))
 
-        if ([System.IO.File]::Exists($script:StateFile)) {
-            [System.IO.File]::Replace($temporaryPath, $script:StateFile, $null)
-        } else {
-            [System.IO.File]::Move($temporaryPath, $script:StateFile)
-        }
+        Move-Item -LiteralPath $temporaryPath -Destination $script:StateFile -Force
+        $temporaryCreated = $false
     } catch {
         if ($temporaryCreated -and [System.IO.File]::Exists($temporaryPath)) {
             [System.IO.File]::Delete($temporaryPath)

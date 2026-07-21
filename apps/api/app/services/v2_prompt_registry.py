@@ -218,6 +218,16 @@ def _default_entries() -> list[V2PromptRegistryEntry]:
                 title="V2 storyboard detail prompt",
             ),
             V2PromptRegistryEntry(
+                prompt_id="v2.visual_style.scope_repair.v1",
+                prompt_version="1.0.0",
+                owner="director",
+                scope="repair_prompt",
+                stage="visual_style_scope_repair",
+                source_path="app/services/v2_runtime_prompt_packs.py",
+                output_schema="V2VisualStyleScopeRepairOutput",
+                title="V2 visual style scope repair prompt",
+            ),
+            V2PromptRegistryEntry(
                 prompt_id="v2.repair.structured_generation.v1",
                 prompt_version="1.0.0",
                 owner="director",

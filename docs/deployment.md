@@ -4,6 +4,8 @@
 
 This guide starts AdCraft on your own computer. It is written for first-time users: the supplied launcher installs its required runtime when necessary, builds AdCraft, starts it, and prints the local address to open.
 
+If the one-click launcher cannot complete on your computer, follow the [manual step-by-step deployment guide](manual-deployment.md). It uses the same Docker configuration but lets you run and inspect every stage yourself.
+
 ## What You Need
 
 - A complete copy of the AdCraft project folder. Keep the folder together; do not run a script from a copied `scripts` folder.
@@ -87,6 +89,7 @@ Stopping AdCraft does not delete these files, images, or volumes. Back up privat
 | Windows says administrator permission is required. | Right-click `scripts\\deploy-windows.cmd` and choose **Run as administrator**. | The launcher can check prerequisites and continue. |
 | Windows enables WSL 2 or asks to restart. | Restart Windows, then run the same `scripts\\deploy-windows.cmd` file as administrator again. | The second run continues with WSL 2 available. |
 | Docker Desktop is missing, not ready, or is using Windows containers. | Keep an internet connection, let the launcher finish its setup, start Docker Desktop if prompted, and switch it to Linux containers mode. Then rerun the launcher. | Docker and Docker Compose become available to the launcher. |
+| Docker image pulls report `EOF`, an anonymous-token error, or cannot reach `auth.docker.io`. | Keep your proxy client running. In Docker Desktop, open **Settings → Resources → Proxies**, choose manual configuration, and enter only the HTTP/HTTPS proxy URL (for example, `http://127.0.0.1:7890` for a FlClash listener on that address; do not type an `HTTP Proxy:` label). If needed, enable FlClash TUN/global mode and route `docker.io`, `docker.com`, and `dockerusercontent.com` through the proxy. Apply the setting or restart Docker Desktop, then run `docker pull docker/dockerfile:1.7` in Command Prompt. Rerun the launcher only after that command succeeds. | Docker can retrieve the Dockerfile frontend and image layers needed for the build. |
 | The Windows version is rejected. | Use 64-bit Windows 10 22H2 build 19045+ or Windows 11 23H2 build 22631+. | The supported-platform check passes. |
 | The Linux launcher rejects the operating system. | Use Ubuntu or Debian for this deployment path. | The launcher can determine the supported OS release. |
 | A Linux `sudo` prompt appears. | Enter the password for the local account only at that prompt. Do not enter API keys there. | The launcher can install or start required system services. |
@@ -101,5 +104,6 @@ Stopping AdCraft does not delete these files, images, or volumes. Back up privat
 - This deployment path is for the supported Windows and Linux desktop systems listed above. It does not configure a public server, remote access, TLS, user accounts, or shared-network access.
 - The web port is bound to `127.0.0.1`, so open the printed URL only on the deploying computer. Do not expose it to a network by changing deployment configuration unless you have separately designed and secured that change.
 - Keep `apps/api/.env`, `apps/web/.env`, and `runtime-data/` private. They can contain credentials, configuration, deployment state, and generated media.
+- The launcher does not change proxy settings or store proxy credentials. Configure proxies only in Docker Desktop or your approved network client.
 - Use only API keys and media you are authorized to use. Protect provider accounts, watch provider costs, and follow your organization's data-handling requirements.
 - Do not delete environment files or `runtime-data/` to troubleshoot an update unless you have an approved backup and understand that local credentials, generated media, or deployment state may be lost.

@@ -3,6 +3,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 import json
+import re
 import threading
 from typing import Any, Iterator
 from uuid import uuid4
@@ -65,6 +66,7 @@ from app.schemas.workflow_v2_screenplay import (
     V2ScriptConfirmRequest,
     V2ScriptStructuralDiff,
 )
+from app.schemas.workflow_v2_style import VisualStyleScopeSource
 from app.schemas.workflow_v2_provider_results import (
     V2ProviderExecutionContext,
     V2ProviderResultManifest,
@@ -157,6 +159,7 @@ from app.services.v2_versioning import (
     V2_SCRIPT_WRITER_VERSION,
 )
 from app.services.v2_visual_style import V2VisualStyleService
+from app.services.v2_visual_style_scope import V2VisualStyleScopeService
 from app.services.v2_workflow_lock import v2_workflow_lock
 from app.services.v2_workflow_planner import V2WorkflowPlanner, build_slot
 from app.services.v2_workflow_store import (
@@ -199,6 +202,145 @@ def _intent_validation_error_details(
         }
     )
     return sanitized if isinstance(sanitized, dict) else {"stage": stage, "violations": []}
+
+
+def _creative_product_identity_terms(creative_inventory: Any) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for product in getattr(creative_inventory, "products", []) or []:
+        for value in (
+            getattr(product, "display_name", None),
+            getattr(product, "item_id", None),
+        ):
+            text = str(value or "").strip()
+            if len(text) < 2:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            terms.append(text)
+            seen.add(key)
+    return terms
+
+
+def _creative_product_display_names(creative_inventory: Any) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for product in getattr(creative_inventory, "products", []) or []:
+        name = str(getattr(product, "display_name", None) or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        names.append(name)
+        seen.add(key)
+    return names
+
+
+def _select_product_name_for_scope(
+    creative_inventory: Any,
+    values: list[str],
+) -> str | None:
+    product_names = _creative_product_display_names(creative_inventory)
+    if len(product_names) == 1:
+        return product_names[0]
+    matches = [
+        product_name
+        for product_name in product_names
+        if any(
+            re.search(
+                rf"(?<![A-Za-z0-9_]){re.escape(product_name)}(?![A-Za-z0-9_])",
+                value,
+                flags=re.IGNORECASE,
+            )
+            for value in values
+            if isinstance(value, str) and value.strip()
+        )
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _planning_request_with_effective_visual_style(
+    request: WorkflowV2PlanFromPromptRequest,
+    normalized_request: dict[str, Any] | None,
+    *,
+    visual_style: str,
+) -> tuple[WorkflowV2PlanFromPromptRequest, dict[str, Any] | None]:
+    metadata = dict(request.metadata)
+    front_desk_request = metadata.get("front_desk_ad_request")
+    if isinstance(front_desk_request, dict):
+        metadata["front_desk_ad_request"] = {
+            **front_desk_request,
+            "visual_style": visual_style,
+        }
+    effective_request = request.model_copy(
+        update={"visual_style": visual_style, "metadata": metadata},
+        deep=True,
+    )
+    effective_normalized_request = None
+    if normalized_request is not None:
+        effective_normalized_request = {
+            **normalized_request,
+            "visual_style": visual_style,
+        }
+    return effective_request, effective_normalized_request
+
+
+def _scope_non_product_expert_briefs(
+    expert_brief_plan: Any,
+    *,
+    product_names: list[str],
+) -> Any:
+    patterns = [
+        re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(product_name)}(?![A-Za-z0-9_])",
+            flags=re.IGNORECASE,
+        )
+        for product_name in product_names
+        if product_name.strip()
+    ]
+    if not patterns:
+        return expert_brief_plan
+
+    def scoped_value(value: Any) -> Any:
+        if isinstance(value, str):
+            scoped = value
+            for pattern in patterns:
+                scoped = pattern.sub("the advertised product", scoped)
+            return scoped
+        if isinstance(value, list):
+            return [scoped_value(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                key: scoped_value(item)
+                for key, item in value.items()
+                if key != "product_identity_constraints"
+            }
+        return value
+
+    def scoped_brief(brief: Any) -> Any:
+        return brief.model_copy(
+            update={
+                "description": scoped_value(brief.description),
+                "item_prompt": scoped_value(brief.item_prompt),
+                "creative_brief": scoped_value(brief.creative_brief),
+                "slot_prompts": scoped_value(brief.slot_prompts),
+                "asset_prompts": scoped_value(brief.asset_prompts),
+                "metadata": scoped_value(brief.metadata),
+            },
+            deep=True,
+        )
+
+    return expert_brief_plan.model_copy(
+        update={
+            "character_briefs": [
+                scoped_brief(brief) for brief in expert_brief_plan.character_briefs
+            ],
+            "scene_briefs": [scoped_brief(brief) for brief in expert_brief_plan.scene_briefs],
+        },
+        deep=True,
+    )
 
 
 @dataclass
@@ -248,6 +390,10 @@ class WorkflowV2Service:
         self._provider_result_store = V2ProviderResultStore(self._data_dir)
         self._provider_result_committer = V2ProviderResultCommitter(self._data_dir)
         self._visual_style_service = V2VisualStyleService()
+        self._visual_style_scope_service = V2VisualStyleScopeService(
+            self._visual_style_service,
+            settings=settings,
+        )
         self._slot_scheduler = V2SlotScheduler(
             asset_exists=self._asset_store.asset_exists,
             shot_reference_resolver=V2ShotReferenceResolver(self._data_dir),
@@ -276,16 +422,6 @@ class WorkflowV2Service:
             request.metadata.get("front_desk_ad_request")
             if isinstance(request.metadata.get("front_desk_ad_request"), dict)
             else None
-        )
-        visual_style_contract = self._visual_style_service.resolve_for_planning(request)
-        request = request.model_copy(
-            update={
-                "metadata": {
-                    **request.metadata,
-                    "visual_style_contract": visual_style_contract.model_dump(mode="json"),
-                }
-            },
-            deep=True,
         )
         workflow_id = f"adwf_v2_{uuid4().hex[:12]}"
         input_assets = self._resolve_input_asset_locators(request.input_asset_locators)
@@ -357,6 +493,26 @@ class WorkflowV2Service:
                 details=clarification.details,
                 suggested_actions=clarification.suggested_actions,
             )
+        scope_product_name = _select_product_name_for_scope(
+            creative_inventory,
+            [
+                str(request.visual_style or ""),
+                str(getattr(intent_plan, "visual_style", None) or ""),
+            ],
+        )
+        if scope_product_name is None and not creative_inventory.products:
+            scope_product_name = intent_product_name or request.product_name
+        style_resolution = self._visual_style_scope_service.resolve_for_planning(
+            raw_visual_style=request.visual_style,
+            inferred_visual_style=getattr(intent_plan, "visual_style", None),
+            product_name=scope_product_name,
+            product_identity_terms=_creative_product_identity_terms(creative_inventory),
+        )
+        visual_style_contract = self._visual_style_service.resolve_for_planning(
+            request,
+            intent_plan=intent_plan,
+            scoped_contract=style_resolution.contract,
+        )
         reconciled_intent_validation = self._intent_validator.validate(
             intent_plan,
             explicit_constraints=explicit_constraints,
@@ -384,6 +540,8 @@ class WorkflowV2Service:
                     "creative_inventory_spec": inventory_payload,
                     **inventory_lineage,
                     **intent_metadata,
+                    "visual_style_contract": visual_style_contract.model_dump(mode="json"),
+                    "visual_style_scope_audit": style_resolution.audit.model_dump(mode="json"),
                 }
             },
             deep=True,
@@ -427,13 +585,20 @@ class WorkflowV2Service:
             },
             deep=True,
         )
+        planning_request, planning_normalized_request = (
+            _planning_request_with_effective_visual_style(
+                request,
+                normalized_request,
+                visual_style=visual_style_contract.style_prompt,
+            )
+        )
         input_asset_descriptors = [_input_asset_descriptor(record) for record in input_assets]
         try:
             script_plan = self._script_writer.write_script(
-                request,
+                planning_request,
                 workflow_id=workflow_id,
                 input_asset_descriptors=input_asset_descriptors,
-                normalized_request=normalized_request,
+                normalized_request=planning_normalized_request,
             )
         except V2ScriptWriterError as exc:
             raise WorkflowV2Error(exc.code, str(exc)) from exc
@@ -462,7 +627,7 @@ class WorkflowV2Service:
             )
             try:
                 fallback_draft = self._script_writer.build_deterministic_fallback(
-                    request,
+                    planning_request,
                     workflow_id=workflow_id,
                     input_asset_descriptors=input_asset_descriptors,
                     original_error_code=original_error_code,
@@ -554,6 +719,7 @@ class WorkflowV2Service:
             metadata={
                 "original_user_prompt": request.prompt,
                 "visual_style_contract": visual_style_contract.model_dump(mode="json"),
+                "visual_style_scope_audit": style_resolution.audit.model_dump(mode="json"),
                 "script_plan": script_plan.model_dump(mode="json"),
                 "script_reconciliation": script_reconciliation.audit.model_dump(mode="json"),
                 "v2_planner_version": V2_PLANNER_VERSION,
@@ -596,10 +762,10 @@ class WorkflowV2Service:
         try:
             expert_brief_plan = self._expert_brief_planner.plan_briefs(
                 script_plan,
-                request,
+                planning_request,
                 workflow_id=workflow_id,
                 input_asset_descriptors=input_asset_descriptors,
-                normalized_request=normalized_request,
+                normalized_request=planning_normalized_request,
                 specialist_handoffs=specialist_handoffs,
             )
         except V2ExpertBriefPlannerError as exc:
@@ -607,6 +773,19 @@ class WorkflowV2Service:
         expert_brief_plan = apply_creative_inventory_to_expert_brief_plan(
             expert_brief_plan,
             creative_inventory,
+        )
+        constraint_product_name = _select_product_name_for_scope(
+            creative_inventory,
+            style_resolution.product_identity_constraints,
+        )
+        expert_brief_plan = self._visual_style_scope_service.attach_product_constraints(
+            expert_brief_plan,
+            product_name=constraint_product_name,
+            product_identity_constraints=style_resolution.product_identity_constraints,
+        )
+        expert_brief_plan = _scope_non_product_expert_briefs(
+            expert_brief_plan,
+            product_names=_creative_product_display_names(creative_inventory),
         )
         downstream_intent_validation = self._intent_validator.validate(
             intent_plan,
@@ -652,6 +831,7 @@ class WorkflowV2Service:
                 "authoritative_inventory_lineage": inventory_lineage,
                 "storyboard_config": storyboard_plan.storyboard_config,
                 "visual_style_contract": visual_style_contract.model_dump(mode="json"),
+                "visual_style_scope_audit": style_resolution.audit.model_dump(mode="json"),
             },
             script_reconciliation=script_reconciliation.audit.model_dump(mode="json"),
         )
@@ -660,7 +840,7 @@ class WorkflowV2Service:
             update={
                 "nodes": self._planner.build_default_nodes(
                     workflow_id,
-                    request,
+                    planning_request,
                     script_plan,
                     expert_brief_plan,
                 ),
@@ -827,6 +1007,9 @@ class WorkflowV2Service:
                 ),
                 "storyboard_config": dict(sanitized_details.get("storyboard_config") or {}),
                 "visual_style_contract": dict(sanitized_details.get("visual_style_contract") or {}),
+                "visual_style_scope_audit": dict(
+                    sanitized_details.get("visual_style_scope_audit") or {}
+                ),
             },
         )
 
@@ -1040,7 +1223,10 @@ class WorkflowV2Service:
         source_action: str = "global_run",
     ) -> WorkflowV2RunResponse | WorkflowV2RunStartResponse:
         self._asset_store.ensure_directories()
-        workflow = self.get_workflow(workflow_id)
+        workflow = self._preflight_visual_style_scope(
+            workflow_id,
+            source="run_preflight",
+        )
         self._recover_pending_provider_manifests(workflow)
         workflow = self._execution_recovery.recover_interrupted_execution(
             workflow_id,
@@ -1811,7 +1997,10 @@ class WorkflowV2Service:
         mode: str,
         source_action: str,
     ) -> WorkflowV2RunResponse:
-        workflow = self.get_workflow(workflow_id)
+        workflow = self._preflight_visual_style_scope(
+            workflow_id,
+            source=source_action,  # type: ignore[arg-type]
+        )
         target = self._find_slot(workflow, slot_id)
         if target is None:
             raise WorkflowV2Error("slot_not_found")
@@ -4120,6 +4309,36 @@ class WorkflowV2Service:
 
     def save_workflow(self, workflow: WorkflowV2) -> WorkflowV2:
         return self._workflow_store.save_workflow(workflow)
+
+    def _preflight_visual_style_scope(
+        self,
+        workflow_id: str,
+        *,
+        source: VisualStyleScopeSource,
+    ) -> WorkflowV2:
+        with v2_workflow_lock(self._data_dir, workflow_id):
+            workflow = self._workflow_store.load_workflow(workflow_id)
+            result = self._visual_style_scope_service.repair_persisted_contract(
+                workflow,
+                source=source,
+            )
+            if result.changed:
+                workflow = self._workflow_store.save_workflow(result.workflow)
+            else:
+                workflow = result.workflow
+            if result.contract_repaired:
+                self._append_event(
+                    workflow_id,
+                    "visual_style_scope_repaired",
+                    payload={
+                        "source": result.audit.source,
+                        "repair_mode": result.audit.repair_mode,
+                        "removed_scopes": list(result.audit.removed_scopes),
+                        "original_contract_hash": result.audit.original_contract_hash,
+                        "effective_contract_hash": result.audit.effective_contract_hash,
+                    },
+                )
+        return workflow
 
     def _run_missing_slot_scheduler(
         self,
