@@ -1,0 +1,46 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.tools/
+
+# env
+.env
+
+# Tool
+.codegraph/
+.worktrees/
+.openspec/
+.openspec-*/
+.codex/skills/openspec-*/
+.codex/commands/openspec-*/
+.codex/commands/opsx*/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+openspec/.cache/
+openspec/worksets/
+openspec/.worksets/
+
+# Generated media artifacts
+data/
+
+# V2 SQLite persistence runtime
+/data/v2/adcraft.sqlite3
+/data/v2/adcraft.sqlite3-*
+/data/v2/.persistence.lock
+
+docs/
+change-logs/
+
+# Files
+FRONTEND_BACKEND_API.md
+AD_WORKFLOW_SOLUTION.md
+REQUIRED.md

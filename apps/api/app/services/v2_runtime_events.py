@@ -8,19 +8,11 @@ from app.schemas.workflow_v2 import (
     WorkflowV2EventListResponse,
     WorkflowV2RuntimeSnapshot,
 )
-from app.services.v2_event_store import (
-    V2EventStore,
-    workflow_v2_events_path,
-    workflow_v2_execution_events_path,
-)
+from app.services.v2_event_store import V2EventStore
 from app.services.v2_execution_service import V2ExecutionService
 from app.services.v2_runtime_snapshot_service import V2RuntimeSnapshotService
 
-__all__ = [
-    "V2RuntimeEventService",
-    "workflow_v2_events_path",
-    "workflow_v2_execution_events_path",
-]
+__all__ = ["V2RuntimeEventService"]
 
 
 class V2RuntimeEventService:

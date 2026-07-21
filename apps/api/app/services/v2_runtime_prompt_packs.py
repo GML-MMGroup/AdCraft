@@ -285,6 +285,35 @@ def render_storyboard_detail_system_prompt(_context: dict[str, Any]) -> str:
     )
 
 
+def render_visual_style_scope_repair_prompt(context: dict[str, Any]) -> str:
+    product_name = str(context.get("product_name") or "the canonical product").strip()
+    return _join_sections(
+        [
+            "Role\nYou normalize a V2 workflow visual style contract.",
+            (
+                "Mission\nSeparate reusable rendering direction from product identity constraints. "
+                "The rendering style is injected into every visual slot, while product constraints "
+                "belong only to the existing product identity path."
+            ),
+            (
+                f"Canonical Product\nThe product identity is {product_name}. Do not include this "
+                "product, its recognizability requirements, packaging cues, or selling points in "
+                "rendering_style."
+            ),
+            (
+                "Output Contract\nReturn exactly one JSON object matching "
+                "V2VisualStyleScopeRepairOutput. rendering_style must contain only reusable visual "
+                "direction. product_identity_constraints must contain bounded product-specific "
+                "requirements."
+            ),
+            (
+                "Forbidden Behavior\nDo not return markdown, raw user-request wrappers, provider "
+                "prompts, credentials, media bytes, or base64 data."
+            ),
+        ]
+    )
+
+
 def render_structured_repair_prompt(context: dict[str, Any]) -> str:
     contract_name = str(context.get("contract_name") or "the registered output contract").strip()
     contract_rules: list[str] = []
@@ -357,6 +386,11 @@ PROMPT_PACKS: dict[str, V2PromptPackTemplate] = {
         prompt_id="v2.storyboard.detail.v1",
         required_context_keys=(),
         render=render_storyboard_detail_system_prompt,
+    ),
+    "v2.visual_style.scope_repair.v1": V2PromptPackTemplate(
+        prompt_id="v2.visual_style.scope_repair.v1",
+        required_context_keys=("product_name", "raw_visual_style", "identity_terms"),
+        render=render_visual_style_scope_repair_prompt,
     ),
     "v2.repair.structured_generation.v1": V2PromptPackTemplate(
         prompt_id="v2.repair.structured_generation.v1",
@@ -452,6 +486,18 @@ def _build_profiles() -> dict[str, V2PromptContentProfile]:
                 "Forbidden Behavior",
                 "Example",
                 "Anti-example",
+            ],
+        ),
+        "v2.visual_style.scope_repair.v1": _profile(
+            "visual-style-scope-repair-v1",
+            "v2.visual_style.scope_repair.v1",
+            "visual_style_scope_repair",
+            sections=[
+                "Role",
+                "Mission",
+                "Canonical Product",
+                "Output Contract",
+                "Forbidden Behavior",
             ],
         ),
         "v2.repair.structured_generation.v1": _profile(

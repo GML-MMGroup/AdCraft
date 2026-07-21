@@ -501,6 +501,8 @@ def _structured_prompt_id(stage_name: str) -> str | None:
         return "v2.expert_brief.plan.v1"
     if stage_name == "storyboard_detail":
         return "v2.storyboard.detail.v1"
+    if stage_name == "visual_style_scope_repair":
+        return "v2.visual_style.scope_repair.v1"
     return None
 
 
