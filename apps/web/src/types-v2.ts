@@ -61,9 +61,11 @@ export type ItemLifecycleStateV2 = "active" | "archived";
 
 export interface WorkflowV2 {
   workflow_id: string;
+  project_id?: string;
   workflow_schema_version: 2;
-  /** Monotonic workflow revision used to build a fallback If-Match value. */
+  /** Monotonic authoring version reported by the backend. */
   state_version?: number;
+  semantic_revision_no?: number;
   name?: string;
   description?: string;
   prompt?: string;
@@ -81,6 +83,78 @@ export interface WorkflowV2 {
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+}
+
+export type ProjectV2Status = "active" | "archived" | "trashed";
+
+export interface ProjectV2Summary {
+  project_id: string;
+  workflow_id: string;
+  name: string;
+  status: ProjectV2Status;
+  is_favorite: boolean;
+  cover_asset_id: string | null;
+  project_version: number;
+  updated_at: string;
+}
+
+export interface ProjectV2 extends ProjectV2Summary {
+  description: string;
+  semantic_revision_no: number;
+  created_at: string;
+  deleted_at: string | null;
+}
+
+export interface ProjectV2ListResponse {
+  items: ProjectV2Summary[];
+  next_cursor: string | null;
+}
+
+export interface ProjectV2UpdateRequest {
+  name?: string;
+  description?: string;
+  is_favorite?: boolean;
+  cover_asset_id?: string | null;
+  status?: "active" | "archived";
+}
+
+export type WorkflowRevisionChangeSourceV2 =
+  | "create"
+  | "migration"
+  | "prompt_edit"
+  | "structure_edit"
+  | "reference_change"
+  | "selected_version_change"
+  | "script_confirm"
+  | "timeline_edit"
+  | "restore"
+  | "execution_result";
+
+export interface WorkflowRevisionV2Summary {
+  revision_id: string;
+  workflow_id: string;
+  revision_no: number;
+  state_version: number;
+  content_hash: string;
+  change_source: WorkflowRevisionChangeSourceV2;
+  restored_from_revision_no: number | null;
+  source_execution_id: string | null;
+  created_at: string;
+}
+
+export interface WorkflowRevisionV2Detail extends WorkflowRevisionV2Summary {
+  document: Record<string, unknown>;
+}
+
+export interface WorkflowRevisionPage {
+  items: WorkflowRevisionV2Summary[];
+  next_cursor: string | null;
+}
+
+export interface WorkflowRevisionRestoreResponse {
+  workflow: WorkflowV2;
+  revision: WorkflowRevisionV2Summary;
+  restored_from_revision_no: number;
 }
 
 export interface WorkflowNodeV2 {
@@ -757,6 +831,7 @@ export interface V2PlanFromChatRequest {
 export interface V2PlanFromChatResponse {
   front_desk: FrontDeskResponse;
   workflow: WorkflowV2 | null;
+  project_id?: string | null;
   normalized_v2_request?: Record<string, unknown> | null;
   status?: string | null;
   error_code?: string | null;

@@ -468,6 +468,75 @@ a {
   white-space: nowrap;
 }
 
+.authoring-conflict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(620px, 52vw);
+  padding: 6px 8px;
+  border: 1px solid #d6a84b;
+  background: #fff8e8;
+  color: #5f4614;
+  font-size: 12px;
+}
+
+.authoring-conflict span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.authoring-conflict button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.workflow-revision-control {
+  position: relative;
+}
+
+.workflow-revision-menu {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  z-index: 60;
+  width: min(420px, 82vw);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.workflow-revision-menu h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.workflow-revision-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--stroke);
+  font-size: 12px;
+}
+
+.workflow-revision-row time {
+  grid-column: 1;
+  color: var(--muted);
+}
+
+.workflow-revision-row button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
 .avatar-btn {
   display: grid;
   width: 40px;

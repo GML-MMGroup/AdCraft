@@ -1,29 +1,27 @@
 import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import { EmptyState, PageHeader } from "../components/Layout";
-import { imageUrl, trashItems } from "../data";
+import { trashItems } from "../data";
 import { useApp } from "../AppContextValue";
 
 export function TrashPage() {
   const [type, setType] = useState<"project" | "role" | "scene">("project");
   const [search, setSearch] = useState("");
-  const { trashedProjects, deleteTrashedProject } = useApp();
+  const { trashedProjects, restoreTrashedProject } = useApp();
 
   const localTrashItems = useMemo(
     () => trashedProjects.map((project) => ({
       key: project.project_id,
       projectId: project.project_id,
-      isLocal: true,
-      type: project.type,
+      isBackendProject: true,
+      type: "project" as const,
       name: project.name,
-      meta: project.meta,
-      img: project.img,
+      meta: `Deleted project · ${new Date(project.updated_at).toLocaleDateString()}`,
     })),
     [trashedProjects],
   );
 
   const list = useMemo(() => {
-    const staticTrashItems = trashItems.map((item) => ({ key: `${item.type}-${item.name}`, projectId: null, isLocal: false, ...item }));
+    const staticTrashItems = trashItems.map((item) => ({ key: `${item.type}-${item.name}`, projectId: null, isBackendProject: false, ...item }));
     return [...staticTrashItems, ...localTrashItems].filter((item) => item.type === type && item.name.toLowerCase().includes(search.toLowerCase()));
   }, [localTrashItems, search, type]);
 
@@ -44,23 +42,22 @@ export function TrashPage() {
         <div className="trash-layout">
           {list.map((item) => (
             <article key={item.key} className="trash-card" data-trash-card={item.name.toLowerCase()}>
-              <div className="trash-thumb" style={{ "--img": imageUrl(item.img) } as CSSProperties} />
+              <div className="trash-thumb" />
               <div className="card-body">
                 <h3>{item.name}</h3>
                 <p>{item.meta}</p>
               </div>
               <div className="trash-actions">
-                <button className="small-action">Restore</button>
                 <button
-                  className="small-action danger"
-                  disabled={!item.isLocal}
-                  title={item.isLocal ? "Delete permanently" : "Static demo item"}
+                  className="small-action"
+                  disabled={!item.isBackendProject}
+                  title={item.isBackendProject ? "Restore project" : "Static item"}
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (item.projectId) deleteTrashedProject(item.projectId);
+                    if (item.projectId) void restoreTrashedProject(item.projectId);
                   }}
                 >
-                  Delete
+                  Restore
                 </button>
               </div>
             </article>

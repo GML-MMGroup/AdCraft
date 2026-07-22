@@ -11,15 +11,17 @@ export const ProjectCard = memo(function ProjectCard({
   onOpen,
   onTrash,
   onToggleFavorite,
+  onRename,
 }: {
   projectId: string;
   name: string;
   time: string;
   favorite: boolean;
-  img: string;
+  img?: string | null;
   onOpen: (projectId: string) => void;
   onTrash?: () => void;
   onToggleFavorite?: () => void;
+  onRename?: () => void;
 }) {
   const [actionsOpen, setActionsOpen] = useState(false);
 
@@ -80,6 +82,19 @@ export const ProjectCard = memo(function ProjectCard({
           <ChevronDownIcon />
         </button>
         <div className="project-action-list" role="menu" aria-label={`${name} actions`}>
+          <button
+            className="project-menu-btn"
+            type="button"
+            role="menuitem"
+            title="Rename project"
+            onClick={(event) => {
+              event.stopPropagation();
+              setActionsOpen(false);
+              onRename?.();
+            }}
+          >
+            Rename
+          </button>
           <button className="project-menu-btn project-trash-btn" type="button" role="menuitem" aria-label={`Move ${name} to trash`} title="Move to trash" onClick={handleTrash}>
             <TrashIcon />
           </button>
@@ -100,10 +115,10 @@ export const ProjectCard = memo(function ProjectCard({
   );
 });
 
-function ProjectPreviewImage({ img, name }: { img: string; name: string }) {
+function ProjectPreviewImage({ img, name }: { img?: string | null; name: string }) {
   return (
     <span className="preview project-preview-image">
-      <img src={imageUrl(img)} alt="" loading="lazy" decoding="async" />
+      {img ? <img src={imageUrl(img)} alt="" loading="lazy" decoding="async" /> : <span aria-hidden="true" />}
       <span className="sr-only">{name}</span>
     </span>
   );

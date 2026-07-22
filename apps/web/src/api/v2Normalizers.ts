@@ -97,7 +97,7 @@ function normalizeRuntimeError(value: unknown) {
   if (typeof value === "string" && value.trim()) {
     return { code: "runtime_error", message: value };
   }
-  const record = recordValue(value);
+  const record = recordValue(value) ?? {};
   if (!record) return null;
   const code = stringValue(record.code);
   const message = stringValue(record.message);
@@ -1231,7 +1231,7 @@ export function normalizeV2AssetLibraryListResponse(value: unknown): V2AssetLibr
   const record = recordValue(value) ?? {};
   return {
     entities: recordArray(record.entities).map(normalizeV2AssetLibraryEntitySummary),
-    next_cursor: stringOrNull(record.next_cursor),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
     catalog_status: record.catalog_status ? normalizeV2RecommendedCatalogStatus(record.catalog_status) : null,
   };
 }
@@ -1407,8 +1407,10 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
 
   return {
     workflow_id: stringValue(value.workflow_id),
+    project_id: stringValue(value.project_id) || undefined,
     workflow_schema_version: 2,
     state_version: typeof value.state_version === "number" && Number.isFinite(value.state_version) ? value.state_version : undefined,
+    semantic_revision_no: typeof value.semantic_revision_no === "number" && Number.isFinite(value.semantic_revision_no) ? value.semantic_revision_no : undefined,
     name: stringValue(value.name) || undefined,
     description: stringValue(value.description) || undefined,
     prompt: stringValue(value.prompt) || undefined,
@@ -1426,6 +1428,80 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
     metadata: recordValue(value.metadata),
     created_at: stringValue(value.created_at) || undefined,
     updated_at: stringValue(value.updated_at) || undefined,
+  };
+}
+
+export function normalizeProjectV2ListResponse(value: unknown): import("../types-v2.ts").ProjectV2ListResponse {
+  const record = recordValue(value) ?? {};
+  return {
+    items: recordArray(record.items).map(normalizeProjectV2Summary),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
+  };
+}
+
+export function normalizeProjectV2(value: unknown): import("../types-v2.ts").ProjectV2 {
+  const record = recordValue(value) ?? {};
+  return {
+    ...normalizeProjectV2Summary(record),
+    description: stringValue(record.description),
+    semantic_revision_no: numberValue(record.semantic_revision_no),
+    created_at: stringValue(record.created_at),
+    deleted_at: stringOrNull(record.deleted_at) ?? null,
+  };
+}
+
+function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").ProjectV2Summary {
+  const record = recordValue(value) ?? {};
+  const status = stringValue(record.status, "active");
+  return {
+    project_id: stringValue(record.project_id),
+    workflow_id: stringValue(record.workflow_id),
+    name: stringValue(record.name),
+    status: status === "archived" || status === "trashed" ? status : "active",
+    is_favorite: Boolean(record.is_favorite),
+    cover_asset_id: stringOrNull(record.cover_asset_id) ?? null,
+    project_version: numberValue(record.project_version),
+    updated_at: stringValue(record.updated_at),
+  };
+}
+
+export function normalizeWorkflowRevisionPage(value: unknown): import("../types-v2.ts").WorkflowRevisionPage {
+  const record = recordValue(value) ?? {};
+  return {
+    items: recordArray(record.items).map(normalizeWorkflowRevisionV2Summary),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
+  };
+}
+
+export function normalizeWorkflowRevisionV2Detail(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Detail {
+  const record = recordValue(value) ?? {};
+  return {
+    ...normalizeWorkflowRevisionV2Summary(record),
+    document: recordValue(record.document) ?? {},
+  };
+}
+
+export function normalizeWorkflowRevisionRestoreResponse(value: unknown): import("../types-v2.ts").WorkflowRevisionRestoreResponse {
+  const record = recordValue(value) ?? {};
+  return {
+    workflow: normalizeWorkflowV2(record.workflow),
+    revision: normalizeWorkflowRevisionV2Summary(record.revision),
+    restored_from_revision_no: numberValue(record.restored_from_revision_no),
+  };
+}
+
+function normalizeWorkflowRevisionV2Summary(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Summary {
+  const record = recordValue(value) ?? {};
+  return {
+    revision_id: stringValue(record.revision_id),
+    workflow_id: stringValue(record.workflow_id),
+    revision_no: numberValue(record.revision_no),
+    state_version: numberValue(record.state_version),
+    content_hash: stringValue(record.content_hash),
+    change_source: stringValue(record.change_source) as import("../types-v2.ts").WorkflowRevisionChangeSourceV2,
+    restored_from_revision_no: typeof record.restored_from_revision_no === "number" ? record.restored_from_revision_no : null,
+    source_execution_id: stringOrNull(record.source_execution_id) ?? null,
+    created_at: stringValue(record.created_at),
   };
 }
 
