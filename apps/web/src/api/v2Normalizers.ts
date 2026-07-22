@@ -2,7 +2,6 @@ import type {
   AssetOwnerRelationV2,
   AssetOwnerResponseV2,
   AssetVersionV2,
-  V2AssetLibraryCatalogSource,
   V2AssetLibraryEntityDetail,
   V2AssetLibraryEntitySummary,
   V2AssetLibraryListResponse,
@@ -1156,15 +1155,6 @@ function normalizeV2AssetLibraryPreviewMember(value: unknown): V2AssetLibraryPre
   };
 }
 
-function normalizeV2AssetLibraryCatalogSource(value: unknown): V2AssetLibraryCatalogSource | null {
-  const record = recordValue(value);
-  if (!record) return null;
-  const source = stringOrNull(record.source);
-  const license = stringOrNull(record.license);
-  const attribution = stringOrNull(record.attribution);
-  return source || license || attribution ? { source, license, attribution } : null;
-}
-
 function normalizeV2AssetLibraryEntitySummary(value: unknown): V2AssetLibraryEntitySummary {
   const record = recordValue(value) ?? {};
   const scope = stringValue(record.scope, "my");
@@ -1181,7 +1171,6 @@ function normalizeV2AssetLibraryEntitySummary(value: unknown): V2AssetLibraryEnt
     status: stringOrNull(record.status),
     preview_member: normalizeV2AssetLibraryPreviewMember(record.preview_member),
     member_count: numberValue(record.member_count),
-    catalog_source: normalizeV2AssetLibraryCatalogSource(record.catalog_source ?? record.source),
   };
 }
 
@@ -1212,6 +1201,9 @@ export function normalizeV2AssetLibraryEntityDetail(value: unknown): V2AssetLibr
   return {
     ...summary,
     members: recordArray(record.members ?? record.assets).map(normalizeV2AssetLibraryMember),
+    catalog_source_url: stringOrNull(record.catalog_source_url),
+    license_id: stringOrNull(record.license_id),
+    attribution: stringOrNull(record.attribution),
     created_at: stringOrNull(record.created_at),
     updated_at: stringOrNull(record.updated_at),
   };

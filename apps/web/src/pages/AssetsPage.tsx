@@ -234,9 +234,9 @@ function AssetDetailPanel({
       {isRecommended ? (
         <>
           <dl className="v2-asset-provenance">
-            <div><dt>Source</dt><dd>{detail.catalog_source?.source ?? "Catalog"}</dd></div>
-            <div><dt>License</dt><dd>{detail.catalog_source?.license ?? "Not specified"}</dd></div>
-            <div><dt>Attribution</dt><dd>{detail.catalog_source?.attribution ?? "Not specified"}</dd></div>
+            <div><dt>Source</dt><dd>{detail.catalog_source_url ?? "Catalog"}</dd></div>
+            <div><dt>License</dt><dd>{detail.license_id ?? "Not specified"}</dd></div>
+            <div><dt>Attribution</dt><dd>{detail.attribution ?? "Not specified"}</dd></div>
           </dl>
           <button className="send-btn" type="button" onClick={onSaveRecommended}>Save to My Assets</button>
         </>
