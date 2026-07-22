@@ -2,25 +2,13 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { useApp } from "../AppContextValue";
 import { SectionTitle } from "../components/Cards";
-import { HomePromptComposer, type HomePromptGenerateContext } from "../components/HomePromptComposer";
-import { PlanningErrorNotice } from "../components/PlanningErrorNotice";
 import { demoProjects, images, imageSrc } from "../data";
-import { PlayIcon } from "../icons";
-import type { FrontDeskMessage, RouteName } from "../types";
-import type { V2InputAssetUploadItem } from "../types-v2.ts";
-import type { PlanningFailureState } from "./homeWorkflowPlanning";
-
-type PendingPlanningRequest = {
-  prompt: string;
-  context: HomePromptGenerateContext;
-  history: FrontDeskMessage[];
-};
+import { PlayIcon, PlusIcon } from "../icons";
+import type { RouteName } from "../types";
 
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const [planningError, setPlanningError] = useState<PlanningFailureState | null>(null);
-  const [pendingPlanningRequest, setPendingPlanningRequest] = useState<PendingPlanningRequest | null>(null);
-  const { messages, promptLibraryEntities, setMessages, setWorkflow } = useApp();
+  const { startNewProject } = useApp();
 
   const discoverCards: Array<[string, string, number]> = [
     ["Campaign Flow", images[0], 240],
@@ -33,65 +21,33 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
     ["Color Script", images[7], 350],
   ];
 
-  async function uploadPromptInputAsset(file: File): Promise<V2InputAssetUploadItem[]> {
-    const { v2Api } = await import("../api/v2Client");
-    const formData = new FormData();
-    formData.append("files[]", file);
-    formData.append("intent", "product_reference");
-    const response = await v2Api.uploadInputAssets(formData);
-    return response.assets;
-  }
-
-  async function generate(prompt: string, context: HomePromptGenerateContext = {}, retry = false) {
-    const history = retry && pendingPlanningRequest ? pendingPlanningRequest.history : messages;
-    const nextMessages = retry ? messages : [...messages, { role: "user" as const, content: prompt }];
-    if (!retry) setMessages(nextMessages);
-    setPlanningError(null);
-
-    try {
-      const { planHomeWorkflow } = await import("./homeWorkflowPlanning");
-      const response = await planHomeWorkflow({
-        prompt,
-        history,
-        inputAssets: [...(context.input_asset_locators ?? []), ...(context.asset_locators ?? [])],
-        libraryEntities: promptLibraryEntities,
-      });
-      setMessages([...nextMessages, { role: "assistant", content: response.reply }]);
-      if (response.workflow) {
-        setWorkflow(response.workflow);
-        navigate("workflow");
-      } else if (!response.shouldStartWorkflow) {
-        navigate("workflow");
-      }
-      setPendingPlanningRequest(null);
-    } catch (error) {
-      const { planningFailureState } = await import("./homeWorkflowPlanning");
-      setPlanningError(planningFailureState(error));
-      setPendingPlanningRequest({ prompt, context, history });
-    }
-  }
-
-  function retryPlanning() {
-    if (pendingPlanningRequest) void generate(pendingPlanningRequest.prompt, pendingPlanningRequest.context, true);
+  function createProject() {
+    startNewProject();
+    navigate("workflow");
   }
 
   return (
     <>
-      <section className="hero">
-        <div>
-          <p className="hero-copy">Describe a scene, attach references, and continue into a workflow canvas designed for video generation.</p>
-          <HomePromptComposer
-            placeholder="Describe the product film you want to create..."
-            onGenerate={generate}
-            onUploadInputAsset={uploadPromptInputAsset}
-          />
-          {planningError ? <PlanningErrorNotice error={planningError} onRetry={retryPlanning} /> : null}
-          <div className="mode-row">
-            {["Video", "Image", "Storyboard", "Character", "Scene"].map((mode, index) => (
-              <button key={mode} className={`mode ${index === 0 ? "is-active" : ""}`}>
-                {mode}
-              </button>
-            ))}
+      <section className="home-product-hero" aria-labelledby="home-product-title">
+        <div className="home-product-hero__content">
+          <p className="home-product-hero__eyebrow">AdCraft</p>
+          <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
+            <span>One Sentence Becomes an</span>{" "}
+            <span className="home-product-hero__accent">Ad film.</span>
+          </h1>
+          <p className="home-product-hero__description">
+            AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
+          </p>
+          <button className="home-product-hero__create" type="button" onClick={createProject}>
+            <PlusIcon />
+            <span>Create Your Project</span>
+          </button>
+        </div>
+
+        <div className="home-product-film" role="img" aria-label="product introduction video placeholder" data-media-slot="product-introduction">
+          <img src="/assets/card1.webp" alt="" />
+          <div className="home-product-film__frame" aria-hidden="true">
+            <span className="home-product-film__play"><PlayIcon /></span>
           </div>
         </div>
       </section>
