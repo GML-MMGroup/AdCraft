@@ -18,6 +18,7 @@ AssetSourceTypeV2 = Literal["recommended", "upload", "generated", "derived"]
 AssetCatalogInstallStatusV2 = Literal[
     "not_installed", "downloading", "verifying", "installing", "ready", "failed"
 ]
+RecommendedCatalogPublicStatusV2 = Literal["catalog_missing", "indexing", "ready", "invalid"]
 AssetEntityStatusV2 = Literal["active", "trashed"]
 AssetVersionStatusV2 = Literal["ready", "unavailable"]
 AssetBindingStatusV2 = Literal["active", "removed"]
@@ -352,6 +353,7 @@ class AssetLibraryEntityResponseV2(_AssetLibraryModel):
     is_favorite: bool
     status: AssetEntityStatusV2
     preview_member: AssetLibraryMemberResponseV2 | None = None
+    preview_url: str | None = None
     member_count: int = Field(ge=0)
 
 
@@ -369,19 +371,21 @@ class AssetLibraryEntityListResponseV2(_AssetLibraryModel):
 
     entities: tuple[AssetLibraryEntityResponseV2, ...] = ()
     next_cursor: str | None = None
-    catalog_status: AssetCatalogInstallStatusV2 | None = None
+    catalog_status: "RecommendedCatalogStatusResponseV2 | None" = None
 
 
 class RecommendedCatalogStatusResponseV2(_AssetLibraryModel):
-    """Public recommended-catalog install state."""
+    """Public local-catalog state; persistence status remains internal."""
 
-    catalog_key: str = Field(min_length=1)
-    catalog_version: str = Field(min_length=1)
-    status: AssetCatalogInstallStatusV2
-    progress_current: int = Field(ge=0)
-    progress_total: int = Field(ge=0)
+    catalog_key: str | None = None
+    catalog_version: str | None = None
+    status: RecommendedCatalogPublicStatusV2
+    entity_count: int = Field(default=0, ge=0)
+    member_count: int = Field(default=0, ge=0)
+    manifest_sha256: str | None = None
+    expected_relative_path: str = "data/assets/catalogs/recommended/"
     last_error_code: str | None = None
-    message: str | None = None
+    message: str
 
 
 class AssetMetadataImportItemResultV2(_AssetLibraryModel):

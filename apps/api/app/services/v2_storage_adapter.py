@@ -68,7 +68,13 @@ class StorageAdapter:
             )
         except V2DataBoundaryError as error:
             raise _storage_error("v2_storage_key_invalid", "Storage key is invalid.") from error
-        if tuple(relative_path.parts[:3]) != ("assets", "objects", "sha256"):
+        readable_prefixes = (
+            ("assets", "objects", "sha256"),
+            ("assets", "catalogs", "recommended"),
+        )
+        if not any(
+            tuple(relative_path.parts[: len(prefix)]) == prefix for prefix in readable_prefixes
+        ):
             raise _storage_error("v2_storage_key_invalid", "Storage key is invalid.")
         try:
             return validate_v2_data_path(
@@ -88,6 +94,15 @@ class StorageAdapter:
         except V2PersistenceError:
             return False
         return path.is_file() and _sha256(path) == expected_sha256
+
+    def file_exists(self, storage_key: str) -> bool:
+        """Return cheap read readiness for approved regular non-symlink media files."""
+
+        try:
+            path = self.resolve_local_path(storage_key)
+        except V2PersistenceError:
+            return False
+        return path.is_file() and not path.is_symlink()
 
 
 def _storage_key(sha256: str, extension: str) -> str:

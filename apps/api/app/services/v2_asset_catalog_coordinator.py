@@ -1,4 +1,4 @@
-"""Application-owned background coordination for one pinned catalog install."""
+"""Application-owned coordination for one local catalog indexing job."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.services.v2_asset_catalog import V2AssetCatalogService
 
 
 class V2AssetCatalogCoordinator:
-    """Ensure one lifespan-owned installation job exists for a pinned catalog."""
+    """Ensure at most one local catalog index operation is active."""
 
     def __init__(self, service: V2AssetCatalogService) -> None:
         self._service = service
@@ -18,23 +18,31 @@ class V2AssetCatalogCoordinator:
         self._lock = Lock()
         self._future: Future[RecommendedCatalogStatusResponseV2] | None = None
 
-    def get_recommended_status(self) -> RecommendedCatalogStatusResponseV2:
-        """Read durable installation status without starting a background operation."""
+    def ensure_indexed(self) -> RecommendedCatalogStatusResponseV2:
+        """Discover a local package and schedule at most one metadata index job."""
 
-        return self._service.get_recommended_status()
+        candidate = self._service.discover_latest_package()
+        if candidate is None:
+            return self._service.catalog_missing_status()
+        try:
+            current = self._service.status_for_candidate(candidate)
+        except Exception as error:  # Service maps only expected catalog errors publicly.
+            from app.services.v2_asset_catalog import V2AssetCatalogError
 
-    def start_recommended_install(self) -> RecommendedCatalogStatusResponseV2:
-        """Start at most one installation job and return its current durable state."""
-
-        manifest, status = self._service.prepare_recommended_install()
-        if status.status == "ready":
-            return status
+            if isinstance(error, V2AssetCatalogError):
+                return self._service.invalid_status(error)
+            raise
+        if current.status == "ready":
+            return current
         with self._lock:
             if self._future is None or self._future.done():
-                self._future = self._executor.submit(
-                    self._service.install_prepared_catalog, manifest
-                )
-        return self._service.get_recommended_status()
+                self._future = self._executor.submit(self._service.index_package, candidate)
+        return current
+
+    def get_recommended_status(self) -> RecommendedCatalogStatusResponseV2:
+        """Compatibility read now follows the same discovery path."""
+
+        return self.ensure_indexed()
 
     def wait_for_idle(self) -> RecommendedCatalogStatusResponseV2 | None:
         """Wait for the current job; tests use this instead of time-based polling."""

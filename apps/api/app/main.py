@@ -79,30 +79,27 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AsyncIterator[None]]:
             return
 
         coordinator = _create_asset_catalog_coordinator(settings)
-        if coordinator is not None:
-            application.state.v2_asset_catalog_coordinator = coordinator
+        application.state.v2_asset_catalog_coordinator = coordinator
+        coordinator.ensure_indexed()
         try:
             _recover_v2_interrupted_executions(settings)
             _recover_v2_active_provider_task_polling(settings)
             _recover_v2_final_composition_renders(settings)
             yield
         finally:
-            if coordinator is not None:
-                coordinator.shutdown()
+            coordinator.shutdown()
 
     return lifespan
 
 
-def _create_asset_catalog_coordinator(settings: Settings) -> V2AssetCatalogCoordinator | None:
-    """Create the optional catalog coordinator once for the application lifespan."""
+def _create_asset_catalog_coordinator(settings: Settings) -> V2AssetCatalogCoordinator:
+    """Create the local-catalog coordinator once for the application lifespan."""
 
-    if settings.v2_recommended_catalog_manifest_path is None:
-        return None
     return V2AssetCatalogCoordinator(
         V2AssetCatalogService(
             data_dir=settings.media_data_dir,
             repository=V2AssetLibraryRepository(create_v2_database(settings.media_data_dir)),
-            manifest_path=settings.v2_recommended_catalog_manifest_path,
+            catalog_root=settings.v2_recommended_catalog_root,
         )
     )
 

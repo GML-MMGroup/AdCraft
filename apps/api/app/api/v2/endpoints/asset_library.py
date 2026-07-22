@@ -89,7 +89,7 @@ def start_recommended_catalog_install(
     """Schedule the configured catalog install without blocking the HTTP request."""
 
     try:
-        catalog_status = coordinator.start_recommended_install()
+        catalog_status = coordinator.ensure_indexed()
     except V2AssetCatalogError as error:
         raise _catalog_http_error(error) from error
     response.status_code = (
@@ -113,18 +113,7 @@ def list_asset_library_entities(
 ) -> AssetLibraryEntityListResponseV2:
     """Return deterministic entities without exposing local media paths."""
 
-    try:
-        page = repository.list_entities(
-            scope=cast(AssetEntityScopeV2, "user" if scope == "my" else "recommended"),
-            category=category,
-            search=search,
-            cursor=cursor,
-            limit=limit,
-        )
-    except V2PersistenceError as error:
-        raise _query_http_error(error) from error
-
-    catalog_status: str | None = None
+    catalog_status: RecommendedCatalogStatusResponseV2 | None = None
     if scope == "recommended":
         if coordinator is None:
             raise HTTPException(
@@ -135,9 +124,22 @@ def list_asset_library_entities(
                 },
             )
         try:
-            catalog_status = coordinator.get_recommended_status().status
+            catalog_status = coordinator.ensure_indexed()
         except V2AssetCatalogError as error:
             raise _catalog_http_error(error) from error
+        if catalog_status.status != "ready":
+            return AssetLibraryEntityListResponseV2(catalog_status=catalog_status)
+
+    try:
+        page = repository.list_entities(
+            scope=cast(AssetEntityScopeV2, "user" if scope == "my" else "recommended"),
+            category=category,
+            search=search,
+            cursor=cursor,
+            limit=limit,
+        )
+    except V2PersistenceError as error:
+        raise _query_http_error(error) from error
 
     storage = StorageAdapter(settings.media_data_dir)
     try:
@@ -212,6 +214,7 @@ def _entity_response(
             (member for member in response.members if member.is_primary),
             response.members[0] if response.members else None,
         ),
+        preview_url=response.preview_url,
         member_count=len(response.members),
     )
 
@@ -228,6 +231,7 @@ def _entity_detail_response(
         (member.version.metadata for member in typed_detail.members if member.version is not None),
         {},
     )
+    preview_key = _optional_metadata_string(version_metadata, "preview_storage_key")
     return AssetLibraryEntityDetailResponseV2(
         entity_id=typed_detail.entity_id,
         scope=typed_detail.scope,
@@ -239,6 +243,9 @@ def _entity_detail_response(
         is_favorite=typed_detail.is_favorite,
         status=typed_detail.status,
         preview_member=next((member for member in members if member.is_primary), None),
+        preview_url=f"/media/{preview_key}"
+        if preview_key and storage.file_exists(preview_key)
+        else None,
         member_count=len(members),
         members=members,
         catalog_source_url=_optional_metadata_string(version_metadata, "source_url"),
@@ -263,7 +270,7 @@ def _member_response(
     version = typed_member.version
     public_url = (
         f"/media/{version.storage_key}"
-        if version.status == "ready" and storage.content_exists(version.storage_key, version.sha256)
+        if version.status == "ready" and storage.file_exists(version.storage_key)
         else None
     )
     return AssetLibraryMemberResponseV2(
