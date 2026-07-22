@@ -30,7 +30,6 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
     <>
       <section className="home-product-hero" aria-labelledby="home-product-title">
         <div className="home-product-hero__content">
-          <p className="home-product-hero__eyebrow">AdCraft</p>
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
             <span>One Sentence Becomes an</span>{" "}
             <span className="home-product-hero__accent">Ad film.</span>

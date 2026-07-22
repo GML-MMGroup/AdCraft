@@ -616,15 +616,6 @@ a {
   min-width: 0;
 }
 
-.home-product-hero__eyebrow {
-  margin: 0 0 20px;
-  color: #7467ac;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
 .home-product-hero__title {
   max-width: 640px;
   color: #202235;
@@ -639,6 +630,7 @@ a {
 }
 
 .home-product-hero__accent {
+  white-space: nowrap;
   font-style: italic;
   font-weight: 600;
   background: linear-gradient(100deg, #715fc2 0%, #347b9e 56%, #c77761 100%);
@@ -783,10 +775,6 @@ a {
     width: 100%;
     gap: 28px;
     padding: 34px 0 26px;
-  }
-
-  .home-product-hero__eyebrow {
-    margin-bottom: 16px;
   }
 
   .home-product-hero__title {
