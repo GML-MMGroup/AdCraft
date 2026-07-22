@@ -10,6 +10,7 @@
     "lint:react": "eslint \"src/**/*.{ts,tsx}\"",
     "test:v2-asset-library-normalizer": "tsx scripts/test-v2-asset-library-normalizer.ts",
     "test:v2-recommended-catalog": "tsx scripts/test-v2-recommended-catalog.ts",
+    "test:v2-project-authority": "tsx scripts/test-v2-project-authority.ts",
     "perf:bundle": "node scripts/perf/check-build-budget.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "codegraph:init": "codegraph init .",
