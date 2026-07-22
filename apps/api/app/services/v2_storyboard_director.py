@@ -199,9 +199,10 @@ def synchronize_storyboard_structure(
             existing.duration_seconds = desired_duration
             existing.metadata["time_range"] = time_range
             existing.metadata["desired_duration_seconds"] = desired_duration
+            provider_duration = normalize_provider_duration(desired_duration)
             for slot in existing.slots:
                 if slot.slot_type == "shot_video_segment":
-                    slot.provider_params["duration_seconds"] = desired_duration
+                    slot.provider_params["duration_seconds"] = provider_duration
             start_seconds = end_seconds
             continue
         shot_index = int(script_shot.get("shot_index") or fallback_index)

@@ -28,6 +28,7 @@ from app.schemas.workflow_v2 import (
     WorkflowSlotV2,
     WorkflowV2,
 )
+from app.schemas.workflow_v2_authoring import WorkflowRevisionChangeSource
 from app.services.agent_trace import utc_now
 from app.services.asset_library import AssetLibraryError, AssetLibraryService
 from app.services.v2_asset_store import V2AssetStoreService
@@ -39,7 +40,7 @@ from app.services.v2_input_assets import (
     validate_assets_relative_file,
 )
 from app.services.v2_runtime_events import V2RuntimeEventService
-from app.services.v2_workflow_store import V2WorkflowStore
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 
 
 class V2WorkflowAssetError(RuntimeError):
@@ -53,7 +54,7 @@ class V2WorkflowAssetService:
         self._data_dir = data_dir
         self._settings = settings or get_settings()
         self._asset_store = V2AssetStoreService(data_dir)
-        self._workflow_store = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
         self._events = V2RuntimeEventService(data_dir)
         self._input_assets = V2InputAssetService(settings=self._settings, data_dir=data_dir)
         self._asset_library = AssetLibraryService(self._settings)
@@ -204,7 +205,10 @@ class V2WorkflowAssetService:
             )
             slot.current_working_asset_id = None
             slot.current_working_version_id = None
-        self._workflow_store.save_workflow(workflow)
+        self._commit_semantic_then_operational(
+            workflow,
+            source="selected_version_change",
+        )
         self._events.append_event(
             workflow_id,
             "slot_selected_version_updated",
@@ -282,7 +286,7 @@ class V2WorkflowAssetService:
             reference_role=request.reference_role,
             source_action="add_slot_reference",
         )
-        self._workflow_store.save_workflow(workflow)
+        self._commit_semantic(workflow, source="reference_change")
         self._emit_reference_attached(workflow, slot, relation, request.reference_role)
         return AddSlotReferenceResponseV2(
             workflow_id=workflow_id,
@@ -342,7 +346,7 @@ class V2WorkflowAssetService:
                 )
         except V2InputAssetError as exc:
             raise V2WorkflowAssetError(exc.code, str(exc)) from exc
-        self._workflow_store.save_workflow(workflow)
+        self._commit_semantic(workflow, source="reference_change")
         events: list[str] = []
         for record in records:
             self._events.append_event(
@@ -414,7 +418,7 @@ class V2WorkflowAssetService:
                 source_action="register_reference",
             )
             relations.append(relation)
-            self._workflow_store.save_workflow(workflow)
+            self._commit_semantic(workflow, source="reference_change")
             self._emit_reference_attached(workflow, slot, relation, role)
             events.extend(["reference_attached", "runtime_snapshot_updated"])
         return V2ReferenceAssetMutationResponse(
@@ -493,7 +497,7 @@ class V2WorkflowAssetService:
                 }
             )
             self._asset_store.save_relation(relation)
-            self._workflow_store.save_workflow(workflow)
+            self._commit_semantic(workflow, source="reference_change")
             self._emit_reference_attached(workflow, slot, relation, role)
             relations.append(relation)
             events.extend(["reference_attached", "runtime_snapshot_updated"])
@@ -678,7 +682,7 @@ class V2WorkflowAssetService:
                     "reference_relation_ids",
                     relation.relation_id,
                 )
-            self._workflow_store.save_workflow(workflow)
+            self._commit_semantic(workflow, source="reference_change")
         self._events.append_event(
             workflow_id,
             "asset_absorbed_into_slot",
@@ -701,10 +705,42 @@ class V2WorkflowAssetService:
 
     def _load_workflow(self, workflow_id: str) -> WorkflowV2:
         try:
-            return self._workflow_store.load_workflow(workflow_id)
+            return self._authoring_runtime.read_model.assemble(workflow_id)
         except Exception as exc:
             code = getattr(exc, "code", "workflow_not_found")
             raise V2WorkflowAssetError(str(code), str(exc)) from exc
+
+    def _commit_semantic(
+        self,
+        workflow: WorkflowV2,
+        *,
+        source: WorkflowRevisionChangeSource,
+    ) -> WorkflowV2:
+        if workflow.state_version is None:
+            raise V2WorkflowAssetError("workflow_authoring_version_missing")
+        return self._authoring_runtime.service.commit_semantic_workflow(
+            workflow,
+            expected_version=workflow.state_version,
+            source=source,
+        )
+
+    def _persist_operational(self, workflow: WorkflowV2) -> WorkflowV2:
+        if workflow.semantic_revision_no is None:
+            raise V2WorkflowAssetError("workflow_authoring_version_missing")
+        self._authoring_runtime.projection.save_operational_overlay(
+            workflow,
+            expected_revision_no=workflow.semantic_revision_no,
+        )
+        return self._authoring_runtime.read_model.assemble(workflow.workflow_id)
+
+    def _commit_semantic_then_operational(
+        self,
+        workflow: WorkflowV2,
+        *,
+        source: WorkflowRevisionChangeSource,
+    ) -> WorkflowV2:
+        self._commit_semantic(workflow, source=source)
+        return self._persist_operational(workflow)
 
     def _library_asset_for_request(
         self,

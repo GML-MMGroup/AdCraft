@@ -45,7 +45,8 @@ from app.services.v2_final_composition_renderer import (
 )
 from app.services.v2_runtime_events import V2RuntimeEventService
 from app.services.v2_workflow_assets import V2WorkflowAssetError, V2WorkflowAssetService
-from app.services.v2_workflow_store import V2WorkflowStore
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
+from app.schemas.workflow_v2_authoring import WorkflowRevisionChangeSource
 
 
 FINAL_NODE_ID = "final-composition"
@@ -77,7 +78,7 @@ class V2FinalCompositionTimelineService:
     ) -> None:
         self._settings = settings
         self._data_dir = settings.media_data_dir
-        self._workflow_store = V2WorkflowStore(self._data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(self._data_dir)
         self._asset_store = V2AssetStoreService(self._data_dir)
         self._events = V2RuntimeEventService(self._data_dir)
         self._media_probe = media_probe or V2MediaProbe(ffprobe_path=settings.ffprobe_path)
@@ -146,7 +147,8 @@ class V2FinalCompositionTimelineService:
         else:
             timeline = saved
         if self._project_compatibility_timeline(item, timeline):
-            self._workflow_store.save_workflow(workflow)
+            workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
+            item, slot = self._final_item_and_slot(workflow)
         return workflow, item, slot, timeline, source
 
     def project_compatibility_timeline(
@@ -187,7 +189,7 @@ class V2FinalCompositionTimelineService:
         )
         self._write_timeline(workflow_id, updated)
         self._project_compatibility_timeline(item, updated)
-        self._workflow_store.save_workflow(workflow)
+        workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
         self._emit_timeline_updated(workflow, updated, changed_clip_ids=changed_clip_ids)
         return WorkflowV2TimelineUpdateResponse(
             workflow_id=workflow_id,
@@ -264,7 +266,10 @@ class V2FinalCompositionTimelineService:
             provider_payload,
             result,
         )
-        self._workflow_store.save_workflow(workflow)
+        workflow = self._commit_semantic_workflow(
+            workflow,
+            source="selected_version_change",
+        )
         self._emit_render_completed(workflow, item, slot, timeline, resolved_render_id, record)
         return WorkflowV2TimelineRenderResponse(
             workflow_id=workflow_id,
@@ -404,7 +409,7 @@ class V2FinalCompositionTimelineService:
         )
         updated = candidate.model_copy(update={"version": current.version + 1}, deep=True)
         self._project_compatibility_timeline(item, updated)
-        self._workflow_store.save_workflow(workflow)
+        workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
         self._emit_timeline_updated(workflow, updated, changed_clip_ids=[clip.clip_id])
         compatibility_clip = clip.model_dump(mode="json")
         compatibility_clip["relation_id"] = relation.relation_id
@@ -455,7 +460,7 @@ class V2FinalCompositionTimelineService:
         self._validate_timeline(workflow_id, updated)
         self._write_timeline(workflow_id, updated)
         self._project_compatibility_timeline(item, updated)
-        self._workflow_store.save_workflow(workflow)
+        workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
         relation_id = removed.metadata.get("relation_id") if removed is not None else None
         if isinstance(relation_id, str) and relation_id:
             self._asset_store.delete_relation(relation_id)
@@ -545,13 +550,31 @@ class V2FinalCompositionTimelineService:
 
     def _load_workflow(self, workflow_id: str) -> WorkflowV2:
         try:
-            return self._workflow_store.load_workflow(workflow_id)
-        except FileNotFoundError as exc:
+            return self._authoring_runtime.read_model.assemble(workflow_id)
+        except (FileNotFoundError, RuntimeError) as exc:
             raise V2FinalCompositionTimelineError(
                 "workflow_not_found",
                 f"Workflow not found: {workflow_id}",
                 status_code=404,
             ) from exc
+
+    def _commit_semantic_workflow(
+        self,
+        workflow: WorkflowV2,
+        *,
+        source: WorkflowRevisionChangeSource,
+    ) -> WorkflowV2:
+        if workflow.state_version is None:
+            raise V2FinalCompositionTimelineError(
+                "workflow_authoring_version_missing",
+                "Workflow is missing its authoring state version.",
+                status_code=409,
+            )
+        return self._authoring_runtime.service.commit_semantic_workflow(
+            workflow,
+            expected_version=workflow.state_version,
+            source=source,
+        )
 
     def _final_item_and_slot(self, workflow: WorkflowV2) -> tuple[WorkflowItemV2, WorkflowSlotV2]:
         for node in workflow.nodes:
@@ -600,7 +623,7 @@ class V2FinalCompositionTimelineService:
             if clips
             else []
         )
-        bgm = self._selected_bgm_record(workflow)
+        bgm = self._selected_bgm_record(workflow) if workflow.audio_mode != "none" else None
         if bgm is not None:
             if duration_seconds <= 0:
                 duration_seconds = _duration_from_record(bgm, default=1.0)

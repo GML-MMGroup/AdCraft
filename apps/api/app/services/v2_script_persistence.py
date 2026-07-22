@@ -6,6 +6,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import threading
+from collections.abc import Callable
 from typing import Any
 from pydantic import ValidationError
 
@@ -23,7 +24,6 @@ from app.services.v2_data_boundary import validate_v2_data_path
 from app.services.v2_event_store import V2EventStore
 from app.services.v2_screenplay_renderer import V2ScreenplayRenderer
 from app.services.v2_workflow_lock import v2_workflow_lock
-from app.services.v2_workflow_store import workflow_v2_path
 
 
 class V2ScriptPersistenceError(RuntimeError):
@@ -225,6 +225,7 @@ class V2ScriptTransactionStore:
         record: V2ScriptVersionRecord | None,
         index: V2ScriptVersionIndex,
         pending: V2ScriptPendingTransaction,
+        persist_workflow: Callable[[WorkflowV2], None],
     ) -> int:
         workflow_id = workflow.workflow_id
         root = self._versions.root(workflow_id)
@@ -241,7 +242,6 @@ class V2ScriptTransactionStore:
 
         prior_index = self._versions.load_index(workflow_id)
         target_path = self._versions.version_path(workflow_id, pending.target_script_version_id)
-        workflow_path = workflow_v2_path(self._data_dir, workflow_id)
         committed = False
         created_target = False
         try:
@@ -257,7 +257,7 @@ class V2ScriptTransactionStore:
                 self._versions.load_version(workflow_id, pending.target_script_version_id)
             self._versions.write_json(self._versions.pending_path(workflow_id), pending_payload)
             self._versions.write_json(self._versions.index_path(workflow_id), index_payload)
-            self._versions.write_json(workflow_path, workflow_payload)
+            persist_workflow(workflow)
             committed = True
             self._append_event_intents(workflow_id, pending)
             self._versions.pending_path(workflow_id).unlink(missing_ok=True)
