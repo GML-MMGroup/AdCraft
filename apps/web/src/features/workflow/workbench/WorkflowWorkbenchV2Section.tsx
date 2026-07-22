@@ -21,9 +21,9 @@ export function WorkflowWorkbenchV2Section({
     selectedAssets,
     selectedV2AssetVersions,
     workflowV2Runtime,
+    workflowV2,
     v2SlotVersionsById,
     selectedV2ReferenceAssets,
-    v2LibraryReferenceOptions,
     v2ProviderTaskRefreshKeyBySlotId,
     selectedFreeGenerationMediaType,
     selectedFreeAbsorbTargetNodes,
@@ -41,7 +41,6 @@ export function WorkflowWorkbenchV2Section({
     discardV2WorkingVersion,
     deleteV2SelectedSlotAsset,
     pollV2ProviderTask,
-    attachV2Reference,
     createV2FreeNode,
     generateV2FreeNode,
     absorbV2FreeNode,
@@ -124,8 +123,8 @@ export function WorkflowWorkbenchV2Section({
                         slotVersions={v2SlotVersionsById[slot.slot_id] ?? null}
                         runtimeStatus={slotRuntimeRecord?.status}
                         runtimeRecord={slotRuntimeRecord}
-                        referenceAssets={selectedV2ReferenceAssets}
-                        libraryOptions={v2LibraryReferenceOptions}
+                        referenceAssets={[...(workflowV2?.asset_versions ?? []), ...selectedV2ReferenceAssets]}
+                        referenceRelations={workflowV2?.asset_relations ?? []}
                         onGenerate={(slotId) => runSelectedV2Slot(slotId)}
                         onLoadVersions={(slotId) => void loadV2SlotVersions(slotId)}
                         onSavePrompt={(slotId, prompt, negativePrompt) => saveV2SlotPrompt(slotId, prompt, negativePrompt)}
@@ -139,7 +138,6 @@ export function WorkflowWorkbenchV2Section({
                           await refreshV2WorkflowGraph(workflow.workflow_id);
                           await syncV2Snapshot(workflow.workflow_id);
                         }}
-                        onAttachReference={(request) => void attachV2Reference(request)}
                       />
                     );
                   })}

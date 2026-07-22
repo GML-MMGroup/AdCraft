@@ -890,12 +890,37 @@ export function useWorkflowPageModel() {
       setStatus("Only V2 image slots can be saved to the Asset Library.");
       return;
     }
+    const v2SaveShape = entityType === "character"
+      ? { entityType: "character" as const, category: "characters" as const }
+      : entityType === "scene"
+        ? { entityType: "scene" as const, category: "scenes" as const }
+        : entityType === "product"
+          ? { entityType: "product" as const, category: "props" as const }
+          : null;
+    if (!v2SaveShape) {
+      setStatus("Only character, scene, and product slots can be saved to My Assets.");
+      return;
+    }
     const asset = selectedAssetForSlot(slot, selectedV2AssetVersions);
-    if (!asset?.asset_id) {
-      setStatus("Current V2 image slot has no selected image to save.");
+    if (!asset?.asset_id || !asset.version_id) {
+      setStatus("Current V2 image slot needs an asset and version id before saving.");
       return;
     }
     const displayName = v2ImageSlotLibrarySaveDisplayName(slot, asset);
+    const siblingSlots = (workflowV2Model.workflowV2?.slots ?? [slot])
+      .filter((candidate) => candidate.item_id === slot.item_id && candidate.media_type === "image");
+    const members = siblingSlots.flatMap((candidate, index) => {
+      const candidateAsset = selectedAssetForSlot(candidate, selectedV2AssetVersions);
+      if (!candidateAsset?.asset_id || !candidateAsset.version_id) return [];
+      return [{
+        asset_id: candidateAsset.asset_id,
+        version_id: candidateAsset.version_id,
+        semantic_type: candidateAsset.semantic_type || candidate.slot_type,
+        is_primary: candidate.slot_id === slot.slot_id || index === 0,
+        is_default_reference: true,
+        sort_order: index,
+      }];
+    });
     setAssetLibrarySaveTarget({
       node: {
         id: slot.node_id,
@@ -904,9 +929,10 @@ export function useWorkflowPageModel() {
         category: "image_generation",
         title: displayName,
       },
-      entityType,
-      sourceEntityId: slot.slot_id,
-      assetIds: [asset.asset_id],
+      entityType: v2SaveShape.entityType,
+      libraryCategory: v2SaveShape.category,
+      sourceEntityId: slot.item_id,
+      members,
       displayName,
     });
     setAssetLibraryDisplayName(displayName);
@@ -914,6 +940,7 @@ export function useWorkflowPageModel() {
     setAssetLibrarySaveFeedback("");
   }, [
     selectedV2AssetVersions,
+    workflowV2Model.workflowV2?.slots,
     setAssetLibraryDisplayName,
     setAssetLibrarySaveFeedback,
     setAssetLibrarySaveTarget,

@@ -1,632 +1,328 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { api, mediaUrl } from "../api/client";
-import { ASSET_LIBRARY_UPLOAD_EVENT, assetLibraryUploadOptionsForKind, isSupportedUploadFile, type AssetLibraryRefreshEventDetail } from "../api/workflowNormalizers";
-import { mediaAssetOriginalPath, mediaAssetPreviewPath } from "../workflow/mediaPreview";
-import { formatV2AssetLocator } from "../workflow-v2/assetLocators.ts";
-import { PageHeader } from "../components/Layout";
-import { DeferredVideo } from "../components/media/DeferredVideo";
-import type {
-  AssetLibraryEntityDetail,
-  AssetLibraryEntitySummary,
-  AssetLibraryEntityType,
-  AssetLibraryGroupUploadKind,
-  AssetLibraryUploadKind,
-  AssetUploadBatchResponse,
-  UploadedAsset,
-} from "../types";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { v2Api } from "../api/v2Client.ts";
+import { PageHeader } from "../components/Layout.tsx";
+import {
+  splitAssetLibraryTags,
+  V2_ASSET_LIBRARY_CATEGORIES,
+  v2AssetEntityDisplay,
+  v2AssetEntityTypeForCategory,
+  v2AssetPreviewUrl,
+} from "../features/assets/v2AssetLibraryModel.ts";
+import { useRecommendedCatalog } from "../features/assets/useRecommendedCatalog.ts";
+import { useV2AssetLibrary } from "../features/assets/useV2AssetLibrary.ts";
+import type { V2AssetLibraryCategory, V2AssetLibraryEntityDetail, V2AssetLibraryEntitySummary, V2AssetLibraryScope, V2AssetLibraryMember } from "../types-v2.ts";
 
-type AssetLibraryTab = AssetLibraryEntityType | "all";
+type AssetPageScope = V2AssetLibraryScope;
 
-const ASSET_LIBRARY_TABS: Array<{ id: AssetLibraryTab; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "character", label: "Characters" },
-  { id: "scene", label: "Scenes" },
-  { id: "storyboard_shot", label: "Storyboard Shots" },
-  { id: "video_clip", label: "Video Clips" },
-  { id: "bgm", label: "BGM" },
-  { id: "style_reference", label: "Styles" },
-  { id: "uploaded_reference", label: "Uploads" },
-];
-
-const ASSET_LIBRARY_UPLOAD_KIND_OPTIONS: Array<{ value: AssetLibraryUploadKind; label: string }> = [
-  { value: "", label: "Auto / Uploaded reference" },
-  { value: "character", label: "Character reference" },
-  { value: "scene", label: "Scene reference" },
-  { value: "style_reference", label: "Style reference" },
-  { value: "bgm", label: "BGM / Audio" },
-  { value: "storyboard_image", label: "Storyboard image" },
-  { value: "storyboard_video", label: "Storyboard video" },
-];
-
-const ASSET_LIBRARY_GROUP_UPLOAD_OPTIONS: Array<{ value: AssetLibraryGroupUploadKind; label: string }> = [
-  { value: "character", label: "Character set" },
-  { value: "scene", label: "Scene set" },
-  { value: "storyboard_shot", label: "Storyboard shot" },
-];
-
-const ASSET_LIBRARY_GROUP_UPLOAD_SPECS: Record<AssetLibraryGroupUploadKind, { entityType: AssetLibraryEntityType; slots: Array<{ semanticType: string; label: string }> }> = {
-  character: {
-    entityType: "character",
-    slots: [
-      { semanticType: "character_main", label: "Main image" },
-      { semanticType: "character_face_id", label: "Face image" },
-      { semanticType: "character_three_view", label: "Three-view image" },
-    ],
-  },
-  scene: {
-    entityType: "scene",
-    slots: [
-      { semanticType: "scene_main", label: "Main image" },
-      { semanticType: "scene_multi_view", label: "Multi-view image" },
-    ],
-  },
-  storyboard_shot: {
-    entityType: "storyboard_shot",
-    slots: [
-      { semanticType: "storyboard_image", label: "Storyboard image" },
-      { semanticType: "storyboard_video", label: "Storyboard video" },
-    ],
-  },
-};
-
-const SEMANTIC_GROUP_ORDER = [
-  "character_main",
-  "character_face_id",
-  "character_three_view",
-  "character_concept",
-  "scene_main",
-  "scene_multi_view",
-  "style_reference",
-  "storyboard_image",
-  "storyboard_video",
-  "bgm",
-  "uploaded_reference",
-];
+function messageForError(caught: unknown, fallback: string) {
+  return caught instanceof Error && caught.message ? caught.message : fallback;
+}
 
 export function AssetsPage() {
-  const [activeTab, setActiveTab] = useState<AssetLibraryTab>("all");
-  const [includeArchived, setIncludeArchived] = useState(false);
+  const [scope, setScope] = useState<AssetPageScope>("my");
+  const [category, setCategory] = useState<V2AssetLibraryCategory>("characters");
   const [search, setSearch] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
-  const [entities, setEntities] = useState<AssetLibraryEntitySummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [trashOpen, setTrashOpen] = useState(false);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<AssetLibraryEntityDetail | null>(null);
-  const [detailDraft, setDetailDraft] = useState({ display_name: "", description: "", tags: "", reuse_policy: "" });
+  const [selectedDetail, setSelectedDetail] = useState<V2AssetLibraryEntityDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detailError, setDetailError] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [trashedEntities, setTrashedEntities] = useState<V2AssetLibraryEntitySummary[]>([]);
+  const catalog = useRecommendedCatalog(scope === "recommended");
+  const recommendedReady = scope !== "recommended" || catalog.status?.status === "ready";
+  const library = useV2AssetLibrary({ scope, category, search, enabled: recommendedReady });
+  const fetchAssetDetail = library.fetchDetail;
 
-  const applySelectedDetail = useCallback((detail: AssetLibraryEntityDetail) => {
-    setSelectedDetail(detail);
-    setDetailDraft({
-      display_name: detail.display_name ?? "",
-      description: detail.description ?? "",
-      tags: detail.tags.join(", "),
-      reuse_policy: detail.reuse_policy ?? "",
-    });
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadAssetLibraryEntities() {
-      setLoading(true);
-      setError("");
-      try {
-        const response = await api.listAssetLibraryEntities({
-          entity_type: activeTab === "all" ? undefined : activeTab,
-          q: search,
-          tag: tagFilter,
-          include_archived: includeArchived,
-        });
-        if (cancelled) return;
-        setEntities(response.entities ?? []);
-      } catch (loadError) {
-        if (cancelled) return;
-        setEntities([]);
-        setError(formatAssetLibraryPageError(loadError));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadAssetLibraryEntities();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, includeArchived, search, tagFilter]);
+  const displayedEntities = useMemo(() => {
+    if (scope !== "my" || !trashOpen) return library.entities.filter((entity) => entity.status !== "trashed");
+    const serverTrash = library.entities.filter((entity) => entity.status === "trashed");
+    const ids = new Set(serverTrash.map((entity) => entity.entity_id));
+    return [...serverTrash, ...trashedEntities.filter((entity) => !ids.has(entity.entity_id))];
+  }, [library.entities, scope, trashOpen, trashedEntities]);
 
   useEffect(() => {
-    if (!selectedEntityId) {
-      setSelectedDetail(null);
-      setDetailDraft({ display_name: "", description: "", tags: "", reuse_policy: "" });
-      return;
-    }
-
-    const requestEntityId = selectedEntityId;
-    let cancelled = false;
-    async function loadAssetLibraryEntityDetail() {
-      setDetailLoading(true);
-      setDetailError("");
-      try {
-        const detail = await api.assetLibraryEntity(requestEntityId);
-        if (cancelled) return;
-        applySelectedDetail(detail);
-      } catch (loadError) {
-        if (cancelled) return;
-        setSelectedDetail(null);
-        setDetailError(formatAssetLibraryPageError(loadError));
-      } finally {
-        if (!cancelled) setDetailLoading(false);
-      }
-    }
-
-    void loadAssetLibraryEntityDetail();
-    return () => {
-      cancelled = true;
-    };
-  }, [applySelectedDetail, selectedEntityId]);
-
-  const visibleTags = useMemo(() => {
-    const tags = new Set<string>();
-    entities.forEach((asset) => asset.tags.forEach((tag) => tags.add(tag)));
-    return Array.from(tags).sort((a, b) => a.localeCompare(b));
-  }, [entities]);
-
-  const refreshCurrentList = useCallback(async () => {
-    const response = await api.listAssetLibraryEntities({
-      entity_type: activeTab === "all" ? undefined : activeTab,
-      q: search,
-      tag: tagFilter,
-      include_archived: includeArchived,
-    });
-    setEntities(response.entities ?? []);
-  }, [activeTab, includeArchived, search, tagFilter]);
-
-  const refreshAfterUpload = useCallback(async (asset?: AssetLibraryRefreshEventDetail | null, explicitEntityId?: string | null) => {
-    await refreshCurrentList();
-    const relatedEntityId = explicitEntityId ?? asset?.library_entity_id ?? asset?.library_entity?.entity_id ?? selectedEntityId;
-    if (!relatedEntityId) return;
-    const detail = await api.assetLibraryEntity(relatedEntityId);
-    setSelectedEntityId(relatedEntityId);
-    applySelectedDetail(detail);
-  }, [applySelectedDetail, refreshCurrentList, selectedEntityId]);
+    setTrashOpen(false);
+    setSelectedEntityId(null);
+    setSelectedDetail(null);
+  }, [scope, category]);
 
   useEffect(() => {
-    function handleExternalUpload(event: Event) {
-      const asset = (event as CustomEvent<AssetLibraryRefreshEventDetail>).detail;
-      void refreshAfterUpload(asset);
-    }
-
-    window.addEventListener(ASSET_LIBRARY_UPLOAD_EVENT, handleExternalUpload);
-    return () => {
-      window.removeEventListener(ASSET_LIBRARY_UPLOAD_EVENT, handleExternalUpload);
-    };
-  }, [refreshAfterUpload]);
-
-  async function saveDetailPatch() {
     if (!selectedEntityId) return;
+    let cancelled = false;
+    setDetailLoading(true);
+    setFeedback(null);
+    void fetchAssetDetail(selectedEntityId)
+      .then((detail) => { if (!cancelled) setSelectedDetail(detail); })
+      .catch((caught) => { if (!cancelled) setFeedback(messageForError(caught, "Could not load asset details.")); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [fetchAssetDetail, selectedEntityId]);
+
+  async function selectEntity(entity: V2AssetLibraryEntitySummary) {
+    setSelectedEntityId(entity.entity_id);
+  }
+
+  async function saveRecommended(entity: V2AssetLibraryEntityDetail) {
+    setFeedback(null);
     try {
-      const detail = await api.patchAssetLibraryEntity(selectedEntityId, {
-        display_name: detailDraft.display_name,
-        description: detailDraft.description,
-        tags: splitTags(detailDraft.tags),
-        reuse_policy: detailDraft.reuse_policy || null,
+      await v2Api.createAssetLibraryEntity({
+        display_name: entity.display_name,
+        entity_type: entity.entity_type,
+        library_category: entity.library_category,
+        description: entity.description ?? null,
+        tags: entity.tags,
+        source: { type: "recommended_entity", entity_id: entity.entity_id },
       });
-      applySelectedDetail(detail);
-      await refreshCurrentList();
-      setDetailError("Saved.");
-    } catch (patchError) {
-      setDetailError(formatAssetLibraryPageError(patchError));
+      setFeedback(`${entity.display_name} was saved to My Assets.`);
+    } catch (caught) {
+      setFeedback(messageForError(caught, "Could not save this recommended asset."));
     }
   }
 
-  async function toggleArchive() {
-    if (!selectedEntityId || !selectedDetail) return;
+  async function updateDetail(request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) {
+    if (!selectedDetail) return;
+    setFeedback(null);
     try {
-      const detail = await api.patchAssetLibraryEntity(selectedEntityId, {
-        is_archived: !selectedDetail.is_archived,
-      });
-      if (detail.is_archived) setIncludeArchived(true);
-      applySelectedDetail(detail);
-      await refreshCurrentList();
-    } catch (patchError) {
-      setDetailError(formatAssetLibraryPageError(patchError));
+      const next = await v2Api.updateAssetLibraryEntity(selectedDetail.entity_id, request);
+      setSelectedDetail(next);
+      await library.refresh();
+    } catch (caught) {
+      setFeedback(messageForError(caught, "Could not update this asset."));
+    }
+  }
+
+  async function trashSelected() {
+    if (!selectedDetail) return;
+    setFeedback(null);
+    try {
+      await v2Api.deleteAssetLibraryEntity(selectedDetail.entity_id);
+      setTrashedEntities((current) => [{ ...selectedDetail, status: "trashed" }, ...current.filter((item) => item.entity_id !== selectedDetail.entity_id)]);
+      setSelectedDetail((current) => current ? { ...current, status: "trashed" } : current);
+      await library.refresh();
+    } catch (caught) {
+      setFeedback(messageForError(caught, "Could not move this asset to Trash."));
+    }
+  }
+
+  async function restoreSelected() {
+    if (!selectedDetail) return;
+    setFeedback(null);
+    try {
+      const restored = await v2Api.restoreAssetLibraryEntity(selectedDetail.entity_id);
+      setSelectedDetail(restored);
+      setTrashedEntities((current) => current.filter((item) => item.entity_id !== restored.entity_id));
+      await library.refresh();
+    } catch (caught) {
+      setFeedback(messageForError(caught, "Could not restore this asset."));
     }
   }
 
   return (
-    <section className="content-wrap asset-library-page">
-      <PageHeader title="Asset Library" subtitle="Manage reusable generated entities saved from workflows." />
-
-      <div className="asset-library-toolbar">
-        <div className="toolbar-row" role="tablist" aria-label="Asset library categories">
-          {ASSET_LIBRARY_TABS.map((tab) => (
-            <button key={tab.id} className={`filter-btn ${activeTab === tab.id ? "is-active" : ""}`} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id)}>
-              {tab.label}
-            </button>
-          ))}
+    <section className="v2-asset-library-page">
+      <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
+      <div className="v2-asset-library-controls">
+        <div className="v2-asset-library-tabs" role="tablist" aria-label="Asset library scope">
+          <button className={scope === "my" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "my"} onClick={() => setScope("my")}>My Assets</button>
+          <button className={scope === "recommended" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => setScope("recommended")}>Recommended Assets</button>
         </div>
-        <div className="toolbar-row asset-library-filters">
-          <input className="search-box" placeholder="Search library" value={search} onChange={(event) => setSearch(event.target.value)} />
-          <input className="search-box" placeholder="Filter tag" list="asset-library-tags" value={tagFilter} onChange={(event) => setTagFilter(event.target.value)} />
-          <datalist id="asset-library-tags">
-            {visibleTags.map((tag) => (
-              <option key={tag} value={tag} />
+        <div className="v2-asset-library-actions">
+          <input aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
+          {scope === "my" ? <button className="small-action" type="button" onClick={() => setTrashOpen((value) => !value)}>{trashOpen ? "All assets" : "Trash"}</button> : null}
+          {scope === "my" ? <button className="send-btn" type="button" onClick={() => setUploadOpen(true)}>Upload</button> : null}
+        </div>
+      </div>
+      <div className="v2-asset-library-categories" role="tablist" aria-label="Asset category">
+        {V2_ASSET_LIBRARY_CATEGORIES.map((item) => (
+          <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => setCategory(item.id)}>{item.label}</button>
+        ))}
+      </div>
+      {scope === "recommended" && catalog.status?.status !== "ready" ? (
+        <CatalogInstallStatus status={catalog.status} error={catalog.error} onRetry={() => void catalog.refresh()} />
+      ) : null}
+      {feedback ? <p className="v2-asset-library-feedback" role="status">{feedback}</p> : null}
+      <div className="v2-asset-library-layout">
+        <div>
+          {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
+          {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
+          {!library.loading && !displayedEntities.length && (!catalog.status || catalog.status.status === "ready") ? <p className="asset-library-empty">No assets found.</p> : null}
+          <div className="v2-asset-library-grid">
+            {displayedEntities.map((entity) => (
+              <AssetEntityCard key={entity.entity_id} entity={entity} selected={selectedEntityId === entity.entity_id} onSelect={() => void selectEntity(entity)} />
             ))}
-          </datalist>
-          <button className={`filter-btn ${includeArchived ? "is-active" : ""}`} type="button" onClick={() => setIncludeArchived((value) => !value)}>
-            Archived
-          </button>
+          </div>
+          {library.nextCursor && !trashOpen ? <button className="small-action v2-asset-library-load-more" type="button" disabled={library.loadingMore} onClick={() => void library.loadMore()}>{library.loadingMore ? "Loading..." : "Load more"}</button> : null}
         </div>
+        <AssetDetailPanel
+          detail={selectedDetail}
+          loading={detailLoading}
+          feedback={feedback}
+          onClose={() => { setSelectedEntityId(null); setSelectedDetail(null); }}
+          onSaveRecommended={() => selectedDetail && void saveRecommended(selectedDetail)}
+          onUpdate={updateDetail}
+          onTrash={() => void trashSelected()}
+          onRestore={() => void restoreSelected()}
+        />
       </div>
-
-      <AssetLibraryUploadForm onUploaded={(asset) => refreshAfterUpload(asset)} />
-      <AssetLibraryGroupUploadForm onUploaded={(response) => refreshAfterUpload(response.assets[0] ?? null, response.library_entity_id ?? response.library_entity?.entity_id)} />
-
-      {error ? <div className="asset-library-status is-error">{error}</div> : null}
-      {loading ? <div className="asset-library-status">Loading asset library...</div> : null}
-
-      <div className="asset-library-layout">
-        <div className="asset-library-grid" aria-label="Asset library entities">
-          {!loading && !entities.length ? <div className="asset-library-empty">No saved asset library entities.</div> : null}
-          {entities.map((asset) => (
-            <button
-              key={asset.entity_id}
-              className={`asset-library-card ${asset.is_archived ? "is-archived" : ""}`}
-              data-asset-library-card={asset.entity_id}
-              type="button"
-              onClick={() => setSelectedEntityId(asset.entity_id)}
-            >
-              <AssetLibraryPreview asset={asset.preview_asset} fallbackUrl={asset.preview_url ?? asset.thumbnail_url ?? ""} label={asset.display_name} />
-              <div className="asset-library-card-body">
-                <div className="asset-library-card-title">
-                  <h3>{asset.display_name}</h3>
-                  {asset.is_archived ? <span>Archived</span> : null}
-                </div>
-                <p>{asset.entity_type}{asset.semantic_type ? ` · ${asset.semantic_type}` : ""}</p>
-                <div className="asset-library-tags">
-                  {asset.tags.map((tag) => (
-                    <span key={tag}>{tag}</span>
-                  ))}
-                </div>
-                <div className="card-meta">
-                  <span>{asset.asset_count} assets</span>
-                  <span>{asset.source_node_id ?? "workflow entity"}</span>
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <aside className="asset-library-detail-panel" aria-label="Asset library entity detail">
-          {!selectedEntityId ? <div className="asset-library-empty">Select an entity to inspect assets and metadata.</div> : null}
-          {detailLoading ? <div className="asset-library-status">Loading detail...</div> : null}
-          {detailError ? <div className={`asset-library-status ${detailError === "Saved." ? "is-success" : "is-error"}`}>{detailError}</div> : null}
-          {selectedDetail ? (
-            <>
-              <div className="asset-library-detail-heading">
-                <div>
-                  <span>{selectedDetail.entity_type}</span>
-                  <h2>{selectedDetail.display_name}</h2>
-                </div>
-                <button className="small-action" type="button" onClick={() => void toggleArchive()}>
-                  {selectedDetail.is_archived ? "Unarchive" : "Archive"}
-                </button>
-              </div>
-              <div className="asset-library-detail-meta">
-                <span>workflow {selectedDetail.source_workflow_id ?? "unknown"}</span>
-                <span>node {selectedDetail.source_node_id ?? "unknown"}</span>
-                <span>entity {selectedDetail.source_entity_id ?? selectedDetail.entity_id}</span>
-              </div>
-              <div className="asset-library-edit-grid">
-                <label>
-                  <span>Name</span>
-                  <input value={detailDraft.display_name} onChange={(event) => setDetailDraft((draft) => ({ ...draft, display_name: event.target.value }))} />
-                </label>
-                <label>
-                  <span>Tags</span>
-                  <input value={detailDraft.tags} placeholder="tag-a, tag-b" onChange={(event) => setDetailDraft((draft) => ({ ...draft, tags: event.target.value }))} />
-                </label>
-                <label>
-                  <span>Reuse policy</span>
-                  <input value={detailDraft.reuse_policy} onChange={(event) => setDetailDraft((draft) => ({ ...draft, reuse_policy: event.target.value }))} />
-                </label>
-                <label className="asset-library-description-field">
-                  <span>Description</span>
-                  <textarea value={detailDraft.description} onChange={(event) => setDetailDraft((draft) => ({ ...draft, description: event.target.value }))} />
-                </label>
-              </div>
-              <button className="send-btn asset-library-save-btn" type="button" onClick={() => void saveDetailPatch()}>
-                Save details
-              </button>
-              <AssetLibraryGroupedAssets detail={selectedDetail} />
-            </>
-          ) : null}
-        </aside>
-      </div>
+      {uploadOpen ? <AssetUploadDialog category={category} onClose={() => setUploadOpen(false)} onUploaded={async () => { setUploadOpen(false); await library.refresh(); }} /> : null}
     </section>
   );
 }
 
-function AssetLibraryUploadForm({ onUploaded }: { onUploaded: (asset: UploadedAsset) => Promise<void> | void }) {
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadKind, setUploadKind] = useState<AssetLibraryUploadKind>("");
-  const [uploadName, setUploadName] = useState("");
-  const [uploadTags, setUploadTags] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState("");
-
-  async function submitUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setUploadStatus("");
-    if (!uploadFile) {
-      setUploadStatus("Choose a file before uploading.");
-      return;
-    }
-    if (!isSupportedUploadFile(uploadFile)) {
-      setUploadStatus("Unsupported file type. Upload image, video, audio, or document files.");
-      return;
-    }
-
-    const uploadOptions = assetLibraryUploadOptionsForKind(uploadKind, {
-      display_name: uploadName,
-      tags: splitTags(uploadTags),
-    });
-
-    setUploading(true);
-    try {
-      const asset = await api.uploadAsset(uploadFile, uploadOptions);
-      await api.listAssets();
-      await onUploaded(asset);
-      setUploadStatus(asset.library_entity_id || asset.library_entity ? "Uploaded to Asset Library." : "Uploaded. Asset Library link missing from backend response.");
-      setUploadFile(null);
-      setUploadName("");
-      setUploadTags("");
-    } catch (uploadError) {
-      setUploadStatus(`${formatAssetLibraryPageError(uploadError)} Multi-file uploads show one request-level error.`);
-    } finally {
-      setUploading(false);
-    }
-  }
-
+function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<typeof useRecommendedCatalog>["status"]; error: string | null; onRetry: () => void }) {
+  const working = status?.status === "indexing";
   return (
-    <form className="asset-library-upload-form" onSubmit={(event) => void submitUpload(event)}>
-      <div className="asset-library-upload-grid">
-        <label>
-          <span>File</span>
-          <input
-            type="file"
-            accept="image/*,video/*,audio/*,.pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-          />
-        </label>
-        <label>
-          <span>Type</span>
-          <select name="upload_kind" value={uploadKind} onChange={(event) => setUploadKind(event.target.value as AssetLibraryUploadKind)}>
-            {ASSET_LIBRARY_UPLOAD_KIND_OPTIONS.map((option) => (
-              <option key={option.value || "auto"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Name</span>
-          <input value={uploadName} placeholder={uploadFile?.name ?? "Optional name"} onChange={(event) => setUploadName(event.target.value)} />
-        </label>
-        <label>
-          <span>Tags</span>
-          <input value={uploadTags} placeholder="tag-a, tag-b" onChange={(event) => setUploadTags(event.target.value)} />
-        </label>
-      </div>
-      <div className="asset-library-upload-actions">
-        <button className="send-btn" type="submit" disabled={uploading}>
-          {uploading ? "Uploading..." : "Upload to Library"}
-        </button>
-        {uploadStatus ? <span className={uploadStatus.startsWith("Uploaded") ? "is-success" : "is-error"}>{uploadStatus}</span> : null}
-      </div>
-    </form>
-  );
-}
-
-function AssetLibraryGroupUploadForm({ onUploaded }: { onUploaded: (response: AssetUploadBatchResponse) => Promise<void> | void }) {
-  const [groupKind, setGroupKind] = useState<AssetLibraryGroupUploadKind>("character");
-  const [groupName, setGroupName] = useState("");
-  const [groupTags, setGroupTags] = useState("");
-  const [groupSlotFiles, setGroupSlotFiles] = useState<Record<string, File | null>>({});
-  const [groupUploading, setGroupUploading] = useState(false);
-  const [groupStatus, setGroupStatus] = useState("");
-  const spec = ASSET_LIBRARY_GROUP_UPLOAD_SPECS[groupKind];
-
-  async function submitGroupUpload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setGroupStatus("");
-    const selectedEntries = spec.slots
-      .map((slot) => ({ semanticType: slot.semanticType, file: groupSlotFiles[slot.semanticType] }))
-      .filter((entry): entry is { semanticType: string; file: File } => Boolean(entry.file));
-    if (selectedEntries.length < 2) {
-      setGroupStatus("Choose at least two files for grouped upload.");
-      return;
-    }
-    const unsupportedFiles = selectedEntries.filter((entry) => !isSupportedUploadFile(entry.file));
-    if (unsupportedFiles.length) {
-      setGroupStatus(`Unsupported file type. Upload image, video, audio, or document files: ${unsupportedFiles.map((entry) => entry.file.name).join(", ")}`);
-      return;
-    }
-
-    const groupFiles = selectedEntries.map((entry) => entry.file);
-    const groupOptions = {
-      entity_type: spec.entityType,
-      display_name: groupName,
-      tags: splitTags(groupTags),
-      assets_metadata: selectedEntries.map((entry) => ({
-        filename: entry.file.name,
-        semantic_type: entry.semanticType,
-      })),
-    };
-
-    setGroupUploading(true);
-    try {
-      const response = await api.uploadAssetGroup(groupFiles, groupOptions);
-      await api.listAssets();
-      await onUploaded(response);
-      setGroupStatus("Grouped upload saved to Asset Library.");
-      setGroupSlotFiles({});
-      setGroupName("");
-      setGroupTags("");
-    } catch (groupError) {
-      setGroupStatus(`Grouped upload failed. No partial assets were saved. ${formatAssetLibraryPageError(groupError)}`);
-    } finally {
-      setGroupUploading(false);
-    }
-  }
-
-  return (
-    <details className="asset-library-group-upload">
-      <summary>Advanced grouped upload</summary>
-      <form className="asset-library-upload-form" onSubmit={(event) => void submitGroupUpload(event)}>
-        <div className="asset-library-upload-grid is-grouped">
-          <label>
-            <span>Group type</span>
-            <select value={groupKind} onChange={(event) => setGroupKind(event.target.value as AssetLibraryGroupUploadKind)}>
-              {ASSET_LIBRARY_GROUP_UPLOAD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Name</span>
-            <input value={groupName} placeholder="Optional group name" onChange={(event) => setGroupName(event.target.value)} />
-          </label>
-          <label>
-            <span>Tags</span>
-            <input value={groupTags} placeholder="tag-a, tag-b" onChange={(event) => setGroupTags(event.target.value)} />
-          </label>
-        </div>
-        <div className="asset-library-group-slots">
-          {spec.slots.map((slot) => (
-            <label key={slot.semanticType}>
-              <span>{slot.label}</span>
-              <input
-                type="file"
-                accept="image/*,video/*,audio/*,.pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={(event) => setGroupSlotFiles((current) => ({ ...current, [slot.semanticType]: event.target.files?.[0] ?? null }))}
-              />
-              <em>{slot.semanticType}</em>
-            </label>
-          ))}
-        </div>
-        <div className="asset-library-upload-actions">
-          <button className="send-btn" type="submit" disabled={groupUploading}>
-            {groupUploading ? "Uploading group..." : "Create grouped entity"}
-          </button>
-          {groupStatus ? <span className={groupStatus.startsWith("Grouped upload saved") ? "is-success" : "is-error"}>{groupStatus}</span> : null}
-        </div>
-      </form>
-    </details>
-  );
-}
-
-function AssetLibraryGroupedAssets({ detail }: { detail: AssetLibraryEntityDetail }) {
-  const grouped = groupAssetsBySemanticType(detail.assets);
-  const orderedKeys = Object.keys(grouped).sort((a, b) => {
-    const left = SEMANTIC_GROUP_ORDER.indexOf(a);
-    const right = SEMANTIC_GROUP_ORDER.indexOf(b);
-    if (left === -1 && right === -1) return a.localeCompare(b);
-    if (left === -1) return 1;
-    if (right === -1) return -1;
-    return left - right;
-  });
-
-  if (!orderedKeys.length) return <div className="asset-library-empty">No assets returned for this entity.</div>;
-
-  return (
-    <div className="asset-library-asset-groups">
-      {orderedKeys.map((semanticType) => (
-        <section key={semanticType} className="asset-library-asset-group">
-          <h3>{semanticType}</h3>
-          <div className="asset-library-media-grid">
-            {grouped[semanticType].map((asset) => (
-              <AssetLibraryMediaTile key={asset.asset_id} asset={asset} />
-            ))}
-          </div>
-        </section>
-      ))}
+    <div className={`v2-catalog-status ${error || status?.status === "invalid" ? "is-error" : ""}`}>
+      <span>{error || status?.message || (working ? "Indexing recommended assets..." : "Extract Recommended Assets to data/assets/catalogs/recommended/ and refresh.")}</span>
+      {status?.status === "invalid" || status?.status === "catalog_missing" || error ? <button className="small-action" type="button" onClick={onRetry}>Refresh</button> : null}
     </div>
   );
 }
 
-function AssetLibraryPreview({ asset, fallbackUrl, label }: { asset?: UploadedAsset | null; fallbackUrl: string; label: string }) {
-  const previewPath = mediaAssetPreviewPath(asset) || mediaAssetOriginalPath(asset) || fallbackUrl;
-  if (!previewPath) return <div className="asset-library-preview is-empty">{label.slice(0, 1).toUpperCase()}</div>;
+function AssetEntityCard({ entity, selected, onSelect }: { entity: V2AssetLibraryEntitySummary; selected: boolean; onSelect: () => void }) {
+  const previewUrl = v2AssetPreviewUrl(entity);
   return (
-    <div className="asset-library-preview">
-      <img src={mediaUrl(previewPath)} alt={label} loading="lazy" decoding="async" />
-    </div>
+    <button className={`v2-asset-entity-card ${selected ? "is-selected" : ""}`} type="button" onClick={onSelect}>
+      <AssetMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} />
+      <span className="v2-asset-entity-card-body">
+        <strong>{entity.display_name}</strong>
+        <small>{v2AssetEntityDisplay(entity)}</small>
+        <span className="v2-asset-entity-tags">{entity.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</span>
+      </span>
+    </button>
   );
 }
 
-function AssetLibraryMediaTile({ asset }: { asset: UploadedAsset }) {
-  const previewPath = mediaAssetPreviewPath(asset) || mediaAssetOriginalPath(asset);
-  const originalPath = mediaAssetOriginalPath(asset) || previewPath;
-  const locator = formatV2AssetLocator({ asset_id: asset.asset_id, version_id: uploadedAssetVersionId(asset) });
-  const copyReference = locator || asset.asset_id;
+function AssetDetailPanel({
+  detail,
+  loading,
+  feedback,
+  onClose,
+  onSaveRecommended,
+  onUpdate,
+  onTrash,
+  onRestore,
+}: {
+  detail: V2AssetLibraryEntityDetail | null;
+  loading: boolean;
+  feedback: string | null;
+  onClose: () => void;
+  onSaveRecommended: () => void;
+  onUpdate: (request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) => Promise<void>;
+  onTrash: () => void;
+  onRestore: () => void;
+}) {
+  const [draft, setDraft] = useState({ displayName: "", description: "", tags: "" });
+  useEffect(() => {
+    setDraft({ displayName: detail?.display_name ?? "", description: detail?.description ?? "", tags: detail?.tags.join(", ") ?? "" });
+  }, [detail]);
+  if (!detail && !loading) return <aside className="v2-asset-detail-panel is-empty">Select an asset to view its members.</aside>;
+  if (loading || !detail) return <aside className="v2-asset-detail-panel">Loading asset details...</aside>;
+  const isRecommended = detail.scope === "recommended";
+  const trashed = detail.status === "trashed";
   return (
-    <figure className={`asset-library-media-tile is-${asset.asset_type}`}>
-      {asset.asset_type === "video" ? (
-        <DeferredVideo src={mediaUrl(originalPath)} poster={previewPath ? mediaUrl(previewPath) : undefined} controls preload="metadata" />
-      ) : asset.asset_type === "audio" ? (
-        <audio src={mediaUrl(originalPath)} controls preload="metadata" />
-      ) : previewPath ? (
-        <img src={mediaUrl(previewPath)} alt={asset.filename} loading="lazy" decoding="async" />
+    <aside className="v2-asset-detail-panel">
+      <div className="v2-asset-detail-heading">
+        <div><small>{detail.library_category}</small><h2>{detail.display_name}</h2></div>
+        <button className="icon-btn" type="button" aria-label="Close asset details" onClick={onClose}>×</button>
+      </div>
+      <div className="v2-asset-member-grid">
+        {detail.members.map((member) => <AssetMember key={member.member_id} member={member} />)}
+      </div>
+      {detail.description ? <p className="v2-asset-detail-description">{detail.description}</p> : null}
+      {isRecommended ? (
+        <>
+          <dl className="v2-asset-provenance">
+            <div><dt>Source</dt><dd>{detail.catalog_source_url ?? "Catalog"}</dd></div>
+            <div><dt>License</dt><dd>{detail.license_id ?? "Not specified"}</dd></div>
+            <div><dt>Attribution</dt><dd>{detail.attribution ?? "Not specified"}</dd></div>
+          </dl>
+          <button className="send-btn" type="button" onClick={onSaveRecommended}>Save to My Assets</button>
+        </>
       ) : (
-        <div className="asset-library-preview is-empty">{asset.asset_type}</div>
+        <form className="v2-asset-detail-form" onSubmit={(event) => { event.preventDefault(); void onUpdate({ display_name: draft.displayName.trim(), description: draft.description.trim() || null, tags: splitAssetLibraryTags(draft.tags) }); }}>
+          <label><span>Name</span><input value={draft.displayName} onChange={(event) => setDraft((value) => ({ ...value, displayName: event.currentTarget.value }))} /></label>
+          <label><span>Description</span><textarea value={draft.description} onChange={(event) => setDraft((value) => ({ ...value, description: event.currentTarget.value }))} /></label>
+          <label><span>Tags</span><input value={draft.tags} onChange={(event) => setDraft((value) => ({ ...value, tags: event.currentTarget.value }))} /></label>
+          <div className="v2-asset-detail-actions">
+            <button className="small-action" type="button" aria-pressed={detail.is_favorite} onClick={() => void onUpdate({ is_favorite: !detail.is_favorite })}>{detail.is_favorite ? "Unfavorite" : "Favorite"}</button>
+            <button className="small-action" type="submit">Save</button>
+            {trashed ? <button className="small-action" type="button" onClick={onRestore}>Restore</button> : <button className="small-action is-danger" type="button" onClick={onTrash}>Move to Trash</button>}
+          </div>
+        </form>
       )}
-      <figcaption>{asset.filename}</figcaption>
-      <div className="asset-library-media-actions">
-        {originalPath ? (
-          <a href={mediaUrl(originalPath)} target="_blank" rel="noreferrer">
-            Open original
-          </a>
-        ) : null}
-        <button type="button" onClick={() => void navigator.clipboard?.writeText(copyReference)}>
-          Copy reference
-        </button>
-      </div>
-    </figure>
+      {feedback ? <p className="v2-asset-library-feedback">{feedback}</p> : null}
+    </aside>
   );
 }
 
-function uploadedAssetVersionId(asset: UploadedAsset) {
-  const rawVersionId = (asset as { version_id?: unknown }).version_id;
-  if (typeof rawVersionId === "string" && rawVersionId.trim()) return rawVersionId;
-  const metadataVersionId = asset.metadata?.version_id;
-  if (typeof metadataVersionId === "string" && metadataVersionId.trim()) return metadataVersionId;
-  const lineageVersionId = asset.lineage?.working_version_id;
-  if (typeof lineageVersionId === "string" && lineageVersionId.trim()) return lineageVersionId;
-  return null;
+function AssetMember({ member }: { member: V2AssetLibraryMember }) {
+  return <figure className="v2-asset-member"><AssetMedia url={v2AssetPreviewUrl(member)} mediaType={member.media_type} label={member.display_name || member.semantic_type} /><figcaption>{member.semantic_type}</figcaption></figure>;
 }
 
-function groupAssetsBySemanticType(assets: UploadedAsset[]) {
-  return assets.reduce<Record<string, UploadedAsset[]>>((groups, asset) => {
-    const semanticType = asset.semantic_type || asset.asset_role || asset.asset_type || "asset";
-    groups[semanticType] = [...(groups[semanticType] ?? []), asset];
-    return groups;
-  }, {});
+function AssetMedia({ url, mediaType, label }: { url: string | null; mediaType?: string | null; label: string }) {
+  if (!url) return <span className="v2-asset-media is-empty">{label.slice(0, 1).toUpperCase()}</span>;
+  if (mediaType === "video") return <video className="v2-asset-media" src={url} preload="metadata" muted playsInline controls />;
+  if (mediaType === "audio") return <audio className="v2-asset-audio" src={url} controls preload="metadata" />;
+  return <img className="v2-asset-media" src={url} alt={label} loading="lazy" decoding="async" />;
 }
 
-function splitTags(value: string) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
+function AssetUploadDialog({ category, onClose, onUploaded }: { category: V2AssetLibraryCategory; onClose: () => void; onUploaded: () => Promise<void> }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [semanticTypes, setSemanticTypes] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function changeFiles(nextFiles: FileList | null) {
+    const next = Array.from(nextFiles ?? []);
+    setFiles(next);
+    setSemanticTypes((current) => next.map((file, index) => current[index] || defaultSemanticType(category, file)));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!files.length) { setError("Choose one or more media files."); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      files.forEach((file) => form.append("files[]", file));
+      form.append("entity_type", v2AssetEntityTypeForCategory(category));
+      form.append("library_category", category);
+      semanticTypes.forEach((semanticType) => form.append("semantic_types[]", semanticType));
+      if (displayName.trim()) form.append("display_name", displayName.trim());
+      if (description.trim()) form.append("description", description.trim());
+      splitAssetLibraryTags(tags).forEach((tag) => form.append("tags[]", tag));
+      await v2Api.uploadAssetLibraryEntity(form);
+      await onUploaded();
+    } catch (caught) {
+      setError(messageForError(caught, "Upload failed. Your selected files and metadata are still available to edit."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="v2-asset-dialog-backdrop" role="presentation">
+      <form className="v2-asset-upload-dialog" onSubmit={(event) => void submit(event)}>
+        <div className="v2-asset-detail-heading"><h2>Upload Assets</h2><button className="icon-btn" type="button" aria-label="Close upload" onClick={onClose}>×</button></div>
+        <label><span>Files</span><input type="file" multiple accept="image/*,video/*,audio/*" onChange={(event) => changeFiles(event.currentTarget.files)} /></label>
+        <label><span>Name</span><input value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
+        <label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.currentTarget.value)} /></label>
+        <label><span>Tags</span><input value={tags} placeholder="campaign, reusable" onChange={(event) => setTags(event.currentTarget.value)} /></label>
+        {files.length ? <div className="v2-asset-upload-members">{files.map((file, index) => <label key={`${file.name}-${index}`}><span>{file.name}</span><input value={semanticTypes[index] ?? "reference"} onChange={(event) => setSemanticTypes((current) => current.map((value, itemIndex) => itemIndex === index ? event.currentTarget.value : value))} /></label>)}</div> : null}
+        {error ? <p className="v2-asset-library-feedback is-error">{error}</p> : null}
+        <div className="v2-asset-detail-actions"><button className="small-action" type="button" onClick={onClose}>Cancel</button><button className="send-btn" type="submit" disabled={busy}>{busy ? "Uploading..." : "Upload"}</button></div>
+      </form>
+    </div>
+  );
 }
 
-function formatAssetLibraryPageError(error: unknown) {
-  if (!error || typeof error !== "object") return "Asset library request failed.";
-  const message = (error as Error).message;
-  return message || "Asset library request failed.";
+function defaultSemanticType(category: V2AssetLibraryCategory, file: File) {
+  if (category === "characters") return "character_main";
+  if (category === "scenes") return file.type.startsWith("video/") ? "scene_video" : "scene_main";
+  return file.type.startsWith("video/") ? "product_video" : "product_main";
 }

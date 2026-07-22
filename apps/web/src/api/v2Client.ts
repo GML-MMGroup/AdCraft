@@ -3,6 +3,12 @@ import type {
   ProviderTaskV2,
   SlotVersionsResponseV2,
   V2AddSlotReferenceRequest,
+  V2AssetLibraryCreateRequest,
+  V2AssetLibraryEntityDetail,
+  V2AssetLibraryListRequest,
+  V2AssetLibraryListResponse,
+  V2AssetLibraryPatchRequest,
+  V2EtaggedResponse,
   V2FreeNodeAbsorbRequest,
   V2FreeNodeAbsorbResponse,
   V2FreeNodeCreateRequest,
@@ -31,6 +37,9 @@ import type {
   V2RegisterReferenceAssetRequest,
   V2RegisterReferenceResponse,
   V2ReferenceAttachRequest,
+  V2ReferenceSelectionsRequest,
+  V2ReferenceSelectionsResponse,
+  V2RecommendedCatalogStatus,
   V2ReferenceMutationResponse,
   V2ScriptConfirmRequest,
   V2ScriptConfirmResponse,
@@ -53,6 +62,10 @@ import type {
 } from "../types-v2.ts";
 import {
   normalizeAssetOwnerResponseV2,
+  normalizeV2AssetLibraryEntityDetail,
+  normalizeV2AssetLibraryListResponse,
+  normalizeV2RecommendedCatalogStatus,
+  normalizeV2ReferenceSelectionsResponse,
   normalizeProviderTaskV2,
   normalizeSlotVersionsResponseV2,
   normalizeV2AssetLocatorResponse,
@@ -142,6 +155,10 @@ export function isNetworkError(value: unknown): value is V2NetworkError {
 }
 
 async function requestV2Payload(path: string, options: RequestInit = {}): Promise<unknown> {
+  return (await requestV2Response(path, options)).payload;
+}
+
+async function requestV2Response(path: string, options: RequestInit = {}): Promise<{ payload: unknown; etag: string | null }> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const method = (options.method ?? "GET").toUpperCase();
   let response: Response;
@@ -183,7 +200,7 @@ async function requestV2Payload(path: string, options: RequestInit = {}): Promis
       payload,
     });
   }
-  return payload;
+  return { payload, etag: response.headers.get("etag") };
 }
 
 function metadataReadKey(path: string, options: RequestInit) {
@@ -213,6 +230,14 @@ async function requestV2<T>(path: string, options: RequestInit = {}, normalize?:
   return normalize ? normalize(payload) : (payload as T);
 }
 
+async function requestV2WithEtag<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<V2EtaggedResponse<T>> {
+  const response = await requestV2Response(path, options);
+  return {
+    value: normalize ? normalize(response.payload) : (response.payload as T),
+    etag: response.etag,
+  };
+}
+
 export const v2Api = {
   uploadInputAssets(formData: FormData): Promise<V2InputAssetUploadResponse> {
     return requestV2(`/input-assets/upload`, { method: "POST", body: formData }, normalizeV2InputAssetUploadResponse);
@@ -220,6 +245,76 @@ export const v2Api = {
 
   workflow(workflowId: string): Promise<WorkflowV2> {
     return requestV2(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  },
+
+  workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<WorkflowV2>> {
+    return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  },
+
+  listAssetLibraryEntities(request: V2AssetLibraryListRequest): Promise<V2AssetLibraryListResponse> {
+    const query = new URLSearchParams({ scope: request.scope });
+    if (request.category) query.set("category", request.category);
+    if (request.search?.trim()) query.set("search", request.search.trim());
+    if (request.cursor) query.set("cursor", request.cursor);
+    if (request.limit) query.set("limit", String(request.limit));
+    return requestV2(`/asset-library/entities?${query.toString()}`, {}, normalizeV2AssetLibraryListResponse);
+  },
+
+  assetLibraryEntity(entityId: string): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(`/asset-library/entities/${encodeURIComponent(entityId)}`, {}, normalizeV2AssetLibraryEntityDetail);
+  },
+
+  createAssetLibraryEntity(request: V2AssetLibraryCreateRequest): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(`/asset-library/entities`, { method: "POST", body: JSON.stringify(request) }, normalizeV2AssetLibraryEntityDetail);
+  },
+
+  uploadAssetLibraryEntity(formData: FormData): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(`/asset-library/entities/upload`, { method: "POST", body: formData }, normalizeV2AssetLibraryEntityDetail);
+  },
+
+  updateAssetLibraryEntity(entityId: string, request: V2AssetLibraryPatchRequest): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(
+      `/asset-library/entities/${encodeURIComponent(entityId)}`,
+      { method: "PATCH", body: JSON.stringify(request) },
+      normalizeV2AssetLibraryEntityDetail,
+    );
+  },
+
+  deleteAssetLibraryEntity(entityId: string): Promise<void> {
+    return requestV2(`/asset-library/entities/${encodeURIComponent(entityId)}`, { method: "DELETE" });
+  },
+
+  restoreAssetLibraryEntity(entityId: string): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(
+      `/asset-library/entities/${encodeURIComponent(entityId)}/restore`,
+      { method: "POST" },
+      normalizeV2AssetLibraryEntityDetail,
+    );
+  },
+
+  recommendedCatalogStatus(): Promise<V2RecommendedCatalogStatus> {
+    return requestV2(`/asset-library/catalogs/recommended/status`, {}, normalizeV2RecommendedCatalogStatus);
+  },
+
+  attachReferenceSelections(
+    workflowId: string,
+    slotId: string,
+    request: V2ReferenceSelectionsRequest,
+    etag: string,
+  ): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/slots/${encodeURIComponent(slotId)}/reference-selections`,
+      { method: "POST", headers: { "If-Match": etag }, body: JSON.stringify(request) },
+      normalizeV2ReferenceSelectionsResponse,
+    );
+  },
+
+  removeReferenceBinding(workflowId: string, bindingId: string, etag: string): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/references/${encodeURIComponent(bindingId)}`,
+      { method: "DELETE", headers: { "If-Match": etag } },
+      normalizeV2ReferenceSelectionsResponse,
+    );
   },
 
   planFromPrompt(body: V2PlanFromPromptRequest): Promise<WorkflowV2> {

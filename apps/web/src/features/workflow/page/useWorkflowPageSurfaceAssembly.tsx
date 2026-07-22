@@ -158,6 +158,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     selectedAssets: args.selectedAssets,
     selectedV2AssetVersions: args.selectedV2AssetVersions,
     workflowV2Runtime: args.workflowV2Model.workflowV2?.runtime,
+    workflowV2: args.workflowV2Model.workflowV2,
     v2SlotVersionsById: args.v2SlotVersionsById,
     selectedV2ReferenceAssets: args.selectedV2ReferenceAssets,
     v2LibraryReferenceOptions: args.v2LibraryReferenceOptions,
@@ -389,7 +390,6 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     adPanelOpen: args.adPanelOpen,
     workflowPrompt: args.workflowPrompt,
     workflowPromptMentionReferences: args.workflowPromptMentionReferences,
-    promptLibraryEntities: args.promptLibraryEntities,
     promptPrimaryReferenceIds: args.promptPrimaryReferenceIds,
     adRequest: args.adRequest,
     videoPanelOpen: args.videoPanelOpen,
@@ -619,7 +619,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
             onChangeDisplayName={args.setAssetLibraryDisplayName}
             onChangeTags={args.setAssetLibraryTags}
             onCancel={() => args.setAssetLibrarySaveTarget(null)}
-            onSubmit={() => void args.submitAssetLibrarySave()}
+            onSubmit={(category) => void args.submitAssetLibrarySave(category)}
           />
         </div>
       ) : null}

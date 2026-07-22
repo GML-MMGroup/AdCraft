@@ -119,6 +119,7 @@ export function useWorkflowV2DerivedState({
     [promptLibraryEntities],
   );
 
+
   const selectedFreeGenerationMediaType = useMemo(
     () => selectedPlanNode ? v2FreeGenerationMediaType(selectedPlanNode, selectedAssets[0]) : null,
     [selectedPlanNode, selectedAssets],

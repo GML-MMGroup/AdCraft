@@ -714,7 +714,7 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
     const shouldRefreshAssets = runtimeEvents.some(v2EventShouldRefreshAssets);
     if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
       void (async () => {
-        if (shouldRefreshRuntime || shouldRefreshAssets) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
+        if (shouldRefreshRuntime) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
         const refreshedWorkflow = shouldRefreshWorkflow
           ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId, { refreshRuntime: false })
           : null;

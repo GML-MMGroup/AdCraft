@@ -62,6 +62,8 @@ export type ItemLifecycleStateV2 = "active" | "archived";
 export interface WorkflowV2 {
   workflow_id: string;
   workflow_schema_version: 2;
+  /** Monotonic workflow revision used to build a fallback If-Match value. */
+  state_version?: number;
   name?: string;
   description?: string;
   prompt?: string;
@@ -489,6 +491,157 @@ export interface V2AddSlotReferenceRequest {
   asset_id: string;
   version_id: string;
   reference_role: "product" | "character" | "scene" | "style" | "composition" | "motion" | "audio" | string;
+}
+
+export type V2AssetLibraryScope = "my" | "recommended";
+
+export type V2AssetLibraryCategory = "characters" | "scenes" | "props";
+
+export type V2AssetLibraryEntityType = "character" | "scene" | "product" | string;
+
+export type V2AssetLibraryMemberSemanticType = string;
+
+export interface V2AssetLibraryPreviewMember {
+  member_id: string;
+  semantic_type: V2AssetLibraryMemberSemanticType;
+  asset_id: string;
+  version_id: string;
+  public_url?: string | null;
+  thumbnail_url?: string | null;
+  media_type?: WorkflowMediaTypeV2 | string | null;
+}
+
+export interface V2AssetLibraryMember extends V2AssetLibraryPreviewMember {
+  is_primary?: boolean;
+  is_default_reference?: boolean;
+  sort_order?: number;
+  display_name?: string | null;
+  mime_type?: string | null;
+  width?: number | null;
+  height?: number | null;
+  duration_seconds?: number | null;
+}
+
+export interface V2AssetLibraryEntitySummary {
+  entity_id: string;
+  scope: V2AssetLibraryScope;
+  entity_type: V2AssetLibraryEntityType;
+  library_category: V2AssetLibraryCategory;
+  display_name: string;
+  description?: string | null;
+  tags: string[];
+  is_favorite: boolean;
+  status?: string | null;
+  preview_member?: V2AssetLibraryPreviewMember | null;
+  preview_url?: string | null;
+  member_count: number;
+}
+
+export interface V2AssetLibraryEntityDetail extends V2AssetLibraryEntitySummary {
+  members: V2AssetLibraryMember[];
+  catalog_source_url?: string | null;
+  license_id?: string | null;
+  attribution?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface V2AssetLibraryListResponse {
+  entities: V2AssetLibraryEntitySummary[];
+  next_cursor?: string | null;
+  catalog_status?: V2RecommendedCatalogStatus | null;
+}
+
+export interface V2RecommendedCatalogStatus {
+  catalog_key: string | null;
+  catalog_version?: string | null;
+  status: "catalog_missing" | "indexing" | "ready" | "invalid";
+  entity_count: number;
+  member_count: number;
+  manifest_sha256?: string | null;
+  expected_relative_path: "data/assets/catalogs/recommended/";
+  last_error_code?: string | null;
+  message?: string | null;
+}
+
+export interface V2AssetLibraryListRequest {
+  scope: V2AssetLibraryScope;
+  category?: V2AssetLibraryCategory | null;
+  search?: string | null;
+  cursor?: string | null;
+  limit?: number;
+}
+
+export interface V2AssetLibraryCreateFromMembersSource {
+  type: "members";
+  members: Array<{
+    asset_id: string;
+    version_id: string;
+    semantic_type: V2AssetLibraryMemberSemanticType;
+    is_primary?: boolean;
+    is_default_reference?: boolean;
+    sort_order?: number;
+  }>;
+}
+
+export interface V2AssetLibraryCreateFromRecommendedSource {
+  type: "recommended_entity";
+  entity_id: string;
+}
+
+export interface V2AssetLibraryCreateRequest {
+  display_name: string;
+  entity_type: V2AssetLibraryEntityType;
+  library_category: V2AssetLibraryCategory;
+  description?: string | null;
+  tags?: string[];
+  source: V2AssetLibraryCreateFromMembersSource | V2AssetLibraryCreateFromRecommendedSource;
+}
+
+export interface V2AssetLibraryPatchRequest {
+  display_name?: string;
+  description?: string | null;
+  tags?: string[];
+  is_favorite?: boolean;
+}
+
+export interface V2AssetReferenceSelection {
+  selection_type: "entity";
+  entity_id: string;
+}
+
+export interface V2AssetVersionReferenceSelection {
+  selection_type: "asset_version";
+  asset_id: string;
+  version_id: string;
+}
+
+export interface V2ReferenceSelectionsRequest {
+  selections: Array<V2AssetReferenceSelection | V2AssetVersionReferenceSelection>;
+  reference_role: string;
+  use_as_prompt: boolean;
+}
+
+export interface V2ReferenceBinding {
+  binding_id: string;
+  source_entity_id?: string | null;
+  asset_id: string;
+  version_id: string;
+  reference_role: string;
+}
+
+export interface V2ReferenceSelectionsResponse {
+  workflow?: WorkflowV2 | null;
+  selection_group_id?: string | null;
+  bindings: V2ReferenceBinding[];
+  removed_binding_id?: string | null;
+  runtime?: WorkflowRuntimeV2 | null;
+  events: WorkflowRuntimeEventV2[];
+}
+
+export interface V2EtaggedResponse<T> {
+  value: T;
+  etag: string | null;
 }
 
 export interface V2RegisterLibraryReferenceRequest {
