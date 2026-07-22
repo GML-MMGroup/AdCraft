@@ -20,6 +20,7 @@ import {
 import { shouldApplyWorkflowScopedResult } from "./workflow/sessionGuards";
 import { isWorkflowV2Graph } from "./workflowSchema";
 import type { ProjectV2Summary } from "./types-v2";
+import { projectTrashClearsActiveWorkflow } from "./projects/v2ProjectAuthority";
 import type {
   AssetLibraryEntitySummary,
   AssetLibraryUploadKind,
@@ -214,13 +215,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const moveProjectToTrash = useCallback(async (projectId: string) => {
     const { v2Api } = await import("./api/v2Client");
     await v2Api.trashProject(projectId);
-    if (activeProjectId === projectId) {
+    if (projectTrashClearsActiveWorkflow(projectId, activeProjectId)) {
+      activeWorkflowIdRef.current = null;
+      setWorkflowState(null);
       saveActiveProjectId(window.localStorage, null);
       setActiveProjectId(null);
     }
     await refreshProjects();
     return true;
-  }, [activeProjectId, refreshProjects]);
+  }, [activeProjectId, refreshProjects, setWorkflowState]);
 
   const restoreTrashedProject = useCallback(async (projectId: string) => {
     const { v2Api } = await import("./api/v2Client");

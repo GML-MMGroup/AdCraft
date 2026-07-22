@@ -9,6 +9,7 @@ import {
 } from "../src/api/v2Normalizers.ts";
 import {
   projectSummaryToListItem,
+  projectTrashClearsActiveWorkflow,
   shouldPersistWorkflowAsLocalDraft,
 } from "../src/projects/v2ProjectAuthority.ts";
 import { revisionActionLabel, revisionCanBeRestored } from "../src/projects/v2RevisionHistory.ts";
@@ -40,6 +41,8 @@ assert.deepEqual(projectSummaryToListItem(projects.items[0]!), {
 });
 assert.equal(shouldPersistWorkflowAsLocalDraft({ project_id: "proj_1" }), false);
 assert.equal(shouldPersistWorkflowAsLocalDraft({}), true);
+assert.equal(projectTrashClearsActiveWorkflow("proj_1", "proj_1"), true);
+assert.equal(projectTrashClearsActiveWorkflow("proj_1", "proj_2"), false);
 assert.deepEqual(v2AuthoringPreconditionTarget("/workflows/wf_1/script/confirm", "POST"), { resource: "workflow", id: "wf_1" });
 assert.deepEqual(v2AuthoringPreconditionTarget("/workflows/wf_1/final-composition/timeline", "PATCH"), { resource: "workflow", id: "wf_1" });
 assert.deepEqual(v2AuthoringPreconditionTarget("/projects/proj_1/restore", "POST"), { resource: "project", id: "proj_1" });
