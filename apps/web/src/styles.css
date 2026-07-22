@@ -629,7 +629,8 @@ a {
   max-width: 640px;
   color: #202235;
   font-size: 72px;
-  font-weight: 800;
+  font-family: "Cormorant Garamond", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", serif;
+  font-weight: 500;
   line-height: 0.98;
 }
 
@@ -638,6 +639,8 @@ a {
 }
 
 .home-product-hero__accent {
+  font-style: italic;
+  font-weight: 600;
   background: linear-gradient(100deg, #715fc2 0%, #347b9e 56%, #c77761 100%);
   -webkit-background-clip: text;
   background-clip: text;
