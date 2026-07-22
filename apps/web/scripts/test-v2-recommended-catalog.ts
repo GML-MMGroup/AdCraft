@@ -7,14 +7,14 @@ const status = normalizeV2RecommendedCatalogStatus({
   catalog_key: "adcraft-recommended-assets-v1",
   catalog_version: "1.0.0",
   status: "ready",
-  entity_count: 62,
-  member_count: 62,
+  entity_count: 61,
+  member_count: 61,
   manifest_sha256: "a".repeat(64),
   expected_relative_path: "data/assets/catalogs/recommended/",
   message: "Recommended assets are ready.",
 });
 assert.equal(status.status, "ready");
-assert.equal(status.entity_count, 62);
+assert.equal(status.entity_count, 61);
 
 const entity = normalizeV2AssetLibraryEntityDetail({
   entity_id: "recommended-v1-character-001",
