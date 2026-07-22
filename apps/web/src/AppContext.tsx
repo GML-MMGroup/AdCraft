@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "./api/client";
 import { v2Api } from "./api/v2Client";
+import { V2_AUTHORING_CONFLICT_RESOLVED_EVENT, type V2AuthoringConflictTarget } from "./api/v2AuthoringConflictStore";
 import { AppContext, type AppContextValue } from "./AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "./api/workflowNormalizers";
 import { clearNewProjectStorage, createNewProjectState, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, WORKSPACE_MESSAGES_KEY, WORKSPACE_WORKFLOW_KEY, type ProjectSessionState, type SavedWorkflowProject } from "./projects/newProject";
@@ -309,6 +310,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       window.removeEventListener(HYBRID_STORAGE_ERROR_EVENT, handleHybridStorageError as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    async function handleAuthoringConflictResolved(event: Event) {
+      const target = (event as CustomEvent<V2AuthoringConflictTarget>).detail;
+      if (target.resource === "project") {
+        await refreshProjects();
+        return;
+      }
+      if (target.id !== activeWorkflowIdRef.current) return;
+      const latest = await v2Api.workflowWithEtag(target.id);
+      setWorkflowState(workflowV2ToWorkflowGraph(latest.value));
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
+  }, [refreshProjects, setWorkflowState]);
 
   useEffect(() => {
     let cancelled = false;
