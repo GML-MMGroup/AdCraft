@@ -138,7 +138,7 @@ export function AssetsPage() {
         ))}
       </div>
       {scope === "recommended" && catalog.status?.status !== "ready" ? (
-        <CatalogInstallStatus status={catalog.status} error={catalog.error} onRetry={() => void catalog.install()} />
+        <CatalogInstallStatus status={catalog.status} error={catalog.error} onRetry={() => void catalog.refresh()} />
       ) : null}
       {feedback ? <p className="v2-asset-library-feedback" role="status">{feedback}</p> : null}
       <div className="v2-asset-library-layout">
@@ -170,12 +170,11 @@ export function AssetsPage() {
 }
 
 function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<typeof useRecommendedCatalog>["status"]; error: string | null; onRetry: () => void }) {
-  const working = status?.status === "downloading" || status?.status === "verifying" || status?.status === "installing";
-  const progress = status?.progress_total ? `${status.progress_current ?? 0} / ${status.progress_total}` : null;
+  const working = status?.status === "indexing";
   return (
-    <div className={`v2-catalog-status ${error || status?.status === "failed" ? "is-error" : ""}`}>
-      <span>{error || status?.message || (working ? `Preparing recommended assets${progress ? ` · ${progress}` : ""}` : "Recommended assets are not installed.")}</span>
-      {status?.status === "failed" || error ? <button className="small-action" type="button" onClick={onRetry}>Retry</button> : null}
+    <div className={`v2-catalog-status ${error || status?.status === "invalid" ? "is-error" : ""}`}>
+      <span>{error || status?.message || (working ? "Indexing recommended assets..." : "Extract Recommended Assets to data/assets/catalogs/recommended/ and refresh.")}</span>
+      {status?.status === "invalid" || status?.status === "catalog_missing" || error ? <button className="small-action" type="button" onClick={onRetry}>Refresh</button> : null}
     </div>
   );
 }

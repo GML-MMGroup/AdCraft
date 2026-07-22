@@ -533,6 +533,7 @@ export interface V2AssetLibraryEntitySummary {
   is_favorite: boolean;
   status?: string | null;
   preview_member?: V2AssetLibraryPreviewMember | null;
+  preview_url?: string | null;
   member_count: number;
 }
 
@@ -552,11 +553,13 @@ export interface V2AssetLibraryListResponse {
 }
 
 export interface V2RecommendedCatalogStatus {
-  catalog_key: string;
+  catalog_key: string | null;
   catalog_version?: string | null;
-  status: "not_installed" | "downloading" | "verifying" | "installing" | "ready" | "failed" | string;
-  progress_current?: number | null;
-  progress_total?: number | null;
+  status: "catalog_missing" | "indexing" | "ready" | "invalid";
+  entity_count: number;
+  member_count: number;
+  manifest_sha256?: string | null;
+  expected_relative_path: "data/assets/catalogs/recommended/";
   last_error_code?: string | null;
   message?: string | null;
 }

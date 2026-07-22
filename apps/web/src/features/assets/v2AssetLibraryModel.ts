@@ -25,8 +25,9 @@ export function v2AssetEntityTypeForCategory(category: V2AssetLibraryCategory): 
   return V2_ASSET_LIBRARY_CATEGORIES.find((item) => item.id === category)?.entityType ?? "product";
 }
 
-export function v2AssetPreviewUrl(entity: Pick<V2AssetLibraryEntitySummary, "preview_member"> | V2AssetLibraryMember | null | undefined): string | null {
+export function v2AssetPreviewUrl(entity: Pick<V2AssetLibraryEntitySummary, "preview_url" | "preview_member"> | V2AssetLibraryMember | null | undefined): string | null {
   if (!entity) return null;
+  if (!("asset_id" in entity) && entity.preview_url) return entity.preview_url;
   const member: V2AssetLibraryPreviewMember | null | undefined = "asset_id" in entity ? entity : entity.preview_member;
   return member?.thumbnail_url || member?.public_url || null;
 }
