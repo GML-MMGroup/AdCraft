@@ -23,8 +23,8 @@
   --glass-button-shadow: 0 10px 22px rgba(74, 82, 111, 0.09), inset 0 1px rgba(255, 255, 255, 0.64);
   --radius-shell: 32px;
   --radius-card: 24px;
-  --font-display: "Sora", "MiSans", "HarmonyOS Sans SC", "Noto Sans SC", sans-serif;
-  --font-body: "Inter", "MiSans", "HarmonyOS Sans SC", "Noto Sans SC", sans-serif;
+  --font-display: "Sora", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 * {
@@ -410,7 +410,7 @@ a {
   padding: 0 16px;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   line-height: 1;
   text-align: center;
 }
@@ -440,7 +440,7 @@ a {
   background: rgba(255, 255, 255, 0.32);
   color: var(--muted);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -462,7 +462,7 @@ a {
   background: rgba(255, 244, 235, 0.72);
   color: #8e4e3d;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -473,7 +473,7 @@ a {
   place-items: center;
   background: linear-gradient(145deg, rgba(108, 93, 171, 0.92), rgba(167, 149, 191, 0.72));
   color: #fff;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .account-menu {
@@ -620,7 +620,7 @@ a {
   margin: 0 0 20px;
   color: #7467ac;
   font-size: 13px;
-  font-weight: 850;
+  font-weight: 700;
   line-height: 1;
   text-transform: uppercase;
 }
@@ -629,7 +629,7 @@ a {
   max-width: 640px;
   color: #202235;
   font-size: 72px;
-  font-weight: 850;
+  font-weight: 800;
   line-height: 0.98;
 }
 
@@ -649,7 +649,7 @@ a {
   margin: 28px 0 0;
   color: rgba(52, 57, 81, 0.76);
   font-size: 18px;
-  font-weight: 560;
+  font-weight: 500;
   line-height: 1.56;
 }
 
@@ -667,7 +667,7 @@ a {
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   will-change: transform, box-shadow;
 }
@@ -1385,6 +1385,7 @@ a {
 .workflow-card h3 {
   margin: 0;
   font-size: 24px;
+  font-weight: 700;
   line-height: 1.05;
 }
 
