@@ -613,11 +613,14 @@ a {
   gap: 58px;
   margin: 0 auto;
   padding: 62px 0 54px;
-  align-items: center;
+  align-items: end;
 }
 
 .home-product-hero__content {
+  position: relative;
+  z-index: 1;
   min-width: 0;
+  align-self: end;
 }
 
 .home-product-hero__title {
@@ -695,20 +698,36 @@ a {
 
 .home-product-film {
   position: relative;
+  z-index: 0;
   display: grid;
   min-width: 0;
-  min-height: 360px;
+  min-height: 0;
+  height: clamp(260px, 26vw, 360px);
   aspect-ratio: 16 / 9;
+  align-self: end;
+  isolation: isolate;
 }
 
 .home-product-film > :is(img, video) {
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center 44%;
+  object-fit: contain;
+  object-position: center;
   border-radius: 6px;
-  box-shadow: 0 28px 70px rgba(40, 45, 67, 0.16);
+  box-shadow: 0 22px 52px rgba(40, 45, 67, 0.12);
+}
+
+.home-product-film::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  border-radius: 6px;
+  background: rgba(247, 249, 253, 0.06);
+  backdrop-filter: blur(1.5px) saturate(0.96);
+  content: "";
+  pointer-events: none;
 }
 
 @media (max-width: 1100px) {
@@ -736,6 +755,7 @@ a {
 
   .home-product-film {
     min-height: 0;
+    height: clamp(220px, 56vw, 320px);
   }
 }
 
