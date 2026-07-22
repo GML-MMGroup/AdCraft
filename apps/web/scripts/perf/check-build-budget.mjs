@@ -50,6 +50,16 @@ function initialJsNames(indexHtml) {
   return names;
 }
 
+function initialCssNames(indexHtml) {
+  const names = new Set();
+  for (const tag of indexHtml.matchAll(/<link\b[^>]*>/g)) {
+    if (!/\brel="stylesheet"/.test(tag[0])) continue;
+    const asset = tag[0].match(/\bhref="\/assets\/([^"]+\.css)"/);
+    if (asset) names.add(asset[1]);
+  }
+  return names;
+}
+
 const assets = listAssets();
 const indexHtml = readIndexHtml();
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
@@ -62,16 +72,16 @@ const timelineEditorCss = cssAssets.find((asset) => asset.name.startsWith("timel
 const featureJsAssets = [screenplayEditorJs, finalCompositionEditorJs, timelineEditorJs].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
 const initialNames = initialJsNames(indexHtml);
+const initialCssAssetNames = initialCssNames(indexHtml);
 const initialJs = jsAssets.filter((asset) => initialNames.has(asset.name));
+const initialCss = cssAssets.filter((asset) => initialCssAssetNames.has(asset.name));
 const initialJsBytes = initialJs.reduce((sum, asset) => sum + asset.size, 0);
 const totalJs = jsAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreJsBytes = jsAssets
   .filter((asset) => !featureJsNames.has(asset.name))
   .reduce((sum, asset) => sum + asset.size, 0);
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
-const coreCssBytes = cssAssets
-  .filter((asset) => asset !== timelineEditorCss)
-  .reduce((sum, asset) => sum + asset.size, 0);
+const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
 
 console.log("Bundle budget report");
 for (const asset of assets.sort((a, b) => b.size - a.size)) {
