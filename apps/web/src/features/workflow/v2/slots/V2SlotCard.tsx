@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type V2ReferenceAttachRequest, type WorkflowSlotV2 } from "../../../../types-v2.ts";
+import { effectiveSlotPrompt, type AssetVersionV2, type RuntimeRecordV2, type SlotVersionsResponseV2, type WorkflowAssetRelationV2, type WorkflowSlotV2 } from "../../../../types-v2.ts";
 import { DeferredVideo } from "../../../../components/media/DeferredVideo.tsx";
 import { versionedMediaPath } from "../../../../workflow/mediaPreview.ts";
 import { dedupeSlotVersionAssets, isIdOnlyAssetVersion, providerAuditForSlot, safeProviderSnapshotText, usableAssetVersionUrl } from "../../../../workflow-v2/selectors.ts";
 import { buildV2SlotTarget, normalizeV2SlotVersionState } from "../operations/v2SlotOperationModel.ts";
 import type { V2SlotAttachment } from "../operations/v2SlotOperationTypes.ts";
-import { V2ReferencePicker } from "../references/V2ReferencePicker.tsx";
 import { V2ReferenceAuditPanel } from "../references/V2ReferenceAuditPanel.tsx";
 import { V2ProviderTaskPanel } from "../provider/V2ProviderTaskPanel.tsx";
 import { useV2MediaContextMenu } from "../media/useV2MediaContextMenu.ts";
@@ -32,8 +31,7 @@ type V2SlotCardProps = {
   onRefreshWorkflow?: () => Promise<void> | void;
   slotVersions?: SlotVersionsResponseV2 | null;
   referenceAssets?: Array<{ asset_id: string; version_id?: string | null; display_name?: string; media_type?: string; public_url?: string | null; preview_url?: string | null }>;
-  libraryOptions?: Array<{ entity_id: string; display_name?: string; library_asset_id?: string | null; semantic_type?: string | null }>;
-  onAttachReference?: (request: V2ReferenceAttachRequest) => void;
+  referenceRelations?: WorkflowAssetRelationV2[];
 };
 
 const SLOT_LABELS: Record<string, string> = {
@@ -103,8 +101,7 @@ export function V2SlotCard({
   onRefreshWorkflow,
   slotVersions,
   referenceAssets = [],
-  libraryOptions = [],
-  onAttachReference,
+  referenceRelations = [],
 }: V2SlotCardProps) {
   const effectivePrompt = effectiveSlotPrompt(slot);
   const { slot_prompt, system_suggested_prompt, user_prompt, negative_prompt } = slot;
@@ -123,7 +120,7 @@ export function V2SlotCard({
   }, [serverPromptState]);
   const workingIsSelected = Boolean(workingVersion && selectedAsset && workingVersion.asset_id === selectedAsset.asset_id);
   const versionHistory = dedupeSlotVersionAssets(slotVersions?.versions?.length ? slotVersions.versions : historyVersions);
-  const referenceAttachments = slotReferencesAsAttachments(slot, referenceAssets);
+  const referenceAttachments = slotReferencesAsAttachments(slot, referenceAssets, referenceRelations);
   const versionState = normalizeV2SlotVersionState({
     selected_version_id: selectedAsset?.version_id,
     selected_asset_id: selectedAsset?.asset_id ?? slot.selected_asset_id,
@@ -302,8 +299,6 @@ export function V2SlotCard({
           })}
           prompt={slotPrompt}
           attachments={referenceAttachments}
-          libraryOptions={libraryOptions}
-          semanticType={slot.slot_type}
           onPromptChange={changeSlotPrompt}
           onRefreshReferences={async () => {
             onLoadVersions?.(slot.slot_id);
@@ -362,9 +357,6 @@ export function V2SlotCard({
           ) : null}
         </details>
       ) : null}
-      {onAttachReference ? (
-        <V2ReferencePicker targetType="slot" targetId={slot.slot_id} assets={referenceAssets} onAttach={onAttachReference} />
-      ) : null}
       <footer className="v2-slot-history">
         <span>History versions: {versionHistory.length}</span>
         {onLoadVersions ? (
@@ -410,12 +402,17 @@ function formatProviderWarning(value: string | Record<string, unknown>) {
 function slotReferencesAsAttachments(
   slot: WorkflowSlotV2,
   referenceAssets: Array<{ asset_id: string; version_id?: string | null; display_name?: string; media_type?: string; public_url?: string | null; preview_url?: string | null }>,
+  referenceRelations: WorkflowAssetRelationV2[],
 ): V2SlotAttachment[] {
   const byAssetId = new Map(referenceAssets.map((asset) => [asset.asset_id, asset]));
   return (slot.explicit_reference_ids ?? []).map((assetId) => {
     const asset = byAssetId.get(assetId);
+    const relation = referenceRelations.find((candidate) =>
+      (candidate.target_id ?? candidate.slot_id) === slot.slot_id &&
+      (candidate.source_asset_id ?? candidate.asset_id) === assetId,
+    );
     return {
-      relationId: null,
+      relationId: relation?.relation_id ?? null,
       sourceAssetId: assetId,
       sourceVersionId: asset?.version_id ?? null,
       displayName: asset?.display_name || assetId,

@@ -2,6 +2,7 @@
 name = "adworkflow"
 version = "1.0.0"
 description = "Production backend for AdCraft, a multi-agent advertising workflow platform"
+readme = "README.md"
 requires-python = ">=3.10.12"
 dependencies = [
     "agno>=2.6.9",

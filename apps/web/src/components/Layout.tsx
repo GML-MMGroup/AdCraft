@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
-import { AssetsIcon, FolderIcon, GithubIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
+import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useApp } from "../AppContextValue";
 
 const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; icon: ReactNode }> = [
@@ -56,11 +56,6 @@ export function Layout({ children }: LayoutProps) {
               <img className="brand-logo" src="/brand/adcraft-logo-wordmark.webp" alt="AdCraft" />
             </picture>
           </Link>
-          <a className="ghost-btn github-btn" href="https://github.com/" target="_blank" rel="noreferrer">
-            <GithubIcon />
-            <span>GitHub</span>
-            <span className="top-count">12.8k</span>
-          </a>
           <div className={`api-chip ${apiOnline ? "is-online" : apiOnline === false ? "is-offline" : ""}`} title={apiMessage}>
             {apiOnline ? "API ready" : apiOnline === false ? "Demo mode" : "Checking"}
           </div>

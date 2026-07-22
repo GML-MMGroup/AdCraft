@@ -2,13 +2,29 @@ import asyncio
 import json
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from app.api.dependencies import get_front_desk_service
 from app.core.config import Settings, get_settings
 from app.schemas.front_desk import FrontDeskChatRequest
+from app.schemas.v2_asset_library import (
+    AttachReferenceSelectionsRequestV2,
+    ReferenceSelectionMutationResponseV2,
+)
 from app.schemas.workflow_v2_screenplay import (
     V2ScriptConfirmResponse,
     V2ScriptReadResponse,
@@ -89,6 +105,10 @@ from app.services.v2_script_versions import (
     V2ScriptVersionService,
     parse_confirm_request,
 )
+from app.services.v2_reference_selection import (
+    V2ReferenceSelectionError,
+    V2ReferenceSelectionService,
+)
 from app.services.v2_workflow_assets import V2WorkflowAssetError, V2WorkflowAssetService
 from app.services.workflow_v2 import WorkflowV2Error, WorkflowV2Service
 
@@ -106,6 +126,12 @@ def get_v2_workflow_asset_service(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> V2WorkflowAssetService:
     return V2WorkflowAssetService(settings.media_data_dir, settings=settings)
+
+
+def get_v2_reference_selection_service(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> V2ReferenceSelectionService:
+    return V2ReferenceSelectionService(settings.media_data_dir)
 
 
 def get_v2_asset_locator_resolver(
@@ -223,10 +249,13 @@ def select_workflow_script_version(
 @router.get("/{workflow_id}", response_model=WorkflowV2)
 def get_workflow(
     workflow_id: str,
+    response: Response,
     service: Annotated[WorkflowV2Service, Depends(get_workflow_v2_service)],
 ) -> WorkflowV2:
     try:
-        return service.get_workflow(workflow_id)
+        workflow = service.get_workflow(workflow_id)
+        response.headers["ETag"] = _workflow_etag(workflow)
+        return workflow
     except WorkflowV2Error as exc:
         if exc.code == "unsupported_workflow_schema_version":
             raise HTTPException(
@@ -237,6 +266,33 @@ def get_workflow(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": exc.code, "message": str(exc)},
         ) from exc
+
+
+@router.post(
+    "/{workflow_id}/slots/{slot_id}/reference-selections",
+    response_model=ReferenceSelectionMutationResponseV2,
+)
+def attach_reference_selections(
+    workflow_id: str,
+    slot_id: str,
+    request: AttachReferenceSelectionsRequestV2,
+    response: Response,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    service: Annotated[
+        V2ReferenceSelectionService, Depends(get_v2_reference_selection_service)
+    ] = None,
+) -> ReferenceSelectionMutationResponseV2:
+    try:
+        result = service.attach(
+            workflow_id,
+            slot_id,
+            request,
+            expected_state_version=_expected_workflow_state_version(workflow_id, if_match),
+        )
+    except V2ReferenceSelectionError as exc:
+        raise _reference_selection_http_error(exc) from exc
+    response.headers["ETag"] = _workflow_etag(result.workflow)
+    return result
 
 
 @router.get("/{workflow_id}/assets", response_model=WorkflowAssetListResponseV2)
@@ -640,13 +696,30 @@ def attach_reference(
 
 
 @router.delete(
-    "/{workflow_id}/references/{relation_id}", response_model=WorkflowV2ReferenceMutationResponse
+    "/{workflow_id}/references/{relation_id}",
+    response_model=WorkflowV2ReferenceMutationResponse | ReferenceSelectionMutationResponseV2,
 )
 def remove_reference(
     workflow_id: str,
     relation_id: str,
+    response: Response,
     service: Annotated[WorkflowV2Service, Depends(get_workflow_v2_service)],
-) -> WorkflowV2ReferenceMutationResponse:
+    reference_selection_service: Annotated[
+        V2ReferenceSelectionService, Depends(get_v2_reference_selection_service)
+    ],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> WorkflowV2ReferenceMutationResponse | ReferenceSelectionMutationResponseV2:
+    if reference_selection_service.is_binding(workflow_id, relation_id):
+        try:
+            result = reference_selection_service.remove(
+                workflow_id,
+                relation_id,
+                expected_state_version=_expected_workflow_state_version(workflow_id, if_match),
+            )
+        except V2ReferenceSelectionError as exc:
+            raise _reference_selection_http_error(exc) from exc
+        response.headers["ETag"] = _workflow_etag(result.workflow)
+        return result
     try:
         return service.remove_reference(workflow_id, relation_id)
     except WorkflowV2Error as exc:
@@ -1160,6 +1233,44 @@ def _workflow_v2_error_detail(exc: WorkflowV2Error) -> dict[str, Any]:
         return detail
     detail["details"] = exc.details
     return detail
+
+
+def _workflow_etag(workflow: WorkflowV2) -> str:
+    if workflow.state_version is None:
+        raise RuntimeError("V2 workflow state version is required for ETag generation.")
+    return f'"wf-{workflow.workflow_id}-v{workflow.state_version}"'
+
+
+def _expected_workflow_state_version(workflow_id: str, if_match: str | None) -> int:
+    if not if_match:
+        raise V2ReferenceSelectionError(
+            "workflow_precondition_required",
+            "If-Match is required for reference selection mutations.",
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+        )
+    prefix = f'"wf-{workflow_id}-v'
+    if not if_match.startswith(prefix) or not if_match.endswith('"'):
+        raise V2ReferenceSelectionError(
+            "workflow_etag_invalid",
+            "If-Match must contain the current workflow ETag.",
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+        )
+    value = if_match[len(prefix) : -1]
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise V2ReferenceSelectionError(
+            "workflow_etag_invalid",
+            "If-Match must contain the current workflow ETag.",
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+        ) from exc
+
+
+def _reference_selection_http_error(exc: V2ReferenceSelectionError) -> HTTPException:
+    return HTTPException(
+        status_code=exc.status_code,
+        detail={"code": exc.code, "message": str(exc)},
+    )
 
 
 def _workflow_v2_asset_http_error(exc: V2WorkflowAssetError) -> HTTPException:

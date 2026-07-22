@@ -74,7 +74,7 @@ export function normalizeV2SlotAttachments(values: unknown[]): V2SlotAttachment[
   return values.map((value) => {
     const record = readRecord(value);
     return {
-      relationId: readString(record.relation_id) ?? readString(record.relationId),
+      relationId: readString(record.binding_id) ?? readString(record.relation_id) ?? readString(record.relationId),
       sourceAssetId: readString(record.source_asset_id) ?? readString(record.sourceAssetId) ?? readString(record.asset_id) ?? readString(record.assetId) ?? "",
       sourceVersionId: readString(record.source_version_id) ?? readString(record.sourceVersionId) ?? readString(record.version_id) ?? readString(record.versionId),
       displayName: readString(record.display_name) ?? readString(record.displayName) ?? readString(record.filename) ?? "Reference",

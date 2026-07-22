@@ -291,6 +291,9 @@ class WorkflowRuntimeV2(BaseModel):
 class WorkflowV2(BaseModel):
     workflow_schema_version: Literal[2] = 2
     workflow_id: str
+    project_id: str | None = None
+    state_version: int | None = Field(default=None, ge=1)
+    semantic_revision_no: int | None = Field(default=None, ge=1)
     name: str
     description: str = ""
     prompt: str
@@ -376,6 +379,7 @@ class WorkflowV2NormalizedPlanningRequestView(BaseModel):
 class WorkflowV2PlanFromChatResponse(BaseModel):
     front_desk: FrontDeskChatResponse
     workflow: WorkflowV2 | None = None
+    project_id: str | None = None
     normalized_v2_request: WorkflowV2NormalizedPlanningRequestView | None = None
     status: str | None = None
     error_code: str | None = None

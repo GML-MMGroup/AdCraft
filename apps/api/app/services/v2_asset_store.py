@@ -1,8 +1,15 @@
+import hashlib
 import json
+import mimetypes
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.database import create_v2_database
+from app.persistence.errors import V2PersistenceError
+from app.persistence.event_repository import EventRepository
+from app.schemas.v2_asset_library import AssetBindingCreate, AssetRecordCreate, AssetVersionCreate
 from app.schemas.workflow_v2 import (
     WorkflowAssetRelationTypeV2,
     WorkflowAssetRelationV2,
@@ -24,11 +31,16 @@ ASSET_STORE_DIRS = (
     "metadata",
 )
 
+_ASSET_METADATA_IMPORT_MIGRATION_NAME = "v2_asset_metadata_import_v1"
+
 
 class V2AssetStoreService:
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
         self._asset_root = data_dir / "assets"
+        self._database = create_v2_database(data_dir)
+        self._repository = V2AssetLibraryRepository(self._database)
+        self._events = EventRepository(self._database)
 
     def ensure_directories(self) -> None:
         for directory in ASSET_STORE_DIRS:
@@ -43,6 +55,8 @@ class V2AssetStoreService:
         if record.created_at is None:
             record = record.model_copy(update={"created_at": utc_now().isoformat()})
         validate_v2_relative_path(record.file_path, operation="v2-save-asset-version")
+        if self._sqlite_metadata_active():
+            return self._save_sqlite_asset_version(record)
         path = self._asset_metadata_path(record.asset_id, record.version_id)
         validate_v2_data_path(self._data_dir, path, operation="v2-save-asset-version")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,6 +114,11 @@ class V2AssetStoreService:
         asset_id: str,
         version_id: str,
     ) -> WorkflowAssetVersionV2 | None:
+        if self._sqlite_metadata_active():
+            version = self._repository.find_version(asset_id=asset_id, version_id=version_id)
+            return (
+                None if version is None else _workflow_asset_version_from_metadata(version.metadata)
+            )
         path = self._asset_metadata_path(asset_id, version_id)
         if not path.exists():
             return None
@@ -112,6 +131,15 @@ class V2AssetStoreService:
         version_id: str | None = None,
         asset_id: str | None = None,
     ) -> WorkflowAssetVersionV2 | None:
+        if self._sqlite_metadata_active():
+            version = self._repository.find_version(
+                asset_id=asset_id,
+                version_id=version_id,
+                slot_id=slot_id,
+            )
+            return (
+                None if version is None else _workflow_asset_version_from_metadata(version.metadata)
+            )
         metadata_root = self._asset_root / "metadata"
         if not metadata_root.exists():
             return None
@@ -129,6 +157,19 @@ class V2AssetStoreService:
         return None
 
     def asset_exists(self, asset_id: str) -> bool:
+        if self._sqlite_metadata_active():
+            record = self.find_asset_version(asset_id=asset_id)
+            if record is None:
+                return False
+            try:
+                path = validate_v2_data_path(
+                    self._data_dir,
+                    record.file_path,
+                    operation="v2-asset-store-content-exists",
+                )
+            except Exception:
+                return False
+            return path.is_file()
         metadata_root = self._asset_root / "metadata" / asset_id
         if not metadata_root.exists():
             return False
@@ -144,6 +185,8 @@ class V2AssetStoreService:
         relation: WorkflowAssetRelationV2,
     ) -> WorkflowAssetRelationV2:
         self.ensure_directories()
+        if self._sqlite_metadata_active():
+            return self._save_sqlite_relation(relation)
         path = self._relation_metadata_path(relation.relation_id)
         validate_v2_data_path(self._data_dir, path, operation="v2-save-asset-relation")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,12 +197,21 @@ class V2AssetStoreService:
         return relation
 
     def load_relation(self, relation_id: str) -> WorkflowAssetRelationV2 | None:
+        if self._sqlite_metadata_active():
+            binding = self._repository.get_binding(relation_id)
+            return None if binding is None else _workflow_relation_from_metadata(binding.metadata)
         path = self._relation_metadata_path(relation_id)
         if not path.exists():
             return None
         return WorkflowAssetRelationV2.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
     def delete_relation(self, relation_id: str) -> WorkflowAssetRelationV2 | None:
+        if self._sqlite_metadata_active():
+            relation = self.load_relation(relation_id)
+            if relation is None:
+                return None
+            self._repository.remove_binding(relation_id)
+            return relation
         relation = self.load_relation(relation_id)
         if relation is None:
             return None
@@ -174,6 +226,14 @@ class V2AssetStoreService:
         source_asset_id: str | None = None,
         relation_type: WorkflowAssetRelationTypeV2 | None = None,
     ) -> list[WorkflowAssetRelationV2]:
+        if self._sqlite_metadata_active():
+            bindings = self._repository.list_bindings(
+                workflow_id=target_workflow_id,
+                target_slot_id=target_slot_id,
+                asset_id=source_asset_id,
+                binding_type=relation_type,
+            )
+            return [_workflow_relation_from_metadata(binding.metadata) for binding in bindings]
         relations_root = self._asset_root / "metadata" / "relations"
         if not relations_root.exists():
             return []
@@ -239,6 +299,99 @@ class V2AssetStoreService:
         )
         return self.save_relation(relation)
 
+    def _sqlite_metadata_active(self) -> bool:
+        try:
+            return (
+                self._events.migration_status(_ASSET_METADATA_IMPORT_MIGRATION_NAME) == "completed"
+            )
+        except V2PersistenceError:
+            return False
+
+    def _save_sqlite_asset_version(self, record: WorkflowAssetVersionV2) -> WorkflowAssetVersionV2:
+        source_path = validate_v2_data_path(
+            self._data_dir,
+            record.file_path,
+            operation="v2-save-asset-version",
+        )
+        content_exists = source_path.is_file()
+        sha256 = _sha256(source_path) if content_exists else _unavailable_version_sha256(record)
+        size_bytes = source_path.stat().st_size if content_exists else 0
+        self._repository.import_asset_version(
+            AssetRecordCreate(
+                asset_id=record.asset_id,
+                media_type=record.media_type,
+                source_type=_asset_source_type(record.source_type),
+                display_name=_first_string(record.metadata, "display_name") or record.asset_id,
+                created_at=record.created_at,
+                updated_at=record.created_at,
+            ),
+            AssetVersionCreate(
+                version_id=record.version_id,
+                asset_id=record.asset_id,
+                storage_key=record.file_path,
+                sha256=sha256,
+                size_bytes=size_bytes,
+                mime_type=_first_string(record.metadata, "content_type")
+                or mimetypes.guess_type(record.file_path)[0]
+                or "application/octet-stream",
+                source_workflow_id=record.workflow_id,
+                source_node_id=record.node_id,
+                source_item_id=record.item_id,
+                source_slot_id=record.slot_id,
+                metadata={"workflow_asset_version": record.model_dump(mode="json")},
+                status="ready" if content_exists else "unavailable",
+                created_at=record.created_at,
+            ),
+        )
+        return record
+
+    def _save_sqlite_relation(self, relation: WorkflowAssetRelationV2) -> WorkflowAssetRelationV2:
+        version_id = _relation_version_id(relation)
+        if version_id is None:
+            version = self._repository.find_version(asset_id=relation.source_asset_id)
+            if version is None:
+                raise V2PersistenceError(
+                    "asset_version_not_found",
+                    "Asset version was not found.",
+                    stage="v2_asset_store",
+                )
+            version_id = version.version_id
+            relation = relation.model_copy(
+                update={"metadata": {**relation.metadata, "version_id": version_id}}
+            )
+        target_workflow_id = relation.target_workflow_id
+        if target_workflow_id is None:
+            record = self.find_asset_version(
+                asset_id=relation.source_asset_id,
+                version_id=version_id,
+            )
+            target_workflow_id = record.workflow_id if record is not None else None
+        if target_workflow_id is None:
+            raise V2PersistenceError(
+                "asset_binding_workflow_required",
+                "Asset binding requires a workflow target.",
+                stage="v2_asset_store",
+            )
+        self._repository.import_binding(
+            AssetBindingCreate(
+                binding_id=relation.relation_id,
+                selection_group_id=f"compat:{relation.relation_id}",
+                binding_type=relation.relation_type,
+                workflow_id=target_workflow_id,
+                target_node_id=relation.target_node_id,
+                target_item_id=relation.target_item_id,
+                target_slot_id=relation.target_slot_id,
+                asset_id=relation.source_asset_id,
+                version_id=version_id,
+                reference_role=_first_string(relation.metadata, "reference_role") or None,
+                use_as_prompt=True,
+                sort_order=0,
+                metadata={"workflow_asset_relation": relation.model_dump(mode="json")},
+                created_at=relation.created_at,
+            )
+        )
+        return relation
+
     def _asset_metadata_path(self, asset_id: str, version_id: str) -> Path:
         return self._asset_root / "metadata" / asset_id / f"{version_id}.json"
 
@@ -278,6 +431,53 @@ def _external_source_type(file_path: str) -> str:
     if file_path.startswith("assets/originals/"):
         return "upload"
     return "imported"
+
+
+def _asset_source_type(value: str) -> str:
+    if value in {"upload", "generated", "derived"}:
+        return value
+    return "derived"
+
+
+def _workflow_asset_version_from_metadata(metadata: dict[str, object]) -> WorkflowAssetVersionV2:
+    payload = metadata.get("workflow_asset_version")
+    if not isinstance(payload, dict):
+        raise V2PersistenceError(
+            "asset_metadata_projection_invalid",
+            "Asset metadata projection is invalid.",
+            stage="v2_asset_store",
+        )
+    return WorkflowAssetVersionV2.model_validate(payload)
+
+
+def _workflow_relation_from_metadata(metadata: dict[str, object]) -> WorkflowAssetRelationV2:
+    payload = metadata.get("workflow_asset_relation")
+    if not isinstance(payload, dict):
+        raise V2PersistenceError(
+            "asset_relation_projection_invalid",
+            "Asset relation projection is invalid.",
+            stage="v2_asset_store",
+        )
+    return WorkflowAssetRelationV2.model_validate(payload)
+
+
+def _relation_version_id(relation: WorkflowAssetRelationV2) -> str | None:
+    value = relation.metadata.get("version_id")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _unavailable_version_sha256(record: WorkflowAssetVersionV2) -> str:
+    return hashlib.sha256(
+        f"unavailable:{record.asset_id}:{record.version_id}".encode("utf-8")
+    ).hexdigest()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _media_type(asset: dict[str, Any]) -> str:

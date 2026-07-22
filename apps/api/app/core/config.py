@@ -49,6 +49,22 @@ def _read_path(name: str, default: Path) -> Path:
     return path if path.is_absolute() else PROJECT_ROOT / path
 
 
+def _read_optional_path(name: str) -> Path | None:
+    value = os.getenv(name)
+    if not value:
+        return None
+    return _read_path(name, Path(value))
+
+
+def _read_recommended_catalog_root() -> Path:
+    """Read only the portable local Recommended Assets package root."""
+
+    value = Path(os.getenv("V2_RECOMMENDED_CATALOG_ROOT", "assets/catalogs/recommended"))
+    if value.is_absolute() or tuple(value.parts[:3]) != ("assets", "catalogs", "recommended"):
+        raise ValueError("V2_RECOMMENDED_CATALOG_ROOT must stay below assets/catalogs/recommended")
+    return value
+
+
 def _read_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     value = os.getenv(name)
     if value is None:
@@ -145,6 +161,7 @@ class Settings:
     v2_provider_rate_limit_reduced_video_jobs: int = 1
     v2_provider_reference_max_data_url_bytes: int = 4 * 1024 * 1024
     v2_provider_reference_total_data_url_bytes: int = 8 * 1024 * 1024
+    v2_recommended_catalog_root: Path = Path("assets/catalogs/recommended")
     upload_image_max_bytes: int = 20 * 1024 * 1024
     upload_audio_max_bytes: int = 100 * 1024 * 1024
     upload_video_max_bytes: int = 500 * 1024 * 1024
@@ -370,6 +387,7 @@ class Settings:
                 "V2_PROVIDER_REFERENCE_TOTAL_DATA_URL_BYTES",
                 cls.v2_provider_reference_total_data_url_bytes,
             ),
+            v2_recommended_catalog_root=_read_recommended_catalog_root(),
             upload_image_max_bytes=int(
                 os.getenv("UPLOAD_IMAGE_MAX_BYTES", str(cls.upload_image_max_bytes))
             ),

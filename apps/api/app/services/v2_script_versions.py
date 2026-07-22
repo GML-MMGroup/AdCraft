@@ -39,6 +39,7 @@ from app.services.v2_script_persistence import (
     screenplay_content_hash,
     script_version_summary,
 )
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 from app.services.v2_workflow_store import V2WorkflowStore
 
 
@@ -70,7 +71,8 @@ class V2ScriptVersionError(RuntimeError):
 class V2ScriptVersionService:
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
-        self._workflows = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
+        self._projection_store = V2WorkflowStore(data_dir)
         self._events = V2EventStore(data_dir)
         self._versions = V2ScriptVersionStore(data_dir)
         self._transactions = V2ScriptTransactionStore(data_dir)
@@ -180,6 +182,7 @@ class V2ScriptVersionService:
                     record=record,
                     index=index,
                     pending=pending,
+                    persist_workflow=self._persist_script_workflow,
                 )
                 return V2ScriptConfirmResponse(
                     workflow_id=workflow_id,
@@ -252,6 +255,7 @@ class V2ScriptVersionService:
                     record=None,
                     index=index,
                     pending=pending,
+                    persist_workflow=self._persist_script_workflow,
                 )
                 return V2ScriptSelectVersionResponse(
                     workflow_id=workflow_id,
@@ -273,7 +277,11 @@ class V2ScriptVersionService:
         workflow_id = workflow.workflow_id
         selected_id = str(workflow.metadata.get("selected_script_version_id") or "")
         if selected_id:
-            return workflow, self._versions.load_version(workflow_id, selected_id)
+            try:
+                return workflow, self._versions.load_version(workflow_id, selected_id)
+            except V2ScriptPersistenceError as exc:
+                if exc.code != "script_version_not_found":
+                    raise
         payload = workflow.metadata.get("script_plan")
         try:
             script, migration_source = self._adapter.normalize_metadata_plan(payload)
@@ -341,6 +349,7 @@ class V2ScriptVersionService:
             record=record,
             index=index,
             pending=pending,
+            persist_workflow=self._persist_script_workflow,
         )
         return updated, record
 
@@ -358,7 +367,14 @@ class V2ScriptVersionService:
 
     def _load_workflow(self, workflow_id: str) -> WorkflowV2:
         try:
-            return self._workflows.load_workflow(workflow_id)
+            return self._authoring_runtime.read_model.assemble(workflow_id)
+        except Exception as exc:
+            code = str(getattr(exc, "code", "workflow_not_found"))
+            if code != "workflow_not_found":
+                raise
+        try:
+            # Planning creates this short-lived draft before Revision 1 exists.
+            return self._projection_store.load_workflow(workflow_id)
         except Exception as exc:
             code = str(getattr(exc, "code", "workflow_not_found"))
             if code == "workflow_not_found":
@@ -369,6 +385,19 @@ class V2ScriptVersionService:
                     stage="script_read",
                 ) from exc
             raise
+
+    def _persist_script_workflow(self, workflow: WorkflowV2) -> None:
+        """Persist a selected screenplay at the correct authoring boundary."""
+
+        if workflow.state_version is None:
+            # Revision 1 has not been created during initial planning yet.
+            self._projection_store.write_projection_atomic(workflow)
+            return
+        self._authoring_runtime.service.commit_semantic_workflow(
+            workflow,
+            expected_version=workflow.state_version,
+            source="script_confirm",
+        )
 
 
 def parse_confirm_request(payload: Any) -> V2ScriptConfirmRequest:

@@ -9,8 +9,8 @@ from app.services.v2_event_store import V2EventStore
 from app.services.v2_execution_service import V2ExecutionService
 from app.services.v2_provider_task_service import V2ProviderTaskService
 from app.services.v2_slot_scheduler import find_slot
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 from app.services.v2_workflow_lock import v2_workflow_lock
-from app.services.v2_workflow_store import V2WorkflowStore
 
 ACTIVE_RECOVERY_STATUSES = {"queued", "running", "waiting"}
 ACTIVE_PROVIDER_TASK_STATUSES = {"queued", "running", "waiting"}
@@ -59,7 +59,7 @@ class V2ExecutionRecoveryService:
     def __init__(self, data_dir: Path, *, stale_running_timeout_seconds: int) -> None:
         self._data_dir = data_dir
         self._timeout_seconds = stale_running_timeout_seconds
-        self._workflow_store = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
         self._events = V2EventStore(data_dir)
         self._executions = V2ExecutionService(data_dir)
         self._provider_tasks = V2ProviderTaskService(data_dir)
@@ -79,7 +79,7 @@ class V2ExecutionRecoveryService:
         *,
         trigger: RecoveryTrigger,
     ) -> V2ExecutionRecoveryResult:
-        workflow = self._workflow_store.load_workflow(workflow_id)
+        workflow = self._authoring_runtime.read_model.assemble(workflow_id)
         active_execution = self._executions.load_active(workflow_id, include_terminal=True)
         if active_execution is None:
             return V2ExecutionRecoveryResult(workflow=workflow, trigger=trigger)
@@ -292,7 +292,7 @@ class V2ExecutionRecoveryService:
                 )
             )
 
-        self._workflow_store.save_workflow(workflow)
+        self._persist_operational_workflow(workflow)
         if recovered_slot_ids:
             pending_events.append(
                 (
@@ -513,6 +513,15 @@ class V2ExecutionRecoveryService:
             list(dict.fromkeys(running)),
             list(dict.fromkeys(waiting)),
         )
+
+    def _persist_operational_workflow(self, workflow: WorkflowV2) -> WorkflowV2:
+        if workflow.semantic_revision_no is None:
+            raise RuntimeError("workflow_authoring_revision_missing")
+        self._authoring_runtime.projection.save_operational_overlay(
+            workflow,
+            expected_revision_no=workflow.semantic_revision_no,
+        )
+        return self._authoring_runtime.read_model.assemble(workflow.workflow_id)
 
     def _remaining_active_slot_ids(
         self,

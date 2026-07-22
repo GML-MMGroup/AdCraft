@@ -13,6 +13,10 @@ from app.core.config import Settings, get_settings
 from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_persistence import PersistenceBootstrapFailure
 from app.services.persistence_bootstrap import PersistenceBootstrapService
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.database import create_v2_database
+from app.services.v2_asset_catalog import V2AssetCatalogService
+from app.services.v2_asset_catalog_coordinator import V2AssetCatalogCoordinator
 from app.services.v2_execution_recovery import V2ExecutionRecoveryService
 from app.services.v2_final_composition_render_service import V2FinalCompositionRenderService
 from app.services.workflow_v2 import WorkflowV2Service
@@ -74,12 +78,30 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AsyncIterator[None]]:
             yield
             return
 
-        _recover_v2_interrupted_executions(settings)
-        _recover_v2_active_provider_task_polling(settings)
-        _recover_v2_final_composition_renders(settings)
-        yield
+        coordinator = _create_asset_catalog_coordinator(settings)
+        application.state.v2_asset_catalog_coordinator = coordinator
+        coordinator.ensure_indexed()
+        try:
+            _recover_v2_interrupted_executions(settings)
+            _recover_v2_active_provider_task_polling(settings)
+            _recover_v2_final_composition_renders(settings)
+            yield
+        finally:
+            coordinator.shutdown()
 
     return lifespan
+
+
+def _create_asset_catalog_coordinator(settings: Settings) -> V2AssetCatalogCoordinator:
+    """Create the local-catalog coordinator once for the application lifespan."""
+
+    return V2AssetCatalogCoordinator(
+        V2AssetCatalogService(
+            data_dir=settings.media_data_dir,
+            repository=V2AssetLibraryRepository(create_v2_database(settings.media_data_dir)),
+            catalog_root=settings.v2_recommended_catalog_root,
+        )
+    )
 
 
 def _recover_v2_final_composition_renders(settings: Settings) -> None:

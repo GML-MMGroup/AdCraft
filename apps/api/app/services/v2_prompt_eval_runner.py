@@ -46,7 +46,7 @@ from app.services.v2_specialist_asset_prompt_quality import (
     V2SpecialistAssetPromptQualityValidator,
 )
 from app.services.v2_storyboard_director import V2StoryboardDirector
-from app.services.v2_workflow_store import V2WorkflowStore
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 
 
 PROMPT_EVAL_STAGES: tuple[V2PromptEvalStage, ...] = (
@@ -78,6 +78,7 @@ class V2PromptEvalRunner:
         self._fixture_dir = fixture_dir or _default_fixture_dir()
         self._profiles = profile_registry or V2PromptProfileRegistry()
         self._quality = V2PromptEvalQualityService()
+        self._authoring_runtime = create_workflow_authoring_runtime(self._data_dir)
 
     def list_fixtures(self) -> list[V2PromptEvalFixture]:
         return [
@@ -158,7 +159,7 @@ class V2PromptEvalRunner:
         profile = self._profile(prompt_profile_id)
         stages = _normalize_stages(selected_stages or ["all"])
         eval_run_id = _new_eval_run_id()
-        workflow = V2WorkflowStore(self._data_dir).load_workflow(workflow_id).model_copy(deep=True)
+        workflow = self._authoring_runtime.read_model.assemble(workflow_id).model_copy(deep=True)
         try:
             context = self._build_replay_context(workflow, profile.profile_id)
             stage_results = self._evaluate_context(
@@ -386,7 +387,6 @@ class V2PromptEvalRunner:
         expert_plan = V2ExpertBriefPlan.model_validate(workflow.metadata["expert_brief_plan"])
         _apply_eval_input_asset_descriptors(workflow, descriptors)
         _apply_profile_to_workflow(workflow, profile.specialist_prompt_suffix)
-        V2WorkflowStore(self._data_dir).save_workflow(workflow)
         return _EvalContext(
             workflow=workflow,
             script_plan=script_plan,

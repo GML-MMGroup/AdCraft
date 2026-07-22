@@ -19,14 +19,14 @@ from app.services.v2_shot_reference_resolver import (
     V2ShotReferenceResolverError,
 )
 from app.services.v2_workflow_assets import _display_name, _normalize_semantic_type
-from app.services.v2_workflow_store import V2WorkflowStore
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 
 
 class V2ReferenceBundleBuilder:
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
         self._asset_store = V2AssetStoreService(data_dir)
-        self._workflow_store = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
         self._shot_reference_resolver = V2ShotReferenceResolver(data_dir)
 
     def build_reference_bundle(
@@ -39,7 +39,7 @@ class V2ReferenceBundleBuilder:
         generation_mode: str,
     ) -> V2ReferenceBundle:
         del target_node_id, target_item_id
-        workflow = self._workflow_store.load_workflow(workflow_id)
+        workflow = self._authoring_runtime.read_model.assemble(workflow_id)
         return self._build_from_workflow(
             workflow,
             target_slot_id=target_slot_id,

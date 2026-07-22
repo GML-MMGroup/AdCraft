@@ -6,6 +6,7 @@ import { mediaAssetOriginalPath, mediaAssetPreviewPath } from "../../../workflow
 import { localRevisionEntityId, localRevisionSemanticType, localRevisionTargetField } from "../../../workflow/localRevision.ts";
 import { LibraryReferenceChips } from "./LibraryReferenceChips.tsx";
 import type { AssetLibraryEntitySummary, AssetLibraryEntityType, AssetLibraryReference, UploadedAsset } from "../../../types";
+import type { V2AssetLibraryCategory } from "../../../types-v2.ts";
 import type { AssetLibrarySaveTarget } from "./useAssetLibrarySaveDialog.ts";
 
 function libraryEntitiesToReferences(
@@ -117,15 +118,16 @@ export function AssetLibrarySaveModal({
   onChangeDisplayName: (value: string) => void;
   onChangeTags: (value: string) => void;
   onCancel: () => void;
-  onSubmit: () => void;
+  onSubmit: (category?: V2AssetLibraryCategory) => void;
 }) {
+  const [freeImageCategory, setFreeImageCategory] = useState<V2AssetLibraryCategory>("characters");
   if (!target) return null;
   return (
     <form
       className="asset-library-save-modal"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        onSubmit(target.libraryCategory ?? freeImageCategory);
       }}
     >
       <div className="asset-library-save-heading">
@@ -147,6 +149,16 @@ export function AssetLibrarySaveModal({
         <span>Tags</span>
         <input value={tags} placeholder="campaign, reusable" onChange={(event) => onChangeTags(event.target.value)} />
       </label>
+      {target.libraryCategory === null ? (
+        <label className="node-config-field">
+          <span>Category</span>
+          <select value={freeImageCategory} onChange={(event) => setFreeImageCategory(event.currentTarget.value as V2AssetLibraryCategory)}>
+            <option value="characters">Characters</option>
+            <option value="scenes">Scenes</option>
+            <option value="props">Props</option>
+          </select>
+        </label>
+      ) : null}
       {feedback ? <span className="asset-library-save-feedback">{feedback}</span> : null}
       <div className="asset-library-save-actions">
         <button className="small-action" type="button" onClick={onCancel}>

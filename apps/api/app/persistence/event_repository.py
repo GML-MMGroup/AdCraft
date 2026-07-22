@@ -16,7 +16,12 @@ from app.persistence.database import V2Database
 from app.persistence.event_payload import serialize_event_payload
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import DataMigrationRow, WorkflowEventRow
-from app.schemas.v2_persistence import V2EventInsert, V2EventMigrationReport, V2EventSourceStats
+from app.schemas.v2_persistence import (
+    DataMigrationCompletion,
+    V2EventInsert,
+    V2EventMigrationReport,
+    V2EventSourceStats,
+)
 from app.schemas.workflow_v2 import WorkflowV2Event
 
 
@@ -33,6 +38,12 @@ class EventRepository:
         self._database = database
         self._retry_delays = retry_delays
         self._sleep = sleep
+
+    @property
+    def database(self) -> V2Database:
+        """Return the database identity used by this repository."""
+
+        return self._database
 
     def append(self, event: V2EventInsert) -> WorkflowV2Event:
         """Persist one validated event with a workflow-scoped contiguous sequence."""
@@ -55,6 +66,56 @@ class EventRepository:
             self._sleep(self._retry_delays[attempt])
 
         raise AssertionError("The append retry loop must either return or raise.")
+
+    def append_in_transaction(
+        self,
+        connection: Connection,
+        event: V2EventInsert,
+    ) -> WorkflowV2Event:
+        """Append an event through a caller-owned transaction without committing it."""
+
+        return self._insert_with_next_sequence(
+            connection, event, serialize_event_payload(event.payload)
+        )
+
+    def complete_migration_in_transaction(
+        self,
+        connection: Connection,
+        completion: DataMigrationCompletion,
+    ) -> None:
+        """Record a completed migration through a caller-owned transaction."""
+
+        values = {
+            "status": "completed",
+            "source_count": completion.source_count,
+            "imported_count": completion.imported_count,
+            "started_at": completion.completed_at,
+            "completed_at": completion.completed_at,
+            "details_json": json.dumps(
+                completion.details,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        }
+        existing = connection.execute(
+            select(DataMigrationRow.migration_name).where(
+                DataMigrationRow.migration_name == completion.migration_name
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            connection.execute(
+                insert(DataMigrationRow).values(
+                    migration_name=completion.migration_name,
+                    **values,
+                )
+            )
+            return
+        connection.execute(
+            update(DataMigrationRow)
+            .where(DataMigrationRow.migration_name == completion.migration_name)
+            .values(**values)
+        )
 
     def list_after(self, workflow_id: str, after_seq: int = 0) -> list[WorkflowV2Event]:
         """Return committed workflow events after a cursor in ascending sequence order."""
@@ -150,6 +211,87 @@ class EventRepository:
         try:
             return V2EventMigrationReport.model_validate_json(str(row["details_json"]))
         except ValueError as error:
+            raise _import_failed_error() from error
+
+    def migration_status(self, migration_name: str) -> str | None:
+        """Return a migration marker status without interpreting its details payload."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                return connection.execute(
+                    select(DataMigrationRow.status).where(
+                        DataMigrationRow.migration_name == migration_name
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
+    def migration_details(self, migration_name: str) -> dict[str, Any] | None:
+        """Return generic migration details for another canonical V2 import boundary."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(DataMigrationRow.details_json).where(
+                            DataMigrationRow.migration_name == migration_name
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        if row is None:
+            return None
+        try:
+            details = json.loads(str(row["details_json"]))
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            raise _import_failed_error() from error
+        if not isinstance(details, dict):
+            raise _import_failed_error()
+        return details
+
+    def record_migration_failure(
+        self,
+        migration_name: str,
+        *,
+        details: dict[str, object],
+    ) -> None:
+        """Persist a bounded failed migration marker in its own short transaction."""
+
+        details_json = json.dumps(
+            details,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        try:
+            with self._database.engine.begin() as connection:
+                existing = connection.execute(
+                    select(DataMigrationRow.migration_name).where(
+                        DataMigrationRow.migration_name == migration_name
+                    )
+                ).scalar_one_or_none()
+                values = {
+                    "status": "failed",
+                    "source_count": None,
+                    "imported_count": None,
+                    "started_at": _utc_now_isoformat(),
+                    "completed_at": None,
+                    "details_json": details_json,
+                }
+                if existing is None:
+                    connection.execute(
+                        insert(DataMigrationRow).values(migration_name=migration_name, **values)
+                    )
+                else:
+                    connection.execute(
+                        update(DataMigrationRow)
+                        .where(DataMigrationRow.migration_name == migration_name)
+                        .values(**values)
+                    )
+        except SQLAlchemyError as error:
             raise _import_failed_error() from error
 
     def import_verified_events(
@@ -291,33 +433,42 @@ class EventRepository:
         with self._database.engine.connect() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
             try:
-                next_seq = int(
-                    connection.execute(
-                        select(func.coalesce(func.max(WorkflowEventRow.seq), 0) + 1).where(
-                            WorkflowEventRow.workflow_id == event.workflow_id
-                        )
-                    ).scalar_one()
-                )
-                connection.execute(
-                    insert(WorkflowEventRow).values(
-                        workflow_id=event.workflow_id,
-                        execution_id=event.execution_id,
-                        seq=next_seq,
-                        event_type=event.event_type,
-                        node_id=event.node_id,
-                        item_id=event.item_id,
-                        slot_id=event.slot_id,
-                        asset_id=event.asset_id,
-                        version_id=event.version_id,
-                        payload_json=payload_json,
-                        created_at=event.created_at,
-                    )
-                )
+                result = self._insert_with_next_sequence(connection, event, payload_json)
                 connection.commit()
             except BaseException:
                 connection.rollback()
                 raise
 
+        return result
+
+    @staticmethod
+    def _insert_with_next_sequence(
+        connection: Connection,
+        event: V2EventInsert,
+        payload_json: str,
+    ) -> WorkflowV2Event:
+        next_seq = int(
+            connection.execute(
+                select(func.coalesce(func.max(WorkflowEventRow.seq), 0) + 1).where(
+                    WorkflowEventRow.workflow_id == event.workflow_id
+                )
+            ).scalar_one()
+        )
+        connection.execute(
+            insert(WorkflowEventRow).values(
+                workflow_id=event.workflow_id,
+                execution_id=event.execution_id,
+                seq=next_seq,
+                event_type=event.event_type,
+                node_id=event.node_id,
+                item_id=event.item_id,
+                slot_id=event.slot_id,
+                asset_id=event.asset_id,
+                version_id=event.version_id,
+                payload_json=payload_json,
+                created_at=event.created_at,
+            )
+        )
         return WorkflowV2Event(
             seq=next_seq,
             event_type=event.event_type,
