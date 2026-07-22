@@ -112,7 +112,7 @@ export function V2AssetReferencePicker({ workflowId, slotId, onAddReferences, on
               </div>
               <input aria-label="Search asset references" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
             </div>
-            {tab === "recommended" && catalog.status?.status !== "ready" ? <PickerCatalogStatus status={catalog.status?.status} message={catalog.error || catalog.status?.message || null} onRetry={() => void catalog.install()} /> : null}
+            {tab === "recommended" && catalog.status?.status !== "ready" ? <PickerCatalogStatus status={catalog.status?.status} message={catalog.error || catalog.status?.message || null} onRetry={() => void catalog.refresh()} /> : null}
             {library.error ? <p className="v2-asset-picker-message is-error">{library.error}</p> : null}
             <div className="v2-asset-picker-content">
               <div className="v2-asset-picker-entities">
@@ -154,7 +154,7 @@ export function V2AssetReferencePicker({ workflowId, slotId, onAddReferences, on
 }
 
 function PickerCatalogStatus({ status, message, onRetry }: { status?: string; message: string | null; onRetry: () => void }) {
-  return <p className="v2-asset-picker-message">{message || (status === "failed" ? "Recommended catalog installation failed." : "Preparing recommended assets...")} {status === "failed" ? <button className="small-action" type="button" onClick={onRetry}>Retry</button> : null}</p>;
+  return <p className="v2-asset-picker-message">{message || (status === "catalog_missing" ? "Extract Recommended Assets and refresh." : "Indexing recommended assets...")} {status === "invalid" || status === "catalog_missing" ? <button className="small-action" type="button" onClick={onRetry}>Refresh</button> : null}</p>;
 }
 
 function ReferenceUpload({ category, onUploaded }: { category: V2AssetLibraryCategory; onUploaded: (detail: V2AssetLibraryEntityDetail) => void }) {

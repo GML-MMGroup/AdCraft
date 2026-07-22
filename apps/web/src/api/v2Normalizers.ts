@@ -1170,6 +1170,7 @@ function normalizeV2AssetLibraryEntitySummary(value: unknown): V2AssetLibraryEnt
     is_favorite: typeof record.is_favorite === "boolean" ? record.is_favorite : false,
     status: stringOrNull(record.status),
     preview_member: normalizeV2AssetLibraryPreviewMember(record.preview_member),
+    preview_url: stringOrNull(record.preview_url),
     member_count: numberValue(record.member_count),
   };
 }
@@ -1212,11 +1213,15 @@ export function normalizeV2AssetLibraryEntityDetail(value: unknown): V2AssetLibr
 export function normalizeV2RecommendedCatalogStatus(value: unknown): V2RecommendedCatalogStatus {
   const record = recordValue(value) ?? {};
   return {
-    catalog_key: stringValue(record.catalog_key, "recommended"),
+    catalog_key: stringOrNull(record.catalog_key) ?? null,
     catalog_version: stringOrNull(record.catalog_version),
-    status: stringValue(record.status, "not_installed"),
-    progress_current: numberOrNull(record.progress_current),
-    progress_total: numberOrNull(record.progress_total),
+    status: (["catalog_missing", "indexing", "ready", "invalid"] as const).includes(record.status as "catalog_missing" | "indexing" | "ready" | "invalid")
+      ? record.status as "catalog_missing" | "indexing" | "ready" | "invalid"
+      : "invalid",
+    entity_count: numberValue(record.entity_count),
+    member_count: numberValue(record.member_count),
+    manifest_sha256: stringOrNull(record.manifest_sha256),
+    expected_relative_path: "data/assets/catalogs/recommended/",
     last_error_code: stringOrNull(record.last_error_code),
     message: stringOrNull(record.message),
   };

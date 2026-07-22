@@ -296,10 +296,6 @@ export const v2Api = {
     return requestV2(`/asset-library/catalogs/recommended/status`, {}, normalizeV2RecommendedCatalogStatus);
   },
 
-  installRecommendedCatalog(): Promise<V2RecommendedCatalogStatus> {
-    return requestV2(`/asset-library/catalogs/recommended/install`, { method: "POST" }, normalizeV2RecommendedCatalogStatus);
-  },
-
   attachReferenceSelections(
     workflowId: string,
     slotId: string,
