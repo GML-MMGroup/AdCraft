@@ -105,12 +105,11 @@ import {
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
 import { v2EtagStore, type V2AuthoringResource } from "./v2EtagStore.ts";
-import { v2AuthoringConflictStore, type V2AuthoringConflictTarget } from "./v2AuthoringConflictStore.ts";
 
 const API_V2_BASE = "/api/v2";
 const inFlightMetadataReads = new Map<string, Promise<unknown>>();
 
-type V2PreconditionTarget = V2AuthoringConflictTarget;
+type V2PreconditionTarget = { resource: V2AuthoringResource; id: string };
 
 export class V2ApiError extends Error {
   readonly status: number;
@@ -217,6 +216,7 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
     const suggestedActions = recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions);
     const stage = firstString(detailRecord?.stage, details.stage);
     if (precondition && (response.status === 412 || response.status === 428)) {
+      const { v2AuthoringConflictStore } = await import("./v2AuthoringConflictStore.ts");
       const retryOptions = { ...options, headers: new Headers(options.headers) };
       retryOptions.headers.delete("If-Match");
       v2AuthoringConflictStore.raise({

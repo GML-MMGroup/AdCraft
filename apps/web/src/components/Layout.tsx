@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
 import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useApp } from "../AppContextValue";
-import { V2WorkflowRevisionControl } from "../projects/V2WorkflowRevisionControl";
 import {
   V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
   v2AuthoringConflictStore,
@@ -17,6 +16,8 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
   { route: "assets", label: "Assets", icon: <AssetsIcon /> },
   { route: "trash", label: "Trash", icon: <TrashIcon /> },
 ];
+
+const V2WorkflowRevisionControl = lazy(() => import("./V2WorkflowRevisionControl"));
 
 interface LayoutProps {
   children: ReactNode;
@@ -95,7 +96,9 @@ export function Layout({ children }: LayoutProps) {
             </div>
           ) : null}
           <div className="top-actions">
-            {location.pathname.startsWith("/workflow") ? <V2WorkflowRevisionControl /> : null}
+            {location.pathname.startsWith("/workflow") ? (
+              <Suspense fallback={null}><V2WorkflowRevisionControl /></Suspense>
+            ) : null}
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>Tutorial</span>

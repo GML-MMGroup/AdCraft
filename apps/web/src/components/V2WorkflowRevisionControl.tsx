@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { v2Api } from "../api/v2Client";
 import { useApp } from "../AppContextValue";
+import { revisionActionLabel, revisionCanBeRestored } from "../projects/v2RevisionHistory";
 import type { WorkflowRevisionV2Summary } from "../types-v2";
 import { workflowV2ToWorkflowGraph } from "../workflow-v2/pageAdapter";
-import { revisionActionLabel, revisionCanBeRestored } from "./v2RevisionHistory";
 
-export function V2WorkflowRevisionControl() {
+export default function V2WorkflowRevisionControl() {
   const { workflow, setWorkflow } = useApp();
   const [open, setOpen] = useState(false);
   const [revisions, setRevisions] = useState<WorkflowRevisionV2Summary[]>([]);

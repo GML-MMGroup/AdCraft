@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "./api/client";
-import { v2Api } from "./api/v2Client";
 import { V2_AUTHORING_CONFLICT_RESOLVED_EVENT, type V2AuthoringConflictTarget } from "./api/v2AuthoringConflictStore";
 import { AppContext, type AppContextValue } from "./AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "./api/workflowNormalizers";
@@ -20,7 +19,6 @@ import {
 } from "./storage/hybridStorage";
 import { shouldApplyWorkflowScopedResult } from "./workflow/sessionGuards";
 import { isWorkflowV2Graph } from "./workflowSchema";
-import { workflowV2ToWorkflowGraph } from "./workflow-v2/pageAdapter";
 import type { ProjectV2Summary } from "./types-v2";
 import type {
   AssetLibraryEntitySummary,
@@ -149,6 +147,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [currentProjectState]);
 
   const refreshProjects = useCallback(async () => {
+    const { v2Api } = await import("./api/v2Client");
     const [active, trashed] = await Promise.all([
       v2Api.listProjects("active"),
       v2Api.listProjects("trashed"),
@@ -194,10 +193,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openProject = useCallback(async (projectId: string) => {
     const requestGeneration = invalidateWorkspaceRestoreRequests();
-    const response = await v2Api.projectWorkflow(projectId);
+    const [client, adapter] = await Promise.all([
+      import("./api/v2Client"),
+      import("./workflow-v2/pageAdapter"),
+    ]);
+    const response = await client.v2Api.projectWorkflow(projectId);
     if (requestGeneration !== workspaceSessionGenerationRef.current) return false;
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-    const nextWorkflow = workflowV2ToWorkflowGraph(response.value);
+    const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
     activeWorkflowIdRef.current = nextWorkflow.workflow_id;
     saveActiveProjectId(window.localStorage, projectId);
     setActiveProjectId(projectId);
@@ -209,6 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [invalidateWorkspaceRestoreRequests, workflow?.workflow_id]);
 
   const moveProjectToTrash = useCallback(async (projectId: string) => {
+    const { v2Api } = await import("./api/v2Client");
     await v2Api.trashProject(projectId);
     if (activeProjectId === projectId) {
       saveActiveProjectId(window.localStorage, null);
@@ -219,18 +223,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [activeProjectId, refreshProjects]);
 
   const restoreTrashedProject = useCallback(async (projectId: string) => {
+    const { v2Api } = await import("./api/v2Client");
     await v2Api.restoreProject(projectId);
     await refreshProjects();
     return true;
   }, [refreshProjects]);
 
   const renameProject = useCallback(async (projectId: string, name: string) => {
+    const { v2Api } = await import("./api/v2Client");
     await v2Api.updateProject(projectId, { name });
     await refreshProjects();
     return true;
   }, [refreshProjects]);
 
   const toggleProjectFavorite = useCallback(async (project: ProjectV2Summary) => {
+    const { v2Api } = await import("./api/v2Client");
     await v2Api.updateProject(project.project_id, { is_favorite: !project.is_favorite });
     await refreshProjects();
     return true;
@@ -249,6 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async function hydrateLocalDrafts() {
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
+        const { v2Api } = await import("./api/v2Client");
         const [activeProjects, trashProjects, storedWorkflow, storedMessages] = await Promise.all([
           v2Api.listProjects("active"),
           v2Api.listProjects("trashed"),
@@ -261,9 +269,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const storedProjectId = loadActiveProjectId(window.localStorage);
         if (storedProjectId) {
           try {
-            const response = await v2Api.projectWorkflow(storedProjectId);
+            const [response, adapter] = await Promise.all([
+              v2Api.projectWorkflow(storedProjectId),
+              import("./workflow-v2/pageAdapter"),
+            ]);
             if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
-            const nextWorkflow = workflowV2ToWorkflowGraph(response.value);
+            const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
             setActiveProjectId(storedProjectId);
             setWorkflow(nextWorkflow);
@@ -319,8 +330,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       if (target.id !== activeWorkflowIdRef.current) return;
-      const latest = await v2Api.workflowWithEtag(target.id);
-      setWorkflowState(workflowV2ToWorkflowGraph(latest.value));
+      const [client, adapter] = await Promise.all([
+        import("./api/v2Client"),
+        import("./workflow-v2/pageAdapter"),
+      ]);
+      const latest = await client.v2Api.workflowWithEtag(target.id);
+      setWorkflowState(adapter.workflowV2ToWorkflowGraph(latest.value));
     }
 
     window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
