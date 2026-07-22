@@ -25,3 +25,7 @@ export function projectSummaryToListItem(project: ProjectV2Summary): V2ProjectLi
 export function shouldPersistWorkflowAsLocalDraft(workflow: { project_id?: string | null }): boolean {
   return !workflow.project_id;
 }
+
+export function projectTrashClearsActiveWorkflow(projectId: string, activeProjectId: string | null): boolean {
+  return projectId === activeProjectId;
+}
