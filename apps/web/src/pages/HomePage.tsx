@@ -27,7 +27,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
   }
 
   return (
-    <>
+    <div className="home-page">
       <section className="home-product-hero" aria-labelledby="home-product-title">
         <div className="home-product-hero__content">
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
@@ -109,6 +109,6 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

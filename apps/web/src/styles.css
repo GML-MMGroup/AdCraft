@@ -592,6 +592,10 @@ a {
   padding-top: 42px;
 }
 
+.home-page {
+  font-family: "DM Sans", var(--font-body);
+}
+
 .home-product-hero__title,
 .page-title {
   margin: 0;
@@ -682,6 +686,11 @@ a {
 .home-product-hero__create:focus-visible {
   outline: 3px solid rgba(139, 114, 224, 0.42);
   outline-offset: 3px;
+}
+
+.home-page .home-product-hero__create,
+.home-page .filter-btn {
+  font-weight: 500;
 }
 
 .home-product-film {
