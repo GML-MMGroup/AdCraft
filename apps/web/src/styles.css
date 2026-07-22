@@ -660,14 +660,16 @@ a {
   gap: 9px;
   margin-top: 32px;
   padding: 0 19px 0 16px;
-  border: 1px solid rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(239, 233, 255, 0.74);
   border-radius: 8px;
-  background: #6252b5;
-  box-shadow: 0 14px 28px rgba(83, 65, 151, 0.22);
+  background: rgba(128, 107, 196, 0.3);
+  box-shadow: 0 12px 28px rgba(82, 65, 147, 0.18), inset 0 1px rgba(255, 255, 255, 0.44);
+  backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
   font-size: 15px;
   font-weight: 800;
-  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  will-change: transform, box-shadow;
 }
 
 .home-product-hero__create svg {
@@ -676,13 +678,14 @@ a {
 }
 
 .home-product-hero__create:hover {
-  background: #467992;
-  box-shadow: 0 16px 30px rgba(49, 111, 137, 0.24);
-  transform: translateY(-2px);
+  border-color: rgba(249, 246, 255, 0.92);
+  background: rgba(139, 114, 224, 0.42);
+  box-shadow: 0 16px 34px rgba(70, 53, 137, 0.28), 0 0 30px rgba(139, 114, 224, 0.42), inset 0 1px rgba(255, 255, 255, 0.58);
+  transform: translateY(-3px) scale(1.025);
 }
 
 .home-product-hero__create:focus-visible {
-  outline: 3px solid rgba(70, 121, 146, 0.34);
+  outline: 3px solid rgba(139, 114, 224, 0.42);
   outline-offset: 3px;
 }
 
@@ -813,6 +816,10 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .home-product-hero__create {
     transition: none;
+  }
+
+  .home-product-hero__create:hover {
+    transform: none;
   }
 }
 
