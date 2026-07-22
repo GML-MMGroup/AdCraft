@@ -6,9 +6,14 @@ import { demoProjects, images, imageSrc } from "../data";
 import { PlayIcon, PlusIcon } from "../icons";
 import type { RouteName } from "../types";
 
+const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
+const homeProductPoster = "/assets/card1.webp";
+
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [introVideoFailed, setIntroVideoFailed] = useState(false);
   const { startNewProject } = useApp();
+  const hasIntroVideo = Boolean(homeProductVideoUrl) && !introVideoFailed;
 
   const discoverCards: Array<[string, string, number]> = [
     ["Campaign Flow", images[0], 240],
@@ -43,11 +48,21 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
           </button>
         </div>
 
-        <div className="home-product-film" role="img" aria-label="product introduction video placeholder" data-media-slot="product-introduction">
-          <img src="/assets/card1.webp" alt="" />
-          <div className="home-product-film__frame" aria-hidden="true">
-            <span className="home-product-film__play"><PlayIcon /></span>
-          </div>
+        <div className="home-product-film" aria-label="AdCraft product introduction media" data-media-slot="product-introduction">
+          {hasIntroVideo ? (
+            <video
+              src={homeProductVideoUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              poster={homeProductPoster}
+              onError={() => setIntroVideoFailed(true)}
+            />
+          ) : (
+            <img src={homeProductPoster} alt="" />
+          )}
         </div>
       </section>
 
