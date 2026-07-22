@@ -23,9 +23,9 @@
   --glass-button-shadow: 0 10px 22px rgba(74, 82, 111, 0.09), inset 0 1px rgba(255, 255, 255, 0.64);
   --radius-shell: 32px;
   --radius-card: 24px;
-  --font-display: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-editorial: "Instrument Serif", "Noto Sans SC", "Songti SC", serif;
-  --font-body: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Geist", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-editorial: "Bodoni Moda", "Noto Sans SC", "Songti SC", serif;
+  --font-body: "Geist", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 * {
