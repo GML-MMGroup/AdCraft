@@ -23,7 +23,8 @@
   --glass-button-shadow: 0 10px 22px rgba(74, 82, 111, 0.09), inset 0 1px rgba(255, 255, 255, 0.64);
   --radius-shell: 32px;
   --radius-card: 24px;
-  --font-display: "Sora", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-editorial: "Instrument Serif", "Noto Sans SC", "Songti SC", serif;
   --font-body: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
@@ -592,15 +593,16 @@ a {
   padding-top: 42px;
 }
 
-.home-page {
-  font-family: "DM Sans", var(--font-body);
-}
-
 .home-product-hero__title,
 .page-title {
   margin: 0;
+  letter-spacing: 0;
+}
+
+.page-title {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-size: clamp(48px, 4.5vw, 64px);
+  font-weight: 700;
   line-height: 1.02;
   letter-spacing: 0;
 }
@@ -631,9 +633,10 @@ a {
   max-width: 640px;
   color: #202235;
   font-size: 72px;
-  font-family: "Cormorant Garamond", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", serif;
-  font-weight: 500;
-  line-height: 0.98;
+  font-family: var(--font-editorial);
+  font-weight: 400;
+  line-height: 0.96;
+  letter-spacing: 0;
 }
 
 .home-product-hero__title > span {
@@ -643,7 +646,7 @@ a {
 .home-product-hero__accent {
   white-space: nowrap;
   font-style: italic;
-  font-weight: 600;
+  font-weight: 400;
   background: linear-gradient(100deg, #715fc2 0%, #347b9e 56%, #c77761 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -651,12 +654,12 @@ a {
 }
 
 .home-product-hero__description {
-  max-width: 600px;
+  max-width: 570px;
   margin: 28px 0 0;
-  color: rgba(52, 57, 81, 0.76);
+  color: rgba(52, 57, 81, 0.84);
   font-size: 18px;
-  font-weight: 500;
-  line-height: 1.56;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
 .home-product-hero__create {
@@ -673,7 +676,7 @@ a {
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   will-change: transform, box-shadow;
 }
@@ -1235,7 +1238,7 @@ a {
   padding: 0 18px;
   background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.74));
   color: white;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .send-btn.icon-only {
@@ -1250,7 +1253,7 @@ a {
 .mode {
   padding: 0 16px;
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .mode.is-active,
@@ -1265,9 +1268,13 @@ a {
   text-align: center;
 }
 
-.section-title h2,
-.page-title {
-  font-size: clamp(42px, 5vw, 66px);
+.section-title h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(42px, 4vw, 54px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0;
 }
 
 .section-title p,
@@ -1275,7 +1282,8 @@ a {
   margin: 8px 0 0;
   color: var(--muted);
   font-size: 18px;
-  font-weight: 550;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
 .recent-strip,
@@ -1364,9 +1372,10 @@ a {
 .trash-card h3,
 .workflow-card h3 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.05;
+  font-size: clamp(20px, 1.6vw, 24px);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: 0;
 }
 
 .recent-card p,
@@ -1376,9 +1385,9 @@ a {
 .workflow-card p {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.25;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .recent-card.featured p {
@@ -1494,7 +1503,7 @@ a {
 .toolbar-new-project {
   background: linear-gradient(135deg, rgba(84, 121, 255, 0.95), rgba(32, 166, 123, 0.9));
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -1510,6 +1519,8 @@ a {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.48);
   padding: 0 16px;
+  font-size: 14px;
+  font-weight: 400;
   outline: 0;
 }
 
@@ -1833,7 +1844,8 @@ a {
   margin-top: 12px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .asset-preview {
