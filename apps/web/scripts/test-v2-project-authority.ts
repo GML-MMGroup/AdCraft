@@ -6,6 +6,10 @@ import {
   normalizeProjectV2ListResponse,
   normalizeWorkflowRevisionPage,
 } from "../src/api/v2Normalizers.ts";
+import {
+  projectSummaryToListItem,
+  shouldPersistWorkflowAsLocalDraft,
+} from "../src/projects/v2ProjectAuthority.ts";
 
 const projects = normalizeProjectV2ListResponse({
   items: [{
@@ -23,6 +27,17 @@ const projects = normalizeProjectV2ListResponse({
 assert.equal(projects.items[0]?.project_version, 3);
 assert.equal(projects.items[0]?.is_favorite, true);
 assert.equal(projects.next_cursor, "next");
+assert.deepEqual(projectSummaryToListItem(projects.items[0]!), {
+  key: "proj_1",
+  source: "saved",
+  projectId: "proj_1",
+  name: "Campaign",
+  updatedAt: "2026-07-22T00:00:00Z",
+  favorite: true,
+  coverAssetId: "asset_cover",
+});
+assert.equal(shouldPersistWorkflowAsLocalDraft({ project_id: "proj_1" }), false);
+assert.equal(shouldPersistWorkflowAsLocalDraft({}), true);
 
 const revisions = normalizeWorkflowRevisionPage({
   items: [{

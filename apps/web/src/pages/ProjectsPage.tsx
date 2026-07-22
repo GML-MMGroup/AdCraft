@@ -10,7 +10,7 @@ import type { ProjectListItem } from "./projects/ProjectList";
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
-  const { savedProjects, startNewProject, openProject, moveProjectToTrash, toggleProjectFavorite } = useApp();
+  const { savedProjects, startNewProject, openProject, moveProjectToTrash, renameProject, toggleProjectFavorite } = useApp();
 
   const createProject = useCallback(() => {
     startNewProject();
@@ -25,8 +25,8 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
       name: project.name,
       time: formatSavedProjectTime(project.updated_at),
       updatedAt: project.updated_at,
-      favorite: project.favorite,
-      img: project.img,
+      favorite: project.is_favorite,
+      img: null,
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;
       const visibleBySearch = project.name.toLowerCase().includes(search.toLowerCase());
@@ -41,26 +41,18 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   }, [navigate, openProject]);
 
   const trashSavedProject = useCallback((project: ProjectListItem) => {
-    moveProjectToTrash({
-      project_id: project.projectId,
-      source: project.source,
-      name: project.name,
-      updated_at: project.updatedAt,
-      favorite: project.favorite,
-      img: project.img,
-    });
+    void moveProjectToTrash(project.projectId);
   }, [moveProjectToTrash]);
 
   const toggleSavedProjectFavorite = useCallback((project: ProjectListItem) => {
-    toggleProjectFavorite({
-      project_id: project.projectId,
-      source: project.source,
-      name: project.name,
-      updated_at: project.updatedAt,
-      favorite: project.favorite,
-      img: project.img,
-    });
-  }, [toggleProjectFavorite]);
+    const summary = savedProjects.find((item) => item.project_id === project.projectId);
+    if (summary) void toggleProjectFavorite(summary);
+  }, [savedProjects, toggleProjectFavorite]);
+
+  const renameSavedProject = useCallback((project: ProjectListItem) => {
+    const name = window.prompt("Project name", project.name)?.trim();
+    if (name && name !== project.name) void renameProject(project.projectId, name);
+  }, [renameProject]);
 
   return (
     <section className="content-wrap">
@@ -89,6 +81,7 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
           onOpenProject={openSavedProject}
           onTrashProject={trashSavedProject}
           onToggleFavorite={toggleSavedProjectFavorite}
+          onRenameProject={renameSavedProject}
         />
       </div>
     </section>
@@ -97,6 +90,6 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
 
 function formatSavedProjectTime(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Saved locally";
-  return "Saved " + date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return "Saved";
+  return "Updated " + date.toLocaleDateString();
 }
