@@ -4,7 +4,6 @@ import { PageHeader } from "../components/Layout.tsx";
 import {
   splitAssetLibraryTags,
   V2_ASSET_LIBRARY_CATEGORIES,
-  v2AssetEntityDisplay,
   v2AssetEntityTypeForCategory,
   v2AssetPreviewUrl,
 } from "../features/assets/v2AssetLibraryModel.ts";
@@ -182,15 +181,20 @@ function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<t
 function AssetEntityCard({ entity, selected, onSelect }: { entity: V2AssetLibraryEntitySummary; selected: boolean; onSelect: () => void }) {
   const previewUrl = v2AssetPreviewUrl(entity);
   return (
-    <button className={`v2-asset-entity-card ${selected ? "is-selected" : ""}`} type="button" onClick={onSelect}>
-      <AssetMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} />
-      <span className="v2-asset-entity-card-body">
-        <strong>{entity.display_name}</strong>
-        <small>{v2AssetEntityDisplay(entity)}</small>
-        <span className="v2-asset-entity-tags">{entity.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</span>
+    <button className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.entity_id}`} onClick={onSelect}>
+      <AssetMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} presentation="card" />
+      <span className="v2-asset-entity-card-id">
+        <small>{assetEntityIdentityLabel(entity)}</small>
+        <strong>{entity.entity_id}</strong>
       </span>
     </button>
   );
+}
+
+function assetEntityIdentityLabel(entity: V2AssetLibraryEntitySummary) {
+  if (entity.library_category === "characters") return "Character ID";
+  if (entity.library_category === "scenes") return "Scene ID";
+  return "Asset ID";
 }
 
 function AssetDetailPanel({
@@ -260,11 +264,12 @@ function AssetMember({ member }: { member: V2AssetLibraryMember }) {
   return <figure className="v2-asset-member"><AssetMedia url={v2AssetPreviewUrl(member)} mediaType={member.media_type} label={member.display_name || member.semantic_type} /><figcaption>{member.semantic_type}</figcaption></figure>;
 }
 
-function AssetMedia({ url, mediaType, label }: { url: string | null; mediaType?: string | null; label: string }) {
+function AssetMedia({ url, mediaType, label, presentation = "detail" }: { url: string | null; mediaType?: string | null; label: string; presentation?: "card" | "detail" }) {
+  const mediaClassName = `v2-asset-media${presentation === "card" ? " is-card" : ""}`;
   if (!url) return <span className="v2-asset-media is-empty">{label.slice(0, 1).toUpperCase()}</span>;
-  if (mediaType === "video") return <video className="v2-asset-media" src={url} preload="metadata" muted playsInline controls />;
+  if (mediaType === "video") return <video className={mediaClassName} src={url} preload="metadata" muted playsInline controls={presentation !== "card"} />;
   if (mediaType === "audio") return <audio className="v2-asset-audio" src={url} controls preload="metadata" />;
-  return <img className="v2-asset-media" src={url} alt={label} loading="lazy" decoding="async" />;
+  return <img className={mediaClassName} src={url} alt={label} loading="lazy" decoding="async" />;
 }
 
 function AssetUploadDialog({ category, onClose, onUploaded }: { category: V2AssetLibraryCategory; onClose: () => void; onUploaded: () => Promise<void> }) {
