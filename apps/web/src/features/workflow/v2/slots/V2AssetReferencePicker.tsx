@@ -136,7 +136,7 @@ export function V2AssetReferencePicker({ workflowId, slotId, onAddReferences, on
                 {detailLoading ? <p>Loading members...</p> : null}
                 {!detailLoading && !expanded ? <p>Select Views to choose an exact member version.</p> : null}
                 {expanded ? <>
-                  <header><strong>{expanded.display_name}</strong><small>{expanded.scope === "recommended" ? expanded.catalog_source?.license ?? "Recommended" : "My Asset"}</small></header>
+                  <header><strong>{expanded.display_name}</strong><small>{expanded.scope === "recommended" ? expanded.license_id ?? "Recommended" : "My Asset"}</small></header>
                   {expanded.members.map((member) => {
                     const selection = { selection_type: "asset_version" as const, asset_id: member.asset_id, version_id: member.version_id };
                     return <button className={`v2-asset-picker-member ${hasV2ReferenceSelection(selections, selection) ? "is-selected" : ""}`} key={member.member_id} type="button" aria-pressed={hasV2ReferenceSelection(selections, selection)} onClick={() => toggleMember(member.asset_id, member.version_id)}><PickerMemberPreview member={member} /><span>{member.display_name || member.semantic_type}</span></button>;

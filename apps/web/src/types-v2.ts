@@ -522,12 +522,6 @@ export interface V2AssetLibraryMember extends V2AssetLibraryPreviewMember {
   duration_seconds?: number | null;
 }
 
-export interface V2AssetLibraryCatalogSource {
-  source?: string | null;
-  license?: string | null;
-  attribution?: string | null;
-}
-
 export interface V2AssetLibraryEntitySummary {
   entity_id: string;
   scope: V2AssetLibraryScope;
@@ -540,11 +534,13 @@ export interface V2AssetLibraryEntitySummary {
   status?: string | null;
   preview_member?: V2AssetLibraryPreviewMember | null;
   member_count: number;
-  catalog_source?: V2AssetLibraryCatalogSource | null;
 }
 
 export interface V2AssetLibraryEntityDetail extends V2AssetLibraryEntitySummary {
   members: V2AssetLibraryMember[];
+  catalog_source_url?: string | null;
+  license_id?: string | null;
+  attribution?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
