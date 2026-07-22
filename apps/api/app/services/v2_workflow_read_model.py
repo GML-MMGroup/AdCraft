@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.workflow_authoring_repository import WorkflowAuthoringRepository
 from app.schemas.workflow_v2 import (
     WorkflowEdgeV2,
@@ -31,10 +32,12 @@ class WorkflowV2ReadModelAssembler:
         authoring_repository: WorkflowAuthoringRepository,
         projection_store: V2WorkflowStore,
         asset_store: V2AssetStoreService | None = None,
+        asset_library_repository: V2AssetLibraryRepository | None = None,
     ) -> None:
         self._authoring_repository = authoring_repository
         self._projection_store = projection_store
         self._asset_store = asset_store
+        self._asset_library_repository = asset_library_repository
 
     def assemble(self, workflow_id: str) -> WorkflowV2:
         """Return SQLite authoring with only allowlisted projection runtime applied."""
@@ -47,6 +50,7 @@ class WorkflowV2ReadModelAssembler:
                 workflow, operational_overlay_from_workflow(source)
             )
         self._hydrate_slot_history_from_relations(workflow)
+        self._hydrate_slot_reference_bindings(workflow)
         return workflow.model_copy(
             update={
                 "project_id": current.project_id,
@@ -78,6 +82,50 @@ class WorkflowV2ReadModelAssembler:
                             and relation.metadata["version_id"]
                         )
                     )
+
+    def _hydrate_slot_reference_bindings(self, workflow: WorkflowV2) -> None:
+        """Expose active version-pinned SQLite references on their owning slots."""
+
+        if self._asset_library_repository is None:
+            return
+        for node in workflow.nodes:
+            for item in node.items:
+                for slot in item.slots:
+                    bindings = self._asset_library_repository.list_bindings(
+                        workflow_id=workflow.workflow_id,
+                        target_slot_id=slot.slot_id,
+                        binding_type="reference_for_slot",
+                    )
+                    if not bindings:
+                        continue
+                    versions = self._asset_library_repository.resolve_versions(
+                        tuple(binding.version_id for binding in bindings)
+                    )
+                    versions_by_id = {version.version_id: version for version in versions}
+                    slot.explicit_reference_ids = list(
+                        dict.fromkeys(
+                            [
+                                *slot.explicit_reference_ids,
+                                *(binding.asset_id for binding in bindings),
+                            ]
+                        )
+                    )
+                    slot.metadata["reference_bindings"] = [
+                        {
+                            "binding_id": binding.binding_id,
+                            "relation_id": binding.binding_id,
+                            "selection_group_id": binding.selection_group_id,
+                            "source_entity_id": binding.source_entity_id,
+                            "asset_id": binding.asset_id,
+                            "version_id": binding.version_id,
+                            "reference_role": binding.reference_role,
+                            "use_as_prompt": binding.use_as_prompt,
+                            "sort_order": binding.sort_order,
+                            "public_url": f"/media/{versions_by_id[binding.version_id].storage_key}",
+                            "metadata_path": None,
+                        }
+                        for binding in bindings
+                    ]
 
 
 def workflow_from_authoring(document: WorkflowAuthoringDocumentV2) -> WorkflowV2:

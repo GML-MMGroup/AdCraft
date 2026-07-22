@@ -6,6 +6,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
+from app.schemas.workflow_v2 import WorkflowV2, WorkflowV2Event, WorkflowV2RuntimeSnapshot
+
 
 AssetLibraryScopeV2 = Literal["my", "recommended"]
 AssetEntityScopeV2 = Literal["user", "recommended"]
@@ -299,6 +301,17 @@ class AttachReferenceSelectionsRequestV2(_AssetLibraryModel):
     selections: tuple[ReferenceSelectionV2, ...] = Field(min_length=1)
     reference_role: str | None = None
     use_as_prompt: bool = True
+
+
+class ReferenceSelectionMutationResponseV2(_AssetLibraryModel):
+    """Canonical response for atomic slot reference-binding mutations."""
+
+    workflow: WorkflowV2
+    selection_group_id: str | None = None
+    bindings: tuple[AssetBindingV2, ...] = ()
+    removed_binding_id: str | None = None
+    runtime: WorkflowV2RuntimeSnapshot
+    events: tuple[WorkflowV2Event, ...] = ()
 
 
 class AssetLibraryListResponseV2(_AssetLibraryModel):

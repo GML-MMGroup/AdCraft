@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.persistence.database import V2Database, create_v2_database
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
 from app.persistence.workflow_authoring_repository import WorkflowAuthoringRepository
@@ -48,6 +49,7 @@ def create_workflow_authoring_runtime(data_dir: Path) -> WorkflowAuthoringRuntim
         repository,
         V2WorkflowStore(data_dir),
         V2AssetStoreService(data_dir),
+        V2AssetLibraryRepository(database),
     )
     service = WorkflowAuthoringService(
         repository,

@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from app.core.config import Settings
 from app.persistence.database import create_v2_database
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
@@ -385,6 +386,7 @@ class WorkflowV2Service:
             self._authoring_repository,
             self._workflow_store,
             self._asset_store,
+            V2AssetLibraryRepository(self._authoring_database),
         )
         self._workflow_authoring = WorkflowAuthoringService(
             self._authoring_repository,

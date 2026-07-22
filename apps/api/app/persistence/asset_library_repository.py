@@ -400,6 +400,32 @@ class V2AssetLibraryRepository:
             raise _persistence_error() from error
         return removed
 
+    def restore_binding(self, binding_id: str) -> AssetBindingV2:
+        """Reactivate one binding only for a failed authoring compensation path."""
+
+        try:
+            with self._database.engine.begin() as connection:
+                row = _get_binding(connection, binding_id)
+                if row is None:
+                    raise V2PersistenceError(
+                        "asset_binding_not_found",
+                        "Asset binding was not found.",
+                        stage="asset_library_repository",
+                    )
+                connection.execute(
+                    update(AssetBindingRow)
+                    .where(AssetBindingRow.binding_id == binding_id)
+                    .values(status="active", removed_at=None)
+                )
+                restored = _get_binding(connection, binding_id)
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        if restored is None:
+            raise _persistence_error()
+        return restored
+
     def get_binding(
         self, binding_id: str, *, connection: Connection | None = None
     ) -> AssetBindingV2 | None:
@@ -878,8 +904,8 @@ def _list_bindings(
     rows = (
         connection.execute(
             query.order_by(
-                AssetBindingRow.created_at.asc(),
                 AssetBindingRow.sort_order.asc(),
+                AssetBindingRow.created_at.asc(),
                 AssetBindingRow.binding_id.asc(),
             )
         )
