@@ -1,13 +1,15 @@
-import { imageUrl } from "../data";
-import { ChevronDownIcon, StarIcon, TrashIcon } from "../icons";
-import { memo, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { mediaUrl } from "../api/client";
+import { ChevronDownIcon, ImageIcon, StarIcon, TrashIcon, VideoIcon } from "../icons";
+import type { V2ProjectCover } from "../projects/v2ProjectCover";
+import { memo, useEffect, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 export const ProjectCard = memo(function ProjectCard({
   projectId,
   name,
   time,
   favorite,
-  img,
+  cover,
+  workflowId,
   onOpen,
   onTrash,
   onToggleFavorite,
@@ -17,7 +19,8 @@ export const ProjectCard = memo(function ProjectCard({
   name: string;
   time: string;
   favorite: boolean;
-  img?: string | null;
+  cover?: V2ProjectCover | null;
+  workflowId?: string;
   onOpen: (projectId: string) => void;
   onTrash?: () => void;
   onToggleFavorite?: () => void;
@@ -58,7 +61,7 @@ export const ProjectCard = memo(function ProjectCard({
   return (
     <article className="project-card" data-project-card={name.toLowerCase()}>
       <button className="project-card-open" type="button" onClick={() => onOpen(projectId)}>
-        <ProjectPreviewImage img={img} name={name} />
+        <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} name={name} />
         <div className="card-body">
           <h3>{name}</h3>
           <p>{time}</p>
@@ -115,10 +118,73 @@ export const ProjectCard = memo(function ProjectCard({
   );
 });
 
-function ProjectPreviewImage({ img, name }: { img?: string | null; name: string }) {
+function ProjectPreviewImage({
+  projectId,
+  workflowId,
+  cover,
+  name,
+}: {
+  projectId: string;
+  workflowId?: string;
+  cover?: V2ProjectCover | null;
+  name: string;
+}) {
+  const [generatedPoster, setGeneratedPoster] = useState<{ coverKey: string; url: string }>({ coverKey: "", url: "" });
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const sourceUrl = cover ? mediaUrl(cover.posterPath || cover.mediaPath) : "";
+  const generatedPosterKey = cover?.mediaType === "video" && !cover.posterPath
+    ? `${cover.assetId}:${cover.versionId}:${cover.mediaPath}`
+    : "";
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [sourceUrl]);
+
+  useEffect(() => {
+    if (!cover || cover.mediaType !== "video" || cover.posterPath || !workflowId) {
+      setGeneratedPoster({ coverKey: "", url: "" });
+      return;
+    }
+    let cancelled = false;
+    let objectUrl = "";
+    void import("../workflow/videoPosterCache").then(({ ensureVideoPoster }) => ensureVideoPoster({
+      projectId,
+      workflowId,
+      asset: {
+        asset_id: cover.assetId,
+        asset_type: "video",
+        public_url: cover.mediaPath,
+        version: cover.versionId,
+      },
+      videoUrl: mediaUrl(cover.mediaPath),
+    })).then((record) => {
+      if (cancelled || !record?.poster_blob) return;
+      objectUrl = URL.createObjectURL(record.poster_blob);
+      setGeneratedPoster({ coverKey: generatedPosterKey, url: objectUrl });
+    }).catch(() => {
+      // A missing local poster still leaves the project card usable without a preview.
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [cover, generatedPosterKey, projectId, workflowId]);
+
+  const previewUrl = generatedPosterKey
+    ? generatedPoster.coverKey === generatedPosterKey ? generatedPoster.url : ""
+    : sourceUrl;
+  if (!previewUrl || previewFailed) {
+    return (
+      <span className="preview project-preview-image is-empty">
+        {cover?.mediaType === "video" ? <VideoIcon /> : <ImageIcon />}
+        <span className="sr-only">{name}</span>
+      </span>
+    );
+  }
   return (
     <span className="preview project-preview-image">
-      {img ? <img src={imageUrl(img)} alt="" loading="lazy" decoding="async" /> : <span aria-hidden="true" />}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- Image load failure switches to the noninteractive no-cover state. */}
+      <img src={previewUrl} alt="" loading="lazy" decoding="async" onError={() => setPreviewFailed(true)} />
       <span className="sr-only">{name}</span>
     </span>
   );

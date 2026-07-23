@@ -44,6 +44,108 @@ import {
   shouldApplyRuntimeWorkflowRead,
   shouldApplyWorkflowRevisionRead,
 } from "../src/features/workflow/runtime/v2AuthoringRuntimeEventPolicy.ts";
+import { resolveV2ProjectCover } from "../src/projects/v2ProjectCover.ts";
+
+const coverAssets = [
+  {
+    asset_id: "asset_character",
+    version_id: "version_character",
+    media_type: "image" as const,
+    source_type: "generated" as const,
+    semantic_type: "character_portrait",
+    node_id: "character-generator",
+    public_url: "/media/character.png",
+    state: "selected",
+  },
+  {
+    asset_id: "asset_product",
+    version_id: "version_product",
+    media_type: "image" as const,
+    source_type: "generated" as const,
+    semantic_type: "product_hero",
+    node_id: "product-generator",
+    public_url: "/media/product.png",
+    state: "selected",
+  },
+  {
+    asset_id: "asset_storyboard",
+    version_id: "version_storyboard",
+    media_type: "video" as const,
+    source_type: "generated" as const,
+    semantic_type: "storyboard_shot",
+    node_id: "storyboard",
+    public_url: "/media/storyboard.mp4",
+    thumbnail_path: "/media/storyboard.jpg",
+    state: "selected",
+  },
+  {
+    asset_id: "asset_final",
+    version_id: "version_final",
+    media_type: "video" as const,
+    source_type: "generated" as const,
+    semantic_type: "final_composition",
+    node_id: "final-composition",
+    public_url: "/media/final.mp4",
+    thumbnail_path: "/media/final.jpg",
+    state: "selected",
+  },
+  {
+    asset_id: "asset_reference",
+    version_id: "version_reference",
+    media_type: "image" as const,
+    source_type: "generated" as const,
+    semantic_type: "final_composition",
+    node_id: "final-composition",
+    public_url: "/media/reference.png",
+    state: "reference",
+  },
+];
+
+assert.deepEqual(
+  resolveV2ProjectCover("asset_product", coverAssets),
+  {
+    assetId: "asset_product",
+    versionId: "version_product",
+    mediaType: "image",
+    mediaPath: "/media/product.png?v=version_product",
+    posterPath: null,
+  },
+  "the backend-selected cover asset must win over fallback source priority",
+);
+assert.equal(
+  resolveV2ProjectCover(null, coverAssets)?.assetId,
+  "asset_final",
+  "final composition must be the first fallback cover",
+);
+assert.equal(
+  resolveV2ProjectCover(null, [coverAssets[4]!, coverAssets[1]!])?.assetId,
+  "asset_product",
+  "reference and non-current assets must never become project covers",
+);
+assert.deepEqual(
+  resolveV2ProjectCover("asset_freeform", [
+    {
+      asset_id: "asset_freeform",
+      version_id: "version_freeform",
+      media_type: "image",
+      source_type: "generated",
+      semantic_type: "freeform_generation",
+      node_id: "freeform-node",
+      public_url: "/media/freeform.png",
+      thumbnail_path: "/media/freeform-thumb.png",
+      state: "selected",
+    },
+    coverAssets[3]!,
+  ]),
+  {
+    assetId: "asset_freeform",
+    versionId: "version_freeform",
+    mediaType: "image",
+    mediaPath: "/media/freeform.png?v=version_freeform",
+    posterPath: null,
+  },
+  "the explicitly selected cover must support any ready image asset and use its original media URL",
+);
 
 const authoringRuntimePolicy = createV2AuthoringRuntimeEventPolicy([
   { event_type: "execution_completed", workflow_id: "wf_1", seq: 1 },
