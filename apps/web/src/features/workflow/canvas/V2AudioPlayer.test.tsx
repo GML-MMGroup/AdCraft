@@ -61,8 +61,8 @@ describe("V2AudioPlayer", () => {
   it("pauses the active player when another player in its playback group starts", () => {
     const { container } = render(
       <>
-        <V2AudioPlayer src="/media/first.mp3" label="First soundtrack" playbackGroup="bgm-slot" />
-        <V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" playbackGroup="bgm-slot" />
+        <V2AudioPlayer src="/media/first.mp3" label="First soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />
+        <V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />
       </>,
     );
 
@@ -76,7 +76,7 @@ describe("V2AudioPlayer", () => {
 
   it("shows a bounded playback error when play is rejected", async () => {
     playMock.mockImplementationOnce(() => Promise.reject(new Error("Autoplay denied")));
-    render(<V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" playbackGroup="bgm-slot" />);
+    render(<V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Play Selected soundtrack" }));
 
@@ -93,6 +93,21 @@ describe("V2AudioPlayer", () => {
     expect((screen.getByRole("button", { name: "Mute Selected soundtrack" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("announces loading and disables controls until metadata provides a duration", () => {
+    const { container } = render(<V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" playbackGroup="bgm-slot" />);
+    const audio = container.querySelector("audio") as HTMLAudioElement;
+
+    expect(screen.getByRole("status").textContent).toBe("Loading Selected soundtrack audio.");
+    expect((screen.getByRole("button", { name: "Play Selected soundtrack" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: "Seek Selected soundtrack" }) as HTMLInputElement).disabled).toBe(true);
+
+    Object.defineProperty(audio, "duration", { configurable: true, value: 12 });
+    fireEvent.loadedMetadata(audio);
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect((screen.getByRole("button", { name: "Play Selected soundtrack" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("shows an unavailable state when the audio element reports an error", () => {
     const { container } = render(<V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" playbackGroup="bgm-slot" />);
 
@@ -103,13 +118,13 @@ describe("V2AudioPlayer", () => {
   });
 
   it("removes an unmounted player from its playback group", () => {
-    const first = render(<V2AudioPlayer src="/media/first.mp3" label="First soundtrack" playbackGroup="bgm-slot" />);
+    const first = render(<V2AudioPlayer src="/media/first.mp3" label="First soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Play First soundtrack" }));
     first.unmount();
     pauseMock.mockClear();
 
-    render(<V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" playbackGroup="bgm-slot" />);
+    render(<V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />);
     fireEvent.click(screen.getByRole("button", { name: "Play Second soundtrack" }));
 
     expect(pauseMock).not.toHaveBeenCalled();
@@ -124,6 +139,48 @@ describe("V2AudioPlayer", () => {
     for (const eventName of ["loadedmetadata", "durationchange", "timeupdate", "play", "pause", "ended", "error"]) {
       expect(removeEventListener).toHaveBeenCalledWith(eventName, expect.any(Function));
     }
+  });
+
+  it("keeps playback state and elapsed time when durationSeconds changes", () => {
+    const player = render(
+      <V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" durationSeconds={12} playbackGroup="bgm-slot" />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Selected soundtrack" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Seek Selected soundtrack" }), { target: { value: "6" } });
+    pauseMock.mockClear();
+
+    player.rerender(
+      <V2AudioPlayer src="/media/bgm.mp3" label="Selected soundtrack" durationSeconds={18} playbackGroup="bgm-slot" />,
+    );
+
+    expect(screen.getByRole("button", { name: "Pause Selected soundtrack" })).toBeTruthy();
+    expect(screen.getByText("0:06 / 0:18")).toBeTruthy();
+    expect(pauseMock).not.toHaveBeenCalled();
+  });
+
+  it("claims a new playback group when an active player changes groups", () => {
+    const player = render(
+      <>
+        <V2AudioPlayer src="/media/first.mp3" label="First soundtrack" durationSeconds={12} playbackGroup="first-group" />
+        <V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" durationSeconds={12} playbackGroup="second-group" />
+      </>,
+    );
+    const [, secondAudio] = Array.from(player.container.querySelectorAll("audio"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Play First soundtrack" }));
+    fireEvent.click(screen.getByRole("button", { name: "Play Second soundtrack" }));
+    pauseMock.mockClear();
+
+    player.rerender(
+      <>
+        <V2AudioPlayer src="/media/first.mp3" label="First soundtrack" durationSeconds={12} playbackGroup="second-group" />
+        <V2AudioPlayer src="/media/second.mp3" label="Second soundtrack" durationSeconds={12} playbackGroup="second-group" />
+      </>,
+    );
+
+    expect(screen.getByRole("button", { name: "Pause First soundtrack" })).toBeTruthy();
+    expect(pauseMock.mock.instances).toContain(secondAudio);
   });
 
   it("synchronizes elapsed time and metadata duration from the audio element", () => {

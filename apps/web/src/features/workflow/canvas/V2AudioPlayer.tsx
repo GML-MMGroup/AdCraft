@@ -33,31 +33,60 @@ function formatTime(seconds: number) {
 
 export function V2AudioPlayer({ src, label, durationSeconds, playbackGroup, compact = false }: V2AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const durationSecondsRef = useRef(durationSeconds);
+  const previousPlaybackGroupRef = useRef(playbackGroup);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [knownDuration, setKnownDuration] = useState(() => boundedSeconds(durationSeconds));
+  const [hasDuration, setHasDuration] = useState(() => boundedSeconds(durationSeconds) > 0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [mediaUnavailable, setMediaUnavailable] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const hasSource = Boolean(src);
-  const controlsDisabled = !hasSource || mediaUnavailable;
+  const isLoading = hasSource && !hasDuration && !mediaUnavailable;
+  const controlsDisabled = !hasSource || isLoading || mediaUnavailable;
   const totalSeconds = knownDuration || boundedSeconds(durationSeconds);
   const seekSeconds = totalSeconds > 0 ? Math.min(elapsedSeconds, totalSeconds) : elapsedSeconds;
 
+  durationSecondsRef.current = durationSeconds;
+
   useEffect(() => {
+    const audio = audioRef.current;
+    const sourceDuration = boundedSeconds(durationSecondsRef.current);
+    if (audio) releasePlayback(previousPlaybackGroupRef.current, audio);
     setElapsedSeconds(0);
-    setKnownDuration(boundedSeconds(durationSeconds));
+    setKnownDuration(sourceDuration);
+    setHasDuration(sourceDuration > 0);
     setIsPlaying(false);
     setMediaUnavailable(false);
     setPlaybackError(null);
-  }, [src, durationSeconds]);
+  }, [src]);
+
+  useEffect(() => {
+    const propDuration = boundedSeconds(durationSeconds);
+    if (propDuration > 0) {
+      setKnownDuration(propDuration);
+      setHasDuration(true);
+      return;
+    }
+
+    const mediaDuration = boundedSeconds(audioRef.current?.duration);
+    if (mediaDuration > 0) {
+      setKnownDuration(mediaDuration);
+      setHasDuration(true);
+    }
+  }, [durationSeconds]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return undefined;
 
-    const syncDuration = () => setKnownDuration(boundedSeconds(audio.duration) || boundedSeconds(durationSeconds));
+    const syncDuration = () => {
+      const nextDuration = boundedSeconds(audio.duration) || boundedSeconds(durationSecondsRef.current);
+      setKnownDuration(nextDuration);
+      setHasDuration(nextDuration > 0);
+    };
     const syncElapsed = () => setElapsedSeconds(boundedSeconds(audio.currentTime));
     const onPlay = () => {
       setIsPlaying(true);
@@ -97,7 +126,17 @@ export function V2AudioPlayer({ src, label, durationSeconds, playbackGroup, comp
       audio.removeEventListener("error", onError);
       releasePlayback(playbackGroup, audio);
     };
-  }, [durationSeconds, playbackGroup]);
+  }, [playbackGroup]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const previousGroup = previousPlaybackGroupRef.current;
+    if (!audio || previousGroup === playbackGroup) return;
+
+    releasePlayback(previousGroup, audio);
+    previousPlaybackGroupRef.current = playbackGroup;
+    if (isPlaying) claimPlayback(playbackGroup, audio);
+  }, [isPlaying, playbackGroup]);
 
   function stopCanvasPropagation(event: { stopPropagation: () => void }) {
     event.stopPropagation();
@@ -170,13 +209,14 @@ export function V2AudioPlayer({ src, label, durationSeconds, playbackGroup, comp
             onChange={(event) => handleSeek(event.currentTarget.value)}
             disabled={controlsDisabled}
           />
-          <output className="v2-audio-player-time">{formatTime(seekSeconds)} / {formatTime(totalSeconds)}</output>
+          <span className="v2-audio-player-time">{formatTime(seekSeconds)} / {formatTime(totalSeconds)}</span>
         </div>
         <button className="v2-audio-player-icon" type="button" aria-label={muteLabel} title={muteLabel} onClick={handleMute} disabled={controlsDisabled}>
           {isMuted ? <MuteIcon /> : <UnmuteIcon />}
         </button>
       </div>
       {!hasSource ? <span className="v2-audio-player-status">Audio unavailable.</span> : null}
+      {isLoading ? <span className="v2-audio-player-status" role="status">Loading {label} audio.</span> : null}
       {mediaUnavailable ? <span className="v2-audio-player-status" role="alert">Audio unavailable.</span> : null}
       {playbackError ? <span className="v2-audio-player-status" role="alert">{playbackError}</span> : null}
     </section>
