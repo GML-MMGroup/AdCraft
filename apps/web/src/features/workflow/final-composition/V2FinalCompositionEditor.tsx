@@ -21,6 +21,15 @@ import {
   type ScopedTimelineSource,
 } from "./useV2FinalCompositionEditor.ts";
 
+const V2_AUTHORING_DRAFT_DISCARDED_EVENT = "v2-authoring-draft-discarded";
+const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
+
+type V2AuthoringConflictResolution = {
+  target: { resource: "project" | "workflow"; id: string };
+  operationPath: string;
+  action: "retry" | "discard";
+};
+
 export function isTimelineKeyboardTarget(target: EventTarget | null) {
   const element = target as HTMLElement | null;
   if (!element || typeof element.tagName !== "string") return false;
@@ -145,6 +154,30 @@ export function V2FinalCompositionEditor({
       setPlaying(false);
     }
   }, [active, workflowId]);
+
+  useEffect(() => {
+    function discardConflictDraft(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.target.resource !== "workflow" || resolution.target.id !== workflowId) return;
+      if (!/\/final-composition\/timeline(?:\/|$)/.test(resolution.operationPath)) return;
+      void editorRef.current.load();
+    }
+
+    window.addEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+  }, [workflowId]);
+
+  useEffect(() => {
+    function reloadTimelineAfterRetry(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.action !== "retry" || resolution.target.resource !== "workflow" || resolution.target.id !== workflowId) return;
+      if (!/\/final-composition\/timeline(?:\/|$)/.test(resolution.operationPath)) return;
+      void editorRef.current.load();
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reloadTimelineAfterRetry as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reloadTimelineAfterRetry as EventListener);
+  }, [workflowId]);
 
   const restoreBgmDialogFocus = useCallback(() => {
     setPendingBgmSource(null);

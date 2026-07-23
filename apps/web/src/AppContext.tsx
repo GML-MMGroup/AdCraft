@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "./api/client";
-import { V2_AUTHORING_CONFLICT_RESOLVED_EVENT, type V2AuthoringConflictTarget } from "./api/v2AuthoringConflictStore";
+import {
+  v2AuthoringConflictStore,
+} from "./api/v2AuthoringConflictStore";
+import {
+  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
+  V2_AUTHORING_DRAFT_DISCARDED_EVENT,
+  type V2AuthoringConflictResolution,
+  type V2AuthoringConflictTarget,
+} from "./api/v2AuthoringConflictEvents.ts";
 import { AppContext, type AppContextValue } from "./AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "./api/workflowNormalizers";
 import { clearNewProjectStorage, createNewProjectState, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, WORKSPACE_MESSAGES_KEY, WORKSPACE_WORKFLOW_KEY, type ProjectSessionState, type SavedWorkflowProject } from "./projects/newProject";
@@ -20,7 +28,7 @@ import {
 import { shouldApplyWorkflowScopedResult } from "./workflow/sessionGuards";
 import { isWorkflowV2Graph } from "./workflowSchema";
 import type { ProjectV2Summary } from "./types-v2";
-import { projectTrashClearsActiveWorkflow } from "./projects/v2ProjectAuthority";
+import { loadAllBackendProjectPages, projectTrashClearsActiveWorkflow, shouldPersistMessagesAsLocalDraft } from "./projects/v2ProjectAuthority";
 import type {
   AssetLibraryEntitySummary,
   AssetLibraryUploadKind,
@@ -150,11 +158,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshProjects = useCallback(async () => {
     const { v2Api } = await import("./api/v2Client");
     const [active, trashed] = await Promise.all([
-      v2Api.listProjects("active"),
-      v2Api.listProjects("trashed"),
+      loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
+      loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
     ]);
-    setSavedProjects(active.items);
-    setTrashedProjects(trashed.items);
+    setSavedProjects(active);
+    setTrashedProjects(trashed);
   }, []);
 
   const beginWorkspaceRestoreRequest = useCallback((): WorkspaceRestoreRequest => {
@@ -207,6 +215,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setActiveProjectId(projectId);
     setWorkspaceRestoreError(null);
     setWorkflow(nextWorkflow);
+    setMessages([]);
     setNodeRuns([]);
     setWorkspaceHydrated(true);
     return true;
@@ -246,6 +255,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return true;
   }, [refreshProjects]);
 
+  const refreshAuthoringConflictTarget = useCallback(async (target: V2AuthoringConflictTarget) => {
+    if (target.resource === "project") {
+      await refreshProjects();
+      return;
+    }
+    if (target.id !== activeWorkflowIdRef.current) return;
+    const [client, adapter] = await Promise.all([
+      import("./api/v2Client"),
+      import("./workflow-v2/pageAdapter"),
+    ]);
+    const latest = await client.v2Api.workflowWithEtag(target.id);
+    if (target.id !== activeWorkflowIdRef.current) return;
+    setWorkflowState(adapter.workflowV2ToWorkflowGraph(latest.value));
+  }, [refreshProjects, setWorkflowState]);
+
   useEffect(() => {
     activeWorkflowIdRef.current = workflow?.workflow_id ?? null;
     if (!workflow?.project_id || workflow.project_id === activeProjectId) return;
@@ -261,14 +285,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { v2Api } = await import("./api/v2Client");
         const [activeProjects, trashProjects, storedWorkflow, storedMessages] = await Promise.all([
-          v2Api.listProjects("active"),
-          v2Api.listProjects("trashed"),
+          loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
+          loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
           loadStoredWorkflowAsync(),
           loadStoredMessagesAsync(),
         ]);
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
-        setSavedProjects(activeProjects.items);
-        setTrashedProjects(trashProjects.items);
+        setSavedProjects(activeProjects);
+        setTrashedProjects(trashProjects);
         const storedProjectId = loadActiveProjectId(window.localStorage);
         if (storedProjectId) {
           try {
@@ -281,6 +305,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
             setActiveProjectId(storedProjectId);
             setWorkflow(nextWorkflow);
+            setMessages([]);
             setWorkspaceRestoreError(null);
             setWorkspaceHydrated(true);
             return;
@@ -326,24 +351,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    return v2AuthoringConflictStore.subscribe((conflict) => {
+      if (!conflict) return;
+      void refreshAuthoringConflictTarget(conflict.target).catch(() => {});
+    });
+  }, [refreshAuthoringConflictTarget]);
+
+  useEffect(() => {
     async function handleAuthoringConflictResolved(event: Event) {
-      const target = (event as CustomEvent<V2AuthoringConflictTarget>).detail;
-      if (target.resource === "project") {
-        await refreshProjects();
-        return;
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (!resolution) return;
+      try {
+        await refreshAuthoringConflictTarget(resolution.target);
+      } finally {
+        if (resolution.action === "discard") {
+          window.dispatchEvent(new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: resolution }));
+        }
       }
-      if (target.id !== activeWorkflowIdRef.current) return;
-      const [client, adapter] = await Promise.all([
-        import("./api/v2Client"),
-        import("./workflow-v2/pageAdapter"),
-      ]);
-      const latest = await client.v2Api.workflowWithEtag(target.id);
-      setWorkflowState(adapter.workflowV2ToWorkflowGraph(latest.value));
     }
 
     window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
     return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
-  }, [refreshProjects, setWorkflowState]);
+  }, [refreshAuthoringConflictTarget]);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,8 +398,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!workspaceHydrated) return;
-    saveStoredMessages(messages);
-  }, [messages, workspaceHydrated]);
+    if (shouldPersistMessagesAsLocalDraft(workflow)) {
+      saveStoredMessages(messages);
+      return;
+    }
+    clearStoredMessages();
+  }, [messages, workflow, workspaceHydrated]);
 
   useEffect(() => {
     if (!workspaceHydrated) return;
@@ -547,6 +580,11 @@ function saveStoredMessages(messages: FrontDeskMessage[]) {
   const recentMessages = sanitizeMessages(messages).slice(-80);
   saveHybridRecordSync("messageThreads", "active", recentMessages);
   safeWriteJson(window.localStorage, WORKSPACE_MESSAGES_KEY, hybridStoragePointer("messageThreads", "active"));
+}
+
+function clearStoredMessages() {
+  deleteHybridRecordSync("messageThreads", "active");
+  safeRemoveItem(window.localStorage, WORKSPACE_MESSAGES_KEY);
 }
 
 function sanitizeMessages(messages: FrontDeskMessage[]) {

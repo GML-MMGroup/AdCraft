@@ -1,18 +1,14 @@
-import type { V2AuthoringResource } from "./v2EtagStore.ts";
+import type { V2AuthoringConflictTarget } from "./v2AuthoringConflictEvents.ts";
 
-export type V2AuthoringConflictTarget = {
-  resource: V2AuthoringResource;
-  id: string;
-};
+export type { V2AuthoringConflictTarget } from "./v2AuthoringConflictEvents.ts";
 
 export type V2AuthoringConflict = {
   target: V2AuthoringConflictTarget;
+  operationPath: string;
   message: string;
   retry: () => Promise<void>;
   discard: () => Promise<void>;
 };
-
-export const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
 
 type Listener = (conflict: V2AuthoringConflict | null) => void;
 

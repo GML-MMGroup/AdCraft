@@ -5,10 +5,13 @@ import type { RouteName } from "../types";
 import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useApp } from "../AppContextValue";
 import {
-  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
   v2AuthoringConflictStore,
   type V2AuthoringConflict,
 } from "../api/v2AuthoringConflictStore";
+import {
+  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
+  type V2AuthoringConflictResolution,
+} from "../api/v2AuthoringConflictEvents.ts";
 
 const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; icon: ReactNode }> = [
   { route: "home", label: "Home", icon: <HomeIcon /> },
@@ -38,8 +41,13 @@ export function Layout({ children }: LayoutProps) {
     setResolvingConflict(true);
     try {
       await v2AuthoringConflictStore[action]();
+      const resolution: V2AuthoringConflictResolution = {
+        target: authoringConflict.target,
+        operationPath: authoringConflict.operationPath,
+        action,
+      };
       window.dispatchEvent(new CustomEvent(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, {
-        detail: authoringConflict.target,
+        detail: resolution,
       }));
     } finally {
       setResolvingConflict(false);

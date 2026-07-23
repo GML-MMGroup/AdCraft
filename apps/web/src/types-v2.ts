@@ -85,6 +85,13 @@ export interface WorkflowV2 {
   updated_at?: string;
 }
 
+/** A Workflow returned by the backend Project/authoring persistence boundary. */
+export interface PersistedWorkflowV2 extends WorkflowV2 {
+  project_id: string;
+  state_version: number;
+  semantic_revision_no: number;
+}
+
 export type ProjectV2Status = "active" | "archived" | "trashed";
 
 export interface ProjectV2Summary {
@@ -155,6 +162,30 @@ export interface WorkflowRevisionRestoreResponse {
   workflow: WorkflowV2;
   revision: WorkflowRevisionV2Summary;
   restored_from_revision_no: number;
+}
+
+export type V2ProjectWorkflowNotFoundCode = "project_not_found" | "workflow_not_found" | "workflow_revision_not_found";
+
+export type V2AuthoringPreconditionCode =
+  | "project_precondition_required"
+  | "workflow_precondition_required"
+  | "project_state_conflict"
+  | "workflow_state_conflict";
+
+export interface V2ProjectWorkflowErrorDetails {
+  current_etag?: string;
+  current_state_version?: number;
+  current_project_version?: number;
+  revision_no?: number;
+  [key: string]: unknown;
+}
+
+export interface V2ProjectWorkflowErrorResponse {
+  detail: {
+    code: V2ProjectWorkflowNotFoundCode | V2AuthoringPreconditionCode | string;
+    message: string;
+    details?: V2ProjectWorkflowErrorDetails;
+  };
 }
 
 export interface WorkflowNodeV2 {
