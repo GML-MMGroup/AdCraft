@@ -97,7 +97,14 @@ export function rebaseSlotMicroEditDraft(state: SlotMicroEditState, slot: Workfl
     return sameDraft(draft, nextDraft) ? state : updateDraft(state, slot.slot_id, nextDraft);
   }
   const nextDraft = draft.promptDirty
-    ? { ...draft, serverBaseline }
+    ? {
+      ...draft,
+      base_prompt: serverBaseline.prompt,
+      base_negative_prompt: serverBaseline.negative_prompt,
+      promptDirty: draft.prompt !== serverBaseline.prompt || (draft.negative_prompt ?? "") !== serverBaseline.negative_prompt,
+      referenceDirty: draft.referenceDirty && draftReferencesDifferFromBaseline(draft, serverBaseline),
+      serverBaseline,
+    }
     : {
       ...draft,
       prompt: serverBaseline.prompt,
@@ -110,11 +117,18 @@ export function rebaseSlotMicroEditDraft(state: SlotMicroEditState, slot: Workfl
       dirty: draft.referenceDirty,
       serverBaseline,
     };
+  nextDraft.dirty = nextDraft.promptDirty || nextDraft.referenceDirty;
   if (sameDraft(draft, nextDraft)) return state;
   return {
     ...state,
     draftsBySlotId: { ...state.draftsBySlotId, [slot.slot_id]: nextDraft },
   };
+}
+
+/** Replaces an explicitly discarded local draft with the current server value. */
+export function discardSlotMicroEditDraft(state: SlotMicroEditState, slot: WorkflowSlotV2): SlotMicroEditState {
+  if (!state.draftsBySlotId[slot.slot_id]) return state;
+  return updateDraft(state, slot.slot_id, draftFromSlot(slot));
 }
 
 /** Reconciles existing drafts with a fresh slot collection and removes archived slots. */
@@ -417,8 +431,9 @@ export function useSlotMicroEdit(initialState: SlotMicroEditState = createInitia
   const updateAttachment = useCallback((slotId: string, attachmentId: string, patch: Partial<SlotMicroEditAttachment>) => setState((current) => updateSlotDraftAttachment(current, slotId, attachmentId, patch)), []);
   const setSubmitting = useCallback((slotId: string, isSubmitting: boolean, error?: string) => setState((current) => setSlotDraftSubmitting(current, slotId, isSubmitting, error)), []);
   const markClean = useCallback((slotId: string, slot?: WorkflowSlotV2, promptPersisted = true, referenceBaselineAuthoritative = false) => setState((current) => markSlotDraftClean(current, slotId, slot, promptPersisted, referenceBaselineAuthoritative)), []);
+  const discardDraft = useCallback((slot: WorkflowSlotV2) => setState((current) => discardSlotMicroEditDraft(current, slot)), []);
   const rebaseSlots = useCallback((slots: WorkflowSlotV2[], options?: { authoritative?: boolean; archivedSlotIds?: string[]; removedSlotIds?: string[] }) => setState((current) => rebaseSlotMicroEditState(current, slots, options)), []);
-  return { state, setState, openSlot, closeSlot, updatePrompt, updateNegativePrompt, addReference, removeReference, addAttachment, updateAttachment, setSubmitting, markClean, rebaseSlots };
+  return { state, setState, openSlot, closeSlot, updatePrompt, updateNegativePrompt, addReference, removeReference, addAttachment, updateAttachment, setSubmitting, markClean, discardDraft, rebaseSlots };
 }
 
 function draftFromSlot(slot: WorkflowSlotV2): SlotMicroEditDraft {

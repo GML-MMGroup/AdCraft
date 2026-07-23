@@ -7,6 +7,25 @@ import {
 } from "../v2/screenplay/useV2ScreenplayController.ts";
 import { createV2SynchronizationRefreshCoordinator } from "../runtime/v2SynchronizationRefreshCoordinator.ts";
 
+const V2_AUTHORING_DRAFT_DISCARDED_EVENT = "v2-authoring-draft-discarded";
+const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
+
+type V2AuthoringConflictResolution = {
+  target: { resource: "project" | "workflow"; id: string };
+  operationPath: string;
+  action: "retry" | "discard";
+};
+
+export function shouldRefreshScreenplayAfterAuthoringResolution(
+  resolution: V2AuthoringConflictResolution | null | undefined,
+  workflowId: string | null,
+): boolean {
+  return resolution?.action === "retry"
+    && resolution.target.resource === "workflow"
+    && resolution.target.id === workflowId
+    && /\/script(?:\/|$)/.test(resolution.operationPath);
+}
+
 type ScreenplayEventActions = Pick<
   V2ScreenplayController,
   "handleRuntimeEvents" | "refreshHistory" | "refreshSelected"
@@ -86,6 +105,30 @@ export function useWorkflowPageScreenplay({
     triggerElementRef.current = null;
     discardDraftAndClose();
   }, [activeWorkflowId, controller.state.workflowId, discardDraftAndClose]);
+
+  useEffect(() => {
+    function discardConflictDraft(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.target.resource !== "workflow" || resolution.target.id !== activeWorkflowId) return;
+      if (!/\/script(?:\/|$)/.test(resolution.operationPath)) return;
+      triggerElementRef.current = null;
+      controllerRef.current?.discardDraftAndClose();
+    }
+
+    window.addEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+  }, [activeWorkflowId]);
+
+  useEffect(() => {
+    function refreshScreenplayAfterRetry(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (!shouldRefreshScreenplayAfterAuthoringResolution(resolution, activeWorkflowId)) return;
+      void controllerRef.current?.refreshSelected();
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, refreshScreenplayAfterRetry as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, refreshScreenplayAfterRetry as EventListener);
+  }, [activeWorkflowId]);
 
   const panel = activeWorkflowId && controller.state.workflowId === activeWorkflowId
     ? <LazyV2ScreenplayDrawer controller={controller} productOptions={productOptions} returnFocusRef={triggerElementRef} />

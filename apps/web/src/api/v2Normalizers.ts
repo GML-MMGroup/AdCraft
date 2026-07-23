@@ -1431,6 +1431,14 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
   };
 }
 
+export function normalizePersistedWorkflowV2(value: unknown): import("../types-v2.ts").PersistedWorkflowV2 {
+  const workflow = normalizeWorkflowV2(value);
+  if (!workflow.project_id || workflow.state_version === undefined || workflow.semantic_revision_no === undefined) {
+    throw new Error("invalid_v2_persisted_workflow");
+  }
+  return workflow as import("../types-v2.ts").PersistedWorkflowV2;
+}
+
 export function normalizeProjectV2ListResponse(value: unknown): import("../types-v2.ts").ProjectV2ListResponse {
   const record = recordValue(value) ?? {};
   return {
@@ -1441,28 +1449,52 @@ export function normalizeProjectV2ListResponse(value: unknown): import("../types
 
 export function normalizeProjectV2(value: unknown): import("../types-v2.ts").ProjectV2 {
   const record = recordValue(value) ?? {};
+  const description = record.description;
+  if (typeof description !== "string") invalidProjectPayload();
+  const semanticRevisionNo = requiredPositiveInteger(record, "semantic_revision_no");
+  const createdAt = requiredProjectString(record, "created_at");
+  const deletedAt = record.deleted_at;
+  if (deletedAt !== null && deletedAt !== undefined && typeof deletedAt !== "string") invalidProjectPayload();
   return {
     ...normalizeProjectV2Summary(record),
-    description: stringValue(record.description),
-    semantic_revision_no: numberValue(record.semantic_revision_no),
-    created_at: stringValue(record.created_at),
-    deleted_at: stringOrNull(record.deleted_at) ?? null,
+    description,
+    semantic_revision_no: semanticRevisionNo,
+    created_at: createdAt,
+    deleted_at: deletedAt ?? null,
   };
 }
 
 function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").ProjectV2Summary {
   const record = recordValue(value) ?? {};
-  const status = stringValue(record.status, "active");
+  const status = requiredProjectString(record, "status");
+  if (status !== "active" && status !== "archived" && status !== "trashed") invalidProjectPayload();
+  if (typeof record.is_favorite !== "boolean") invalidProjectPayload();
   return {
-    project_id: stringValue(record.project_id),
-    workflow_id: stringValue(record.workflow_id),
-    name: stringValue(record.name),
-    status: status === "archived" || status === "trashed" ? status : "active",
-    is_favorite: Boolean(record.is_favorite),
+    project_id: requiredProjectString(record, "project_id"),
+    workflow_id: requiredProjectString(record, "workflow_id"),
+    name: requiredProjectString(record, "name"),
+    status,
+    is_favorite: record.is_favorite,
     cover_asset_id: stringOrNull(record.cover_asset_id) ?? null,
-    project_version: numberValue(record.project_version),
-    updated_at: stringValue(record.updated_at),
+    project_version: requiredPositiveInteger(record, "project_version"),
+    updated_at: requiredProjectString(record, "updated_at"),
   };
+}
+
+function invalidProjectPayload(): never {
+  throw new Error("invalid_v2_project_payload");
+}
+
+function requiredProjectString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) invalidProjectPayload();
+  return value;
+}
+
+function requiredPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) invalidProjectPayload();
+  return value;
 }
 
 export function normalizeWorkflowRevisionPage(value: unknown): import("../types-v2.ts").WorkflowRevisionPage {
@@ -1475,34 +1507,62 @@ export function normalizeWorkflowRevisionPage(value: unknown): import("../types-
 
 export function normalizeWorkflowRevisionV2Detail(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Detail {
   const record = recordValue(value) ?? {};
+  const document = recordValue(record.document);
+  if (!document) invalidWorkflowRevisionPayload();
   return {
     ...normalizeWorkflowRevisionV2Summary(record),
-    document: recordValue(record.document) ?? {},
+    document,
   };
 }
 
 export function normalizeWorkflowRevisionRestoreResponse(value: unknown): import("../types-v2.ts").WorkflowRevisionRestoreResponse {
   const record = recordValue(value) ?? {};
+  const restoredFromRevisionNo = record.restored_from_revision_no;
+  if (typeof restoredFromRevisionNo !== "number" || !Number.isInteger(restoredFromRevisionNo) || restoredFromRevisionNo < 1) {
+    invalidWorkflowRevisionPayload();
+  }
   return {
-    workflow: normalizeWorkflowV2(record.workflow),
+    workflow: normalizePersistedWorkflowV2(record.workflow),
     revision: normalizeWorkflowRevisionV2Summary(record.revision),
-    restored_from_revision_no: numberValue(record.restored_from_revision_no),
+    restored_from_revision_no: restoredFromRevisionNo,
   };
 }
 
 function normalizeWorkflowRevisionV2Summary(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Summary {
   const record = recordValue(value) ?? {};
+  const restoredFromRevisionNo = record.restored_from_revision_no;
+  if (restoredFromRevisionNo !== null && restoredFromRevisionNo !== undefined && (
+    typeof restoredFromRevisionNo !== "number" || !Number.isInteger(restoredFromRevisionNo) || restoredFromRevisionNo < 1
+  )) invalidWorkflowRevisionPayload();
+  const sourceExecutionId = record.source_execution_id;
+  if (sourceExecutionId !== null && sourceExecutionId !== undefined && typeof sourceExecutionId !== "string") invalidWorkflowRevisionPayload();
   return {
-    revision_id: stringValue(record.revision_id),
-    workflow_id: stringValue(record.workflow_id),
-    revision_no: numberValue(record.revision_no),
-    state_version: numberValue(record.state_version),
-    content_hash: stringValue(record.content_hash),
-    change_source: stringValue(record.change_source) as import("../types-v2.ts").WorkflowRevisionChangeSourceV2,
-    restored_from_revision_no: typeof record.restored_from_revision_no === "number" ? record.restored_from_revision_no : null,
-    source_execution_id: stringOrNull(record.source_execution_id) ?? null,
-    created_at: stringValue(record.created_at),
+    revision_id: requiredWorkflowRevisionString(record, "revision_id"),
+    workflow_id: requiredWorkflowRevisionString(record, "workflow_id"),
+    revision_no: requiredWorkflowRevisionPositiveInteger(record, "revision_no"),
+    state_version: requiredWorkflowRevisionPositiveInteger(record, "state_version"),
+    content_hash: requiredWorkflowRevisionString(record, "content_hash"),
+    change_source: requiredWorkflowRevisionString(record, "change_source") as import("../types-v2.ts").WorkflowRevisionChangeSourceV2,
+    restored_from_revision_no: typeof restoredFromRevisionNo === "number" ? restoredFromRevisionNo : null,
+    source_execution_id: typeof sourceExecutionId === "string" ? sourceExecutionId : null,
+    created_at: requiredWorkflowRevisionString(record, "created_at"),
   };
+}
+
+function invalidWorkflowRevisionPayload(): never {
+  throw new Error("invalid_v2_workflow_revision_payload");
+}
+
+function requiredWorkflowRevisionString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) invalidWorkflowRevisionPayload();
+  return value;
+}
+
+function requiredWorkflowRevisionPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) invalidWorkflowRevisionPayload();
+  return value;
 }
 
 function deriveAssetVersionRecordsFromSlots(slots: WorkflowSlotV2[], workflowId: string): Record<string, unknown>[] {

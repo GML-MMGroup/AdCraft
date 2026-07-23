@@ -63,6 +63,7 @@ import type {
   WorkflowRuntimeEventV2,
   WorkflowRuntimeV2,
   WorkflowV2,
+  PersistedWorkflowV2,
   WorkflowRevisionPage,
   WorkflowRevisionRestoreResponse,
   WorkflowRevisionV2Detail,
@@ -82,6 +83,7 @@ import {
   normalizeV2WarningArray,
   normalizeWorkflowRuntimeEventV2,
   normalizeWorkflowRuntimeV2,
+  normalizePersistedWorkflowV2,
   normalizeWorkflowV2,
   normalizeWorkflowV2MutationResponse,
   normalizeWorkflowV2ReferenceMutationResponse,
@@ -219,16 +221,19 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
       const { v2AuthoringConflictStore } = await import("./v2AuthoringConflictStore.ts");
       const retryOptions = { ...options, headers: new Headers(options.headers) };
       retryOptions.headers.delete("If-Match");
+      try {
+        await fetchCurrentAuthoringEtag(precondition);
+      } catch {
+        // Keep the original precondition error actionable even when the refresh cannot complete.
+      }
       v2AuthoringConflictStore.raise({
         target: precondition,
+        operationPath: path,
         message,
         retry: async () => {
-          await fetchCurrentAuthoringEtag(precondition);
           await requestV2Response(path, retryOptions);
         },
-        discard: async () => {
-          await fetchCurrentAuthoringEtag(precondition);
-        },
+        discard: async () => {},
       });
     }
     throw new V2ApiError({
@@ -243,15 +248,17 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
     });
   }
   const etag = response.headers.get("etag");
-  captureAuthoringEtag(path, method, payload, etag, precondition);
+  captureAuthoringEtag(path, payload, etag, precondition);
   return { payload, etag };
 }
 
 export function v2AuthoringPreconditionTarget(path: string, method: string): V2PreconditionTarget | null {
   if (!new Set(["POST", "PATCH", "PUT", "DELETE"]).has(method.toUpperCase())) return null;
-  const project = path.match(/^\/projects\/([^/]+)(?:\/restore)?$/);
+  const pathname = path.split("?", 1)[0] ?? path;
+  const project = pathname.match(/^\/projects\/([^/]+)(?:\/restore)?$/);
   if (project) return { resource: "project", id: decodeURIComponent(project[1] ?? "") };
-  const workflow = path.match(/^\/workflows\/([^/]+)(\/.*)?$/);
+  if (/^\/workflows\/plan-from-(?:prompt|chat)$/.test(pathname)) return null;
+  const workflow = pathname.match(/^\/workflows\/([^/]+)(\/.*)?$/);
   if (!workflow) return null;
   const workflowId = decodeURIComponent(workflow[1] ?? "");
   const suffix = workflow[2] ?? "";
@@ -279,7 +286,6 @@ async function fetchCurrentAuthoringEtag(target: V2PreconditionTarget): Promise<
 
 function captureAuthoringEtag(
   path: string,
-  method: string,
   payload: unknown,
   etag: string | null,
   precondition: V2PreconditionTarget | null,
@@ -294,9 +300,6 @@ function captureAuthoringEtag(
   if (etag && record && typeof record.project_id === "string" && typeof record.project_version === "number") {
     v2EtagStore.set("project", record.project_id, etag);
     return;
-  }
-  if (method === "DELETE" && precondition?.resource === "project") {
-    v2EtagStore.set("project", precondition.id, null);
   }
   const workflowRead = path.match(/^\/workflows\/([^/]+)$/);
   if (etag && workflowRead) v2EtagStore.set("workflow", decodeURIComponent(workflowRead[1] ?? ""), etag);
@@ -342,12 +345,12 @@ export const v2Api = {
     return requestV2(`/input-assets/upload`, { method: "POST", body: formData }, normalizeV2InputAssetUploadResponse);
   },
 
-  workflow(workflowId: string): Promise<WorkflowV2> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  workflow(workflowId: string): Promise<PersistedWorkflowV2> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizePersistedWorkflowV2);
   },
 
-  workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<WorkflowV2>> {
-    return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizePersistedWorkflowV2);
   },
 
   listProjects(status: ProjectV2Status = "active", limit = 100, cursor?: string | null): Promise<ProjectV2ListResponse> {
@@ -360,8 +363,8 @@ export const v2Api = {
     return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}`, {}, normalizeProjectV2);
   },
 
-  projectWorkflow(projectId: string): Promise<V2EtaggedResponse<WorkflowV2>> {
-    return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}/workflow`, {}, normalizeWorkflowV2);
+  projectWorkflow(projectId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}/workflow`, {}, normalizePersistedWorkflowV2);
   },
 
   updateProject(projectId: string, request: ProjectV2UpdateRequest): Promise<V2EtaggedResponse<ProjectV2>> {
@@ -451,19 +454,18 @@ export const v2Api = {
     workflowId: string,
     slotId: string,
     request: V2ReferenceSelectionsRequest,
-    etag: string,
   ): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/slots/${encodeURIComponent(slotId)}/reference-selections`,
-      { method: "POST", headers: { "If-Match": etag }, body: JSON.stringify(request) },
+      { method: "POST", body: JSON.stringify(request) },
       normalizeV2ReferenceSelectionsResponse,
     );
   },
 
-  removeReferenceBinding(workflowId: string, bindingId: string, etag: string): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
+  removeReferenceBinding(workflowId: string, bindingId: string): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/references/${encodeURIComponent(bindingId)}`,
-      { method: "DELETE", headers: { "If-Match": etag } },
+      { method: "DELETE" },
       normalizeV2ReferenceSelectionsResponse,
     );
   },

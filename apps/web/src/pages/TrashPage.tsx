@@ -27,7 +27,7 @@ export function TrashPage() {
 
   return (
     <section className="content-wrap">
-      <PageHeader title="Trash" subtitle="Deleted projects and assets stay here before permanent cleanup." />
+      <PageHeader title="Trash" subtitle="Trashed projects can be restored here." />
       <div className="page-toolbar">
         <div className="toolbar-row">
           {(["project", "role", "scene"] as const).map((item) => (
