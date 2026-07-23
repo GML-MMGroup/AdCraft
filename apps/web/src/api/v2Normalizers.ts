@@ -12,6 +12,7 @@ import type {
   SlotVersionsResponseV2,
   V2InputAssetUploadItem,
   V2InputAssetUploadResponse,
+  V2CompositionCapabilities,
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
   V2FinalTimelineRenderStartResponse,
@@ -668,14 +669,38 @@ export function normalizeAssetVersionV2(value: unknown): AssetVersionV2 {
 
 export function normalizeV2FinalTimelineResponse(value: unknown): V2FinalTimelineResponse {
   const record = isRecord(value) ? value : {};
+  const timeline = normalizeV2FinalCompositionTimeline(record.timeline);
   return {
     workflow_id: stringValue(record.workflow_id),
     node_id: "final-composition",
     item_id: stringValue(record.item_id),
     source: stringValue(record.source, "saved"),
-    timeline: normalizeV2FinalCompositionTimeline(record.timeline),
+    timeline,
     available_sources: recordArray(record.available_sources).map(normalizeV2FinalTimelineSource),
+    composition_capabilities: normalizeV2CompositionCapabilities(
+      record.composition_capabilities ?? timeline.metadata.composition_capabilities,
+    ),
+    stale_clip_ids: stringArray(record.stale_clip_ids),
+    missing_source_clip_ids: stringArray(record.missing_source_clip_ids),
     runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+  };
+}
+
+export function normalizeV2CompositionCapabilities(value: unknown): V2CompositionCapabilities {
+  const record = recordValue(value);
+  if (record?.render_mode !== "timeline_editor") {
+    return {
+      render_mode: "simple_sequence",
+      supports_timeline_controls: false,
+      supports_shot_reorder: false,
+      supports_bgm_volume_edit: false,
+    };
+  }
+  return {
+    render_mode: "timeline_editor",
+    supports_timeline_controls: record.supports_timeline_controls === true,
+    supports_shot_reorder: record.supports_shot_reorder === true,
+    supports_bgm_volume_edit: record.supports_bgm_volume_edit === true,
   };
 }
 
@@ -803,6 +828,7 @@ function normalizeV2FinalTimelineSource(value: unknown): V2FinalTimelineSource {
     thumbnail_url: stringOrNull(record.thumbnail_url ?? record.thumbnail_path),
     duration_seconds: numberOrNull(record.duration_seconds),
     origin: stringValue(record.origin, "workflow"),
+    slot_id: stringOrNull(record.slot_id),
   };
 }
 

@@ -1132,6 +1132,15 @@ export interface V2FinalTimelineRenderSettings {
   audio_bitrate: string | null;
 }
 
+export type V2CompositionRenderMode = "simple_sequence" | "timeline_editor";
+
+export interface V2CompositionCapabilities {
+  render_mode: V2CompositionRenderMode;
+  supports_timeline_controls: boolean;
+  supports_shot_reorder: boolean;
+  supports_bgm_volume_edit: boolean;
+}
+
 export interface V2FinalTimelineRenderRequest {
   timeline_id: string;
   timeline_version: number;
@@ -1159,6 +1168,7 @@ export interface V2FinalTimelineSource {
   thumbnail_url?: string | null;
   duration_seconds?: number | null;
   origin: "workflow" | "asset_library" | "upload" | string;
+  slot_id?: string | null;
 }
 
 export interface V2FinalTimelineResponse {
@@ -1168,6 +1178,9 @@ export interface V2FinalTimelineResponse {
   source: "default" | "saved" | string;
   timeline: V2FinalCompositionTimeline;
   available_sources: V2FinalTimelineSource[];
+  composition_capabilities: V2CompositionCapabilities;
+  stale_clip_ids: string[];
+  missing_source_clip_ids: string[];
   runtime?: WorkflowRuntimeV2 | null;
 }
 

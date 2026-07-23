@@ -11,8 +11,10 @@ import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
 import { storyboardVideoPreview } from "./storyboardVideoPreviewModel.ts";
 import type { V2StoryboardVideoPreviewTarget } from "../types.ts";
 import { isV2BgmFunctionalItem, V2BgmFunctionalCard } from "./V2BgmFunctionalCard.tsx";
+import { V2FinalCompositionFunctionalCard } from "./V2FinalCompositionFunctionalCard.tsx";
 import {
   buildV2RegionFunctionalModel,
+  isV2FinalCompositionFunctionalItem,
   type V2RegionFunctionalItemView,
   type V2RegionFunctionalSlotView,
 } from "../v2/region/v2RegionFunctionalModel.ts";
@@ -100,6 +102,17 @@ export function V2RegionCardPreview({
         onOpenSlotEditor={onOpenSlotEditor}
         onSelectSlotVersion={onSelectSlotVersion}
         onDiscardSlotWorkingVersion={onDiscardSlotWorkingVersion}
+      />
+    );
+  }
+  const finalCompositionItem = region.items.length === 1
+    ? region.items.find(isV2FinalCompositionFunctionalItem)
+    : undefined;
+  if (finalCompositionItem) {
+    return (
+      <V2FinalCompositionFunctionalCard
+        item={finalCompositionItem}
+        onOpenVideo={onOpenStoryboardVideoPreview}
       />
     );
   }

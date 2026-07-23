@@ -5,6 +5,7 @@ import {
   usableAssetVersionUrl,
   workingVersionForSlot,
 } from "../../../../workflow-v2/selectors.ts";
+import { finalCompositionDisplayStatus } from "../../final-composition/v2FinalCompositionPolicy.ts";
 
 export type V2RegionSlotDisplayRole = "main" | "multi_view" | "supplemental";
 
@@ -41,6 +42,11 @@ export type V2RegionFunctionalModel = {
   failedSlots: number;
 };
 
+export function isV2FinalCompositionFunctionalItem(item: V2RegionFunctionalItemView) {
+  return item.item.node_id === "final-composition"
+    && item.item.item_type === "final_composition";
+}
+
 export function buildV2RegionFunctionalModel({
   title,
   items,
@@ -75,15 +81,19 @@ export function buildV2RegionFunctionalModel({
         const workingAsset = workingVersionForSlot(slot, assets);
         const previewAsset = workingAsset ?? selectedAsset;
         const runtimeRecord = runtime?.slot_runtime?.[slot.slot_id];
-        const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
+        const rawRuntimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
         const runtimeMetadataErrorCode = stringMetadataValue(runtimeRecord?.metadata, "generation_error_code");
         const runtimeMetadataMessage = stringMetadataValue(runtimeRecord?.metadata, "generation_error_message");
+        const runtimeErrorCode = runtimeRecord?.error?.code ?? runtimeMetadataErrorCode;
+        const runtimeStatus = isV2FinalCompositionFunctionalSlot(slot)
+          ? finalCompositionDisplayStatus(rawRuntimeStatus, runtimeErrorCode)
+          : rawRuntimeStatus;
 
         return {
           slot,
           displayRole: regionSlotDisplayRole(slot),
           runtimeStatus,
-          runtimeErrorCode: runtimeRecord?.error?.code ?? runtimeMetadataErrorCode,
+          runtimeErrorCode,
           runtimeMessage: runtimeRecord?.error?.message ?? runtimeMetadataMessage ?? runtimeRecord?.waiting_reason ?? null,
           selectedAsset,
           workingAsset,
@@ -138,8 +148,17 @@ export function isV2BgmFunctionalSlot(slot: WorkflowSlotV2): boolean {
   return slot.slot_type === "bgm_audio" && slot.media_type === "audio";
 }
 
+export function isV2FinalCompositionFunctionalSlot(slot: WorkflowSlotV2): boolean {
+  return slot.node_id === "final-composition"
+    && slot.slot_type === "final_video"
+    && slot.media_type === "video";
+}
+
 function isRenderableFunctionalSlot(slot: WorkflowSlotV2) {
-  return isImageSlot(slot) || isStoryboardVideoSlot(slot) || isV2BgmFunctionalSlot(slot);
+  return isImageSlot(slot)
+    || isStoryboardVideoSlot(slot)
+    || isV2BgmFunctionalSlot(slot)
+    || isV2FinalCompositionFunctionalSlot(slot);
 }
 
 function isImageSlot(slot: Pick<WorkflowSlotV2, "media_type">) {
@@ -167,8 +186,11 @@ function compactItemSummary(item: WorkflowItemV2) {
 
 function itemRuntimeStatus(fallbackStatus: string, statuses: string[]) {
   if (statuses.includes("running")) return "running";
+  if (statuses.includes("queued")) return "queued";
   if (statuses.includes("waiting")) return "waiting";
+  if (statuses.includes("blocked")) return "blocked";
   if (statuses.includes("failed")) return "failed";
+  if (statuses.length && statuses.every((status) => status === "skipped")) return "skipped";
   if (statuses.length && statuses.every(isCompletedStatus)) return "completed";
   return fallbackStatus;
 }

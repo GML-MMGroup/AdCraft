@@ -93,4 +93,67 @@ describe("buildV2RegionFunctionalModel", () => {
     expect(slotView.previewAsset?.version_id).toBe("working-version");
     expect(slotView.hasUnselectedWorkingVersion).toBe(true);
   });
+
+  it("includes the canonical final video and maps domain failures to blocked or skipped", () => {
+    const finalItem = item({
+      item_id: "final-item",
+      node_id: "final-composition",
+      item_type: "final_composition",
+      display_name: "Final Composition",
+      status: "failed",
+    });
+    const finalSlot = slot({
+      slot_id: "final-slot",
+      node_id: "final-composition",
+      item_id: "final-item",
+      slot_type: "final_video",
+      media_type: "video",
+      status: "failed",
+      selected_asset_id: "final-asset",
+      selected_version_id: "final-version",
+    });
+    const finalAsset = asset({
+      asset_id: "final-asset",
+      version_id: "final-version",
+      media_type: "video",
+      semantic_type: "final_video",
+      public_url: "/media/final.mp4",
+    });
+    const waiting = buildV2RegionFunctionalModel({
+      title: "Final Composition",
+      items: [finalItem],
+      slots: [finalSlot],
+      assetVersions: [finalAsset],
+      runtime: normalizeWorkflowRuntimeV2({
+        workflow_id: "workflow-1",
+        slot_runtime: {
+          "final-slot": {
+            status: "failed",
+            metadata: { generation_error_code: "composition_inputs_not_settled" },
+          },
+        },
+      }),
+    });
+    const skipped = buildV2RegionFunctionalModel({
+      title: "Final Composition",
+      items: [finalItem],
+      slots: [finalSlot],
+      assetVersions: [finalAsset],
+      runtime: normalizeWorkflowRuntimeV2({
+        workflow_id: "workflow-1",
+        slot_runtime: {
+          "final-slot": {
+            status: "failed",
+            metadata: { generation_error_code: "no_successful_video_segments" },
+          },
+        },
+      }),
+    });
+
+    expect(waiting.items[0].slots[0].previewAsset?.version_id).toBe("final-version");
+    expect(waiting.items[0].slots[0].runtimeStatus).toBe("blocked");
+    expect(waiting.items[0].runtimeStatus).toBe("blocked");
+    expect(skipped.items[0].slots[0].runtimeStatus).toBe("skipped");
+    expect(skipped.items[0].runtimeStatus).toBe("skipped");
+  });
 });
