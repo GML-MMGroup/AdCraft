@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from app.core.config import Settings
+from app.services.tianpuyue_callback_lease import TianpuyueCallbackLeaseService
 from app.tools.media_provider_protocol import MediaConfigurationError
 from app.tools.tianpuyue_pure_music import (
     TianpuyuePureMusicAdapter,
@@ -17,6 +19,9 @@ from app.tools.volcengine_pure_music import (
     VOLCENGINE_BGM_SUBMIT_ACTIONS,
     VolcenginePureMusicAdapter,
 )
+
+
+CallbackBaseUrlResolver = Callable[[], str]
 
 
 class BgmProviderAdapter(Protocol):
@@ -32,10 +37,24 @@ class BgmProviderAdapter(Protocol):
     ) -> dict[str, Any]: ...
 
 
-def build_bgm_provider_adapter(settings: Settings, data_dir: Path) -> BgmProviderAdapter:
+def build_bgm_provider_adapter(
+    settings: Settings,
+    data_dir: Path,
+    *,
+    callback_base_url_resolver: CallbackBaseUrlResolver | None = None,
+) -> BgmProviderAdapter:
     provider = normalized_bgm_provider_id(settings)
     if provider == "tianpuyue":
-        return TianpuyuePureMusicAdapter(settings, data_dir)
+        validate_tianpuyue_bgm_settings(settings)
+        resolver = callback_base_url_resolver or _tianpuyue_callback_resolver(
+            settings,
+            data_dir,
+        )
+        return TianpuyuePureMusicAdapter(
+            settings,
+            data_dir,
+            callback_base_url_resolver=resolver,
+        )
     if provider == "volcengine_ai_music":
         return VolcenginePureMusicAdapter(settings, data_dir)
     raise MediaConfigurationError(
@@ -56,6 +75,7 @@ def bgm_provider_configuration_error(settings: Settings) -> str | None:
     try:
         if provider == "tianpuyue":
             validate_tianpuyue_bgm_settings(settings)
+            validate_tianpuyue_callback_settings(settings)
             return None
         if provider == "volcengine_ai_music":
             _validate_volcengine_bgm_settings(settings)
@@ -63,6 +83,44 @@ def bgm_provider_configuration_error(settings: Settings) -> str | None:
     except MediaConfigurationError as exc:
         return str(exc)
     return None
+
+
+def _tianpuyue_callback_resolver(
+    settings: Settings,
+    data_dir: Path,
+) -> CallbackBaseUrlResolver:
+    mode = str(settings.bgm_callback_mode or "").strip().lower()
+    if mode == "auto":
+        lease_service = TianpuyueCallbackLeaseService(
+            data_dir,
+            timeout_seconds=settings.bgm_timeout_seconds,
+        )
+        return lease_service.resolve_base_url
+    if mode == "manual":
+        base_url = _validated_manual_callback_base_url(settings.bgm_callback_base_url)
+        return lambda: base_url
+    raise MediaConfigurationError("BGM_CALLBACK_MODE must be 'auto' or 'manual'.")
+
+
+def validate_tianpuyue_callback_settings(settings: Settings) -> None:
+    mode = str(settings.bgm_callback_mode or "").strip().lower()
+    if mode == "auto":
+        return
+    if mode == "manual":
+        _validated_manual_callback_base_url(settings.bgm_callback_base_url)
+        return
+    raise MediaConfigurationError("BGM_CALLBACK_MODE must be 'auto' or 'manual'.")
+
+
+def _validated_manual_callback_base_url(value: str | None) -> str:
+    normalized = str(value or "").strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+        raise MediaConfigurationError(
+            "Manual Tianpuyue callbacks require an absolute HTTPS "
+            "BGM_CALLBACK_BASE_URL without a query or fragment."
+        )
+    return normalized
 
 
 def _validate_volcengine_bgm_settings(settings: Settings) -> None:

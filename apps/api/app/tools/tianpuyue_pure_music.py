@@ -23,6 +23,7 @@ from app.schemas.tianpuyue_pure_music import (
     TianpuyueInstrumentalQueryRequest,
     TianpuyueInstrumentalQueryResponse,
 )
+from app.services.tianpuyue_callback_lease import TianpuyueCallbackLeaseError
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.tools.media_provider_protocol import MediaConfigurationError
 
@@ -114,11 +115,24 @@ class TianpuyuePureMusicAdapter:
         *,
         client: httpx.Client | None = None,
         callback_id_factory: Callable[[], str] | None = None,
+        callback_base_url_resolver: Callable[[], str] | None = None,
         audio_probe: Callable[[Path], dict[str, Any]] | None = None,
     ) -> None:
         self._settings = settings
         self._data_dir = data_dir
         self._validate_settings()
+        mode = str(settings.bgm_callback_mode or "").strip().lower()
+        if callback_base_url_resolver is None:
+            if mode != "manual":
+                raise MediaConfigurationError(
+                    "Automatic Tianpuyue callbacks must be built through the BGM provider factory."
+                )
+
+            def resolve_manual_callback_base_url() -> str:
+                return str(settings.bgm_callback_base_url or "")
+
+            callback_base_url_resolver = resolve_manual_callback_base_url
+        self._callback_base_url_resolver = callback_base_url_resolver
         self._client = client or httpx.Client(timeout=settings.bgm_timeout_seconds)
         self._owns_client = client is None
         self._callback_id_factory = callback_id_factory or _new_callback_id
@@ -145,7 +159,15 @@ class TianpuyuePureMusicAdapter:
             selection = select_tianpuyue_instrumental_model(duration_seconds, self._settings)
         except TianpuyuePureMusicError as exc:
             return self._failure(exc.code, str(exc), stage="submit", **exc.metadata)
-        callback_id, callback_url = self._callback_details(workflow_id)
+        try:
+            callback_id, callback_url = self._callback_details(workflow_id)
+        except TianpuyueCallbackLeaseError as exc:
+            return self._failure(
+                exc.code,
+                str(exc),
+                stage="callback_lease",
+                retryable=exc.retryable,
+            )
         request_body = TianpuyueInstrumentalGenerateRequest(
             prompt=_instrumental_prompt(prompt, duration_seconds),
             model=selection.model,
@@ -330,23 +352,25 @@ class TianpuyuePureMusicAdapter:
     def _validate_settings(self) -> None:
         validate_tianpuyue_bgm_settings(self._settings)
 
-    def _callback_details(self, workflow_id: str) -> tuple[str | None, str | None]:
-        base_url = str(self._settings.bgm_callback_base_url or "").strip()
+    def _callback_details(self, workflow_id: str) -> tuple[str, str]:
+        base_url = str(self._callback_base_url_resolver() or "").strip()
         if not base_url:
-            return None, None
+            raise MediaConfigurationError(
+                "Tianpuyue callback base URL resolver returned an empty URL."
+            )
         parsed = urlparse(base_url)
         if parsed.scheme != "https" or not parsed.netloc:
-            raise MediaConfigurationError("BGM_CALLBACK_BASE_URL must be an absolute HTTPS URL.")
+            raise MediaConfigurationError(
+                "Tianpuyue callback base URL must be an absolute HTTPS URL."
+            )
         callback_id = str(self._callback_id_factory()).strip()
         if not callback_id:
             raise MediaConfigurationError("BGM callback id factory returned an empty id.")
-        return (
-            callback_id,
-            (
-                f"{base_url.rstrip('/')}/api/v2/provider-callbacks/tianpuyue/"
-                f"instrumental/{workflow_id}/{callback_id}"
-            ),
+        callback_url = (
+            f"{base_url.rstrip('/')}/api/v2/provider-callbacks/tianpuyue/"
+            f"instrumental/{workflow_id}/{callback_id}"
         )
+        return callback_id, callback_url
 
     def _post_json(
         self,
