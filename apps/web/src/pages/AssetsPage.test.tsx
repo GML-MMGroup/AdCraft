@@ -155,6 +155,60 @@ describe("AssetsPage", () => {
     expect(declarations.overflow).toBe("hidden");
   });
 
+  it("uses five fluid columns and intrinsic discover card media on desktop", () => {
+    const gridRule = assetStyles.match(/\.v2-asset-library-grid\s*\{([^}]*)\}/);
+    const cardRule = assetStyles.match(/\.v2-asset-entity-card\.v2-asset-discover-card\s*\{([^}]*)\}/);
+    const mediaRule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\s*\{([^}]*)\}/);
+    const gridDeclarations = document.createElement("div").style;
+    const cardDeclarations = document.createElement("div").style;
+    const mediaDeclarations = document.createElement("div").style;
+
+    expect(gridRule).not.toBeNull();
+    expect(cardRule).not.toBeNull();
+    expect(mediaRule).not.toBeNull();
+
+    gridDeclarations.cssText = gridRule?.[1] ?? "";
+    cardDeclarations.cssText = cardRule?.[1] ?? "";
+    mediaDeclarations.cssText = mediaRule?.[1] ?? "";
+
+    expect(gridDeclarations.gridTemplateColumns).toBe("repeat(5, minmax(0, 1fr))");
+    expect(cardDeclarations.aspectRatio).toBe("");
+    expect(cardDeclarations.padding).toBe("0px");
+    expect(mediaDeclarations.position).toBe("relative");
+    expect(mediaDeclarations.height).toBe("auto");
+    expect(mediaDeclarations.objectFit).toBe("contain");
+  });
+
+  it("uses non-overlapping five-to-one column ranges at the exact breakpoints", () => {
+    const breakpointRules = [
+      [1279, "repeat(4, minmax(0, 1fr))"],
+      [959, "repeat(3, minmax(0, 1fr))"],
+      [719, "repeat(2, minmax(0, 1fr))"],
+      [479, "minmax(0, 1fr)"],
+    ] as const;
+
+    for (const [maxWidth, columns] of breakpointRules) {
+      const rule = assetStyles.match(
+        new RegExp(`@media \\(max-width: ${maxWidth}px\\) \\{\\s*\\.v2-asset-library-grid \\{([^}]*)\\}`),
+      );
+      const declarations = document.createElement("div").style;
+
+      expect(rule).not.toBeNull();
+      declarations.cssText = rule?.[1] ?? "";
+      expect(declarations.gridTemplateColumns).toBe(columns);
+    }
+  });
+
+  it("keeps empty discover media in normal flow with a 4/3 fallback footprint", () => {
+    const rule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\.is-empty\s*\{([^}]*)\}/);
+    const declarations = document.createElement("div").style;
+
+    expect(rule).not.toBeNull();
+    declarations.cssText = rule?.[1] ?? "";
+    expect(declarations.position).toBe("relative");
+    expect(declarations.aspectRatio).toBe("4 / 3");
+  });
+
   it("contains asset card media without cropping it", () => {
     const rule = assetStyles.match(/\.v2-asset-discover-card \.v2-asset-media\s*\{([^}]*)\}/);
     const declarations = document.createElement("div").style;
