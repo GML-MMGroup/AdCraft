@@ -10,6 +10,7 @@ import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
 import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
 import { storyboardVideoPreview } from "./storyboardVideoPreviewModel.ts";
 import type { V2StoryboardVideoPreviewTarget } from "../types.ts";
+import { isV2BgmFunctionalItem, V2BgmFunctionalCard } from "./V2BgmFunctionalCard.tsx";
 import {
   buildV2RegionFunctionalModel,
   type V2RegionFunctionalItemView,
@@ -87,6 +88,18 @@ export function V2RegionCardPreview({
     );
   }
   const isStoryboardRegion = region.items.some(isStoryboardShotItemView);
+  const bgmItem = region.items.length === 1 ? region.items.find(isV2BgmFunctionalItem) : undefined;
+  if (bgmItem) {
+    return (
+      <V2BgmFunctionalCard
+        item={bgmItem}
+        openSlotId={openSlotId}
+        onOpenSlotEditor={onOpenSlotEditor}
+        onSelectSlotVersion={onSelectSlotVersion}
+        onDiscardSlotWorkingVersion={onDiscardSlotWorkingVersion}
+      />
+    );
+  }
   const isMediaRegion = region.items.some((item) => item.slots.some((slot) => slot.slot.media_type === "image" || slot.slot.media_type === "video"));
   const previewClassName = `workflow-card-preview v2-region-card-preview${isStoryboardRegion ? " is-storyboard-region" : ""}${isMediaRegion ? " is-media-region" : ""}`;
 
