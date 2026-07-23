@@ -10,7 +10,7 @@ const assetStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8
 const assetFixture = vi.hoisted(() => {
   const summary = {
     entity_id: "recommended-v1-character-001",
-    scope: "recommended",
+    scope: "my",
     entity_type: "character",
     library_category: "characters",
     display_name: "Portrait Spark",
@@ -24,6 +24,7 @@ const assetFixture = vi.hoisted(() => {
   };
   const detail = {
     ...summary,
+    scope: "recommended",
     members: [],
     catalog_source_url: "https://example.com/catalog",
     license_id: "CC0-1.0",
@@ -55,10 +56,10 @@ vi.mock("../features/assets/useRecommendedCatalog.ts", () => ({
 }));
 
 vi.mock("../features/assets/useV2AssetLibrary.ts", () => ({
-  useV2AssetLibrary: () => ({
+  useV2AssetLibrary: ({ category }: { category: string }) => ({
     entities: [assetFixture.summary],
     nextCursor: null,
-    loading: false,
+    loading: category === "scenes",
     loadingMore: false,
     error: null,
     refresh: assetFixture.refresh,
@@ -107,6 +108,17 @@ describe("AssetsPage", () => {
 
     await screen.findByRole("heading", { name: "Portrait Spark" });
     expect(screen.queryByRole("button", { name: "Save to My Assets" })).toBeNull();
+  });
+
+  it("removes stale cards while a new category is loading", () => {
+    const { container } = render(<AssetsPage />);
+
+    expect(container.querySelectorAll(".v2-asset-entity-card")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
+
+    expect(screen.getByText("Loading assets...")).toBeTruthy();
+    expect(container.querySelectorAll(".v2-asset-entity-card")).toHaveLength(0);
+    expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
   });
 
   it("contains full-bleed media inside the asset card", () => {

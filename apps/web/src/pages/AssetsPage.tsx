@@ -34,19 +34,22 @@ export function AssetsPage() {
   const fetchAssetDetail = library.fetchDetail;
 
   const displayedEntities = useMemo(() => {
-    if (scope !== "my" || !trashOpen) return library.entities.filter((entity) => entity.status !== "trashed");
-    const serverTrash = library.entities.filter((entity) => entity.status === "trashed");
+    if (library.loading) return [];
+    const currentEntities = library.entities.filter(
+      (entity) => entity.scope === scope && entity.library_category === category,
+    );
+    if (scope !== "my" || !trashOpen) return currentEntities.filter((entity) => entity.status !== "trashed");
+    const serverTrash = currentEntities.filter((entity) => entity.status === "trashed");
     const ids = new Set(serverTrash.map((entity) => entity.entity_id));
-    return [...serverTrash, ...trashedEntities.filter((entity) => !ids.has(entity.entity_id))];
-  }, [library.entities, scope, trashOpen, trashedEntities]);
-
-  useEffect(() => {
-    setTrashOpen(false);
-    setSelectedEntityId(null);
-    setSelectedDetail(null);
-    setDetailLoading(false);
-    setFeedback(null);
-  }, [scope, category]);
+    return [
+      ...serverTrash,
+      ...trashedEntities.filter(
+        (entity) => entity.scope === scope
+          && entity.library_category === category
+          && !ids.has(entity.entity_id),
+      ),
+    ];
+  }, [category, library.entities, library.loading, scope, trashOpen, trashedEntities]);
 
   useEffect(() => {
     if (!selectedEntityId) return;
@@ -77,6 +80,20 @@ export function AssetsPage() {
     setSelectedDetail(null);
     setDetailLoading(false);
     setFeedback(null);
+  }
+
+  function changeScope(nextScope: AssetPageScope) {
+    if (nextScope === scope) return;
+    setTrashOpen(false);
+    closeDetail();
+    setScope(nextScope);
+  }
+
+  function changeCategory(nextCategory: V2AssetLibraryCategory) {
+    if (nextCategory === category) return;
+    setTrashOpen(false);
+    closeDetail();
+    setCategory(nextCategory);
   }
 
   async function updateDetail(request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) {
@@ -122,8 +139,8 @@ export function AssetsPage() {
       <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
       <div className="v2-asset-library-controls">
         <div className="v2-asset-library-tabs" role="tablist" aria-label="Asset library scope">
-          <button className={scope === "my" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "my"} onClick={() => setScope("my")}>My Assets</button>
-          <button className={scope === "recommended" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => setScope("recommended")}>Recommended Assets</button>
+          <button className={scope === "my" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "my"} onClick={() => changeScope("my")}>My Assets</button>
+          <button className={scope === "recommended" ? "is-active" : ""} type="button" role="tab" aria-selected={scope === "recommended"} onClick={() => changeScope("recommended")}>Recommended Assets</button>
         </div>
         <div className="v2-asset-library-actions">
           <input aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
@@ -133,7 +150,7 @@ export function AssetsPage() {
       </div>
       <div className="v2-asset-library-categories" role="tablist" aria-label="Asset category">
         {V2_ASSET_LIBRARY_CATEGORIES.map((item) => (
-          <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => setCategory(item.id)}>{item.label}</button>
+          <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</button>
         ))}
       </div>
       {scope === "recommended" && catalog.status?.status !== "ready" ? (
