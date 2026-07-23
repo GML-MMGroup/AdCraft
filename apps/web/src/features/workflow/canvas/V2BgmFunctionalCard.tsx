@@ -6,6 +6,7 @@ import { V2AudioPlayer } from "./V2AudioPlayer.tsx";
 
 export interface V2BgmFunctionalCardProps {
   item: V2RegionFunctionalItemView;
+  audioMode?: string | null;
   openSlotId: string | null;
   onOpenSlotEditor?: (slotId: string) => void;
   onSelectSlotVersion?: (slotId: string, versionId: string) => void | Promise<void>;
@@ -26,6 +27,7 @@ export function isV2BgmFunctionalItem(item: V2RegionFunctionalItemView): boolean
 
 export function V2BgmFunctionalCard({
   item,
+  audioMode,
   openSlotId,
   onOpenSlotEditor,
   onSelectSlotVersion,
@@ -44,7 +46,7 @@ export function V2BgmFunctionalCard({
   const selectedIsSyncing = hasSelectedIdentity && !selectedUrl;
   const workingIsSyncing = hasWorkingCandidate && !workingUrl;
   const isGenerating = slotView.runtimeStatus === "waiting" || slotView.runtimeStatus === "running";
-  const generationDisabled = item.item.metadata?.audio_mode === "none";
+  const generationDisabled = audioMode === "none";
   const status = bgmStatusCopy(slotView, generationDisabled, hasSelectedIdentity);
   const isPromptOpen = openSlotId === slotId;
 

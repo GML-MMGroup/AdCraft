@@ -11,6 +11,7 @@ type CardOptions = {
   workingVersionId?: string;
   runtimeStatus?: string;
   runtimeErrorCode?: string;
+  runtimeMetadataErrorCode?: string;
   runtimeMessage?: string;
   audioMode?: string;
   selectedIdentity?: boolean;
@@ -47,13 +48,18 @@ function renderCard(options: CardOptions = {}) {
     ...(options.selectedUrl ? [audioAsset("selected-asset", "selected-version", options.selectedUrl)] : []),
     ...(options.workingUrl ? [audioAsset("working-asset", workingVersionId, options.workingUrl)] : []),
   ];
-  const runtime = options.runtimeErrorCode
+  const runtime = options.runtimeErrorCode || options.runtimeMetadataErrorCode
     ? normalizeWorkflowRuntimeV2({
         workflow_id: "workflow-1",
         slot_runtime: {
           "bgm-slot": {
             status: options.runtimeStatus ?? "failed",
-            error: { code: options.runtimeErrorCode, message: options.runtimeMessage ?? "Provider failed", stage: "provider" },
+            ...(options.runtimeErrorCode
+              ? { error: { code: options.runtimeErrorCode, message: options.runtimeMessage ?? "Provider failed", stage: "provider" } }
+              : {}),
+            ...(options.runtimeMetadataErrorCode
+              ? { generation_error_code: options.runtimeMetadataErrorCode }
+              : {}),
           },
         },
       })
@@ -67,6 +73,7 @@ function renderCard(options: CardOptions = {}) {
     ...render(
       <V2BgmFunctionalCard
         item={model.items[0]}
+        audioMode={options.audioMode}
         openSlotId={null}
         onOpenSlotEditor={onOpen}
         onSelectSlotVersion={onSelect}
@@ -164,6 +171,17 @@ describe("V2BgmFunctionalCard", () => {
     expect(screen.getByLabelText("Selected soundtrack audio player")).toBeTruthy();
     expect((screen.getByRole("button", { name: "Edit BGM prompt" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText(/internal\/providers/)).toBeNull();
+  });
+
+  it("recognizes the canonical generation error code from runtime metadata", () => {
+    renderCard({
+      selectedUrl: "/selected.mp3",
+      runtimeStatus: "skipped",
+      runtimeMetadataErrorCode: "v2_bgm_provider_unconfigured_soft_skip",
+    });
+
+    expect(screen.getByText("BGM provider not configured")).toBeTruthy();
+    expect(screen.getByText("The final video can continue without music.")).toBeTruthy();
   });
 
   it("uses canonical failure copy without exposing provider diagnostics", () => {
@@ -268,6 +286,82 @@ describe("V2BgmFunctionalCard", () => {
     expect(screen.getByLabelText("Selected soundtrack audio player")).toBeTruthy();
     expect(screen.getByText("Working asset metadata syncing")).toBeTruthy();
     expect(screen.queryByLabelText("Working soundtrack candidate audio player")).toBeNull();
+  });
+
+  it("keeps Selected and Working distinct when they share an asset id", () => {
+    const item = normalizeWorkflowItemV2({
+      item_id: "bgm-item",
+      node_id: "bgm",
+      item_type: "bgm",
+      display_name: "Background music",
+      status: "completed",
+      lifecycle_state: "active",
+    });
+    const slot = normalizeWorkflowSlotV2({
+      slot_id: "bgm-slot",
+      node_id: "bgm",
+      item_id: "bgm-item",
+      slot_type: "bgm_audio",
+      media_type: "audio",
+      required: true,
+      status: "completed",
+      selected_asset_id: "asset-a",
+      selected_version_id: "version-1",
+      current_working_asset_id: "asset-a",
+      current_working_version_id: "version-2",
+    });
+    const model = buildV2RegionFunctionalModel({
+      title: "BGM",
+      items: [item],
+      slots: [slot],
+      assetVersions: [
+        audioAsset("asset-a", "version-1", "/selected-version-1.mp3"),
+        audioAsset("asset-a", "version-2", "/working-version-2.mp3"),
+      ],
+    });
+
+    render(<V2BgmFunctionalCard item={model.items[0]} openSlotId={null} />);
+
+    expect(screen.getByLabelText("Selected soundtrack audio player").querySelector("audio")?.getAttribute("src")).toContain("/selected-version-1.mp3");
+    expect(screen.getByLabelText("Working soundtrack candidate audio player").querySelector("audio")?.getAttribute("src")).toContain("/working-version-2.mp3");
+    expect(screen.getByRole("button", { name: "Use Working soundtrack" })).toBeTruthy();
+  });
+
+  it("does not substitute Working when the exact Selected version is still hydrating", () => {
+    const item = normalizeWorkflowItemV2({
+      item_id: "bgm-item",
+      node_id: "bgm",
+      item_type: "bgm",
+      display_name: "Background music",
+      status: "completed",
+      lifecycle_state: "active",
+    });
+    const slot = normalizeWorkflowSlotV2({
+      slot_id: "bgm-slot",
+      node_id: "bgm",
+      item_id: "bgm-item",
+      slot_type: "bgm_audio",
+      media_type: "audio",
+      required: true,
+      status: "completed",
+      selected_asset_id: "asset-a",
+      selected_version_id: "version-1",
+      current_working_asset_id: "asset-a",
+      current_working_version_id: "version-2",
+    });
+    const model = buildV2RegionFunctionalModel({
+      title: "BGM",
+      items: [item],
+      slots: [slot],
+      assetVersions: [audioAsset("asset-a", "version-2", "/working-version-2.mp3")],
+    });
+
+    render(<V2BgmFunctionalCard item={model.items[0]} openSlotId={null} />);
+
+    expect(screen.getByText("Selected asset metadata syncing")).toBeTruthy();
+    expect(screen.queryByLabelText("Selected soundtrack audio player")).toBeNull();
+    expect(screen.getByLabelText("Working soundtrack candidate audio player")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Working soundtrack" })).toBeTruthy();
   });
 
   it("shows an empty state when no soundtrack exists", () => {

@@ -67,6 +67,29 @@ describe("V2BgmReferenceAttachments", () => {
 
     expect(onRemove).toHaveBeenCalledWith(attached);
   });
+
+  it("blocks repeated removal while the Slot request is in flight", () => {
+    const onRemove = vi.fn();
+    const attached = attachment({
+      id: "upload:attached",
+      filename: "score.mp3",
+      source_asset_id: "asset-1",
+      relation_id: "relation-1",
+      status: "attached",
+    });
+    render(
+      <V2BgmReferenceAttachments
+        attachments={[attached]}
+        disabled
+        onRemove={onRemove}
+      />,
+    );
+
+    const removeButton = screen.getByRole("button", { name: "Remove score.mp3" }) as HTMLButtonElement;
+    expect(removeButton.disabled).toBe(true);
+    fireEvent.click(removeButton);
+    expect(onRemove).not.toHaveBeenCalled();
+  });
 });
 
 function attachment(patch: Partial<SlotMicroEditAttachment>): SlotMicroEditAttachment {

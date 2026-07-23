@@ -17,6 +17,7 @@ describe("v2SlotComposerPresentation", () => {
       closeLabel: "Close BGM prompt",
       acceptedFileTypes: "audio/*",
       assetPickerEnabled: false,
+      assetMentionsEnabled: false,
     });
   });
 
@@ -32,6 +33,7 @@ describe("v2SlotComposerPresentation", () => {
       closeLabel: "Close image prompt",
       acceptedFileTypes: undefined,
       assetPickerEnabled: true,
+      assetMentionsEnabled: true,
     });
   });
 });

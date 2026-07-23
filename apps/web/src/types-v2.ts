@@ -244,6 +244,7 @@ export interface WorkflowSlotV2 {
   provider?: string | null;
   provider_params?: Record<string, unknown>;
   selected_asset_id?: string | null;
+  selected_version_id?: string | null;
   current_working_asset_id?: string | null;
   current_working_version_id?: string | null;
   history_version_ids?: string[];

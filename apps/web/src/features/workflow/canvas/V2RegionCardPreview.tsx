@@ -22,6 +22,7 @@ export type V2RegionCardPreviewProps = {
   slots: WorkflowSlotV2[];
   assetVersions: AssetVersionV2[];
   runtime?: WorkflowRuntimeV2;
+  audioMode?: string | null;
   v2SlotRuntimeStatusById?: Record<string, string>;
   title: string;
   isRunning?: boolean;
@@ -44,6 +45,7 @@ export function V2RegionCardPreview({
   slots,
   assetVersions,
   runtime,
+  audioMode,
   v2SlotRuntimeStatusById = {},
   title,
   isRunning,
@@ -93,6 +95,7 @@ export function V2RegionCardPreview({
     return (
       <V2BgmFunctionalCard
         item={bgmItem}
+        audioMode={audioMode}
         openSlotId={openSlotId}
         onOpenSlotEditor={onOpenSlotEditor}
         onSelectSlotVersion={onSelectSlotVersion}

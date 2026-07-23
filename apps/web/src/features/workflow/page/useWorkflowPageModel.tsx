@@ -1130,6 +1130,7 @@ export function useWorkflowPageModel() {
     slotVersionAssets,
     v2Runtime: v2Runtime.runtime,
     v2FallbackRuntime: workflowV2Model.workflowV2?.runtime,
+    v2AudioMode: workflowV2Model.workflowV2?.audio_mode,
     v2SlotRuntimeStatusById,
     activeV2SlotId,
     activeV2StoryboardItemId,

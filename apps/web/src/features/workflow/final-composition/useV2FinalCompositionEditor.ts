@@ -24,6 +24,10 @@ import {
   type FinalRenderSessionIdentity,
 } from "./finalRenderSession.ts";
 import {
+  FINAL_COMPOSITION_EVENT_NAME,
+  shouldReloadFinalCompositionTimeline,
+} from "./finalCompositionEvents.ts";
+import {
   addImportedVideoLane,
   addOrReplaceBgm,
   deleteShotClips,
@@ -502,7 +506,7 @@ export function useV2FinalCompositionEditor({
       const detail = (event as CustomEvent<FinalCompositionEventDetail>).detail;
       if (!activeRef.current || detail?.workflowId !== workflowId) return;
       const eventTypes = detail.events?.map((item) => item.event_type) ?? detail.eventTypes ?? [];
-      if (eventTypes.some((eventType) => eventType === "final_timeline_created" || eventType === "final_timeline_updated")) {
+      if (shouldReloadFinalCompositionTimeline(eventTypes)) {
         void load({ preserveDraft: true });
       }
       const identity = renderSessionRef.current;
@@ -520,8 +524,8 @@ export function useV2FinalCompositionEditor({
       const resetBackoff = !terminalHint && hints.some((hint) => hint.resetBackoff);
       void pollRenderRef.current(identity, resetBackoff);
     };
-    window.addEventListener("v2-final-composition-events", handleTimelineEvent);
-    return () => window.removeEventListener("v2-final-composition-events", handleTimelineEvent);
+    window.addEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
+    return () => window.removeEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
   }, [clearRenderPollTimer, load, renderIdentityIsCurrent, workflowId]);
 
   const commitTimeline = useCallback((timeline: V2FinalCompositionTimeline, coalesceKey: string | null = null) => {

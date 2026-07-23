@@ -7,6 +7,7 @@ type V2SlotComposerPresentation = {
   closeLabel: string;
   acceptedFileTypes: string | undefined;
   assetPickerEnabled: boolean;
+  assetMentionsEnabled: boolean;
 };
 
 export function v2SlotComposerPresentation(
@@ -20,6 +21,7 @@ export function v2SlotComposerPresentation(
       closeLabel: "Close BGM prompt",
       acceptedFileTypes: "audio/*",
       assetPickerEnabled: false,
+      assetMentionsEnabled: false,
     };
   }
 
@@ -30,5 +32,6 @@ export function v2SlotComposerPresentation(
     closeLabel: "Close image prompt",
     acceptedFileTypes: undefined,
     assetPickerEnabled: true,
+    assetMentionsEnabled: true,
   };
 }

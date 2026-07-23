@@ -64,6 +64,7 @@ interface PromptComposerProps {
   className?: string;
   disabled?: boolean;
   clearOnGenerate?: boolean;
+  draftIdentity?: string | null;
   emptyPromptMessage?: string;
   secondaryActions?: ReactNode;
   assetMentionContext?: AssetMentionContext;
@@ -80,6 +81,7 @@ interface PromptComposerProps {
   onUploadInputAsset?: (file: File) => Promise<V2InputAssetUploadItem[]>;
   acceptedFileTypes?: string;
   assetPickerEnabled?: boolean;
+  assetMentionsEnabled?: boolean;
   onUploadFile?: (file: File) => Promise<void> | void;
   onDraftChange?: (prompt: string, context?: PromptGenerateContext) => void;
 }
@@ -94,6 +96,7 @@ export function PromptComposer({
   className,
   disabled = false,
   clearOnGenerate = true,
+  draftIdentity,
   emptyPromptMessage = "Describe the video you want to create first.",
   secondaryActions,
   assetMentionContext,
@@ -110,6 +113,7 @@ export function PromptComposer({
   onUploadInputAsset,
   acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
   assetPickerEnabled = true,
+  assetMentionsEnabled = true,
   onUploadFile,
   onDraftChange,
 }: PromptComposerProps) {
@@ -134,6 +138,9 @@ export function PromptComposer({
     referenceScope,
   };
   const inputRef = useRef<HTMLInputElement>(null);
+  const previousDraftIdentityRef = useRef(draftIdentity);
+  const activeDraftIdentityRef = useRef(draftIdentity);
+  activeDraftIdentityRef.current = draftIdentity;
   const { uploadAsset, busy } = useApp();
   const controlsDisabled = busy || disabled;
   const resolveV2AssetLocators = useV2AssetLocatorPaste(assetMentionContext?.workflowId, (target) => {
@@ -176,6 +183,21 @@ export function PromptComposer({
     setValue(initialValue);
     setError("");
   }, [initialValue]);
+
+  useEffect(() => {
+    if (previousDraftIdentityRef.current === draftIdentity) return;
+    previousDraftIdentityRef.current = draftIdentity;
+    setLocalMentionReferences([]);
+    setLocalMentionNodeReferences([]);
+    setLocalMentionTargetReferences([]);
+    setStructuredTargets([]);
+    setAttachments([]);
+    setAssetPickerOpen(false);
+    setAssetPickerQuery("");
+    setAssetPickerSuggestions([]);
+    setAssetPickerLoading(false);
+    setAssetPickerError("");
+  }, [draftIdentity]);
 
   useEffect(() => {
     if (!assetPickerOpen) return;
@@ -249,6 +271,7 @@ export function PromptComposer({
 
   async function handleFile(file?: File) {
     if (!file) return;
+    const uploadDraftIdentity = activeDraftIdentityRef.current;
     setError("");
     try {
       if (onUploadFile) {
@@ -260,6 +283,7 @@ export function PromptComposer({
         : uploadOptions ?? { asset_role: "reference" };
       if (onUploadInputAsset) {
         const inputAssets = await onUploadInputAsset(file);
+        if (activeDraftIdentityRef.current !== uploadDraftIdentity) return;
         const inputAttachments = inputAssets.map(composerAttachmentFromV2InputAsset).filter((item): item is ComposerAttachment => Boolean(item));
         const nextAttachments = mergeComposerAttachments(attachments, inputAttachments);
         setAttachments(nextAttachments);
@@ -267,6 +291,7 @@ export function PromptComposer({
         return;
       }
       const asset = await uploadAsset(file, resolvedUploadOptions);
+      if (activeDraftIdentityRef.current !== uploadDraftIdentity) return;
       const attachment = composerAttachmentFromUploadedAsset(asset);
       if (attachment) {
         const nextAttachments = mergeComposerAttachments(attachments, [attachment]);
@@ -274,6 +299,7 @@ export function PromptComposer({
         notifyDraftChange(value, mentionReferences, nextAttachments);
       }
     } catch (event) {
+      if (activeDraftIdentityRef.current !== uploadDraftIdentity) return;
       setError(event instanceof Error ? event.message : "Upload failed");
     }
   }
@@ -377,6 +403,7 @@ export function PromptComposer({
     <div className={`prompt-composer ${compact ? "is-compact" : ""} ${className ?? ""}`}>
       <ComposerAttachmentPreview attachments={attachments} onRemove={removeAttachment} />
       <AssetMentionInput
+        key={draftIdentity ?? "default-draft"}
         value={value}
         placeholder={placeholder}
         disabled={controlsDisabled}
@@ -387,6 +414,7 @@ export function PromptComposer({
         workflowId={assetMentionContext?.workflowId}
         nodeId={assetMentionContext?.nodeId}
         referenceTargetContext={effectiveReferenceTargetContext}
+        assetMentionsEnabled={assetMentionsEnabled}
         onKeyDown={handleKeyDown}
         onAssetSuggestionSelected={handleAssetSuggestionSelected}
         onChange={handleComposerChange}
@@ -579,6 +607,7 @@ export function AssetMentionInput({
   workflowId,
   nodeId,
   referenceTargetContext,
+  assetMentionsEnabled = true,
   rows,
   className,
   disabled = false,
@@ -595,6 +624,7 @@ export function AssetMentionInput({
   workflowId?: string | null;
   nodeId?: string | null;
   referenceTargetContext?: AssetReferenceTargetContext;
+  assetMentionsEnabled?: boolean;
   rows?: number;
   className?: string;
   disabled?: boolean;
@@ -621,7 +651,7 @@ export function AssetMentionInput({
   );
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!assetMentionsEnabled || !menuOpen) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true);
@@ -654,7 +684,7 @@ export function AssetMentionInput({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeCategoryConfig.types, activeCategory, menuOpen, nodeId, query, workflowId, assetMentionRefreshNonce]);
+  }, [activeCategoryConfig.types, activeCategory, assetMentionsEnabled, menuOpen, nodeId, query, workflowId, assetMentionRefreshNonce]);
 
   useEffect(() => {
     function handleAssetLibraryRefresh() {
@@ -668,6 +698,12 @@ export function AssetMentionInput({
   }, []);
 
   function updateMentionTrigger(nextValue: string, caretIndex: number | null | undefined) {
+    if (!assetMentionsEnabled) {
+      setTriggerRange(null);
+      setQuery("");
+      setMenuOpen(false);
+      return;
+    }
     const trigger = assetMentionQueryFromText(nextValue, caretIndex);
     setTriggerRange(trigger ? { start: trigger.start, end: trigger.end } : null);
     setQuery(trigger?.query ?? "");

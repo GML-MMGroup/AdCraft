@@ -184,7 +184,7 @@ export function V2AudioPlayer({ src, label, durationSeconds, playbackGroup, comp
   const muteLabel = `${isMuted ? "Unmute" : "Mute"} ${label}`;
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- The player contains native controls and must prevent their interactions from bubbling to its canvas card.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events -- The player contains native controls and must prevent their interactions from bubbling to its canvas card.
     <section
       className={`v2-audio-player nodrag nopan${compact ? " is-compact" : ""}${controlsDisabled ? " is-unavailable" : ""}`}
       aria-label={`${label} audio player`}

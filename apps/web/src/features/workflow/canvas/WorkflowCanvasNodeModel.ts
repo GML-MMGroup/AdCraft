@@ -41,6 +41,7 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
     previousData.candidateWarningCount === nextData.candidateWarningCount &&
     previousData.pendingVisibleCandidateCount === nextData.pendingVisibleCandidateCount &&
     previousData.isV2Region === nextData.isV2Region &&
+    previousData.v2AudioMode === nextData.v2AudioMode &&
     sameV2Items(previousData.v2Items ?? [], nextData.v2Items ?? []) &&
     sameV2Slots(previousData.v2Slots ?? [], nextData.v2Slots ?? []) &&
     sameV2AssetVersionList(previousData.v2AssetVersions ?? [], nextData.v2AssetVersions ?? []) &&

@@ -3,6 +3,7 @@ import type { SlotMicroEditAttachment } from "../v2/slots/useSlotMicroEdit.ts";
 
 type V2BgmReferenceAttachmentsProps = {
   attachments: SlotMicroEditAttachment[];
+  disabled?: boolean;
   onRemove: (attachment: SlotMicroEditAttachment) => void;
 };
 
@@ -18,6 +19,7 @@ const STATUS_LABELS: Record<SlotMicroEditAttachment["status"], string> = {
 
 export function V2BgmReferenceAttachments({
   attachments,
+  disabled = false,
   onRemove,
 }: V2BgmReferenceAttachmentsProps) {
   if (!attachments.length) return null;
@@ -37,8 +39,8 @@ export function V2BgmReferenceAttachments({
               type="button"
               className="icon-only"
               aria-label={`Remove ${filename}`}
-              title={attachment.status === "registering" ? "Upload in progress" : `Remove ${filename}`}
-              disabled={attachment.status === "registering"}
+              title={disabled ? "Update in progress" : attachment.status === "registering" ? "Upload in progress" : `Remove ${filename}`}
+              disabled={disabled || attachment.status === "registering"}
               onClick={() => onRemove(attachment)}
             >
               <CloseIcon />

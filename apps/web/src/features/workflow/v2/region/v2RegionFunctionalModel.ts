@@ -76,13 +76,15 @@ export function buildV2RegionFunctionalModel({
         const previewAsset = workingAsset ?? selectedAsset;
         const runtimeRecord = runtime?.slot_runtime?.[slot.slot_id];
         const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
+        const runtimeMetadataErrorCode = stringMetadataValue(runtimeRecord?.metadata, "generation_error_code");
+        const runtimeMetadataMessage = stringMetadataValue(runtimeRecord?.metadata, "generation_error_message");
 
         return {
           slot,
           displayRole: regionSlotDisplayRole(slot),
           runtimeStatus,
-          runtimeErrorCode: runtimeRecord?.error?.code ?? null,
-          runtimeMessage: runtimeRecord?.error?.message ?? runtimeRecord?.waiting_reason ?? null,
+          runtimeErrorCode: runtimeRecord?.error?.code ?? runtimeMetadataErrorCode,
+          runtimeMessage: runtimeRecord?.error?.message ?? runtimeMetadataMessage ?? runtimeRecord?.waiting_reason ?? null,
           selectedAsset,
           workingAsset,
           previewAsset,
@@ -173,4 +175,9 @@ function itemRuntimeStatus(fallbackStatus: string, statuses: string[]) {
 
 function isCompletedStatus(status: string) {
   return ["completed", "skipped"].includes(String(status).toLowerCase());
+}
+
+function stringMetadataValue(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }

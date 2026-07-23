@@ -517,6 +517,7 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
             {isBgmSlot ? (
               <V2BgmReferenceAttachments
                 attachments={activeV2SlotDraft.attachments}
+                disabled={activeV2SlotDraft.isSubmitting}
                 onRemove={(attachment) => {
                   args.removeV2SlotReference?.(activeV2SlotId, {
                     source: attachment.source === "asset_library" ? "library_entity" : attachment.source === "upload" ? "uploaded_asset" : "reference_asset",
@@ -529,11 +530,13 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
               />
             ) : null}
             <LocalPromptComposer
+              draftIdentity={activeV2SlotId}
               placeholder={activeV2SlotPresentation?.placeholder ?? "Ask the agent team..."}
               initialValue={activeV2SlotDraft.prompt}
               disabled={activeV2SlotDraft.isSubmitting}
               acceptedFileTypes={activeV2SlotPresentation?.acceptedFileTypes}
               assetPickerEnabled={activeV2SlotPresentation?.assetPickerEnabled}
+              assetMentionsEnabled={activeV2SlotPresentation?.assetMentionsEnabled}
               assetMentionContext={{ workflowId: args.workflow?.workflow_id, nodeId: activeV2Slot.node_id }}
               referenceScope="item_revision"
               referenceTargetContext={{
