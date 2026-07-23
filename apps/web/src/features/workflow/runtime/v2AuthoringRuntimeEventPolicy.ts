@@ -85,6 +85,7 @@ export function createV2AuthoringRuntimeEventPolicy(
     || ordinaryRuntimeEvents.some((event) =>
       event.event_type === "graph_updated"
       || event.event_type === "workflow_updated"
+      || event.event_type === "final_composition_render_completed"
       || v2EventRefreshHints(event).some((hint) =>
         hint === "workflow" || hint === "workflow_graph" || hint === "graph"));
 

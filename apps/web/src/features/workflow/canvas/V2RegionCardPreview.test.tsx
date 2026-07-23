@@ -168,4 +168,86 @@ describe("V2RegionCardPreview", () => {
     expect(screen.queryByLabelText("BGM card")).toBeNull();
     expect(screen.getByRole("button", { name: "Show storyboard images" })).toBeTruthy();
   });
+
+  it("routes Final Composition to a dedicated playable card without prompt editing", () => {
+    const onOpenVideo = vi.fn();
+    const onOpenSlotEditor = vi.fn();
+    const finalItem = normalizeWorkflowItemV2({
+      item_id: "final-item",
+      node_id: "final-composition",
+      item_type: "final_composition",
+      display_name: "Final Composition",
+      status: "failed",
+      lifecycle_state: "active",
+    });
+    const finalSlot = normalizeWorkflowSlotV2({
+      slot_id: "final-slot",
+      node_id: "final-composition",
+      item_id: "final-item",
+      slot_type: "final_video",
+      media_type: "video",
+      required: true,
+      status: "failed",
+      selected_asset_id: "final-asset",
+      selected_version_id: "final-version",
+    });
+    const finalAsset = normalizeAssetVersionV2({
+      asset_id: "final-asset",
+      version_id: "final-version",
+      media_type: "video",
+      source_type: "generated",
+      semantic_type: "final_video",
+      public_url: "/media/final.mp4",
+      thumbnail_path: "/media/final-poster.jpg",
+    });
+
+    render(
+      <V2RegionCardPreview
+        title="Final Composition"
+        items={[finalItem]}
+        slots={[finalSlot]}
+        assetVersions={[finalAsset]}
+        runtime={{
+          workflow_id: "workflow-1",
+          status: "partial_failed",
+          completed_node_ids: [],
+          failed_node_ids: ["final-composition"],
+          completed_item_ids: [],
+          failed_item_ids: ["final-item"],
+          completed_slot_ids: [],
+          blocked_slot_ids: [],
+          skipped_slot_ids: [],
+          node_runtime: {},
+          item_runtime: {},
+          slot_runtime: {
+            "final-slot": {
+              status: "failed",
+              error: null,
+              waiting_reason: null,
+              provider_task_id: null,
+              selected_asset_id: "final-asset",
+              selected_version_id: "final-version",
+              current_working_asset_id: null,
+              current_working_version_id: null,
+              attempt_count: 1,
+              metadata: { generation_error_code: "provider_failed" },
+            },
+          },
+          events_cursor: 1,
+        }}
+        onOpenSlotEditor={onOpenSlotEditor}
+        onOpenStoryboardVideoPreview={onOpenVideo}
+      />,
+    );
+
+    expect(screen.getByLabelText("Final Composition card")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Play final video" }));
+    expect(onOpenVideo).toHaveBeenCalledWith(expect.objectContaining({
+      src: expect.stringContaining("/media/final.mp4"),
+      title: "Final video",
+    }));
+    expect(onOpenSlotEditor).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /edit.*prompt/i })).toBeNull();
+    expect(screen.getByText("failed")).toBeTruthy();
+  });
 });
