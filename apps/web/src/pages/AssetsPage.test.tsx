@@ -238,7 +238,7 @@ describe("AssetsPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Next asset view" }));
 
-    expect(screen.getByRole("img", { name: "Side view" }).getAttribute("src")).toBe("/media/portrait-side.webp");
+    expect((await screen.findByRole("img", { name: "Side view" })).getAttribute("src")).toBe("/media/portrait-side.webp");
     expect(screen.getByText("Side view, view 2 of 2")).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
