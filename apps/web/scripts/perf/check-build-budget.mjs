@@ -12,6 +12,7 @@ const MAX_TOTAL_JS_BYTES = 1281 * 1024;
 const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
 const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;
+const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
 const MAX_CSS_BYTES = 180 * 1024;
 const MAX_TIMELINE_EDITOR_CSS_BYTES = 6 * 1024;
 
@@ -69,8 +70,10 @@ const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
 const screenplayEditorJs = jsAssets.find((asset) => asset.name.startsWith("screenplay-editor-"));
 const finalCompositionEditorJs = jsAssets.find((asset) => asset.name.startsWith("V2FinalCompositionEditor-"));
 const timelineEditorJs = jsAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
+const assetEntityViewerJs = jsAssets.find((asset) => asset.name.startsWith("AssetEntityViewer-"));
 const timelineEditorCss = cssAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
-const featureJsAssets = [screenplayEditorJs, finalCompositionEditorJs, timelineEditorJs].filter(Boolean);
+// The asset viewer is loaded only after a user opens an asset card.
+const featureJsAssets = [screenplayEditorJs, finalCompositionEditorJs, timelineEditorJs, assetEntityViewerJs].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
 const initialNames = initialJsNames(indexHtml);
 const initialCssAssetNames = initialCssNames(indexHtml);
@@ -125,6 +128,11 @@ if (!timelineEditorJs) {
   failures.push("timeline editor lazy chunk is missing");
 } else if (timelineEditorJs.size > MAX_TIMELINE_EDITOR_JS_BYTES) {
   failures.push(`timeline editor JS ${timelineEditorJs.name} is ${bytes(timelineEditorJs.size)}, expected <= ${bytes(MAX_TIMELINE_EDITOR_JS_BYTES)}`);
+}
+if (!assetEntityViewerJs) {
+  failures.push("asset entity viewer lazy chunk is missing");
+} else if (assetEntityViewerJs.size > MAX_ASSET_ENTITY_VIEWER_JS_BYTES) {
+  failures.push(`asset entity viewer JS ${assetEntityViewerJs.name} is ${bytes(assetEntityViewerJs.size)}, expected <= ${bytes(MAX_ASSET_ENTITY_VIEWER_JS_BYTES)}`);
 }
 if (coreCssBytes > MAX_CSS_BYTES) {
   failures.push(`core CSS is ${bytes(coreCssBytes)}, expected <= ${bytes(MAX_CSS_BYTES)}`);
