@@ -44,39 +44,39 @@ export function AssetsPage() {
     setTrashOpen(false);
     setSelectedEntityId(null);
     setSelectedDetail(null);
+    setDetailLoading(false);
+    setFeedback(null);
   }, [scope, category]);
 
   useEffect(() => {
     if (!selectedEntityId) return;
     let cancelled = false;
     setDetailLoading(true);
+    setSelectedDetail(null);
     setFeedback(null);
     void fetchAssetDetail(selectedEntityId)
       .then((detail) => { if (!cancelled) setSelectedDetail(detail); })
-      .catch((caught) => { if (!cancelled) setFeedback(messageForError(caught, "Could not load asset details.")); })
+      .catch((caught) => {
+        if (cancelled) return;
+        setFeedback(messageForError(caught, "Could not load asset details."));
+        setSelectedEntityId(null);
+      })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
   }, [fetchAssetDetail, selectedEntityId]);
 
-  async function selectEntity(entity: V2AssetLibraryEntitySummary) {
+  function selectEntity(entity: V2AssetLibraryEntitySummary) {
+    if (selectedEntityId === entity.entity_id) return;
+    setSelectedDetail(null);
+    setDetailLoading(true);
     setSelectedEntityId(entity.entity_id);
   }
 
-  async function saveRecommended(entity: V2AssetLibraryEntityDetail) {
+  function closeDetail() {
+    setSelectedEntityId(null);
+    setSelectedDetail(null);
+    setDetailLoading(false);
     setFeedback(null);
-    try {
-      await v2Api.createAssetLibraryEntity({
-        display_name: entity.display_name,
-        entity_type: entity.entity_type,
-        library_category: entity.library_category,
-        description: entity.description ?? null,
-        tags: entity.tags,
-        source: { type: "recommended_entity", entity_id: entity.entity_id },
-      });
-      setFeedback(`${entity.display_name} was saved to My Assets.`);
-    } catch (caught) {
-      setFeedback(messageForError(caught, "Could not save this recommended asset."));
-    }
   }
 
   async function updateDetail(request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) {
@@ -140,14 +140,14 @@ export function AssetsPage() {
         <CatalogInstallStatus status={catalog.status} error={catalog.error} onRetry={() => void catalog.refresh()} />
       ) : null}
       {feedback ? <p className="v2-asset-library-feedback" role="status">{feedback}</p> : null}
-      <div className="v2-asset-library-layout">
+      <div className={`v2-asset-library-layout ${selectedEntityId ? "is-detail-open" : ""}`}>
         <div>
           {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
           {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
           {!library.loading && !displayedEntities.length && (!catalog.status || catalog.status.status === "ready") ? <p className="asset-library-empty">No assets found.</p> : null}
           <div className="v2-asset-library-grid">
             {displayedEntities.map((entity) => (
-              <AssetEntityCard key={entity.entity_id} entity={entity} selected={selectedEntityId === entity.entity_id} onSelect={() => void selectEntity(entity)} />
+              <AssetEntityCard key={entity.entity_id} entity={entity} selected={selectedEntityId === entity.entity_id} onSelect={() => selectEntity(entity)} />
             ))}
           </div>
           {library.nextCursor && !trashOpen ? <button className="small-action v2-asset-library-load-more" type="button" disabled={library.loadingMore} onClick={() => void library.loadMore()}>{library.loadingMore ? "Loading..." : "Load more"}</button> : null}
@@ -156,8 +156,7 @@ export function AssetsPage() {
           detail={selectedDetail}
           loading={detailLoading}
           feedback={feedback}
-          onClose={() => { setSelectedEntityId(null); setSelectedDetail(null); }}
-          onSaveRecommended={() => selectedDetail && void saveRecommended(selectedDetail)}
+          onClose={closeDetail}
           onUpdate={updateDetail}
           onTrash={() => void trashSelected()}
           onRestore={() => void restoreSelected()}
@@ -181,20 +180,11 @@ function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<t
 function AssetEntityCard({ entity, selected, onSelect }: { entity: V2AssetLibraryEntitySummary; selected: boolean; onSelect: () => void }) {
   const previewUrl = v2AssetPreviewUrl(entity);
   return (
-    <button className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.entity_id}`} onClick={onSelect}>
+    <button className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.display_name}`} onClick={onSelect}>
       <AssetMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} presentation="card" />
-      <span className="v2-asset-entity-card-id">
-        <small>{assetEntityIdentityLabel(entity)}</small>
-        <strong>{entity.entity_id}</strong>
-      </span>
+      <span className="v2-asset-entity-card-title">{entity.display_name}</span>
     </button>
   );
-}
-
-function assetEntityIdentityLabel(entity: V2AssetLibraryEntitySummary) {
-  if (entity.library_category === "characters") return "Character ID";
-  if (entity.library_category === "scenes") return "Scene ID";
-  return "Asset ID";
 }
 
 function AssetDetailPanel({
@@ -202,7 +192,6 @@ function AssetDetailPanel({
   loading,
   feedback,
   onClose,
-  onSaveRecommended,
   onUpdate,
   onTrash,
   onRestore,
@@ -211,7 +200,6 @@ function AssetDetailPanel({
   loading: boolean;
   feedback: string | null;
   onClose: () => void;
-  onSaveRecommended: () => void;
   onUpdate: (request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) => Promise<void>;
   onTrash: () => void;
   onRestore: () => void;
@@ -220,7 +208,7 @@ function AssetDetailPanel({
   useEffect(() => {
     setDraft({ displayName: detail?.display_name ?? "", description: detail?.description ?? "", tags: detail?.tags.join(", ") ?? "" });
   }, [detail]);
-  if (!detail && !loading) return <aside className="v2-asset-detail-panel is-empty">Select an asset to view its members.</aside>;
+  if (!detail && !loading) return null;
   if (loading || !detail) return <aside className="v2-asset-detail-panel">Loading asset details...</aside>;
   const isRecommended = detail.scope === "recommended";
   const trashed = detail.status === "trashed";
@@ -235,14 +223,11 @@ function AssetDetailPanel({
       </div>
       {detail.description ? <p className="v2-asset-detail-description">{detail.description}</p> : null}
       {isRecommended ? (
-        <>
-          <dl className="v2-asset-provenance">
-            <div><dt>Source</dt><dd>{detail.catalog_source_url ?? "Catalog"}</dd></div>
-            <div><dt>License</dt><dd>{detail.license_id ?? "Not specified"}</dd></div>
-            <div><dt>Attribution</dt><dd>{detail.attribution ?? "Not specified"}</dd></div>
-          </dl>
-          <button className="send-btn" type="button" onClick={onSaveRecommended}>Save to My Assets</button>
-        </>
+        <dl className="v2-asset-provenance">
+          <div><dt>Source</dt><dd>{detail.catalog_source_url ?? "Catalog"}</dd></div>
+          <div><dt>License</dt><dd>{detail.license_id ?? "Not specified"}</dd></div>
+          <div><dt>Attribution</dt><dd>{detail.attribution ?? "Not specified"}</dd></div>
+        </dl>
       ) : (
         <form className="v2-asset-detail-form" onSubmit={(event) => { event.preventDefault(); void onUpdate({ display_name: draft.displayName.trim(), description: draft.description.trim() || null, tags: splitAssetLibraryTags(draft.tags) }); }}>
           <label><span>Name</span><input value={draft.displayName} onChange={(event) => setDraft((value) => ({ ...value, displayName: event.currentTarget.value }))} /></label>

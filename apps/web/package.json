@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json && vite build",
     "lint": "eslint .",
     "lint:react": "eslint \"src/**/*.{ts,tsx}\"",
+    "test:assets-page": "vitest run src/pages/AssetsPage.test.tsx",
     "test:v2-asset-library-normalizer": "tsx scripts/test-v2-asset-library-normalizer.ts",
     "test:v2-recommended-catalog": "tsx scripts/test-v2-recommended-catalog.ts",
     "test:v2-project-authority": "tsx scripts/test-v2-project-authority.ts",
@@ -33,6 +34,7 @@
   "devDependencies": {
     "@colbymchenry/codegraph": "^1.0.1",
     "@eslint/js": "^9.39.4",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
@@ -40,7 +42,9 @@
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
+    "jsdom": "^29.1.1",
     "tsx": "^4.22.5",
-    "typescript-eslint": "^8.62.1"
+    "typescript-eslint": "^8.62.1",
+    "vitest": "^4.1.10"
   }
 }
