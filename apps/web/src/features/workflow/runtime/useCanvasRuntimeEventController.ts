@@ -47,6 +47,7 @@ import {
 import { createV2AuthoringRuntimeEventPolicy } from "./v2AuthoringRuntimeEventPolicy.ts";
 import { useCanvasRuntimeSubscription } from "./useCanvasRuntimeSubscription.ts";
 import { stringFromUnknown } from "./resolvedInputsViewModel.ts";
+import { shouldReloadFinalCompositionTimeline } from "../final-composition/finalCompositionEvents.ts";
 import {
   canvasRuntimeEventHandlers,
   type PendingScopedWorkflowRefresh,
@@ -655,8 +656,7 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
     const ordinaryRuntimeEvents = authoringRuntimeEventPolicy.ordinaryRuntimeEvents;
     const finalCompositionEvents = ordinaryRuntimeEvents.filter((event) =>
-      event.event_type === "final_timeline_created" ||
-      event.event_type === "final_timeline_updated" ||
+      shouldReloadFinalCompositionTimeline([event.event_type]) ||
       V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES.has(event.event_type),
     );
     if (workflowId && finalCompositionEvents.length) {

@@ -6868,6 +6868,330 @@ button.canvas-entity-media {
   height: 36px;
 }
 
+.v2-audio-player {
+  display: grid;
+  min-width: 240px;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(113, 83, 190, 0.28);
+  border-radius: 7px;
+  background: rgba(25, 23, 35, 0.94);
+  color: #f4f2ff;
+}
+
+.v2-audio-player audio {
+  display: none;
+}
+
+.v2-audio-player-controls {
+  display: grid;
+  grid-template-columns: 30px minmax(108px, 1fr) 30px;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+}
+
+.v2-audio-player-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(91, 219, 199, 0.38);
+  border-radius: 5px;
+  background: rgba(91, 219, 199, 0.1);
+  color: #a8f2e5;
+  cursor: pointer;
+}
+
+.v2-audio-player-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.v2-audio-player-icon:hover:not(:disabled) {
+  border-color: #c5aeff;
+  background: rgba(158, 117, 255, 0.18);
+  color: #fff;
+}
+
+.v2-audio-player-icon:focus-visible,
+.v2-audio-player-seek:focus-visible {
+  outline: 2px solid #e3b341;
+  outline-offset: 2px;
+}
+
+.v2-audio-player-seek-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.v2-audio-player-seek {
+  width: 100%;
+  min-width: 0;
+  accent-color: #9e75ff;
+}
+
+.v2-audio-player-time {
+  min-width: 68px;
+  color: #d6d0e6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.v2-audio-player-status {
+  color: #f3cc72;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.v2-audio-player.is-unavailable {
+  border-color: rgba(227, 179, 65, 0.42);
+}
+
+.v2-audio-player button:disabled,
+.v2-audio-player input:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.v2-audio-player.is-compact {
+  min-width: 190px;
+  padding: 6px;
+}
+
+.workflow-card-preview.v2-bgm-functional-card {
+  display: grid;
+  width: min(620px, 100%);
+  min-width: 360px;
+  grid-template-columns: minmax(170px, 0.72fr) minmax(0, 1.28fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px;
+  border-color: rgba(91, 219, 199, 0.28);
+  background: rgba(247, 255, 253, 0.76);
+}
+
+.v2-bgm-prompt-trigger {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(94, 111, 150, 0.12);
+  border-radius: 7px;
+  background: rgba(31, 35, 54, 0.045);
+  color: rgba(54, 60, 88, 0.82);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.v2-bgm-prompt-trigger:hover,
+.v2-bgm-prompt-trigger:focus-visible,
+.v2-bgm-functional-card.is-prompt-open .v2-bgm-prompt-trigger {
+  border-color: rgba(74, 111, 255, 0.42);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 3px rgba(74, 111, 255, 0.12);
+  outline: none;
+}
+
+.v2-bgm-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.v2-bgm-card-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(31, 35, 54, 0.9);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-bgm-card-heading span {
+  flex: 0 0 auto;
+  color: rgba(74, 82, 111, 0.65);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.v2-bgm-audio-panel {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.v2-bgm-audio-panel > .node-preview-loading {
+  justify-self: center;
+}
+
+.v2-bgm-empty-state {
+  display: grid;
+  min-height: 58px;
+  align-content: center;
+  gap: 3px;
+  padding: 8px;
+  border: 1px dashed rgba(94, 111, 150, 0.26);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.56);
+  color: rgba(74, 82, 111, 0.72);
+}
+
+.v2-bgm-empty-state strong {
+  color: rgba(31, 35, 54, 0.86);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.v2-bgm-syncing-state {
+  display: grid;
+  min-height: 58px;
+  place-items: center;
+  padding: 8px;
+  border: 1px dashed rgba(74, 111, 255, 0.3);
+  border-radius: 7px;
+  background: rgba(242, 246, 255, 0.72);
+  color: rgba(59, 79, 156, 0.82);
+  font-size: 10px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.v2-bgm-empty-state span,
+.v2-bgm-status span {
+  font-size: 10px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.v2-bgm-working-candidate {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.v2-bgm-working-actions {
+  display: grid;
+  gap: 4px;
+}
+
+.v2-bgm-action {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(31, 157, 114, 0.34);
+  border-radius: 5px;
+  background: rgba(225, 250, 241, 0.88);
+  color: rgba(23, 119, 84, 0.96);
+  cursor: pointer;
+}
+
+.v2-bgm-action.is-discard {
+  border-color: rgba(197, 78, 95, 0.3);
+  background: rgba(255, 239, 242, 0.9);
+  color: rgba(166, 53, 72, 0.94);
+}
+
+.v2-bgm-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+.v2-bgm-action:hover,
+.v2-bgm-action:focus-visible {
+  box-shadow: 0 0 0 3px rgba(74, 111, 255, 0.14);
+  outline: none;
+}
+
+.v2-bgm-status {
+  display: grid;
+  min-height: 38px;
+  max-height: 62px;
+  grid-column: 1 / -1;
+  align-content: center;
+  gap: 2px;
+  overflow: hidden;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.v2-bgm-status strong {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.v2-bgm-status.is-warning {
+  border-color: rgba(205, 162, 58, 0.3);
+  background: rgba(255, 249, 229, 0.82);
+  color: rgba(104, 76, 32, 0.9);
+}
+
+.v2-bgm-status.is-muted {
+  border-color: rgba(94, 111, 150, 0.2);
+  background: rgba(244, 246, 250, 0.88);
+  color: rgba(74, 82, 111, 0.74);
+}
+
+.v2-bgm-status.is-danger {
+  border-color: rgba(197, 78, 95, 0.28);
+  background: rgba(255, 244, 246, 0.88);
+  color: rgba(151, 64, 77, 0.92);
+}
+
+@media (max-width: 720px) {
+  .workflow-card-preview.v2-bgm-functional-card {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-bgm-status {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .v2-audio-player {
+    min-width: 0;
+  }
+
+  .v2-audio-player-seek-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .v2-audio-player-time {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-audio-player,
+  .v2-audio-player * {
+    transition: none !important;
+  }
+}
+
 .workflow-card-preview.waveform {
   grid-template-columns: repeat(4, 8px) 1fr;
   justify-content: start;

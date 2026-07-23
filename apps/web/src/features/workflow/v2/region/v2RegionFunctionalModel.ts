@@ -12,6 +12,8 @@ export type V2RegionFunctionalSlotView = {
   slot: WorkflowSlotV2;
   displayRole: V2RegionSlotDisplayRole;
   runtimeStatus: string;
+  runtimeErrorCode: string | null;
+  runtimeMessage: string | null;
   selectedAsset?: AssetVersionV2;
   workingAsset?: AssetVersionV2;
   previewAsset?: AssetVersionV2;
@@ -72,12 +74,17 @@ export function buildV2RegionFunctionalModel({
         const selectedAsset = selectedAssetForSlot(slot, assets);
         const workingAsset = workingVersionForSlot(slot, assets);
         const previewAsset = workingAsset ?? selectedAsset;
-        const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtime?.slot_runtime?.[slot.slot_id]?.status ?? slot.status;
+        const runtimeRecord = runtime?.slot_runtime?.[slot.slot_id];
+        const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
+        const runtimeMetadataErrorCode = stringMetadataValue(runtimeRecord?.metadata, "generation_error_code");
+        const runtimeMetadataMessage = stringMetadataValue(runtimeRecord?.metadata, "generation_error_message");
 
         return {
           slot,
           displayRole: regionSlotDisplayRole(slot),
           runtimeStatus,
+          runtimeErrorCode: runtimeRecord?.error?.code ?? runtimeMetadataErrorCode,
+          runtimeMessage: runtimeRecord?.error?.message ?? runtimeMetadataMessage ?? runtimeRecord?.waiting_reason ?? null,
           selectedAsset,
           workingAsset,
           previewAsset,
@@ -127,8 +134,19 @@ function compareRegionSlots(left: WorkflowSlotV2, right: WorkflowSlotV2) {
   return roleOrder[regionSlotDisplayRole(left)] - roleOrder[regionSlotDisplayRole(right)] || mediaOrder || left.slot_id.localeCompare(right.slot_id);
 }
 
+export function isV2BgmFunctionalSlot(slot: WorkflowSlotV2): boolean {
+  return slot.slot_type === "bgm_audio" && slot.media_type === "audio";
+}
+
 function isRenderableFunctionalSlot(slot: WorkflowSlotV2) {
-  if (slot.media_type === "image") return true;
+  return isImageSlot(slot) || isStoryboardVideoSlot(slot) || isV2BgmFunctionalSlot(slot);
+}
+
+function isImageSlot(slot: Pick<WorkflowSlotV2, "media_type">) {
+  return slot.media_type === "image";
+}
+
+function isStoryboardVideoSlot(slot: WorkflowSlotV2) {
   return slot.media_type === "video" && isStoryboardShotSlot(slot);
 }
 
@@ -157,4 +175,9 @@ function itemRuntimeStatus(fallbackStatus: string, statuses: string[]) {
 
 function isCompletedStatus(status: string) {
   return ["completed", "skipped"].includes(String(status).toLowerCase());
+}
+
+function stringMetadataValue(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }

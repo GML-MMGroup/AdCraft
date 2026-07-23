@@ -618,6 +618,7 @@ export function normalizeWorkflowSlotV2(value: unknown): WorkflowSlotV2 {
     provider: record.provider === null ? null : stringValue(record.provider) || undefined,
     provider_params: recordValue(record.provider_params),
     selected_asset_id: record.selected_asset_id === null ? null : stringValue(record.selected_asset_id) || undefined,
+    selected_version_id: record.selected_version_id === null ? null : stringValue(record.selected_version_id) || undefined,
     current_working_asset_id: record.current_working_asset_id === null ? null : stringValue(record.current_working_asset_id) || undefined,
     current_working_version_id: record.current_working_version_id === null ? null : stringValue(record.current_working_version_id) || undefined,
     history_version_ids: stringArray(record.history_version_ids),
@@ -1569,7 +1570,12 @@ function deriveAssetVersionRecordsFromSlots(slots: WorkflowSlotV2[], workflowId:
   const records: Record<string, unknown>[] = [];
   for (const slot of slots) {
     if (slot.selected_asset_id) {
-      records.push(idOnlyAssetVersionRecord(slot.selected_asset_id, slot.selected_asset_id, slot, workflowId));
+      records.push(idOnlyAssetVersionRecord(
+        slot.selected_asset_id,
+        slot.selected_version_id || slot.selected_asset_id,
+        slot,
+        workflowId,
+      ));
     }
     if (slot.current_working_asset_id) {
       records.push(idOnlyAssetVersionRecord(slot.current_working_asset_id, slot.current_working_version_id || slot.current_working_asset_id, slot, workflowId));

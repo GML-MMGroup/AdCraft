@@ -29,6 +29,8 @@ import type { WorkflowNode } from "../../../types";
 import type { SlotMicroEditDraft } from "../v2/slots/useSlotMicroEdit.ts";
 import { assetLibraryEntityTypeForV2ImageSlot } from "../v2/slots/v2SlotAssetLibraryModel.ts";
 import { v2EditableItemPrompt } from "../v2/v2PromptModel.ts";
+import { V2BgmReferenceAttachments } from "./V2BgmReferenceAttachments.tsx";
+import { v2SlotComposerPresentation } from "./v2SlotComposerPresentation.ts";
 
 type AssetLibraryPickerTarget = "prompt" | "node" | "revision" | "dynamic-item" | "v2-slot-replace";
 
@@ -63,10 +65,12 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
     activeV2SlotId && activeV2Slot
       ? ((args.v2SlotDraftsById?.[activeV2SlotId] as SlotMicroEditDraft | undefined) ?? draftFromV2Slot(activeV2Slot))
       : undefined;
+  const activeV2SlotPresentation = activeV2Slot ? v2SlotComposerPresentation(activeV2Slot) : null;
+  const isBgmSlot = activeV2SlotPresentation?.assetPickerEnabled === false;
   const showV2FloatingSlotComposer = Boolean(
     args.currentWorkflowIsV2() &&
       activeV2SlotId &&
-      (activeV2Slot?.media_type === "image" || activeV2Slot?.media_type === "video") &&
+      activeV2SlotPresentation?.editable &&
       activeV2SlotDraft &&
       args.submitV2LocalSlotPrompt,
   );
@@ -487,12 +491,12 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
           style={{ left: activeV2SlotComposerAnchor.left, top: activeV2SlotComposerAnchor.top, bottom: "auto" }}
           heading={
             <>
-              <span>{formatV2SlotComposerTitle(activeV2Slot)}</span>
+              <span>{activeV2SlotPresentation?.heading}</span>
               <button
                 type="button"
                 className="v2-floating-slot-composer-close"
-                aria-label="Close image prompt"
-                title="Close image prompt"
+                aria-label={activeV2SlotPresentation?.closeLabel}
+                title={activeV2SlotPresentation?.closeLabel}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -510,10 +514,29 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
             data-floating-slot-composer-id={activeV2SlotId}
             data-v2-local-prompt-composer-target={`slot:${activeV2SlotId}`}
           >
+            {isBgmSlot ? (
+              <V2BgmReferenceAttachments
+                attachments={activeV2SlotDraft.attachments}
+                disabled={activeV2SlotDraft.isSubmitting}
+                onRemove={(attachment) => {
+                  args.removeV2SlotReference?.(activeV2SlotId, {
+                    source: attachment.source === "asset_library" ? "library_entity" : attachment.source === "upload" ? "uploaded_asset" : "reference_asset",
+                    asset_id: attachment.source_asset_id ?? (attachment.source === "upload" ? attachment.id : undefined),
+                    entity_id: attachment.library_entity_id ?? undefined,
+                    relation_id: attachment.relation_id,
+                    library_asset_id: attachment.library_asset_id,
+                  });
+                }}
+              />
+            ) : null}
             <LocalPromptComposer
-              placeholder="Ask the agent team..."
+              draftIdentity={activeV2SlotId}
+              placeholder={activeV2SlotPresentation?.placeholder ?? "Ask the agent team..."}
               initialValue={activeV2SlotDraft.prompt}
               disabled={activeV2SlotDraft.isSubmitting}
+              acceptedFileTypes={activeV2SlotPresentation?.acceptedFileTypes}
+              assetPickerEnabled={activeV2SlotPresentation?.assetPickerEnabled}
+              assetMentionsEnabled={activeV2SlotPresentation?.assetMentionsEnabled}
               assetMentionContext={{ workflowId: args.workflow?.workflow_id, nodeId: activeV2Slot.node_id }}
               referenceScope="item_revision"
               referenceTargetContext={{
@@ -522,14 +545,15 @@ export function useWorkflowPageSurfaceAssembly(args: WorkflowPageSurfaceAssembly
                 itemId: activeV2Slot.item_id,
                 semanticType: activeV2Slot.slot_type,
               }}
-              onUploadInputAsset={args.uploadV2PromptInputAsset}
+              onUploadInputAsset={isBgmSlot ? undefined : args.uploadV2PromptInputAsset}
+              onUploadFile={isBgmSlot ? (file) => args.uploadV2SlotReference(activeV2SlotId, [file]) : undefined}
               onDraftChange={(prompt, context) => {
                 args.changeV2SlotPrompt(activeV2SlotId, prompt);
                 args.syncV2SlotPromptReferences?.(activeV2SlotId, context);
               }}
               onGenerate={(prompt: string, context?: PromptGenerateContext) => void args.submitV2LocalSlotPrompt(activeV2SlotId, prompt, context)}
               secondaryActions={
-                activeV2SlotSupportsLibraryResource ? (
+                !isBgmSlot && activeV2SlotSupportsLibraryResource ? (
                   <>
                     <button
                       className="pill-btn icon-only"
@@ -685,8 +709,4 @@ function draftFromV2Slot(slot: WorkflowSlotV2): SlotMicroEditDraft {
     base_negative_prompt: slot.negative_prompt ?? "",
     isSubmitting: false,
   };
-}
-
-function formatV2SlotComposerTitle(slot: WorkflowSlotV2) {
-  return slot.slot_type.replace(/_/g, " ");
 }
