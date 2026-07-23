@@ -234,12 +234,27 @@ describe("AssetsPage", () => {
     expect(dialog.querySelector("form")).toBeNull();
     expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
     expect(screen.getByRole("img", { name: "Front view" }).getAttribute("src")).toBe("/media/portrait-front.webp");
+    expect(screen.getByText("Front view, view 1 of 2")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Next asset view" }));
 
     expect(screen.getByRole("img", { name: "Side view" }).getAttribute("src")).toBe("/media/portrait-side.webp");
+    expect(screen.getByText("Side view, view 2 of 2")).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Portrait Spark" })).toBeNull();
+    expect(document.activeElement).toBe(card);
+  });
+
+  it("closes from the backdrop control and restores card focus", async () => {
+    const { container } = render(<AssetsPage />);
+    const card = screen.getByRole("button", { name: "Open asset Portrait Spark" });
+
+    fireEvent.click(container.querySelector(".v2-asset-entity-card") as HTMLElement);
+    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss asset viewer" }));
 
     expect(screen.queryByRole("dialog", { name: "Portrait Spark" })).toBeNull();
     expect(document.activeElement).toBe(card);
@@ -314,9 +329,11 @@ describe("AssetsPage", () => {
     expect(backdropDeclarations.inset).toBe("0px");
     expect(viewerDeclarations.width).toBe("calc(100vw - 64px)");
     expect(viewerDeclarations.maxWidth).toBe("1400px");
-    expect(viewerDeclarations.height).toBe("calc(100vh - 64px)");
+    expect(viewerRule?.[1]).toContain("height: calc(100dvh - 64px)");
     expect(viewerDeclarations.overflow).toBe("visible");
     expect(stageDeclarations.placeItems).toBe("center");
+    expect(mediaDeclarations.width).toBe("auto");
+    expect(mediaDeclarations.height).toBe("auto");
     expect(mediaDeclarations.maxHeight).toBe("100%");
     expect(mediaDeclarations.objectFit).toBe("contain");
   });

@@ -67,6 +67,7 @@ export default function AssetEntityViewer({
           {hasMultipleMembers ? <button className="v2-asset-viewer-nav is-previous" type="button" aria-label="Previous asset view" title="Previous asset view" onClick={selectPreviousMember}><ChevronUpIcon /></button> : null}
           {hasMultipleMembers ? <button className="v2-asset-viewer-nav is-next" type="button" aria-label="Next asset view" title="Next asset view" onClick={selectNextMember}><ChevronDownIcon /></button> : null}
         </div>
+        {activeMember ? <span className="sr-only" aria-live="polite" aria-atomic="true">{activeMemberLabel}, view {activeMemberIndex + 1} of {members.length}</span> : null}
       </section>
     </div>,
     document.body,
