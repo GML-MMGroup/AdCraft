@@ -125,6 +125,7 @@ class Settings:
     bgm_generation_version: str = "v5.0"
     bgm_model: str | None = "TemPolor i3"
     bgm_long_model: str | None = "TemPolor i3.5"
+    bgm_callback_mode: str = "auto"
     bgm_callback_base_url: str | None = None
     bgm_query_endpoint: str | None = None
     bgm_timeout_seconds: int = 60
@@ -267,6 +268,7 @@ class Settings:
             bgm_generation_version=os.getenv("BGM_GENERATION_VERSION", cls.bgm_generation_version),
             bgm_model=os.getenv("BGM_MODEL") or cls.bgm_model,
             bgm_long_model=os.getenv("BGM_LONG_MODEL") or cls.bgm_long_model,
+            bgm_callback_mode=os.getenv("BGM_CALLBACK_MODE", cls.bgm_callback_mode),
             bgm_callback_base_url=os.getenv("BGM_CALLBACK_BASE_URL") or None,
             bgm_query_endpoint=os.getenv("BGM_QUERY_ENDPOINT") or None,
             bgm_timeout_seconds=_read_int("BGM_TIMEOUT_SECONDS", cls.bgm_timeout_seconds),
