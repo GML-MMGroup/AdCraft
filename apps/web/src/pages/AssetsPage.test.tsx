@@ -130,7 +130,7 @@ describe("AssetsPage", () => {
 
     fireEvent.click(container.querySelector(".v2-asset-entity-card") as HTMLElement);
 
-    await screen.findByRole("heading", { name: "Portrait Spark" });
+    await screen.findByRole("dialog", { name: "Portrait Spark" });
     expect(screen.queryByRole("button", { name: "Save to My Assets" })).toBeNull();
   });
 
@@ -224,7 +224,14 @@ describe("AssetsPage", () => {
 
     fireEvent.click(card);
 
-    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "Portrait Spark" });
+    const backdrop = dialog.closest(".v2-asset-viewer-backdrop");
+    expect(backdrop?.parentElement).toBe(document.body);
+    expect(screen.getAllByRole("button", { name: "Close asset viewer" })).toHaveLength(1);
+    expect(dialog.querySelector(".v2-asset-viewer-heading")).toBeNull();
+    expect(dialog.querySelector(".v2-asset-viewer-thumbnails")).toBeNull();
+    expect(dialog.querySelector(".v2-asset-viewer-details")).toBeNull();
+    expect(dialog.querySelector("form")).toBeNull();
     expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
     expect(screen.getByRole("img", { name: "Front view" }).getAttribute("src")).toBe("/media/portrait-front.webp");
 
@@ -251,8 +258,8 @@ describe("AssetsPage", () => {
 
   it("keeps the lazy viewer fallback dismissible with the keyboard", () => {
     const onClose = vi.fn();
-    const { container } = render(<AssetEntityViewerFallback onClose={onClose} />);
-    const closeButton = container.querySelector(".v2-asset-viewer .icon-btn") as HTMLButtonElement;
+    render(<AssetEntityViewerFallback onClose={onClose} />);
+    const closeButton = screen.getByRole("button", { name: "Close asset viewer" });
 
     fireEvent.keyDown(document, { key: "Tab" });
     expect(document.activeElement).toBe(closeButton);
@@ -266,26 +273,52 @@ describe("AssetsPage", () => {
       ...assetFixture.detail,
       members: [{ ...assetFixture.detail.members[0], media_type: "video", public_url: "/media/portrait-video.mp4" }],
     };
-    const { container } = render(
+    render(
       <AssetEntityViewer
         detail={videoDetail}
         loading={false}
-        feedback={null}
         onClose={vi.fn()}
-        onUpdate={async () => {}}
-        onTrash={() => {}}
-        onRestore={() => {}}
-        splitTags={(value) => value.split(",")}
       />,
     );
-    const closeButton = container.querySelector(".v2-asset-viewer .icon-btn") as HTMLButtonElement;
-    const video = container.querySelector("video") as HTMLVideoElement;
+    const closeButton = screen.getByRole("button", { name: "Close asset viewer" });
+    const video = document.querySelector("video") as HTMLVideoElement;
 
     await new Promise<void>(requestAnimationFrame);
     closeButton.focus();
     fireEvent.keyDown(document, { key: "Tab" });
 
     expect(document.activeElement).toBe(video);
+  });
+
+  it("centers a media-only lightbox against the viewport without cropping", () => {
+    const backdropRule = assetStyles.match(/\.v2-asset-viewer-backdrop\s*\{([^}]*)\}/);
+    const viewerRule = assetStyles.match(/\.v2-asset-viewer\s*\{([^}]*)\}/);
+    const stageRule = assetStyles.match(/\.v2-asset-viewer-stage\s*\{([^}]*)\}/);
+    const mediaRule = assetStyles.match(/\.v2-asset-viewer-stage \.v2-asset-media,\s*\.v2-asset-viewer-stage \.v2-asset-audio\s*\{([^}]*)\}/);
+    const backdropDeclarations = document.createElement("div").style;
+    const viewerDeclarations = document.createElement("div").style;
+    const stageDeclarations = document.createElement("div").style;
+    const mediaDeclarations = document.createElement("div").style;
+
+    expect(backdropRule).not.toBeNull();
+    expect(viewerRule).not.toBeNull();
+    expect(stageRule).not.toBeNull();
+    expect(mediaRule).not.toBeNull();
+
+    backdropDeclarations.cssText = backdropRule?.[1] ?? "";
+    viewerDeclarations.cssText = viewerRule?.[1] ?? "";
+    stageDeclarations.cssText = stageRule?.[1] ?? "";
+    mediaDeclarations.cssText = mediaRule?.[1] ?? "";
+
+    expect(backdropDeclarations.position).toBe("fixed");
+    expect(backdropDeclarations.inset).toBe("0px");
+    expect(viewerDeclarations.width).toBe("calc(100vw - 64px)");
+    expect(viewerDeclarations.maxWidth).toBe("1400px");
+    expect(viewerDeclarations.height).toBe("calc(100vh - 64px)");
+    expect(viewerDeclarations.overflow).toBe("visible");
+    expect(stageDeclarations.placeItems).toBe("center");
+    expect(mediaDeclarations.maxHeight).toBe("100%");
+    expect(mediaDeclarations.objectFit).toBe("contain");
   });
 
   it("does not use a thumbnail as full-viewer media", () => {

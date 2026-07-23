@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { v2Api } from "../api/v2Client.ts";
 import { PageHeader } from "../components/Layout.tsx";
 import { CloseIcon } from "../icons.tsx";
@@ -112,44 +113,6 @@ export function AssetsPage() {
     setCategory(nextCategory);
   }
 
-  async function updateDetail(request: { display_name?: string; description?: string | null; tags?: string[]; is_favorite?: boolean }) {
-    if (!selectedDetail) return;
-    setFeedback(null);
-    try {
-      const next = await v2Api.updateAssetLibraryEntity(selectedDetail.entity_id, request);
-      setSelectedDetail(next);
-      await library.refresh();
-    } catch (caught) {
-      setFeedback(messageForError(caught, "Could not update this asset."));
-    }
-  }
-
-  async function trashSelected() {
-    if (!selectedDetail) return;
-    setFeedback(null);
-    try {
-      await v2Api.deleteAssetLibraryEntity(selectedDetail.entity_id);
-      setTrashedEntities((current) => [{ ...selectedDetail, status: "trashed" }, ...current.filter((item) => item.entity_id !== selectedDetail.entity_id)]);
-      setSelectedDetail((current) => current ? { ...current, status: "trashed" } : current);
-      await library.refresh();
-    } catch (caught) {
-      setFeedback(messageForError(caught, "Could not move this asset to Trash."));
-    }
-  }
-
-  async function restoreSelected() {
-    if (!selectedDetail) return;
-    setFeedback(null);
-    try {
-      const restored = await v2Api.restoreAssetLibraryEntity(selectedDetail.entity_id);
-      setSelectedDetail(restored);
-      setTrashedEntities((current) => current.filter((item) => item.entity_id !== restored.entity_id));
-      await library.refresh();
-    } catch (caught) {
-      setFeedback(messageForError(caught, "Could not restore this asset."));
-    }
-  }
-
   return (
     <section ref={assetLibraryRef} className="v2-asset-library-page">
       <PageHeader title="Assets" subtitle="Reusable visual building blocks for every workflow." />
@@ -191,12 +154,7 @@ export function AssetsPage() {
           <AssetEntityViewer
             detail={selectedDetail}
             loading={detailLoading}
-            feedback={feedback}
             onClose={closeDetail}
-            onUpdate={updateDetail}
-            onTrash={() => void trashSelected()}
-            onRestore={() => void restoreSelected()}
-            splitTags={splitAssetLibraryTags}
           />
         </Suspense>
       ) : null}
@@ -251,14 +209,15 @@ export function AssetEntityViewerFallback({ onClose }: { onClose: () => void }) 
     };
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="v2-asset-viewer-backdrop">
-      <button className="v2-asset-viewer-dismiss" type="button" aria-label="Close asset viewer" onClick={onClose} />
+      <button className="v2-asset-viewer-dismiss" type="button" aria-label="Dismiss asset viewer" onClick={onClose} />
       <section className="v2-asset-viewer" role="dialog" aria-modal="true" aria-label="Asset viewer">
-        <header className="v2-asset-viewer-heading"><h2>Loading asset...</h2><button className="icon-btn" ref={closeButtonRef} type="button" aria-label="Close asset viewer" onClick={onClose}><CloseIcon /></button></header>
+        <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
         <div className="v2-asset-viewer-stage is-loading">Loading asset viewer...</div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
