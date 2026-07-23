@@ -7,7 +7,8 @@ const DIST_ASSETS = new URL("../../dist/assets/", import.meta.url);
 const DIST_INDEX_HTML = new URL("../../dist/index.html", import.meta.url);
 const MAX_MAIN_JS_BYTES = 650 * 1024;
 const MAX_INITIAL_JS_BYTES = 475 * 1024;
-const MAX_TOTAL_JS_BYTES = 1280 * 1024;
+// The core total includes lazy route chunks such as the Project cover preview UI.
+const MAX_TOTAL_JS_BYTES = 1281 * 1024;
 const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
 const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;

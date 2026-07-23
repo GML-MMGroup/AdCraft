@@ -26,7 +26,8 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
       time: formatSavedProjectTime(project.updated_at),
       updatedAt: project.updated_at,
       favorite: project.is_favorite,
-      img: null,
+      workflowId: project.workflow_id,
+      coverAssetId: project.cover_asset_id,
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;
       const visibleBySearch = project.name.toLowerCase().includes(search.toLowerCase());
