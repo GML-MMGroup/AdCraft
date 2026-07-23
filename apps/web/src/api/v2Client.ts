@@ -112,6 +112,11 @@ const API_V2_BASE = "/api/v2";
 const inFlightMetadataReads = new Map<string, Promise<unknown>>();
 
 type V2PreconditionTarget = { resource: V2AuthoringResource; id: string };
+type V2RequestBehavior = {
+  captureAuthoringEtag?: boolean;
+  explicitAuthoringPrecondition?: V2PreconditionTarget;
+  allowMissingAuthoringEtag?: boolean;
+};
 
 export class V2ApiError extends Error {
   readonly status: number;
@@ -175,12 +180,17 @@ async function requestV2Payload(path: string, options: RequestInit = {}): Promis
   return (await requestV2Response(path, options)).payload;
 }
 
-async function requestV2Response(path: string, options: RequestInit = {}): Promise<{ payload: unknown; etag: string | null }> {
+async function requestV2Response(
+  path: string,
+  options: RequestInit = {},
+  optionsByBehavior: V2RequestBehavior = {},
+): Promise<{ payload: unknown; etag: string | null }> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const method = (options.method ?? "GET").toUpperCase();
   const headers = new Headers(options.headers);
-  const precondition = v2AuthoringPreconditionTarget(path, method);
-  if (precondition && !headers.has("If-Match")) {
+  const precondition = optionsByBehavior.explicitAuthoringPrecondition
+    ?? v2AuthoringPreconditionTarget(path, method);
+  if (precondition && !headers.has("If-Match") && !optionsByBehavior.allowMissingAuthoringEtag) {
     const etag = v2EtagStore.get(precondition.resource, precondition.id)
       ?? await fetchCurrentAuthoringEtag(precondition);
     if (!etag) throw new Error(`Missing backend ETag for ${precondition.resource} ${precondition.id}.`);
@@ -231,7 +241,10 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
         operationPath: path,
         message,
         retry: async () => {
-          await requestV2Response(path, retryOptions);
+          await requestV2Response(path, retryOptions, {
+            ...optionsByBehavior,
+            allowMissingAuthoringEtag: false,
+          });
         },
         discard: async () => {},
       });
@@ -248,7 +261,9 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
     });
   }
   const etag = response.headers.get("etag");
-  captureAuthoringEtag(path, payload, etag, precondition);
+  if (optionsByBehavior.captureAuthoringEtag !== false) {
+    captureAuthoringEtag(path, payload, etag, precondition);
+  }
   return { payload, etag };
 }
 
@@ -332,12 +347,35 @@ async function requestV2<T>(path: string, options: RequestInit = {}, normalize?:
   return normalize ? normalize(payload) : (payload as T);
 }
 
-async function requestV2WithEtag<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<V2EtaggedResponse<T>> {
-  const response = await requestV2Response(path, options);
+async function requestV2WithEtag<T>(
+  path: string,
+  options: RequestInit = {},
+  normalize?: (value: unknown) => T,
+  optionsByBehavior: V2RequestBehavior = {},
+): Promise<V2EtaggedResponse<T>> {
+  const response = await requestV2Response(path, options, optionsByBehavior);
   return {
     value: normalize ? normalize(response.payload) : (response.payload as T),
     etag: response.etag,
   };
+}
+
+async function requestV2GlobalRun<T>(
+  workflowId: string,
+  path: string,
+  options: RequestInit,
+  normalize: (value: unknown) => T,
+): Promise<T> {
+  const etag = v2EtagStore.getWorkflow(workflowId)
+    ?? await fetchCurrentAuthoringEtag({ resource: "workflow", id: workflowId });
+  const headers = new Headers(options.headers);
+  if (etag) headers.set("If-Match", etag);
+  const response = await requestV2Response(path, { ...options, headers }, {
+    captureAuthoringEtag: false,
+    explicitAuthoringPrecondition: etag ? { resource: "workflow", id: workflowId } : undefined,
+    allowMissingAuthoringEtag: true,
+  });
+  return normalize(response.payload);
 }
 
 export const v2Api = {
@@ -351,6 +389,15 @@ export const v2Api = {
 
   workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
     return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizePersistedWorkflowV2);
+  },
+
+  workflowWithEtagWithoutCapture(workflowId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}`,
+      {},
+      normalizePersistedWorkflowV2,
+      { captureAuthoringEtag: false },
+    );
   },
 
   listProjects(status: ProjectV2Status = "active", limit = 100, cursor?: string | null): Promise<ProjectV2ListResponse> {
@@ -699,11 +746,21 @@ export const v2Api = {
   },
 
   runWorkflow(workflowId: string, body: V2GlobalRunRequest = { mode: "fill_missing_required_slots" }): Promise<WorkflowV2RunResponse> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/run`, { method: "POST", body: JSON.stringify(body) }, normalizeWorkflowV2RunResponse);
+    return requestV2GlobalRun(
+      workflowId,
+      `/workflows/${encodeURIComponent(workflowId)}/run`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeWorkflowV2RunResponse,
+    );
   },
 
   runWorkflowAsync(workflowId: string, body: V2GlobalRunRequest = { mode: "fill_missing_required_slots" }): Promise<WorkflowV2RunResponse> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/run?wait=false`, { method: "POST", body: JSON.stringify(body) }, normalizeWorkflowV2RunResponse);
+    return requestV2GlobalRun(
+      workflowId,
+      `/workflows/${encodeURIComponent(workflowId)}/run?wait=false`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeWorkflowV2RunResponse,
+    );
   },
 
   createFreeNode(workflowId: string, body: V2FreeNodeCreateRequest): Promise<WorkflowV2> {
