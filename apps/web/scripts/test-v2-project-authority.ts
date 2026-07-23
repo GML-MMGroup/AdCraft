@@ -22,9 +22,226 @@ import {
   shouldPersistMessagesAsLocalDraft,
   shouldPersistWorkflowAsLocalDraft,
 } from "../src/projects/v2ProjectAuthority.ts";
-import { revisionActionLabel, revisionCanBeRestored } from "../src/projects/v2RevisionHistory.ts";
+import {
+  advanceWorkflowRevisionScope,
+  canStartWorkflowRevisionHistoryMutation,
+  getWorkflowRevisionDisplayState,
+  isWorkflowRevisionRequestCurrent,
+  mergeRevisionHistoryPage,
+  reconcileRefreshedRevisionHistory,
+  reconcileRestoredRevisionHistory,
+  resetWorkflowRevisionBusyState,
+  revisionActionLabel,
+  revisionCanBeRestored,
+  selectWorkflowRevision,
+  shouldRefreshWorkflowRevisionHistory,
+} from "../src/projects/v2RevisionHistory.ts";
 import { shouldCloseReferencePickerAfterAuthoringResolution } from "../src/features/workflow/v2/slots/v2AssetReferencePickerConflict.ts";
 import { shouldRefreshScreenplayAfterAuthoringResolution } from "../src/features/workflow/page/useWorkflowPageScreenplay.tsx";
+import {
+  createV2AuthoringRuntimeEventPolicy,
+  createWorkflowRevisionRefreshCoalescer,
+  shouldApplyRuntimeWorkflowRead,
+  shouldApplyWorkflowRevisionRead,
+} from "../src/features/workflow/runtime/v2AuthoringRuntimeEventPolicy.ts";
+
+const authoringRuntimePolicy = createV2AuthoringRuntimeEventPolicy([
+  { event_type: "execution_completed", workflow_id: "wf_1", seq: 1 },
+  { event_type: "workflow_revision_created", workflow_id: "wf_1", seq: 2 },
+  { event_type: "execution_result_revision_deferred", workflow_id: "wf_1", seq: 3, slot_id: "slot_1" },
+]);
+assert.equal(authoringRuntimePolicy.shouldRefreshAuthoringWorkflow, true, "a revision-created event must request the authoritative Workflow read");
+assert.equal(authoringRuntimePolicy.shouldRefreshDeferredCandidates, true, "a deferred execution result must refresh candidates without authoring replacement");
+assert.deepEqual(authoringRuntimePolicy.deferredCandidateSlotIds, ["slot_1"]);
+assert.equal(authoringRuntimePolicy.candidateStatus, "New candidate results are available.");
+assert.deepEqual(authoringRuntimePolicy.ordinaryRuntimeEvents.map((event) => event.event_type), ["execution_completed"]);
+
+const ordinaryRuntimePolicy = createV2AuthoringRuntimeEventPolicy([
+  { event_type: "execution_completed", workflow_id: "wf_1", seq: 4 },
+]);
+assert.equal(ordinaryRuntimePolicy.shouldRefreshAuthoringWorkflow, false, "ordinary runtime events must not read the authoring Workflow");
+assert.equal(ordinaryRuntimePolicy.shouldRefreshDeferredCandidates, false);
+assert.equal(ordinaryRuntimePolicy.candidateStatus, null);
+
+const isolatedDeferredRuntimePolicy = createV2AuthoringRuntimeEventPolicy([{
+  event_type: "execution_result_revision_deferred",
+  workflow_id: "wf_1",
+  seq: 5,
+  node_id: "node_1",
+  slot_id: "slot_1",
+  payload: {
+    provider_task_id: "task_1",
+    refresh: ["workflow", "runtime", "assets", "slot_versions", "resolved_inputs"],
+  },
+}]);
+assert.deepEqual(
+  isolatedDeferredRuntimePolicy.ordinaryRuntimeEvents,
+  [],
+  "deferred execution results must not enter graph, provider-task, or resolved-input event paths",
+);
+assert.deepEqual(isolatedDeferredRuntimePolicy.deferredCandidateSlotIds, ["slot_1"]);
+
+const synchronizationSlotVersionPolicy = createV2AuthoringRuntimeEventPolicy([{
+  event_type: "linked_context_updated",
+  workflow_id: "wf_1",
+  seq: 6,
+  slot_id: "slot_sync",
+  payload: { refresh: ["slot_versions"] },
+}]);
+assert.deepEqual(
+  synchronizationSlotVersionPolicy.ordinaryRuntimeEvents.map((event) => event.slot_id),
+  ["slot_sync"],
+  "synchronization events must remain eligible for their existing targeted slot-version refresh",
+);
+assert.equal(
+  synchronizationSlotVersionPolicy.shouldRefreshSynchronizationWorkflow,
+  true,
+  "synchronization events must request a runtime-owned graph refresh",
+);
+assert.equal(
+  synchronizationSlotVersionPolicy.shouldRefreshRuntimeWorkflow,
+  true,
+  "synchronization workflow reads must use the runtime-owned refresh path",
+);
+
+for (const event of [
+  { event_type: "graph_updated", workflow_id: "wf_1", seq: 7 },
+  { event_type: "workflow_updated", workflow_id: "wf_1", seq: 8 },
+  {
+    event_type: "execution_completed",
+    workflow_id: "wf_1",
+    seq: 9,
+    payload: { refresh: ["workflow"] },
+  },
+]) {
+  assert.equal(
+    createV2AuthoringRuntimeEventPolicy([event]).shouldRefreshRuntimeWorkflow,
+    true,
+    `${event.event_type} must request a non-capturing runtime Workflow read`,
+  );
+}
+assert.equal(
+  createV2AuthoringRuntimeEventPolicy([{
+    event_type: "execution_completed",
+    workflow_id: "wf_1",
+    seq: 10,
+  }]).shouldRefreshRuntimeWorkflow,
+  false,
+  "ordinary runtime events without a Workflow refresh signal must not read the Workflow",
+);
+
+assert.equal(
+  shouldApplyRuntimeWorkflowRead(
+    { workflow_id: "wf_1", state_version: 8, semantic_revision_no: 6 },
+    { workflow_id: "wf_1", state_version: 8, semantic_revision_no: 6 },
+  ),
+  true,
+  "the current workflow revision remains safe to apply",
+);
+assert.equal(
+  shouldApplyRuntimeWorkflowRead(
+    { workflow_id: "wf_1", state_version: 7, semantic_revision_no: 6 },
+    { workflow_id: "wf_1", state_version: 8, semantic_revision_no: 6 },
+  ),
+  false,
+  "a delayed runtime read must not replace a newer active state version",
+);
+assert.equal(
+  shouldApplyRuntimeWorkflowRead(
+    { workflow_id: "wf_1", state_version: 9, semantic_revision_no: 5 },
+    { workflow_id: "wf_1", state_version: 8, semantic_revision_no: 6 },
+  ),
+  false,
+  "a delayed runtime read must not replace a newer active semantic revision",
+);
+assert.equal(
+  shouldApplyRuntimeWorkflowRead(
+    { workflow_id: "wf_2", state_version: 9, semantic_revision_no: 7 },
+    { workflow_id: "wf_1", state_version: 8, semantic_revision_no: 6 },
+  ),
+  false,
+  "a runtime read from another workflow must never apply",
+);
+
+const revisionReadCandidate = {
+  workflow_id: "wf_1",
+  state_version: 9,
+  semantic_revision_no: 7,
+};
+const revisionReadCurrent = {
+  workflow_id: "wf_1",
+  state_version: 8,
+  semantic_revision_no: 6,
+};
+assert.equal(
+  shouldApplyWorkflowRevisionRead(revisionReadCandidate, revisionReadCurrent, {
+    requestedWorkflowId: "wf_1",
+    activeWorkflowId: "wf_1",
+    baselineEtag: '"workflow-wf_1-v8"',
+    currentEtag: '"workflow-wf_1-v8"',
+  }),
+  true,
+  "a current revision read with an unchanged authoring baseline may apply",
+);
+assert.equal(
+  shouldApplyWorkflowRevisionRead(revisionReadCandidate, revisionReadCurrent, {
+    requestedWorkflowId: "wf_1",
+    activeWorkflowId: "wf_2",
+    baselineEtag: '"workflow-wf_1-v8"',
+    currentEtag: '"workflow-wf_1-v8"',
+  }),
+  false,
+  "a revision read must not apply after the active workflow changes",
+);
+assert.equal(
+  shouldApplyWorkflowRevisionRead(revisionReadCandidate, revisionReadCurrent, {
+    requestedWorkflowId: "wf_1",
+    activeWorkflowId: "wf_1",
+    baselineEtag: '"workflow-wf_1-v8"',
+    currentEtag: '"workflow-wf_1-v9"',
+  }),
+  false,
+  "a newer semantic operation must invalidate an in-flight revision read",
+);
+assert.equal(
+  shouldApplyWorkflowRevisionRead(
+    { ...revisionReadCandidate, semantic_revision_no: 5 },
+    revisionReadCurrent,
+    {
+      requestedWorkflowId: "wf_1",
+      activeWorkflowId: "wf_1",
+      baselineEtag: '"workflow-wf_1-v8"',
+      currentEtag: '"workflow-wf_1-v8"',
+    },
+  ),
+  false,
+  "an older semantic revision must remain ineligible even when the ETag baseline is unchanged",
+);
+
+const pendingWorkflowRefreshes: Array<{ workflowId: string; resolve: () => void }> = [];
+const workflowRefreshCoalescer = createWorkflowRevisionRefreshCoalescer((workflowId) =>
+  new Promise<void>((resolve) => {
+    pendingWorkflowRefreshes.push({ workflowId, resolve });
+  }),
+);
+const firstWorkflowRefresh = workflowRefreshCoalescer.request("wf_1");
+const trailingWorkflowRefresh = workflowRefreshCoalescer.request("wf_1");
+const switchedWorkflowRefresh = workflowRefreshCoalescer.request("wf_2");
+assert.deepEqual(
+  pendingWorkflowRefreshes.map((refresh) => refresh.workflowId),
+  ["wf_1", "wf_2"],
+  "a switched active workflow must retain its own refresh while another workflow read is in flight",
+);
+pendingWorkflowRefreshes[0]!.resolve();
+await new Promise<void>((resolve) => setImmediate(resolve));
+assert.deepEqual(
+  pendingWorkflowRefreshes.map((refresh) => refresh.workflowId),
+  ["wf_1", "wf_2", "wf_1"],
+  "an event received during an in-flight read must trigger one trailing refresh for that workflow",
+);
+pendingWorkflowRefreshes[1]!.resolve();
+pendingWorkflowRefreshes[2]!.resolve();
+await Promise.all([firstWorkflowRefresh, trailingWorkflowRefresh, switchedWorkflowRefresh]);
 
 const projects = normalizeProjectV2ListResponse({
   items: [{
@@ -175,6 +392,152 @@ assert.equal(revisions.items[0]?.revision_no, 2);
 assert.equal(revisionCanBeRestored(revisions.items[0]!, 3), true);
 assert.equal(revisionCanBeRestored(revisions.items[0]!, 2), false);
 assert.equal(revisionActionLabel(revisions.items[0]!), "Revision 2 · Prompt edit");
+const revisionOne = { ...revisions.items[0]!, revision_id: "rev_1", revision_no: 1 };
+const revisionThree = { ...revisions.items[0]!, revision_id: "rev_3", revision_no: 3 };
+assert.deepEqual(
+  resetWorkflowRevisionBusyState(),
+  { loadingHistory: false, loadingMore: false, loadingDetail: null, restoring: null },
+  "changing workflows must clear every revision request busy state before stale requests settle",
+);
+const firstWorkflowRevisionScope = advanceWorkflowRevisionScope({ workflowId: null, generation: 0 }, "wf_1");
+const secondWorkflowRevisionScope = advanceWorkflowRevisionScope(firstWorkflowRevisionScope, "wf_2");
+assert.equal(
+  canStartWorkflowRevisionHistoryMutation(secondWorkflowRevisionScope, {
+    workflowId: "wf_2",
+    generation: secondWorkflowRevisionScope.generation,
+  }),
+  false,
+  "an active history mutation must serialize Load more and restore refreshes for the same workflow",
+);
+assert.equal(
+  canStartWorkflowRevisionHistoryMutation(secondWorkflowRevisionScope, {
+    workflowId: "wf_1",
+    generation: firstWorkflowRevisionScope.generation,
+  }),
+  true,
+  "a stale workflow mutation must not block history work for the active workflow",
+);
+assert.equal(
+  isWorkflowRevisionRequestCurrent(secondWorkflowRevisionScope, 2, {
+    workflowId: "wf_1",
+    workflowGeneration: firstWorkflowRevisionScope.generation,
+    requestGeneration: 2,
+  }),
+  false,
+  "a response started for a previous active workflow must not update the current workflow state",
+);
+assert.equal(
+  isWorkflowRevisionRequestCurrent(secondWorkflowRevisionScope, 2, {
+    workflowId: "wf_2",
+    workflowGeneration: secondWorkflowRevisionScope.generation,
+    requestGeneration: 1,
+  }),
+  false,
+  "a superseded request for the active workflow must not apply after a newer request starts",
+);
+assert.equal(
+  isWorkflowRevisionRequestCurrent(secondWorkflowRevisionScope, 2, {
+    workflowId: "wf_2",
+    workflowGeneration: secondWorkflowRevisionScope.generation,
+    requestGeneration: 2,
+  }),
+  true,
+  "the current request for the active workflow must remain applicable",
+);
+const loadedRevisionHistory = {
+  items: [revisions.items[0]!, revisionOne],
+  nextCursor: "cursor_1",
+  selectedRevisionNo: 2,
+};
+assert.equal(
+  shouldRefreshWorkflowRevisionHistory({
+    activeWorkflowId: "wf_1",
+    stateWorkflowId: "wf_1",
+    open: true,
+    history: loadedRevisionHistory,
+    semanticRevisionNo: 3,
+  }),
+  true,
+  "an open history panel must refresh its first page when the active workflow advances to an unloaded revision",
+);
+assert.equal(
+  shouldRefreshWorkflowRevisionHistory({
+    activeWorkflowId: "wf_1",
+    stateWorkflowId: "wf_1",
+    open: true,
+    history: { ...loadedRevisionHistory, items: [revisionThree, ...loadedRevisionHistory.items] },
+    semanticRevisionNo: 3,
+  }),
+  false,
+  "an open history panel must not reload when the authoritative revision is already present",
+);
+assert.equal(
+  shouldRefreshWorkflowRevisionHistory({
+    activeWorkflowId: "wf_1",
+    stateWorkflowId: "wf_2",
+    open: true,
+    history: loadedRevisionHistory,
+    semanticRevisionNo: 3,
+  }),
+  false,
+  "a stale workflow history state must not refresh after an active-workflow update",
+);
+assert.deepEqual(
+  getWorkflowRevisionDisplayState("wf_2", "wf_1", {
+    open: true,
+    history: loadedRevisionHistory,
+    selectedRevision: { revision_no: 2 },
+    error: "The previous workflow failed.",
+    loadingHistory: true,
+    loadingMore: true,
+    loadingDetail: 2,
+    restoring: 1,
+  }),
+  {
+    open: false,
+    history: { items: [], nextCursor: null, selectedRevisionNo: null },
+    selectedRevision: null,
+    error: null,
+    loadingHistory: false,
+    loadingMore: false,
+    loadingDetail: null,
+    restoring: null,
+  },
+  "a workflow switch must hide every prior-workflow revision state before the cleanup effect runs",
+);
+assert.deepEqual(
+  mergeRevisionHistoryPage(loadedRevisionHistory, { items: [revisionThree, revisions.items[0]!], next_cursor: "cursor_2" }),
+  { items: [revisionThree, revisions.items[0]!, revisionOne], nextCursor: "cursor_2", selectedRevisionNo: 2 },
+  "refreshing the first page must preserve previously loaded history while deduplicating revisions",
+);
+assert.deepEqual(
+  reconcileRefreshedRevisionHistory(
+    loadedRevisionHistory,
+    { items: [revisionThree, revisions.items[0]!], next_cursor: "cursor_2" },
+  ),
+  { items: [revisionThree, revisions.items[0]!, revisionOne], nextCursor: "cursor_1", selectedRevisionNo: 2 },
+  "an automatic first-page refresh must preserve the older-page cursor and user selection",
+);
+assert.deepEqual(
+  selectWorkflowRevision(loadedRevisionHistory, 1),
+  { ...loadedRevisionHistory, selectedRevisionNo: 1 },
+  "selecting a summary must retain the loaded history and identify the detail to load",
+);
+assert.deepEqual(
+  reconcileRestoredRevisionHistory(loadedRevisionHistory, { items: [revisionThree, revisions.items[0]!], next_cursor: "cursor_2" }, revisionThree, true),
+  { items: [revisionThree, revisions.items[0]!, revisionOne], nextCursor: "cursor_1", selectedRevisionNo: 3 },
+  "restore refresh must retain the older-page cursor when loaded history extends past the refreshed first page",
+);
+assert.deepEqual(
+  reconcileRestoredRevisionHistory(
+    { ...loadedRevisionHistory, selectedRevisionNo: 1 },
+    { items: [revisionThree, revisions.items[0]!], next_cursor: "cursor_2" },
+    revisionThree,
+    false,
+  ),
+  { items: [revisionThree, revisions.items[0]!, revisionOne], nextCursor: "cursor_1", selectedRevisionNo: 1 },
+  "stale restore reconciliation must preserve a later explicit revision selection",
+);
 assert.throws(
   () => normalizeWorkflowRevisionPage({ items: [{ revision_id: "rev_1", workflow_id: "wf_1", revision_no: 1, state_version: 1, change_source: "create", created_at: "2026-07-22T00:00:00Z" }], next_cursor: null }),
   /invalid_v2_workflow_revision_payload/,
@@ -186,6 +549,31 @@ assert.throws(
 );
 
 const calls: Array<{ url: string; init: RequestInit }> = [];
+globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  calls.push({ url: String(input), init });
+  return jsonResponse(
+    { ...workflowPayload(), state_version: 6, semantic_revision_no: 6 },
+    { ETag: '"workflow-wf_1-v6"' },
+  );
+}) as typeof fetch;
+v2EtagStore.clear();
+v2EtagStore.set("workflow", "wf_1", '"workflow-wf_1-v5"');
+const nonCapturingWorkflow = await v2Api.workflowWithEtagWithoutCapture("wf_1");
+assert.equal(nonCapturingWorkflow.etag, '"workflow-wf_1-v6"', "a non-capturing read must preserve the real response ETag for later validation");
+assert.equal(nonCapturingWorkflow.value.state_version, 6);
+assert.equal(
+  v2EtagStore.getWorkflow("wf_1"),
+  '"workflow-wf_1-v5"',
+  "a non-capturing workflow read must not mutate the central authoring ETag",
+);
+await v2Api.workflowWithEtag("wf_1");
+assert.equal(
+  v2EtagStore.getWorkflow("wf_1"),
+  '"workflow-wf_1-v6"',
+  "an ordinary semantic workflow read must continue capturing the response ETag",
+);
+
+calls.length = 0;
 globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
   const url = String(input);
   calls.push({ url, init });
@@ -214,6 +602,124 @@ calls.length = 0;
 await v2Api.discardWorkingVersion("wf_1", "slot_1");
 assert.equal(calls.length, 1);
 assert.equal(new Headers(calls[0]?.init.headers).has("If-Match"), false);
+
+calls.length = 0;
+globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  calls.push({ url: String(input), init });
+  if ((init.method ?? "GET") === "GET") {
+    return jsonResponse(workflowPayload());
+  }
+  return jsonResponse({
+    workflow: workflowPayload(),
+    executed_slot_ids: [],
+    provider_calls: [],
+  });
+}) as typeof fetch;
+v2EtagStore.clear();
+await v2Api.runWorkflowAsync("wf_1");
+assert.equal(calls.length, 2, "Global Run must proceed after a workflow read without an ETag");
+assert.equal(calls[0]?.init.method ?? "GET", "GET");
+assert.equal(new Headers(calls[1]?.init.headers).has("If-Match"), false, "Global Run must omit If-Match when the backend does not provide a real ETag");
+assert.equal(v2EtagStore.getWorkflow("wf_1"), null, "Global Run must not synthesize or persist an ETag");
+
+for (const status of [412, 428]) {
+  calls.length = 0;
+  let runAttempts = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(input), init });
+    if ((init.method ?? "GET") === "GET") return jsonResponse(workflowPayload());
+    runAttempts += 1;
+    return jsonResponse(
+      { detail: { code: "workflow_precondition_required", message: `Global Run precondition ${status}.` } },
+      {},
+      status,
+    );
+  }) as typeof fetch;
+  v2AuthoringConflictStore.clear();
+  v2EtagStore.clear();
+
+  await assert.rejects(() => v2Api.runWorkflowAsync("wf_1"));
+  assert.equal(runAttempts, 1, `Global Run without an ETag must not retry after HTTP ${status}`);
+  assert.equal(calls.length, 2, `Global Run without an ETag must not refresh authoring state after HTTP ${status}`);
+  assert.equal(new Headers(calls[1]?.init.headers).has("If-Match"), false);
+  assert.equal(v2AuthoringConflictStore.current(), null, `Global Run without an ETag must not enter the shared conflict flow for HTTP ${status}`);
+}
+
+calls.length = 0;
+globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+  calls.push({ url: String(input), init });
+  if ((init.method ?? "GET") === "GET") {
+    return jsonResponse(workflowPayload(), { ETag: '"workflow-wf_1-v10"' });
+  }
+  return jsonResponse({
+    workflow: workflowPayload(),
+    executed_slot_ids: [],
+    provider_calls: [],
+  }, { ETag: '"workflow-wf_1-v11"' });
+}) as typeof fetch;
+v2EtagStore.clear();
+await v2Api.runWorkflowAsync("wf_1");
+assert.equal(calls.length, 2, "Global Run must obtain a real Workflow ETag when no current value is cached");
+assert.equal(calls[0]?.init.method ?? "GET", "GET");
+assert.equal(new Headers(calls[1]?.init.headers).get("If-Match"), '"workflow-wf_1-v10"');
+assert.equal(v2EtagStore.getWorkflow("wf_1"), '"workflow-wf_1-v10"', "an operational run response must not replace the authoring ETag");
+
+for (const status of [412, 428]) {
+  calls.length = 0;
+  let runAttempts = 0;
+  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
+    calls.push({ url: String(input), init });
+    if ((init.method ?? "GET") === "GET") {
+      return jsonResponse(
+        { ...workflowPayload(), state_version: 21, semantic_revision_no: 21 },
+        { ETag: '"workflow-wf_1-v21"' },
+      );
+    }
+    runAttempts += 1;
+    if (runAttempts === 1) {
+      return jsonResponse(
+        {
+          detail: {
+            code: status === 412 ? "workflow_state_conflict" : "workflow_precondition_required",
+            message: `Global Run precondition ${status}.`,
+          },
+        },
+        {},
+        status,
+      );
+    }
+    return jsonResponse({
+      workflow: { ...workflowPayload(), state_version: 22, semantic_revision_no: 21 },
+      executed_slot_ids: [],
+      provider_calls: [],
+    }, { ETag: '"workflow-wf_1-v22"' });
+  }) as typeof fetch;
+  v2AuthoringConflictStore.clear();
+  v2EtagStore.set("workflow", "wf_1", '"workflow-wf_1-v20"');
+
+  await assert.rejects(() => v2Api.runWorkflowAsync("wf_1"));
+  assert.equal(runAttempts, 1, `Global Run must not silently retry after HTTP ${status}`);
+  assert.equal(calls.length, 2, `Global Run HTTP ${status} must refresh the current Workflow before offering resolution`);
+  assert.equal(calls[1]?.init.method ?? "GET", "GET");
+  assert.deepEqual(
+    v2AuthoringConflictStore.current()?.target,
+    { resource: "workflow", id: "wf_1" },
+    `Global Run HTTP ${status} must enter the shared workflow conflict flow`,
+  );
+  assert.equal(v2AuthoringConflictStore.current()?.operationPath, "/workflows/wf_1/run?wait=false");
+  assert.equal(v2EtagStore.getWorkflow("wf_1"), '"workflow-wf_1-v21"');
+
+  if (status === 412) {
+    await v2AuthoringConflictStore.retry();
+    assert.equal(runAttempts, 2, "Global Run must retry only after explicit conflict resolution");
+    assert.equal(new Headers(calls.at(-1)?.init.headers).get("If-Match"), '"workflow-wf_1-v21"');
+    assert.equal(v2EtagStore.getWorkflow("wf_1"), '"workflow-wf_1-v21"', "a retried Global Run response must remain non-capturing");
+  } else {
+    await v2AuthoringConflictStore.discard();
+    assert.equal(runAttempts, 1, "discarding a Global Run conflict must not issue another run request");
+  }
+  assert.equal(v2AuthoringConflictStore.current(), null);
+}
 
 calls.length = 0;
 let patchAttempts = 0;

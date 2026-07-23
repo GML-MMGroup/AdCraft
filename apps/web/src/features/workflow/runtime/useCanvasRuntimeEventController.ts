@@ -38,13 +38,13 @@ import type { CanvasCandidateSummaryState, LocalRevisionCardState } from "../ass
 import {
   V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES,
   V2_SLOT_VERSION_REFRESH_EVENT_TYPES,
-  V2_WORKFLOW_REFRESH_EVENT_TYPES,
   v2EventRefreshHints,
   v2EventShouldRefreshAssets,
   v2EventShouldRefreshProviderTasks,
   v2EventShouldRefreshRuntime,
   v2RuntimeEventSlotId,
 } from "./v2RuntimeEventModel.ts";
+import { createV2AuthoringRuntimeEventPolicy } from "./v2AuthoringRuntimeEventPolicy.ts";
 import { useCanvasRuntimeSubscription } from "./useCanvasRuntimeSubscription.ts";
 import { stringFromUnknown } from "./resolvedInputsViewModel.ts";
 import {
@@ -90,10 +90,6 @@ export type CanvasRuntimeEventControllerArgs = {
   onRefreshSelectedResolvedInputs: (nodeId: string, options?: { force?: boolean }) => Promise<unknown>;
   onRefreshWorkflowGraph: (workflowId: string) => Promise<unknown>;
   onRefreshMediaStatus: (workflowId: string) => Promise<MediaStatus | null>;
-  onRefreshV2WorkflowGraph: (
-    workflowId: string,
-    options?: { refreshRuntime?: boolean; refreshAssets?: boolean },
-  ) => Promise<WorkflowV2 | null>;
   onRefreshV2AssetsAndRetryMissing: (workflowId: string, reason: string, workflow?: WorkflowV2 | null) => Promise<unknown>;
   onLoadV2SlotVersions: (slotId: string) => Promise<unknown> | void;
   onLoadLocalAssetHistory: (workflowId: string, nodeId: string, asset: UploadedAsset) => Promise<unknown>;
@@ -655,8 +651,10 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
 
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
+    const authoringRuntimeEventPolicy = createV2AuthoringRuntimeEventPolicy(events);
     const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
-    const finalCompositionEvents = events.filter((event) =>
+    const ordinaryRuntimeEvents = authoringRuntimeEventPolicy.ordinaryRuntimeEvents;
+    const finalCompositionEvents = ordinaryRuntimeEvents.filter((event) =>
       event.event_type === "final_timeline_created" ||
       event.event_type === "final_timeline_updated" ||
       V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES.has(event.event_type),
@@ -670,8 +668,10 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
         },
       }));
     }
-    const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));
-    const latestExecutionEvent = [...events].reverse().find((event) =>
+    const runtimeEvents = ordinaryRuntimeEvents.filter(
+      (event) => !isV2SynchronizationEvent(event.event_type),
+    );
+    const latestExecutionEvent = [...ordinaryRuntimeEvents].reverse().find((event) =>
       [
         "execution_queued",
         "execution_started",
@@ -707,24 +707,29 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
       }
     }
     const shouldRefreshRuntime = runtimeEvents.some(v2EventShouldRefreshRuntime);
-    const shouldRefreshWorkflow = runtimeEvents.some((event) =>
-      V2_WORKFLOW_REFRESH_EVENT_TYPES.has(event.event_type) ||
-      v2EventRefreshHints(event).some((hint) => hint === "workflow" || hint === "slot_versions"),
-    );
     const shouldRefreshAssets = runtimeEvents.some(v2EventShouldRefreshAssets);
-    if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
+    if (workflowId && (shouldRefreshRuntime || shouldRefreshAssets)) {
       void (async () => {
         if (shouldRefreshRuntime) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
-        const refreshedWorkflow = shouldRefreshWorkflow
-          ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId, { refreshRuntime: false })
-          : null;
         if (shouldRefreshAssets) {
-          await argsRef.current.onRefreshV2AssetsAndRetryMissing(workflowId, "runtime-event", refreshedWorkflow ?? argsRef.current.getWorkflowV2());
+          await argsRef.current.onRefreshV2AssetsAndRetryMissing(
+            workflowId,
+            "runtime-event",
+            argsRef.current.getWorkflowV2(),
+          );
         }
       })();
     }
+    if (workflowId && authoringRuntimeEventPolicy.shouldRefreshDeferredCandidates) {
+      argsRef.current.setStatus(authoringRuntimeEventPolicy.candidateStatus!);
+      void argsRef.current.onRefreshV2AssetsAndRetryMissing(
+        workflowId,
+        "execution-result-revision-deferred",
+        argsRef.current.getWorkflowV2(),
+      );
+    }
     const versionRefreshSlotIds = new Set(
-      events
+      ordinaryRuntimeEvents
         .filter((event) =>
           V2_SLOT_VERSION_REFRESH_EVENT_TYPES.has(event.event_type) ||
           v2EventRefreshHints(event).includes("slot_versions"),
@@ -732,13 +737,18 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
         .map(v2RuntimeEventSlotId)
         .filter((slotId): slotId is string => Boolean(slotId)),
     );
+    authoringRuntimeEventPolicy.deferredCandidateSlotIds.forEach((slotId) => versionRefreshSlotIds.add(slotId));
     versionRefreshSlotIds.forEach((slotId) => {
-      if (argsRef.current.getV2SlotVersionsById()[slotId] || slotId === argsRef.current.getActiveV2SlotId()) {
+      if (
+        authoringRuntimeEventPolicy.deferredCandidateSlotIds.includes(slotId) ||
+        argsRef.current.getV2SlotVersionsById()[slotId] ||
+        slotId === argsRef.current.getActiveV2SlotId()
+      ) {
         void argsRef.current.onLoadV2SlotVersions(slotId);
       }
     });
     const providerTaskRefreshSlotIds = new Set(
-      events
+      ordinaryRuntimeEvents
         .filter(v2EventShouldRefreshProviderTasks)
         .map(v2RuntimeEventSlotId)
         .filter((slotId): slotId is string => Boolean(slotId)),
@@ -753,7 +763,7 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
       });
     }
     const resolvedInputRefreshNodeIds = new Set(
-      events
+      ordinaryRuntimeEvents
         .filter((event) => event.event_type === "resolved_inputs_updated" || event.event_type === "slot_selected_version_updated" || v2EventRefreshHints(event).includes("resolved_inputs"))
         .map((event) => event.node_id ?? (event.slot_id ? argsRef.current.v2Runtime.slotNodeId(event.slot_id) : null))
         .filter((nodeId): nodeId is string => Boolean(nodeId)),

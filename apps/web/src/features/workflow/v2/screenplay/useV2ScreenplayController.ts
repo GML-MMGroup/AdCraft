@@ -39,6 +39,7 @@ export type V2ScreenplayControllerCallbacks = {
   refreshSynchronizationWorkflow?: (
     workflowId: string,
     scopes: ReadonlySet<V2SynchronizationRefreshScope>,
+    source: "semantic-action" | "runtime-event",
   ) => Promise<unknown> | unknown;
 };
 
@@ -514,7 +515,11 @@ export function createV2ScreenplayControllerRuntime({
           : refreshSelectedWithHistory
         : undefined,
       refreshWorkflow: refreshSynchronizationWorkflow || refreshWorkflow
-        ? (scopes) => refreshSynchronizationWorkflow?.(workflowId, scopes)
+        ? (scopes) => refreshSynchronizationWorkflow?.(
+          workflowId,
+          scopes,
+          options.localSelection ? "semantic-action" : "runtime-event",
+        )
           ?? refreshWorkflow?.(workflowId, options.linkedContext ?? linkedContextFromPlan(plan))
         : undefined,
     });

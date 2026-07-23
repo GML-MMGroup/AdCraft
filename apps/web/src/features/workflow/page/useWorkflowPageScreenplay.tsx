@@ -63,7 +63,8 @@ export function useWorkflowPageScreenplay({
   const controller = useV2ScreenplayController({
     refreshWorkflow: (workflowId) => refreshV2WorkflowGraph(workflowId),
     refreshRuntime: (workflowId) => syncV2RuntimeSnapshot(workflowId),
-    refreshSynchronizationWorkflow: async (workflowId, scopes) => {
+    refreshSynchronizationWorkflow: async (workflowId, scopes, source) => {
+      if (source === "runtime-event") return true;
       const result = scopes.has("assets")
         ? await refreshV2WorkflowGraph(workflowId, { refreshRuntime: false, refreshAssets: true })
         : await refreshV2WorkflowStructure(workflowId);
