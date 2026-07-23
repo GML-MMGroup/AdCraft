@@ -78,8 +78,13 @@ interface PromptComposerProps {
   onMentionTargetReferencesChange?: (references: CanvasTargetReference[]) => void;
   uploadOptions?: AssetUploadOptions | ((file: File) => AssetUploadOptions);
   onUploadInputAsset?: (file: File) => Promise<V2InputAssetUploadItem[]>;
+  acceptedFileTypes?: string;
+  assetPickerEnabled?: boolean;
+  onUploadFile?: (file: File) => Promise<void> | void;
   onDraftChange?: (prompt: string, context?: PromptGenerateContext) => void;
 }
+
+const DEFAULT_ACCEPTED_FILE_TYPES = "image/*,video/*,audio/*,.pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 export function PromptComposer({
   placeholder,
@@ -103,6 +108,9 @@ export function PromptComposer({
   onMentionTargetReferencesChange,
   uploadOptions,
   onUploadInputAsset,
+  acceptedFileTypes = DEFAULT_ACCEPTED_FILE_TYPES,
+  assetPickerEnabled = true,
+  onUploadFile,
   onDraftChange,
 }: PromptComposerProps) {
   const [value, setValue] = useState(initialValue);
@@ -243,6 +251,10 @@ export function PromptComposer({
     if (!file) return;
     setError("");
     try {
+      if (onUploadFile) {
+        await onUploadFile(file);
+        return;
+      }
       const resolvedUploadOptions = typeof uploadOptions === "function"
         ? uploadOptions(file)
         : uploadOptions ?? { asset_role: "reference" };
@@ -383,7 +395,7 @@ export function PromptComposer({
       <AssetMentionChips references={mentionReferences} />
       <NodeMentionChips references={nodeMentionReferences} />
       <TargetMentionChips references={canvasTargetReferences} />
-      {assetPickerOpen ? (
+      {assetPickerEnabled && assetPickerOpen ? (
         <ComposerAssetPicker
           query={assetPickerQuery}
           suggestions={assetPickerSuggestions}
@@ -398,28 +410,31 @@ export function PromptComposer({
         <div className="composer-tools">
           <input
             ref={inputRef}
+            aria-label="Upload file"
             type="file"
             hidden
-            accept="image/*,video/*,audio/*,.pdf,.txt,.md,.doc,.docx,application/pdf,text/plain,text/markdown,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept={acceptedFileTypes}
             onChange={(event) => {
-              void handleFile(event.target.files?.[0]);
+              void handleFile(event.currentTarget.files?.[0]);
               event.currentTarget.value = "";
             }}
           />
           <button className="pill-btn icon-only" aria-label="Upload file" title="Upload file" onClick={() => inputRef.current?.click()} disabled={controlsDisabled}>
             <UploadIcon />
           </button>
-          <button
-            className={`pill-btn icon-only ${assetPickerOpen ? "is-active" : ""}`}
-            type="button"
-            aria-label="Choose asset"
-            title="Choose asset"
-            aria-expanded={assetPickerOpen}
-            onClick={openAssetPicker}
-            disabled={controlsDisabled}
-          >
-            <AssetsIcon />
-          </button>
+          {assetPickerEnabled ? (
+            <button
+              className={`pill-btn icon-only ${assetPickerOpen ? "is-active" : ""}`}
+              type="button"
+              aria-label="Choose asset"
+              title="Choose asset"
+              aria-expanded={assetPickerOpen}
+              onClick={openAssetPicker}
+              disabled={controlsDisabled}
+            >
+              <AssetsIcon />
+            </button>
+          ) : null}
           {secondaryActions}
         </div>
         <button className="send-btn icon-only" aria-label="Generate" title="Generate" onClick={() => void submit()} disabled={controlsDisabled}>

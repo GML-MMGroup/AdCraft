@@ -350,7 +350,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     }
   }
 
-  async function uploadV2SlotReference(slotId: string, files: FileList) {
+  async function uploadV2SlotReference(slotId: string, files: FileList | File[]) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
     const slot = v2SlotById(slotId);
@@ -506,6 +506,14 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         return;
       }
       if (reference.source === "uploaded_asset" && reference.asset_id) {
+        const localAttachment = argsRef.current.v2SlotMicroEdit.state.draftsBySlotId[slotId]?.attachments.find(
+          (attachment) => attachment.id === reference.asset_id && !attachment.source_asset_id,
+        );
+        if (localAttachment) {
+          argsRef.current.v2SlotMicroEdit.updateAttachment(slotId, localAttachment.id, {
+            source_asset_id: reference.asset_id,
+          });
+        }
         argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "uploaded_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
         return;
       }
