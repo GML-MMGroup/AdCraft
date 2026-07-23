@@ -6868,6 +6868,125 @@ button.canvas-entity-media {
   height: 36px;
 }
 
+.v2-audio-player {
+  display: grid;
+  min-width: 240px;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(113, 83, 190, 0.28);
+  border-radius: 7px;
+  background: rgba(25, 23, 35, 0.94);
+  color: #f4f2ff;
+}
+
+.v2-audio-player audio {
+  display: none;
+}
+
+.v2-audio-player-controls {
+  display: grid;
+  grid-template-columns: 30px minmax(108px, 1fr) 30px;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+}
+
+.v2-audio-player-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(91, 219, 199, 0.38);
+  border-radius: 5px;
+  background: rgba(91, 219, 199, 0.1);
+  color: #a8f2e5;
+  cursor: pointer;
+}
+
+.v2-audio-player-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.v2-audio-player-icon:hover:not(:disabled) {
+  border-color: #c5aeff;
+  background: rgba(158, 117, 255, 0.18);
+  color: #fff;
+}
+
+.v2-audio-player-icon:focus-visible,
+.v2-audio-player-seek:focus-visible {
+  outline: 2px solid #e3b341;
+  outline-offset: 2px;
+}
+
+.v2-audio-player-seek-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.v2-audio-player-seek {
+  width: 100%;
+  min-width: 0;
+  accent-color: #9e75ff;
+}
+
+.v2-audio-player-time {
+  min-width: 68px;
+  color: #d6d0e6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.v2-audio-player-status {
+  color: #f3cc72;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.v2-audio-player.is-unavailable {
+  border-color: rgba(227, 179, 65, 0.42);
+}
+
+.v2-audio-player button:disabled,
+.v2-audio-player input:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.v2-audio-player.is-compact {
+  min-width: 190px;
+  padding: 6px;
+}
+
+@media (max-width: 480px) {
+  .v2-audio-player {
+    min-width: 0;
+  }
+
+  .v2-audio-player-seek-wrap {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .v2-audio-player-time {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-audio-player,
+  .v2-audio-player * {
+    transition: none !important;
+  }
+}
+
 .workflow-card-preview.waveform {
   grid-template-columns: repeat(4, 8px) 1fr;
   justify-content: start;
