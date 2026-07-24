@@ -6,6 +6,9 @@ import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const mobileHeroTitleStyles = styles.match(
+  /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
+)?.[0] ?? "";
 
 vi.mock("../AppContextValue", () => ({
   useApp: () => ({ startNewProject }),
@@ -38,8 +41,9 @@ describe("HomePage hero title", () => {
 
   it("uses a stronger, airier title lockup and layered gilded accent", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title\s*\{[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.08;[^}]*-webkit-text-stroke:\s*0\.18px currentColor;/s,
+      /\.home-product-hero__title\s*\{[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.4;[^}]*-webkit-text-stroke:\s*0\.18px currentColor;/s,
     );
+    expect(mobileHeroTitleStyles).toMatch(/line-height:\s*1\.4;/);
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
