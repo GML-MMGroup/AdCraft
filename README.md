@@ -121,19 +121,33 @@ Assets can be reused, extended, regenerated, or saved as references for later st
 
 AdCraft provides a growing collection of reusable character and scene assets for advertising, branded storytelling, short-form video, and AI-assisted production.
 
-These assets are not isolated reference images. They are designed as **complete production systems** that support visual consistency across different shots, camera angles, actions, and commercial scenarios.
+These assets are not isolated reference images. They are designed as **complete production systems** that support visual consistency across different shots, camera angles, actions, environments, and commercial scenarios.
 
 #### 👤 Character Asset Library
 
-<div align="center">
-  <img
-    src="./assets/character_assets.png"
-    alt="AdCraft character asset library"
-    width="100%"
-  />
-  <br/>
-  <sub>Browse reusable character assets directly inside the AdCraft asset library.</sub>
-</div>
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img
+        src="./assets/character_assets_01.png"
+        alt="AdCraft character asset library overview 1"
+        width="100%"
+      />
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img
+        src="./assets/character_assets_02.png"
+        alt="AdCraft character asset library overview 2"
+        width="100%"
+      />
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <sub>Browse, manage, and reuse production-ready character assets directly inside AdCraft.</sub>
+    </td>
+  </tr>
+</table>
 
 <br/>
 
@@ -142,38 +156,78 @@ Every character asset that we release for free and open-source use is designed a
 A typical character asset includes:
 
 - **Three-view turnaround** — front, side, and back views for stable identity and body proportions
-- **Head and facial references** — front, profile, back, hairstyle, facial structure, and expression details
+- **Head and facial references** — facial structure, hairstyle, profile, back view, and expression details
 - **Clothing construction details** — garment structure, tailoring, materials, folds, and key design elements
 - **Accessories and on-body items** — footwear, jewelry, watches, bags, props, and other visible details
 - **Unified color and material palettes** — consistent colors, fabrics, metals, and surface references
 - **Extended commercial scenarios** — product interactions, advertising poses, business contexts, and campaign-ready action references
 
-Together, these references help preserve the same character identity across close-ups, full-body shots, different poses, camera changes, and newly generated advertising scenes.
+Together, these references help preserve the same character identity across close-ups, full-body shots, different poses, camera changes, product interactions, and newly generated advertising scenes.
 
 <table>
   <tr>
-    <td width="50%" align="center" valign="top">
+    <td width="33.33%" align="center" valign="top">
       <img
         src="./assets/Character_Assets_demo1.png"
         alt="AdCraft character asset example 1"
         width="100%"
       />
       <br/>
-      <sub>
-        <b>Character Asset Example 01</b><br/>
-        Three-view turnaround, clothing details, materials, accessories, and extended commercial scenarios.
-      </sub>
+      <sub><b>Character Asset Example 01</b></sub>
     </td>
-    <td width="50%" align="center" valign="top">
+    <td width="33.33%" align="center" valign="top">
       <img
         src="./assets/Character_Assets_demo2.png"
         alt="AdCraft character asset example 2"
         width="100%"
       />
       <br/>
+      <sub><b>Character Asset Example 02</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo3.png"
+        alt="AdCraft character asset example 3"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Character Asset Example 03</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo4.png"
+        alt="AdCraft character asset example 4"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Character Asset Example 04</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo5.png"
+        alt="AdCraft character asset example 5"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Character Asset Example 05</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Character_Assets_demo6.png"
+        alt="AdCraft character asset example 6"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Character Asset Example 06</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center">
       <sub>
-        <b>Character Asset Example 02</b><br/>
-        A complete visual specification designed for consistent multi-shot character generation.
+        Complete character specifications covering turnarounds, facial references,
+        clothing details, materials, accessories, props, and extended commercial scenarios.
       </sub>
     </td>
   </tr>
@@ -181,55 +235,110 @@ Together, these references help preserve the same character identity across clos
 
 #### 🌍 Scene Asset Library
 
-<div align="center">
-  <img
-    src="./assets/scene_assets.png"
-    alt="AdCraft scene asset library"
-    width="100%"
-  />
-  <br/>
-  <sub>Explore reusable scene worlds and save them directly to your AdCraft workspace.</sub>
-</div>
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img
+        src="./assets/scene_assets_01.png"
+        alt="AdCraft scene asset library overview 1"
+        width="100%"
+      />
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img
+        src="./assets/scene_assets_02.png"
+        alt="AdCraft scene asset library overview 2"
+        width="100%"
+      />
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <sub>Explore reusable scene worlds and save them directly to your AdCraft workspace.</sub>
+    </td>
+  </tr>
+</table>
 
 <br/>
 
 AdCraft scene assets are designed as **complete world-building storyboards**, rather than individual background images.
 
-Each scene asset usually contains a coherent collection of storyboard-ready views, such as:
+Each scene asset usually contains a coherent collection of storyboard-ready compositions, including:
 
 - **Establishing shots** that define the overall location and visual identity
 - **Wide, medium, and close shots** for different storytelling needs
 - **Multiple camera angles and viewpoints** within the same environment
 - **Interior, exterior, and environmental detail shots**
+- **Character-ready staging areas** for actions, dialogue, and product interactions
 - **Transition and connecting shots** for continuous scene construction
 - **Consistent architecture, lighting, atmosphere, geography, and visual language**
 
-This allows creators and AI agents to build an entire sequence inside the same world while maintaining environmental continuity across shots.
+This allows creators and AI agents to construct a complete sequence inside the same visual world while maintaining environmental continuity across shots.
 
 <table>
   <tr>
-    <td width="50%" align="center" valign="top">
+    <td width="33.33%" align="center" valign="top">
       <img
         src="./assets/Scene_Assets_demo1.png"
         alt="AdCraft scene asset example 1"
         width="100%"
       />
       <br/>
-      <sub>
-        <b>Scene Asset Example 01</b><br/>
-        A complete world-building storyboard with multiple locations, shot sizes, and camera perspectives.
-      </sub>
+      <sub><b>Scene Asset Example 01</b></sub>
     </td>
-    <td width="50%" align="center" valign="top">
+    <td width="33.33%" align="center" valign="top">
       <img
         src="./assets/Scene_Assets_demo2.png"
         alt="AdCraft scene asset example 2"
         width="100%"
       />
       <br/>
+      <sub><b>Scene Asset Example 02</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo3.png"
+        alt="AdCraft scene asset example 3"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Scene Asset Example 03</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo4.png"
+        alt="AdCraft scene asset example 4"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Scene Asset Example 04</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo5.png"
+        alt="AdCraft scene asset example 5"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Scene Asset Example 05</b></sub>
+    </td>
+    <td width="33.33%" align="center" valign="top">
+      <img
+        src="./assets/Scene_Assets_demo6.png"
+        alt="AdCraft scene asset example 6"
+        width="100%"
+      />
+      <br/>
+      <sub><b>Scene Asset Example 06</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="3" align="center">
       <sub>
-        <b>Scene Asset Example 02</b><br/>
-        Consistent environmental references prepared for multi-shot advertising and narrative production.
+        Complete world-building storyboards with consistent locations, shot sizes,
+        camera perspectives, environmental details, lighting, and atmosphere.
       </sub>
     </td>
   </tr>
