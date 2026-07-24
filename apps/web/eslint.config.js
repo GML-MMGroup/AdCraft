@@ -45,7 +45,12 @@ export default [
     },
   },
   {
-    files: ["tests/**/*.mjs", "*.config.js"],
+    files: [
+      "scripts/**/*.{js,mjs,cjs,ts}",
+      "tests/**/*.mjs",
+      "*.config.{js,mjs,cjs,ts}",
+      "mediaCachePolicy.ts",
+    ],
     languageOptions: {
       globals: {
         console: "readonly",

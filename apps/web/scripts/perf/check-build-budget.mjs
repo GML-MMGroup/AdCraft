@@ -1,10 +1,8 @@
-/* global console, process, URL */
-
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const DIST_ASSETS = new URL("../../dist/assets/", import.meta.url);
-const DIST_INDEX_HTML = new URL("../../dist/index.html", import.meta.url);
+const DIST_MANIFEST = new URL("../../dist/.vite/manifest.json", import.meta.url);
 const MAX_MAIN_JS_BYTES = 650 * 1024;
 const MAX_INITIAL_JS_BYTES = 475 * 1024;
 // The core total includes lazy route chunks such as the Project cover preview UI.
@@ -32,38 +30,39 @@ function listAssets() {
   }
 }
 
-function readIndexHtml() {
+function readManifest() {
   try {
-    return readFileSync(DIST_INDEX_HTML, "utf8");
+    return JSON.parse(readFileSync(DIST_MANIFEST, "utf8"));
   } catch {
-    console.error("dist/index.html is missing. Run npm run build before npm run perf:bundle.");
+    console.error("dist/.vite/manifest.json is missing. Run npm run build before npm run perf:bundle.");
     process.exit(1);
   }
 }
 
-function initialJsNames(indexHtml) {
-  const names = new Set();
-  for (const match of indexHtml.matchAll(/<script\b[^>]*\bsrc="\/assets\/([^"]+\.js)"/g)) {
-    names.add(match[1]);
+function initialManifestEntries(manifest) {
+  const entries = new Set();
+  const queue = ["index.html"];
+  while (queue.length) {
+    const entryName = queue.shift();
+    if (!entryName || entries.has(entryName)) continue;
+    const entry = manifest[entryName];
+    if (!entry) {
+      console.error(`Vite manifest is missing ${entryName}. Run npm run build before npm run perf:bundle.`);
+      process.exit(1);
+    }
+    entries.add(entryName);
+    for (const importedEntry of entry.imports ?? []) queue.push(importedEntry);
   }
-  for (const match of indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="\/assets\/([^"]+\.js)"/g)) {
-    names.add(match[1]);
-  }
-  return names;
+  return [...entries].map((entryName) => manifest[entryName]);
 }
 
-function initialCssNames(indexHtml) {
-  const names = new Set();
-  for (const tag of indexHtml.matchAll(/<link\b[^>]*>/g)) {
-    if (!/\brel="stylesheet"/.test(tag[0])) continue;
-    const asset = tag[0].match(/\bhref="\/assets\/([^"]+\.css)"/);
-    if (asset) names.add(asset[1]);
-  }
-  return names;
+function assetName(manifestFile) {
+  return manifestFile.replace(/^assets\//, "");
 }
 
 const assets = listAssets();
-const indexHtml = readIndexHtml();
+const manifest = readManifest();
+const initialEntries = initialManifestEntries(manifest);
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
 const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
@@ -75,8 +74,8 @@ const timelineEditorCss = cssAssets.find((asset) => asset.name.startsWith("timel
 // The asset viewer is loaded only after a user opens an asset card.
 const featureJsAssets = [screenplayEditorJs, finalCompositionEditorJs, timelineEditorJs, assetEntityViewerJs].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
-const initialNames = initialJsNames(indexHtml);
-const initialCssAssetNames = initialCssNames(indexHtml);
+const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)));
+const initialCssAssetNames = new Set(initialEntries.flatMap((entry) => (entry.css ?? []).map(assetName)));
 const initialJs = jsAssets.filter((asset) => initialNames.has(asset.name));
 const initialCss = cssAssets.filter((asset) => initialCssAssetNames.has(asset.name));
 const initialJsBytes = initialJs.reduce((sum, asset) => sum + asset.size, 0);
