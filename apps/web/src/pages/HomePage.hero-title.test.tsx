@@ -37,6 +37,7 @@ describe("HomePage hero title", () => {
       "Ad film.",
     ]);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
+    expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(8);
   });
 
   it("uses a stronger, airier title lockup and layered gilded accent", () => {
@@ -48,10 +49,16 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__accent\s*\{[^}]*linear-gradient\([^}]*#f8e7a1[^}]*#8f5a12[^}]*\)[^}]*background-clip:\s*text;[^}]*-webkit-text-stroke:\s*0\.16px rgba\(108, 66, 10, 0\.32\);/s,
+      /\.home-product-hero__accent-glyph\s*\{[^}]*linear-gradient\([^}]*#f8e7a1[^}]*#8f5a12[^}]*\)[^}]*background-clip:\s*text;[^}]*-webkit-text-stroke:\s*0\.16px rgba\(108, 66, 10, 0\.32\);/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__accent\s*\{[^}]*width:\s*fit-content;[^}]*padding-inline:\s*0\.1em 0\.12em;[^}]*margin-inline:\s*-0\.1em -0\.12em;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__accent-glyph\s*\{[^}]*padding-inline:\s*0\.08em;[^}]*margin-inline:\s*-0\.08em;/s,
+    );
+    expect(mobileHeroTitleStyles).toMatch(
+      /font-size:\s*clamp\(42px,\s*12vw,\s*56px\);/,
     );
   });
 });
