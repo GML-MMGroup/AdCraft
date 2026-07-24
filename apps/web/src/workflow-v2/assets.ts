@@ -62,6 +62,7 @@ export function missingHydratedAssetIdsForSlots(slots: WorkflowSlotV2[], assets:
   for (const slot of slots) {
     for (const id of [
       slot.selected_asset_id,
+      slot.selected_version_id,
       slot.current_working_asset_id,
       slot.current_working_version_id,
       ...(slot.history_version_ids ?? []),
@@ -77,7 +78,7 @@ export function missingHydratedAssetIdsForSlots(slots: WorkflowSlotV2[], assets:
 export type MissingV2SlotAssetRef = {
   slot_id: string;
   asset_id: string;
-  pointer: "selected_asset_id" | "current_working_asset_id" | "current_working_version_id";
+  pointer: "selected_asset_id" | "selected_version_id" | "current_working_asset_id" | "current_working_version_id";
 };
 
 export function findMissingV2SlotAssetRefs(
@@ -91,6 +92,9 @@ export function findMissingV2SlotAssetRefs(
   for (const slot of slots) {
     if (slot.selected_asset_id && !byAssetId.has(slot.selected_asset_id)) {
       missing.push({ slot_id: slot.slot_id, asset_id: slot.selected_asset_id, pointer: "selected_asset_id" });
+    }
+    if (slot.selected_version_id && !byVersionId.has(slot.selected_version_id)) {
+      missing.push({ slot_id: slot.slot_id, asset_id: slot.selected_version_id, pointer: "selected_version_id" });
     }
     if (slot.current_working_asset_id && !byAssetId.has(slot.current_working_asset_id)) {
       missing.push({ slot_id: slot.slot_id, asset_id: slot.current_working_asset_id, pointer: "current_working_asset_id" });

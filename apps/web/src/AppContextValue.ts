@@ -1,10 +1,9 @@
 import { createContext, useContext, type Dispatch, type SetStateAction } from "react";
 import type {
-  DemoProjectRecord,
   ProjectSessionState,
   SavedWorkflowProject,
-  TrashedProjectRecord,
 } from "./projects/newProject";
+import type { ProjectV2Summary } from "./types-v2";
 import type {
   AssetLibraryEntitySummary,
   AssetUploadOptions,
@@ -25,8 +24,8 @@ export interface AppContextValue {
   workflow: WorkflowGraph | null;
   nodeCatalog: NodeCatalogItem[];
   nodeRuns: NodeRunResult[];
-  savedProjects: SavedWorkflowProject[];
-  trashedProjects: TrashedProjectRecord[];
+  savedProjects: ProjectV2Summary[];
+  trashedProjects: ProjectV2Summary[];
   demoProjectFavorites: Record<string, boolean>;
   activeProjectId: string | null;
   workspaceHydrated: boolean;
@@ -39,9 +38,10 @@ export interface AppContextValue {
   saveProject: (state?: ProjectSessionState) => SavedWorkflowProject | null;
   startNewProject: () => void;
   openProject: (projectId: string) => Promise<boolean>;
-  moveProjectToTrash: (project: DemoProjectRecord & { source: "saved" | "demo" }) => TrashedProjectRecord | null;
-  deleteTrashedProject: (projectId: string) => boolean;
-  toggleProjectFavorite: (project: DemoProjectRecord & { source: "saved" | "demo" }) => boolean | null;
+  moveProjectToTrash: (projectId: string) => Promise<boolean>;
+  restoreTrashedProject: (projectId: string) => Promise<boolean>;
+  renameProject: (projectId: string, name: string) => Promise<boolean>;
+  toggleProjectFavorite: (project: ProjectV2Summary) => Promise<boolean>;
   toggleAssetSelection: (asset: UploadedAsset) => void;
   refreshAssets: () => Promise<void>;
   refreshNodeCatalog: () => Promise<void>;

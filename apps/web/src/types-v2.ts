@@ -61,9 +61,11 @@ export type ItemLifecycleStateV2 = "active" | "archived";
 
 export interface WorkflowV2 {
   workflow_id: string;
+  project_id?: string;
   workflow_schema_version: 2;
-  /** Monotonic workflow revision used to build a fallback If-Match value. */
+  /** Monotonic authoring version reported by the backend. */
   state_version?: number;
+  semantic_revision_no?: number;
   name?: string;
   description?: string;
   prompt?: string;
@@ -81,6 +83,109 @@ export interface WorkflowV2 {
   metadata?: Record<string, unknown>;
   created_at?: string;
   updated_at?: string;
+}
+
+/** A Workflow returned by the backend Project/authoring persistence boundary. */
+export interface PersistedWorkflowV2 extends WorkflowV2 {
+  project_id: string;
+  state_version: number;
+  semantic_revision_no: number;
+}
+
+export type ProjectV2Status = "active" | "archived" | "trashed";
+
+export interface ProjectV2Summary {
+  project_id: string;
+  workflow_id: string;
+  name: string;
+  status: ProjectV2Status;
+  is_favorite: boolean;
+  cover_asset_id: string | null;
+  project_version: number;
+  updated_at: string;
+}
+
+export interface ProjectV2 extends ProjectV2Summary {
+  description: string;
+  semantic_revision_no: number;
+  created_at: string;
+  deleted_at: string | null;
+}
+
+export interface ProjectV2ListResponse {
+  items: ProjectV2Summary[];
+  next_cursor: string | null;
+}
+
+export interface ProjectV2UpdateRequest {
+  name?: string;
+  description?: string;
+  is_favorite?: boolean;
+  cover_asset_id?: string | null;
+  status?: "active" | "archived";
+}
+
+export type WorkflowRevisionChangeSourceV2 =
+  | "create"
+  | "migration"
+  | "prompt_edit"
+  | "structure_edit"
+  | "reference_change"
+  | "selected_version_change"
+  | "script_confirm"
+  | "timeline_edit"
+  | "restore"
+  | "execution_result";
+
+export interface WorkflowRevisionV2Summary {
+  revision_id: string;
+  workflow_id: string;
+  revision_no: number;
+  state_version: number;
+  content_hash: string;
+  change_source: WorkflowRevisionChangeSourceV2;
+  restored_from_revision_no: number | null;
+  source_execution_id: string | null;
+  created_at: string;
+}
+
+export interface WorkflowRevisionV2Detail extends WorkflowRevisionV2Summary {
+  document: Record<string, unknown>;
+}
+
+export interface WorkflowRevisionPage {
+  items: WorkflowRevisionV2Summary[];
+  next_cursor: string | null;
+}
+
+export interface WorkflowRevisionRestoreResponse {
+  workflow: WorkflowV2;
+  revision: WorkflowRevisionV2Summary;
+  restored_from_revision_no: number;
+}
+
+export type V2ProjectWorkflowNotFoundCode = "project_not_found" | "workflow_not_found" | "workflow_revision_not_found";
+
+export type V2AuthoringPreconditionCode =
+  | "project_precondition_required"
+  | "workflow_precondition_required"
+  | "project_state_conflict"
+  | "workflow_state_conflict";
+
+export interface V2ProjectWorkflowErrorDetails {
+  current_etag?: string;
+  current_state_version?: number;
+  current_project_version?: number;
+  revision_no?: number;
+  [key: string]: unknown;
+}
+
+export interface V2ProjectWorkflowErrorResponse {
+  detail: {
+    code: V2ProjectWorkflowNotFoundCode | V2AuthoringPreconditionCode | string;
+    message: string;
+    details?: V2ProjectWorkflowErrorDetails;
+  };
 }
 
 export interface WorkflowNodeV2 {
@@ -139,6 +244,7 @@ export interface WorkflowSlotV2 {
   provider?: string | null;
   provider_params?: Record<string, unknown>;
   selected_asset_id?: string | null;
+  selected_version_id?: string | null;
   current_working_asset_id?: string | null;
   current_working_version_id?: string | null;
   history_version_ids?: string[];
@@ -757,6 +863,7 @@ export interface V2PlanFromChatRequest {
 export interface V2PlanFromChatResponse {
   front_desk: FrontDeskResponse;
   workflow: WorkflowV2 | null;
+  project_id?: string | null;
   normalized_v2_request?: Record<string, unknown> | null;
   status?: string | null;
   error_code?: string | null;
@@ -1025,6 +1132,15 @@ export interface V2FinalTimelineRenderSettings {
   audio_bitrate: string | null;
 }
 
+export type V2CompositionRenderMode = "simple_sequence" | "timeline_editor";
+
+export interface V2CompositionCapabilities {
+  render_mode: V2CompositionRenderMode;
+  supports_timeline_controls: boolean;
+  supports_shot_reorder: boolean;
+  supports_bgm_volume_edit: boolean;
+}
+
 export interface V2FinalTimelineRenderRequest {
   timeline_id: string;
   timeline_version: number;
@@ -1052,6 +1168,7 @@ export interface V2FinalTimelineSource {
   thumbnail_url?: string | null;
   duration_seconds?: number | null;
   origin: "workflow" | "asset_library" | "upload" | string;
+  slot_id?: string | null;
 }
 
 export interface V2FinalTimelineResponse {
@@ -1061,6 +1178,9 @@ export interface V2FinalTimelineResponse {
   source: "default" | "saved" | string;
   timeline: V2FinalCompositionTimeline;
   available_sources: V2FinalTimelineSource[];
+  composition_capabilities: V2CompositionCapabilities;
+  stale_clip_ids: string[];
+  missing_source_clip_ids: string[];
   runtime?: WorkflowRuntimeV2 | null;
 }
 

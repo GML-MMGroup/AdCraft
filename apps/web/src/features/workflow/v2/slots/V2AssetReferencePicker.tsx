@@ -14,6 +14,10 @@ import {
   toggleV2ReferenceSelection,
   type V2ReferenceSelection,
 } from "./v2ReferenceSelectionModel.ts";
+import {
+  shouldCloseReferencePickerAfterAuthoringResolution,
+  type V2AuthoringConflictResolution,
+} from "./v2AssetReferencePickerConflict.ts";
 
 type PickerTab = "upload" | "my" | "recommended";
 
@@ -23,6 +27,8 @@ type V2AssetReferencePickerProps = {
   onAddReferences: (request: ReturnType<typeof buildV2ReferenceSelectionsRequest>) => Promise<boolean>;
   onClose: () => void;
 };
+
+const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
 
 function assetError(caught: unknown, fallback: string) {
   return caught instanceof Error && caught.message ? caught.message : fallback;
@@ -41,6 +47,18 @@ export function V2AssetReferencePicker({ workflowId, slotId, onAddReferences, on
   const recommendedReady = tab !== "recommended" || catalog.status?.status === "ready";
   const scope = tab === "recommended" ? "recommended" : "my";
   const library = useV2AssetLibrary({ scope, category, search, enabled: tab !== "upload" && recommendedReady });
+
+  useEffect(() => {
+    function closeResolvedReferenceSelection(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (!shouldCloseReferencePickerAfterAuthoringResolution(resolution, workflowId, slotId)) return;
+      setSelections([]);
+      onClose();
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, closeResolvedReferenceSelection as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, closeResolvedReferenceSelection as EventListener);
+  }, [onClose, slotId, workflowId]);
 
   useEffect(() => {
     setExpanded(null);

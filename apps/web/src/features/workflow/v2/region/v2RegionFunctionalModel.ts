@@ -5,6 +5,7 @@ import {
   usableAssetVersionUrl,
   workingVersionForSlot,
 } from "../../../../workflow-v2/selectors.ts";
+import { finalCompositionDisplayStatus } from "../../final-composition/v2FinalCompositionPolicy.ts";
 
 export type V2RegionSlotDisplayRole = "main" | "multi_view" | "supplemental";
 
@@ -12,6 +13,8 @@ export type V2RegionFunctionalSlotView = {
   slot: WorkflowSlotV2;
   displayRole: V2RegionSlotDisplayRole;
   runtimeStatus: string;
+  runtimeErrorCode: string | null;
+  runtimeMessage: string | null;
   selectedAsset?: AssetVersionV2;
   workingAsset?: AssetVersionV2;
   previewAsset?: AssetVersionV2;
@@ -38,6 +41,11 @@ export type V2RegionFunctionalModel = {
   waitingSlots: number;
   failedSlots: number;
 };
+
+export function isV2FinalCompositionFunctionalItem(item: V2RegionFunctionalItemView) {
+  return item.item.node_id === "final-composition"
+    && item.item.item_type === "final_composition";
+}
 
 export function buildV2RegionFunctionalModel({
   title,
@@ -72,12 +80,21 @@ export function buildV2RegionFunctionalModel({
         const selectedAsset = selectedAssetForSlot(slot, assets);
         const workingAsset = workingVersionForSlot(slot, assets);
         const previewAsset = workingAsset ?? selectedAsset;
-        const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtime?.slot_runtime?.[slot.slot_id]?.status ?? slot.status;
+        const runtimeRecord = runtime?.slot_runtime?.[slot.slot_id];
+        const rawRuntimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
+        const runtimeMetadataErrorCode = stringMetadataValue(runtimeRecord?.metadata, "generation_error_code");
+        const runtimeMetadataMessage = stringMetadataValue(runtimeRecord?.metadata, "generation_error_message");
+        const runtimeErrorCode = runtimeRecord?.error?.code ?? runtimeMetadataErrorCode;
+        const runtimeStatus = isV2FinalCompositionFunctionalSlot(slot)
+          ? finalCompositionDisplayStatus(rawRuntimeStatus, runtimeErrorCode)
+          : rawRuntimeStatus;
 
         return {
           slot,
           displayRole: regionSlotDisplayRole(slot),
           runtimeStatus,
+          runtimeErrorCode,
+          runtimeMessage: runtimeRecord?.error?.message ?? runtimeMetadataMessage ?? runtimeRecord?.waiting_reason ?? null,
           selectedAsset,
           workingAsset,
           previewAsset,
@@ -127,8 +144,28 @@ function compareRegionSlots(left: WorkflowSlotV2, right: WorkflowSlotV2) {
   return roleOrder[regionSlotDisplayRole(left)] - roleOrder[regionSlotDisplayRole(right)] || mediaOrder || left.slot_id.localeCompare(right.slot_id);
 }
 
+export function isV2BgmFunctionalSlot(slot: WorkflowSlotV2): boolean {
+  return slot.slot_type === "bgm_audio" && slot.media_type === "audio";
+}
+
+export function isV2FinalCompositionFunctionalSlot(slot: WorkflowSlotV2): boolean {
+  return slot.node_id === "final-composition"
+    && slot.slot_type === "final_video"
+    && slot.media_type === "video";
+}
+
 function isRenderableFunctionalSlot(slot: WorkflowSlotV2) {
-  if (slot.media_type === "image") return true;
+  return isImageSlot(slot)
+    || isStoryboardVideoSlot(slot)
+    || isV2BgmFunctionalSlot(slot)
+    || isV2FinalCompositionFunctionalSlot(slot);
+}
+
+function isImageSlot(slot: Pick<WorkflowSlotV2, "media_type">) {
+  return slot.media_type === "image";
+}
+
+function isStoryboardVideoSlot(slot: WorkflowSlotV2) {
   return slot.media_type === "video" && isStoryboardShotSlot(slot);
 }
 
@@ -149,12 +186,20 @@ function compactItemSummary(item: WorkflowItemV2) {
 
 function itemRuntimeStatus(fallbackStatus: string, statuses: string[]) {
   if (statuses.includes("running")) return "running";
+  if (statuses.includes("queued")) return "queued";
   if (statuses.includes("waiting")) return "waiting";
+  if (statuses.includes("blocked")) return "blocked";
   if (statuses.includes("failed")) return "failed";
+  if (statuses.length && statuses.every((status) => status === "skipped")) return "skipped";
   if (statuses.length && statuses.every(isCompletedStatus)) return "completed";
   return fallbackStatus;
 }
 
 function isCompletedStatus(status: string) {
   return ["completed", "skipped"].includes(String(status).toLowerCase());
+}
+
+function stringMetadataValue(metadata: Record<string, unknown> | undefined, key: string) {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }

@@ -13,6 +13,7 @@ import {
 } from "./V2CompositionPreview.tsx";
 import { fitShotTimelineZoom, SHOT_TIMELINE_HEADER_WIDTH, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
+import { V2SimpleSequenceComposition } from "./V2SimpleSequenceComposition.tsx";
 import { isFinalRenderActive } from "./finalRenderSession.ts";
 import {
   resolveScopedTimelineSource,
@@ -20,6 +21,15 @@ import {
   type CompositionEditorSession,
   type ScopedTimelineSource,
 } from "./useV2FinalCompositionEditor.ts";
+
+const V2_AUTHORING_DRAFT_DISCARDED_EVENT = "v2-authoring-draft-discarded";
+const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
+
+type V2AuthoringConflictResolution = {
+  target: { resource: "project" | "workflow"; id: string };
+  operationPath: string;
+  action: "retry" | "discard";
+};
 
 export function isTimelineKeyboardTarget(target: EventTarget | null) {
   const element = target as HTMLElement | null;
@@ -71,6 +81,7 @@ export function V2FinalCompositionEditor({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTimelineKeyboardTarget(event.target)) return;
       const current = editorRef.current;
+      if (!current.advancedEditorEnabled) return;
       const key = event.key.toLowerCase();
       const command = event.metaKey || event.ctrlKey;
 
@@ -145,6 +156,30 @@ export function V2FinalCompositionEditor({
       setPlaying(false);
     }
   }, [active, workflowId]);
+
+  useEffect(() => {
+    function discardConflictDraft(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.target.resource !== "workflow" || resolution.target.id !== workflowId) return;
+      if (!/\/final-composition\/timeline(?:\/|$)/.test(resolution.operationPath)) return;
+      void editorRef.current.load();
+    }
+
+    window.addEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+  }, [workflowId]);
+
+  useEffect(() => {
+    function reloadTimelineAfterRetry(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.action !== "retry" || resolution.target.resource !== "workflow" || resolution.target.id !== workflowId) return;
+      if (!/\/final-composition\/timeline(?:\/|$)/.test(resolution.operationPath)) return;
+      void editorRef.current.load();
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reloadTimelineAfterRetry as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reloadTimelineAfterRetry as EventListener);
+  }, [workflowId]);
 
   const restoreBgmDialogFocus = useCallback(() => {
     setPendingBgmSource(null);
@@ -226,7 +261,7 @@ export function V2FinalCompositionEditor({
   const renderProgressPercent = editor.renderHint?.progressPercent ?? editor.renderState?.progress_percent ?? null;
   const renderId = editor.renderState?.render_id ?? editor.renderJob?.render_id ?? null;
   const renderIsActive = renderStatus ? isFinalRenderActive(renderStatus) : false;
-  const renderCanRetry = renderStatus === "failed" || renderStatus === "cancelled";
+  const renderCanRetry = !editor.renderIssue && (renderStatus === "failed" || renderStatus === "cancelled");
 
   if (!active) return null;
   return (
@@ -241,34 +276,36 @@ export function V2FinalCompositionEditor({
           </span>
         </div>
       </header>
-      <V2TimelineToolbar
-        tool={editor.tool}
-        editMode={editor.editMode}
-        snapEnabled={editor.snapEnabled}
-        zoom={editor.zoom}
-        playing={playing}
-        canUndo={editor.canUndo}
-        canRedo={editor.canRedo}
-        canSave={editor.isDirty && !editor.saving && !editor.conflict}
-        canRender={Boolean(editor.draft) && !editor.saving && !editor.rendering && !editor.conflict}
-        loading={editor.loading}
-        saving={editor.saving}
-        rendering={editor.rendering}
-        onSetTool={editor.setTool}
-        onSetEditMode={editor.setEditMode}
-        onToggleSnap={() => editor.setSnapEnabled(!editor.snapEnabled)}
-        onUndo={editor.undo}
-        onRedo={editor.redo}
-        onZoomOut={() => editor.setZoom(editor.zoom / 1.25)}
-        onZoomIn={() => editor.setZoom(editor.zoom * 1.25)}
-        onFitTimeline={() => editor.setZoom(editor.draft
-          ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - SHOT_TIMELINE_HEADER_WIDTH))
-          : 1)}
-        onTogglePlaying={() => previewRef.current?.togglePlayback()}
-        onRefresh={() => void editor.load({ preserveDraft: true })}
-        onSave={() => void editor.save()}
-        onRender={() => void editor.render()}
-      />
+      {editor.advancedEditorEnabled ? (
+        <V2TimelineToolbar
+          tool={editor.tool}
+          editMode={editor.editMode}
+          snapEnabled={editor.snapEnabled}
+          zoom={editor.zoom}
+          playing={playing}
+          canUndo={editor.canUndo}
+          canRedo={editor.canRedo}
+          canSave={editor.isDirty && !editor.saving && !editor.conflict}
+          canRender={Boolean(editor.draft) && !editor.saving && !editor.rendering && !editor.conflict}
+          loading={editor.loading}
+          saving={editor.saving}
+          rendering={editor.rendering}
+          onSetTool={editor.setTool}
+          onSetEditMode={editor.setEditMode}
+          onToggleSnap={() => editor.setSnapEnabled(!editor.snapEnabled)}
+          onUndo={editor.undo}
+          onRedo={editor.redo}
+          onZoomOut={() => editor.setZoom(editor.zoom / 1.25)}
+          onZoomIn={() => editor.setZoom(editor.zoom * 1.25)}
+          onFitTimeline={() => editor.setZoom(editor.draft
+            ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - SHOT_TIMELINE_HEADER_WIDTH))
+            : 1)}
+          onTogglePlaying={() => previewRef.current?.togglePlayback()}
+          onRefresh={() => void editor.load({ preserveDraft: true })}
+          onSave={() => void editor.save()}
+          onRender={() => void editor.render()}
+        />
+      ) : null}
       {editor.error ? <p className="v2-composition-feedback is-error">{editor.error}</p> : null}
       {editor.warning ? <p className="v2-composition-feedback">{editor.warning}</p> : null}
       {editor.renderSessionError ? (
@@ -288,14 +325,18 @@ export function V2FinalCompositionEditor({
           A newer saved timeline is available. Your local edits remain unchanged until you refresh or save.
         </p>
       ) : null}
-      {renderStatus && renderId ? (
-        <div className={`v2-composition-feedback${renderStatus === "failed" ? " is-error" : ""}`}>
-          <RenderStatusAnnouncement
-            status={renderStatus}
-            progressPercent={renderProgressPercent}
-            errorCode={editor.renderState?.error_code}
-            errorMessage={editor.renderState?.error_message}
-          />
+      {editor.advancedEditorEnabled && renderStatus && renderId ? (
+        <div className={`v2-composition-feedback${renderStatus === "failed" && !editor.renderIssue ? " is-error" : ""}`}>
+          {editor.renderIssue ? (
+            <span role="status" aria-live="polite" aria-atomic="true">{editor.renderIssue.message}</span>
+          ) : (
+            <RenderStatusAnnouncement
+              status={renderStatus}
+              progressPercent={renderProgressPercent}
+              errorCode={editor.renderState?.error_code}
+              errorMessage={editor.renderState?.error_message}
+            />
+          )}
           {renderIsActive ? (
             <button
               className="v2-composition-icon-button"
@@ -316,7 +357,7 @@ export function V2FinalCompositionEditor({
       {editor.loading && !editor.draft ? (
         <p className="v2-composition-feedback">Loading Final Composition timeline...</p>
       ) : null}
-      {editor.draft ? (
+      {editor.draft && editor.advancedEditorEnabled ? (
         <div className="v2-composition-editor-layout">
           <aside className="v2-composition-source-panel" aria-label="Timeline media">
             <div className="v2-composition-panel-heading"><strong>Media</strong><span>{sources.length}</span></div>
@@ -388,8 +429,24 @@ export function V2FinalCompositionEditor({
             onRemove={editor.removeClip}
           />
         </div>
+      ) : editor.draft ? (
+        <V2SimpleSequenceComposition
+          timeline={editor.draft}
+          sources={editor.sources}
+          staleClipIds={editor.staleClipIds}
+          missingSourceClipIds={editor.missingSourceClipIds}
+          finalVideo={editor.finalVideo}
+          autoPlayFinalVideo={editor.autoPlayFinalVideo}
+          renderStatus={renderStatus}
+          renderProgressPercent={renderProgressPercent}
+          renderIssue={editor.renderIssue}
+          rendering={editor.rendering}
+          cancellingRender={editor.cancellingRender}
+          onExport={() => void editor.render()}
+          onCancel={() => void editor.cancelRender()}
+        />
       ) : null}
-      {libraryType ? (
+      {editor.advancedEditorEnabled && libraryType ? (
         <AssetLibraryPicker
           selectedEntities={[]}
           lockedEntityType={libraryType === "audio" ? "bgm" : "video_clip"}
@@ -414,7 +471,7 @@ export function V2FinalCompositionEditor({
           }}
         />
       ) : null}
-      {pendingBgmSource ? (
+      {editor.advancedEditorEnabled && pendingBgmSource ? (
         <div
           ref={bgmDialogRef}
           className="v2-composition-bgm-confirmation"

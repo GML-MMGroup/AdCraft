@@ -1,5 +1,9 @@
 import type {
   AssetOwnerResponseV2,
+  ProjectV2,
+  ProjectV2ListResponse,
+  ProjectV2Status,
+  ProjectV2UpdateRequest,
   ProviderTaskV2,
   SlotVersionsResponseV2,
   V2AddSlotReferenceRequest,
@@ -59,9 +63,15 @@ import type {
   WorkflowRuntimeEventV2,
   WorkflowRuntimeV2,
   WorkflowV2,
+  PersistedWorkflowV2,
+  WorkflowRevisionPage,
+  WorkflowRevisionRestoreResponse,
+  WorkflowRevisionV2Detail,
 } from "../types-v2.ts";
 import {
   normalizeAssetOwnerResponseV2,
+  normalizeProjectV2,
+  normalizeProjectV2ListResponse,
   normalizeV2AssetLibraryEntityDetail,
   normalizeV2AssetLibraryListResponse,
   normalizeV2RecommendedCatalogStatus,
@@ -73,10 +83,14 @@ import {
   normalizeV2WarningArray,
   normalizeWorkflowRuntimeEventV2,
   normalizeWorkflowRuntimeV2,
+  normalizePersistedWorkflowV2,
   normalizeWorkflowV2,
   normalizeWorkflowV2MutationResponse,
   normalizeWorkflowV2ReferenceMutationResponse,
   normalizeWorkflowV2RunResponse,
+  normalizeWorkflowRevisionPage,
+  normalizeWorkflowRevisionRestoreResponse,
+  normalizeWorkflowRevisionV2Detail,
   normalizeV2RegisterReferenceResponse,
   normalizeV2ScriptConfirmResponse,
   normalizeV2ScriptReadResponse,
@@ -92,9 +106,17 @@ import {
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
+import { v2EtagStore, type V2AuthoringResource } from "./v2EtagStore.ts";
 
 const API_V2_BASE = "/api/v2";
 const inFlightMetadataReads = new Map<string, Promise<unknown>>();
+
+type V2PreconditionTarget = { resource: V2AuthoringResource; id: string };
+type V2RequestBehavior = {
+  captureAuthoringEtag?: boolean;
+  explicitAuthoringPrecondition?: V2PreconditionTarget;
+  allowMissingAuthoringEtag?: boolean;
+};
 
 export class V2ApiError extends Error {
   readonly status: number;
@@ -158,15 +180,31 @@ async function requestV2Payload(path: string, options: RequestInit = {}): Promis
   return (await requestV2Response(path, options)).payload;
 }
 
-async function requestV2Response(path: string, options: RequestInit = {}): Promise<{ payload: unknown; etag: string | null }> {
+async function requestV2Response(
+  path: string,
+  options: RequestInit = {},
+  optionsByBehavior: V2RequestBehavior = {},
+): Promise<{ payload: unknown; etag: string | null }> {
   const bodyIsFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const method = (options.method ?? "GET").toUpperCase();
+  const headers = new Headers(options.headers);
+  const precondition = optionsByBehavior.explicitAuthoringPrecondition
+    ?? v2AuthoringPreconditionTarget(path, method);
+  if (precondition && !headers.has("If-Match") && !optionsByBehavior.allowMissingAuthoringEtag) {
+    const etag = v2EtagStore.get(precondition.resource, precondition.id)
+      ?? await fetchCurrentAuthoringEtag(precondition);
+    if (!etag) throw new Error(`Missing backend ETag for ${precondition.resource} ${precondition.id}.`);
+    headers.set("If-Match", etag);
+  }
+  if (options.body && !bodyIsFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
   let response: Response;
   try {
     response = await fetch(`${API_V2_BASE}${path}`, {
       ...options,
       cache: method === "GET" ? "no-store" : options.cache,
-      headers: options.body && !bodyIsFormData ? { "Content-Type": "application/json", ...(options.headers ?? {}) } : options.headers,
+      headers,
     });
   } catch (error) {
     throw new V2NetworkError(error);
@@ -189,6 +227,28 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
         : [];
     const suggestedActions = recordsFrom(detailRecord?.suggested_actions ?? details.suggested_actions);
     const stage = firstString(detailRecord?.stage, details.stage);
+    if (precondition && (response.status === 412 || response.status === 428)) {
+      const { v2AuthoringConflictStore } = await import("./v2AuthoringConflictStore.ts");
+      const retryOptions = { ...options, headers: new Headers(options.headers) };
+      retryOptions.headers.delete("If-Match");
+      try {
+        await fetchCurrentAuthoringEtag(precondition);
+      } catch {
+        // Keep the original precondition error actionable even when the refresh cannot complete.
+      }
+      v2AuthoringConflictStore.raise({
+        target: precondition,
+        operationPath: path,
+        message,
+        retry: async () => {
+          await requestV2Response(path, retryOptions, {
+            ...optionsByBehavior,
+            allowMissingAuthoringEtag: false,
+          });
+        },
+        discard: async () => {},
+      });
+    }
     throw new V2ApiError({
       status: response.status,
       code,
@@ -200,7 +260,64 @@ async function requestV2Response(path: string, options: RequestInit = {}): Promi
       payload,
     });
   }
-  return { payload, etag: response.headers.get("etag") };
+  const etag = response.headers.get("etag");
+  if (optionsByBehavior.captureAuthoringEtag !== false) {
+    captureAuthoringEtag(path, payload, etag, precondition);
+  }
+  return { payload, etag };
+}
+
+export function v2AuthoringPreconditionTarget(path: string, method: string): V2PreconditionTarget | null {
+  if (!new Set(["POST", "PATCH", "PUT", "DELETE"]).has(method.toUpperCase())) return null;
+  const pathname = path.split("?", 1)[0] ?? path;
+  const project = pathname.match(/^\/projects\/([^/]+)(?:\/restore)?$/);
+  if (project) return { resource: "project", id: decodeURIComponent(project[1] ?? "") };
+  if (/^\/workflows\/plan-from-(?:prompt|chat)$/.test(pathname)) return null;
+  const workflow = pathname.match(/^\/workflows\/([^/]+)(\/.*)?$/);
+  if (!workflow) return null;
+  const workflowId = decodeURIComponent(workflow[1] ?? "");
+  const suffix = workflow[2] ?? "";
+  if (
+    suffix === "/run"
+    || suffix === "/chat-target"
+    || /\/(?:generate|regenerate)$/.test(suffix)
+    || suffix === "/final-composition/render"
+    || /\/provider-tasks(?:\/|$)/.test(suffix)
+    || /\/executions\/[^/]+\/(?:resume|cancel)$/.test(suffix)
+    || /\/working-version\/discard$/.test(suffix)
+    || /\/renders\/[^/]+\/cancel$/.test(suffix)
+  ) return null;
+  return { resource: "workflow", id: workflowId };
+}
+
+async function fetchCurrentAuthoringEtag(target: V2PreconditionTarget): Promise<string | null> {
+  const path = target.resource === "project"
+    ? `/projects/${encodeURIComponent(target.id)}`
+    : `/workflows/${encodeURIComponent(target.id)}`;
+  const response = await requestV2Response(path);
+  if (response.etag) v2EtagStore.set(target.resource, target.id, response.etag);
+  return response.etag;
+}
+
+function captureAuthoringEtag(
+  path: string,
+  payload: unknown,
+  etag: string | null,
+  precondition: V2PreconditionTarget | null,
+): void {
+  if (etag && precondition) v2EtagStore.set(precondition.resource, precondition.id, etag);
+  const record = asRecord(payload);
+  const workflow = asRecord(record?.workflow) ?? (record?.workflow_schema_version === 2 ? record : null);
+  if (etag && workflow && typeof workflow.workflow_id === "string") {
+    v2EtagStore.set("workflow", workflow.workflow_id, etag);
+    return;
+  }
+  if (etag && record && typeof record.project_id === "string" && typeof record.project_version === "number") {
+    v2EtagStore.set("project", record.project_id, etag);
+    return;
+  }
+  const workflowRead = path.match(/^\/workflows\/([^/]+)$/);
+  if (etag && workflowRead) v2EtagStore.set("workflow", decodeURIComponent(workflowRead[1] ?? ""), etag);
 }
 
 function metadataReadKey(path: string, options: RequestInit) {
@@ -230,12 +347,35 @@ async function requestV2<T>(path: string, options: RequestInit = {}, normalize?:
   return normalize ? normalize(payload) : (payload as T);
 }
 
-async function requestV2WithEtag<T>(path: string, options: RequestInit = {}, normalize?: (value: unknown) => T): Promise<V2EtaggedResponse<T>> {
-  const response = await requestV2Response(path, options);
+async function requestV2WithEtag<T>(
+  path: string,
+  options: RequestInit = {},
+  normalize?: (value: unknown) => T,
+  optionsByBehavior: V2RequestBehavior = {},
+): Promise<V2EtaggedResponse<T>> {
+  const response = await requestV2Response(path, options, optionsByBehavior);
   return {
     value: normalize ? normalize(response.payload) : (response.payload as T),
     etag: response.etag,
   };
+}
+
+async function requestV2GlobalRun<T>(
+  workflowId: string,
+  path: string,
+  options: RequestInit,
+  normalize: (value: unknown) => T,
+): Promise<T> {
+  const etag = v2EtagStore.getWorkflow(workflowId)
+    ?? await fetchCurrentAuthoringEtag({ resource: "workflow", id: workflowId });
+  const headers = new Headers(options.headers);
+  if (etag) headers.set("If-Match", etag);
+  const response = await requestV2Response(path, { ...options, headers }, {
+    captureAuthoringEtag: false,
+    explicitAuthoringPrecondition: etag ? { resource: "workflow", id: workflowId } : undefined,
+    allowMissingAuthoringEtag: true,
+  });
+  return normalize(response.payload);
 }
 
 export const v2Api = {
@@ -243,12 +383,73 @@ export const v2Api = {
     return requestV2(`/input-assets/upload`, { method: "POST", body: formData }, normalizeV2InputAssetUploadResponse);
   },
 
-  workflow(workflowId: string): Promise<WorkflowV2> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  workflow(workflowId: string): Promise<PersistedWorkflowV2> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizePersistedWorkflowV2);
   },
 
-  workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<WorkflowV2>> {
-    return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizeWorkflowV2);
+  workflowWithEtag(workflowId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(`/workflows/${encodeURIComponent(workflowId)}`, {}, normalizePersistedWorkflowV2);
+  },
+
+  workflowWithEtagWithoutCapture(workflowId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}`,
+      {},
+      normalizePersistedWorkflowV2,
+      { captureAuthoringEtag: false },
+    );
+  },
+
+  listProjects(status: ProjectV2Status = "active", limit = 100, cursor?: string | null): Promise<ProjectV2ListResponse> {
+    const query = new URLSearchParams({ status, limit: String(limit) });
+    if (cursor) query.set("cursor", cursor);
+    return requestV2(`/projects?${query.toString()}`, {}, normalizeProjectV2ListResponse);
+  },
+
+  projectWithEtag(projectId: string): Promise<V2EtaggedResponse<ProjectV2>> {
+    return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}`, {}, normalizeProjectV2);
+  },
+
+  projectWorkflow(projectId: string): Promise<V2EtaggedResponse<PersistedWorkflowV2>> {
+    return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}/workflow`, {}, normalizePersistedWorkflowV2);
+  },
+
+  updateProject(projectId: string, request: ProjectV2UpdateRequest): Promise<V2EtaggedResponse<ProjectV2>> {
+    return requestV2WithEtag(
+      `/projects/${encodeURIComponent(projectId)}`,
+      { method: "PATCH", body: JSON.stringify(request) },
+      normalizeProjectV2,
+    );
+  },
+
+  trashProject(projectId: string): Promise<void> {
+    return requestV2(`/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" });
+  },
+
+  restoreProject(projectId: string): Promise<V2EtaggedResponse<ProjectV2>> {
+    return requestV2WithEtag(`/projects/${encodeURIComponent(projectId)}/restore`, { method: "POST" }, normalizeProjectV2);
+  },
+
+  workflowRevisions(workflowId: string, limit = 100, cursor?: string | null): Promise<WorkflowRevisionPage> {
+    const query = new URLSearchParams({ limit: String(limit) });
+    if (cursor) query.set("cursor", cursor);
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/revisions?${query.toString()}`, {}, normalizeWorkflowRevisionPage);
+  },
+
+  workflowRevision(workflowId: string, revisionNo: number): Promise<WorkflowRevisionV2Detail> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/revisions/${revisionNo}`,
+      {},
+      normalizeWorkflowRevisionV2Detail,
+    );
+  },
+
+  restoreWorkflowRevision(workflowId: string, revisionNo: number): Promise<V2EtaggedResponse<WorkflowRevisionRestoreResponse>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/revisions/${revisionNo}/restore`,
+      { method: "POST" },
+      normalizeWorkflowRevisionRestoreResponse,
+    );
   },
 
   listAssetLibraryEntities(request: V2AssetLibraryListRequest): Promise<V2AssetLibraryListResponse> {
@@ -300,19 +501,18 @@ export const v2Api = {
     workflowId: string,
     slotId: string,
     request: V2ReferenceSelectionsRequest,
-    etag: string,
   ): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/slots/${encodeURIComponent(slotId)}/reference-selections`,
-      { method: "POST", headers: { "If-Match": etag }, body: JSON.stringify(request) },
+      { method: "POST", body: JSON.stringify(request) },
       normalizeV2ReferenceSelectionsResponse,
     );
   },
 
-  removeReferenceBinding(workflowId: string, bindingId: string, etag: string): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
+  removeReferenceBinding(workflowId: string, bindingId: string): Promise<V2EtaggedResponse<V2ReferenceSelectionsResponse>> {
     return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/references/${encodeURIComponent(bindingId)}`,
-      { method: "DELETE", headers: { "If-Match": etag } },
+      { method: "DELETE" },
       normalizeV2ReferenceSelectionsResponse,
     );
   },
@@ -546,11 +746,21 @@ export const v2Api = {
   },
 
   runWorkflow(workflowId: string, body: V2GlobalRunRequest = { mode: "fill_missing_required_slots" }): Promise<WorkflowV2RunResponse> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/run`, { method: "POST", body: JSON.stringify(body) }, normalizeWorkflowV2RunResponse);
+    return requestV2GlobalRun(
+      workflowId,
+      `/workflows/${encodeURIComponent(workflowId)}/run`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeWorkflowV2RunResponse,
+    );
   },
 
   runWorkflowAsync(workflowId: string, body: V2GlobalRunRequest = { mode: "fill_missing_required_slots" }): Promise<WorkflowV2RunResponse> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/run?wait=false`, { method: "POST", body: JSON.stringify(body) }, normalizeWorkflowV2RunResponse);
+    return requestV2GlobalRun(
+      workflowId,
+      `/workflows/${encodeURIComponent(workflowId)}/run?wait=false`,
+      { method: "POST", body: JSON.stringify(body) },
+      normalizeWorkflowV2RunResponse,
+    );
   },
 
   createFreeNode(workflowId: string, body: V2FreeNodeCreateRequest): Promise<WorkflowV2> {
@@ -664,6 +874,7 @@ function normalizeWorkflowV2PlanFromChatResponse(value: unknown): V2PlanFromChat
   return {
     front_desk: (record.front_desk ?? {}) as V2PlanFromChatResponse["front_desk"],
     workflow: record.workflow ? normalizeWorkflowV2(record.workflow) : null,
+    project_id: typeof record.project_id === "string" ? record.project_id : null,
     normalized_v2_request: asRecord(record.normalized_v2_request),
     status: typeof record.status === "string" ? record.status : null,
     error_code: typeof record.error_code === "string" ? record.error_code : null,

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CreateCard } from "../components/Cards";
 import { PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
@@ -6,11 +6,14 @@ import { PlusIcon } from "../icons";
 import type { RouteName } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
+import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
 
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
-  const { savedProjects, startNewProject, openProject, moveProjectToTrash, toggleProjectFavorite } = useApp();
+  const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
+  const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const { savedProjects, startNewProject, openProject, moveProjectToTrash, renameProject, toggleProjectFavorite } = useApp();
 
   const createProject = useCallback(() => {
     startNewProject();
@@ -25,8 +28,9 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
       name: project.name,
       time: formatSavedProjectTime(project.updated_at),
       updatedAt: project.updated_at,
-      favorite: project.favorite,
-      img: project.img,
+      favorite: project.is_favorite,
+      workflowId: project.workflow_id,
+      coverAssetId: project.cover_asset_id,
     })).filter((project) => {
       const visibleByTab = tab === "all" || project.favorite;
       const visibleBySearch = project.name.toLowerCase().includes(search.toLowerCase());
@@ -41,26 +45,23 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   }, [navigate, openProject]);
 
   const trashSavedProject = useCallback((project: ProjectListItem) => {
-    moveProjectToTrash({
-      project_id: project.projectId,
-      source: project.source,
-      name: project.name,
-      updated_at: project.updatedAt,
-      favorite: project.favorite,
-      img: project.img,
-    });
+    void moveProjectToTrash(project.projectId);
   }, [moveProjectToTrash]);
 
   const toggleSavedProjectFavorite = useCallback((project: ProjectListItem) => {
-    toggleProjectFavorite({
-      project_id: project.projectId,
-      source: project.source,
-      name: project.name,
-      updated_at: project.updatedAt,
-      favorite: project.favorite,
-      img: project.img,
-    });
-  }, [toggleProjectFavorite]);
+    const summary = savedProjects.find((item) => item.project_id === project.projectId);
+    if (summary) void toggleProjectFavorite(summary);
+  }, [savedProjects, toggleProjectFavorite]);
+
+  const openRenameDialog = useCallback((project: ProjectListItem, trigger: HTMLButtonElement) => {
+    renameTriggerRef.current = trigger;
+    setRenameTarget(project);
+  }, []);
+
+  const closeRenameDialog = useCallback(() => {
+    setRenameTarget(null);
+    renameTriggerRef.current?.focus();
+  }, []);
 
   return (
     <section className="content-wrap">
@@ -89,14 +90,23 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
           onOpenProject={openSavedProject}
           onTrashProject={trashSavedProject}
           onToggleFavorite={toggleSavedProjectFavorite}
+          onRenameProject={openRenameDialog}
         />
       </div>
+      {renameTarget ? (
+        <ProjectRenameDialog
+          key={renameTarget.projectId}
+          project={renameTarget}
+          onClose={closeRenameDialog}
+          onRename={renameProject}
+        />
+      ) : null}
     </section>
   );
 }
 
 function formatSavedProjectTime(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Saved locally";
-  return "Saved " + date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return "Saved";
+  return "Updated " + date.toLocaleDateString();
 }

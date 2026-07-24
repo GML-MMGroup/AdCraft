@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
 import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useApp } from "../AppContextValue";
+import {
+  v2AuthoringConflictStore,
+  type V2AuthoringConflict,
+} from "../api/v2AuthoringConflictStore";
+import {
+  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
+  type V2AuthoringConflictResolution,
+} from "../api/v2AuthoringConflictEvents.ts";
 
 const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; icon: ReactNode }> = [
   { route: "home", label: "Home", icon: <HomeIcon /> },
@@ -12,15 +20,39 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
   { route: "trash", label: "Trash", icon: <TrashIcon /> },
 ];
 
+const V2WorkflowRevisionControl = lazy(() => import("./V2WorkflowRevisionControl"));
+
 interface LayoutProps {
   children: ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
   const [accountOpen, setAccountOpen] = useState(false);
+  const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
+  const [resolvingConflict, setResolvingConflict] = useState(false);
   const { apiOnline, apiMessage, storageWarning } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
+
+  async function resolveConflict(action: "retry" | "discard") {
+    if (!authoringConflict) return;
+    setResolvingConflict(true);
+    try {
+      await v2AuthoringConflictStore[action]();
+      const resolution: V2AuthoringConflictResolution = {
+        target: authoringConflict.target,
+        operationPath: authoringConflict.operationPath,
+        action,
+      };
+      window.dispatchEvent(new CustomEvent(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, {
+        detail: resolution,
+      }));
+    } finally {
+      setResolvingConflict(false);
+    }
+  }
 
   function closeAccountMenu() {
     setAccountOpen(false);
@@ -64,7 +96,17 @@ export function Layout({ children }: LayoutProps) {
               {storageWarning}
             </div>
           ) : null}
+          {authoringConflict ? (
+            <div className="authoring-conflict" role="alert">
+              <span>{authoringConflict.message} Keep the local draft, then retry or discard it.</span>
+              <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict("retry")}>Retry</button>
+              <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict("discard")}>Discard</button>
+            </div>
+          ) : null}
           <div className="top-actions">
+            {location.pathname.startsWith("/workflow") ? (
+              <Suspense fallback={null}><V2WorkflowRevisionControl /></Suspense>
+            ) : null}
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>Tutorial</span>
