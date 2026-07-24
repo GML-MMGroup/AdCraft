@@ -3,7 +3,17 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const appRoot = process.cwd();
-const styles = readFileSync(resolve(appRoot, "src/styles.css"), "utf8");
+const homeStyles = readFileSync(resolve(appRoot, "src/pages/home.css"), "utf8");
+const styles = [
+  "styles/base.css",
+  "pages/home.css",
+  "pages/projects.css",
+  "pages/assets.css",
+  "pages/api-space.css",
+  "features/workflow/workflow.css",
+  "features/workflow/v2/screenplay/screenplay.css",
+  "features/workflow/final-composition/final-composition.css",
+].map((path) => readFileSync(resolve(appRoot, "src", path), "utf8")).join("\n");
 const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
 const fontFiles = [
   "manrope-latin-variable.woff2",
@@ -15,7 +25,7 @@ const approvedWeights = new Set([400, 500, 600, 700, 800]);
 const invalidWeights = [...styles.matchAll(/font-weight:\s*(\d+)/g)]
   .map((match) => Number(match[1]))
   .filter((weight) => !approvedWeights.has(weight));
-const mobileHeroStyles = styles.match(
+const mobileHeroStyles = homeStyles.match(
   /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
 )?.[0] ?? "";
 

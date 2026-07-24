@@ -12,6 +12,7 @@ import {
   type VolcengineCredentialTestResponse,
 } from "../apiSpace/volcengineCredentials";
 import { PageHeader } from "../components/Layout";
+import "./api-space.css";
 
 type Notice = { kind: "success" | "error"; message: string } | null;
 type CredentialTestState = Partial<Record<VolcengineCredentialConsumer, Notice>>;

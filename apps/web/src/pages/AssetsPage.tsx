@@ -12,6 +12,7 @@ import {
 import { useRecommendedCatalog } from "../features/assets/useRecommendedCatalog.ts";
 import { useV2AssetLibrary } from "../features/assets/useV2AssetLibrary.ts";
 import type { V2AssetLibraryCategory, V2AssetLibraryEntityDetail, V2AssetLibraryEntitySummary, V2AssetLibraryScope } from "../types-v2.ts";
+import "./assets.css";
 
 type AssetPageScope = V2AssetLibraryScope;
 

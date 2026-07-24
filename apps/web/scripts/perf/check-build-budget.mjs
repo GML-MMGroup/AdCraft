@@ -11,7 +11,8 @@ const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
 const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;
 const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
-const MAX_CSS_BYTES = 180 * 1024;
+const MAX_CSS_BYTES = 16 * 1024;
+const MAX_HOME_ROUTE_CSS_BYTES = 16 * 1024;
 const MAX_TIMELINE_EDITOR_CSS_BYTES = 6 * 1024;
 
 function bytes(value) {
@@ -63,6 +64,7 @@ function assetName(manifestFile) {
 const assets = listAssets();
 const manifest = readManifest();
 const initialEntries = initialManifestEntries(manifest);
+const homeEntry = manifest["src/pages/HomePage.tsx"];
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
 const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
@@ -78,6 +80,8 @@ const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)
 const initialCssAssetNames = new Set(initialEntries.flatMap((entry) => (entry.css ?? []).map(assetName)));
 const initialJs = jsAssets.filter((asset) => initialNames.has(asset.name));
 const initialCss = cssAssets.filter((asset) => initialCssAssetNames.has(asset.name));
+const homeRouteCssNames = new Set((homeEntry?.css ?? []).map(assetName));
+const homeRouteCss = cssAssets.filter((asset) => homeRouteCssNames.has(asset.name));
 const initialJsBytes = initialJs.reduce((sum, asset) => sum + asset.size, 0);
 const totalJs = jsAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreJsBytes = jsAssets
@@ -85,6 +89,7 @@ const coreJsBytes = jsAssets
   .reduce((sum, asset) => sum + asset.size, 0);
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
+const homeRouteCssBytes = homeRouteCss.reduce((sum, asset) => sum + asset.size, 0);
 
 console.log("Bundle budget report");
 for (const asset of assets.sort((a, b) => b.size - a.size)) {
@@ -93,6 +98,7 @@ for (const asset of assets.sort((a, b) => b.size - a.size)) {
 console.log(`- core JS total: ${bytes(coreJsBytes)}`);
 console.log(`- all JS total: ${bytes(totalJs)}`);
 console.log(`- core CSS total: ${bytes(coreCssBytes)}`);
+console.log(`- Home route CSS total: ${bytes(homeRouteCssBytes)}`);
 console.log(`- all CSS total: ${bytes(totalCss)}`);
 
 const failures = [];
@@ -135,6 +141,11 @@ if (!assetEntityViewerJs) {
 }
 if (coreCssBytes > MAX_CSS_BYTES) {
   failures.push(`core CSS is ${bytes(coreCssBytes)}, expected <= ${bytes(MAX_CSS_BYTES)}`);
+}
+if (!homeEntry || !homeRouteCss.length) {
+  failures.push("Home route CSS chunk is missing");
+} else if (homeRouteCssBytes > MAX_HOME_ROUTE_CSS_BYTES) {
+  failures.push(`Home route CSS is ${bytes(homeRouteCssBytes)}, expected <= ${bytes(MAX_HOME_ROUTE_CSS_BYTES)}`);
 }
 if (!timelineEditorCss) {
   failures.push("timeline editor lazy CSS chunk is missing");

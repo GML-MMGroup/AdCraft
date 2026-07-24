@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
-const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
 const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 
 vi.mock("../app/useHealth", () => ({
@@ -234,10 +234,19 @@ describe("HomePage motion", () => {
 
   it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
     expect(styles).toMatch(
+      /\.home-product-hero__character\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*translate3d\(0,\s*0,\s*0\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
+    );
+    expect(styles).toMatch(
       /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__character\s*\{[^}]*animation:[^;}]*home-hero-character-wave/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*12px,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
+      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*0,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
     );
     expect(styles).not.toMatch(/home-hero-line-wave/);
     expect(styles).not.toMatch(

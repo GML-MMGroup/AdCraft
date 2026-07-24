@@ -5,6 +5,7 @@ import { demoProjects, images, imageSrc } from "../data";
 import type { RouteName } from "../types";
 import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
 import { useHomeSectionReveal } from "./useHomeSectionReveal";
+import "./home.css";
 
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
 const homeProductPoster = "/assets/card1.webp";

@@ -7,7 +7,7 @@ import { AssetEntityViewerFallback, AssetsPage } from "./AssetsPage.tsx";
 import AssetEntityViewer from "../features/assets/AssetEntityViewer.tsx";
 import { v2AssetMediaUrl } from "../features/assets/v2AssetLibraryModel.ts";
 
-const assetStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const assetStyles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
 
 const assetFixture = vi.hoisted(() => {
   const summary = {

@@ -5,6 +5,7 @@ import { validateEditableScript } from "./screenplayModel.ts";
 import { nextFocusableIndex, nextTabIndex, selectionGate, summarizeValidationIssues, versionSelectionFocusTarget, type ScreenplayProductOption, type ScreenplayVersionTarget } from "./screenplayUiHelpers.ts";
 import { V2ScreenplayVersionHistory } from "./V2ScreenplayVersionHistory.tsx";
 import type { V2ScreenplayController } from "./useV2ScreenplayController.ts";
+import "./screenplay.css";
 
 type Operation =
   | { kind: "initial_load" }
