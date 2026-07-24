@@ -35,10 +35,10 @@
 
 ## 📰 News
 
-- **[2026-XX-XX]** 🎉 AdCraft is now open-source!
-- **[2026-XX-XX]** 🚀 Released Video Cloning — deconstruct any reference ad and rebuild it with your own content.
-- **[2026-XX-XX]** ✨ Added multi-platform model support (Seedance, Kling, Vidu, and more).
-
+- **[2026-07-23]** 🗂️ Added the Character Asset Library and Scene Asset Library.
+- **[2026-07-15]** ⚙️ Released the AdCraft backend.
+- **[2026-07-08]** 🎨 Released the AdCraft frontend.
+- **[2026-07-01]** 🎉 AdCraft was officially launched as an open-source project.
 <!-- 后续更新持续追加到这里 -->
 
 ---
