@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from "react-dom";
 import { v2Api } from "../api/v2Client.ts";
 import { PageHeader } from "../components/Layout.tsx";
-import { CloseIcon } from "../icons.tsx";
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "../icons.tsx";
 import {
   splitAssetLibraryTags,
   V2_ASSET_LIBRARY_CATEGORIES,
@@ -34,6 +34,7 @@ export function AssetsPage() {
   const [trashedEntities, setTrashedEntities] = useState<V2AssetLibraryEntitySummary[]>([]);
   const assetLibraryRef = useRef<HTMLElement | null>(null);
   const selectedCardRef = useRef<HTMLButtonElement | null>(null);
+  const entityCardRefsRef = useRef(new Map<string, HTMLButtonElement>());
   const catalog = useRecommendedCatalog(scope === "recommended");
   const recommendedReady = scope !== "recommended" || catalog.status?.status === "ready";
   const library = useV2AssetLibrary({ scope, category, search, enabled: recommendedReady });
@@ -72,6 +73,21 @@ export function AssetsPage() {
       ),
     ];
   }, [category, library.entities, library.loading, scope, trashOpen, trashedEntities]);
+
+  const navigateSelectedEntity = useCallback((direction: -1 | 1) => {
+    if (!selectedEntityId || displayedEntities.length < 2) return;
+    const currentIndex = displayedEntities.findIndex((entity) => entity.entity_id === selectedEntityId);
+    if (currentIndex < 0) return;
+    const nextIndex = (currentIndex + direction + displayedEntities.length) % displayedEntities.length;
+    const nextEntity = displayedEntities[nextIndex];
+    if (!nextEntity) return;
+    selectedCardRef.current = entityCardRefsRef.current.get(nextEntity.entity_id) ?? null;
+    setSelectedDetail(null);
+    setDetailLoading(true);
+    setSelectedEntityId(nextEntity.entity_id);
+  }, [displayedEntities, selectedEntityId]);
+  const selectPreviousEntity = useCallback(() => navigateSelectedEntity(-1), [navigateSelectedEntity]);
+  const selectNextEntity = useCallback(() => navigateSelectedEntity(1), [navigateSelectedEntity]);
 
   useEffect(() => {
     if (!selectedEntityId) return;
@@ -143,17 +159,39 @@ export function AssetsPage() {
           {!library.loading && !displayedEntities.length && (!catalog.status || catalog.status.status === "ready") ? <p className="asset-library-empty">No assets found.</p> : null}
           <div className="v2-asset-library-grid">
             {displayedEntities.map((entity) => (
-              <AssetEntityCard key={entity.entity_id} entity={entity} selected={selectedEntityId === entity.entity_id} onSelect={(trigger) => selectEntity(entity, trigger)} />
+              <AssetEntityCard
+                key={entity.entity_id}
+                entity={entity}
+                selected={selectedEntityId === entity.entity_id}
+                buttonRef={(button) => {
+                  if (button) entityCardRefsRef.current.set(entity.entity_id, button);
+                  else entityCardRefsRef.current.delete(entity.entity_id);
+                }}
+                onSelect={(trigger) => selectEntity(entity, trigger)}
+              />
             ))}
           </div>
           {library.nextCursor && !trashOpen ? <button className="small-action v2-asset-library-load-more" type="button" disabled={library.loadingMore} onClick={() => void library.loadMore()}>{library.loadingMore ? "Loading..." : "Load more"}</button> : null}
         </div>
       </div>
       {selectedEntityId ? (
-        <Suspense fallback={<AssetEntityViewerFallback onClose={closeDetail} />}>
+        <Suspense
+          fallback={(
+            <AssetEntityViewerFallback
+              hasEntityNavigation={displayedEntities.length > 1}
+              onPreviousEntity={selectPreviousEntity}
+              onNextEntity={selectNextEntity}
+              onClose={closeDetail}
+            />
+          )}
+        >
           <AssetEntityViewer
+            key={selectedEntityId}
             detail={selectedDetail}
             loading={detailLoading}
+            hasEntityNavigation={displayedEntities.length > 1}
+            onPreviousEntity={selectPreviousEntity}
+            onNextEntity={selectNextEntity}
             onClose={closeDetail}
           />
         </Suspense>
@@ -173,17 +211,37 @@ function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<t
   );
 }
 
-function AssetEntityCard({ entity, selected, onSelect }: { entity: V2AssetLibraryEntitySummary; selected: boolean; onSelect: (trigger: HTMLButtonElement) => void }) {
+function AssetEntityCard({
+  entity,
+  selected,
+  buttonRef,
+  onSelect,
+}: {
+  entity: V2AssetLibraryEntitySummary;
+  selected: boolean;
+  buttonRef: (button: HTMLButtonElement | null) => void;
+  onSelect: (trigger: HTMLButtonElement) => void;
+}) {
   const previewUrl = v2AssetPreviewUrl(entity);
   return (
-    <button className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.display_name}`} onClick={(event) => onSelect(event.currentTarget)}>
+    <button ref={buttonRef} className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.display_name}`} onClick={(event) => onSelect(event.currentTarget)}>
       <AssetCardMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} />
       <span className="v2-asset-entity-card-title">{entity.display_name}</span>
     </button>
   );
 }
 
-export function AssetEntityViewerFallback({ onClose }: { onClose: () => void }) {
+export function AssetEntityViewerFallback({
+  hasEntityNavigation = false,
+  onPreviousEntity,
+  onNextEntity,
+  onClose,
+}: {
+  hasEntityNavigation?: boolean;
+  onPreviousEntity?: () => void;
+  onNextEntity?: () => void;
+  onClose: () => void;
+}) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -193,6 +251,16 @@ export function AssetEntityViewerFallback({ onClose }: { onClose: () => void }) 
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
+        return;
+      }
+      if (hasEntityNavigation && event.key === "ArrowLeft") {
+        event.preventDefault();
+        onPreviousEntity?.();
+        return;
+      }
+      if (hasEntityNavigation && event.key === "ArrowRight") {
+        event.preventDefault();
+        onNextEntity?.();
         return;
       }
       if (event.key === "Tab") {
@@ -207,14 +275,22 @@ export function AssetEntityViewerFallback({ onClose }: { onClose: () => void }) 
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyboard);
     };
-  }, [onClose]);
+  }, [hasEntityNavigation, onClose, onNextEntity, onPreviousEntity]);
 
   return createPortal(
     <div className="v2-asset-viewer-backdrop">
       <button className="v2-asset-viewer-dismiss" type="button" aria-label="Dismiss asset viewer" onClick={onClose} />
       <section className="v2-asset-viewer" role="dialog" aria-modal="true" aria-label="Asset viewer">
         <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
-        <div className="v2-asset-viewer-stage is-loading">Loading asset viewer...</div>
+        <div className="v2-asset-viewer-stage is-loading">
+          Loading asset viewer...
+          {hasEntityNavigation ? (
+            <>
+              <button className="v2-asset-viewer-nav is-previous" type="button" aria-label="Previous asset" title="Previous asset" onClick={onPreviousEntity}><ChevronLeftIcon /></button>
+              <button className="v2-asset-viewer-nav is-next" type="button" aria-label="Next asset" title="Next asset" onClick={onNextEntity}><ChevronRightIcon /></button>
+            </>
+          ) : null}
+        </div>
       </section>
     </div>,
     document.body,
