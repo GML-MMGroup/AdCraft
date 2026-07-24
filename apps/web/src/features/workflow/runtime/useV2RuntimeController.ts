@@ -111,24 +111,26 @@ export function useV2RuntimeController(options: {
   const waitingNodeIds = useMemo(() => new Set(store.waitingNodeIds), [store.waitingNodeIds]);
   const connectionState: V2ConnectionState = store.connectionState;
 
-  const applySnapshot = useCallback(async (workflowId: string, snapshot: WorkflowRuntimeV2) => {
-    if (workflowIdRef.current !== workflowId) return snapshot;
+  const applySnapshot = useCallback(async (workflowId: string, snapshot: WorkflowRuntimeV2, lifecycleGeneration = lifecycleGenerationRef.current) => {
+    if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return snapshot;
     eventCursorRef.current = Math.max(eventCursorRef.current, snapshot.events_cursor ?? 0);
-    setRuntime(snapshot);
-    setStore((current) => applyV2RuntimeSnapshot(current, snapshot));
+    setRuntime((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId ? snapshot : current);
+    setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId ? applyV2RuntimeSnapshot(current, snapshot) : current);
     await callbacksRef.current.onSnapshot?.(workflowId, snapshot);
     return snapshot;
   }, []);
 
-  const syncSnapshot = useCallback(async (workflowId: string, options: { queueRefresh?: boolean } = {}) => {
+  const syncSnapshot = useCallback(async (workflowId: string, options: { queueRefresh?: boolean } = {}, lifecycleGeneration = lifecycleGenerationRef.current) => {
     try {
       return await snapshotCoordinatorRef.current!.request(workflowId, async () => {
         const snapshot = await v2Api.runtime(workflowId);
-        return applySnapshot(workflowId, snapshot);
+        return applySnapshot(workflowId, snapshot, lifecycleGeneration);
       }, options);
     } catch {
-      if (workflowIdRef.current === workflowId) {
-        setStore((current) => ({ ...current, connectionState: "degraded_polling" }));
+      if (lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId) {
+        setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
+          ? { ...current, connectionState: "degraded_polling" }
+          : current);
       }
       return undefined;
     }
@@ -144,54 +146,63 @@ export function useV2RuntimeController(options: {
     });
   }
 
-  const syncEvents = useCallback(async (workflowId: string) => {
+  const syncEvents = useCallback(async (workflowId: string, lifecycleGeneration = lifecycleGenerationRef.current) => {
     try {
       const afterSeq = Math.max(storeRef.current.lastEventSeq, eventCursorRef.current);
       const response = await v2Api.events(workflowId, afterSeq);
-      if (workflowIdRef.current !== workflowId) return;
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
       if (response.events.length) {
         emptyPollCountRef.current = 0;
-        setStore((current) => response.events.reduce(reduceV2RuntimeEvent, current));
+        setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
+          ? response.events.reduce(reduceV2RuntimeEvent, current)
+          : current);
         await callbacksRef.current.onEvents?.(workflowId, response.events);
+        if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
         if (response.events.some((event) => event.event_type === "runtime_snapshot_updated")) {
-          await syncSnapshot(workflowId);
+          await syncSnapshot(workflowId, {}, lifecycleGeneration);
         }
       } else {
         emptyPollCountRef.current += 1;
         if (emptyPollCountRef.current >= 3) {
           emptyPollCountRef.current = 0;
-          await syncSnapshot(workflowId);
+          await syncSnapshot(workflowId, {}, lifecycleGeneration);
         }
       }
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
       eventCursorRef.current = Math.max(eventCursorRef.current, response.next_after_seq);
-      setStore((current) => ({ ...current, lastEventSeq: Math.max(current.lastEventSeq, response.next_after_seq), connectionState: "degraded_polling" }));
+      setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
+        ? { ...current, lastEventSeq: Math.max(current.lastEventSeq, response.next_after_seq), connectionState: "degraded_polling" }
+        : current);
     } catch {
-      if (workflowIdRef.current === workflowId) {
-        setStore((current) => ({ ...current, connectionState: "degraded_polling" }));
+      if (lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId) {
+        setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
+          ? { ...current, connectionState: "degraded_polling" }
+          : current);
       }
     }
   }, [syncSnapshot]);
 
-  const openEventStream = useCallback((workflowId: string) => {
+  const openEventStream = useCallback((workflowId: string, transportGeneration: number, lifecycleGeneration = lifecycleGenerationRef.current) => {
+    if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
     eventSourceRef.current?.close();
     const stream = v2Api.openEventStream(workflowId, eventCursorRef.current);
     eventSourceRef.current = stream;
     stream.onopen = () => {
-      if (workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
-      transportRef.current?.sseOpened();
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
+      transportRef.current?.sseOpened(transportGeneration);
     };
     const handleStreamEvent = (event: Event) => {
-      if (workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
       try {
         const parsed = normalizeWorkflowRuntimeEventV2(JSON.parse((event as MessageEvent).data));
         eventCursorRef.current = Math.max(eventCursorRef.current, parsed.seq);
         eventBatcherRef.current?.push(parsed);
-        transportRef.current?.sseHealthyEvent();
+        transportRef.current?.sseHealthyEvent(transportGeneration);
       } catch {
         stream.close();
         if (eventSourceRef.current !== stream) return;
         eventSourceRef.current = null;
-        transportRef.current?.sseFailed();
+        transportRef.current?.sseFailed(transportGeneration);
       }
     };
     stream.onmessage = handleStreamEvent;
@@ -200,22 +211,24 @@ export function useV2RuntimeController(options: {
     });
     stream.onerror = () => {
       stream.close();
-      if (workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId || eventSourceRef.current !== stream) return;
       eventSourceRef.current = null;
-      transportRef.current?.sseFailed();
+      transportRef.current?.sseFailed(transportGeneration);
     };
   }, []);
 
   if (!transportRef.current) {
     transportRef.current = createRuntimeReconnectPolicy({
       isEligible: () => document.visibilityState !== "hidden" && navigator.onLine !== false,
-      onConnect: () => {
+      onConnect: (transportGeneration) => {
         const workflowId = workflowIdRef.current;
-        if (workflowId) openEventStream(workflowId);
+        const lifecycleGeneration = lifecycleGenerationRef.current;
+        if (workflowId) openEventStream(workflowId, transportGeneration, lifecycleGeneration);
       },
       onPoll: async () => {
         const workflowId = workflowIdRef.current;
-        if (workflowId) await syncEvents(workflowId);
+        const lifecycleGeneration = lifecycleGenerationRef.current;
+        if (workflowId) await syncEvents(workflowId, lifecycleGeneration);
       },
       onStateChange: (state) => {
         const connectionState: V2ConnectionState = state === "idle" ? "disconnected" : state;
@@ -230,6 +243,19 @@ export function useV2RuntimeController(options: {
     eventSourceRef.current?.close();
     eventSourceRef.current = null;
     eventBatcherRef.current?.clear();
+    snapshotCoordinatorRef.current?.clear();
+  }, []);
+
+  const resetWorkflowScopedState = useCallback((connectionState: V2ConnectionState = "disconnected") => {
+    const initial = createInitialV2RuntimeStore();
+    const next = { ...initial, connectionState };
+    setRuntime(undefined);
+    storeRef.current = next;
+    setStore(next);
+    eventCursorRef.current = 0;
+    emptyPollCountRef.current = 0;
+    eventBatcherRef.current?.clear();
+    snapshotCoordinatorRef.current?.clear();
   }, []);
 
   const start = useCallback((workflowId: string) => {
@@ -237,9 +263,8 @@ export function useV2RuntimeController(options: {
     stop();
     workflowIdRef.current = workflowId;
     const lifecycleGeneration = lifecycleGenerationRef.current;
-    eventCursorRef.current = 0;
-    setStore((current) => ({ ...current, connectionState: "connecting" }));
-    void syncSnapshot(workflowId, { queueRefresh: false })
+    resetWorkflowScopedState("connecting");
+    void syncSnapshot(workflowId, { queueRefresh: false }, lifecycleGeneration)
       .then(() => {
         if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
         transportRef.current?.start();
@@ -248,15 +273,12 @@ export function useV2RuntimeController(options: {
         if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
         transportRef.current?.start();
       });
-  }, [stop, syncSnapshot]);
+  }, [resetWorkflowScopedState, stop, syncSnapshot]);
 
   const reset = useCallback(() => {
     stop();
-    setRuntime(undefined);
-    setStore(createInitialV2RuntimeStore());
-    emptyPollCountRef.current = 0;
-    eventCursorRef.current = 0;
-  }, [stop]);
+    resetWorkflowScopedState();
+  }, [resetWorkflowScopedState, stop]);
 
   useEffect(() => {
     const reconcileTransport = () => {
