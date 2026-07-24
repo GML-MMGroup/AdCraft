@@ -57,7 +57,6 @@ import {
   mapWorkflowNodes,
   mergeBackendEdge,
   portColor,
-  syncWorkflowNodePositions,
   validateConnection,
 } from "../canvas/workflowCanvasModel.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
@@ -68,6 +67,11 @@ import {
   toWorkflowEdges,
   toWorkflowGraphPayload,
 } from "./workflowGraphPayloadModel.ts";
+import {
+  applyCanvasNodeListCommand,
+  applyWorkflowNodeListCommand,
+  dispatchWorkflowDocumentCommand,
+} from "../state/workflowDocumentCommands.ts";
 import { formatPromptOptimizerError } from "../runtime/workflowExecutionViewModel.ts";
 import {
   buildNodePromptPatch,
@@ -637,10 +641,21 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
     const current = argsRef.current;
     current.captureCanvasHistory();
     const ordered = layoutNodes(current.flowNodes, current.flowEdges);
-    const positionedCanvasNodes = syncWorkflowNodePositions(current.canvasNodes, ordered);
-    current.setFlowNodes(ordered);
-    current.setCanvasNodes(positionedCanvasNodes);
-    current.persistNodePositionSnapshot(positionedCanvasNodes, { flowNodes: ordered });
+    const command = {
+      type: "set-node-positions" as const,
+      positions: new Map(ordered.map((node) => [node.id, node.position])),
+    };
+    const positionedCanvasNodes = applyWorkflowNodeListCommand(current.canvasNodes, command);
+    const positionedFlowNodes = applyCanvasNodeListCommand(current.flowNodes, command);
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      command,
+    );
+    current.persistNodePositionSnapshot(positionedCanvasNodes, { flowNodes: positionedFlowNodes });
     current.setStatus("Canvas arranged by DAG");
     window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
@@ -648,10 +663,21 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
   function persistNodePosition(node: CanvasNode) {
     const current = argsRef.current;
     current.captureCanvasHistory();
-    const nextCanvasNodes = current.canvasNodes.map((item) => (item.id === node.id ? { ...item, position: node.position } : item));
-    const nextFlowNodes = current.flowNodes.map((item) => (item.id === node.id ? { ...item, position: node.position } : item));
-    current.setCanvasNodes(nextCanvasNodes);
-    current.setFlowNodes(nextFlowNodes);
+    const command = {
+      type: "move-node" as const,
+      nodeId: node.id,
+      position: node.position,
+    };
+    const nextCanvasNodes = applyWorkflowNodeListCommand(current.canvasNodes, command);
+    const nextFlowNodes = applyCanvasNodeListCommand(current.flowNodes, command);
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      command,
+    );
     current.persistNodePositionSnapshot(nextCanvasNodes, { flowNodes: nextFlowNodes });
     current.setStatus("Position save queued");
   }

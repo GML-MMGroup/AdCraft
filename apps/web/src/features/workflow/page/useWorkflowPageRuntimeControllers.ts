@@ -24,6 +24,7 @@ import {
   shouldApplyRuntimeWorkflowRead,
   shouldApplyWorkflowRevisionRead,
 } from "../runtime/v2AuthoringRuntimeEventPolicy.ts";
+import { dispatchWorkflowDocumentCommand } from "../state/workflowDocumentCommands.ts";
 
 // Adapter value bag used while the page model is being decomposed into stable controllers.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -164,8 +165,19 @@ export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeContr
     onApplyMediaStatusToCanvas: args.applyMediaStatusToCanvas,
     onPatchNodeStatus: (nodeId, nextStatus) => {
       if (!nodeId || !nextStatus) return;
-      args.setCanvasNodes((current: Array<{ id: string; status?: string }>) => current.map((node) => (node.id === nodeId ? { ...node, status: nextStatus } : node)));
-      args.setFlowNodes((current: Array<{ id: string; data: Record<string, unknown> }>) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, status: nextStatus } } : node)));
+      const currentArgs = argsRef.current;
+      dispatchWorkflowDocumentCommand(
+        {
+          setWorkflow: currentArgs.setWorkflow,
+          setCanvasNodes: currentArgs.setCanvasNodes,
+          setFlowNodes: currentArgs.setFlowNodes,
+        },
+        {
+          type: "patch-nodes",
+          nodeIds: [nodeId],
+          patch: { status: nextStatus },
+        },
+      );
     },
     onApplyNodeRunsToCanvas: args.applyNodeRunsToCanvas,
     onClearNodeDebugCache: args.clearNodeDebugCache,

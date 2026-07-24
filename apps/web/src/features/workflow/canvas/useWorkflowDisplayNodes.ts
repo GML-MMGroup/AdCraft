@@ -1,63 +1,22 @@
-import { useMemo } from "react";
-import type { AssetVersionV2, WorkflowRuntimeV2 } from "../../../types-v2.ts";
-import { executionRunningEdgeIds, nodeStatusWithExecution } from "../../../workflow/executionRuntime.ts";
-import { isUserVisibleWorkflowNode, visibleWorkflowEdges } from "../../../workflow/visibility.ts";
-import { mergeV2AssetVersions } from "../../../workflow-v2/assets.ts";
-import type { CanvasEdge, CanvasNode, WorkflowNodeData } from "../types.ts";
+import { useMemo, useRef } from "react";
+import { executionRunningEdgeIds } from "../../../workflow/executionRuntime.ts";
+import { visibleWorkflowEdges } from "../../../workflow/visibility.ts";
+import type { CanvasEdge } from "../types.ts";
+import {
+  createWorkflowDisplayNodeProjector,
+  type WorkflowDisplayNodeProjectionInput,
+  type WorkflowDisplayNodeProjector,
+} from "./workflowDisplayNodeProjector.ts";
 
-type CandidateSummary = {
-  candidateCount?: number;
-  warningCount?: number;
-  pendingVisibleCandidateCount?: number;
-};
+export type { WorkflowDisplayNodeCallbacks } from "./workflowDisplayNodeProjector.ts";
 
-type WorkflowDisplayNodeCallbacks = Pick<
-  WorkflowNodeData,
-  | "onOpenMedia"
-  | "onSelectDynamicItem"
-  | "onOpenScreenplay"
-  | "onOpenV2SlotEditor"
-  | "onOpenV2StoryboardPrompt"
-  | "onOpenV2StoryboardVideoPreview"
-  | "onChangeV2SlotPrompt"
-  | "onChangeV2SlotNegativePrompt"
-  | "onUploadV2SlotReference"
-  | "onSelectV2SlotLibraryReference"
-  | "onRemoveV2SlotReference"
-  | "onOpenV2SlotAssetLibraryReplace"
-  | "onOpenV2SlotAssetLibrarySave"
-  | "onSaveV2ItemPrompt"
-  | "onSubmitV2SlotPrompt"
-  | "onSelectV2SlotVersion"
-  | "onDiscardV2SlotWorkingVersion"
-  | "onLoadV2SlotVersions"
->;
-
-export type WorkflowDisplayNodeInput = {
-  flowNodes: CanvasNode[];
+export type WorkflowDisplayNodeInput = WorkflowDisplayNodeProjectionInput & {
   flowEdges: CanvasEdge[];
   selectedEdgeId?: string | null;
-  effectiveNodeStatusById: Record<string, string>;
-  candidateSummaryByNodeId: Record<string, CandidateSummary | undefined>;
-  activeProjectId?: string | null;
-  workflowId?: string | null;
-  dynamicItemRunningByNodeId: Record<string, WorkflowNodeData["runningDynamicItemById"]>;
-  v2AssetVersions: AssetVersionV2[];
-  slotVersionAssets: AssetVersionV2[];
-  v2Runtime?: WorkflowRuntimeV2;
-  v2FallbackRuntime?: WorkflowRuntimeV2;
-  v2AudioMode?: string | null;
-  v2SlotRuntimeStatusById: Record<string, string>;
-  activeV2SlotId?: string | null;
-  activeV2StoryboardItemId?: string | null;
-  v2SlotDraftsById: NonNullable<WorkflowNodeData["v2SlotDraftsById"]>;
-  v2ReferenceAssetsBySlotId: NonNullable<WorkflowNodeData["v2ReferenceAssetsBySlotId"]>;
-  v2LibraryReferenceOptions: NonNullable<WorkflowNodeData["v2LibraryReferenceOptions"]>;
   canvasRuntimeActiveEdgeIds: string[];
   runningNodeIds: string[];
   v2ActiveEdgeSourceNodeIds: string[];
   isV2: boolean;
-  callbacks: WorkflowDisplayNodeCallbacks;
 };
 
 export function useWorkflowDisplayNodes({
@@ -86,36 +45,31 @@ export function useWorkflowDisplayNodes({
   isV2,
   callbacks,
 }: WorkflowDisplayNodeInput) {
+  const displayNodeProjectorRef = useRef<WorkflowDisplayNodeProjector | null>(null);
+  if (!displayNodeProjectorRef.current) {
+    displayNodeProjectorRef.current = createWorkflowDisplayNodeProjector();
+  }
   const displayNodes = useMemo(
-    () =>
-      flowNodes
-        .filter((node) => isUserVisibleWorkflowNode({ id: node.id, node_type: node.data.kind }))
-        .map((node) => {
-          const summary = candidateSummaryByNodeId[node.id];
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              status: nodeStatusWithExecution(node.id, node.data.status, effectiveNodeStatusById),
-              candidateCount: summary?.candidateCount ?? 0,
-              candidateWarningCount: summary?.warningCount ?? 0,
-              pendingVisibleCandidateCount: summary?.pendingVisibleCandidateCount ?? 0,
-              ...callbacks,
-              projectId: activeProjectId,
-              workflowId,
-              runningDynamicItemById: dynamicItemRunningByNodeId[node.id],
-              v2AssetVersions: mergeV2AssetVersions(node.data.v2AssetVersions ?? [], v2AssetVersions, slotVersionAssets),
-              v2Runtime: v2Runtime ?? v2FallbackRuntime,
-              v2AudioMode,
-              v2SlotRuntimeStatusById,
-              v2OpenSlotId: activeV2SlotId,
-              v2OpenStoryboardItemId: activeV2StoryboardItemId,
-              v2SlotDraftsById,
-              v2ReferenceAssetsBySlotId,
-              v2LibraryReferenceOptions,
-            },
-          };
-        }),
+    () => displayNodeProjectorRef.current!.project({
+      flowNodes,
+      effectiveNodeStatusById,
+      candidateSummaryByNodeId,
+      activeProjectId,
+      workflowId,
+      dynamicItemRunningByNodeId,
+      v2AssetVersions,
+      slotVersionAssets,
+      v2Runtime,
+      v2FallbackRuntime,
+      v2AudioMode,
+      v2SlotRuntimeStatusById,
+      activeV2SlotId,
+      activeV2StoryboardItemId,
+      v2SlotDraftsById,
+      v2ReferenceAssetsBySlotId,
+      v2LibraryReferenceOptions,
+      callbacks,
+    }),
     [
       activeProjectId,
       activeV2SlotId,
