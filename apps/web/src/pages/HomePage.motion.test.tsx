@@ -8,7 +8,7 @@ const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
 const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 
-vi.mock("../app/HealthProvider", () => ({
+vi.mock("../app/useHealth", () => ({
   useHealth: () => ({ startNewProject }),
 }));
 

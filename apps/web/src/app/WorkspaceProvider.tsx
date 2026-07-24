@@ -44,12 +44,11 @@ type WorkspaceRestoreRequest = {
 };
 
 export function WorkspaceProvider({ children, startWithNewProject = false }: { children: ReactNode; startWithNewProject?: boolean }) {
-  const startsWithNewProject = useRef(startWithNewProject).current;
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<UploadedAsset[]>([]);
   const [promptLibraryEntities, setPromptLibraryEntities] = useState<AssetLibraryEntitySummary[]>([]);
-  const [messages, setMessages] = useState<FrontDeskMessage[]>(() => startsWithNewProject ? [] : loadStoredMessages());
-  const [workflow, setWorkflow] = useState<WorkflowGraph | null>(() => startsWithNewProject ? null : loadStoredWorkflow());
+  const [messages, setMessages] = useState<FrontDeskMessage[]>(() => startWithNewProject ? [] : loadStoredMessages());
+  const [workflow, setWorkflow] = useState<WorkflowGraph | null>(() => startWithNewProject ? null : loadStoredWorkflow());
   const [nodeCatalog, setNodeCatalog] = useState<NodeCatalogItem[]>([]);
   const [nodeRuns, setNodeRuns] = useState<NodeRunResult[]>([]);
   const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>([]);
@@ -277,7 +276,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
   }, [activeProjectId, refreshProjects, workflow?.project_id, workflow?.workflow_id]);
 
   useEffect(() => {
-    if (startsWithNewProject) {
+    if (startWithNewProject) {
       setWorkspaceRestoreError(null);
       setWorkspaceHydrated(true);
       return;
@@ -339,7 +338,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     return () => {
       cancelled = true;
     };
-  }, [beginWorkspaceRestoreRequest, shouldApplyWorkspaceRestoreRequest, startsWithNewProject]);
+  }, [beginWorkspaceRestoreRequest, shouldApplyWorkspaceRestoreRequest, startWithNewProject]);
 
   useEffect(() => {
     return v2AuthoringConflictStore.subscribe((conflict) => {

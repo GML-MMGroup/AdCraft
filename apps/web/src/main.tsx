@@ -1,16 +1,13 @@
-import { lazy, StrictMode, Suspense } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { HealthProvider } from "./app/HealthProvider";
 import "./styles.css";
-
-const HealthProvider = lazy(() => import("./app/HealthProvider").then((module) => ({ default: module.HealthProvider })));
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Suspense fallback={null}>
-      <HealthProvider>
-        <App />
-      </HealthProvider>
-    </Suspense>
+    <HealthProvider>
+      <App />
+    </HealthProvider>
   </StrictMode>,
 );

@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const { api, fetchMock, v2Api } = vi.hoisted(() => ({
   api: {
@@ -21,12 +21,24 @@ const { api, fetchMock, v2Api } = vi.hoisted(() => ({
 vi.mock("../api/client", () => ({ api, mediaUrl: (path: string) => path }));
 vi.mock("../api/v2Client", () => ({ v2Api }));
 vi.mock("../pages/WorkflowPage", () => ({
-  WorkflowPage: () => <div>Workflow page</div>,
+  WorkflowPage: () => <WorkflowPageProbe />,
+}));
+vi.mock("../pages/ProjectsPage", () => ({
+  ProjectsPage: () => <ProjectsPageProbe />,
+}));
+vi.mock("../pages/AssetsPage", () => ({
+  AssetsPage: () => <div>Assets page</div>,
+}));
+vi.mock("../pages/ApiSpacePage", () => ({
+  ApiSpacePage: () => <div>API Space page</div>,
+}));
+vi.mock("../workflow-v2/pageAdapter", () => ({
+  workflowV2ToWorkflowGraph: (workflow: unknown) => workflow,
 }));
 vi.mock("../components/V2WorkflowRevisionControl", async () => {
   const { useApp } = await import("../AppContextValue");
   return {
-    default: () => {
+    default: function RevisionControlProbe() {
       const { workspaceHydrated } = useApp();
       return <span>Workspace shell {workspaceHydrated ? "hydrated" : "loading"}</span>;
     },
@@ -35,11 +47,31 @@ vi.mock("../components/V2WorkflowRevisionControl", async () => {
 
 import App from "../App";
 import { AppProvider } from "../AppContext";
-import { WORKSPACE_ACTIVE_PROJECT_KEY } from "../projects/newProject";
+import { useApp } from "../AppContextValue";
+import {
+  loadCanvasSnapshot,
+  saveCanvasSnapshot,
+  WORKSPACE_ACTIVE_PROJECT_KEY,
+} from "../projects/newProject";
 
 const webRoot = process.cwd();
 const entryGraphAnalyzer = join(webRoot, "scripts/perf/check-entry-graph.mjs");
 const manifestPath = join(webRoot, "dist/.vite/manifest.json");
+
+function WorkflowPageProbe() {
+  const { workflow } = useApp();
+  return <div>Workflow page {workflow?.workflow_id ?? "empty"}</div>;
+}
+
+function ProjectsPageProbe() {
+  const { savedProjects, workspaceHydrated } = useApp();
+  return (
+    <div>
+      <span>Projects page {workspaceHydrated ? "hydrated" : "loading"}</span>
+      {savedProjects.map((project) => <span key={project.project_id}>{project.name}</span>)}
+    </div>
+  );
+}
 
 function resetApiMocks() {
   fetchMock.mockResolvedValue({
@@ -50,7 +82,7 @@ function resetApiMocks() {
   api.listAssets.mockResolvedValue({ assets: [] });
   api.nodeCatalog.mockResolvedValue({ nodes: [] });
   api.workflowNodes.mockResolvedValue({ nodes: [] });
-  v2Api.listProjects.mockResolvedValue({ projects: [], next_cursor: null });
+  v2Api.listProjects.mockResolvedValue({ items: [], next_cursor: null });
   v2Api.projectWorkflow.mockResolvedValue({ value: {} });
 }
 
@@ -96,13 +128,15 @@ describe("route providers", () => {
     );
 
     await screen.findByText("Workspace shell hydrated");
-    expect(screen.getByText("Workflow page")).toBeTruthy();
+    expect(screen.getByText("Workflow page empty")).toBeTruthy();
   });
 
   test("starts an empty workflow draft from Home without restoring the previous project", async () => {
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "persisted-project");
     window.localStorage.setItem("ad-workflow-active-workflow", "persisted-workflow");
     window.localStorage.setItem("ad-workflow-copilot-messages", "persisted-messages");
+    saveCanvasSnapshot(window.localStorage, "local-workflow", { nodes: ["persisted-node"] });
+    expect(loadCanvasSnapshot(window.localStorage, "local-workflow")).toEqual({ nodes: ["persisted-node"] });
 
     render(
       <AppProvider>
@@ -113,37 +147,139 @@ describe("route providers", () => {
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
 
-    await screen.findByText("Workflow page");
+    await screen.findByText("Workflow page empty");
 
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBeNull();
     expect(window.localStorage.getItem("ad-workflow-active-workflow")).toBeNull();
     expect(window.localStorage.getItem("ad-workflow-copilot-messages")).not.toBe("persisted-messages");
+    await waitFor(() => expect(loadCanvasSnapshot(window.localStorage, "local-workflow")).toBeUndefined());
     expect(v2Api.listProjects).not.toHaveBeenCalled();
     expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
   });
 
-  test("keeps workflow and React Flow chunks out of the built Home entry graph", () => {
+  test("restores the persisted active project on a workspace route", async () => {
+    window.history.replaceState({}, "", "/workflow");
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-restored");
+    v2Api.projectWorkflow.mockResolvedValue({
+      value: { workflow_id: "workflow-restored", project_id: "project-restored" },
+    });
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("Workflow page workflow-restored");
+    expect(v2Api.projectWorkflow).toHaveBeenCalledWith("project-restored");
+    expect(v2Api.listProjects).toHaveBeenCalledTimes(2);
+  });
+
+  test("hydrates projects after leaving a fresh workflow draft", async () => {
+    const project = {
+      project_id: "project-after-draft",
+      workflow_id: "workflow-after-draft",
+      name: "Restored project list",
+      updated_at: "2026-07-24T00:00:00Z",
+      is_favorite: false,
+      cover_asset_id: null,
+    };
+    v2Api.listProjects.mockImplementation(async (scope: string) => ({
+      items: scope === "active" ? [project] : [],
+      next_cursor: null,
+    }));
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("API ready");
+    fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
+    await screen.findByText("Workflow page empty");
+    expect(v2Api.listProjects).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("link", { name: "Projects" }));
+
+    await screen.findByText("Restored project list");
+    expect(screen.getByText("Projects page hydrated")).toBeTruthy();
+    expect(v2Api.listProjects).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ["/assets", "Assets page"],
+    ["/api-space", "API Space page"],
+  ])("renders %s inside the lightweight shell without workspace hydration", async (route, page) => {
+    window.history.replaceState({}, "", route);
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText(page);
+    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
+  });
+
+  test("shows the health failure state without workspace hydration", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("Demo mode");
+    expect(v2Api.listProjects).not.toHaveBeenCalled();
+  });
+
+  test("shows hybrid storage warnings from the lightweight provider", async () => {
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("API ready");
+    window.dispatchEvent(new CustomEvent("hybrid-storage:error", {
+      detail: { message: "Storage write failed" },
+    }));
+
+    expect(await screen.findByText("Storage write failed")).toBeTruthy();
+    expect(v2Api.listProjects).not.toHaveBeenCalled();
+  });
+
+  test("keeps workspace chunks out of built static Home and root closures", () => {
     execFileSync("npm", ["run", "build"], { cwd: webRoot, stdio: "pipe" });
 
-    const graphResult = spawnSync(process.execPath, [
-      entryGraphAnalyzer,
-      "--manifest",
-      manifestPath,
-      "--entry",
-      "src/pages/HomePage.tsx",
-      "--json",
-    ], { encoding: "utf8" });
+    function staticGraph(entry: string) {
+      const graphResult = spawnSync(process.execPath, [
+        entryGraphAnalyzer,
+        "--manifest",
+        manifestPath,
+        "--entry",
+        entry,
+        "--static-only",
+        "--json",
+      ], { encoding: "utf8" });
 
-    expect(graphResult.status).toBe(0);
+      expect(graphResult.status).toBe(0);
+      return JSON.parse(graphResult.stdout) as { modules: string[] };
+    }
 
-    const graph = JSON.parse(graphResult.stdout) as { modules: string[] };
     const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, { file: string }>;
-    const homeFiles = graph.modules.map((moduleId) => manifest[moduleId]?.file ?? moduleId);
+    const filesFor = (graph: { modules: string[] }) => graph.modules.map((moduleId) => manifest[moduleId]?.file ?? moduleId);
+    const blocked = /(?:AppContext|projects|storage|workflow|react-flow|app-core)/i;
 
-    expect([...graph.modules, ...homeFiles]).not.toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/(?:WorkflowPage|features\/workflow|vendor-react-flow|react-flow)/i),
-      ]),
+    expect([...staticGraph("src/pages/HomePage.tsx").modules, ...filesFor(staticGraph("src/pages/HomePage.tsx"))]).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(blocked)]),
+    );
+    expect([...staticGraph("index.html").modules, ...filesFor(staticGraph("index.html"))]).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(blocked)]),
     );
   }, 30_000);
 });

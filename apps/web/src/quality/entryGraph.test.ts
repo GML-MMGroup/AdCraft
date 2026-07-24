@@ -55,4 +55,38 @@ describe("entry graph analyzer", () => {
       ],
     });
   });
+
+  test("can inspect only static entry imports", () => {
+    const directory = mkdtempSync(join(tmpdir(), "adcraft-entry-graph-"));
+    temporaryDirectories.push(directory);
+    const manifestPath = join(directory, "manifest.json");
+    writeFileSync(manifestPath, JSON.stringify({
+      "index.html": {
+        file: "assets/index.js",
+        imports: ["src/main.tsx"],
+        dynamicImports: ["src/pages/HomePage.tsx"],
+      },
+      "src/main.tsx": {
+        file: "assets/main.js",
+      },
+      "src/pages/HomePage.tsx": {
+        file: "assets/home.js",
+      },
+    }));
+
+    const output = execFileSync(process.execPath, [
+      analyzerPath,
+      "--manifest",
+      manifestPath,
+      "--entry",
+      "index.html",
+      "--static-only",
+      "--json",
+    ], { encoding: "utf8" });
+
+    expect(JSON.parse(output)).toMatchObject({
+      entry: "index.html",
+      modules: ["index.html", "src/main.tsx"],
+    });
+  });
 });

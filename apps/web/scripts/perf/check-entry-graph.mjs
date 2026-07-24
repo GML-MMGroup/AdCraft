@@ -5,7 +5,7 @@ const DEFAULT_ENTRY = "index.html";
 
 function usage(message) {
   if (message) console.error(message);
-  console.error("Usage: node scripts/perf/check-entry-graph.mjs [--manifest path] [--entry manifest-entry] [--json]");
+  console.error("Usage: node scripts/perf/check-entry-graph.mjs [--manifest path] [--entry manifest-entry] [--static-only] [--json]");
   process.exit(1);
 }
 
@@ -14,12 +14,17 @@ function parseArguments(argumentsList) {
     entry: DEFAULT_ENTRY,
     json: false,
     manifestPath: DEFAULT_MANIFEST.pathname,
+    staticOnly: false,
   };
 
   for (let index = 0; index < argumentsList.length; index += 1) {
     const argument = argumentsList[index];
     if (argument === "--json") {
       options.json = true;
+      continue;
+    }
+    if (argument === "--static-only") {
+      options.staticOnly = true;
       continue;
     }
     if (argument === "--entry" || argument === "--manifest") {
@@ -48,7 +53,7 @@ function readManifest(manifestPath) {
   }
 }
 
-function entryGraph(manifest, entry) {
+function entryGraph(manifest, entry, { staticOnly }) {
   if (!manifest[entry]) usage(`Vite manifest does not contain entry: ${entry}`);
 
   const modules = [];
@@ -62,7 +67,8 @@ function entryGraph(manifest, entry) {
 
     visited.add(moduleId);
     modules.push(moduleId);
-    for (const dependency of [...(module.imports ?? []), ...(module.dynamicImports ?? [])]) {
+    const dependencies = staticOnly ? (module.imports ?? []) : [...(module.imports ?? []), ...(module.dynamicImports ?? [])];
+    for (const dependency of dependencies) {
       if (!visited.has(dependency)) queue.push(dependency);
     }
   }
@@ -71,7 +77,7 @@ function entryGraph(manifest, entry) {
 }
 
 const options = parseArguments(process.argv.slice(2));
-const report = entryGraph(readManifest(options.manifestPath), options.entry);
+const report = entryGraph(readManifest(options.manifestPath), options.entry, options);
 
 if (options.json) {
   console.log(JSON.stringify(report));

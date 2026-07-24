@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { useHealth } from "../app/HealthProvider";
+import { useHealth } from "../app/useHealth";
 import { demoProjects, images, imageSrc } from "../data";
 import type { RouteName } from "../types";
 import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
@@ -80,8 +80,8 @@ export function HomePage({ navigate }: { navigate: (route: RouteName, options?: 
     ["Color Script", images[7], 350],
   ];
 
-  function createProject() {
-    startNewProject();
+  async function createProject() {
+    await startNewProject();
     navigate("workflow", { state: { startNewProject: true } });
   }
 
@@ -129,7 +129,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName, options?: 
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
           </p>
           <div className="home-product-hero__create-stage">
-            <button className="home-product-hero__create" type="button" onClick={createProject}>
+            <button className="home-product-hero__create" type="button" onClick={() => void createProject()}>
               <span aria-hidden="true">+</span>
               <span>Create Your Project</span>
             </button>

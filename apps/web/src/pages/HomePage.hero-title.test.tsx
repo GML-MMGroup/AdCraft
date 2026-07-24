@@ -10,7 +10,7 @@ const mobileHeroTitleStyles = styles.match(
   /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
 )?.[0] ?? "";
 
-vi.mock("../app/HealthProvider", () => ({
+vi.mock("../app/useHealth", () => ({
   useHealth: () => ({ startNewProject }),
 }));
 

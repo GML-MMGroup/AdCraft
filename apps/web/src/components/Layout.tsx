@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
 import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
-import { useHealth } from "../app/HealthProvider";
+import { useHealth } from "../app/useHealth";
 import {
   v2AuthoringConflictStore,
   type V2AuthoringConflict,
