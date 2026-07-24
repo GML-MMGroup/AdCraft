@@ -763,7 +763,7 @@ a {
   font-size: clamp(48px, 5vw, 68px);
   font-family: var(--font-editorial);
   font-weight: 500;
-  line-height: 1.08;
+  line-height: 1.4;
   letter-spacing: 0;
   -webkit-text-stroke: 0.18px currentColor;
 }
@@ -923,7 +923,7 @@ a {
 
   .home-product-hero__title {
     font-size: clamp(48px, 12vw, 56px);
-    line-height: 1.08;
+    line-height: 1.4;
   }
 
   .home-product-hero__description {
