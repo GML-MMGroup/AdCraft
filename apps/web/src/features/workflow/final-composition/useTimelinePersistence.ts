@@ -44,8 +44,8 @@ export type LibrarySourceSelection = {
 
 type TimelineSaveSnapshot = {
   session: TimelineSessionToken;
-  baseline: NonNullable<TimelinePersistenceDocumentContract["baselineRef"]["current"]>;
-  draft: NonNullable<TimelinePersistenceDocumentContract["draftRef"]["current"]>;
+  baseline: NonNullable<TimelinePersistenceDocumentContract[0]["current"]>;
+  draft: NonNullable<TimelinePersistenceDocumentContract[1]["current"]>;
 };
 
 type TimelineSaveQueue = {
@@ -53,49 +53,53 @@ type TimelineSaveQueue = {
   isRunning: () => boolean;
 };
 
-export type TimelineSessionController = {
-  activeRef: MutableRefObject<boolean>;
-  capture: () => TimelineSessionToken;
-  isCurrent: (session: TimelineSessionToken) => boolean;
-};
+export type TimelineSessionController = readonly [
+  capture: () => TimelineSessionToken,
+  isCurrent: (session: TimelineSessionToken) => boolean,
+];
 
-export type TimelineRenderPersistenceContract = {
-  session: TimelineSessionController;
-  capabilitiesRef: MutableRefObject<V2CompositionCapabilities>;
-  conflictRef: MutableRefObject<V2FinalCompositionConflict | null>;
-  load: (options?: { preserveDraft?: boolean }) => Promise<V2FinalTimelineResponse | null>;
-  save: () => Promise<V2FinalTimelineUpdateResponse | null>;
+export type TimelineRenderPersistenceContract = readonly [
+  session: TimelineSessionController,
+  remoteState: ReturnType<typeof createRemoteStateEpoch>,
+  capabilitiesRef: MutableRefObject<V2CompositionCapabilities>,
+  conflictRef: MutableRefObject<V2FinalCompositionConflict | null>,
+  load: (options?: { preserveDraft?: boolean }) => Promise<V2FinalTimelineResponse | null>,
+  save: () => Promise<V2FinalTimelineUpdateResponse | null>,
   acceptTimelineResponse: (
     response: V2FinalTimelineResponse,
     preserveDraft?: boolean,
-  ) => { keptDraft: boolean };
-  setError: (message: string) => void;
-  setVersionConflict: (message: string) => void;
-};
+  ) => { keptDraft: boolean },
+  setError: (message: string) => void,
+  setVersionConflict: (message: string) => void,
+];
 
-function readableError(error: unknown) {
-  if (error instanceof V2ApiError) return error.message || error.code || "Timeline request failed.";
-  return error instanceof Error ? error.message : "Timeline request failed.";
+export type TimelineRenderLifecycleBridge = [
+  loadFinalVideo: (session: TimelineSessionToken) => Promise<unknown>,
+  resetRenderProgress: () => void,
+];
+
+export function readableTimelineError(error: unknown) {
+  const fallback = "Timeline request failed.";
+  if (error instanceof V2ApiError) return error.message || error.code || fallback;
+  return error instanceof Error ? error.message : fallback;
 }
 
-function isVersionConflict(error: unknown) {
-  return error instanceof V2ApiError && [409, 412, 428].includes(error.status);
+export function isTimelineVersionConflict(error: unknown, code?: string) {
+  return error instanceof V2ApiError
+    && [409, 412, 428].includes(error.status)
+    && (!code || error.code === code);
 }
 
 export function useTimelinePersistence({
   workflowId,
   active,
   document,
-  resetUiForSession,
-  onTimelineReplaced,
-  onTimelineLoaded,
+  renderLifecycleRef,
 }: {
   workflowId?: string | null;
   active: boolean;
   document: TimelinePersistenceDocumentContract;
-  resetUiForSession: () => void;
-  onTimelineReplaced: (session: TimelineSessionToken) => void;
-  onTimelineLoaded: (session: TimelineSessionToken) => Promise<unknown> | unknown;
+  renderLifecycleRef: MutableRefObject<TimelineRenderLifecycleBridge>;
 }) {
   const [sources, setSources] = useState<V2FinalTimelineSource[]>([]);
   const [capabilities, setCapabilities] = useState<V2CompositionCapabilities>(
@@ -107,29 +111,36 @@ export function useTimelinePersistence({
   const [saving, setSaving] = useState(false);
   const [error, setErrorState] = useState("");
   const [conflict, setConflict] = useState<V2FinalCompositionConflict | null>(null);
+  const [
+    baselineRef,
+    draftRef,
+    editRevisionRef,
+    resetDocument,
+    loadRemote,
+    reconcileSave,
+    resolveRemoteConflict,
+    setExternalUpdate,
+    ,
+    resetUiForSession,
+  ] = document;
 
-  const activeRef = useRef(active);
   const capabilitiesRef = useRef(capabilities);
   const conflictRef = useRef(conflict);
   const sessionGuardRef = useRef(createTimelineSessionGuard());
   const remoteStateEpochRef = useRef(createRemoteStateEpoch());
-  const loadRequestRef = useRef(0);
   const performSaveRef = useRef<
     (snapshot: TimelineSaveSnapshot) => Promise<V2FinalTimelineUpdateResponse | null>
   >(async () => null);
   const saveQueueRef = useRef<TimelineSaveQueue | null>(null);
-  const onTimelineReplacedRef = useRef(onTimelineReplaced);
-  const onTimelineLoadedRef = useRef(onTimelineLoaded);
 
   const assignConflict = useCallback((next: V2FinalCompositionConflict | null) => {
     conflictRef.current = next;
     setConflict(next);
   }, []);
-  const setError = useCallback((message: string) => setErrorState(message), []);
   const setVersionConflict = useCallback((message: string) => {
     assignConflict({ kind: "version-conflict", message });
-    document.markExternalUpdate();
-  }, [assignConflict, document]);
+    setExternalUpdate(true);
+  }, [assignConflict, setExternalUpdate]);
   const applyResponseMetadata = useCallback((response: V2FinalTimelineResponse) => {
     setSources(response.available_sources);
     setCapabilities(response.composition_capabilities);
@@ -141,23 +152,19 @@ export function useTimelinePersistence({
     response: V2FinalTimelineResponse,
     preserveDraft = false,
   ) => {
-    const result = document.loadRemote(response.timeline, preserveDraft);
+    const result = loadRemote(response.timeline, preserveDraft);
     applyResponseMetadata(response);
     if (!result.keptDraft) assignConflict(null);
     return result;
-  }, [applyResponseMetadata, assignConflict, document]);
+  }, [applyResponseMetadata, assignConflict, loadRemote]);
 
   useLayoutEffect(() => {
     const transition = active
       ? sessionGuardRef.current.update(workflowId ?? null)
       : sessionGuardRef.current.update(null);
-    activeRef.current = active;
-    onTimelineReplacedRef.current = onTimelineReplaced;
-    onTimelineLoadedRef.current = onTimelineLoaded;
     if (transition.changed || !active) {
       remoteStateEpochRef.current.invalidate();
-      loadRequestRef.current += 1;
-      document.reset();
+      resetDocument();
       resetUiForSession();
       assignConflict(null);
       setSources([]);
@@ -172,9 +179,7 @@ export function useTimelinePersistence({
   }, [
     active,
     assignConflict,
-    document,
-    onTimelineReplaced,
-    onTimelineLoaded,
+    resetDocument,
     resetUiForSession,
     workflowId,
   ]);
@@ -183,10 +188,8 @@ export function useTimelinePersistence({
     const sessionGuard = sessionGuardRef.current;
     const remoteStateEpoch = remoteStateEpochRef.current;
     return () => {
-      activeRef.current = false;
       sessionGuard.update(null);
       remoteStateEpoch.invalidate();
-      loadRequestRef.current += 1;
     };
   }, []);
 
@@ -196,32 +199,32 @@ export function useTimelinePersistence({
     const session = sessionGuardRef.current.capture();
     const requestedWorkflowId = session.workflowId;
     if (!requestedWorkflowId) return null;
-    const requestId = ++loadRequestRef.current;
     const remoteEpoch = remoteStateEpochRef.current.claim();
     setLoading(true);
     setErrorState("");
     try {
       const response = await v2Api.getFinalTimeline(requestedWorkflowId);
-      if (requestId !== loadRequestRef.current
-        || !sessionGuardRef.current.isCurrent(session)
+      if (!sessionGuardRef.current.isCurrent(session)
         || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
       const accepted = acceptTimelineResponse(response, preserveDraft);
-      if (!preserveDraft && !accepted.keptDraft) onTimelineReplacedRef.current(session);
-      await onTimelineLoadedRef.current(session);
+      if (!preserveDraft && !accepted.keptDraft) {
+        renderLifecycleRef.current[1]();
+      }
+      await renderLifecycleRef.current[0](session);
       return response;
     } catch (loadError) {
-      if (requestId === loadRequestRef.current
-        && sessionGuardRef.current.isCurrent(session)
+      if (sessionGuardRef.current.isCurrent(session)
         && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
-        setErrorState(readableError(loadError));
+        setErrorState(readableTimelineError(loadError));
       }
       return null;
     } finally {
-      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
+      if (sessionGuardRef.current.isCurrent(session)
+        && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
         setLoading(false);
       }
     }
-  }, [acceptTimelineResponse]);
+  }, [acceptTimelineResponse, renderLifecycleRef]);
 
   useEffect(() => {
     if (active && workflowId) void load();
@@ -235,8 +238,8 @@ export function useTimelinePersistence({
     >(
       (session) => {
         if (!sessionGuardRef.current.isCurrent(session)) return null;
-        const baseline = document.baselineRef.current;
-        const draft = document.draftRef.current;
+        const baseline = baselineRef.current;
+        const draft = draftRef.current;
         if (!session.workflowId || !baseline || !draft || conflictRef.current) return null;
         if (shotTimelineEquals(draft, baseline)) return null;
         return { session, baseline, draft };
@@ -251,26 +254,27 @@ export function useTimelinePersistence({
   performSaveRef.current = async (snapshot) => {
     const requestedWorkflowId = snapshot.session.workflowId;
     if (!requestedWorkflowId || !sessionGuardRef.current.isCurrent(snapshot.session)) return null;
-    remoteStateEpochRef.current.claim();
+    const remoteEpoch = remoteStateEpochRef.current.claim();
     setErrorState("");
     try {
       const response = await v2Api.saveFinalTimeline(requestedWorkflowId, {
         expected_version: snapshot.baseline.version,
         timeline: snapshot.draft,
       });
-      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
-      remoteStateEpochRef.current.invalidate();
-      document.reconcileSave(snapshot.draft, response.timeline);
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
+      reconcileSave(snapshot.draft, response.timeline);
       assignConflict(null);
       return response;
     } catch (saveError) {
-      if (!sessionGuardRef.current.isCurrent(snapshot.session)) return null;
-      if (isVersionConflict(saveError)) {
+      if (!sessionGuardRef.current.isCurrent(snapshot.session)
+        || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
+      if (isTimelineVersionConflict(saveError)) {
         const message = "Timeline changed elsewhere. Choose Keep local to rebase your draft or Reload remote to discard it.";
         setVersionConflict(message);
         setErrorState(message);
       } else {
-        setErrorState(readableError(saveError));
+        setErrorState(readableTimelineError(saveError));
       }
       return null;
     }
@@ -288,7 +292,7 @@ export function useTimelinePersistence({
       (saveError) => {
         if (sessionGuardRef.current.isCurrent(session)) {
           if (!queue.isRunning()) setSaving(false);
-          setErrorState(readableError(saveError));
+          setErrorState(readableTimelineError(saveError));
         }
       },
     );
@@ -300,19 +304,17 @@ export function useTimelinePersistence({
   ) => {
     const session = sessionGuardRef.current.capture();
     const requestedWorkflowId = session.workflowId;
-    const requestDraft = document.draftRef.current;
+    const requestDraft = draftRef.current;
     if (!requestedWorkflowId || !requestDraft || !conflictRef.current) return null;
-    const requestId = ++loadRequestRef.current;
     const remoteEpoch = remoteStateEpochRef.current.claim();
-    const requestEditRevision = document.editRevisionRef.current;
+    const requestEditRevision = editRevisionRef.current;
     setLoading(true);
     setErrorState("");
     try {
       const response = await v2Api.getFinalTimeline(requestedWorkflowId);
-      if (requestId !== loadRequestRef.current
-        || !sessionGuardRef.current.isCurrent(session)
+      if (!sessionGuardRef.current.isCurrent(session)
         || !remoteStateEpochRef.current.isCurrent(remoteEpoch)) return null;
-      document.resolveRemoteConflict(
+      resolveRemoteConflict(
         response.timeline,
         resolution,
         requestDraft,
@@ -322,16 +324,18 @@ export function useTimelinePersistence({
       assignConflict(null);
       return response;
     } catch (loadError) {
-      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
-        setErrorState(readableError(loadError));
+      if (sessionGuardRef.current.isCurrent(session)
+        && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
+        setErrorState(readableTimelineError(loadError));
       }
       return null;
     } finally {
-      if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) {
+      if (sessionGuardRef.current.isCurrent(session)
+        && remoteStateEpochRef.current.isCurrent(remoteEpoch)) {
         setLoading(false);
       }
     }
-  }, [applyResponseMetadata, assignConflict, document]);
+  }, [applyResponseMetadata, assignConflict, draftRef, editRevisionRef, resolveRemoteConflict]);
   const keepLocal = useCallback(
     () => resolveConflictWithRemote("keep-local"),
     [resolveConflictWithRemote],
@@ -358,35 +362,36 @@ export function useTimelinePersistence({
       ]);
       return response.source;
     } catch (importError) {
-      if (sessionGuardRef.current.isCurrent(session)) setErrorState(readableError(importError));
+      if (sessionGuardRef.current.isCurrent(session)) {
+        setErrorState(readableTimelineError(importError));
+      }
       return null;
     }
   }, []);
 
-  const session = useMemo<TimelineSessionController>(() => ({
-    activeRef,
-    capture: () => sessionGuardRef.current.capture(),
-    isCurrent: (candidate) => sessionGuardRef.current.isCurrent(candidate),
-  }), []);
-  const renderContract = useMemo<TimelineRenderPersistenceContract>(() => ({
+  const session = useMemo<TimelineSessionController>(() => [
+    () => sessionGuardRef.current.capture(),
+    (candidate) => sessionGuardRef.current.isCurrent(candidate),
+  ], []);
+  const renderContract = useMemo<TimelineRenderPersistenceContract>(() => [
     session,
+    remoteStateEpochRef.current,
     capabilitiesRef,
     conflictRef,
     load,
     save,
     acceptTimelineResponse,
-    setError,
+    setErrorState,
     setVersionConflict,
-  }), [
+  ], [
     acceptTimelineResponse,
     load,
     save,
     session,
-    setError,
     setVersionConflict,
   ]);
 
-  return {
+  return [{
     sources,
     capabilities,
     staleClipIds,
@@ -400,6 +405,5 @@ export function useTimelinePersistence({
     keepLocal,
     reloadRemote,
     registerLibrarySource,
-    renderContract,
-  };
+  }, renderContract] as const;
 }

@@ -23,6 +23,7 @@ import {
   trimTimelineMediaClip,
   validateShotTimeline,
   type ShotTimelineMutation,
+  type ShotTimelineSnapTarget,
 } from "./shotTimelineDomain.ts";
 import {
   commitShotTimelineHistory,
@@ -36,7 +37,6 @@ import {
   undoShotTimelineHistory,
   type ShotTimelineHistory,
 } from "./shotTimelineHistory.ts";
-import type { TimelineDocumentUiContract } from "./useTimelineUiState.ts";
 import {
   addV2TimelineTrack,
   cloneV2Timeline,
@@ -51,29 +51,39 @@ import {
 } from "./v2TimelineModel.ts";
 
 const BASE_PIXELS_PER_SECOND = 52;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
 
-export type TimelinePersistenceDocumentContract = {
-  baselineRef: MutableRefObject<V2FinalCompositionTimeline | null>;
-  draftRef: MutableRefObject<V2FinalCompositionTimeline | null>;
-  historyRef: MutableRefObject<ShotTimelineHistory | null>;
-  editRevisionRef: MutableRefObject<number>;
-  reset: () => void;
+export type V2FinalCompositionTool = "select" | "blade";
+export type V2FinalCompositionEditMode = "normal" | "ripple";
+
+export type TimelinePersistenceDocumentContract = readonly [
+  baselineRef: MutableRefObject<V2FinalCompositionTimeline | null>,
+  draftRef: MutableRefObject<V2FinalCompositionTimeline | null>,
+  editRevisionRef: MutableRefObject<number>,
+  reset: () => void,
   loadRemote: (
     timeline: V2FinalCompositionTimeline,
     preserveDraft: boolean,
-  ) => { keptDraft: boolean };
+  ) => { keptDraft: boolean },
   reconcileSave: (
     requestDraft: V2FinalCompositionTimeline,
     responseTimeline: V2FinalCompositionTimeline,
-  ) => void;
+  ) => void,
   resolveRemoteConflict: (
     remoteTimeline: V2FinalCompositionTimeline,
     resolution: "keep-local" | "reload-remote",
     requestDraft: V2FinalCompositionTimeline,
     requestEditRevision: number,
-  ) => void;
-  markExternalUpdate: () => void;
-};
+  ) => void,
+  setExternalUpdate: (value: boolean) => void,
+  finalizeGesture: () => void,
+  resetUiForSession: () => void,
+];
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
 
 export function moveTimelineClipToTrack(
   timeline: V2FinalCompositionTimeline,
@@ -117,16 +127,69 @@ function trackLocked(track: V2FinalCompositionTimeline["tracks"][number]) {
     && (editor as Record<string, unknown>).locked === true;
 }
 
-export function useTimelineDocument(ui: TimelineDocumentUiContract) {
+export function useTimelineDocument() {
   const [baseline, setBaseline] = useState<V2FinalCompositionTimeline | null>(null);
   const [history, setHistory] = useState<ShotTimelineHistory | null>(null);
   const [externalUpdate, setExternalUpdate] = useState(false);
+  const [selectedClipIds, setSelectedClipIdsState] = useState<string[]>([]);
+  const [playheadSeconds, setPlayheadSecondsState] = useState(0);
+  const [tool, setToolState] = useState<V2FinalCompositionTool>("select");
+  const [editMode, setEditModeState] = useState<V2FinalCompositionEditMode>("normal");
+  const [snapEnabled, setSnapEnabledState] = useState(true);
+  const [zoom, setZoomState] = useState(1);
+  const [warning, setWarning] = useState("");
+  const [snapTarget, setSnapTarget] = useState<ShotTimelineSnapTarget | null>(null);
   const draft = history?.present ?? null;
 
   const baselineRef = useRef(baseline);
   const historyRef = useRef(history);
   const draftRef = useRef(draft);
   const editRevisionRef = useRef(0);
+  const selectedClipIdsRef = useRef(selectedClipIds);
+  const playheadRef = useRef(playheadSeconds);
+  const editModeRef = useRef(editMode);
+  const snapEnabledRef = useRef(snapEnabled);
+  const zoomRef = useRef(zoom);
+
+  const assignSelectedClipIds = useCallback((ids: string[]) => {
+    const next = [...new Set(ids)];
+    selectedClipIdsRef.current = next;
+    setSelectedClipIdsState(next);
+  }, []);
+  const setSelectedClipId = useCallback(
+    (clipId: string | null) => assignSelectedClipIds(clipId ? [clipId] : []),
+    [assignSelectedClipIds],
+  );
+  const setPlayheadSeconds = useCallback((seconds: number) => {
+    const next = Math.max(0, seconds);
+    playheadRef.current = next;
+    setPlayheadSecondsState(next);
+  }, []);
+  const setEditMode = useCallback((next: V2FinalCompositionEditMode) => {
+    editModeRef.current = next;
+    setEditModeState(next);
+  }, []);
+  const setSnapEnabled = useCallback((next: boolean) => {
+    snapEnabledRef.current = next;
+    setSnapEnabledState(next);
+  }, []);
+  const setZoom = useCallback((next: number) => {
+    const clamped = clampZoom(next);
+    zoomRef.current = clamped;
+    setZoomState(clamped);
+  }, []);
+  const applyMutationFeedback = useCallback((mutation: ShotTimelineMutation) => {
+    setWarning(mutation.warning ?? "");
+    setSnapTarget(mutation.snapTarget);
+  }, []);
+  const clearMutationFeedback = useCallback(() => {
+    setWarning("");
+    setSnapTarget(null);
+  }, []);
+  const resetUiForSession = useCallback(() => {
+    assignSelectedClipIds([]);
+    clearMutationFeedback();
+  }, [assignSelectedClipIds, clearMutationFeedback]);
 
   const assignBaseline = useCallback((next: V2FinalCompositionTimeline | null) => {
     baselineRef.current = next;
@@ -165,11 +228,11 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
       setExternalUpdate(true);
     } else {
       assignHistory(loaded.history);
-      ui.assignSelectedClipIds([]);
+      assignSelectedClipIds([]);
       setExternalUpdate(false);
     }
     return { keptDraft };
-  }, [assignBaseline, assignHistory, ui]);
+  }, [assignBaseline, assignHistory, assignSelectedClipIds]);
   const reconcileSave = useCallback((
     requestDraft: V2FinalCompositionTimeline,
     responseTimeline: V2FinalCompositionTimeline,
@@ -201,11 +264,10 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
           requestDraft,
           remoteTimeline: loaded.draft,
         }));
-      ui.assignSelectedClipIds([]);
+      assignSelectedClipIds([]);
     }
     setExternalUpdate(false);
-  }, [assignBaseline, assignHistory, ui]);
-  const markExternalUpdate = useCallback(() => setExternalUpdate(true), []);
+  }, [assignBaseline, assignHistory, assignSelectedClipIds]);
 
   const commitTimeline = useCallback((
     timeline: V2FinalCompositionTimeline,
@@ -227,22 +289,22 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     mutation: ShotTimelineMutation,
     coalesceKey: string | null = null,
   ) => {
-    ui.applyMutationFeedback(mutation);
+    applyMutationFeedback(mutation);
     if (mutation.timeline !== draftRef.current) commitTimeline(mutation.timeline, coalesceKey);
     return mutation;
-  }, [commitTimeline, ui]);
+  }, [applyMutationFeedback, commitTimeline]);
   const editOptions = useCallback(() => {
     const current = draftRef.current;
     return {
-      ripple: ui.editModeRef.current === "ripple",
+      ripple: editModeRef.current === "ripple",
       fps: current?.fps ?? 24,
       snap: {
-        enabled: ui.snapEnabledRef.current,
-        thresholdSeconds: 8 / (BASE_PIXELS_PER_SECOND * ui.zoomRef.current),
-        playhead: ui.playheadRef.current,
+        enabled: snapEnabledRef.current,
+        thresholdSeconds: 8 / (BASE_PIXELS_PER_SECOND * zoomRef.current),
+        playhead: playheadRef.current,
       },
     };
-  }, [ui]);
+  }, []);
   const updateDraft = useCallback((
     updater: (timeline: V2FinalCompositionTimeline) => V2FinalCompositionTimeline,
     coalesceKey: string | null = null,
@@ -257,11 +319,11 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     if (next === current) return;
     editRevisionRef.current += 1;
     assignHistory(next);
-    ui.assignSelectedClipIds(ui.selectedClipIdsRef.current.filter(
+    assignSelectedClipIds(selectedClipIdsRef.current.filter(
       (clipId) => next.present.clips.some((clip) => clip.clip_id === clipId),
     ));
-    ui.clearMutationFeedback();
-  }, [assignHistory, ui]);
+    clearMutationFeedback();
+  }, [assignHistory, assignSelectedClipIds, clearMutationFeedback]);
   const redo = useCallback(() => {
     const current = historyRef.current;
     if (!current) return;
@@ -269,11 +331,11 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     if (next === current) return;
     editRevisionRef.current += 1;
     assignHistory(next);
-    ui.assignSelectedClipIds(ui.selectedClipIdsRef.current.filter(
+    assignSelectedClipIds(selectedClipIdsRef.current.filter(
       (clipId) => next.present.clips.some((clip) => clip.clip_id === clipId),
     ));
-    ui.clearMutationFeedback();
-  }, [assignHistory, ui]);
+    clearMutationFeedback();
+  }, [assignHistory, assignSelectedClipIds, clearMutationFeedback]);
 
   const moveClip = useCallback((
     clipId: string,
@@ -303,19 +365,19 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
       ? applyMutation(trimTimelineMediaClip(current, clipId, edge, sourceTime, editOptions()), coalesceKey)
       : null;
   }, [applyMutation, editOptions]);
-  const splitAtPlayhead = useCallback((clipId = ui.selectedClipIdsRef.current[0]) => {
+  const splitAtPlayhead = useCallback((clipId = selectedClipIdsRef.current[0]) => {
     const current = draftRef.current;
     return current && clipId
-      ? applyMutation(splitShotClip(current, clipId, ui.playheadRef.current, editOptions()))
+      ? applyMutation(splitShotClip(current, clipId, playheadRef.current, editOptions()))
       : null;
-  }, [applyMutation, editOptions, ui]);
+  }, [applyMutation, editOptions]);
   const deleteSelection = useCallback(() => {
     const current = draftRef.current;
     if (!current) return null;
-    const mutation = applyMutation(deleteShotClips(current, ui.selectedClipIdsRef.current, editOptions()));
-    if (mutation.timeline !== current) ui.assignSelectedClipIds([]);
+    const mutation = applyMutation(deleteShotClips(current, selectedClipIdsRef.current, editOptions()));
+    if (mutation.timeline !== current) assignSelectedClipIds([]);
     return mutation;
-  }, [applyMutation, editOptions, ui]);
+  }, [applyMutation, assignSelectedClipIds, editOptions]);
   const reorderLane = useCallback((trackId: string, targetIndex: number) => {
     const current = draftRef.current;
     return current ? applyMutation(reorderShotLane(current, trackId, targetIndex)) : null;
@@ -324,12 +386,12 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     const current = draftRef.current;
     if (!current) return null;
     const mutation = source.media_type === "video"
-      ? addImportedVideoLane(current, source, ui.playheadRef.current)
+      ? addImportedVideoLane(current, source, playheadRef.current)
       : source.media_type === "audio"
         ? addOrReplaceBgm(current, source)
         : null;
     if (!mutation) {
-      ui.applyMutationFeedback({
+      applyMutationFeedback({
         timeline: current,
         changedClipIds: [],
         snapTarget: null,
@@ -342,21 +404,21 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
       const selected = result.changedClipIds.find(
         (clipId) => result.timeline.clips.some((clip) => clip.clip_id === clipId),
       );
-      if (selected) ui.assignSelectedClipIds([selected]);
+      if (selected) assignSelectedClipIds([selected]);
     }
     return result;
-  }, [applyMutation, ui]);
+  }, [applyMutation, applyMutationFeedback, assignSelectedClipIds]);
   const removeImportedLane = useCallback((trackId: string) => {
     const current = draftRef.current;
     if (!current) return null;
     const mutation = applyMutation(removeImportedVideoLane(current, trackId));
     if (mutation.timeline !== current) {
-      ui.assignSelectedClipIds(ui.selectedClipIdsRef.current.filter(
+      assignSelectedClipIds(selectedClipIdsRef.current.filter(
         (clipId) => mutation.timeline.clips.some((clip) => clip.clip_id === clipId),
       ));
     }
     return mutation;
-  }, [applyMutation, ui]);
+  }, [applyMutation, assignSelectedClipIds]);
   const removeClip = useCallback((clipId: string) => {
     const current = draftRef.current;
     const clip = current?.clips.find((candidate) => candidate.clip_id === clipId);
@@ -365,41 +427,65 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     } else {
       updateDraft((timeline) => removeV2TimelineClip(timeline, clipId));
     }
-    ui.assignSelectedClipIds(ui.selectedClipIdsRef.current.filter((currentId) => currentId !== clipId));
-  }, [applyMutation, editOptions, ui, updateDraft]);
+    assignSelectedClipIds(selectedClipIdsRef.current.filter((currentId) => currentId !== clipId));
+  }, [applyMutation, assignSelectedClipIds, editOptions, updateDraft]);
+  const fitTimeline = useCallback(
+    (viewportWidth?: number) => {
+      const duration = draftRef.current ? v2TimelineDuration(draftRef.current) : 0;
+      const next = viewportWidth && duration > 0
+        ? clampZoom(viewportWidth / (duration * BASE_PIXELS_PER_SECOND))
+        : 1;
+      zoomRef.current = next;
+      setZoomState(next);
+      return next;
+    },
+    [],
+  );
 
-  const persistenceContract = useMemo<TimelinePersistenceDocumentContract>(() => ({
+  const persistenceContract = useMemo<TimelinePersistenceDocumentContract>(() => [
     baselineRef,
     draftRef,
-    historyRef,
     editRevisionRef,
     reset,
     loadRemote,
     reconcileSave,
     resolveRemoteConflict,
-    markExternalUpdate,
-  }), [
+    setExternalUpdate,
+    finalizeGesture,
+    resetUiForSession,
+  ], [
+    finalizeGesture,
     loadRemote,
-    markExternalUpdate,
     reconcileSave,
     reset,
+    resetUiForSession,
     resolveRemoteConflict,
   ]);
 
-  return {
+  return [{
     baseline,
     draft,
     externalUpdate,
-    isDirty: useMemo(() => !shotTimelineEquals(draft, baseline), [baseline, draft]),
+    isDirty: !shotTimelineEquals(draft, baseline),
     canUndo: (history?.past.length ?? 0) > 0,
     canRedo: (history?.future.length ?? 0) > 0,
     durationSeconds: draft ? v2TimelineDuration(draft) : 0,
-    baselineRef,
-    draftRef,
-    reset,
-    updateDraft,
-    applyMutation,
-    editOptions,
+    tool,
+    setTool: setToolState,
+    editMode,
+    setEditMode,
+    snapEnabled,
+    setSnapEnabled,
+    zoom,
+    setZoom,
+    selectedClipIds,
+    selectedClipId: selectedClipIds[0] ?? null,
+    setSelectedClipIds: assignSelectedClipIds,
+    setSelectedClipId,
+    playheadSeconds,
+    setPlayheadSeconds,
+    warning,
+    snapTarget,
     undo,
     redo,
     finalizeGesture,
@@ -408,6 +494,7 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
     splitAtPlayhead,
     deleteSelection,
     reorderLane,
+    fitTimeline,
     addSource,
     removeImportedLane,
     addTrack: (type: V2TimelineTrackType) => updateDraft(
@@ -499,6 +586,5 @@ export function useTimelineDocument(ui: TimelineDocumentUiContract) {
         ? applyMutation(moveTimelineClipToTrack(current, clipId, trackId, startTime))
         : null;
     },
-    persistenceContract,
-  };
+  }, persistenceContract] as const;
 }

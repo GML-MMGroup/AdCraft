@@ -1,23 +1,20 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useRef } from "react";
 
 import type {
   V2FinalTimelineSource,
 } from "../../../types-v2.ts";
-import type { TimelineSessionToken } from "./shotTimelineHistory.ts";
 import {
   moveTimelineClipToTrack,
   useTimelineDocument,
+  type V2FinalCompositionEditMode,
+  type V2FinalCompositionTool,
 } from "./useTimelineDocument.ts";
 import { useFinalRenderSession } from "./useFinalRenderSession.ts";
 import {
   useTimelinePersistence,
+  type TimelineRenderLifecycleBridge,
   type V2FinalCompositionConflict,
 } from "./useTimelinePersistence.ts";
-import {
-  useTimelineUiState,
-  type V2FinalCompositionEditMode,
-  type V2FinalCompositionTool,
-} from "./useTimelineUiState.ts";
 import { supportsAdvancedTimelineEditor } from "./v2FinalCompositionPolicy.ts";
 
 export {
@@ -62,130 +59,35 @@ export function useV2FinalCompositionEditor({
   active: boolean;
   onWorkflowRefresh?: (workflowId: string) => Promise<unknown> | unknown;
 }) {
-  const ui = useTimelineUiState();
-  const document = useTimelineDocument(ui.documentContract);
-  const timelineLoadedRef = useRef<
-    (session: TimelineSessionToken) => Promise<unknown>
-  >(async () => null);
-  const timelineReplacedRef = useRef<() => void>(() => {});
-  const handleTimelineLoaded = useCallback(
-    (session: TimelineSessionToken) => timelineLoadedRef.current(session),
-    [],
-  );
-  const handleTimelineReplaced = useCallback(
-    () => timelineReplacedRef.current(),
-    [],
-  );
-  const persistence = useTimelinePersistence({
+  const [document, timelineDocument] = useTimelineDocument();
+  const renderLifecycleRef = useRef<TimelineRenderLifecycleBridge>([
+    async () => null,
+    () => {},
+  ]);
+  const [persistence, renderPersistence] = useTimelinePersistence({
     workflowId,
     active,
-    document: document.persistenceContract,
-    resetUiForSession: ui.resetForSession,
-    onTimelineReplaced: handleTimelineReplaced,
-    onTimelineLoaded: handleTimelineLoaded,
+    document: timelineDocument,
+    renderLifecycleRef,
   });
-  const finalRenderDocument = useMemo(() => ({
-    baselineRef: document.baselineRef,
-    draftRef: document.draftRef,
-    finalizeGesture: document.finalizeGesture,
-  }), [document.baselineRef, document.draftRef, document.finalizeGesture]);
-  const finalRender = useFinalRenderSession({
+  const [finalRender, loadFinalVideo, resetRenderProgress] = useFinalRenderSession({
     active,
     workflowId,
     onWorkflowRefresh,
-    document: finalRenderDocument,
-    persistence: persistence.renderContract,
+    document: timelineDocument,
+    persistence: renderPersistence,
   });
-  timelineLoadedRef.current = finalRender.loadFinalVideo;
-  timelineReplacedRef.current = finalRender.resetRenderProgress;
-  const loadTimeline = persistence.load;
-  const fitTimelineUi = ui.fitTimeline;
-  const draftRef = document.draftRef;
-
-  const selectedClip = useMemo(
-    () => document.draft?.clips.find(
-      (clip) => clip.clip_id === ui.selectedClipId,
-    ) ?? null,
-    [document.draft, ui.selectedClipId],
-  );
-  const load = useCallback((
-    options: { preserveDraft?: boolean } = {},
-  ) => loadTimeline(options), [loadTimeline]);
-  const fitTimeline = useCallback(
-    (viewportWidth?: number) => fitTimelineUi(draftRef.current, viewportWidth),
-    [draftRef, fitTimelineUi],
-  );
+  renderLifecycleRef.current[0] = loadFinalVideo;
+  renderLifecycleRef.current[1] = resetRenderProgress;
 
   return {
-    baseline: document.baseline,
-    draft: document.draft,
-    sources: persistence.sources,
-    capabilities: persistence.capabilities,
+    ...document,
+    ...persistence,
+    ...finalRender,
     advancedEditorEnabled: supportsAdvancedTimelineEditor(persistence.capabilities),
-    staleClipIds: persistence.staleClipIds,
-    missingSourceClipIds: persistence.missingSourceClipIds,
-    finalVideo: finalRender.finalVideo,
-    autoPlayFinalVideo: finalRender.autoPlayFinalVideo,
-    tool: ui.tool,
-    setTool: ui.setTool,
-    editMode: ui.editMode,
-    setEditMode: ui.setEditMode,
-    snapEnabled: ui.snapEnabled,
-    setSnapEnabled: ui.setSnapEnabled,
-    zoom: ui.zoom,
-    setZoom: ui.setZoom,
-    selectedClipIds: ui.selectedClipIds,
-    setSelectedClipIds: ui.setSelectedClipIds,
-    selectedClip,
-    selectedClipId: ui.selectedClipId,
-    setSelectedClipId: ui.setSelectedClipId,
-    playheadSeconds: ui.playheadSeconds,
-    setPlayheadSeconds: ui.setPlayheadSeconds,
-    loading: persistence.loading,
-    saving: persistence.saving,
-    rendering: finalRender.rendering,
-    cancellingRender: finalRender.cancellingRender,
-    renderJob: finalRender.renderJob,
-    renderState: finalRender.renderState,
-    renderHint: finalRender.renderHint,
-    renderSessionError: finalRender.renderSessionError,
-    renderIssue: finalRender.renderIssue,
-    error: persistence.error,
-    warning: ui.warning,
-    snapTarget: ui.snapTarget,
-    externalUpdate: document.externalUpdate,
-    conflict: persistence.conflict,
-    isDirty: document.isDirty,
-    canUndo: document.canUndo,
-    canRedo: document.canRedo,
-    durationSeconds: document.durationSeconds,
-    load,
-    save: persistence.save,
-    render: finalRender.render,
-    cancelRender: finalRender.cancelRender,
-    reloadRemote: persistence.reloadRemote,
-    keepLocal: persistence.keepLocal,
-    undo: document.undo,
-    redo: document.redo,
-    finalizeGesture: document.finalizeGesture,
-    moveClip: document.moveClip,
-    trimClip: document.trimClip,
-    splitAtPlayhead: document.splitAtPlayhead,
-    deleteSelection: document.deleteSelection,
-    reorderLane: document.reorderLane,
-    fitTimeline,
-    addSource: document.addSource,
-    registerLibrarySource: persistence.registerLibrarySource,
+    selectedClip: document.draft?.clips.find(
+      (clip) => clip.clip_id === document.selectedClipId,
+    ) ?? null,
     importLibrarySource: persistence.registerLibrarySource,
-    removeImportedLane: document.removeImportedLane,
-    addTrack: document.addTrack,
-    updateTrack: document.updateTrack,
-    splitClip: document.splitClip,
-    removeClip: document.removeClip,
-    updateClip: document.updateClip,
-    setClipAudio: document.setClipAudio,
-    setClipColor: document.setClipColor,
-    addSubtitle: document.addSubtitle,
-    moveClipToTrack: document.moveClipToTrack,
   };
 }

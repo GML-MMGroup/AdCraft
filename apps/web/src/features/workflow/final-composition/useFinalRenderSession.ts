@@ -4,7 +4,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type MutableRefObject,
 } from "react";
 
 import { V2ApiError, v2Api } from "../../../api/v2Client.ts";
@@ -38,23 +37,19 @@ import {
   shouldReloadFinalCompositionTimeline,
 } from "./finalCompositionEvents.ts";
 import { shotTimelineEquals, type TimelineSessionToken } from "./shotTimelineHistory.ts";
-import type { TimelineRenderPersistenceContract } from "./useTimelinePersistence.ts";
+import type { TimelinePersistenceDocumentContract } from "./useTimelineDocument.ts";
+import {
+  isTimelineVersionConflict,
+  readableTimelineError,
+  type TimelineRenderPersistenceContract,
+} from "./useTimelinePersistence.ts";
 import {
   classifyFinalCompositionError,
   supportsAdvancedTimelineEditor,
   type V2FinalCompositionIssue,
 } from "./v2FinalCompositionPolicy.ts";
 
-export type FinalRenderDocumentContract = {
-  baselineRef: MutableRefObject<V2FinalCompositionTimeline | null>;
-  draftRef: MutableRefObject<V2FinalCompositionTimeline | null>;
-  finalizeGesture: () => void;
-};
-
-function readableError(error: unknown) {
-  if (error instanceof V2ApiError) return error.message || error.code || "Timeline request failed.";
-  return error instanceof Error ? error.message : "Timeline request failed.";
-}
+export type FinalRenderDocumentContract = TimelinePersistenceDocumentContract;
 
 function finalVideoFromWorkflow(value: unknown): AssetVersionV2 | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -64,12 +59,6 @@ function finalVideoFromWorkflow(value: unknown): AssetVersionV2 | null {
     || !Array.isArray(workflow.asset_versions)) return null;
   const slot = selectV2FinalVideoSlot(workflow);
   return selectedAssetForSlot(workflow, slot ?? undefined) ?? null;
-}
-
-function isRenderVersionConflict(error: unknown) {
-  return error instanceof V2ApiError
-    && [409, 412, 428].includes(error.status)
-    && error.code === "v2_timeline_version_conflict";
 }
 
 export function useFinalRenderSession({
@@ -94,6 +83,19 @@ export function useFinalRenderSession({
   const [renderSessionError, setRenderSessionError] = useState("");
   const [renderIssue, setRenderIssue] = useState<V2FinalCompositionIssue | null>(null);
   const [cancellingRender, setCancellingRender] = useState(false);
+  const [baselineRef, draftRef, , , , , , , finalizeGesture] = document;
+  const [
+    sessionController,
+    remoteState,
+    capabilitiesRef,
+    conflictRef,
+    load,
+    save,
+    acceptTimelineResponse,
+    setError,
+    setVersionConflict,
+  ] = persistence;
+  const [captureSession, isSessionCurrent] = sessionController;
 
   const activeRef = useRef(active);
   const renderingRef = useRef(rendering);
@@ -169,16 +171,16 @@ export function useFinalRenderSession({
   ) => {
     try {
       const candidate = workflow ?? await v2Api.workflow(session.workflowId!);
-      if (!persistence.session.isCurrent(session)) return null;
+      if (!isSessionCurrent(session)) return null;
       return applyFinalVideoWorkflow(candidate, autoplay);
     } catch {
       return null;
     }
-  }, [applyFinalVideoWorkflow, persistence.session]);
+  }, [applyFinalVideoWorkflow, isSessionCurrent]);
   const renderIdentityIsCurrent = useCallback((identity: FinalRenderSessionIdentity) => (
-    persistence.session.isCurrent(identity.session)
+    isSessionCurrent(identity.session)
     && finalRenderSessionMatches(renderSessionRef.current, identity, activeRef.current)
-  ), [persistence.session]);
+  ), [isSessionCurrent]);
   const scheduleRenderPoll = useCallback((
     identity: FinalRenderSessionIdentity,
     resetBackoff = false,
@@ -206,7 +208,7 @@ export function useFinalRenderSession({
     setRenderSessionError("");
     const issue = classifyFinalCompositionError(state.error_code);
     setRenderIssue(issue);
-    persistence.setError("");
+    setError("");
     if (isFinalRenderTerminal(state.status)) {
       clearRenderPollTimer();
       renderingRef.current = false;
@@ -217,10 +219,12 @@ export function useFinalRenderSession({
         && claimFinalRenderCompletion(completedRenderSessionsRef.current, identity)) {
         setRenderIssue(null);
         void (async () => {
-          await persistence.load({ preserveDraft: true });
+          await load({ preserveDraft: true });
+          if (!renderIdentityIsCurrent(identity)) return;
           const refreshedWorkflow = await onWorkflowRefreshRef.current?.(
             identity.session.workflowId!,
           );
+          if (!renderIdentityIsCurrent(identity)) return;
           await loadFinalVideo(identity.session, refreshedWorkflow, true);
         })();
       }
@@ -234,10 +238,11 @@ export function useFinalRenderSession({
     return true;
   }, [
     clearRenderPollTimer,
+    load,
     loadFinalVideo,
-    persistence,
     renderIdentityIsCurrent,
     scheduleRenderPoll,
+    setError,
   ]);
   const pollRender = useCallback(async (
     identity: FinalRenderSessionIdentity,
@@ -262,19 +267,19 @@ export function useFinalRenderSession({
       } else {
         const message = status === 404
           ? "Final render is no longer available. Start a new render to retry."
-          : `Final render status could not be loaded: ${readableError(pollError)} Start a new render to retry.`;
+          : `Final render status could not be loaded: ${readableTimelineError(pollError)} Start a new render to retry.`;
         resetRenderProgress();
         setRenderSessionError(message);
-        persistence.setError("");
+        setError("");
       }
     }
   }, [
     applyAuthoritativeRenderState,
     clearRenderPollTimer,
-    persistence,
     renderIdentityIsCurrent,
     resetRenderProgress,
     scheduleRenderPoll,
+    setError,
   ]);
   pollRenderRef.current = pollRender;
 
@@ -284,7 +289,7 @@ export function useFinalRenderSession({
       if (!activeRef.current || detail?.workflowId !== workflowId) return;
       const eventTypes = detail.events?.map((item) => item.event_type) ?? detail.eventTypes ?? [];
       if (shouldReloadFinalCompositionTimeline(eventTypes)) {
-        void persistence.load({ preserveDraft: true });
+        void load({ preserveDraft: true });
       }
       const identity = renderSessionRef.current;
       if (!identity || !renderIdentityIsCurrent(identity)) return;
@@ -303,7 +308,7 @@ export function useFinalRenderSession({
     };
     window.addEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
     return () => window.removeEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
-  }, [clearRenderPollTimer, persistence, renderIdentityIsCurrent, workflowId]);
+  }, [clearRenderPollTimer, load, renderIdentityIsCurrent, workflowId]);
 
   const beginRenderSession = useCallback((
     session: TimelineSessionToken,
@@ -311,7 +316,7 @@ export function useFinalRenderSession({
     start: V2FinalTimelineRenderStartResponse,
   ) => {
     if (!activeRef.current
-      || !persistence.session.isCurrent(session)
+      || !isSessionCurrent(session)
       || renderGenerationRef.current !== renderGeneration
       || start.workflow_id !== session.workflowId) return null;
     clearRenderPollTimer();
@@ -337,15 +342,15 @@ export function useFinalRenderSession({
     setRendering(true);
     void pollRenderRef.current(identity, true);
     return identity;
-  }, [clearRenderPollTimer, persistence.session]);
+  }, [clearRenderPollTimer, isSessionCurrent]);
 
   const render = useCallback(async () => {
-    const session = persistence.session.capture();
+    const session = captureSession();
     const requestedWorkflowId = session.workflowId;
     if (!activeRef.current
       || !requestedWorkflowId
-      || !document.draftRef.current
-      || !document.baselineRef.current
+      || !draftRef.current
+      || !baselineRef.current
       || renderingRef.current) return null;
     const renderGeneration = ++renderGenerationRef.current;
     clearRenderPollTimer();
@@ -364,35 +369,37 @@ export function useFinalRenderSession({
     setRenderSessionError("");
     setRenderIssue(null);
     setAutoPlayFinalVideo(false);
-    persistence.setError("");
+    setError("");
     let attached = false;
-    let timeline: V2FinalCompositionTimeline | null = document.baselineRef.current;
+    let timeline: V2FinalCompositionTimeline | null = baselineRef.current;
     try {
-      if (supportsAdvancedTimelineEditor(persistence.capabilitiesRef.current)) {
+      if (supportsAdvancedTimelineEditor(capabilitiesRef.current)) {
         timeline = await flushTimelineForRender({
           session,
           isSessionCurrent: (candidate) => activeRef.current
             && renderGenerationRef.current === renderGeneration
-            && persistence.session.isCurrent(candidate),
-          finalizeGesture: document.finalizeGesture,
-          readDraft: () => document.draftRef.current,
-          readBaseline: () => document.baselineRef.current,
+            && isSessionCurrent(candidate),
+          finalizeGesture,
+          readDraft: () => draftRef.current,
+          readBaseline: () => baselineRef.current,
           equals: shotTimelineEquals,
-          hasConflict: () => persistence.conflictRef.current !== null,
-          save: persistence.save,
+          hasConflict: () => conflictRef.current !== null,
+          save,
         });
       } else {
+        const remoteEpoch = remoteState.claim();
         const response = await v2Api.getFinalTimeline(requestedWorkflowId);
         if (!activeRef.current
           || renderGenerationRef.current !== renderGeneration
-          || !persistence.session.isCurrent(session)) return null;
-        persistence.acceptTimelineResponse(response);
+          || !isSessionCurrent(session)
+          || !remoteState.isCurrent(remoteEpoch)) return null;
+        acceptTimelineResponse(response);
         timeline = response.timeline;
       }
       if (!timeline
         || !activeRef.current
         || renderGenerationRef.current !== renderGeneration
-        || !persistence.session.isCurrent(session)) return null;
+        || !isSessionCurrent(session)) return null;
       const response = await v2Api.renderFinalTimeline(requestedWorkflowId, {
         timeline_id: timeline.timeline_id,
         timeline_version: timeline.version,
@@ -402,11 +409,11 @@ export function useFinalRenderSession({
     } catch (renderError) {
       if (activeRef.current
         && renderGenerationRef.current === renderGeneration
-        && persistence.session.isCurrent(session)) {
+        && isSessionCurrent(session)) {
         const activeRenderId = renderError instanceof V2ApiError
           ? activeRenderIdFromPayload(renderError.payload)
           : null;
-        const activeTimeline = timeline ?? document.baselineRef.current;
+        const activeTimeline = timeline ?? baselineRef.current;
         if (activeRenderId && activeTimeline) {
           const activeStart: V2FinalTimelineRenderStartResponse = {
             workflow_id: requestedWorkflowId,
@@ -418,8 +425,8 @@ export function useFinalRenderSession({
           };
           attached = beginRenderSession(session, renderGeneration, activeStart) !== null;
           if (attached) return activeStart;
-        } else if (isRenderVersionConflict(renderError)) {
-          persistence.setVersionConflict(
+        } else if (isTimelineVersionConflict(renderError, "v2_timeline_version_conflict")) {
+          setVersionConflict(
             "Timeline changed elsewhere. Resolve the version conflict before rendering.",
           );
         }
@@ -427,22 +434,32 @@ export function useFinalRenderSession({
           ? classifyFinalCompositionError(renderError.code)
           : null;
         setRenderIssue(issue);
-        persistence.setError(issue ? "" : readableError(renderError));
+        setError(issue ? "" : readableTimelineError(renderError));
       }
       return null;
     } finally {
       if (!attached
         && renderGenerationRef.current === renderGeneration
-        && persistence.session.isCurrent(session)) {
+        && isSessionCurrent(session)) {
         renderingRef.current = false;
         setRendering(false);
       }
     }
   }, [
+    acceptTimelineResponse,
+    baselineRef,
     beginRenderSession,
+    capabilitiesRef,
     clearRenderPollTimer,
-    document,
-    persistence,
+    conflictRef,
+    draftRef,
+    finalizeGesture,
+    remoteState,
+    save,
+    captureSession,
+    isSessionCurrent,
+    setError,
+    setVersionConflict,
   ]);
 
   const cancelRender = useCallback(async () => {
@@ -461,7 +478,7 @@ export function useFinalRenderSession({
     const requestId = ++renderCancelRequestRef.current;
     cancellingRenderRef.current = true;
     setCancellingRender(true);
-    persistence.setError("");
+    setError("");
     try {
       const state = await v2Api.cancelFinalTimelineRender(
         requestedWorkflowId,
@@ -476,7 +493,7 @@ export function useFinalRenderSession({
       if (requestId === renderCancelRequestRef.current && renderIdentityIsCurrent(identity)) {
         cancellingRenderRef.current = false;
         setCancellingRender(false);
-        persistence.setError(readableError(cancelError));
+        setError(readableTimelineError(cancelError));
         scheduleRenderPoll(identity, true);
       }
       return null;
@@ -484,12 +501,12 @@ export function useFinalRenderSession({
   }, [
     applyAuthoritativeRenderState,
     clearRenderPollTimer,
-    persistence,
     renderIdentityIsCurrent,
     scheduleRenderPoll,
+    setError,
   ]);
 
-  return {
+  return [{
     finalVideo,
     autoPlayFinalVideo,
     rendering,
@@ -501,7 +518,5 @@ export function useFinalRenderSession({
     renderIssue,
     render,
     cancelRender,
-    loadFinalVideo,
-    resetRenderProgress,
-  };
+  }, loadFinalVideo, resetRenderProgress] as const;
 }
