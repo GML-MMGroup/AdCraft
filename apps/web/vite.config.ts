@@ -26,12 +26,11 @@ function configureMediaProxy(proxy: ProxyWithResponseEvents) {
 export default defineConfig({
   plugins: [react()],
   build: {
-    modulePreload: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes("vite/preload-helper")) {
-            return "vendor-react";
+            return "vite-runtime";
           }
           if (
             id.includes("node_modules/react") ||
@@ -45,19 +44,6 @@ export default defineConfig({
           }
           if (id.includes("node_modules/@xzdarcy/react-timeline-editor")) {
             return "timeline-editor";
-          }
-          if (
-            id.includes("/src/features/workflow/v2/screenplay/V2Screenplay") ||
-            id.includes("/src/features/workflow/v2/screenplay/screenplayUiHelpers")
-          ) {
-            return "screenplay-editor";
-          }
-          if (
-            (id.includes("/src/features/workflow/")
-              && !id.includes("/src/features/workflow/final-composition/"))
-            || id.includes("/src/workflow-v2/")
-          ) {
-            return "workflow";
           }
           return undefined;
         },

@@ -253,7 +253,7 @@ describe("route providers", () => {
     expect(v2Api.listProjects).not.toHaveBeenCalled();
   });
 
-  test("keeps workspace chunks out of built static Home and root closures", () => {
+  test("keeps workspace chunks out of the actual built Home route closure", () => {
     execFileSync("npm", ["run", "build"], { cwd: webRoot, stdio: "pipe" });
 
     function staticGraph(entry: string) {
@@ -271,15 +271,37 @@ describe("route providers", () => {
       return JSON.parse(graphResult.stdout) as { modules: string[] };
     }
 
-    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, { file: string }>;
-    const filesFor = (graph: { modules: string[] }) => graph.modules.map((moduleId) => manifest[moduleId]?.file ?? moduleId);
-    const blocked = /(?:AppContext|projects|storage|workflow|react-flow|app-core)/i;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, {
+      css?: string[];
+      dynamicImports?: string[];
+      file: string;
+      name?: string;
+    }>;
+    const filesFor = (graph: { modules: string[] }) => graph.modules.flatMap((moduleId) => {
+      const module = manifest[moduleId];
+      return module ? [moduleId, module.file, ...(module.css ?? [])] : [moduleId];
+    });
+    const blocked = /(?:AppContext|projects|storage|workflow|screenplay|react-flow|app-core)/i;
+    const home = staticGraph("src/pages/HomePage.tsx");
+    const root = staticGraph("index.html");
+    const layoutEntry = manifest["index.html"].dynamicImports?.find((entry) => manifest[entry]?.name === "Layout");
 
-    expect([...staticGraph("src/pages/HomePage.tsx").modules, ...filesFor(staticGraph("src/pages/HomePage.tsx"))]).not.toEqual(
+    expect([...home.modules, ...filesFor(home)]).not.toEqual(
       expect.arrayContaining([expect.stringMatching(blocked)]),
     );
-    expect([...staticGraph("index.html").modules, ...filesFor(staticGraph("index.html"))]).not.toEqual(
+    expect([...root.modules, ...filesFor(root)]).not.toEqual(
       expect.arrayContaining([expect.stringMatching(blocked)]),
     );
+
+    expect(layoutEntry).toBeDefined();
+    const layout = staticGraph(layoutEntry!);
+    expect([
+      ...root.modules,
+      ...filesFor(root),
+      ...layout.modules,
+      ...filesFor(layout),
+      ...home.modules,
+      ...filesFor(home),
+    ]).not.toEqual(expect.arrayContaining([expect.stringMatching(blocked)]));
   }, 30_000);
 });
