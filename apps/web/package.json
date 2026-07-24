@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "lint:react": "eslint \"src/**/*.{ts,tsx}\"",
     "test:assets-page": "vitest run src/pages/AssetsPage.test.tsx",
+    "test:typography-system": "vitest run src/typographySystem.test.ts",
     "test:v2-asset-library-normalizer": "tsx scripts/test-v2-asset-library-normalizer.ts",
     "test:v2-recommended-catalog": "tsx scripts/test-v2-recommended-catalog.ts",
     "test:v2-project-authority": "tsx scripts/test-v2-project-authority.ts",
