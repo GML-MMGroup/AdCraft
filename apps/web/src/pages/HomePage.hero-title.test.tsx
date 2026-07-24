@@ -41,9 +41,9 @@ describe("HomePage hero title", () => {
 
   it("uses a stronger, airier title lockup and layered gilded accent", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title\s*\{[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.4;[^}]*-webkit-text-stroke:\s*0\.18px currentColor;/s,
+      /\.home-product-hero__title\s*\{[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.2;[^}]*-webkit-text-stroke:\s*0\.18px currentColor;/s,
     );
-    expect(mobileHeroTitleStyles).toMatch(/line-height:\s*1\.4;/);
+    expect(mobileHeroTitleStyles).toMatch(/line-height:\s*1\.2;/);
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
