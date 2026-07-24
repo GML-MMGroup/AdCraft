@@ -30,14 +30,17 @@ class IntersectionObserverMock {
     IntersectionObserverMock.instances.push(this);
   }
 
-  reveal(target: Element) {
+  setIntersection(
+    target: Element,
+    { isIntersecting, ratio }: { isIntersecting: boolean; ratio: number },
+  ) {
     this.callback(
       [
         {
           boundingClientRect: target.getBoundingClientRect(),
-          intersectionRatio: 0.4,
+          intersectionRatio: ratio,
           intersectionRect: target.getBoundingClientRect(),
-          isIntersecting: true,
+          isIntersecting,
           rootBounds: null,
           target,
           time: 0,
@@ -60,31 +63,27 @@ describe("HomePage motion", () => {
     vi.unstubAllGlobals();
   });
 
-  it("stages the hero statement word by word without changing its accessible text", () => {
+  it("stages the hero as three cohesive lines without splitting the gilded text", () => {
     render(<HomePage navigate={vi.fn()} />);
 
     const title = screen.getByRole("heading", {
       level: 1,
       name: "One Sentence Becomes an Ad film.",
     });
-    const words = Array.from(
-      title.querySelectorAll<HTMLElement>(".home-product-hero__wave-word"),
+    const lines = Array.from(
+      title.querySelectorAll<HTMLElement>(".home-product-hero__title-line"),
     );
 
-    expect(words.map((word) => word.textContent)).toEqual([
-      "One",
-      "Sentence",
-      "Becomes",
-      "an",
-      "Ad",
-      "film.",
+    expect(lines.map((line) => line.textContent)).toEqual([
+      "One Sentence",
+      "Becomes an",
+      "Ad film.",
     ]);
     expect(
-      words.map((word) => word.style.getPropertyValue("--home-wave-index")),
-    ).toEqual(["0", "1", "2", "3", "4", "5"]);
-    expect(
-      words.map((word) => word.style.getPropertyValue("--home-wave-delay")),
-    ).toEqual(["110ms", "178ms", "246ms", "314ms", "382ms", "450ms"]);
+      lines.map((line) => line.style.getPropertyValue("--home-line-delay")),
+    ).toEqual(["100ms", "190ms", "280ms"]);
+    expect(title.querySelectorAll(".home-product-hero__wave-word")).toHaveLength(0);
+    expect(lines[2]?.children).toHaveLength(0);
   });
 
   it("reveals each content region once when it first enters the viewport", () => {
@@ -105,11 +104,48 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(2);
 
     const recentObserver = IntersectionObserverMock.instances[0];
-    act(() => recentObserver?.reveal(recentSection as Element));
+    act(() => recentObserver?.setIntersection(
+      recentSection as Element,
+      { isIntersecting: true, ratio: 0.4 },
+    ));
 
     expect(recentSection?.getAttribute("data-reveal-state")).toBe("visible");
     expect(discoverSection?.getAttribute("data-reveal-state")).toBe("pending");
     expect(recentObserver?.disconnect).toHaveBeenCalledOnce();
+
+    act(() => recentObserver?.setIntersection(
+      recentSection as Element,
+      { isIntersecting: false, ratio: 0 },
+    ));
+    expect(recentSection?.getAttribute("data-reveal-state")).toBe("visible");
+  });
+
+  it("replays Discover after it fully leaves and re-enters the viewport", () => {
+    render(<HomePage navigate={vi.fn()} />);
+
+    const discoverSection = screen
+      .getByRole("heading", { level: 2, name: "Discover" })
+      .closest("section");
+    const discoverObserver = IntersectionObserverMock.instances[1];
+
+    act(() => discoverObserver?.setIntersection(
+      discoverSection as Element,
+      { isIntersecting: true, ratio: 0.4 },
+    ));
+    expect(discoverSection?.getAttribute("data-reveal-state")).toBe("visible");
+
+    act(() => discoverObserver?.setIntersection(
+      discoverSection as Element,
+      { isIntersecting: false, ratio: 0 },
+    ));
+    expect(discoverSection?.getAttribute("data-reveal-state")).toBe("pending");
+
+    act(() => discoverObserver?.setIntersection(
+      discoverSection as Element,
+      { isIntersecting: true, ratio: 0.4 },
+    ));
+    expect(discoverSection?.getAttribute("data-reveal-state")).toBe("visible");
+    expect(discoverObserver?.disconnect).not.toHaveBeenCalled();
   });
 
   it("shows content immediately when the user prefers reduced motion", () => {
@@ -143,10 +179,10 @@ describe("HomePage motion", () => {
 
   it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__wave-word\s*\{[^}]*animation:[^;}]*home-hero-wave[^;}]*;[^}]*will-change:\s*transform,\s*opacity,\s*filter;/s,
+      /\.home-product-hero__title-line\s*\{[^}]*animation:[^;}]*home-hero-line-wave[^;}]*;[^}]*will-change:\s*transform,\s*opacity;/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-wave\s*\{[\s\S]*?transform:\s*translate3d\(0,\s*[^,]+,\s*0\)[\s\S]*?opacity:\s*1;/,
+      /@keyframes home-hero-line-wave\s*\{[\s\S]*?transform:\s*translate3d\(0,\s*[^,]+,\s*0\)[\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
       /\.home-reveal-section\[data-reveal-state="pending"\][\s\S]*?opacity:\s*0;/,
@@ -155,7 +191,7 @@ describe("HomePage motion", () => {
       /\.home-reveal-section\[data-reveal-state="visible"\][\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__wave-word[\s\S]*?animation:\s*none !important;/,
+      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-line[\s\S]*?animation:\s*none !important;/,
     );
   });
 });

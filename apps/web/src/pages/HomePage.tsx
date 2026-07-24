@@ -10,19 +10,18 @@ import { useHomeSectionReveal } from "./useHomeSectionReveal";
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
-  ["One", "Sentence"],
-  ["Becomes", "an"],
-  ["Ad", "film."],
+  "One Sentence",
+  "Becomes an",
+  "Ad film.",
 ] as const;
 
 function motionStyle(property: "--home-reveal-delay", value: string): CSSProperties {
   return { [property]: value } as CSSProperties;
 }
 
-function waveStyle(index: number): CSSProperties {
+function heroLineStyle(index: number): CSSProperties {
   return {
-    "--home-wave-index": String(index),
-    "--home-wave-delay": `${110 + index * 68}ms`,
+    "--home-line-delay": `${100 + index * 90}ms`,
   } as CSSProperties;
 }
 
@@ -30,7 +29,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
   const [modalOpen, setModalOpen] = useState(false);
   const [introVideoFailed, setIntroVideoFailed] = useState(false);
   const recentReveal = useHomeSectionReveal();
-  const discoverReveal = useHomeSectionReveal();
+  const discoverReveal = useHomeSectionReveal({ replay: true });
   const { startNewProject } = useApp();
   const hasIntroVideo = Boolean(homeProductVideoUrl) && !introVideoFailed;
 
@@ -57,23 +56,11 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
             {heroTitleLines.map((line, lineIndex) => (
               <span
-                key={line.join("-")}
+                key={line}
                 className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""}`}
+                style={heroLineStyle(lineIndex)}
               >
-                {line.map((word, wordIndex) => {
-                  const waveIndex = lineIndex * 2 + wordIndex;
-                  return (
-                    <span key={word}>
-                      {wordIndex > 0 ? " " : null}
-                      <span
-                        className="home-product-hero__wave-word"
-                        style={waveStyle(waveIndex)}
-                      >
-                        {word}
-                      </span>
-                    </span>
-                  );
-                })}
+                {line}
               </span>
             ))}
           </h1>
