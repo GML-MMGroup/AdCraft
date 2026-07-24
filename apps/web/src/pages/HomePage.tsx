@@ -15,15 +15,42 @@ const heroTitleLines = [
   "Becomes an",
   "Ad film.",
 ] as const;
+const HERO_CHARACTER_START_DELAY_MS = 80;
+const HERO_CHARACTER_STAGGER_MS = 28;
+const heroLineCharacterOffsets = heroTitleLines.map((_, lineIndex) => (
+  heroTitleLines
+    .slice(0, lineIndex)
+    .reduce((offset, line) => offset + Array.from(line).length, 0)
+));
+
+type HeroCharacterStyle = CSSProperties & {
+  "--home-character-delay": string;
+  "--home-accent-position"?: string;
+};
 
 function motionStyle(property: "--home-reveal-delay", value: string): CSSProperties {
   return { [property]: value } as CSSProperties;
 }
 
-function heroLineStyle(index: number): CSSProperties {
-  return {
-    "--home-line-delay": `${80 + index * 170}ms`,
-  } as CSSProperties;
+function heroCharacterStyle(
+  characterIndex: number,
+  accentIndex?: number,
+  accentLength?: number,
+): HeroCharacterStyle {
+  const style: HeroCharacterStyle = {
+    "--home-character-delay": `${
+      HERO_CHARACTER_START_DELAY_MS + characterIndex * HERO_CHARACTER_STAGGER_MS
+    }ms`,
+  };
+
+  if (accentIndex !== undefined && accentLength !== undefined) {
+    const finalAccentIndex = Math.max(1, accentLength - 1);
+    style["--home-accent-position"] = `${
+      (accentIndex / finalAccentIndex) * 100
+    }%`;
+  }
+
+  return style;
 }
 
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
@@ -63,9 +90,31 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
               <span
                 key={line}
                 className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""}`}
-                style={heroLineStyle(lineIndex)}
+                aria-hidden="true"
               >
-                {line}
+                {Array.from(line).map((character, characterIndex) => {
+                  const globalCharacterIndex = (
+                    heroLineCharacterOffsets[lineIndex] + characterIndex
+                  );
+                  const isSpace = character === " ";
+
+                  return (
+                    <span
+                      key={`${lineIndex}-${characterIndex}`}
+                      className={`home-product-hero__character ${isSpace ? "home-product-hero__character--space" : ""}`}
+                      data-character-index={globalCharacterIndex}
+                      style={heroCharacterStyle(
+                        globalCharacterIndex,
+                        lineIndex === 2 ? characterIndex : undefined,
+                        lineIndex === 2 ? Array.from(line).length : undefined,
+                      )}
+                    >
+                      <span className={`home-product-hero__glyph ${lineIndex === 2 ? "home-product-hero__accent-glyph" : ""}`}>
+                        {character}
+                      </span>
+                    </span>
+                  );
+                })}
               </span>
             ))}
           </h1>

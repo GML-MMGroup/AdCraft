@@ -770,41 +770,54 @@ a {
 
 .home-product-hero__title-line {
   display: block;
+  white-space: nowrap;
+}
+
+.home-product-hero__character {
+  display: inline-block;
   opacity: 0;
-  transform: translate3d(0, 28px, 0) scale(0.992);
-  transform-origin: 18% 70%;
-  will-change: transform, opacity;
+  transform: translate3d(0, 12px, 0);
+  transform-origin: 50% 75%;
+  white-space: pre;
 }
 
-.home-product-hero.is-motion-ready .home-product-hero__title-line {
-  animation: home-hero-line-wave 760ms cubic-bezier(0.2, 0.72, 0.24, 1) both;
-  animation-delay: var(--home-line-delay, 80ms);
+.home-product-hero__character--space {
+  width: 0.24em;
 }
 
-@keyframes home-hero-line-wave {
+.home-product-hero__glyph {
+  display: block;
+}
+
+.home-product-hero.is-motion-ready .home-product-hero__character {
+  animation: home-hero-character-wave 620ms cubic-bezier(0.22, 0.72, 0.24, 1) both;
+  animation-delay: var(--home-character-delay, 80ms);
+}
+
+@keyframes home-hero-character-wave {
   0% {
     opacity: 0;
-    transform: translate3d(0, 28px, 0) scale(0.992);
+    transform: translate3d(0, 12px, 0);
   }
 
-  20% {
-    opacity: 0.88;
-    transform: translate3d(0, 17px, 0) scale(0.997);
+  34% {
+    opacity: 1;
+    transform: translate3d(0, -4px, 0);
   }
 
   62% {
     opacity: 1;
-    transform: translate3d(0, -6px, 0) scale(1.004);
+    transform: translate3d(0, 2px, 0);
   }
 
   82% {
     opacity: 1;
-    transform: translate3d(0, 2px, 0) scale(0.999);
+    transform: translate3d(0, -1px, 0);
   }
 
   100% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -815,6 +828,11 @@ a {
   white-space: nowrap;
   font-style: italic;
   font-weight: 500;
+}
+
+.home-product-hero__accent-glyph {
+  padding-inline: 0.08em;
+  margin-inline: -0.08em;
   background: linear-gradient(
     108deg,
     #6d420b 0%,
@@ -825,8 +843,8 @@ a {
     #8f5a12 79%,
     #d7aa51 100%
   );
-  background-position: 42% 50%;
-  background-size: 145% 100%;
+  background-position: var(--home-accent-position, 50%) 50%;
+  background-size: 800% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-stroke: 0.16px rgba(108, 66, 10, 0.32);
@@ -1008,7 +1026,7 @@ a {
   }
 
   .home-product-hero__title {
-    font-size: clamp(48px, 12vw, 56px);
+    font-size: clamp(42px, 12vw, 56px);
     line-height: 1.2;
   }
 
@@ -1031,7 +1049,7 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .home-product-hero__title-line,
+  .home-product-hero__character,
   .home-product-hero__description,
   .home-product-hero__create-stage,
   .home-product-film {
