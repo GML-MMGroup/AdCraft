@@ -773,6 +773,9 @@ a {
 }
 
 .home-product-hero__accent {
+  width: fit-content;
+  padding-inline: 0.1em 0.12em;
+  margin-inline: -0.1em -0.12em;
   white-space: nowrap;
   font-style: italic;
   font-weight: 500;
