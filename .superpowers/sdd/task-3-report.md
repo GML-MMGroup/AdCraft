@@ -1,7 +1,7 @@
 # Task 3 Report
 
 Status: complete with a documented pre-existing bundle-budget failure.
-SHA: `HEAD` after commit `perf(web): bound collection and media loading`.
+SHA: `05f3203` (`perf(web): bound collection and media loading`).
 Base: `3e808c7`.
 
 ## RED
