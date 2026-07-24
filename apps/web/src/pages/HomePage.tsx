@@ -5,13 +5,32 @@ import { SectionTitle } from "../components/Cards";
 import { demoProjects, images, imageSrc } from "../data";
 import { PlayIcon, PlusIcon } from "../icons";
 import type { RouteName } from "../types";
+import { useHomeSectionReveal } from "./useHomeSectionReveal";
 
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
 const homeProductPoster = "/assets/card1.webp";
+const heroTitleLines = [
+  ["One", "Sentence"],
+  ["Becomes", "an"],
+  ["Ad", "film."],
+] as const;
+
+function motionStyle(property: "--home-reveal-delay", value: string): CSSProperties {
+  return { [property]: value } as CSSProperties;
+}
+
+function waveStyle(index: number): CSSProperties {
+  return {
+    "--home-wave-index": String(index),
+    "--home-wave-delay": `${110 + index * 68}ms`,
+  } as CSSProperties;
+}
 
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [introVideoFailed, setIntroVideoFailed] = useState(false);
+  const recentReveal = useHomeSectionReveal();
+  const discoverReveal = useHomeSectionReveal();
   const { startNewProject } = useApp();
   const hasIntroVideo = Boolean(homeProductVideoUrl) && !introVideoFailed;
 
@@ -36,17 +55,37 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
       <section className="home-product-hero" aria-labelledby="home-product-title">
         <div className="home-product-hero__content">
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
-            <span className="home-product-hero__title-line">One Sentence</span>
-            <span className="home-product-hero__title-line">Becomes an</span>
-            <span className="home-product-hero__title-line home-product-hero__accent">Ad film.</span>
+            {heroTitleLines.map((line, lineIndex) => (
+              <span
+                key={line.join("-")}
+                className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""}`}
+              >
+                {line.map((word, wordIndex) => {
+                  const waveIndex = lineIndex * 2 + wordIndex;
+                  return (
+                    <span key={word}>
+                      {wordIndex > 0 ? " " : null}
+                      <span
+                        className="home-product-hero__wave-word"
+                        style={waveStyle(waveIndex)}
+                      >
+                        {word}
+                      </span>
+                    </span>
+                  );
+                })}
+              </span>
+            ))}
           </h1>
           <p className="home-product-hero__description">
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
           </p>
-          <button className="home-product-hero__create" type="button" onClick={createProject}>
-            <PlusIcon />
-            <span>Create Your Project</span>
-          </button>
+          <div className="home-product-hero__create-stage">
+            <button className="home-product-hero__create" type="button" onClick={createProject}>
+              <PlusIcon />
+              <span>Create Your Project</span>
+            </button>
+          </div>
         </div>
 
         <div className="home-product-film" aria-label="AdCraft product introduction media" data-media-slot="product-introduction">
@@ -67,50 +106,83 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
         </div>
       </section>
 
-      <section className="content-wrap">
-        <SectionTitle title="Recent Projects" subtitle="Pick up the latest creative thread." />
-        <div className="recent-strip">
-          <button className="recent-card featured" onClick={() => navigate("workflow")}>
-            <div className="featured-glass">
-              <h3>New fragrance product reel</h3>
-              <p>Continue editing the current workflow canvas.</p>
-            </div>
-          </button>
-          {demoProjects.slice(0, 3).map((project) => (
-            <button key={project.name} className="recent-card" onClick={() => navigate("workflow")}>
-              <h3>{project.name}</h3>
-              <p>{project.time}</p>
-            </button>
-          ))}
-        </div>
-
-        <SectionTitle title="Discover" subtitle="References, templates, and generated video ideas." />
-        <div className="discover-tabs">
-          {["All", "Product", "Portrait", "Scene", "Motion"].map((tab, index) => (
-            <button key={tab} className={`filter-btn ${index === 0 ? "is-active" : ""}`}>
-              {tab}
-            </button>
-          ))}
-        </div>
-        <div className="waterfall">
-          {discoverCards.map(([title, img, height]) => (
+      <div className="content-wrap">
+        <section
+          ref={recentReveal.sectionRef}
+          className="home-reveal-section home-reveal-section--recent"
+          data-reveal-state={recentReveal.revealState}
+          aria-label="Recent Projects"
+        >
+          <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
+            <SectionTitle title="Recent Projects" subtitle="Pick up the latest creative thread." />
+          </div>
+          <div className="recent-strip" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
             <button
-              key={title}
-              className="discover-card"
-              style={{ "--h": `${height}px` } as CSSProperties}
-              data-title={title}
-              onClick={() => setModalOpen(true)}
+              className="recent-card featured"
+              data-reveal-item
+              style={motionStyle("--home-reveal-delay", "170ms")}
+              onClick={() => navigate("workflow")}
             >
-              <img className="discover-card-image" src={imageSrc(img)} alt="" loading="lazy" decoding="async" />
-              <span className="play-dot">
-                <span>
-                  <PlayIcon />
-                </span>
-              </span>
+              <div className="featured-glass">
+                <h3>New fragrance product reel</h3>
+                <p>Continue editing the current workflow canvas.</p>
+              </div>
             </button>
-          ))}
-        </div>
-      </section>
+            {demoProjects.slice(0, 3).map((project, index) => (
+              <button
+                key={project.name}
+                className="recent-card"
+                data-reveal-item
+                style={motionStyle("--home-reveal-delay", `${240 + index * 70}ms`)}
+                onClick={() => navigate("workflow")}
+              >
+                <h3>{project.name}</h3>
+                <p>{project.time}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section
+          ref={discoverReveal.sectionRef}
+          className="home-reveal-section home-reveal-section--discover"
+          data-reveal-state={discoverReveal.revealState}
+          aria-label="Discover"
+        >
+          <div data-reveal-item style={motionStyle("--home-reveal-delay", "0ms")}>
+            <SectionTitle title="Discover" subtitle="References, templates, and generated video ideas." />
+          </div>
+          <div className="discover-tabs" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
+            {["All", "Product", "Portrait", "Scene", "Motion"].map((tab, index) => (
+              <button key={tab} className={`filter-btn ${index === 0 ? "is-active" : ""}`}>
+                {tab}
+              </button>
+            ))}
+          </div>
+          <div className="waterfall">
+            {discoverCards.map(([title, img, height], index) => (
+              <button
+                key={title}
+                className="discover-card"
+                style={{
+                  "--h": `${height}px`,
+                  "--home-reveal-delay": `${170 + index * 65}ms`,
+                } as CSSProperties}
+                data-title={title}
+                data-reveal-item
+                onClick={() => setModalOpen(true)}
+              >
+                <img className="discover-card-image" src={imageSrc(img)} alt="" loading="lazy" decoding="async" />
+                <span className="play-dot">
+                  <span>
+                    <PlayIcon />
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      </div>
 
       <div className={`video-modal ${modalOpen ? "is-open" : ""}`}>
         <div className="modal-card">
