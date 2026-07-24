@@ -50,5 +50,8 @@ describe("HomePage hero title", () => {
     expect(styles).toMatch(
       /\.home-product-hero__accent\s*\{[^}]*linear-gradient\([^}]*#f8e7a1[^}]*#8f5a12[^}]*\)[^}]*background-clip:\s*text;[^}]*-webkit-text-stroke:\s*0\.16px rgba\(108, 66, 10, 0\.32\);/s,
     );
+    expect(styles).toMatch(
+      /\.home-product-hero__accent\s*\{[^}]*width:\s*fit-content;[^}]*padding-inline:\s*0\.1em 0\.12em;[^}]*margin-inline:\s*-0\.1em -0\.12em;/s,
+    );
   });
 });
