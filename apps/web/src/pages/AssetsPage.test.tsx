@@ -54,12 +54,36 @@ const assetFixture = vi.hoisted(() => {
     license_id: "CC0-1.0",
     attribution: "Example catalog",
   };
+  const secondSummary = {
+    ...summary,
+    entity_id: "recommended-v1-character-002",
+    display_name: "Portrait Ember",
+    preview_url: "/media/portrait-ember.webp",
+  };
+  const secondDetail = {
+    ...detail,
+    ...secondSummary,
+    members: [
+      {
+        ...detail.members[0],
+        member_id: "ember-front",
+        asset_id: "ember-front-asset",
+        version_id: "ember-front-version",
+        public_url: "/media/ember-front.webp",
+        thumbnail_url: "/media/ember-front-thumb.webp",
+        display_name: "Ember front view",
+      },
+    ],
+  };
 
   return {
     detail,
+    entities: [summary],
     fetchDetail: vi.fn(),
     loadMore: vi.fn(),
     refresh: vi.fn(),
+    secondDetail,
+    secondSummary,
     summary,
   };
 });
@@ -81,7 +105,7 @@ vi.mock("../features/assets/useRecommendedCatalog.ts", () => ({
 
 vi.mock("../features/assets/useV2AssetLibrary.ts", () => ({
   useV2AssetLibrary: ({ category }: { category: string }) => ({
-    entities: [assetFixture.summary],
+    entities: assetFixture.entities,
     nextCursor: null,
     loading: category === "scenes",
     loadingMore: false,
@@ -94,7 +118,12 @@ vi.mock("../features/assets/useV2AssetLibrary.ts", () => ({
 
 describe("AssetsPage", () => {
   beforeEach(() => {
-    assetFixture.fetchDetail.mockResolvedValue(assetFixture.detail);
+    assetFixture.entities.splice(0, assetFixture.entities.length, assetFixture.summary);
+    assetFixture.fetchDetail.mockImplementation(async (entityId: string) => (
+      entityId === assetFixture.secondSummary.entity_id
+        ? assetFixture.secondDetail
+        : assetFixture.detail
+    ));
   });
 
   afterEach(() => {
@@ -229,14 +258,14 @@ describe("AssetsPage", () => {
     expect(backdrop?.parentElement).toBe(document.body);
     expect(screen.getAllByRole("button", { name: "Close asset viewer" })).toHaveLength(1);
     expect(dialog.querySelector(".v2-asset-viewer-heading")).toBeNull();
-    expect(dialog.querySelector(".v2-asset-viewer-thumbnails")).toBeNull();
+    expect(dialog.querySelector(".v2-asset-viewer-thumbnails")).toBeTruthy();
     expect(dialog.querySelector(".v2-asset-viewer-details")).toBeNull();
     expect(dialog.querySelector("form")).toBeNull();
     expect(container.querySelector(".v2-asset-detail-panel")).toBeNull();
     expect(screen.getByRole("img", { name: "Front view" }).getAttribute("src")).toBe("/media/portrait-front.webp");
     expect(screen.getByText("Front view, view 1 of 2")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Next asset view" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
 
     expect((await screen.findByRole("img", { name: "Side view" })).getAttribute("src")).toBe("/media/portrait-side.webp");
     expect(screen.getByText("Side view, view 2 of 2")).toBeTruthy();
@@ -245,6 +274,72 @@ describe("AssetsPage", () => {
 
     expect(screen.queryByRole("dialog", { name: "Portrait Spark" })).toBeNull();
     expect(document.activeElement).toBe(card);
+  });
+
+  it("cycles through displayed asset cards with side arrows and keyboard arrows", async () => {
+    assetFixture.entities.push(assetFixture.secondSummary);
+    render(<AssetsPage />);
+    const firstCard = screen.getByRole("button", { name: "Open asset Portrait Spark" });
+    const secondCard = screen.getByRole("button", { name: "Open asset Portrait Ember" });
+
+    fireEvent.click(firstCard);
+    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
+    expect(screen.getByRole("img", { name: "Side view" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next asset" }));
+    expect(await screen.findByRole("dialog", { name: "Portrait Ember" })).toBeTruthy();
+    expect(assetFixture.fetchDetail).toHaveBeenLastCalledWith(assetFixture.secondSummary.entity_id);
+
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Front view" })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(await screen.findByRole("dialog", { name: "Portrait Ember" })).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.activeElement).toBe(secondCard);
+  });
+
+  it("shows member thumbnails for characters and hides them for scenes", () => {
+    const { rerender } = render(
+      <AssetEntityViewer
+        detail={assetFixture.detail}
+        loading={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("group", { name: "Character views" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Show Front view" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Show Side view" }));
+    expect(screen.getByRole("img", { name: "Side view" })).toBeTruthy();
+
+    rerender(
+      <AssetEntityViewer
+        detail={{
+          ...assetFixture.detail,
+          entity_id: "scene-1",
+          entity_type: "scene",
+          library_category: "scenes",
+          display_name: "City scene",
+        }}
+        loading={false}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("group", { name: "Character views" })).toBeNull();
+  });
+
+  it("hides entity navigation when only one asset is displayed", async () => {
+    render(<AssetsPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Open asset Portrait Spark" }));
+
+    expect(await screen.findByRole("dialog", { name: "Portrait Spark" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Previous asset" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next asset" })).toBeNull();
   });
 
   it("closes from the backdrop control and restores card focus", async () => {
@@ -273,8 +368,22 @@ describe("AssetsPage", () => {
 
   it("keeps the lazy viewer fallback dismissible with the keyboard", () => {
     const onClose = vi.fn();
-    render(<AssetEntityViewerFallback onClose={onClose} />);
+    const onPreviousEntity = vi.fn();
+    const onNextEntity = vi.fn();
+    render(
+      <AssetEntityViewerFallback
+        hasEntityNavigation
+        onPreviousEntity={onPreviousEntity}
+        onNextEntity={onNextEntity}
+        onClose={onClose}
+      />,
+    );
     const closeButton = screen.getByRole("button", { name: "Close asset viewer" });
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(onPreviousEntity).toHaveBeenCalledOnce();
+    expect(onNextEntity).toHaveBeenCalledOnce();
 
     fireEvent.keyDown(document, { key: "Tab" });
     expect(document.activeElement).toBe(closeButton);
@@ -330,6 +439,8 @@ describe("AssetsPage", () => {
     expect(viewerDeclarations.width).toBe("calc(100vw - 64px)");
     expect(viewerDeclarations.maxWidth).toBe("1400px");
     expect(viewerRule?.[1]).toContain("height: calc(100dvh - 64px)");
+    expect(viewerDeclarations.gridTemplateRows).toBe("minmax(0, 1fr)");
+    expect(viewerDeclarations.gap).toBe("");
     expect(viewerDeclarations.overflow).toBe("visible");
     expect(stageDeclarations.placeItems).toBe("center");
     expect(mediaDeclarations.width).toBe("auto");

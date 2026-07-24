@@ -1,30 +1,30 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import { ChevronDownIcon, ChevronUpIcon, CloseIcon } from "../../icons.tsx";
-import { v2AssetMediaUrl } from "./v2AssetLibraryModel.ts";
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "../../icons.tsx";
+import { v2AssetMediaUrl, v2AssetPreviewUrl } from "./v2AssetLibraryModel.ts";
 import type { V2AssetLibraryEntityDetail, V2AssetLibraryMember } from "../../types-v2.ts";
 
 export interface AssetEntityViewerProps {
   detail: V2AssetLibraryEntityDetail | null;
   loading: boolean;
+  hasEntityNavigation?: boolean;
+  onPreviousEntity?: () => void;
+  onNextEntity?: () => void;
   onClose: () => void;
 }
 
 export default function AssetEntityViewer({
   detail,
   loading,
+  hasEntityNavigation = false,
+  onPreviousEntity,
+  onNextEntity,
   onClose,
 }: AssetEntityViewerProps) {
-  const [activeMemberIndex, setActiveMemberIndex] = useState(0);
+  const [activeMemberSelection, setActiveMemberSelection] = useState<{ entityId: string; memberId: string } | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!detail) return;
-    const primaryIndex = detail.members.findIndex((member) => member.is_primary);
-    setActiveMemberIndex(primaryIndex >= 0 ? primaryIndex : 0);
-  }, [detail]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -33,6 +33,16 @@ export default function AssetEntityViewer({
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
+        return;
+      }
+      if (!shouldIgnoreGalleryShortcut(event.target) && hasEntityNavigation && event.key === "ArrowLeft") {
+        event.preventDefault();
+        onPreviousEntity?.();
+        return;
+      }
+      if (!shouldIgnoreGalleryShortcut(event.target) && hasEntityNavigation && event.key === "ArrowRight") {
+        event.preventDefault();
+        onNextEntity?.();
         return;
       }
       if (event.key === "Tab") trapViewerFocus(event, dialogRef.current);
@@ -44,29 +54,72 @@ export default function AssetEntityViewer({
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", closeFromKeyboard);
     };
-  }, [onClose]);
+  }, [hasEntityNavigation, onClose, onNextEntity, onPreviousEntity]);
 
   if (loading || !detail) {
-    return <AssetEntityViewerLoading dialogRef={dialogRef} closeButtonRef={closeButtonRef} onClose={onClose} />;
+    return (
+      <AssetEntityViewerLoading
+        dialogRef={dialogRef}
+        closeButtonRef={closeButtonRef}
+        hasEntityNavigation={hasEntityNavigation}
+        onPreviousEntity={onPreviousEntity}
+        onNextEntity={onNextEntity}
+        onClose={onClose}
+      />
+    );
   }
 
   const members = detail.members;
+  const primaryMemberIndex = Math.max(0, members.findIndex((member) => member.is_primary));
+  const selectedMemberIndex = activeMemberSelection?.entityId === detail.entity_id
+    ? members.findIndex((member) => member.member_id === activeMemberSelection.memberId)
+    : -1;
+  const activeMemberIndex = selectedMemberIndex >= 0 ? selectedMemberIndex : primaryMemberIndex;
   const activeMember = members[activeMemberIndex] ?? null;
-  const hasMultipleMembers = members.length > 1;
   const activeMemberLabel = activeMember ? assetMemberLabel(activeMember) : "No asset media";
-  const selectPreviousMember = () => setActiveMemberIndex((index) => (index - 1 + members.length) % members.length);
-  const selectNextMember = () => setActiveMemberIndex((index) => (index + 1) % members.length);
+  const characterViews = detail.entity_type === "character"
+    ? members
+      .map((member, memberIndex) => ({ member, memberIndex }))
+      .filter(({ member }) => member.media_type === "image")
+    : [];
+  const showCharacterViews = characterViews.length > 1;
 
   return createPortal(
     <div className="v2-asset-viewer-backdrop">
       <button className="v2-asset-viewer-dismiss" type="button" aria-label="Dismiss asset viewer" onClick={onClose} />
-      <section className="v2-asset-viewer" role="dialog" aria-modal="true" aria-label={detail.display_name} ref={dialogRef}>
+      <section className={`v2-asset-viewer ${showCharacterViews ? "has-thumbnails" : ""}`} role="dialog" aria-modal="true" aria-label={detail.display_name} ref={dialogRef}>
         <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
         <div className="v2-asset-viewer-stage">
           {activeMember ? <AssetMedia url={v2AssetMediaUrl(activeMember)} mediaType={activeMember.media_type} label={activeMemberLabel} presentation="viewer" /> : <span className="v2-asset-viewer-empty">No media is available for this asset.</span>}
-          {hasMultipleMembers ? <button className="v2-asset-viewer-nav is-previous" type="button" aria-label="Previous asset view" title="Previous asset view" onClick={selectPreviousMember}><ChevronUpIcon /></button> : null}
-          {hasMultipleMembers ? <button className="v2-asset-viewer-nav is-next" type="button" aria-label="Next asset view" title="Next asset view" onClick={selectNextMember}><ChevronDownIcon /></button> : null}
+          <AssetEntityNavigation
+            visible={hasEntityNavigation}
+            onPrevious={onPreviousEntity}
+            onNext={onNextEntity}
+          />
         </div>
+        {showCharacterViews ? (
+          <div className="v2-asset-viewer-thumbnails" role="group" aria-label="Character views">
+            {characterViews.map(({ member, memberIndex }) => {
+              const label = assetMemberLabel(member);
+              const previewUrl = v2AssetPreviewUrl(member);
+              return (
+                <button
+                  key={member.member_id}
+                  className={memberIndex === activeMemberIndex ? "is-active" : ""}
+                  type="button"
+                  aria-label={`Show ${label}`}
+                  aria-pressed={memberIndex === activeMemberIndex}
+                  title={label}
+                  onClick={() => setActiveMemberSelection({ entityId: detail.entity_id, memberId: member.member_id })}
+                >
+                  {previewUrl
+                    ? <img src={previewUrl} alt="" loading="lazy" decoding="async" />
+                    : <span>{label.slice(0, 1).toUpperCase()}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         {activeMember ? <span className="sr-only" aria-live="polite" aria-atomic="true">{activeMemberLabel}, view {activeMemberIndex + 1} of {members.length}</span> : null}
       </section>
     </div>,
@@ -77,10 +130,16 @@ export default function AssetEntityViewer({
 export function AssetEntityViewerLoading({
   dialogRef,
   closeButtonRef,
+  hasEntityNavigation = false,
+  onPreviousEntity,
+  onNextEntity,
   onClose,
 }: {
   dialogRef?: RefObject<HTMLElement | null>;
   closeButtonRef?: RefObject<HTMLButtonElement | null>;
+  hasEntityNavigation?: boolean;
+  onPreviousEntity?: () => void;
+  onNextEntity?: () => void;
   onClose: () => void;
 }) {
   return createPortal(
@@ -88,10 +147,35 @@ export function AssetEntityViewerLoading({
       <button className="v2-asset-viewer-dismiss" type="button" aria-label="Dismiss asset viewer" onClick={onClose} />
       <section className="v2-asset-viewer" role="dialog" aria-modal="true" aria-label="Asset viewer" ref={dialogRef}>
         <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
-        <div className="v2-asset-viewer-stage is-loading">Loading asset details...</div>
+        <div className="v2-asset-viewer-stage is-loading">
+          Loading asset details...
+          <AssetEntityNavigation
+            visible={hasEntityNavigation}
+            onPrevious={onPreviousEntity}
+            onNext={onNextEntity}
+          />
+        </div>
       </section>
     </div>,
     document.body,
+  );
+}
+
+function AssetEntityNavigation({
+  visible,
+  onPrevious,
+  onNext,
+}: {
+  visible: boolean;
+  onPrevious?: () => void;
+  onNext?: () => void;
+}) {
+  if (!visible) return null;
+  return (
+    <>
+      <button className="v2-asset-viewer-nav is-previous" type="button" aria-label="Previous asset" title="Previous asset" onClick={onPrevious}><ChevronLeftIcon /></button>
+      <button className="v2-asset-viewer-nav is-next" type="button" aria-label="Next asset" title="Next asset" onClick={onNext}><ChevronRightIcon /></button>
+    </>
   );
 }
 
@@ -107,6 +191,11 @@ function trapViewerFocus(event: KeyboardEvent, viewer: HTMLElement | null) {
   const nextIndex = event.shiftKey ? currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1 : currentIndex === focusable.length - 1 ? 0 : currentIndex + 1;
   event.preventDefault();
   focusable[nextIndex]?.focus();
+}
+
+function shouldIgnoreGalleryShortcut(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.matches("input, textarea, select, video, audio, [contenteditable='true']");
 }
 
 function AssetMedia({ url, mediaType, label, presentation = "detail" }: { url: string | null; mediaType?: string | null; label: string; presentation?: "detail" | "thumbnail" | "viewer" }) {
