@@ -15,8 +15,6 @@ import type {
 } from "./types";
 
 export interface AppContextValue {
-  apiOnline: boolean | null;
-  apiMessage: string;
   assets: UploadedAsset[];
   selectedAssets: UploadedAsset[];
   promptLibraryEntities: AssetLibraryEntitySummary[];
@@ -30,7 +28,6 @@ export interface AppContextValue {
   activeProjectId: string | null;
   workspaceHydrated: boolean;
   workspaceRestoreError: string | null;
-  storageWarning: string | null;
   busy: boolean;
   setMessages: Dispatch<SetStateAction<FrontDeskMessage[]>>;
   setPromptLibraryEntities: Dispatch<SetStateAction<AssetLibraryEntitySummary[]>>;
