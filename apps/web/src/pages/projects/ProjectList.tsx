@@ -25,6 +25,11 @@ type ProjectCoverEntry = {
   cover: V2ProjectCover | null;
 };
 
+type ProjectCoverSubscription = {
+  requestKey: string;
+  release(): void;
+};
+
 let projectCoverResource = createSettledQueryResource<V2ProjectCover | null>();
 let projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
 
@@ -45,7 +50,9 @@ type ProjectListProps = {
 export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleFavorite, onRenameProject }: ProjectListProps) {
   const [visibleCount, setVisibleCount] = useState(PROJECT_PAGE_SIZE);
   const [coversByProjectId, setCoversByProjectId] = useState<Record<string, ProjectCoverEntry>>({});
+  const coversByProjectIdRef = useRef(coversByProjectId);
   const activeCoverRequestKeysRef = useRef(new Map<string, string>());
+  const coverSubscriptionsRef = useRef(new Map<string, ProjectCoverSubscription>());
   const cardElementsRef = useRef(new Map<string, HTMLElement>());
   const [visibleProjectIds, setVisibleProjectIds] = useState<Set<string>>(new Set());
   const visibleProjects = useMemo(() => projects.slice(0, visibleCount), [projects, visibleCount]);
@@ -81,14 +88,25 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
   }, [visibleProjects]);
 
   useEffect(() => {
-    let cancelled = false;
     const activeRequestKeys = new Map<string, string>();
-    const subscriptions: Array<{ release(): void }> = [];
     for (const project of visibleProjects) {
       if (!visibleProjectIds.has(project.projectId)) continue;
       const requestKey = projectCoverRequestKey(project);
       activeRequestKeys.set(project.projectId, requestKey);
-      if (coversByProjectId[project.projectId]?.requestKey === requestKey) continue;
+    }
+    activeCoverRequestKeysRef.current = activeRequestKeys;
+
+    for (const [projectId, subscription] of coverSubscriptionsRef.current) {
+      if (activeRequestKeys.get(projectId) === subscription.requestKey) continue;
+      subscription.release();
+      coverSubscriptionsRef.current.delete(projectId);
+    }
+
+    for (const project of visibleProjects) {
+      const requestKey = activeRequestKeys.get(project.projectId);
+      if (!requestKey) continue;
+      if (coverSubscriptionsRef.current.get(project.projectId)?.requestKey === requestKey) continue;
+      if (coversByProjectIdRef.current[project.projectId]?.requestKey === requestKey) continue;
       const subscription = projectCoverResource.subscribe(projectCoverIdentity(project), (signal) => (
         projectCoverQueue.schedule(
           () => v2Api.listWorkflowAssets(project.workflowId, {}, { signal })
@@ -96,25 +114,38 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
           { signal },
         )
       ));
-      subscriptions.push(subscription);
+      coverSubscriptionsRef.current.set(project.projectId, {
+        requestKey,
+        release: subscription.release,
+      });
       void subscription.promise.then((cover) => {
-        if (cancelled || activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
-        setCoversByProjectId((current) => current[project.projectId]?.requestKey === requestKey
-          ? current
-          : { ...current, [project.projectId]: { requestKey, cover } });
+        if (activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
+        setCoversByProjectId((current) => {
+          if (current[project.projectId]?.requestKey === requestKey) return current;
+          const next = { ...current, [project.projectId]: { requestKey, cover } };
+          coversByProjectIdRef.current = next;
+          return next;
+        });
       }).catch(() => {
-        if (cancelled || activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
-        setCoversByProjectId((current) => current[project.projectId]?.requestKey === requestKey
-          ? current
-          : { ...current, [project.projectId]: { requestKey, cover: null } });
+        if (activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
+        setCoversByProjectId((current) => {
+          if (current[project.projectId]?.requestKey === requestKey) return current;
+          const next = { ...current, [project.projectId]: { requestKey, cover: null } };
+          coversByProjectIdRef.current = next;
+          return next;
+        });
       });
     }
-    activeCoverRequestKeysRef.current = activeRequestKeys;
+  }, [visibleProjectIds, visibleProjects]);
+
+  useEffect(() => {
+    const subscriptions = coverSubscriptionsRef.current;
     return () => {
-      cancelled = true;
-      for (const subscription of subscriptions) subscription.release();
+      activeCoverRequestKeysRef.current.clear();
+      for (const subscription of subscriptions.values()) subscription.release();
+      subscriptions.clear();
     };
-  }, [coversByProjectId, visibleProjectIds, visibleProjects]);
+  }, []);
 
   const registerProjectCard = useCallback((projectId: string, element: HTMLElement | null) => {
     if (element) cardElementsRef.current.set(projectId, element);

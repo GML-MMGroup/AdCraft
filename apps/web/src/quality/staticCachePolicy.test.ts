@@ -3,21 +3,53 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const nginxConfig = readFileSync(resolve(process.cwd(), "../../deploy/nginx.conf"), "utf8");
-const viteHashedAsset = /^\/assets\/(?:.*\/)?[^/]+-[a-z0-9_-]{8,}\.(?:js|mjs|css|map|woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|avif|ico)$/i;
+
+function regexLocation() {
+  const match = nginxConfig.match(/location ~\* (\S+) \{([\s\S]*?)\n {4}\}/);
+  if (!match) throw new Error("Expected an nginx regex location");
+  return { matcher: new RegExp(match[1], "i"), body: match[2] };
+}
+
+function prefixLocation(path: string) {
+  const escapedPath = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = nginxConfig.match(new RegExp(`location ${escapedPath} \\{([\\s\\S]*?)\\n    \\}`));
+  if (!match) throw new Error(`Expected nginx location for ${path}`);
+  return match[1];
+}
 
 describe("static cache policy", () => {
   it("caches only Vite-hashed build assets for one year with immutable semantics", () => {
-    expect(nginxConfig).toMatch(/location ~\* \^\/assets\/\(\?:\.\*\/\)\?\[\^\/\]\+-\[a-z0-9_-\]\{8,\}\\\.\(\?:js\|mjs\|css\|map\|woff2\?\|ttf\|otf\|eot\|svg\|png\|jpe\?g\|gif\|webp\|avif\|ico\)\$/);
-    expect(nginxConfig).toMatch(/location ~\* \^\/assets\/[\s\S]*?try_files \$uri =404;[\s\S]*?Cache-Control "public, max-age=31536000, immutable"/);
-    expect(nginxConfig).not.toMatch(/location ~\* \^\/assets\/[\s\S]*?expires 1y;/);
-    expect(viteHashedAsset.test("/assets/index-CwF9d8Q_.js")).toBe(true);
-    expect(viteHashedAsset.test("/assets/fonts/inter-R8uP5fH2.woff2")).toBe(true);
-    expect(viteHashedAsset.test("/assets/bg.jpg")).toBe(false);
-    expect(viteHashedAsset.test("/assets/logo.svg")).toBe(false);
+    const { matcher, body } = regexLocation();
+    const generatedViteAssets = [
+      "/assets/index-BeHgOQng.js",
+      "/assets/ApiSpacePage-PDH3--sW.js",
+      "/assets/timeline-editor-DqahOt6-.css",
+      "/assets/fonts/inter-R8uP5fH2.woff2",
+    ];
+    const stableAssets = [
+      "/assets/bg.jpg",
+      "/assets/logo.svg",
+      "/assets/logo-horizontal.svg",
+      "/assets/banner-summerhero.webp",
+      "/assets/index-CwF9d8Q.js",
+      "/assets/index-CwF9d8Q_0.js",
+    ];
+
+    for (const path of generatedViteAssets) expect(path).toMatch(matcher);
+    for (const path of stableAssets) expect(path).not.toMatch(matcher);
+    expect(body).toContain("try_files $uri =404;");
+    expect(body).toContain('add_header Cache-Control "public, max-age=31536000, immutable" always;');
+    expect(body.match(/add_header Cache-Control/g)).toHaveLength(1);
+    expect(body).not.toContain("expires ");
   });
 
   it("makes stable assets revalidate instead of treating the whole directory as immutable", () => {
-    expect(nginxConfig).toMatch(/location \/assets\/ \{[\s\S]*?try_files \$uri =404;[\s\S]*?Cache-Control "public, max-age=300, must-revalidate"/);
+    const body = prefixLocation("/assets/");
+
+    expect(body).toContain("try_files $uri =404;");
+    expect(body).toContain('add_header Cache-Control "public, max-age=300, must-revalidate" always;');
+    expect(body.match(/add_header Cache-Control/g)).toHaveLength(1);
+    expect(body).not.toContain("expires ");
     expect(nginxConfig).not.toMatch(/location \^~ \/assets\/ \{/);
   });
 

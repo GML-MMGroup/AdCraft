@@ -49,6 +49,67 @@ function abortError() {
   return error;
 }
 
+function installControlledCoverRequests() {
+  type Request = {
+    workflowId: string;
+    signal: AbortSignal;
+    settled: boolean;
+    resolve: (assets?: unknown[]) => void;
+  };
+
+  const requests: Request[] = [];
+  const aborted: string[] = [];
+  let active = 0;
+  let maxActive = 0;
+
+  fixture.listWorkflowAssets.mockImplementation((
+    workflowId: string,
+    _filters: unknown,
+    options?: { signal?: AbortSignal },
+  ) => new Promise((resolve, reject) => {
+    if (!options?.signal) {
+      reject(new Error("Expected cover request to receive an AbortSignal"));
+      return;
+    }
+
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    const request: Request = {
+      workflowId,
+      signal: options.signal,
+      settled: false,
+      resolve: (assets = []) => {
+        if (request.settled) return;
+        request.settled = true;
+        active -= 1;
+        request.signal.removeEventListener("abort", onAbort);
+        resolve({ assets });
+      },
+    };
+    const onAbort = () => {
+      if (request.settled) return;
+      request.settled = true;
+      active -= 1;
+      aborted.push(workflowId);
+      reject(abortError());
+    };
+    options.signal.addEventListener("abort", onAbort, { once: true });
+    requests.push(request);
+  }));
+
+  return {
+    requests,
+    aborted,
+    active: () => active,
+    maxActive: () => maxActive,
+    resolve(workflowId: string, assets: unknown[] = []) {
+      const request = requests.find((candidate) => candidate.workflowId === workflowId && !candidate.settled);
+      if (!request) throw new Error(`No pending request for ${workflowId}`);
+      request.resolve(assets);
+    },
+  };
+}
+
 describe("ProjectList covers", () => {
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
@@ -62,11 +123,8 @@ describe("ProjectList covers", () => {
     vi.clearAllMocks();
   });
 
-  it("waits for visibility and starts no more than four shared cover requests", async () => {
-    const resolvers: Array<() => void> = [];
-    fixture.listWorkflowAssets.mockImplementation(() => new Promise((resolve) => {
-      resolvers.push(() => resolve({ assets: [] }));
-    }));
+  it("completing one cover does not abort or restart sibling jobs", async () => {
+    const controlled = installControlledCoverRequests();
     render(
       <ProjectList
         projects={projects(5)}
@@ -80,17 +138,33 @@ describe("ProjectList covers", () => {
     expect(fixture.listWorkflowAssets).not.toHaveBeenCalled();
     await act(async () => { TestIntersectionObserver.revealAll(); });
     expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(4);
+    expect(controlled.active()).toBe(4);
+    expect(controlled.maxActive()).toBe(4);
 
-    await act(async () => { resolvers.shift()?.(); });
+    await act(async () => { controlled.resolve("workflow-0"); });
     expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(5);
+    expect(controlled.aborted).toEqual([]);
+    expect(controlled.active()).toBe(4);
+    expect(controlled.maxActive()).toBe(4);
+    for (let index = 0; index < 5; index += 1) {
+      expect(fixture.listWorkflowAssets).toHaveBeenCalledWith(
+        `workflow-${index}`,
+        {},
+        { signal: expect.any(AbortSignal) },
+      );
+    }
+
+    await act(async () => {
+      for (let index = 1; index < 5; index += 1) controlled.resolve(`workflow-${index}`);
+    });
+    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(5);
+    expect(controlled.aborted).toEqual([]);
+    expect(controlled.active()).toBe(0);
+    expect(controlled.maxActive()).toBe(4);
   });
 
-  it("does not let an obsolete card response replace the current cover", async () => {
-    let resolveOld: ((value: { assets: unknown[] }) => void) | undefined;
-    let resolveFresh: ((value: { assets: unknown[] }) => void) | undefined;
-    fixture.listWorkflowAssets
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
-      .mockImplementationOnce(() => new Promise((resolve) => { resolveFresh = resolve; }));
+  it("aborts an obsolete project identity and keeps the fresh cover", async () => {
+    const controlled = installControlledCoverRequests();
     const initial = projects(1);
     const view = render(
       <ProjectList
@@ -102,6 +176,7 @@ describe("ProjectList covers", () => {
       />,
     );
     await act(async () => { TestIntersectionObserver.revealAll(); });
+    const obsoleteRequest = controlled.requests[0];
 
     view.rerender(
       <ProjectList
@@ -113,25 +188,18 @@ describe("ProjectList covers", () => {
       />,
     );
     await act(async () => { TestIntersectionObserver.revealAll(); });
-    await act(async () => {
-      resolveFresh?.({ assets: [coverAsset("fresh", "/media/fresh.webp")] });
-    });
-    expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
+    expect(obsoleteRequest.signal.aborted).toBe(true);
+    expect(controlled.aborted).toEqual(["workflow-0"]);
+    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      resolveOld?.({ assets: [coverAsset("old", "/media/old.webp")] });
+      controlled.resolve("workflow-0", [coverAsset("fresh", "/media/fresh.webp")]);
     });
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
   });
 
   it("drops queued covers on unmount so a new page gets queue slots", async () => {
-    const started: string[] = [];
-    fixture.listWorkflowAssets.mockImplementation((workflowId: string, _filters: unknown, options?: { signal?: AbortSignal }) => {
-      started.push(workflowId);
-      return new Promise((_, reject) => {
-        options?.signal?.addEventListener("abort", () => reject(abortError()), { once: true });
-      });
-    });
+    const controlled = installControlledCoverRequests();
     const oldPage = render(
       <ProjectList
         projects={projects(6)}
@@ -143,11 +211,16 @@ describe("ProjectList covers", () => {
     );
 
     await act(async () => { TestIntersectionObserver.revealAll(); });
-    expect(started).toEqual(["workflow-0", "workflow-1", "workflow-2", "workflow-3"]);
+    expect(controlled.requests.map((request) => request.workflowId)).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+    ]);
 
     oldPage.unmount();
     await act(async () => {});
-    expect(started).toHaveLength(4);
+    expect(controlled.requests.every((request) => request.signal.aborted)).toBe(true);
+    expect(controlled.aborted).toEqual(["workflow-0", "workflow-1", "workflow-2", "workflow-3"]);
+    expect(controlled.active()).toBe(0);
+    expect(fixture.listWorkflowAssets).toHaveBeenCalledTimes(4);
 
     render(
       <ProjectList
@@ -160,10 +233,12 @@ describe("ProjectList covers", () => {
     );
     await act(async () => { TestIntersectionObserver.revealAll(); });
 
-    expect(started).toEqual([
+    expect(controlled.requests.map((request) => request.workflowId)).toEqual([
       "workflow-0", "workflow-1", "workflow-2", "workflow-3",
       "new-workflow-0", "new-workflow-1",
     ]);
+    expect(controlled.active()).toBe(2);
+    expect(controlled.maxActive()).toBe(4);
   });
 });
 
