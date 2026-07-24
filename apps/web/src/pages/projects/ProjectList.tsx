@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v2Api } from "../../api/v2Client.ts";
+import { createRequestQueue } from "../../collections/requestQueue.ts";
+import { createSettledQueryResource, stableQueryKey } from "../../collections/settledQueryResource.ts";
 import { ProjectCard } from "../../components/Cards";
 import { resolveV2ProjectCover, type V2ProjectCover } from "../../projects/v2ProjectCover.ts";
 
@@ -16,11 +18,21 @@ export type ProjectListItem = {
 };
 
 const PROJECT_PAGE_SIZE = 36;
+const PROJECT_COVER_REQUEST_LIMIT = 4;
 
 type ProjectCoverEntry = {
   requestKey: string;
   cover: V2ProjectCover | null;
 };
+
+let projectCoverResource = createSettledQueryResource<V2ProjectCover | null>();
+let projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
+
+// eslint-disable-next-line react-refresh/only-export-components -- Tests reset the module-scoped cover scheduler between cases.
+export function __resetProjectCoverResourceForTests() {
+  projectCoverResource = createSettledQueryResource<V2ProjectCover | null>();
+  projectCoverQueue = createRequestQueue(PROJECT_COVER_REQUEST_LIMIT);
+}
 
 type ProjectListProps = {
   projects: ProjectListItem[];
@@ -33,8 +45,9 @@ type ProjectListProps = {
 export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleFavorite, onRenameProject }: ProjectListProps) {
   const [visibleCount, setVisibleCount] = useState(PROJECT_PAGE_SIZE);
   const [coversByProjectId, setCoversByProjectId] = useState<Record<string, ProjectCoverEntry>>({});
-  const coverRequestsRef = useRef(new Map<string, Promise<V2ProjectCover | null>>());
   const activeCoverRequestKeysRef = useRef(new Map<string, string>());
+  const cardElementsRef = useRef(new Map<string, HTMLElement>());
+  const [visibleProjectIds, setVisibleProjectIds] = useState<Set<string>>(new Set());
   const visibleProjects = useMemo(() => projects.slice(0, visibleCount), [projects, visibleCount]);
   const hasMore = visibleCount < projects.length;
 
@@ -43,29 +56,64 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
   }, [projects]);
 
   useEffect(() => {
-    let cancelled = false;
+    const projectIds = new Set(visibleProjects.map((project) => project.projectId));
+    if (typeof IntersectionObserver === "undefined") {
+      setVisibleProjectIds(projectIds);
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      setVisibleProjectIds((current) => {
+        const next = new Set([...current].filter((projectId) => projectIds.has(projectId)));
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const projectId = entry.target.getAttribute("data-project-id");
+          if (projectId) next.add(projectId);
+        }
+        return next;
+      });
+    }, { rootMargin: "240px" });
     for (const project of visibleProjects) {
+      const element = cardElementsRef.current.get(project.projectId);
+      if (element) observer.observe(element);
+    }
+    return () => observer.disconnect();
+  }, [visibleProjects]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const activeRequestKeys = new Map<string, string>();
+    for (const project of visibleProjects) {
+      if (!visibleProjectIds.has(project.projectId)) continue;
       const requestKey = projectCoverRequestKey(project);
+      activeRequestKeys.set(project.projectId, requestKey);
       if (coversByProjectId[project.projectId]?.requestKey === requestKey) continue;
-      activeCoverRequestKeysRef.current.set(project.projectId, requestKey);
-      let request = coverRequestsRef.current.get(requestKey);
-      if (!request) {
-        request = v2Api.listWorkflowAssets(project.workflowId)
+      const request = projectCoverResource.get(projectCoverIdentity(project), () => (
+        projectCoverQueue.schedule(() => v2Api.listWorkflowAssets(project.workflowId)
           .then((response) => resolveV2ProjectCover(project.coverAssetId, response.assets))
-          .catch(() => null);
-        coverRequestsRef.current.set(requestKey, request);
-      }
+        )
+      ));
       void request.then((cover) => {
         if (cancelled || activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
         setCoversByProjectId((current) => current[project.projectId]?.requestKey === requestKey
           ? current
           : { ...current, [project.projectId]: { requestKey, cover } });
+      }).catch(() => {
+        if (cancelled || activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
+        setCoversByProjectId((current) => current[project.projectId]?.requestKey === requestKey
+          ? current
+          : { ...current, [project.projectId]: { requestKey, cover: null } });
       });
     }
+    activeCoverRequestKeysRef.current = activeRequestKeys;
     return () => {
       cancelled = true;
     };
-  }, [coversByProjectId, visibleProjects]);
+  }, [coversByProjectId, visibleProjectIds, visibleProjects]);
+
+  const registerProjectCard = useCallback((projectId: string, element: HTMLElement | null) => {
+    if (element) cardElementsRef.current.set(projectId, element);
+    else cardElementsRef.current.delete(projectId);
+  }, []);
 
   const loadMore = useCallback(() => {
     setVisibleCount((count) => Math.min(count + PROJECT_PAGE_SIZE, projects.length));
@@ -84,6 +132,7 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
           onTrashProject={onTrashProject}
           onToggleFavorite={onToggleFavorite}
           onRenameProject={onRenameProject}
+          onCardElement={registerProjectCard}
         />
       ))}
       {hasMore ? (
@@ -99,7 +148,15 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
 }
 
 function projectCoverRequestKey(project: ProjectListItem) {
-  return `${project.workflowId}:${project.coverAssetId ?? "fallback"}:${project.updatedAt}`;
+  return stableQueryKey(projectCoverIdentity(project));
+}
+
+function projectCoverIdentity(project: ProjectListItem) {
+  return {
+    workflowId: project.workflowId,
+    coverAssetId: project.coverAssetId ?? "fallback",
+    updatedAt: project.updatedAt,
+  };
 }
 
 const ProjectListCard = memo(function ProjectListCard({
@@ -109,6 +166,7 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject,
   onToggleFavorite,
   onRenameProject,
+  onCardElement,
 }: {
   project: ProjectListItem;
   cover: V2ProjectCover | null | undefined;
@@ -116,10 +174,12 @@ const ProjectListCard = memo(function ProjectListCard({
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
   onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
+  onCardElement: (projectId: string, element: HTMLElement | null) => void;
 }) {
   const trashProject = useCallback(() => onTrashProject(project), [onTrashProject, project]);
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
   const renameProject = useCallback((trigger: HTMLButtonElement) => onRenameProject(project, trigger), [onRenameProject, project]);
+  const cardRef = useCallback((element: HTMLElement | null) => onCardElement(project.projectId, element), [onCardElement, project.projectId]);
 
   return (
     <ProjectCard
@@ -133,6 +193,7 @@ const ProjectListCard = memo(function ProjectListCard({
       onTrash={trashProject}
       onToggleFavorite={toggleFavorite}
       onRename={renameProject}
+      cardRef={cardRef}
     />
   );
 });

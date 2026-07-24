@@ -452,13 +452,16 @@ export const v2Api = {
     );
   },
 
-  listAssetLibraryEntities(request: V2AssetLibraryListRequest): Promise<V2AssetLibraryListResponse> {
+  listAssetLibraryEntities(
+    request: V2AssetLibraryListRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<V2AssetLibraryListResponse> {
     const query = new URLSearchParams({ scope: request.scope });
     if (request.category) query.set("category", request.category);
     if (request.search?.trim()) query.set("search", request.search.trim());
     if (request.cursor) query.set("cursor", request.cursor);
     if (request.limit) query.set("limit", String(request.limit));
-    return requestV2(`/asset-library/entities?${query.toString()}`, {}, normalizeV2AssetLibraryListResponse);
+    return requestV2(`/asset-library/entities?${query.toString()}`, { signal: options.signal }, normalizeV2AssetLibraryListResponse);
   },
 
   assetLibraryEntity(entityId: string): Promise<V2AssetLibraryEntityDetail> {
