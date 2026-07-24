@@ -8,6 +8,7 @@ apps/web/.vite/
 apps/web/coverage/
 
 # Frontend local docs, tests, and agent workspace files
+/docs/
 apps/web/.codex/
 apps/web/docs/
 apps/web/frontend

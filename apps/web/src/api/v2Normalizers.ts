@@ -12,6 +12,7 @@ import type {
   SlotVersionsResponseV2,
   V2InputAssetUploadItem,
   V2InputAssetUploadResponse,
+  V2CompositionCapabilities,
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
   V2FinalTimelineRenderStartResponse,
@@ -97,7 +98,7 @@ function normalizeRuntimeError(value: unknown) {
   if (typeof value === "string" && value.trim()) {
     return { code: "runtime_error", message: value };
   }
-  const record = recordValue(value);
+  const record = recordValue(value) ?? {};
   if (!record) return null;
   const code = stringValue(record.code);
   const message = stringValue(record.message);
@@ -618,6 +619,7 @@ export function normalizeWorkflowSlotV2(value: unknown): WorkflowSlotV2 {
     provider: record.provider === null ? null : stringValue(record.provider) || undefined,
     provider_params: recordValue(record.provider_params),
     selected_asset_id: record.selected_asset_id === null ? null : stringValue(record.selected_asset_id) || undefined,
+    selected_version_id: record.selected_version_id === null ? null : stringValue(record.selected_version_id) || undefined,
     current_working_asset_id: record.current_working_asset_id === null ? null : stringValue(record.current_working_asset_id) || undefined,
     current_working_version_id: record.current_working_version_id === null ? null : stringValue(record.current_working_version_id) || undefined,
     history_version_ids: stringArray(record.history_version_ids),
@@ -667,14 +669,38 @@ export function normalizeAssetVersionV2(value: unknown): AssetVersionV2 {
 
 export function normalizeV2FinalTimelineResponse(value: unknown): V2FinalTimelineResponse {
   const record = isRecord(value) ? value : {};
+  const timeline = normalizeV2FinalCompositionTimeline(record.timeline);
   return {
     workflow_id: stringValue(record.workflow_id),
     node_id: "final-composition",
     item_id: stringValue(record.item_id),
     source: stringValue(record.source, "saved"),
-    timeline: normalizeV2FinalCompositionTimeline(record.timeline),
+    timeline,
     available_sources: recordArray(record.available_sources).map(normalizeV2FinalTimelineSource),
+    composition_capabilities: normalizeV2CompositionCapabilities(
+      record.composition_capabilities ?? timeline.metadata.composition_capabilities,
+    ),
+    stale_clip_ids: stringArray(record.stale_clip_ids),
+    missing_source_clip_ids: stringArray(record.missing_source_clip_ids),
     runtime: record.runtime ? normalizeWorkflowRuntimeV2(record.runtime) : null,
+  };
+}
+
+export function normalizeV2CompositionCapabilities(value: unknown): V2CompositionCapabilities {
+  const record = recordValue(value);
+  if (record?.render_mode !== "timeline_editor") {
+    return {
+      render_mode: "simple_sequence",
+      supports_timeline_controls: false,
+      supports_shot_reorder: false,
+      supports_bgm_volume_edit: false,
+    };
+  }
+  return {
+    render_mode: "timeline_editor",
+    supports_timeline_controls: record.supports_timeline_controls === true,
+    supports_shot_reorder: record.supports_shot_reorder === true,
+    supports_bgm_volume_edit: record.supports_bgm_volume_edit === true,
   };
 }
 
@@ -802,6 +828,7 @@ function normalizeV2FinalTimelineSource(value: unknown): V2FinalTimelineSource {
     thumbnail_url: stringOrNull(record.thumbnail_url ?? record.thumbnail_path),
     duration_seconds: numberOrNull(record.duration_seconds),
     origin: stringValue(record.origin, "workflow"),
+    slot_id: stringOrNull(record.slot_id),
   };
 }
 
@@ -1231,7 +1258,7 @@ export function normalizeV2AssetLibraryListResponse(value: unknown): V2AssetLibr
   const record = recordValue(value) ?? {};
   return {
     entities: recordArray(record.entities).map(normalizeV2AssetLibraryEntitySummary),
-    next_cursor: stringOrNull(record.next_cursor),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
     catalog_status: record.catalog_status ? normalizeV2RecommendedCatalogStatus(record.catalog_status) : null,
   };
 }
@@ -1407,8 +1434,10 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
 
   return {
     workflow_id: stringValue(value.workflow_id),
+    project_id: stringValue(value.project_id) || undefined,
     workflow_schema_version: 2,
     state_version: typeof value.state_version === "number" && Number.isFinite(value.state_version) ? value.state_version : undefined,
+    semantic_revision_no: typeof value.semantic_revision_no === "number" && Number.isFinite(value.semantic_revision_no) ? value.semantic_revision_no : undefined,
     name: stringValue(value.name) || undefined,
     description: stringValue(value.description) || undefined,
     prompt: stringValue(value.prompt) || undefined,
@@ -1429,11 +1458,150 @@ export function normalizeWorkflowV2(value: unknown): WorkflowV2 {
   };
 }
 
+export function normalizePersistedWorkflowV2(value: unknown): import("../types-v2.ts").PersistedWorkflowV2 {
+  const workflow = normalizeWorkflowV2(value);
+  if (!workflow.project_id || workflow.state_version === undefined || workflow.semantic_revision_no === undefined) {
+    throw new Error("invalid_v2_persisted_workflow");
+  }
+  return workflow as import("../types-v2.ts").PersistedWorkflowV2;
+}
+
+export function normalizeProjectV2ListResponse(value: unknown): import("../types-v2.ts").ProjectV2ListResponse {
+  const record = recordValue(value) ?? {};
+  return {
+    items: recordArray(record.items).map(normalizeProjectV2Summary),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
+  };
+}
+
+export function normalizeProjectV2(value: unknown): import("../types-v2.ts").ProjectV2 {
+  const record = recordValue(value) ?? {};
+  const description = record.description;
+  if (typeof description !== "string") invalidProjectPayload();
+  const semanticRevisionNo = requiredPositiveInteger(record, "semantic_revision_no");
+  const createdAt = requiredProjectString(record, "created_at");
+  const deletedAt = record.deleted_at;
+  if (deletedAt !== null && deletedAt !== undefined && typeof deletedAt !== "string") invalidProjectPayload();
+  return {
+    ...normalizeProjectV2Summary(record),
+    description,
+    semantic_revision_no: semanticRevisionNo,
+    created_at: createdAt,
+    deleted_at: deletedAt ?? null,
+  };
+}
+
+function normalizeProjectV2Summary(value: unknown): import("../types-v2.ts").ProjectV2Summary {
+  const record = recordValue(value) ?? {};
+  const status = requiredProjectString(record, "status");
+  if (status !== "active" && status !== "archived" && status !== "trashed") invalidProjectPayload();
+  if (typeof record.is_favorite !== "boolean") invalidProjectPayload();
+  return {
+    project_id: requiredProjectString(record, "project_id"),
+    workflow_id: requiredProjectString(record, "workflow_id"),
+    name: requiredProjectString(record, "name"),
+    status,
+    is_favorite: record.is_favorite,
+    cover_asset_id: stringOrNull(record.cover_asset_id) ?? null,
+    project_version: requiredPositiveInteger(record, "project_version"),
+    updated_at: requiredProjectString(record, "updated_at"),
+  };
+}
+
+function invalidProjectPayload(): never {
+  throw new Error("invalid_v2_project_payload");
+}
+
+function requiredProjectString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) invalidProjectPayload();
+  return value;
+}
+
+function requiredPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) invalidProjectPayload();
+  return value;
+}
+
+export function normalizeWorkflowRevisionPage(value: unknown): import("../types-v2.ts").WorkflowRevisionPage {
+  const record = recordValue(value) ?? {};
+  return {
+    items: recordArray(record.items).map(normalizeWorkflowRevisionV2Summary),
+    next_cursor: stringOrNull(record.next_cursor) ?? null,
+  };
+}
+
+export function normalizeWorkflowRevisionV2Detail(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Detail {
+  const record = recordValue(value) ?? {};
+  const document = recordValue(record.document);
+  if (!document) invalidWorkflowRevisionPayload();
+  return {
+    ...normalizeWorkflowRevisionV2Summary(record),
+    document,
+  };
+}
+
+export function normalizeWorkflowRevisionRestoreResponse(value: unknown): import("../types-v2.ts").WorkflowRevisionRestoreResponse {
+  const record = recordValue(value) ?? {};
+  const restoredFromRevisionNo = record.restored_from_revision_no;
+  if (typeof restoredFromRevisionNo !== "number" || !Number.isInteger(restoredFromRevisionNo) || restoredFromRevisionNo < 1) {
+    invalidWorkflowRevisionPayload();
+  }
+  return {
+    workflow: normalizePersistedWorkflowV2(record.workflow),
+    revision: normalizeWorkflowRevisionV2Summary(record.revision),
+    restored_from_revision_no: restoredFromRevisionNo,
+  };
+}
+
+function normalizeWorkflowRevisionV2Summary(value: unknown): import("../types-v2.ts").WorkflowRevisionV2Summary {
+  const record = recordValue(value) ?? {};
+  const restoredFromRevisionNo = record.restored_from_revision_no;
+  if (restoredFromRevisionNo !== null && restoredFromRevisionNo !== undefined && (
+    typeof restoredFromRevisionNo !== "number" || !Number.isInteger(restoredFromRevisionNo) || restoredFromRevisionNo < 1
+  )) invalidWorkflowRevisionPayload();
+  const sourceExecutionId = record.source_execution_id;
+  if (sourceExecutionId !== null && sourceExecutionId !== undefined && typeof sourceExecutionId !== "string") invalidWorkflowRevisionPayload();
+  return {
+    revision_id: requiredWorkflowRevisionString(record, "revision_id"),
+    workflow_id: requiredWorkflowRevisionString(record, "workflow_id"),
+    revision_no: requiredWorkflowRevisionPositiveInteger(record, "revision_no"),
+    state_version: requiredWorkflowRevisionPositiveInteger(record, "state_version"),
+    content_hash: requiredWorkflowRevisionString(record, "content_hash"),
+    change_source: requiredWorkflowRevisionString(record, "change_source") as import("../types-v2.ts").WorkflowRevisionChangeSourceV2,
+    restored_from_revision_no: typeof restoredFromRevisionNo === "number" ? restoredFromRevisionNo : null,
+    source_execution_id: typeof sourceExecutionId === "string" ? sourceExecutionId : null,
+    created_at: requiredWorkflowRevisionString(record, "created_at"),
+  };
+}
+
+function invalidWorkflowRevisionPayload(): never {
+  throw new Error("invalid_v2_workflow_revision_payload");
+}
+
+function requiredWorkflowRevisionString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== "string" || !value.trim()) invalidWorkflowRevisionPayload();
+  return value;
+}
+
+function requiredWorkflowRevisionPositiveInteger(record: Record<string, unknown>, key: string): number {
+  const value = record[key];
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) invalidWorkflowRevisionPayload();
+  return value;
+}
+
 function deriveAssetVersionRecordsFromSlots(slots: WorkflowSlotV2[], workflowId: string): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [];
   for (const slot of slots) {
     if (slot.selected_asset_id) {
-      records.push(idOnlyAssetVersionRecord(slot.selected_asset_id, slot.selected_asset_id, slot, workflowId));
+      records.push(idOnlyAssetVersionRecord(
+        slot.selected_asset_id,
+        slot.selected_version_id || slot.selected_asset_id,
+        slot,
+        workflowId,
+      ));
     }
     if (slot.current_working_asset_id) {
       records.push(idOnlyAssetVersionRecord(slot.current_working_asset_id, slot.current_working_version_id || slot.current_working_asset_id, slot, workflowId));

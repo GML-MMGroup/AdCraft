@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "./api/client";
+import {
+  v2AuthoringConflictStore,
+} from "./api/v2AuthoringConflictStore";
+import {
+  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
+  V2_AUTHORING_DRAFT_DISCARDED_EVENT,
+  type V2AuthoringConflictResolution,
+  type V2AuthoringConflictTarget,
+} from "./api/v2AuthoringConflictEvents.ts";
 import { AppContext, type AppContextValue } from "./AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "./api/workflowNormalizers";
-import { clearNewProjectStorage, createNewProjectState, loadActiveProjectAsync, loadActiveProjectId, loadDemoProjectFavorites, loadSavedProjectByIdAsync, loadSavedProjectSummaries, loadTrashedProjects, loadTrashedProjectsAsync, moveDemoProjectToTrash, moveSavedProjectToTrash, permanentlyDeleteTrashedProject, projectStateFromRecord, restoreProjectStorage, saveActiveProjectId, saveCurrentProject, setDemoProjectFavorite, setSavedProjectFavorite, WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_DEMO_PROJECT_FAVORITES_KEY, WORKSPACE_MESSAGES_KEY, WORKSPACE_PROJECTS_KEY, WORKSPACE_TRASH_PROJECTS_KEY, WORKSPACE_WORKFLOW_KEY, type DemoProjectRecord, type ProjectSessionState, type SavedWorkflowProject, type TrashedProjectRecord } from "./projects/newProject";
+import { clearNewProjectStorage, createNewProjectState, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, WORKSPACE_MESSAGES_KEY, WORKSPACE_WORKFLOW_KEY, type ProjectSessionState, type SavedWorkflowProject } from "./projects/newProject";
 import {
   deleteHybridRecordSync,
   HYBRID_STORAGE_ERROR_EVENT,
@@ -17,8 +26,9 @@ import {
   saveHybridRecordSync,
 } from "./storage/hybridStorage";
 import { shouldApplyWorkflowScopedResult } from "./workflow/sessionGuards";
-import { cleanupOrphanedVideoPosterCache } from "./workflow/videoPosterCache";
 import { isWorkflowV2Graph } from "./workflowSchema";
+import type { ProjectV2Summary } from "./types-v2";
+import { loadAllBackendProjectPages, projectTrashClearsActiveWorkflow, shouldPersistMessagesAsLocalDraft } from "./projects/v2ProjectAuthority";
 import type {
   AssetLibraryEntitySummary,
   AssetLibraryUploadKind,
@@ -45,8 +55,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [workflow, setWorkflow] = useState<WorkflowGraph | null>(() => loadStoredWorkflow());
   const [nodeCatalog, setNodeCatalog] = useState<NodeCatalogItem[]>([]);
   const [nodeRuns, setNodeRuns] = useState<NodeRunResult[]>([]);
-  const [savedProjects, setSavedProjects] = useState<SavedWorkflowProject[]>(() => loadSavedProjectSummaries(window.localStorage));
-  const [trashedProjects, setTrashedProjects] = useState<TrashedProjectRecord[]>(() => loadTrashedProjects(window.localStorage));
+  const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>([]);
+  const [trashedProjects, setTrashedProjects] = useState<ProjectV2Summary[]>([]);
   const [demoProjectFavorites, setDemoProjectFavorites] = useState<Record<string, boolean>>(() => loadDemoProjectFavorites(window.localStorage));
   const [activeProjectId, setActiveProjectId] = useState<string | null>(() => loadActiveProjectId(window.localStorage));
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
@@ -54,7 +64,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const activeWorkflowIdRef = useRef<string | null>(workflow?.workflow_id ?? null);
-  const activeProjectSaveTimerRef = useRef<number | null>(null);
   const workspaceSessionGenerationRef = useRef(0);
 
   const setWorkflowState = useCallback<Dispatch<SetStateAction<WorkflowGraph | null>>>((next) => {
@@ -142,19 +151,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [messages, nodeRuns, promptLibraryEntities, selectedAssets, workflow]);
 
   const saveProject = useCallback((state: ProjectSessionState = currentProjectState()) => {
-    const saved = saveCurrentProject(window.localStorage, state, activeProjectId, undefined, { allowEmpty: Boolean(activeProjectId) });
-    if (saved) {
-      saveActiveProjectId(window.localStorage, saved.project_id);
-      setActiveProjectId(saved.project_id);
-      setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-    }
-    return saved;
-  }, [activeProjectId, currentProjectState]);
+    if (!state.workflow?.project_id) saveStoredWorkflow(state.workflow);
+    return null;
+  }, [currentProjectState]);
 
-  const cancelActiveProjectAutosave = useCallback(() => {
-    if (activeProjectSaveTimerRef.current === null) return;
-    window.clearTimeout(activeProjectSaveTimerRef.current);
-    activeProjectSaveTimerRef.current = null;
+  const refreshProjects = useCallback(async () => {
+    const { v2Api } = await import("./api/v2Client");
+    const [active, trashed] = await Promise.all([
+      loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
+      loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
+    ]);
+    setSavedProjects(active);
+    setTrashedProjects(trashed);
   }, []);
 
   const beginWorkspaceRestoreRequest = useCallback((): WorkspaceRestoreRequest => {
@@ -177,135 +185,138 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startNewProject = useCallback(() => {
-    cancelActiveProjectAutosave();
     invalidateWorkspaceRestoreRequests();
-    saveProject();
     const nextState = createNewProjectState();
     activeWorkflowIdRef.current = null;
     setWorkspaceRestoreError(null);
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-    const saved = saveCurrentProject(window.localStorage, nextState, null, undefined, { allowEmpty: true });
-    if (saved) {
-      saveActiveProjectId(window.localStorage, saved.project_id);
-      restoreProjectStorage(window.localStorage, saved);
-      setActiveProjectId(saved.project_id);
-      setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-    } else {
-      saveActiveProjectId(window.localStorage, null);
-      setActiveProjectId(null);
-    }
+    saveActiveProjectId(window.localStorage, null);
+    setActiveProjectId(null);
     setWorkflow(nextState.workflow);
     setMessages(nextState.messages);
     setNodeRuns(nextState.nodeRuns);
     setSelectedAssets(nextState.selectedAssets);
     setPromptLibraryEntities(nextState.promptLibraryEntities);
     setWorkspaceHydrated(true);
-  }, [cancelActiveProjectAutosave, invalidateWorkspaceRestoreRequests, saveProject, workflow?.workflow_id]);
+  }, [invalidateWorkspaceRestoreRequests, workflow?.workflow_id]);
 
   const openProject = useCallback(async (projectId: string) => {
-    cancelActiveProjectAutosave();
     const requestGeneration = invalidateWorkspaceRestoreRequests();
-    const project = await loadSavedProjectByIdAsync(window.localStorage, projectId);
+    const [client, adapter] = await Promise.all([
+      import("./api/v2Client"),
+      import("./workflow-v2/pageAdapter"),
+    ]);
+    const response = await client.v2Api.projectWorkflow(projectId);
     if (requestGeneration !== workspaceSessionGenerationRef.current) return false;
-    if (!project) return false;
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-    restoreProjectStorage(window.localStorage, project);
-    const nextState = projectStateFromRecord(project);
-    activeWorkflowIdRef.current = nextState.workflow?.workflow_id ?? null;
-    setActiveProjectId(project.project_id);
+    const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
+    activeWorkflowIdRef.current = nextWorkflow.workflow_id;
+    saveActiveProjectId(window.localStorage, projectId);
+    setActiveProjectId(projectId);
     setWorkspaceRestoreError(null);
-    setWorkflow(nextState.workflow);
-    setMessages(nextState.messages);
-    setNodeRuns(nextState.nodeRuns);
-    setSelectedAssets(nextState.selectedAssets);
-    setPromptLibraryEntities(nextState.promptLibraryEntities);
-    setSavedProjects(loadSavedProjectSummaries(window.localStorage));
+    setWorkflow(nextWorkflow);
+    setMessages([]);
+    setNodeRuns([]);
     setWorkspaceHydrated(true);
     return true;
-  }, [cancelActiveProjectAutosave, invalidateWorkspaceRestoreRequests, workflow?.workflow_id]);
+  }, [invalidateWorkspaceRestoreRequests, workflow?.workflow_id]);
 
-  const moveProjectToTrash = useCallback((project: DemoProjectRecord & { source: "saved" | "demo" }) => {
-    const trashed = project.source === "saved"
-      ? moveSavedProjectToTrash(window.localStorage, project.project_id)
-      : moveDemoProjectToTrash(window.localStorage, project);
-    if (!trashed) return null;
-
-    if (activeProjectId === project.project_id) {
+  const moveProjectToTrash = useCallback(async (projectId: string) => {
+    const { v2Api } = await import("./api/v2Client");
+    await v2Api.trashProject(projectId);
+    if (projectTrashClearsActiveWorkflow(projectId, activeProjectId)) {
+      activeWorkflowIdRef.current = null;
+      setWorkflowState(null);
       saveActiveProjectId(window.localStorage, null);
       setActiveProjectId(null);
     }
-    setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-    setTrashedProjects(loadTrashedProjects(window.localStorage));
-    return trashed;
-  }, [activeProjectId]);
-
-  const deleteTrashedProject = useCallback((projectId: string) => {
-    const deleted = permanentlyDeleteTrashedProject(window.localStorage, projectId);
-    if (!deleted) return false;
-
-    if (activeProjectId === projectId) {
-      saveActiveProjectId(window.localStorage, null);
-      setActiveProjectId(null);
-    }
-    setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-    setTrashedProjects(loadTrashedProjects(window.localStorage));
+    await refreshProjects();
     return true;
-  }, [activeProjectId]);
+  }, [activeProjectId, refreshProjects, setWorkflowState]);
 
-  const toggleProjectFavorite = useCallback((project: DemoProjectRecord & { source: "saved" | "demo" }) => {
-    const nextFavorite = !project.favorite;
-    if (project.source === "saved") {
-      const updated = setSavedProjectFavorite(window.localStorage, project.project_id, nextFavorite);
-      if (!updated) return null;
-      setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-      return updated.favorite;
-    }
+  const restoreTrashedProject = useCallback(async (projectId: string) => {
+    const { v2Api } = await import("./api/v2Client");
+    await v2Api.restoreProject(projectId);
+    await refreshProjects();
+    return true;
+  }, [refreshProjects]);
 
-    setDemoProjectFavorites(setDemoProjectFavorite(window.localStorage, project.project_id, nextFavorite));
-    return nextFavorite;
+  const renameProject = useCallback(async (projectId: string, name: string) => {
+    const { v2Api } = await import("./api/v2Client");
+    const { value: updatedProject } = await v2Api.updateProject(projectId, { name });
+    setSavedProjects((current) => current.map((project) => (
+      project.project_id === updatedProject.project_id ? updatedProject : project
+    )));
+    return true;
   }, []);
+
+  const toggleProjectFavorite = useCallback(async (project: ProjectV2Summary) => {
+    const { v2Api } = await import("./api/v2Client");
+    await v2Api.updateProject(project.project_id, { is_favorite: !project.is_favorite });
+    await refreshProjects();
+    return true;
+  }, [refreshProjects]);
+
+  const refreshAuthoringConflictTarget = useCallback(async (target: V2AuthoringConflictTarget) => {
+    if (target.resource === "project") {
+      await refreshProjects();
+      return;
+    }
+    if (target.id !== activeWorkflowIdRef.current) return;
+    const [client, adapter] = await Promise.all([
+      import("./api/v2Client"),
+      import("./workflow-v2/pageAdapter"),
+    ]);
+    const latest = await client.v2Api.workflowWithEtag(target.id);
+    if (target.id !== activeWorkflowIdRef.current) return;
+    setWorkflowState(adapter.workflowV2ToWorkflowGraph(latest.value));
+  }, [refreshProjects, setWorkflowState]);
 
   useEffect(() => {
     activeWorkflowIdRef.current = workflow?.workflow_id ?? null;
-  }, [workflow?.workflow_id]);
+    if (!workflow?.project_id || workflow.project_id === activeProjectId) return;
+    saveActiveProjectId(window.localStorage, workflow.project_id);
+    setActiveProjectId(workflow.project_id);
+    void refreshProjects();
+  }, [activeProjectId, refreshProjects, workflow?.project_id, workflow?.workflow_id]);
 
   useEffect(() => {
     let cancelled = false;
     async function hydrateLocalDrafts() {
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
-        const [nextProjects, nextTrash, activeProject, storedWorkflow, storedMessages] = await Promise.all([
-          loadSavedProjectSummaries(window.localStorage),
-          loadTrashedProjectsAsync(window.localStorage),
-          loadActiveProjectAsync(window.localStorage),
+        const { v2Api } = await import("./api/v2Client");
+        const [activeProjects, trashProjects, storedWorkflow, storedMessages] = await Promise.all([
+          loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
+          loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
           loadStoredWorkflowAsync(),
           loadStoredMessagesAsync(),
         ]);
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
-        setSavedProjects(nextProjects);
-        setTrashedProjects(nextTrash);
-        cleanupOrphanedVideoPosterCache(
-          nextProjects.map((project) => project.project_id),
-          nextTrash.map((project) => project.project_id),
-        );
-        if (activeProject) {
-          restoreProjectStorage(window.localStorage, activeProject);
-          const nextState = projectStateFromRecord(activeProject);
-          activeWorkflowIdRef.current = nextState.workflow?.workflow_id ?? null;
-          setActiveProjectId(activeProject.project_id);
-          setWorkflow(nextState.workflow);
-          setMessages(nextState.messages);
-          setNodeRuns(nextState.nodeRuns);
-          setSelectedAssets(nextState.selectedAssets);
-          setPromptLibraryEntities(nextState.promptLibraryEntities);
-          setWorkspaceRestoreError(null);
-          setWorkspaceHydrated(true);
-          return;
-        }
-        if (loadActiveProjectId(window.localStorage)) {
+        setSavedProjects(activeProjects);
+        setTrashedProjects(trashProjects);
+        const storedProjectId = loadActiveProjectId(window.localStorage);
+        if (storedProjectId) {
+          try {
+            const [response, adapter] = await Promise.all([
+              v2Api.projectWorkflow(storedProjectId),
+              import("./workflow-v2/pageAdapter"),
+            ]);
+            if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
+            const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
+            activeWorkflowIdRef.current = nextWorkflow.workflow_id;
+            setActiveProjectId(storedProjectId);
+            setWorkflow(nextWorkflow);
+            setMessages([]);
+            setWorkspaceRestoreError(null);
+            setWorkspaceHydrated(true);
+            return;
+          } catch {
+            // The browser identity is only a preference; backend Project state is authoritative.
+          }
           saveActiveProjectId(window.localStorage, null);
           setActiveProjectId(null);
-          setWorkspaceRestoreError("Saved project could not be restored.");
+          setWorkspaceRestoreError("The backend project could not be restored.");
         } else {
           setWorkspaceRestoreError(null);
         }
@@ -342,26 +353,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    function handleProjectStorageEvent(event: StorageEvent) {
-      if (
-        event.key !== WORKSPACE_PROJECTS_KEY &&
-        event.key !== WORKSPACE_TRASH_PROJECTS_KEY &&
-        event.key !== WORKSPACE_ACTIVE_PROJECT_KEY &&
-        event.key !== WORKSPACE_DEMO_PROJECT_FAVORITES_KEY
-      ) {
-        return;
+    return v2AuthoringConflictStore.subscribe((conflict) => {
+      if (!conflict) return;
+      void refreshAuthoringConflictTarget(conflict.target).catch(() => {});
+    });
+  }, [refreshAuthoringConflictTarget]);
+
+  useEffect(() => {
+    async function handleAuthoringConflictResolved(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (!resolution) return;
+      try {
+        await refreshAuthoringConflictTarget(resolution.target);
+      } finally {
+        if (resolution.action === "discard") {
+          window.dispatchEvent(new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, { detail: resolution }));
+        }
       }
-      setSavedProjects(loadSavedProjectSummaries(window.localStorage));
-      setTrashedProjects(loadTrashedProjects(window.localStorage));
-      setDemoProjectFavorites(loadDemoProjectFavorites(window.localStorage));
-      setStorageWarning("Project storage changed in another tab. Save again before switching projects.");
     }
 
-    window.addEventListener("storage", handleProjectStorageEvent);
-    return () => {
-      window.removeEventListener("storage", handleProjectStorageEvent);
-    };
-  }, []);
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
+  }, [refreshAuthoringConflictTarget]);
 
   useEffect(() => {
     let cancelled = false;
@@ -387,28 +400,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!workspaceHydrated) return;
-    saveStoredMessages(messages);
-  }, [messages, workspaceHydrated]);
+    if (shouldPersistMessagesAsLocalDraft(workflow)) {
+      saveStoredMessages(messages);
+      return;
+    }
+    clearStoredMessages();
+  }, [messages, workflow, workspaceHydrated]);
 
   useEffect(() => {
     if (!workspaceHydrated) return;
     saveStoredWorkflow(workflow);
   }, [workflow, workspaceHydrated]);
-
-  useEffect(() => {
-    if (!workspaceHydrated || !activeProjectId) return;
-    if (activeProjectSaveTimerRef.current !== null) window.clearTimeout(activeProjectSaveTimerRef.current);
-    activeProjectSaveTimerRef.current = window.setTimeout(() => {
-      activeProjectSaveTimerRef.current = null;
-      saveProject();
-    }, 800);
-    return () => {
-      if (activeProjectSaveTimerRef.current !== null) {
-        window.clearTimeout(activeProjectSaveTimerRef.current);
-        activeProjectSaveTimerRef.current = null;
-      }
-    };
-  }, [workflow, messages, nodeRuns, selectedAssets, promptLibraryEntities, activeProjectId, workspaceHydrated, saveProject]);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -436,7 +438,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewProject,
       openProject,
       moveProjectToTrash,
-      deleteTrashedProject,
+      restoreTrashedProject,
+      renameProject,
       toggleProjectFavorite,
       toggleAssetSelection,
       refreshAssets,
@@ -450,7 +453,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       apiOnline,
       assets,
       busy,
-      deleteTrashedProject,
       demoProjectFavorites,
       messages,
       moveProjectToTrash,
@@ -461,6 +463,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshAssets,
       refreshNodeCatalog,
       refreshWorkflowNodes,
+      renameProject,
+      restoreTrashedProject,
       saveProject,
       savedProjects,
       selectedAssets,
@@ -494,16 +498,12 @@ function loadStoredWorkflow(): WorkflowGraph | null {
     const value = window.localStorage.getItem(WORKSPACE_WORKFLOW_KEY);
     if (!value) return null;
     const parsed = JSON.parse(value);
-    if (isHybridStoragePointer(parsed) && parsed.namespace === "workflowDrafts") {
+    if (isUnsavedWorkflowDraftPointer(parsed)) {
       return loadHybridRecordSync<WorkflowGraph>("workflowDrafts", parsed.key) ?? null;
-    }
-    if (parsed && typeof parsed.workflow_id === "string") {
-      saveStoredWorkflow(parsed);
-      return parsed;
     }
     return null;
   } catch {
-    return loadHybridRecordSync<WorkflowGraph>("workflowDrafts", "active") ?? null;
+    return null;
   }
 }
 
@@ -511,17 +511,17 @@ async function loadStoredWorkflowAsync(): Promise<WorkflowGraph | null> {
   try {
     const value = window.localStorage.getItem(WORKSPACE_WORKFLOW_KEY);
     const parsed = value ? JSON.parse(value) : null;
-    if (isHybridStoragePointer(parsed) && parsed.namespace === "workflowDrafts") {
+    if (isUnsavedWorkflowDraftPointer(parsed)) {
       return (await loadHybridRecord<WorkflowGraph>("workflowDrafts", parsed.key)) ?? null;
     }
   } catch {
-    // Fall through to the standard active draft key.
+    return null;
   }
-  return (await loadHybridRecord<WorkflowGraph>("workflowDrafts", "active")) ?? null;
+  return null;
 }
 
 function saveStoredWorkflow(workflow: WorkflowGraph | null) {
-  if (!workflow) {
+  if (!workflow || workflow.project_id) {
     deleteHybridRecordSync("workflowDrafts", "active");
     safeRemoveItem(window.localStorage, WORKSPACE_WORKFLOW_KEY);
     return;
@@ -530,7 +530,18 @@ function saveStoredWorkflow(workflow: WorkflowGraph | null) {
   safeWriteJson(window.localStorage, WORKSPACE_WORKFLOW_KEY, {
     ...hybridStoragePointer("workflowDrafts", "active"),
     workflow_id: workflow.workflow_id,
+    unsaved_project_draft: true,
   });
+}
+
+function isUnsavedWorkflowDraftPointer(value: unknown): value is ReturnType<typeof hybridStoragePointer> & {
+  unsaved_project_draft: true;
+} {
+  return Boolean(
+    isHybridStoragePointer(value) &&
+    value.namespace === "workflowDrafts" &&
+    (value as Record<string, unknown>).unsaved_project_draft === true,
+  );
 }
 
 function loadStoredMessages(): FrontDeskMessage[] {
@@ -571,6 +582,11 @@ function saveStoredMessages(messages: FrontDeskMessage[]) {
   const recentMessages = sanitizeMessages(messages).slice(-80);
   saveHybridRecordSync("messageThreads", "active", recentMessages);
   safeWriteJson(window.localStorage, WORKSPACE_MESSAGES_KEY, hybridStoragePointer("messageThreads", "active"));
+}
+
+function clearStoredMessages() {
+  deleteHybridRecordSync("messageThreads", "active");
+  safeRemoveItem(window.localStorage, WORKSPACE_MESSAGES_KEY);
 }
 
 function sanitizeMessages(messages: FrontDeskMessage[]) {

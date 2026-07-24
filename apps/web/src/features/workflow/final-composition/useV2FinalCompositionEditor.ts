@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { V2ApiError, v2Api } from "../../../api/v2Client.ts";
 import type {
+  AssetVersionV2,
+  V2CompositionCapabilities,
   V2FinalCompositionTimeline,
   V2FinalTimelineClip,
   V2FinalTimelineRenderStartResponse,
@@ -8,7 +10,12 @@ import type {
   V2FinalTimelineSource,
   V2FinalTimelineUpdateResponse,
   V2TimelineTrackType,
+  WorkflowV2,
 } from "../../../types-v2.ts";
+import {
+  selectedAssetForSlot,
+  selectV2FinalVideoSlot,
+} from "../../../workflow-v2/selectors.ts";
 import {
   activeRenderIdFromPayload,
   claimFinalRenderCompletion,
@@ -23,6 +30,10 @@ import {
   type FinalRenderEventHint,
   type FinalRenderSessionIdentity,
 } from "./finalRenderSession.ts";
+import {
+  FINAL_COMPOSITION_EVENT_NAME,
+  shouldReloadFinalCompositionTimeline,
+} from "./finalCompositionEvents.ts";
 import {
   addImportedVideoLane,
   addOrReplaceBgm,
@@ -64,10 +75,21 @@ import {
   updateV2TimelineTrack,
   v2TimelineDuration,
 } from "./v2TimelineModel.ts";
+import {
+  classifyFinalCompositionError,
+  supportsAdvancedTimelineEditor,
+  type V2FinalCompositionIssue,
+} from "./v2FinalCompositionPolicy.ts";
 
 const BASE_PIXELS_PER_SECOND = 52;
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
+const SIMPLE_SEQUENCE_CAPABILITIES: V2CompositionCapabilities = {
+  render_mode: "simple_sequence",
+  supports_timeline_controls: false,
+  supports_shot_reorder: false,
+  supports_bgm_volume_edit: false,
+};
 
 export type V2FinalCompositionTool = "select" | "blade";
 export type V2FinalCompositionEditMode = "normal" | "ripple";
@@ -124,6 +146,14 @@ function readableError(error: unknown) {
   return error instanceof Error ? error.message : "Timeline request failed.";
 }
 
+function finalVideoFromWorkflow(value: unknown): AssetVersionV2 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const workflow = value as WorkflowV2;
+  if (!Array.isArray(workflow.items) || !Array.isArray(workflow.slots) || !Array.isArray(workflow.asset_versions)) return null;
+  const slot = selectV2FinalVideoSlot(workflow);
+  return selectedAssetForSlot(workflow, slot ?? undefined) ?? null;
+}
+
 function clampZoom(value: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
 }
@@ -173,6 +203,7 @@ function trackLocked(track: V2FinalCompositionTimeline["tracks"][number]) {
 export function useV2FinalCompositionEditor({
   workflowId,
   active,
+  onWorkflowRefresh,
 }: {
   workflowId?: string | null;
   active: boolean;
@@ -181,6 +212,11 @@ export function useV2FinalCompositionEditor({
   const [baseline, setBaseline] = useState<V2FinalCompositionTimeline | null>(null);
   const [history, setHistory] = useState<ShotTimelineHistory | null>(null);
   const [sources, setSources] = useState<V2FinalTimelineSource[]>([]);
+  const [capabilities, setCapabilities] = useState<V2CompositionCapabilities>(SIMPLE_SEQUENCE_CAPABILITIES);
+  const [staleClipIds, setStaleClipIds] = useState<string[]>([]);
+  const [missingSourceClipIds, setMissingSourceClipIds] = useState<string[]>([]);
+  const [finalVideo, setFinalVideo] = useState<AssetVersionV2 | null>(null);
+  const [autoPlayFinalVideo, setAutoPlayFinalVideo] = useState(false);
   const [selectedClipIdsState, setSelectedClipIdsState] = useState<string[]>([]);
   const [playheadSeconds, setPlayheadSecondsState] = useState(0);
   const [tool, setToolState] = useState<V2FinalCompositionTool>("select");
@@ -194,6 +230,7 @@ export function useV2FinalCompositionEditor({
   const [renderState, setRenderState] = useState<V2FinalTimelineRenderStateResponse | null>(null);
   const [renderHint, setRenderHint] = useState<FinalRenderEventHint | null>(null);
   const [renderSessionError, setRenderSessionError] = useState("");
+  const [renderIssue, setRenderIssue] = useState<V2FinalCompositionIssue | null>(null);
   const [cancellingRender, setCancellingRender] = useState(false);
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
@@ -205,6 +242,7 @@ export function useV2FinalCompositionEditor({
   const baselineRef = useRef(baseline);
   const historyRef = useRef(history);
   const draftRef = useRef(draft);
+  const capabilitiesRef = useRef(capabilities);
   const selectedClipIdsRef = useRef(selectedClipIdsState);
   const playheadRef = useRef(playheadSeconds);
   const editModeRef = useRef(editMode);
@@ -222,6 +260,7 @@ export function useV2FinalCompositionEditor({
   const renderPollBackoffRef = useRef(0);
   const renderPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancellingRenderRef = useRef(false);
+  const onWorkflowRefreshRef = useRef(onWorkflowRefresh);
   const completedRenderSessionsRef = useRef(new Set<string>());
   const pollRenderRef = useRef<(identity: FinalRenderSessionIdentity, resetBackoff?: boolean) => Promise<void>>(async () => {});
   const loadRequestRef = useRef(0);
@@ -252,6 +291,28 @@ export function useV2FinalCompositionEditor({
     selectedClipIdsRef.current = next;
     setSelectedClipIdsState(next);
   }, []);
+
+  const applyFinalVideoWorkflow = useCallback((workflow: unknown, autoplay = false) => {
+    const next = finalVideoFromWorkflow(workflow);
+    if (!next) return null;
+    setFinalVideo(next);
+    setAutoPlayFinalVideo(autoplay);
+    return next;
+  }, []);
+
+  const loadFinalVideo = useCallback(async (
+    session: TimelineSessionToken,
+    workflow?: unknown,
+    autoplay = false,
+  ) => {
+    try {
+      const candidate = workflow ?? await v2Api.workflow(session.workflowId!);
+      if (!sessionGuardRef.current.isCurrent(session)) return null;
+      return applyFinalVideoWorkflow(candidate, autoplay);
+    } catch {
+      return null;
+    }
+  }, [applyFinalVideoWorkflow]);
 
   const clearRenderPollTimer = useCallback(() => {
     if (renderPollTimerRef.current !== null) {
@@ -308,10 +369,17 @@ export function useV2FinalCompositionEditor({
       setSelectedClipIdsState([]);
       setConflict(null);
       setSources([]);
+      setCapabilities(SIMPLE_SEQUENCE_CAPABILITIES);
+      capabilitiesRef.current = SIMPLE_SEQUENCE_CAPABILITIES;
+      setStaleClipIds([]);
+      setMissingSourceClipIds([]);
+      setFinalVideo(null);
+      setAutoPlayFinalVideo(false);
       setRenderJob(null);
       setRenderState(null);
       setRenderHint(null);
       setRenderSessionError("");
+      setRenderIssue(null);
       setCancellingRender(false);
       setExternalUpdate(false);
       setLoading(false);
@@ -325,6 +393,8 @@ export function useV2FinalCompositionEditor({
     baselineRef.current = baseline;
     historyRef.current = history;
     draftRef.current = draft;
+    capabilitiesRef.current = capabilities;
+    onWorkflowRefreshRef.current = onWorkflowRefresh;
     selectedClipIdsRef.current = selectedClipIdsState;
     playheadRef.current = playheadSeconds;
     editModeRef.current = editMode;
@@ -338,6 +408,7 @@ export function useV2FinalCompositionEditor({
   }, [
     active,
     baseline,
+    capabilities,
     conflict,
     cancellingRender,
     draft,
@@ -352,6 +423,7 @@ export function useV2FinalCompositionEditor({
     workflowId,
     zoom,
     invalidateRenderSession,
+    onWorkflowRefresh,
   ]);
 
   const replaceHistoryPresent = useCallback((timeline: V2FinalCompositionTimeline) => {
@@ -383,6 +455,10 @@ export function useV2FinalCompositionEditor({
         && !shotTimelineEquals(currentDraft, previousBaseline);
       assignBaseline(loaded.baseline);
       setSources(response.available_sources);
+      setCapabilities(response.composition_capabilities);
+      capabilitiesRef.current = response.composition_capabilities;
+      setStaleClipIds(response.stale_clip_ids);
+      setMissingSourceClipIds(response.missing_source_clip_ids);
       if (keepDraft) {
         setExternalUpdate(true);
       } else {
@@ -399,6 +475,7 @@ export function useV2FinalCompositionEditor({
         setExternalUpdate(false);
         assignConflict(null);
       }
+      await loadFinalVideo(session);
       return response;
     } catch (loadError) {
       if (requestId === loadRequestRef.current
@@ -410,7 +487,7 @@ export function useV2FinalCompositionEditor({
     } finally {
       if (requestId === loadRequestRef.current && sessionGuardRef.current.isCurrent(session)) setLoading(false);
     }
-  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds, invalidateRenderSession]);
+  }, [assignBaseline, assignConflict, assignHistory, assignSelectedClipIds, invalidateRenderSession, loadFinalVideo]);
 
   useEffect(() => {
     if (!active || !workflowId) return;
@@ -445,6 +522,8 @@ export function useV2FinalCompositionEditor({
     setRenderState(state);
     setRenderHint(null);
     setRenderSessionError("");
+    const renderIssue = classifyFinalCompositionError(state.error_code);
+    setRenderIssue(renderIssue);
     setError("");
     if (isFinalRenderTerminal(state.status)) {
       clearRenderPollTimer();
@@ -454,7 +533,12 @@ export function useV2FinalCompositionEditor({
       setCancellingRender(false);
       if (state.status === "completed"
         && claimFinalRenderCompletion(completedRenderSessionsRef.current, identity)) {
-        void load({ preserveDraft: true });
+        setRenderIssue(null);
+        void (async () => {
+          await load({ preserveDraft: true });
+          const refreshedWorkflow = await onWorkflowRefreshRef.current?.(identity.session.workflowId!);
+          await loadFinalVideo(identity.session, refreshedWorkflow, true);
+        })();
       }
       return true;
     }
@@ -464,7 +548,7 @@ export function useV2FinalCompositionEditor({
     setCancellingRender(state.status === "cancellation_requested");
     scheduleRenderPoll(identity, resetBackoff);
     return true;
-  }, [clearRenderPollTimer, load, renderIdentityIsCurrent, scheduleRenderPoll]);
+  }, [clearRenderPollTimer, load, loadFinalVideo, renderIdentityIsCurrent, scheduleRenderPoll]);
 
   const pollRender = useCallback(async (identity: FinalRenderSessionIdentity, resetBackoff = false) => {
     if (!renderIdentityIsCurrent(identity) || !identity.session.workflowId) return;
@@ -502,7 +586,7 @@ export function useV2FinalCompositionEditor({
       const detail = (event as CustomEvent<FinalCompositionEventDetail>).detail;
       if (!activeRef.current || detail?.workflowId !== workflowId) return;
       const eventTypes = detail.events?.map((item) => item.event_type) ?? detail.eventTypes ?? [];
-      if (eventTypes.some((eventType) => eventType === "final_timeline_created" || eventType === "final_timeline_updated")) {
+      if (shouldReloadFinalCompositionTimeline(eventTypes)) {
         void load({ preserveDraft: true });
       }
       const identity = renderSessionRef.current;
@@ -520,8 +604,8 @@ export function useV2FinalCompositionEditor({
       const resetBackoff = !terminalHint && hints.some((hint) => hint.resetBackoff);
       void pollRenderRef.current(identity, resetBackoff);
     };
-    window.addEventListener("v2-final-composition-events", handleTimelineEvent);
-    return () => window.removeEventListener("v2-final-composition-events", handleTimelineEvent);
+    window.addEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
+    return () => window.removeEventListener(FINAL_COMPOSITION_EVENT_NAME, handleTimelineEvent);
   }, [clearRenderPollTimer, load, renderIdentityIsCurrent, workflowId]);
 
   const commitTimeline = useCallback((timeline: V2FinalCompositionTimeline, coalesceKey: string | null = null) => {
@@ -759,6 +843,10 @@ export function useV2FinalCompositionEditor({
       if (!currentDraft) return null;
       assignBaseline(loaded.baseline);
       setSources(response.available_sources);
+      setCapabilities(response.composition_capabilities);
+      capabilitiesRef.current = response.composition_capabilities;
+      setStaleClipIds(response.stale_clip_ids);
+      setMissingSourceClipIds(response.missing_source_clip_ids);
       if (resolution === "reload-remote") {
         assignHistory(editRevisionRef.current === requestEditRevision
           ? loaded.history
@@ -811,6 +899,8 @@ export function useV2FinalCompositionEditor({
     setRenderState(null);
     setRenderHint(null);
     setRenderSessionError("");
+    setRenderIssue(null);
+    setAutoPlayFinalVideo(false);
     setCancellingRender(false);
     setRendering(true);
     void pollRenderRef.current(identity, true);
@@ -840,31 +930,47 @@ export function useV2FinalCompositionEditor({
     setRenderState(null);
     setRenderHint(null);
     setRenderSessionError("");
+    setRenderIssue(null);
+    setAutoPlayFinalVideo(false);
     setError("");
-    const timeline = await flushTimelineForRender({
-      session,
-      isSessionCurrent: (candidate) => activeRef.current
-        && renderGenerationRef.current === renderGeneration
-        && sessionGuardRef.current.isCurrent(candidate),
-      finalizeGesture,
-      readDraft: () => draftRef.current,
-      readBaseline: () => baselineRef.current,
-      equals: shotTimelineEquals,
-      hasConflict: () => conflictRef.current !== null,
-      save,
-    });
-    if (!timeline
-      || !activeRef.current
-      || renderGenerationRef.current !== renderGeneration
-      || !sessionGuardRef.current.isCurrent(session)) {
-      if (renderGenerationRef.current === renderGeneration) {
-        renderingRef.current = false;
-        setRendering(false);
-      }
-      return null;
-    }
     let attached = false;
+    let timeline: V2FinalCompositionTimeline | null = baselineRef.current;
     try {
+      if (supportsAdvancedTimelineEditor(capabilitiesRef.current)) {
+        timeline = await flushTimelineForRender({
+          session,
+          isSessionCurrent: (candidate) => activeRef.current
+            && renderGenerationRef.current === renderGeneration
+            && sessionGuardRef.current.isCurrent(candidate),
+          finalizeGesture,
+          readDraft: () => draftRef.current,
+          readBaseline: () => baselineRef.current,
+          equals: shotTimelineEquals,
+          hasConflict: () => conflictRef.current !== null,
+          save,
+        });
+      } else {
+        const response = await v2Api.getFinalTimeline(requestedWorkflowId);
+        if (!activeRef.current
+          || renderGenerationRef.current !== renderGeneration
+          || !sessionGuardRef.current.isCurrent(session)) return null;
+        const loaded = createLoadedShotTimelineSession(response.timeline);
+        assignBaseline(loaded.baseline);
+        assignHistory(loaded.history);
+        assignSelectedClipIds([]);
+        setSources(response.available_sources);
+        setCapabilities(response.composition_capabilities);
+        capabilitiesRef.current = response.composition_capabilities;
+        setStaleClipIds(response.stale_clip_ids);
+        setMissingSourceClipIds(response.missing_source_clip_ids);
+        setExternalUpdate(false);
+        assignConflict(null);
+        timeline = response.timeline;
+      }
+      if (!timeline
+        || !activeRef.current
+        || renderGenerationRef.current !== renderGeneration
+        || !sessionGuardRef.current.isCurrent(session)) return null;
       const response = await v2Api.renderFinalTimeline(requestedWorkflowId, {
         timeline_id: timeline.timeline_id,
         timeline_version: timeline.version,
@@ -878,13 +984,14 @@ export function useV2FinalCompositionEditor({
         const activeRenderId = renderError instanceof V2ApiError
           ? activeRenderIdFromPayload(renderError.payload)
           : null;
-        if (activeRenderId) {
+        const activeTimeline = timeline ?? baselineRef.current;
+        if (activeRenderId && activeTimeline) {
           const activeStart: V2FinalTimelineRenderStartResponse = {
             workflow_id: requestedWorkflowId,
             render_id: activeRenderId,
             status: "queued",
-            timeline_id: timeline.timeline_id,
-            timeline_version: timeline.version,
+            timeline_id: activeTimeline.timeline_id,
+            timeline_version: activeTimeline.version,
             events_cursor: 0,
           };
           attached = beginRenderSession(session, renderGeneration, activeStart) !== null;
@@ -896,7 +1003,11 @@ export function useV2FinalCompositionEditor({
           assignConflict({ kind: "version-conflict", message });
           setExternalUpdate(true);
         }
-        setError(readableError(renderError));
+        const issue = renderError instanceof V2ApiError
+          ? classifyFinalCompositionError(renderError.code)
+          : null;
+        setRenderIssue(issue);
+        setError(issue ? "" : readableError(renderError));
       }
       return null;
     } finally {
@@ -907,7 +1018,16 @@ export function useV2FinalCompositionEditor({
         setRendering(false);
       }
     }
-  }, [assignConflict, beginRenderSession, clearRenderPollTimer, finalizeGesture, save]);
+  }, [
+    assignBaseline,
+    assignConflict,
+    assignHistory,
+    assignSelectedClipIds,
+    beginRenderSession,
+    clearRenderPollTimer,
+    finalizeGesture,
+    save,
+  ]);
 
   const cancelRender = useCallback(async () => {
     const identity = renderSessionRef.current;
@@ -999,6 +1119,12 @@ export function useV2FinalCompositionEditor({
     baseline,
     draft,
     sources,
+    capabilities,
+    advancedEditorEnabled: supportsAdvancedTimelineEditor(capabilities),
+    staleClipIds,
+    missingSourceClipIds,
+    finalVideo,
+    autoPlayFinalVideo,
     tool,
     setTool,
     editMode,
@@ -1022,6 +1148,7 @@ export function useV2FinalCompositionEditor({
     renderState,
     renderHint,
     renderSessionError,
+    renderIssue,
     error,
     warning,
     snapTarget,

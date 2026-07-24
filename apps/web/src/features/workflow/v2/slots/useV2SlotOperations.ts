@@ -43,6 +43,7 @@ import {
   assetLibraryEntityTypeForV2ImageSlot,
   v2ImageSlotMatchesAssetLibraryEntity,
 } from "./v2SlotAssetLibraryModel.ts";
+import { notifyFinalCompositionSourceSelection } from "../../final-composition/finalCompositionEvents.ts";
 
 type StateSetter<T> = (value: T | ((current: T) => T)) => void;
 
@@ -350,7 +351,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     }
   }
 
-  async function uploadV2SlotReference(slotId: string, files: FileList) {
+  async function uploadV2SlotReference(slotId: string, files: FileList | File[]) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
     const slot = v2SlotById(slotId);
@@ -506,6 +507,14 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         return;
       }
       if (reference.source === "uploaded_asset" && reference.asset_id) {
+        const localAttachment = argsRef.current.v2SlotMicroEdit.state.draftsBySlotId[slotId]?.attachments.find(
+          (attachment) => attachment.id === reference.asset_id && !attachment.source_asset_id,
+        );
+        if (localAttachment) {
+          argsRef.current.v2SlotMicroEdit.updateAttachment(slotId, localAttachment.id, {
+            source_asset_id: reference.asset_id,
+          });
+        }
         argsRef.current.v2SlotMicroEdit.removeReference(slotId, { source: "uploaded_asset", asset_id: reference.asset_id, relation_id: reference.relation_id });
         return;
       }
@@ -519,7 +528,6 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     }
     if (reference.relation_id && workflowId) {
       argsRef.current.v2SlotMicroEdit.setSubmitting(slotId, true);
-      removeLocalReference();
       try {
         const capture = captureSlotMutation(workflowId);
         const response = await v2Api.removeReference(workflowId, reference.relation_id);
@@ -867,6 +875,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   async function selectV2SlotVersion(slotId: string, versionId: string) {
     const workflowId = activeWorkflowId();
     if (!workflowId) return;
+    const slot = v2SlotById(slotId);
     const asset = v2AssetForSlotVersion(slotId, versionId);
     if (!asset?.asset_id || !asset.version_id) {
       argsRef.current.setStatus("V2 version selection needs both asset_id and version_id.");
@@ -879,6 +888,9 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
         source_action: "slot_version_picker",
       });
       if (!shouldApplyWorkflowScopedResult(workflowId, argsRef.current.activeWorkflowIdRef.current)) return;
+      if (slot?.slot_type === "bgm_audio" && slot.media_type === "audio") {
+        notifyFinalCompositionSourceSelection(workflowId, slotId);
+      }
       await argsRef.current.refreshV2WorkflowGraph(workflowId);
       await argsRef.current.syncV2Snapshot(workflowId);
       await loadV2SlotVersions(slotId);

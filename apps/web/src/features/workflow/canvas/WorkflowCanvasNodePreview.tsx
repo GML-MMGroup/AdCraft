@@ -130,6 +130,7 @@ export function NodeCardPreview({
         slots={data.v2Slots ?? []}
         assetVersions={data.v2AssetVersions ?? []}
         runtime={data.v2Runtime}
+        audioMode={data.v2AudioMode}
         v2SlotRuntimeStatusById={data.v2SlotRuntimeStatusById}
         title={data.title}
         isRunning={isRunning}

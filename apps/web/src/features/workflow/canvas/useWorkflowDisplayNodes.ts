@@ -46,6 +46,7 @@ export type WorkflowDisplayNodeInput = {
   slotVersionAssets: AssetVersionV2[];
   v2Runtime?: WorkflowRuntimeV2;
   v2FallbackRuntime?: WorkflowRuntimeV2;
+  v2AudioMode?: string | null;
   v2SlotRuntimeStatusById: Record<string, string>;
   activeV2SlotId?: string | null;
   activeV2StoryboardItemId?: string | null;
@@ -72,6 +73,7 @@ export function useWorkflowDisplayNodes({
   slotVersionAssets,
   v2Runtime,
   v2FallbackRuntime,
+  v2AudioMode,
   v2SlotRuntimeStatusById,
   activeV2SlotId,
   activeV2StoryboardItemId,
@@ -104,6 +106,7 @@ export function useWorkflowDisplayNodes({
               runningDynamicItemById: dynamicItemRunningByNodeId[node.id],
               v2AssetVersions: mergeV2AssetVersions(node.data.v2AssetVersions ?? [], v2AssetVersions, slotVersionAssets),
               v2Runtime: v2Runtime ?? v2FallbackRuntime,
+              v2AudioMode,
               v2SlotRuntimeStatusById,
               v2OpenSlotId: activeV2SlotId,
               v2OpenStoryboardItemId: activeV2StoryboardItemId,
@@ -124,6 +127,7 @@ export function useWorkflowDisplayNodes({
       flowNodes,
       slotVersionAssets,
       v2AssetVersions,
+      v2AudioMode,
       v2FallbackRuntime,
       v2LibraryReferenceOptions,
       v2ReferenceAssetsBySlotId,

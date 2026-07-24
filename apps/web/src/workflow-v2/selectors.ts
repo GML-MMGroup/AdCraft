@@ -96,8 +96,9 @@ export function selectedAssetForSlot(
   slotOrAssets?: WorkflowSlotV2 | Map<string, AssetVersionV2>,
 ) {
   const { slot, byAssetId } = resolveSlotAssetLookup(workflowOrSlot, slotOrAssets);
-  if (!slot?.selected_asset_id) return undefined;
-  return byAssetId.get(slot.selected_asset_id);
+  if (!slot) return undefined;
+  if (slot.selected_version_id) return byAssetId.get(slot.selected_version_id);
+  return slot.selected_asset_id ? byAssetId.get(slot.selected_asset_id) : undefined;
 }
 
 export function workingAssetForSlot(workflow: Pick<WorkflowV2, "asset_versions">, slot: WorkflowSlotV2 | undefined) {
@@ -347,7 +348,7 @@ function resolveSlotAssetLookup(
   const workflow = workflowOrSlot as Pick<WorkflowV2, "asset_versions"> | undefined;
   return {
     slot: slotOrAssets as WorkflowSlotV2 | undefined,
-    byAssetId: workflow?.asset_versions ? assetVersionByAssetId(workflow) : new Map<string, AssetVersionV2>(),
+    byAssetId: workflow?.asset_versions ? assetByAssetId(workflow) : new Map<string, AssetVersionV2>(),
   };
 }
 
