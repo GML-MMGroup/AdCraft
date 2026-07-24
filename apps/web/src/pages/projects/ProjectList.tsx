@@ -27,7 +27,7 @@ type ProjectListProps = {
   onOpenProject: (projectId: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
-  onRenameProject: (project: ProjectListItem) => void;
+  onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
 };
 
 export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleFavorite, onRenameProject }: ProjectListProps) {
@@ -115,11 +115,11 @@ const ProjectListCard = memo(function ProjectListCard({
   onOpenProject: (projectId: string) => void;
   onTrashProject: (project: ProjectListItem) => void;
   onToggleFavorite: (project: ProjectListItem) => void;
-  onRenameProject: (project: ProjectListItem) => void;
+  onRenameProject: (project: ProjectListItem, trigger: HTMLButtonElement) => void;
 }) {
   const trashProject = useCallback(() => onTrashProject(project), [onTrashProject, project]);
   const toggleFavorite = useCallback(() => onToggleFavorite(project), [onToggleFavorite, project]);
-  const renameProject = useCallback(() => onRenameProject(project), [onRenameProject, project]);
+  const renameProject = useCallback((trigger: HTMLButtonElement) => onRenameProject(project, trigger), [onRenameProject, project]);
 
   return (
     <ProjectCard

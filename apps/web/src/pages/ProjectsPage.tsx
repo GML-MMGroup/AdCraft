@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { CreateCard } from "../components/Cards";
 import { PageHeader } from "../components/Layout";
 import { useApp } from "../AppContextValue";
@@ -6,10 +6,13 @@ import { PlusIcon } from "../icons";
 import type { RouteName } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
+import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
 
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");
   const [search, setSearch] = useState("");
+  const [renameTarget, setRenameTarget] = useState<ProjectListItem | null>(null);
+  const renameTriggerRef = useRef<HTMLButtonElement | null>(null);
   const { savedProjects, startNewProject, openProject, moveProjectToTrash, renameProject, toggleProjectFavorite } = useApp();
 
   const createProject = useCallback(() => {
@@ -50,10 +53,15 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
     if (summary) void toggleProjectFavorite(summary);
   }, [savedProjects, toggleProjectFavorite]);
 
-  const renameSavedProject = useCallback((project: ProjectListItem) => {
-    const name = window.prompt("Project name", project.name)?.trim();
-    if (name && name !== project.name) void renameProject(project.projectId, name);
-  }, [renameProject]);
+  const openRenameDialog = useCallback((project: ProjectListItem, trigger: HTMLButtonElement) => {
+    renameTriggerRef.current = trigger;
+    setRenameTarget(project);
+  }, []);
+
+  const closeRenameDialog = useCallback(() => {
+    setRenameTarget(null);
+    renameTriggerRef.current?.focus();
+  }, []);
 
   return (
     <section className="content-wrap">
@@ -82,9 +90,17 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
           onOpenProject={openSavedProject}
           onTrashProject={trashSavedProject}
           onToggleFavorite={toggleSavedProjectFavorite}
-          onRenameProject={renameSavedProject}
+          onRenameProject={openRenameDialog}
         />
       </div>
+      {renameTarget ? (
+        <ProjectRenameDialog
+          key={renameTarget.projectId}
+          project={renameTarget}
+          onClose={closeRenameDialog}
+          onRename={renameProject}
+        />
+      ) : null}
     </section>
   );
 }
