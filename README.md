@@ -125,29 +125,23 @@ These assets are not isolated reference images. They are designed as **complete 
 
 #### 👤 Character Asset Library
 
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <img
-        src="./assets/character_assets_01.png"
-        alt="AdCraft character asset library overview 1"
-        width="100%"
-      />
-    </td>
-    <td width="50%" align="center" valign="top">
-      <img
-        src="./assets/character_assets_02.png"
-        alt="AdCraft character asset library overview 2"
-        width="100%"
-      />
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">
-      <sub>Browse, manage, and reuse production-ready character assets directly inside AdCraft.</sub>
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <img
+    src="./assets/character_assets_01.png"
+    alt="AdCraft character asset library overview — part 1"
+    width="100%"
+  />
+  <br/><br/>
+  <img
+    src="./assets/character_assets_02.png"
+    alt="AdCraft character asset library overview — part 2"
+    width="100%"
+  />
+  <br/>
+  <sub>
+    Browse, manage, and reuse production-ready character assets directly inside AdCraft.
+  </sub>
+</div>
 
 <br/>
 
@@ -235,29 +229,23 @@ Together, these references help preserve the same character identity across clos
 
 #### 🌍 Scene Asset Library
 
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <img
-        src="./assets/scene_assets_01.png"
-        alt="AdCraft scene asset library overview 1"
-        width="100%"
-      />
-    </td>
-    <td width="50%" align="center" valign="top">
-      <img
-        src="./assets/scene_assets_02.png"
-        alt="AdCraft scene asset library overview 2"
-        width="100%"
-      />
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">
-      <sub>Explore reusable scene worlds and save them directly to your AdCraft workspace.</sub>
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <img
+    src="./assets/scene_assets_01.png"
+    alt="AdCraft scene asset library overview — part 1"
+    width="100%"
+  />
+  <br/><br/>
+  <img
+    src="./assets/scene_assets_02.png"
+    alt="AdCraft scene asset library overview — part 2"
+    width="100%"
+  />
+  <br/>
+  <sub>
+    Explore reusable scene worlds and save them directly to your AdCraft workspace.
+  </sub>
+</div>
 
 <br/>
 
