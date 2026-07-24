@@ -36,8 +36,9 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
       <section className="home-product-hero" aria-labelledby="home-product-title">
         <div className="home-product-hero__content">
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
-            <span>One Sentence Becomes an</span>{" "}
-            <span className="home-product-hero__accent">Ad film.</span>
+            <span className="home-product-hero__title-line">One Sentence</span>
+            <span className="home-product-hero__title-line">Becomes an</span>
+            <span className="home-product-hero__title-line home-product-hero__accent">Ad film.</span>
           </h1>
           <p className="home-product-hero__description">
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
