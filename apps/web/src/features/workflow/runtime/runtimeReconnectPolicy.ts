@@ -77,14 +77,16 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     try {
       await options.onPoll(generation);
     } finally {
-      if (pollGeneration === generation && canRun(generation)) {
+      if (pollGeneration === generation) {
         pollGeneration = null;
-        pollCount += 1;
-        if (pollCount >= sseRecoveryPolls) {
-          pollCount = 0;
-          connect(generation);
-        } else {
-          schedulePoll(pollIntervalMs, generation);
+        if (canRun(generation)) {
+          pollCount += 1;
+          if (pollCount >= sseRecoveryPolls) {
+            pollCount = 0;
+            connect(generation);
+          } else {
+            schedulePoll(pollIntervalMs, generation);
+          }
         }
       }
     }

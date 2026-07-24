@@ -177,6 +177,50 @@ describe("createRuntimeReconnectPolicy", () => {
     await Promise.resolve();
   });
 
+  it("clears a completed paused poll lane so eligibility restoration reconnects exactly once", async () => {
+    const scheduler = createScheduler();
+    let eligible = true;
+    let connects = 0;
+    let polls = 0;
+    let completePoll: (() => void) | undefined;
+    const policy = createRuntimeReconnectPolicy({
+      isEligible: () => eligible,
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: () => { connects += 1; },
+      onPoll: () => new Promise<void>((resolve) => {
+        polls += 1;
+        completePoll = resolve;
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    expect(polls).toBe(1);
+
+    eligible = false;
+    policy.reconcile();
+    completePoll?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(policy.state()).toBe("idle");
+    expect(scheduler.timers.size).toBe(0);
+
+    eligible = true;
+    policy.reconcile();
+    policy.reconcile();
+    scheduler.runNext();
+    await Promise.resolve();
+
+    expect(connects).toBe(2);
+    expect(polls).toBe(1);
+    expect(scheduler.timers.size).toBe(0);
+  });
+
   it("makes a stale poll completion inert after replacement polling has recovered SSE", async () => {
     const scheduler = createScheduler();
     const completePolls: Array<() => void> = [];
