@@ -243,10 +243,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const renameProject = useCallback(async (projectId: string, name: string) => {
     const { v2Api } = await import("./api/v2Client");
-    await v2Api.updateProject(projectId, { name });
-    await refreshProjects();
+    const { value: updatedProject } = await v2Api.updateProject(projectId, { name });
+    setSavedProjects((current) => current.map((project) => (
+      project.project_id === updatedProject.project_id ? updatedProject : project
+    )));
     return true;
-  }, [refreshProjects]);
+  }, []);
 
   const toggleProjectFavorite = useCallback(async (project: ProjectV2Summary) => {
     const { v2Api } = await import("./api/v2Client");

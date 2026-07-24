@@ -1998,11 +1998,11 @@ a {
   transform: translateY(-1px);
 }
 
-.project-action-menu:is(:hover, :focus-within, .is-open) .project-action-trigger {
+.project-action-menu:is(:hover, .is-open) .project-action-trigger {
   background: rgba(255, 255, 255, 0.72);
 }
 
-.project-action-menu:is(:hover, :focus-within, .is-open) .project-action-trigger svg {
+.project-action-menu:is(:hover, .is-open) .project-action-trigger svg {
   transform: rotate(180deg);
 }
 
@@ -2025,7 +2025,7 @@ a {
   transition: opacity 160ms ease, transform 160ms ease;
 }
 
-.project-action-menu:is(:hover, :focus-within, .is-open) .project-action-list {
+.project-action-menu:is(:hover, .is-open) .project-action-list {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0) scale(1);
@@ -2043,6 +2043,11 @@ a {
   color: #9c5962;
 }
 
+.project-rename-btn:hover,
+.project-rename-btn:focus-visible {
+  color: #6754a6;
+}
+
 .project-favorite-btn.is-favorite {
   background: rgba(254, 233, 161, 0.72);
   color: #8e6d3b;
@@ -2050,6 +2055,193 @@ a {
 
 .project-favorite-btn.is-favorite svg path {
   fill: rgba(254, 233, 161, 0.92);
+}
+
+.project-rename-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(32, 34, 53, 0.28);
+  backdrop-filter: blur(12px);
+  animation: project-rename-backdrop-in 160ms ease-out both;
+}
+
+.project-rename-dialog {
+  display: grid;
+  width: min(460px, 100%);
+  max-height: calc(100dvh - 48px);
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 20px;
+  background: rgba(247, 249, 253, 0.88);
+  box-shadow: 0 30px 90px rgba(32, 34, 53, 0.24);
+  backdrop-filter: blur(26px) saturate(1.14);
+  overflow-y: auto;
+  animation: project-rename-dialog-in 220ms cubic-bezier(0.2, 0.72, 0.24, 1) both;
+}
+
+.project-rename-dialog__header h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.project-rename-form {
+  display: grid;
+  gap: 10px;
+}
+
+.project-rename-form label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.project-rename-form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(108, 93, 171, 0.22);
+  border-radius: 8px;
+  outline: 0;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+  box-shadow: inset 0 1px 2px rgba(32, 34, 53, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.project-rename-form input:focus {
+  border-color: rgba(108, 93, 171, 0.56);
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 0 0 3px rgba(108, 93, 171, 0.12);
+}
+
+.project-rename-form input:read-only {
+  opacity: 0.68;
+}
+
+.project-rename-error {
+  margin: 0;
+  color: #9c3948;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.project-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.project-rename-action {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  box-shadow: 0 10px 24px rgba(32, 34, 53, 0.1);
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.project-rename-action svg {
+  width: 19px;
+  height: 19px;
+}
+
+.project-rename-action--cancel {
+  border-color: rgba(172, 67, 84, 0.22);
+  background: rgba(202, 90, 108, 0.14);
+  color: #9c3948;
+}
+
+.project-rename-action--confirm {
+  border-color: rgba(42, 137, 91, 0.22);
+  background: rgba(62, 164, 111, 0.18);
+  color: #26764f;
+}
+
+.project-rename-action--cancel:is(:hover, :focus-visible):not(:disabled) {
+  border-color: rgba(172, 67, 84, 0.38);
+  background: rgba(202, 90, 108, 0.24);
+  box-shadow: 0 12px 28px rgba(156, 57, 72, 0.18);
+  transform: translateY(-2px);
+}
+
+.project-rename-action--confirm:is(:hover, :focus-visible):not(:disabled) {
+  border-color: rgba(42, 137, 91, 0.38);
+  background: rgba(62, 164, 111, 0.3);
+  box-shadow: 0 12px 28px rgba(38, 118, 79, 0.18);
+  transform: translateY(-2px);
+}
+
+.project-rename-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  box-shadow: none;
+}
+
+.project-rename-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(38, 118, 79, 0.24);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: project-rename-spin 720ms linear infinite;
+}
+
+@keyframes project-rename-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes project-rename-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes project-rename-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .project-rename-backdrop {
+    padding: 16px;
+  }
+
+  .project-rename-dialog {
+    max-height: calc(100dvh - 32px);
+  }
+
+  .project-rename-dialog {
+    padding: 18px;
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-rename-backdrop,
+  .project-rename-dialog,
+  .project-rename-spinner {
+    animation: none;
+  }
 }
 
 .project-card .card-body::before {

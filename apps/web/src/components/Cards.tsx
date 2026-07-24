@@ -1,7 +1,7 @@
 import { mediaUrl } from "../api/client";
-import { ChevronDownIcon, ImageIcon, StarIcon, TrashIcon, VideoIcon } from "../icons";
+import { ChevronDownIcon, EditIcon, ImageIcon, StarIcon, TrashIcon, VideoIcon } from "../icons";
 import type { V2ProjectCover } from "../projects/v2ProjectCover";
-import { memo, useEffect, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 export const ProjectCard = memo(function ProjectCard({
   projectId,
@@ -24,9 +24,10 @@ export const ProjectCard = memo(function ProjectCard({
   onOpen: (projectId: string) => void;
   onTrash?: () => void;
   onToggleFavorite?: () => void;
-  onRename?: () => void;
+  onRename?: (trigger: HTMLButtonElement) => void;
 }) {
   const [actionsOpen, setActionsOpen] = useState(false);
+  const actionTriggerRef = useRef<HTMLButtonElement>(null);
 
   function handleActionTriggerClick(event: ReactMouseEvent<HTMLButtonElement>) {
     event.stopPropagation();
@@ -74,6 +75,7 @@ export const ProjectCard = memo(function ProjectCard({
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Menu container only tracks hover/focus state; all actions are native buttons. */}
       <div className={`project-action-menu ${actionsOpen ? "is-open" : ""}`} onPointerEnter={handleActionMenuEnter} onPointerLeave={handleActionMenuLeave} onBlur={handleActionMenuBlur}>
         <button
+          ref={actionTriggerRef}
           className="project-action-trigger"
           type="button"
           aria-label={`Open actions for ${name}`}
@@ -84,27 +86,30 @@ export const ProjectCard = memo(function ProjectCard({
         >
           <ChevronDownIcon />
         </button>
-        <div className="project-action-list" role="menu" aria-label={`${name} actions`}>
+        <div className="project-action-list" role="menu" aria-label={`${name} actions`} aria-hidden={!actionsOpen}>
           <button
-            className="project-menu-btn"
+            className="project-menu-btn project-rename-btn"
             type="button"
             role="menuitem"
+            tabIndex={actionsOpen ? 0 : -1}
+            aria-label={`Rename ${name}`}
             title="Rename project"
             onClick={(event) => {
               event.stopPropagation();
               setActionsOpen(false);
-              onRename?.();
+              onRename?.(actionTriggerRef.current ?? event.currentTarget);
             }}
           >
-            Rename
+            <EditIcon />
           </button>
-          <button className="project-menu-btn project-trash-btn" type="button" role="menuitem" aria-label={`Move ${name} to trash`} title="Move to trash" onClick={handleTrash}>
+          <button className="project-menu-btn project-trash-btn" type="button" role="menuitem" tabIndex={actionsOpen ? 0 : -1} aria-label={`Move ${name} to trash`} title="Move to trash" onClick={handleTrash}>
             <TrashIcon />
           </button>
           <button
             className={`project-menu-btn project-favorite-btn ${favorite ? "is-favorite" : ""}`}
             type="button"
             role="menuitem"
+            tabIndex={actionsOpen ? 0 : -1}
             aria-label={favorite ? `Remove ${name} from favorites` : `Add ${name} to favorites`}
             aria-pressed={favorite}
             title={favorite ? "Remove favorite" : "Add favorite"}
