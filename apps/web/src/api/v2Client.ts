@@ -573,11 +573,15 @@ export const v2Api = {
     return new EventSource(`${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/events/stream?after_seq=${encodeURIComponent(String(afterSeq))}`);
   },
 
-  listWorkflowAssets(workflowId: string, filters: V2WorkflowAssetFilters = {}): Promise<WorkflowAssetListResponseV2> {
+  listWorkflowAssets(
+    workflowId: string,
+    filters: V2WorkflowAssetFilters = {},
+    options: { signal?: AbortSignal } = {},
+  ): Promise<WorkflowAssetListResponseV2> {
     const query = v2WorkflowAssetFilterQuery(filters);
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/assets${query}`,
-      {},
+      { signal: options.signal },
       normalizeWorkflowAssetListResponseV2,
     );
   },

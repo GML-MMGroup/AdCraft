@@ -49,3 +49,17 @@ Base: `3e808c7`.
 ## Concerns
 
 - `npm run perf:bundle` still fails without any budget change: core JS is 1312 KiB versus 1281 KiB, final-composition JS is 97 KiB versus 96 KiB, and core CSS is 197 KiB versus 180 KiB. `src/styles.css` and `scripts/perf/check-build-budget.mjs` are byte-for-byte identical to base `3e808c7`; the final-composition editor is outside Task 3. This is recorded rather than waived or hidden.
+
+## Review Follow-up
+
+- Replaced the directory-wide immutable `/assets/` policy with a Vite-hash matcher covering build JS, CSS, maps, fonts, and common emitted image formats. Stable assets such as `/assets/bg.jpg` now use `public, max-age=300, must-revalidate`; `index.html` remains `no-cache, must-revalidate`. The policy emits one explicit `Cache-Control` header per location.
+- Made the project-cover queue signal-aware. Unmounting a project list now aborts running `listWorkflowAssets` fetches, removes queued jobs before they start, and releases the global four-slot queue for the next page.
+- Added reference-counted query subscriptions. A shared request remains active while any hook is subscribed and is aborted only after the final release. Pagination uses request generations and signal checks in completion paths, and evicts each settled one-shot page entry.
+- Regression coverage now verifies actual hashed and stable asset patterns, queue cancellation after an old page unmounts, two-hook request ownership, final-subscriber abort behavior, and pagination cache eviction.
+
+### Follow-up Verification
+
+- Focused Task 3 tests: 14 passing tests across 4 files.
+- Full frontend suite: 148 passing tests across 27 files.
+- `npm run typecheck`, `npm run lint`, `npm run build`, and `git diff --check`: pass.
+- `npm run perf:bundle`: still fails with unchanged limits: core JS is 1313 KiB versus 1281 KiB, final-composition JS is 97 KiB versus 96 KiB, and core CSS is 197 KiB versus 180 KiB. No budget or unrelated module was changed.

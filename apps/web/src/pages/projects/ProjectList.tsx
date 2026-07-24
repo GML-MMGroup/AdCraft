@@ -69,6 +69,7 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
           const projectId = entry.target.getAttribute("data-project-id");
           if (projectId) next.add(projectId);
         }
+        if (next.size === current.size && [...next].every((projectId) => current.has(projectId))) return current;
         return next;
       });
     }, { rootMargin: "240px" });
@@ -82,17 +83,21 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
   useEffect(() => {
     let cancelled = false;
     const activeRequestKeys = new Map<string, string>();
+    const subscriptions: Array<{ release(): void }> = [];
     for (const project of visibleProjects) {
       if (!visibleProjectIds.has(project.projectId)) continue;
       const requestKey = projectCoverRequestKey(project);
       activeRequestKeys.set(project.projectId, requestKey);
       if (coversByProjectId[project.projectId]?.requestKey === requestKey) continue;
-      const request = projectCoverResource.get(projectCoverIdentity(project), () => (
-        projectCoverQueue.schedule(() => v2Api.listWorkflowAssets(project.workflowId)
-          .then((response) => resolveV2ProjectCover(project.coverAssetId, response.assets))
+      const subscription = projectCoverResource.subscribe(projectCoverIdentity(project), (signal) => (
+        projectCoverQueue.schedule(
+          () => v2Api.listWorkflowAssets(project.workflowId, {}, { signal })
+            .then((response) => resolveV2ProjectCover(project.coverAssetId, response.assets)),
+          { signal },
         )
       ));
-      void request.then((cover) => {
+      subscriptions.push(subscription);
+      void subscription.promise.then((cover) => {
         if (cancelled || activeCoverRequestKeysRef.current.get(project.projectId) !== requestKey) return;
         setCoversByProjectId((current) => current[project.projectId]?.requestKey === requestKey
           ? current
@@ -107,6 +112,7 @@ export function ProjectList({ projects, onOpenProject, onTrashProject, onToggleF
     activeCoverRequestKeysRef.current = activeRequestKeys;
     return () => {
       cancelled = true;
+      for (const subscription of subscriptions) subscription.release();
     };
   }, [coversByProjectId, visibleProjectIds, visibleProjects]);
 

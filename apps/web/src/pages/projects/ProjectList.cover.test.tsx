@@ -43,6 +43,12 @@ function projects(count: number): ProjectListItem[] {
   }));
 }
 
+function abortError() {
+  const error = new Error("Request aborted");
+  error.name = "AbortError";
+  return error;
+}
+
 describe("ProjectList covers", () => {
   beforeEach(() => {
     vi.stubGlobal("IntersectionObserver", TestIntersectionObserver);
@@ -116,6 +122,48 @@ describe("ProjectList covers", () => {
       resolveOld?.({ assets: [coverAsset("old", "/media/old.webp")] });
     });
     expect((view.container.querySelector(".project-preview-image img") as HTMLImageElement).src).toContain("fresh.webp");
+  });
+
+  it("drops queued covers on unmount so a new page gets queue slots", async () => {
+    const started: string[] = [];
+    fixture.listWorkflowAssets.mockImplementation((workflowId: string, _filters: unknown, options?: { signal?: AbortSignal }) => {
+      started.push(workflowId);
+      return new Promise((_, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+      });
+    });
+    const oldPage = render(
+      <ProjectList
+        projects={projects(6)}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+
+    await act(async () => { TestIntersectionObserver.revealAll(); });
+    expect(started).toEqual(["workflow-0", "workflow-1", "workflow-2", "workflow-3"]);
+
+    oldPage.unmount();
+    await act(async () => {});
+    expect(started).toHaveLength(4);
+
+    render(
+      <ProjectList
+        projects={projects(2).map((project) => ({ ...project, projectId: `new-${project.projectId}`, workflowId: `new-${project.workflowId}` }))}
+        onOpenProject={vi.fn()}
+        onTrashProject={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRenameProject={vi.fn()}
+      />,
+    );
+    await act(async () => { TestIntersectionObserver.revealAll(); });
+
+    expect(started).toEqual([
+      "workflow-0", "workflow-1", "workflow-2", "workflow-3",
+      "new-workflow-0", "new-workflow-1",
+    ]);
   });
 });
 

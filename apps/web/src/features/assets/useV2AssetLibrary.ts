@@ -24,16 +24,20 @@ export function useV2AssetLibrary({ scope, category, search, enabled = true }: U
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const requestIdRef = useRef(0);
+  const requestGenerationRef = useRef(0);
   const previousQueryRef = useRef<{ scope: V2AssetLibraryScope; category: V2AssetLibraryCategory; search: string; refresh: number } | null>(null);
-  const paginationQueryRef = useRef<unknown>(null);
+  const paginationSubscriptionRef = useRef<{ generation: number; release(): void } | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
 
   useEffect(() => {
+    const generation = ++requestGenerationRef.current;
+    let mounted = true;
     if (!enabled) {
-      requestIdRef.current += 1;
       setLoading(false);
-      return;
+      return () => {
+        mounted = false;
+        if (requestGenerationRef.current === generation) requestGenerationRef.current += 1;
+      };
     }
     const currentQuery = { scope, category, search, refresh: refreshVersion };
     const previousQuery = previousQueryRef.current;
@@ -45,67 +49,82 @@ export function useV2AssetLibrary({ scope, category, search, enabled = true }: U
       && previousQuery.search !== search
       ? 250
       : 0;
-    const requestId = ++requestIdRef.current;
     setLoading(true);
     setLoadingMore(false);
     setError(null);
     setEntities([]);
     setNextCursor(null);
     const query = { scope, category, search, cursor: null, limit: 40, refresh: refreshVersion };
-    let signal: AbortSignal | null = null;
+    let signal: AbortSignal | undefined;
+    let release: (() => void) | undefined;
+    const isCurrent = () => mounted && requestGenerationRef.current === generation;
     const startRequest = () => {
-      void assetLibraryQueryResource.get(
+      const subscription = assetLibraryQueryResource.subscribe(
         query,
         (nextSignal) => {
           signal = nextSignal;
           return v2Api.listAssetLibraryEntities({ scope, category, search, cursor: null, limit: 40 }, { signal: nextSignal });
         },
-      ).then((response) => {
-        if (signal?.aborted || requestId !== requestIdRef.current) return;
+      );
+      release = subscription.release;
+      void subscription.promise.then((response) => {
+        if (signal?.aborted || !isCurrent()) return;
         setEntities(response.entities);
         setNextCursor(response.next_cursor ?? null);
       }).catch((caught) => {
-        if (signal?.aborted || requestId !== requestIdRef.current) return;
+        if (signal?.aborted || !isCurrent()) return;
         setError(caught instanceof Error ? caught.message : "Asset library request failed");
       }).finally(() => {
-        if (!signal?.aborted && requestId === requestIdRef.current) setLoading(false);
+        if (!signal?.aborted && isCurrent()) setLoading(false);
+        release?.();
       });
     };
     const timer = delay ? window.setTimeout(startRequest, delay) : null;
     if (!delay) startRequest();
     return () => {
+      mounted = false;
       if (timer !== null) window.clearTimeout(timer);
-      assetLibraryQueryResource.invalidate(query);
-      if (paginationQueryRef.current) {
-        assetLibraryQueryResource.invalidate(paginationQueryRef.current);
-        paginationQueryRef.current = null;
+      release?.();
+      const pagination = paginationSubscriptionRef.current;
+      if (pagination?.generation === generation) {
+        pagination.release();
+        paginationSubscriptionRef.current = null;
       }
+      if (requestGenerationRef.current === generation) requestGenerationRef.current += 1;
     };
   }, [category, enabled, refreshVersion, scope, search]);
 
   const refresh = useCallback(() => setRefreshVersion((version) => version + 1), []);
   const loadMore = useCallback(() => {
     if (!nextCursor || loadingMore || loading) return Promise.resolve();
-    const requestId = ++requestIdRef.current;
+    const generation = requestGenerationRef.current;
     const query = { scope, category, search, cursor: nextCursor, limit: 40, refresh: refreshVersion };
-    paginationQueryRef.current = query;
+    let signal: AbortSignal | undefined;
+    const subscription = assetLibraryQueryResource.subscribe(
+      query,
+      (nextSignal) => {
+        signal = nextSignal;
+        return v2Api.listAssetLibraryEntities({ scope, category, search, cursor: nextCursor, limit: 40 }, { signal: nextSignal });
+      },
+    );
+    const pagination = { generation, release: subscription.release };
+    paginationSubscriptionRef.current = pagination;
+    const isCurrent = () => !signal?.aborted && requestGenerationRef.current === generation;
     setLoadingMore(true);
     setError(null);
-    return assetLibraryQueryResource.get(
-      query,
-      (signal) => v2Api.listAssetLibraryEntities({ scope, category, search, cursor: nextCursor, limit: 40 }, { signal }),
-    ).then((response) => {
-      if (requestId !== requestIdRef.current) return;
+    return subscription.promise.then((response) => {
+      if (!isCurrent()) return;
       setEntities((current) => [...current, ...response.entities]);
       setNextCursor(response.next_cursor ?? null);
     }).catch((caught) => {
-      if (requestId !== requestIdRef.current) return;
+      if (!isCurrent()) return;
       setError(caught instanceof Error ? caught.message : "Asset library request failed");
     }).finally(() => {
-      if (requestId === requestIdRef.current) {
-        paginationQueryRef.current = null;
-        setLoadingMore(false);
-      }
+      assetLibraryQueryResource.evict(query);
+      subscription.release();
+      if (!isCurrent()) return;
+      if (paginationSubscriptionRef.current === pagination) paginationSubscriptionRef.current = null;
+      setLoadingMore(false);
     });
   }, [category, loading, loadingMore, nextCursor, refreshVersion, scope, search]);
   const fetchDetail = useCallback((entityId: string): Promise<V2AssetLibraryEntityDetail> => v2Api.assetLibraryEntity(entityId), []);

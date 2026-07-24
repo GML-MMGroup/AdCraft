@@ -105,4 +105,55 @@ describe("useV2AssetLibrary", () => {
     );
     expect(result.current.entities.map((item) => item.entity_id)).toEqual(["recommended-scene"]);
   });
+
+  it("keeps a deduplicated query alive when one hook unmounts", async () => {
+    const pending = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    fixture.listAssetLibraryEntities.mockReturnValue(pending.promise);
+    const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+    const second = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(1);
+    const signal = fixture.listAssetLibraryEntities.mock.calls[0]?.[1]?.signal as AbortSignal;
+    first.unmount();
+    expect(signal.aborted).toBe(false);
+
+    await act(async () => { pending.resolve({ entities: [entity("survivor")], next_cursor: null }); });
+    expect(second.result.current.entities.map((item) => item.entity_id)).toEqual(["survivor"]);
+  });
+
+  it("aborts a deduplicated query only after its final hook unmounts", () => {
+    const pending = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    fixture.listAssetLibraryEntities.mockReturnValue(pending.promise);
+    const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+    const second = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    const signal = fixture.listAssetLibraryEntities.mock.calls[0]?.[1]?.signal as AbortSignal;
+    first.unmount();
+    expect(signal.aborted).toBe(false);
+    second.unmount();
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("aborts pagination on unmount and does not retain its one-shot cache entry", async () => {
+    const nextPage = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    fixture.listAssetLibraryEntities
+      .mockResolvedValueOnce({ entities: [entity("first")], next_cursor: "next-page" })
+      .mockReturnValueOnce(nextPage.promise)
+      .mockResolvedValueOnce({ entities: [entity("second")], next_cursor: "next-page" })
+      .mockResolvedValueOnce({ entities: [entity("third")], next_cursor: null });
+    const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    await act(async () => {});
+    void first.result.current.loadMore();
+    const signal = fixture.listAssetLibraryEntities.mock.calls[1]?.[1]?.signal as AbortSignal;
+    first.unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => { nextPage.resolve({ entities: [entity("late")], next_cursor: null }); });
+
+    const second = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+    await act(async () => {});
+    await act(async () => { await second.result.current.loadMore(); });
+    await act(async () => { await second.result.current.loadMore(); });
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(4);
+  });
 });
