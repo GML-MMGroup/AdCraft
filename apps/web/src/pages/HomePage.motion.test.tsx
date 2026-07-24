@@ -6,6 +6,7 @@ import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 
 vi.mock("../AppContextValue", () => ({
   useApp: () => ({ startNewProject }),
@@ -61,6 +62,11 @@ describe("HomePage motion", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    if (originalFontsDescriptor) {
+      Object.defineProperty(document, "fonts", originalFontsDescriptor);
+    } else {
+      Reflect.deleteProperty(document, "fonts");
+    }
   });
 
   it("stages the hero as three cohesive lines without splitting the gilded text", () => {
@@ -81,9 +87,46 @@ describe("HomePage motion", () => {
     ]);
     expect(
       lines.map((line) => line.style.getPropertyValue("--home-line-delay")),
-    ).toEqual(["100ms", "190ms", "280ms"]);
+    ).toEqual(["80ms", "250ms", "420ms"]);
     expect(title.querySelectorAll(".home-product-hero__wave-word")).toHaveLength(0);
     expect(lines[2]?.children).toHaveLength(0);
+  });
+
+  it("starts the hero motion only after fonts and two paint frames are ready", async () => {
+    let resolveFonts: (() => void) | undefined;
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      value: {
+        ready: new Promise<void>((resolve) => {
+          resolveFonts = resolve;
+        }),
+      },
+    });
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      callback(0);
+      return requestFrame.mock.calls.length;
+    });
+    vi.stubGlobal("requestAnimationFrame", requestFrame);
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    render(<HomePage navigate={vi.fn()} />);
+
+    const hero = screen
+      .getByRole("heading", {
+        level: 1,
+        name: "One Sentence Becomes an Ad film.",
+      })
+      .closest("section");
+    expect(hero?.classList.contains("is-motion-ready")).toBe(false);
+
+    await act(async () => {
+      resolveFonts?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(requestFrame).toHaveBeenCalledTimes(2);
+    expect(hero?.classList.contains("is-motion-ready")).toBe(true);
   });
 
   it("reveals each content region once when it first enters the viewport", () => {
@@ -179,10 +222,10 @@ describe("HomePage motion", () => {
 
   it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title-line\s*\{[^}]*animation:[^;}]*home-hero-line-wave[^;}]*;[^}]*will-change:\s*transform,\s*opacity;/s,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\s*\{[^}]*animation:[^;}]*home-hero-line-wave/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-line-wave\s*\{[\s\S]*?transform:\s*translate3d\(0,\s*[^,]+,\s*0\)[\s\S]*?opacity:\s*1;/,
+      /@keyframes home-hero-line-wave\s*\{[\s\S]*?translate3d\(0,\s*28px,\s*0\)[\s\S]*?opacity:\s*0\.88;[\s\S]*?translate3d\(0,\s*17px,\s*0\)[\s\S]*?translate3d\(0,\s*-6px,\s*0\)/,
     );
     expect(styles).toMatch(
       /\.home-reveal-section\[data-reveal-state="pending"\][\s\S]*?opacity:\s*0;/,
@@ -191,7 +234,7 @@ describe("HomePage motion", () => {
       /\.home-reveal-section\[data-reveal-state="visible"\][\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-line[\s\S]*?animation:\s*none !important;/,
+      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-line[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
     );
   });
 });

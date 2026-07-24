@@ -5,6 +5,7 @@ import { SectionTitle } from "../components/Cards";
 import { demoProjects, images, imageSrc } from "../data";
 import { PlayIcon, PlusIcon } from "../icons";
 import type { RouteName } from "../types";
+import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
 import { useHomeSectionReveal } from "./useHomeSectionReveal";
 
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
@@ -21,13 +22,14 @@ function motionStyle(property: "--home-reveal-delay", value: string): CSSPropert
 
 function heroLineStyle(index: number): CSSProperties {
   return {
-    "--home-line-delay": `${100 + index * 90}ms`,
+    "--home-line-delay": `${80 + index * 170}ms`,
   } as CSSProperties;
 }
 
 export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [introVideoFailed, setIntroVideoFailed] = useState(false);
+  const isHeroMotionReady = useHomeHeroMotionReady();
   const recentReveal = useHomeSectionReveal();
   const discoverReveal = useHomeSectionReveal({ replay: true });
   const { startNewProject } = useApp();
@@ -51,7 +53,10 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
 
   return (
     <div className="home-page">
-      <section className="home-product-hero" aria-labelledby="home-product-title">
+      <section
+        className={`home-product-hero ${isHeroMotionReady ? "is-motion-ready" : ""}`}
+        aria-labelledby="home-product-title"
+      >
         <div className="home-product-hero__content">
           <h1 className="home-product-hero__title" id="home-product-title" aria-label="One Sentence Becomes an Ad film.">
             {heroTitleLines.map((line, lineIndex) => (
