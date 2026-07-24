@@ -30,7 +30,6 @@ type SlotPromptOperationDependencies = {
   selection: {
     getSlot: (slotId: string) => WorkflowSlotV2 | null;
     getAllSlots: () => WorkflowSlotV2[];
-    getSelectedSlots: () => WorkflowSlotV2[];
     selectNode: (nodeId: string) => void;
   };
   microEdit: PromptMicroEdit;
@@ -152,13 +151,6 @@ export function createSlotPromptOperations(
     microEdit.updateNegativePrompt(slotId, negativePrompt);
   }
 
-  function defaultV2SlotForCurrentNode() {
-    const selectedSlots = dependencies.selection.getSelectedSlots();
-    return selectedSlots.find(
-      (slot) => !["blocked", "skipped"].includes(String(slot.status)),
-    ) ?? selectedSlots[0] ?? null;
-  }
-
   async function flushV2SlotDrafts() {
     const workflowId = runner.activeWorkflowId();
     if (!workflowId) return;
@@ -172,7 +164,7 @@ export function createSlotPromptOperations(
     );
 
     for (const flush of flushes) {
-      await runner.execute({
+      const completed = await runner.execute({
         setStatus,
         setInFlight: (submitting, error) => microEdit.setSubmitting(
           flush.slotId,
@@ -208,14 +200,16 @@ export function createSlotPromptOperations(
             flush.slotId,
             flush.draft,
           );
-          if (!runner.isWorkflowCurrent(workflowId)) return;
+          if (!runner.isWorkflowCurrent(workflowId)) return false;
         }
         microEdit.markClean(
           flush.slotId,
           savedSlot,
           Boolean(flush.promptPatch),
         );
+        return true;
       });
+      if (completed === false) return;
     }
     setStatus("V2 slot drafts saved");
   }
@@ -227,7 +221,6 @@ export function createSlotPromptOperations(
     openV2SlotEditor,
     changeV2SlotPrompt,
     changeV2SlotNegativePrompt,
-    defaultV2SlotForCurrentNode,
     flushV2SlotDrafts,
   };
 }

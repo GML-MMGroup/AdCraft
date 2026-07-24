@@ -252,6 +252,51 @@ describe("V2 slot prompt flush", () => {
     ]);
   });
 
+  it("stops the whole multi-draft flush when the workflow changes", async () => {
+    const secondSlot = normalizeWorkflowSlotV2({
+      ...slot,
+      slot_id: "slot-2",
+      node_id: "node-2",
+      item_id: "item-2",
+    });
+    const { args, setStatus, v2SlotMicroEdit } = createHarness({
+      workflowV2: workflow([slot, secondSlot]),
+      allV2Slots: [slot, secondSlot],
+      selectedV2Slots: [slot, secondSlot],
+    });
+    const pendingReferenceDraft = () => draft({
+      dirty: true,
+      referenceDirty: true,
+      attachments: [{
+        id: "pending-reference",
+        source: "reference_asset",
+        semantic_type: "product_image",
+        status: "draft",
+      }],
+    });
+    v2SlotMicroEdit.state.draftsBySlotId = {
+      "slot-1": pendingReferenceDraft(),
+      "slot-2": pendingReferenceDraft(),
+    };
+    const { result } = renderHook(() => useV2SlotOperations(args));
+
+    let flushPromise: Promise<void>;
+    act(() => {
+      flushPromise = result.current.actions.flushV2SlotDrafts();
+    });
+    args.activeWorkflowIdRef.current = "workflow-2";
+    await act(async () => {
+      await flushPromise;
+    });
+
+    expect(v2SlotMicroEdit.setSubmitting).toHaveBeenCalledWith("slot-1", true);
+    expect(v2SlotMicroEdit.setSubmitting.mock.calls.some(
+      ([slotId]) => slotId === "slot-2",
+    )).toBe(false);
+    expect(v2SlotMicroEdit.markClean).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalledWith("V2 slot drafts saved");
+  });
+
   it.each([412, 428])("preserves real ETag precondition behavior for HTTP %s", async (status) => {
     const { args, setStatus } = createHarness();
     v2EtagStore.set("workflow", "workflow-1", "\"state-1\"");
@@ -406,6 +451,76 @@ describe("V2 slot reference operations", () => {
       expect.any(String),
       { status: "failed", error: "upload failed" },
     );
+  });
+
+  it("does not publish replacement success or mutate the newly active workflow UI", async () => {
+    const { args, setStatus } = createHarness();
+    const replacementAsset = normalizeAssetVersionV2({
+      asset_id: "library-asset",
+      version_id: "library-version",
+      media_type: "image",
+      source_type: "library",
+      semantic_type: "product_image",
+      status: "completed",
+    });
+    vi.spyOn(v2Api, "registerLibraryReference").mockResolvedValue({
+      source_asset_id: replacementAsset.asset_id,
+      asset: replacementAsset,
+      workflow: workflow(),
+    });
+    let resolveSelection!: () => void;
+    const selectionPending = new Promise<void>((resolve) => {
+      resolveSelection = resolve;
+    });
+    const selectVersion = vi.spyOn(v2Api, "selectSlotVersion")
+      .mockImplementation(async () => selectionPending);
+    const nextSetStatus = vi.fn();
+    const nextSetSubmitting = vi.fn();
+    const nextMicroEdit = {
+      ...args.v2SlotMicroEdit,
+      setSubmitting: nextSetSubmitting,
+    } as HookArgs["v2SlotMicroEdit"];
+    const { result, rerender } = renderHook(
+      ({ hookArgs }: { hookArgs: HookArgs }) => useV2SlotOperations(hookArgs),
+      { initialProps: { hookArgs: args } },
+    );
+    const entity = {
+      entity_id: "product-1",
+      entity_type: "product" as const,
+      display_name: "Product one",
+      tags: [],
+      asset_count: 1,
+      is_archived: false,
+    };
+
+    let replacementPromise: Promise<void>;
+    await act(async () => {
+      replacementPromise = result.current.actions
+        .replaceV2SlotWithLibraryEntity("slot-1", entity);
+      await vi.waitFor(() => expect(selectVersion).toHaveBeenCalledTimes(1));
+    });
+    const nextArgs: HookArgs = {
+      ...args,
+      workflowId: "workflow-2",
+      activeWorkflowIdRef: { current: "workflow-2" },
+      v2SlotMicroEdit: nextMicroEdit,
+      setStatus: nextSetStatus,
+    };
+    rerender({ hookArgs: nextArgs });
+
+    resolveSelection();
+    await act(async () => {
+      await replacementPromise;
+    });
+
+    expect(setStatus).not.toHaveBeenCalledWith(
+      "product_image replaced from Asset Library.",
+    );
+    expect(nextSetStatus).not.toHaveBeenCalled();
+    expect(nextSetSubmitting).not.toHaveBeenCalled();
+    expect(args.refreshV2WorkflowGraph).not.toHaveBeenCalled();
+    expect(args.syncV2Snapshot).not.toHaveBeenCalled();
+    expect(args.setV2SlotVersionsById).not.toHaveBeenCalled();
   });
 });
 

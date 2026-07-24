@@ -191,7 +191,6 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     selection: {
       getSlot: v2SlotById,
       getAllSlots: () => argsRef.current.allV2Slots,
-      getSelectedSlots: () => argsRef.current.selectedV2Slots,
       selectNode: (nodeId) => {
         argsRef.current.setSelectedNodeId(nodeId);
         argsRef.current.selectedNodeIdRef.current = nodeId;
