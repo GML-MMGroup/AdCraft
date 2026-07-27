@@ -11,6 +11,7 @@ import {
   type AgentModelAdapter,
 } from "./runtime.js";
 import { loadRuntimeManifest } from "./manifest.js";
+import { validateAgentRunRequest } from "./protocol-validator.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -102,7 +103,7 @@ async function handleRun(
 ): Promise<void> {
   let request: AgentRunRequest;
   try {
-    request = validateRequest(await readJson(incoming, maxRequestBytes));
+    request = validateAgentRunRequest(await readJson(incoming, maxRequestBytes));
   } catch {
     json(response, 422, { code: "agent_protocol_mismatch" });
     return;
@@ -155,7 +156,7 @@ async function handleRun(
   try {
     await emit(event(request, 0, "run_started", { fake: false }));
     const result = await adapter.run(request, controller.signal, emit);
-    await emit(event(request, 0, "run_completed", result));
+    await emit(event(request, 0, "run_completed", { value: result }));
   } catch (error) {
     if (!terminalEmitted) {
       const cancelled =
@@ -196,22 +197,6 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");
   }
   return undefined;
-}
-
-function validateRequest(value: unknown): AgentRunRequest {
-  if (!value || typeof value !== "object") throw new Error("invalid request");
-  const request = value as Partial<AgentRunRequest>;
-  if (
-    request.protocol_version !== "1" ||
-    !request.run_id ||
-    !request.request_id ||
-    !request.agent_name ||
-    !request.operation ||
-    !request.context?.user_input
-  ) {
-    throw new Error("invalid request");
-  }
-  return request as AgentRunRequest;
 }
 
 async function readJson(incoming: IncomingMessage, maximumBytes: number): Promise<unknown> {

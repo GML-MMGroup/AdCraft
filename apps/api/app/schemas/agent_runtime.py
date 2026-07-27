@@ -187,7 +187,37 @@ class AgentRuntimeEvent(_StrictModel):
     @model_validator(mode="after")
     def validate_payload(self) -> AgentRuntimeEvent:
         _validate_safe_payload(self.payload)
+        if self.event_type == "run_completed":
+            AgentRunCompletedPayload.model_validate(self.payload)
+        elif self.event_type == "run_failed":
+            AgentRunFailedPayload.model_validate(self.payload)
+        elif self.event_type == "run_cancelled":
+            AgentRunCancelledPayload.model_validate(self.payload)
         return self
+
+
+class AgentRunCompletedPayload(_StrictModel):
+    value: dict[str, Any]
+    audit: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_safe_values(self) -> AgentRunCompletedPayload:
+        _validate_safe_payload(self.value, field_name="value")
+        _validate_safe_payload(self.audit, field_name="audit")
+        return self
+
+
+class AgentRunFailedPayload(_StrictModel):
+    code: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=1_024)
+    retryable: bool = False
+    audit: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentRunCancelledPayload(_StrictModel):
+    code: Literal["agent_run_cancelled"]
+    message: str = Field(min_length=1, max_length=1_024)
+    audit: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentToolCall(_StrictModel):
