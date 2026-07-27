@@ -76,9 +76,7 @@ def _canonical_value(value: Any) -> Any:
         for key, child in value.items():
             normalized_key = str(key)
             folded = normalized_key.casefold()
-            if folded in _VOLATILE_KEYS or any(
-                part in folded for part in _SENSITIVE_KEY_PARTS
-            ):
+            if folded in _VOLATILE_KEYS or any(part in folded for part in _SENSITIVE_KEY_PARTS):
                 continue
             canonical[normalized_key] = _canonical_value(child)
         return canonical

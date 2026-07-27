@@ -147,9 +147,7 @@ class SpecialistAgentService:
                         "workflow_id": request.workflow_id,
                         "conversation_id": request.conversation_id,
                         "action_id": request.constraints.get("action_id"),
-                        "expected_target_revision": request.constraints.get(
-                            "expected_revision"
-                        ),
+                        "expected_target_revision": request.constraints.get("expected_revision"),
                         "node_id": request.target.node_id,
                         "item_id": request.target.item_id,
                     },

@@ -575,10 +575,9 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             target_revision=int(target_revision) if target_revision is not None else None,
             normalized_input=context,
         )
-    expected_target_revision = (
-        getattr(getattr(context, "target", None), "expected_revision", None)
-        or spec.trace_metadata.get("expected_target_revision")
-    )
+    expected_target_revision = getattr(
+        getattr(context, "target", None), "expected_revision", None
+    ) or spec.trace_metadata.get("expected_target_revision")
     run_id = (
         invocation.run_id
         if invocation
@@ -626,11 +625,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
                 if expected_target_revision is not None
                 else {}
             ),
-            **(
-                {"request_identity_digest": identity.input_digest}
-                if identity is not None
-                else {}
-            ),
+            **({"request_identity_digest": identity.input_digest} if identity is not None else {}),
         },
         contract_schema=spec.output_model.model_json_schema(),
     )
