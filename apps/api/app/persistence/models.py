@@ -388,3 +388,109 @@ class AgentRunRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
     finished_at: Mapped[str | None] = mapped_column(Text)
+
+
+class V2AgentConversationRow(Base):
+    """Durable visible conversation state scoped to one V2 Workflow."""
+
+    __tablename__ = "v2_agent_conversations"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'archived')",
+            name="ck_v2_agent_conversations_status",
+        ),
+        CheckConstraint(
+            "last_message_sequence >= 0",
+            name="ck_v2_agent_conversations_nonnegative_sequence",
+        ),
+        Index(
+            "ix_v2_agent_conversations_workflow_updated",
+            "workflow_id",
+            "updated_at",
+            "conversation_id",
+        ),
+    )
+
+    conversation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("workflows.workflow_id"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    rolling_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    last_message_sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class V2AgentMessageRow(Base):
+    """One visible user, assistant, or system conversation message."""
+
+    __tablename__ = "v2_agent_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'system')",
+            name="ck_v2_agent_messages_role",
+        ),
+        CheckConstraint("sequence_no > 0", name="ck_v2_agent_messages_positive_sequence"),
+        UniqueConstraint(
+            "conversation_id",
+            "sequence_no",
+            name="uq_v2_agent_messages_conversation_sequence",
+        ),
+        Index(
+            "ix_v2_agent_messages_conversation_sequence",
+            "conversation_id",
+            "sequence_no",
+        ),
+    )
+
+    message_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("v2_agent_conversations.conversation_id"),
+        nullable=False,
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    target_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class V2AgentActionRow(Base):
+    """One idempotent visible action associated with a conversation request."""
+
+    __tablename__ = "v2_agent_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_v2_agent_actions_status",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "request_id",
+            name="uq_v2_agent_actions_conversation_request",
+        ),
+        Index(
+            "ix_v2_agent_actions_conversation_created",
+            "conversation_id",
+            "created_at",
+            "action_id",
+        ),
+    )
+
+    action_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("v2_agent_conversations.conversation_id"),
+        nullable=False,
+    )
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    action_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    target_json: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
+    result_json: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
