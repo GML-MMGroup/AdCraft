@@ -10,9 +10,21 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
+from app.schemas import agent_operation_contexts
 
 
 CONTRACT_MODELS = (
+    agent_operation_contexts.FrozenPlanningFacts,
+    agent_operation_contexts.PlanningReferenceSummary,
+    agent_operation_contexts.PlanningItemSummary,
+    agent_operation_contexts.PlanningSlotSummary,
+    agent_operation_contexts.FrontDeskIntentAgentContext,
+    agent_operation_contexts.IntentContractAgentContext,
+    agent_operation_contexts.ScriptWriterAgentContext,
+    agent_operation_contexts.ProductExpertAgentContext,
+    agent_operation_contexts.CharacterExpertAgentContext,
+    agent_operation_contexts.SceneExpertAgentContext,
+    agent_operation_contexts.BgmExpertAgentContext,
     agent_runtime.AgentReferenceSummary,
     agent_runtime.AgentTargetContext,
     agent_runtime.AgentRunContext,
@@ -74,6 +86,8 @@ def _typescript_type(schema: dict[str, Any]) -> str:
         return " | ".join(json.dumps(item, ensure_ascii=True) for item in schema["enum"])
     if "anyOf" in schema:
         return " | ".join(_typescript_type(option) for option in schema["anyOf"])
+    if "oneOf" in schema:
+        return " | ".join(_typescript_type(option) for option in schema["oneOf"])
     schema_type = schema.get("type")
     if schema_type == "object" or "properties" in schema:
         if schema.get("additionalProperties") not in {None, False}:

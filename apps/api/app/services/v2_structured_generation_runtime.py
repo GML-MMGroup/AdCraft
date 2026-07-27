@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 import json
 from typing import Any, Generic, Literal, TypeVar
 from uuid import uuid4
@@ -474,6 +475,9 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         request_id=f"req_{uuid4().hex}",
         agent_name=spec.agent_name or _agent_name_for_operation(operation),
         operation=operation,
+        deadline_at=datetime.now(timezone.utc)
+        + timedelta(seconds=spec.trace_metadata.get("timeout_seconds", 120.0)),
+        model_policy_id=f"{spec.agent_name or _agent_name_for_operation(operation)}.{operation}.v1",
         contract_name=spec.contract_name,
         context=AgentRunContext(
             operation=operation,

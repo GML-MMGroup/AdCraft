@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.agent_operation_contexts import PlanningAgentContext
+
 
 AgentName = Literal[
     "front_desk",
@@ -132,7 +134,9 @@ class AgentRunRequest(_StrictModel):
     parent_run_id: str | None = Field(default=None, max_length=160)
     agent_name: AgentName
     operation: str = Field(min_length=1, max_length=120)
-    context: AgentRunContext
+    deadline_at: datetime
+    model_policy_id: str = Field(min_length=1, max_length=160)
+    context: PlanningAgentContext | AgentRunContext
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)
     contract_name: str | None = Field(default=None, max_length=160)

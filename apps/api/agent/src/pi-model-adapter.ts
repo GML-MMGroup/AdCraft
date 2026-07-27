@@ -123,7 +123,7 @@ export class PiModelAdapter implements AgentModelAdapter {
           structuredSubmissionPrompt,
           structuredRepairPrompt,
           `Required contract: ${request.contract_name ?? "SpecialistDraft"}.`,
-          `JSON Schema: ${JSON.stringify(request.context.contract_schema ?? {})}`,
+          `JSON Schema: ${JSON.stringify(contractSchema(request))}`,
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -201,13 +201,22 @@ export class PiModelAdapter implements AgentModelAdapter {
 export function structuredToolParameters(
   request: AgentRunRequest,
 ): typeof structuredValueSchema {
-  const schema = request.context.contract_schema;
+  const schema = contractSchema(request);
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return structuredValueSchema;
   }
   return Type.Unsafe<Record<string, unknown>>(
     schema,
   ) as unknown as typeof structuredValueSchema;
+}
+
+function contractSchema(request: AgentRunRequest): Readonly<Record<string, unknown>> {
+  return "contract_schema" in request.context &&
+    request.context.contract_schema &&
+    typeof request.context.contract_schema === "object" &&
+    !Array.isArray(request.context.contract_schema)
+    ? request.context.contract_schema
+    : {};
 }
 
 async function projectOutputDelta(

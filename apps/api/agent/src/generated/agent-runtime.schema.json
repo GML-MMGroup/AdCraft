@@ -286,7 +286,49 @@
           "type": "object"
         },
         "context": {
-          "$ref": "#/$defs/AgentRunContext"
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "bgm_expert": "#/$defs/BgmExpertAgentContext",
+                  "character_expert": "#/$defs/CharacterExpertAgentContext",
+                  "front_desk_intent": "#/$defs/FrontDeskIntentAgentContext",
+                  "intent_contract": "#/$defs/IntentContractAgentContext",
+                  "product_expert": "#/$defs/ProductExpertAgentContext",
+                  "scene_expert": "#/$defs/SceneExpertAgentContext",
+                  "script_writer": "#/$defs/ScriptWriterAgentContext"
+                },
+                "propertyName": "context_kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/FrontDeskIntentAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/IntentContractAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/ScriptWriterAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/ProductExpertAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/CharacterExpertAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/SceneExpertAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/BgmExpertAgentContext"
+                }
+              ]
+            },
+            {
+              "$ref": "#/$defs/AgentRunContext"
+            }
+          ],
+          "title": "Context"
         },
         "contract_name": {
           "anyOf": [
@@ -306,6 +348,17 @@
           "maxLength": 120,
           "minLength": 1,
           "title": "Credential Ref",
+          "type": "string"
+        },
+        "deadline_at": {
+          "format": "date-time",
+          "title": "Deadline At",
+          "type": "string"
+        },
+        "model_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Model Policy Id",
           "type": "string"
         },
         "operation": {
@@ -354,6 +407,8 @@
         "request_id",
         "agent_name",
         "operation",
+        "deadline_at",
+        "model_policy_id",
         "context"
       ],
       "title": "AgentRunRequest",
@@ -932,6 +987,838 @@
         "status"
       ],
       "title": "AgentToolResult",
+      "type": "object"
+    },
+    "BgmExpertAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "bgm_expert",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "item_inventory": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningItemSummary"
+          },
+          "maxItems": 128,
+          "title": "Item Inventory",
+          "type": "array"
+        },
+        "music_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Music Constraints",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_slice": {
+          "default": "",
+          "maxLength": 32768,
+          "title": "Screenplay Slice",
+          "type": "string"
+        },
+        "slot_contracts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningSlotSummary"
+          },
+          "maxItems": 128,
+          "title": "Slot Contracts",
+          "type": "array"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind"
+      ],
+      "title": "BgmExpertAgentContext",
+      "type": "object"
+    },
+    "CharacterExpertAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "character_expert",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "item_inventory": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningItemSummary"
+          },
+          "maxItems": 128,
+          "title": "Item Inventory",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_slice": {
+          "default": "",
+          "maxLength": 32768,
+          "title": "Screenplay Slice",
+          "type": "string"
+        },
+        "slot_contracts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningSlotSummary"
+          },
+          "maxItems": 128,
+          "title": "Slot Contracts",
+          "type": "array"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind"
+      ],
+      "title": "CharacterExpertAgentContext",
+      "type": "object"
+    },
+    "FrontDeskIntentAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "front_desk_intent",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_summary": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Summary"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind"
+      ],
+      "title": "FrontDeskIntentAgentContext",
+      "type": "object"
+    },
+    "FrozenPlanningFacts": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect_ratio": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aspect Ratio"
+        },
+        "character_count": {
+          "anyOf": [
+            {
+              "maximum": 128,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Character Count"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "explicit_requirements": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Explicit Requirements",
+          "type": "array"
+        },
+        "product_name": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product Name"
+        },
+        "scene_count": {
+          "anyOf": [
+            {
+              "maximum": 128,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scene Count"
+        },
+        "shot_count": {
+          "anyOf": [
+            {
+              "maximum": 256,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shot Count"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        }
+      },
+      "title": "FrozenPlanningFacts",
+      "type": "object"
+    },
+    "IntentContractAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_request_summary": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Ad Request Summary",
+          "type": "string"
+        },
+        "context_kind": {
+          "const": "intent_contract",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind",
+        "ad_request_summary"
+      ],
+      "title": "IntentContractAgentContext",
+      "type": "object"
+    },
+    "PlanningItemSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "item_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Item Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "item_id",
+        "item_type"
+      ],
+      "title": "PlanningItemSummary",
+      "type": "object"
+    },
+    "PlanningReferenceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 2048,
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "image",
+                "video",
+                "audio",
+                "text"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "semantic_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Semantic Type",
+          "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        }
+      },
+      "required": [
+        "asset_id",
+        "semantic_type"
+      ],
+      "title": "PlanningReferenceSummary",
+      "type": "object"
+    },
+    "PlanningSlotSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "slot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "slot_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slot_id",
+        "slot_type"
+      ],
+      "title": "PlanningSlotSummary",
+      "type": "object"
+    },
+    "ProductExpertAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "product_expert",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "item_inventory": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningItemSummary"
+          },
+          "maxItems": 128,
+          "title": "Item Inventory",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_slice": {
+          "default": "",
+          "maxLength": 32768,
+          "title": "Screenplay Slice",
+          "type": "string"
+        },
+        "slot_contracts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningSlotSummary"
+          },
+          "maxItems": 128,
+          "title": "Slot Contracts",
+          "type": "array"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind"
+      ],
+      "title": "ProductExpertAgentContext",
+      "type": "object"
+    },
+    "SceneExpertAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "scene_expert",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "item_inventory": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningItemSummary"
+          },
+          "maxItems": 128,
+          "title": "Item Inventory",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_slice": {
+          "default": "",
+          "maxLength": 32768,
+          "title": "Screenplay Slice",
+          "type": "string"
+        },
+        "slot_contracts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningSlotSummary"
+          },
+          "maxItems": 128,
+          "title": "Slot Contracts",
+          "type": "array"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind"
+      ],
+      "title": "SceneExpertAgentContext",
+      "type": "object"
+    },
+    "ScriptWriterAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "ad_request_summary": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Ad Request Summary",
+          "type": "string"
+        },
+        "context_kind": {
+          "const": "script_writer",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "frozen_facts": {
+          "$ref": "#/$defs/FrozenPlanningFacts"
+        },
+        "item_inventory": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningItemSummary"
+          },
+          "maxItems": 128,
+          "title": "Item Inventory",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "user_language": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Language"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "user_input",
+        "frozen_facts",
+        "context_kind",
+        "ad_request_summary"
+      ],
+      "title": "ScriptWriterAgentContext",
       "type": "object"
     },
     "SpecialistDraft": {
