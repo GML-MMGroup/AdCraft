@@ -97,6 +97,7 @@ class StructuredGenerationSpec(Generic[TOutput]):
     temperature: float = 0.3
     agent_name: AgentName | None = None
     operation: str | None = None
+    tool_mode: Literal["default", "structured_only"] = "default"
     invocation: AgentInvocation | None = None
     agent_context: PlanningAgentContext | AgentRunContext | None = None
 
@@ -622,6 +623,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             "stage_name": spec.stage_name,
             "contract_name": spec.contract_name,
             "workflow_id": workflow_id,
+            **({"tool_mode": spec.tool_mode} if spec.tool_mode != "default" else {}),
             **(
                 {"expected_target_revision": int(expected_target_revision)}
                 if expected_target_revision is not None

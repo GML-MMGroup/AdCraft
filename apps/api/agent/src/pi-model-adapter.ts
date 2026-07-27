@@ -139,7 +139,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     const tools: Array<AgentTool<typeof structuredValueSchema>> = [
       structuredTool,
-      ...toolsForOperation(request.agent_name, request.operation)
+      ...toolsForRequest(request)
         .filter((toolName) => toolName !== "submit_structured_result")
         .map((toolName) => this.#pythonTool(request, toolName, emit, budget)),
     ];
@@ -242,6 +242,15 @@ export class PiModelAdapter implements AgentModelAdapter {
       },
     };
   }
+}
+
+export function toolsForRequest(
+  request: AgentRunRequest,
+): ReadonlyArray<AgentToolName> {
+  if (request.audit_metadata?.tool_mode === "structured_only") {
+    return ["submit_structured_result"];
+  }
+  return toolsForOperation(request.agent_name, request.operation);
 }
 
 export class AgentEventProjection {

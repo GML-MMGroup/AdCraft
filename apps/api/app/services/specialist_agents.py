@@ -135,6 +135,7 @@ class SpecialistAgentService:
                     operation="targeted_revision",
                     agent_name=_pi_agent_name(request.specialist),
                     contract_name="SpecialistResult",
+                    tool_mode="structured_only",
                     model_id=_model_id_for_specialist(request.specialist, self._settings),
                     system_prompt="",
                     input_payload=_request_context(request),

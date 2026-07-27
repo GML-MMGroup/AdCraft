@@ -112,12 +112,28 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     "Compile one Character slot prompt while preserving exact Character identity, view requirements, and references.",
   ),
   registration(
+    "adcraft.character_designer.targeted_revision.v1",
+    "character_designer",
+    "targeted_revision",
+    "SpecialistResult",
+    "Character Designer",
+    "Revise only the Character prompt identified by the typed context. The exact target is already resolved. Do not call mutation or generation tools; submit a revised_item_prompt result for Python to apply.",
+  ),
+  registration(
     "adcraft.scene_designer.scene_prompt.v1",
     "scene_designer",
     "scene_prompt",
     "V2ScenePromptPlan",
     "Scene Designer",
     "Compile one Scene slot prompt from the owning environment brief and only Scene-relevant references.",
+  ),
+  registration(
+    "adcraft.scene_designer.targeted_revision.v1",
+    "scene_designer",
+    "targeted_revision",
+    "SpecialistResult",
+    "Scene Designer",
+    "Revise only the Scene prompt identified by the typed context. The exact target is already resolved. Do not call mutation or generation tools; submit a revised_item_prompt result for Python to apply.",
   ),
   registration(
     "adcraft.storyboard_artist.storyboard_detail.v1",
