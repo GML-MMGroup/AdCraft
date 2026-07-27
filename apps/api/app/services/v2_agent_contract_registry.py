@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from app.schemas.agent_runtime import SpecialistDraft
+from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import V2ExpertBriefPlannerOutput
 from app.schemas.workflow_v2_intent import V2IntentPlan
 from app.schemas.workflow_v2_prompt_contracts import (
@@ -26,6 +27,7 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
     model.__name__: model
     for model in (
         SpecialistDraft,
+        SpecialistResult,
         V2EditableScriptDocument,
         V2ExpertBriefPlannerOutput,
         V2IntentPlan,

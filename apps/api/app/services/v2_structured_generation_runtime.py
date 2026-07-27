@@ -9,7 +9,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
-from app.schemas.agent_runtime import AgentRunContext, AgentRunRequest
+from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_high_risk_prompt_renderer import (
@@ -87,6 +87,8 @@ class StructuredGenerationSpec(Generic[TOutput]):
     fallback_builder: FallbackBuilder[TOutput] | None = None
     trace_metadata: dict[str, Any] = field(default_factory=dict)
     temperature: float = 0.3
+    agent_name: AgentName | None = None
+    operation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -493,18 +495,17 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         sanitize_context_for_llm_text(spec.input_payload)
     )
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
-    operation = _agent_operation(spec)
+    operation = spec.operation or _agent_operation(spec)
     return AgentRunRequest(
         run_id=run_id,
         request_id=f"req_{uuid4().hex}",
-        agent_name=_agent_name_for_operation(operation),
+        agent_name=spec.agent_name or _agent_name_for_operation(operation),
         operation=operation,
         contract_name=spec.contract_name,
         context=AgentRunContext(
             operation=operation,
             user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
             workflow_id=workflow_id,
-            system_prompt=spec.system_prompt,
             input_payload=payload,
             contract_schema=spec.output_model.model_json_schema(),
         ),

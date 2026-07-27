@@ -4,14 +4,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.agents.advertising import (
-    build_bgm_agent,
-    build_character_designer_agent,
-    build_final_video_generation_agent,
-    build_scene_designer_agent,
-    build_script_writer_agent,
-    build_storyboard_agent,
-)
 from app.core.config import Settings
 from app.schemas.specialist_agents import (
     SpecialistAgentName,
@@ -19,8 +11,12 @@ from app.schemas.specialist_agents import (
     SpecialistInvocationRequest,
     SpecialistResult,
 )
-from app.services.agno_orchestrator import _run_agent
 from app.services.agent_trace import AgentTraceWriter, utc_now
+from app.services.v2_structured_generation_runtime import (
+    StructuredGenerationRuntime,
+    StructuredGenerationRuntimeError,
+    StructuredGenerationSpec,
+)
 
 SPECIALIST_BY_NODE_TYPE: dict[str, SpecialistAgentName] = {
     "script": "script_writer",
@@ -50,6 +46,7 @@ class SpecialistAgentError(ValueError):
 class SpecialistAgentService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def invoke(self, request: SpecialistInvocationRequest) -> SpecialistAgentOutcome:
         started_at = utc_now()
@@ -141,31 +138,41 @@ class SpecialistAgentService:
         request: SpecialistInvocationRequest,
     ) -> tuple[dict[str, Any], str | None]:
         try:
-            agent = _build_specialist_agent(request.specialist, self._settings)
-        except Exception as exc:  # noqa: BLE001 - normalized for API callers.
-            raise SpecialistAgentError(
-                "specialist_real_mode_unavailable",
-                str(exc),
-            ) from exc
-        task = (
-            "Act as the named advertising specialist. Return a bounded structured result for "
-            "the requested canvas target. Do not mutate workflow state, do not start media "
-            "generation, and do not include sibling item prompts."
-        )
-        context = _request_context(request)
-        try:
-            output = _run_agent(
-                agent=agent,
-                output_model=SpecialistResult,
-                task=task,
-                context=context,
-                trace_writer=AgentTraceWriter(
-                    self._settings.media_data_dir,
-                    request.workflow_id,
-                ),
-                node_id=request.target.node_id,
+            output = self._structured_runtime.run(
+                StructuredGenerationSpec(
+                    stage_name="targeted_revision",
+                    operation="targeted_revision",
+                    agent_name=_pi_agent_name(request.specialist),
+                    contract_name="SpecialistResult",
+                    model_id=_model_id_for_specialist(request.specialist, self._settings),
+                    system_prompt="",
+                    input_payload=_request_context(request),
+                    output_model=SpecialistResult,
+                    quality_validator=lambda candidate: self.normalize_result(
+                        request,
+                        candidate.model_dump(mode="json"),
+                    ),
+                    trace_metadata={
+                        "workflow_id": request.workflow_id,
+                        "node_id": request.target.node_id,
+                        "item_id": request.target.item_id,
+                    },
+                )
+            ).output
+            return (
+                self.normalize_result(
+                    request,
+                    output.model_dump(mode="json"),
+                ).model_dump(mode="json"),
+                _model_id_for_specialist(request.specialist, self._settings),
             )
-            return output.model_dump(mode="json"), getattr(agent.model, "id", None)
+        except StructuredGenerationRuntimeError as exc:
+            code = (
+                "specialist_real_mode_unavailable"
+                if exc.code == "structured_generation_unavailable"
+                else "specialist_execution_failed"
+            )
+            raise SpecialistAgentError(code, str(exc)) from exc
         except SpecialistAgentError:
             raise
         except Exception as exc:  # noqa: BLE001 - returned as controlled specialist error.
@@ -250,23 +257,19 @@ def specialist_for_node_type(node_type: str) -> SpecialistAgentName | None:
     return SPECIALIST_BY_NODE_TYPE.get(node_type)
 
 
-def _build_specialist_agent(specialist: str, settings: Settings) -> Any:
-    if specialist == "script_writer":
-        return build_script_writer_agent(settings)
-    if specialist == "character_designer":
-        return build_character_designer_agent(settings)
-    if specialist == "scene_designer":
-        return build_scene_designer_agent(settings)
-    if specialist == "storyboard_artist":
-        return build_storyboard_agent(settings)
-    if specialist == "video_director":
-        return build_final_video_generation_agent(settings)
-    if specialist == "sound_director":
-        return build_bgm_agent(settings)
-    raise SpecialistAgentError(
-        "specialist_not_supported",
-        f"Specialist is not supported: {specialist}.",
-    )
+def _pi_agent_name(specialist: SpecialistAgentName) -> str:
+    return "bgm_director" if specialist == "sound_director" else specialist
+
+
+def _model_id_for_specialist(specialist: SpecialistAgentName, settings: Settings) -> str:
+    return {
+        "script_writer": settings.llm_script_model,
+        "character_designer": settings.llm_character_model,
+        "scene_designer": settings.llm_scene_model,
+        "storyboard_artist": settings.llm_storyboard_model,
+        "video_director": settings.llm_final_video_model,
+        "sound_director": settings.llm_bgm_model,
+    }[specialist]
 
 
 def _mock_result_type(request: SpecialistInvocationRequest) -> str:
