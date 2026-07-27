@@ -27,7 +27,7 @@ def build_child_commands(settings: Settings) -> tuple[tuple[str, ...], tuple[str
         )
     return (
         ("uv", "run", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"),
-        ("npm", "--prefix", "agent-runtime", "start"),
+        ("npm", "--prefix", "agent", "start"),
     )
 
 

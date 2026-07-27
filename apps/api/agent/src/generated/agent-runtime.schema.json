@@ -1,0 +1,1017 @@
+{
+  "$defs": {
+    "AgentReferenceSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 2048,
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "media_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "image",
+                "video",
+                "audio",
+                "text"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Media Type"
+        },
+        "semantic_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Semantic Type",
+          "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        }
+      },
+      "required": [
+        "asset_id",
+        "semantic_type"
+      ],
+      "title": "AgentReferenceSummary",
+      "type": "object"
+    },
+    "AgentRunContext": {
+      "additionalProperties": false,
+      "properties": {
+        "constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Constraints",
+          "type": "array"
+        },
+        "continuity_summary": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuity Summary"
+        },
+        "contract_schema": {
+          "additionalProperties": true,
+          "title": "Contract Schema",
+          "type": "object"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "input_payload": {
+          "additionalProperties": true,
+          "title": "Input Payload",
+          "type": "object"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_summary": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Screenplay Summary"
+        },
+        "style_summary": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Summary"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Prompt"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentTargetContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "operation",
+        "user_input"
+      ],
+      "title": "AgentRunContext",
+      "type": "object"
+    },
+    "AgentRunPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_event_bytes": {
+          "default": 65536,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Max Event Bytes",
+          "type": "integer"
+        },
+        "max_handoffs": {
+          "default": 8,
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Max Handoffs",
+          "type": "integer"
+        },
+        "max_input_bytes": {
+          "default": 131072,
+          "maximum": 4194304,
+          "minimum": 1,
+          "title": "Max Input Bytes",
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "default": 262144,
+          "maximum": 4194304,
+          "minimum": 1,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "default": 16,
+          "maximum": 128,
+          "minimum": 0,
+          "title": "Max Tool Calls",
+          "type": "integer"
+        },
+        "max_turns": {
+          "default": 8,
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Max Turns",
+          "type": "integer"
+        },
+        "timeout_seconds": {
+          "default": 120.0,
+          "exclusiveMinimum": 0,
+          "maximum": 900,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "title": "AgentRunPolicy",
+      "type": "object"
+    },
+    "AgentRunRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_name": {
+          "enum": [
+            "front_desk",
+            "script_writer",
+            "product_designer",
+            "character_designer",
+            "scene_designer",
+            "storyboard_artist",
+            "video_director",
+            "bgm_director",
+            "quick_media_agent"
+          ],
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "audit_metadata": {
+          "additionalProperties": true,
+          "title": "Audit Metadata",
+          "type": "object"
+        },
+        "context": {
+          "$ref": "#/$defs/AgentRunContext"
+        },
+        "contract_name": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract Name"
+        },
+        "credential_ref": {
+          "default": "llm-default",
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Credential Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "parent_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Run Id"
+        },
+        "policy": {
+          "$ref": "#/$defs/AgentRunPolicy"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "request_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "request_id",
+        "agent_name",
+        "operation",
+        "context"
+      ],
+      "title": "AgentRunRequest",
+      "type": "object"
+    },
+    "AgentRuntimeError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "agent_runtime_unavailable",
+            "agent_protocol_mismatch",
+            "agent_model_unavailable",
+            "agent_structured_output_invalid",
+            "agent_run_budget_exceeded",
+            "agent_stream_backpressure_exceeded",
+            "agent_tool_not_allowed",
+            "agent_target_revision_conflict",
+            "agent_run_cancelled",
+            "agent_runtime_fake_forbidden"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "AgentRuntimeError",
+      "type": "object"
+    },
+    "AgentRuntimeEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_name": {
+          "enum": [
+            "front_desk",
+            "script_writer",
+            "product_designer",
+            "character_designer",
+            "scene_designer",
+            "storyboard_artist",
+            "video_director",
+            "bgm_director",
+            "quick_media_agent"
+          ],
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "event_type": {
+          "enum": [
+            "run_started",
+            "output_delta",
+            "tool_call",
+            "tool_result",
+            "heartbeat",
+            "run_completed",
+            "run_failed",
+            "run_cancelled"
+          ],
+          "title": "Event Type",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 1,
+          "title": "Seq",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "run_id",
+        "agent_name",
+        "event_type",
+        "created_at"
+      ],
+      "title": "AgentRuntimeEvent",
+      "type": "object"
+    },
+    "AgentRuntimeHealth": {
+      "additionalProperties": false,
+      "properties": {
+        "active_runs": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Active Runs",
+          "type": "integer"
+        },
+        "contract_digest": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "real",
+            "fake"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "pi_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Pi Version",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ready",
+            "degraded",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "mode",
+        "contract_digest",
+        "pi_version"
+      ],
+      "title": "AgentRuntimeHealth",
+      "type": "object"
+    },
+    "AgentStructuredSubmission": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "default": 1,
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "contract_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Name",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "submission_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Submission Id",
+          "type": "string"
+        },
+        "value": {
+          "additionalProperties": true,
+          "title": "Value",
+          "type": "object"
+        }
+      },
+      "required": [
+        "run_id",
+        "submission_id",
+        "contract_name",
+        "value"
+      ],
+      "title": "AgentStructuredSubmission",
+      "type": "object"
+    },
+    "AgentStructuredValidationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted": {
+          "title": "Accepted",
+          "type": "boolean"
+        },
+        "normalized_result_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Result Id"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "repair_allowed": {
+          "default": false,
+          "title": "Repair Allowed",
+          "type": "boolean"
+        },
+        "violations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Violations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "accepted"
+      ],
+      "title": "AgentStructuredValidationResult",
+      "type": "object"
+    },
+    "AgentTargetContext": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "current_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Prompt"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "item_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Item Id"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "owner_display_name": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Display Name"
+        },
+        "owner_type": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Type"
+        },
+        "reference_asset_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Asset Summaries",
+          "type": "array"
+        },
+        "selected_version_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentReferenceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "semantic_type": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Type"
+        },
+        "slot_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slot Id"
+        },
+        "target_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Target Type",
+          "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        },
+        "workflow_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Workflow Id"
+        }
+      },
+      "required": [
+        "target_type"
+      ],
+      "title": "AgentTargetContext",
+      "type": "object"
+    },
+    "AgentToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Tool Call Id",
+          "type": "string"
+        },
+        "tool_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "tool_call_id",
+        "idempotency_key",
+        "tool_name"
+      ],
+      "title": "AgentToolCall",
+      "type": "object"
+    },
+    "AgentToolResult": {
+      "additionalProperties": false,
+      "properties": {
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "protocol_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "result": {
+          "additionalProperties": true,
+          "title": "Result",
+          "type": "object"
+        },
+        "run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "completed",
+            "rejected",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "tool_call_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Tool Call Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "tool_call_id",
+        "status"
+      ],
+      "title": "AgentToolResult",
+      "type": "object"
+    },
+    "SpecialistDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Constraints",
+          "type": "array"
+        },
+        "contract_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Name",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "reference_roles": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reference Roles",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "contract_name",
+        "summary"
+      ],
+      "title": "SpecialistDraft",
+      "type": "object"
+    }
+  },
+  "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "protocol_version": "1"
+}

@@ -106,7 +106,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("agent-runtime/src/generated"),
+        default=Path("agent/src/generated"),
     )
     arguments = parser.parse_args()
     generate_agent_contracts(arguments.output)
