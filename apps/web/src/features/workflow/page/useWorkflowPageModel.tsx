@@ -6,7 +6,6 @@ import { useApp } from "../../../AppContextValue";
 import { useConversationEventRouter } from "../copilot/useConversationEventRouter.ts";
 import { useWorkflowConversationPageActions } from "../copilot/useWorkflowConversationPageActions.ts";
 import { useWorkflowConversationController } from "../copilot/useWorkflowConversationController.ts";
-import { formatEditableJson } from "./workflowPageFormatters.ts";
 import {
   LOCAL_WORKFLOW_ID,
   isBackendWorkflowNode,
@@ -28,11 +27,16 @@ import { useWorkflowPromptPanelState } from "./useWorkflowPromptPanelState.ts";
 import { useWorkflowPageRuntimeState } from "./useWorkflowPageRuntimeState.ts";
 import { useWorkflowAssetOperations } from "../assets/useWorkflowAssetOperations.ts";
 import { useAssetLibrarySaveDialog } from "../assets/useAssetLibrarySaveDialog.ts";
-import { canSaveNodeToAssetLibrary } from "../assets/assetLibraryReferenceModel.ts";
 import { useDynamicItemDraftState } from "../assets/useDynamicItemDraftState.ts";
 import { useLocalRevisionOperations } from "../assets/useLocalRevisionOperations.ts";
 import { useWorkflowReferenceState } from "../assets/useWorkflowReferenceState.ts";
-import { createNodeRunMap } from "../../../workflow/runtimeResults.ts";
+import { assetLibraryOutputAssetsForNode } from "../../../workflow/assetLibrarySave.ts";
+import { dynamicMediaItemsForNode } from "../../../workflow/dynamicMediaItems.ts";
+import {
+  createNodeRunMap,
+  optimizedPromptForNode,
+  systemSuggestedPromptForNode,
+} from "../../../workflow/runtimeResults.ts";
 import { shouldApplyWorkflowScopedResult } from "../../../workflow/sessionGuards.ts";
 import { useWorkflowNodeDebugState } from "../../../workflow/useWorkflowNodeDebugState.ts";
 import type { CanvasNode } from "../types.ts";
@@ -47,16 +51,13 @@ import { useWorkflowRunController } from "../runtime/useWorkflowRunController.ts
 import { useV2RuntimeController } from "../runtime/useV2RuntimeController.ts";
 import { useWorkflowGraphMutationController } from "../graph/useWorkflowGraphMutationController.ts";
 import { useWorkflowGraphSyncController } from "../graph/useWorkflowGraphSyncController.ts";
-import { useWorkflowWorkbenchModel } from "../workbench/useWorkflowWorkbenchModel.ts";
 import { useFinalCompositionPageController } from "../final-composition/useFinalCompositionPageController.ts";
 import { useFinalCompositionOperations } from "../final-composition/useFinalCompositionOperations.ts";
 import { useV2WorkflowAssets } from "../v2/assets/useV2WorkflowAssets.ts";
-import { v2RegionItemsForNode } from "../v2/v2RegionNode.ts";
+import { isV2InlineRegionNode, v2RegionItemsForNode } from "../v2/v2RegionNode.ts";
 import { isV2WorkflowId, useWorkflowV2Model } from "../../../workflow-v2/pageAdapter.ts";
 import { selectedAssetForSlot } from "../../../workflow-v2/selectors.ts";
 import {
-  ASSET_LIBRARY_UPLOAD_KIND_OPTIONS,
-  DEBUG_LIST_PREVIEW_LIMIT,
   defaultAdRequest,
   demoEdges,
   demoNodes,
@@ -683,47 +684,37 @@ export function useWorkflowPageModel() {
     removeLibraryEntityForTarget,
     togglePrimaryReferenceForTarget,
   } = workflowReferenceState.actions;
-  const workflowWorkbenchModel = useWorkflowWorkbenchModel({
-    selectedPlanNode,
-    selectedRun,
-    selectedResolvedInputs,
-    mediaStatus,
-    currentWorkflowIsV2,
-  });
-  const {
-    selectedOutputAssets,
-    selectedDynamicMediaItems,
-    selectedStrictReferenceFailure,
-    selectedActiveOutputWarning,
-    selectedPanelModel,
-    selectedNodeUsesV2InlineRegionEditing,
-    selectedEditablePrompt,
-    selectedSystemSuggestion,
-    selectedOptimizedPrompt,
-    selectedProviderPrompt,
-    hasNewSystemSuggestion,
-    selectedResolvedContext,
-    selectedResolvedAssets,
-    selectedMaterializedPrompt,
-    selectedMaterializedAssets,
-    selectedSourceMappings,
-    selectedReferencePolicy,
-    selectedProviderDebug,
-    selectedProviderReferencePlan,
-    selectedAssetFlowDebug,
-    selectedAssetBindings,
-    selectedIdentityCertification,
-    selectedPromptOptimizerDebug,
-    selectedQualitySummary,
-    selectedMissingInputs,
-    selectedStaleUpstreamNodes,
-    selectedLockedUpstreamNodes,
-    assetLibrarySourceMappings,
-    displayInputAssets,
-    assetLibraryResolvedAssets,
-    derivedLibraryEntityIds,
-    hasResolvedDebugData,
-  } = workflowWorkbenchModel;
+  const selectedOutputAssets = useMemo(
+    () => (
+      selectedPlanNode
+        ? assetLibraryOutputAssetsForNode(selectedPlanNode, selectedRun, mediaStatus)
+        : []
+    ),
+    [mediaStatus, selectedPlanNode, selectedRun],
+  );
+  const selectedDynamicMediaItems = useMemo(
+    () => (
+      selectedPlanNode
+        ? dynamicMediaItemsForNode(selectedPlanNode, {
+            run: selectedRun ?? undefined,
+            resolvedInputs: selectedResolvedInputs ?? undefined,
+            outputAssets: selectedOutputAssets,
+          })
+        : []
+    ),
+    [selectedOutputAssets, selectedPlanNode, selectedResolvedInputs, selectedRun],
+  );
+  const selectedNodeUsesV2InlineRegionEditing = Boolean(
+    currentWorkflowIsV2()
+      && selectedPlanNode
+      && isV2InlineRegionNode(selectedPlanNode),
+  );
+  const selectedSystemSuggestion = selectedPlanNode
+    ? systemSuggestedPromptForNode(selectedPlanNode)
+    : "";
+  const selectedOptimizedPrompt = selectedPlanNode
+    ? optimizedPromptForNode(selectedPlanNode)
+    : "";
   selectedDynamicMediaItemsRef.current = selectedDynamicMediaItems;
   const assetLibrarySaveDialog = useAssetLibrarySaveDialog({
     workflow,
@@ -1446,159 +1437,6 @@ export function useWorkflowPageModel() {
         onReconnect: handleReconnect,
         onReconnectEnd: handleReconnectEnd,
         onNodeDragStop: (_event, node) => persistNodePosition(node),
-      },
-    },
-    workbench: {
-      baseModel: workflowWorkbenchModel,
-      model: {
-        detailsOpen,
-        selectedPlanNode,
-        panelOffsets,
-        workflow,
-        selectedV2Items,
-        selectedV2SlotsByItemId,
-        dynamicItemPromptDrafts,
-        dynamicItemPromptSavingById,
-        selectedAssets,
-        selectedV2AssetVersions,
-        workflowV2Runtime: workflowV2Model.workflowV2?.runtime,
-        workflowV2: workflowV2Model.workflowV2,
-        v2SlotVersionsById,
-        selectedV2ReferenceAssets,
-        v2ProviderTaskRefreshKeyBySlotId,
-        selectedFreeGenerationMediaType,
-        selectedFreeAbsorbTargetNodes,
-        nodePromptMentionReferences,
-        workflowRunning,
-        uploadingAsset,
-        nodeAssetInputRef,
-        nodeUploadKind,
-        nodeUploadName,
-        nodeUploadTags,
-        assetLibraryUploadKindOptions: ASSET_LIBRARY_UPLOAD_KIND_OPTIONS,
-        nodeRunLibraryEntities,
-        nodeRunPrimaryReferenceIds,
-        currentNodeRunning,
-        selectedNodeId,
-        finalCompositionTimelineState,
-        revisionCandidateBusyById,
-        qualityOverrideRevisionId,
-        dynamicItemRunningById,
-        dynamicItemLibraryEntitiesById,
-        dynamicItemPrimaryReferenceIdsById,
-        canReviseSelectedAssets: canShowLocalRevisionActions(selectedPlanNode),
-        localRevisionByKey,
-        revisionTarget,
-        revisionInstruction,
-        revisionLibraryEntities,
-        revisionPrimaryReferenceIds,
-        revisionHistoryTarget,
-        assetLibrarySaveTarget,
-        assetLibraryDisplayName,
-        assetLibraryTags,
-        assetLibraryFeedback,
-        assetLibrarySaving,
-        staleReason,
-        selectedRun,
-        debugLoadState,
-        qualityReviewingNodeIds,
-        nodeVersions,
-        validationResult,
-        affectedNodes,
-        debugListPreviewLimit: DEBUG_LIST_PREVIEW_LIMIT,
-        canSaveNodeToAssetLibrary: selectedPlanNode
-          ? canSaveNodeToAssetLibrary(selectedPlanNode)
-          : false,
-        formatEditableJson,
-      },
-      actions: {
-        commitPanelOffset,
-        setDetailsOpen,
-        refreshSelectedNodeRun,
-        refreshV2WorkflowGraph,
-        syncV2Snapshot: (requestWorkflowId) =>
-          v2Runtime.syncSnapshot(requestWorkflowId),
-        changeDynamicItemPrompt,
-        saveV2ItemPrompt,
-        confirmV2ShotSummary,
-        createV2FinalTimelineClip,
-        deleteV2FinalTimelineClip,
-        runSelectedV2Slot,
-        loadV2SlotVersions,
-        saveV2SlotPrompt,
-        selectV2SlotVersion,
-        discardV2WorkingVersion,
-        deleteV2SelectedSlotAsset,
-        pollV2ProviderTask,
-        attachV2Reference,
-        createV2FreeNode,
-        generateV2FreeNode,
-        absorbV2FreeNode,
-        deleteV2FreeNode,
-        removeV2Reference,
-        updateSelectedPrompt,
-        setNodePromptMentionReferences,
-        applySystemSuggestion,
-        regenerateOptimizedPrompt,
-        applyOptimizedPrompt,
-        uploadAssetForSelectedNode,
-        setNodeUploadKind,
-        setNodeUploadName,
-        setNodeUploadTags,
-        setPickerTarget,
-        removeSelectedInputAsset,
-        openMediaLightbox,
-        removeLibraryEntityForTarget,
-        togglePrimaryReferenceForTarget,
-        currentWorkflowIsV2,
-        runNode,
-        openAssetLibrarySaveDialog,
-        loadFinalCompositionTimeline,
-        saveFinalCompositionTimeline,
-        renderFinalCompositionTimeline,
-        moveFinalCompositionClip,
-        toggleFinalCompositionClip,
-        changeFinalCompositionClipNumber,
-        changeFinalCompositionSubtitleText,
-        selectFinalCompositionAudioSource,
-        addFinalCompositionSourceAsImageClip,
-        removeFinalCompositionClip,
-        acceptLocalRevisionCandidate,
-        rejectLocalRevisionCandidate,
-        selectLocalAssetHistoryVersion,
-        setQualityOverrideRevisionId,
-        saveDynamicItemPrompt,
-        openDynamicItemLibraryReference,
-        removeDynamicItemLibraryEntity,
-        toggleDynamicItemPrimaryReference,
-        runDynamicMediaItem,
-        applyDynamicItemCurrentVersion,
-        batchUseDynamicItemCurrentVersions,
-        generateStoryboardShotVideo,
-        generateMissingStaleStoryboardVideos,
-        regenerateAllSelectedStoryboardVideos,
-        applyCurrentStoryboardVideosForComposition,
-        startLocalAssetRevision,
-        setRevisionTarget,
-        openDynamicItemHistory,
-        openLocalAssetHistory,
-        setRevisionInstruction,
-        setRevisionLibraryEntities,
-        setRevisionPrimaryReferenceIds,
-        submitAssetRevision,
-        setRevisionHistoryTarget,
-        loadLocalAssetHistory,
-        setAssetLibraryDisplayName,
-        setAssetLibraryTags,
-        setAssetLibrarySaveTarget,
-        saveAssetLibraryTarget: submitAssetLibrarySave,
-        updateSelectedConfig,
-        setStaleReason,
-        getWorkflowNodeType,
-        ensureSelectedResolvedInputs,
-        reviewSelectedNodeQuality,
-        ensureNodeVersions,
-        refreshNodeVersions,
       },
     },
     sidePanels: {

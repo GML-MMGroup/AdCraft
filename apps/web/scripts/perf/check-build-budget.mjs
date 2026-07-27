@@ -8,6 +8,7 @@ const MAX_INITIAL_JS_BYTES = 475 * 1024;
 const MAX_TOTAL_JS_BYTES = 1281 * 1024;
 const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
+const MAX_SHOT_TIMELINE_JS_BYTES = 16 * 1024;
 const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;
 const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
 const MAX_CSS_BYTES = 16 * 1024;
@@ -96,11 +97,18 @@ const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
 const screenplayEditorJs = jsAssets.find((asset) => asset.name.startsWith("screenplay-editor-"));
 const finalCompositionEditorJs = jsAssets.find((asset) => asset.name.startsWith("V2FinalCompositionEditor-"));
+const shotTimelineJs = jsAssets.find((asset) => asset.name.startsWith("V2ShotTimeline-"));
 const timelineEditorJs = jsAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
 const assetEntityViewerJs = jsAssets.find((asset) => asset.name.startsWith("AssetEntityViewer-"));
 const timelineEditorCss = cssAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
 // The asset viewer is loaded only after a user opens an asset card.
-const featureJsAssets = [screenplayEditorJs, finalCompositionEditorJs, timelineEditorJs, assetEntityViewerJs].filter(Boolean);
+const featureJsAssets = [
+  screenplayEditorJs,
+  finalCompositionEditorJs,
+  shotTimelineJs,
+  timelineEditorJs,
+  assetEntityViewerJs,
+].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
 const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)));
 const initialCssAssetNames = new Set(initialEntries.flatMap((entry) => (entry.css ?? []).map(assetName)));
@@ -118,6 +126,16 @@ const coreJsBytes = jsAssets
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
 const homeRouteCssBytes = homeRouteCss.reduce((sum, asset) => sum + asset.size, 0);
+const finalCompositionEntryName = "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx";
+const shotTimelineEntryName = "src/features/workflow/final-composition/V2ShotTimeline.tsx";
+const finalCompositionEntry = manifest[finalCompositionEntryName];
+const shotTimelineEntry = manifest[shotTimelineEntryName];
+const finalCompositionStaticFiles = finalCompositionEntry
+  ? new Set(staticManifestEntries(manifest, finalCompositionEntryName).map((entry) => assetName(entry.file)))
+  : new Set();
+const shotTimelineStaticFiles = shotTimelineEntry
+  ? new Set(staticManifestEntries(manifest, shotTimelineEntryName).map((entry) => assetName(entry.file)))
+  : new Set();
 
 console.log("Bundle budget report");
 for (const asset of assets.sort((a, b) => b.size - a.size)) {
@@ -156,6 +174,36 @@ if (!finalCompositionEditorJs) {
   failures.push("final composition editor lazy chunk is missing");
 } else if (finalCompositionEditorJs.size > MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES) {
   failures.push(`final composition editor JS ${finalCompositionEditorJs.name} is ${bytes(finalCompositionEditorJs.size)}, expected <= ${bytes(MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES)}`);
+}
+if (!shotTimelineJs || !shotTimelineEntry) {
+  failures.push("advanced shot timeline lazy chunk is missing");
+} else if (shotTimelineJs.size > MAX_SHOT_TIMELINE_JS_BYTES) {
+  failures.push(`advanced shot timeline JS ${shotTimelineJs.name} is ${bytes(shotTimelineJs.size)}, expected <= ${bytes(MAX_SHOT_TIMELINE_JS_BYTES)}`);
+}
+if (
+  finalCompositionEntry
+  && !finalCompositionEntry.dynamicImports?.includes(shotTimelineEntryName)
+) {
+  failures.push("final composition editor must dynamically import the advanced shot timeline");
+}
+if (
+  shotTimelineJs
+  && finalCompositionStaticFiles.has(shotTimelineJs.name)
+) {
+  failures.push("final composition editor statically includes the advanced shot timeline");
+}
+if (
+  timelineEditorJs
+  && finalCompositionStaticFiles.has(timelineEditorJs.name)
+) {
+  failures.push("final composition editor statically includes the timeline editor vendor");
+}
+if (
+  timelineEditorJs
+  && shotTimelineEntry
+  && !shotTimelineStaticFiles.has(timelineEditorJs.name)
+) {
+  failures.push("advanced shot timeline does not own the timeline editor vendor");
 }
 if (!timelineEditorJs) {
   failures.push("timeline editor lazy chunk is missing");

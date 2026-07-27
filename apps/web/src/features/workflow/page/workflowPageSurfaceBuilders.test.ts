@@ -45,14 +45,13 @@ describe("workflow page surface builders", () => {
     );
   });
 
-  it("keeps V1 workbench and V2 final composition visibility mutually exclusive", () => {
+  it("keeps the retired workbench out of every workflow and opens only the V2 final composition panel", () => {
     expect(workflowPageSurfaceVisibility({
       isV2: false,
       detailsOpen: true,
       selectedNodeId: "storyboard",
       workflowId: "workflow-v1",
     })).toEqual({
-      showWorkbench: true,
       showV2FinalComposition: false,
     });
 
@@ -62,7 +61,6 @@ describe("workflow page surface builders", () => {
       selectedNodeId: "final-composition",
       workflowId: "workflow-v2",
     })).toEqual({
-      showWorkbench: false,
       showV2FinalComposition: true,
     });
   });

@@ -1,4 +1,3 @@
-import { WorkflowWorkbenchSurface } from "../workbench/WorkflowWorkbenchSurface.tsx";
 import { WorkflowBottomToolbar } from "./WorkflowBottomToolbar.tsx";
 import { WorkflowCanvasSurface } from "./WorkflowCanvasSurface.tsx";
 import { WorkflowPageFloatingEditors } from "./WorkflowPageFloatingEditors.tsx";
@@ -12,7 +11,6 @@ import {
   buildWorkflowBottomToolbarSurface,
   buildWorkflowCanvasSurface,
   buildWorkflowSidePanelsSurface,
-  buildWorkflowWorkbenchSurface,
   workflowPageSurfaceVisibility,
 } from "./workflowPageSurfaceBuilders.ts";
 
@@ -20,7 +18,6 @@ export function useWorkflowPageSurfaceAssembly(
   args: WorkflowPageSurfaceAssemblyArgs,
 ) {
   const canvasSurface = buildWorkflowCanvasSurface(args.canvas);
-  const workbenchSurface = buildWorkflowWorkbenchSurface(args.workbench);
   const sidePanelsSurface = buildWorkflowSidePanelsSurface(args.sidePanels);
   const toolbarSurface = buildWorkflowBottomToolbarSurface(args.toolbar);
   const visibility = workflowPageSurfaceVisibility({
@@ -40,12 +37,6 @@ export function useWorkflowPageSurfaceAssembly(
         model={sidePanelsSurface.model}
         actions={sidePanelsSurface.actions}
       />
-      {visibility.showWorkbench ? (
-        <WorkflowWorkbenchSurface
-          model={workbenchSurface.model}
-          actions={workbenchSurface.actions}
-        />
-      ) : null}
       <WorkflowPageFinalPanel
         finalComposition={args.overlays.finalComposition}
       />

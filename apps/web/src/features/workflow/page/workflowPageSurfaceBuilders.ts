@@ -1,7 +1,5 @@
 import { mediaUrl } from "../../../api/client.ts";
-import { localRevisionStateKey } from "../../../workflow/localRevision.ts";
 import { DEFAULT_LAYOUT_VIEWPORT_PADDING, validateConnection } from "../canvas/workflowCanvasModel.ts";
-import { finalCompositionTimelineTargetAsset } from "../final-composition/useFinalCompositionOperations.ts";
 import { getTimelineClipCount } from "../final-composition/finalCompositionTimelineModel.ts";
 import { formatSavedAt } from "./workflowPageFormatters.ts";
 import type {
@@ -11,7 +9,6 @@ import type {
   WorkflowPageSidePanelsAssemblyArgs,
   WorkflowPageSurfaceVisibilityArgs,
   WorkflowPageToolbarAssemblyArgs,
-  WorkflowPageWorkbenchAssemblyArgs,
 } from "./workflowPageContracts.ts";
 
 export function buildWorkflowCanvasSurface(
@@ -65,32 +62,6 @@ export function buildWorkflowCanvasSurface(
         args.setFlowEdges((current) => current.filter((edge) => !ids.has(edge.id)));
       },
     },
-  };
-}
-
-export function buildWorkflowWorkbenchSurface(
-  args: WorkflowPageWorkbenchAssemblyArgs,
-): WorkflowPageBuiltSurfaces["workbench"] {
-  const workflowId = args.model.workflow?.workflow_id;
-  const finalCompositionTargetAsset = workflowId
-    ? finalCompositionTimelineTargetAsset(workflowId)
-    : null;
-  const finalCompositionRevisionState =
-    workflowId && finalCompositionTargetAsset
-      ? args.model.localRevisionByKey[
-          localRevisionStateKey(workflowId, "final-composition", finalCompositionTargetAsset)
-        ]
-      : undefined;
-
-  return {
-    model: {
-      ...args.baseModel,
-      ...args.model,
-      finalCompositionTimelineDraft: args.model.finalCompositionTimelineState.draft,
-      finalCompositionRevisionState,
-      finalCompositionTargetAsset,
-    },
-    actions: args.actions,
   };
 }
 
@@ -149,7 +120,6 @@ export function buildWorkflowBottomToolbarSurface(
 
 export function workflowPageSurfaceVisibility(args: WorkflowPageSurfaceVisibilityArgs) {
   return {
-    showWorkbench: !args.isV2,
     showV2FinalComposition: Boolean(
       args.isV2 &&
         args.detailsOpen &&

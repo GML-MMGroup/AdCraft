@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -18,6 +24,29 @@ afterEach(() => {
 });
 
 describe("build budget", () => {
+  test("keeps advanced shot timeline code out of the default composition editor chunk", () => {
+    const editorSource = readFileSync(
+      join(process.cwd(), "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx"),
+      "utf8",
+    );
+    const timelineSource = readFileSync(
+      join(process.cwd(), "src/features/workflow/final-composition/V2ShotTimeline.tsx"),
+      "utf8",
+    );
+    const budgetSource = readFileSync(budgetScriptPath, "utf8");
+
+    expect(editorSource).not.toContain(
+      'import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css"',
+    );
+    expect(editorSource).not.toMatch(/from "\.\/V2ShotTimeline\.tsx"/);
+    expect(editorSource).toContain('import("./V2ShotTimeline.tsx")');
+    expect(timelineSource).toContain(
+      'import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css"',
+    );
+    expect(budgetSource).toContain("MAX_SHOT_TIMELINE_JS_BYTES");
+    expect(budgetSource).toContain('asset.name.startsWith("V2ShotTimeline-")');
+  });
+
   test("counts deduplicated CSS across Home's full static import graph", () => {
     const distDirectory = mkdtempSync(join(tmpdir(), "adcraft-build-budget-"));
     temporaryDirectories.push(distDirectory);
@@ -33,6 +62,7 @@ describe("build budget", () => {
       "shared-b-fixture.js",
       "screenplay-editor-fixture.js",
       "V2FinalCompositionEditor-fixture.js",
+      "V2ShotTimeline-fixture.js",
       "timeline-editor-fixture.js",
       "AssetEntityViewer-fixture.js",
       "timeline-editor-fixture.css",
@@ -61,6 +91,19 @@ describe("build budget", () => {
       "_shared-b.js": {
         file: "assets/shared-b-fixture.js",
         css: ["assets/shared-fixture.css"],
+      },
+      "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx": {
+        file: "assets/V2FinalCompositionEditor-fixture.js",
+        dynamicImports: [
+          "src/features/workflow/final-composition/V2ShotTimeline.tsx",
+        ],
+      },
+      "src/features/workflow/final-composition/V2ShotTimeline.tsx": {
+        file: "assets/V2ShotTimeline-fixture.js",
+        imports: ["_timeline-editor.js"],
+      },
+      "_timeline-editor.js": {
+        file: "assets/timeline-editor-fixture.js",
       },
     }));
 

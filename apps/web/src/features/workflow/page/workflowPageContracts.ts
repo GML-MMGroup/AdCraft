@@ -6,7 +6,11 @@ import type {
   WorkflowGraph,
   WorkflowNode,
 } from "../../../types.ts";
-import type { WorkflowItemV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import type {
+  V2AssetLibraryCategory,
+  WorkflowItemV2,
+  WorkflowSlotV2,
+} from "../../../types-v2.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
 import type { AssetLibraryPickerTarget } from "../types.ts";
 import type { useWorkflowCopilotPlanning } from "../copilot/useWorkflowCopilotPlanning.ts";
@@ -22,16 +26,11 @@ import type { useFinalCompositionOperations } from "../final-composition/useFina
 import type { useDynamicMediaOperations } from "../assets/useDynamicMediaOperations.ts";
 import type { useWorkflowV2DerivedState } from "../v2/useWorkflowV2DerivedState.ts";
 import type { useSlotMicroEdit } from "../v2/slots/useSlotMicroEdit.ts";
-import type { useWorkflowWorkbenchModel } from "../workbench/useWorkflowWorkbenchModel.ts";
 import type { useWorkflowPageScreenplay } from "./useWorkflowPageScreenplay.tsx";
 import type {
   WorkflowCanvasSurfaceActions,
   WorkflowCanvasSurfaceModel,
 } from "./WorkflowCanvasSurface.tsx";
-import type {
-  WorkflowWorkbenchSurfaceActions,
-  WorkflowWorkbenchSurfaceModel,
-} from "../workbench/WorkflowWorkbenchSurface.tsx";
 import type {
   WorkflowSidePanelsSurfaceActions,
   WorkflowSidePanelsSurfaceModel,
@@ -55,7 +54,6 @@ import type { useDynamicItemDraftState } from "../assets/useDynamicItemDraftStat
 type StrictOmit<T, K extends keyof T> = Omit<T, K>;
 type CanvasRuntimeControllerArgs = Parameters<typeof useCanvasRuntimeEventController>[0];
 type WorkflowGraphMutationControllerArgs = Parameters<typeof useWorkflowGraphMutationController>[0];
-type WorkflowWorkbenchModel = ReturnType<typeof useWorkflowWorkbenchModel>;
 type V2SlotOperations = ReturnType<typeof useV2SlotOperations>;
 type LocalRevisionOperations = ReturnType<typeof useLocalRevisionOperations>;
 type FinalCompositionOperations = ReturnType<typeof useFinalCompositionOperations>;
@@ -226,20 +224,6 @@ export type WorkflowPageCanvasAssemblyArgs = {
   >;
 };
 
-type WorkbenchDerivedModelKey =
-  | "finalCompositionTimelineDraft"
-  | "finalCompositionRevisionState"
-  | "finalCompositionTargetAsset";
-
-export type WorkflowPageWorkbenchAssemblyArgs = {
-  baseModel: WorkflowWorkbenchModel;
-  model: StrictOmit<
-    WorkflowWorkbenchSurfaceModel,
-    keyof WorkflowWorkbenchModel | WorkbenchDerivedModelKey
-  >;
-  actions: WorkflowWorkbenchSurfaceActions;
-};
-
 type SidePanelDerivedModelKey =
   | "timelineClipCount"
   | "mediaStatusLabel"
@@ -340,7 +324,7 @@ export type WorkflowPageOverlaysArgs = {
     setDisplayName: (value: string) => void;
     setTags: (value: string) => void;
     close: () => void;
-    submit: WorkflowWorkbenchSurfaceActions["saveAssetLibraryTarget"];
+    submit: (category?: V2AssetLibraryCategory) => Promise<unknown> | unknown;
   };
   picker: {
     target: AssetLibraryPickerTarget | null;
@@ -362,7 +346,6 @@ export type WorkflowPageSurfaceAssemblyArgs = {
     setVariablesPanelOpen: WorkflowPageUiActions["setVariablesPanelOpen"];
   };
   canvas: WorkflowPageCanvasAssemblyArgs;
-  workbench: WorkflowPageWorkbenchAssemblyArgs;
   sidePanels: WorkflowPageSidePanelsAssemblyArgs;
   toolbar: WorkflowPageToolbarAssemblyArgs;
   floatingEditors: WorkflowPageFloatingEditorsArgs;
@@ -374,10 +357,6 @@ export type WorkflowPageBuiltSurfaces = {
   canvas: {
     model: WorkflowCanvasSurfaceModel;
     actions: WorkflowCanvasSurfaceActions;
-  };
-  workbench: {
-    model: WorkflowWorkbenchSurfaceModel;
-    actions: WorkflowWorkbenchSurfaceActions;
   };
   sidePanels: {
     model: WorkflowSidePanelsSurfaceModel;

@@ -29,4 +29,16 @@ describe("workflow page contracts", () => {
     expect(source).not.toMatch(/\.\.\.workflow(?:Ui|Runtime|Canvas|PromptPanel|AssetUi|AssetOperations|Conversation)\.(?:state|actions)/);
     expect(source).not.toMatch(/\.\.\.(?:canvasHistoryController|dynamicItemDrafts|finalCompositionPage)\.(?:state|actions)/);
   });
+
+  it("keeps the retired V1 workbench out of the active page assembly graph", () => {
+    const assembly = readFileSync(resolve(pageRoot, "useWorkflowPageSurfaceAssembly.tsx"), "utf8");
+    const model = readFileSync(resolve(pageRoot, "useWorkflowPageModel.tsx"), "utf8");
+    const builders = readFileSync(resolve(pageRoot, "workflowPageSurfaceBuilders.ts"), "utf8");
+
+    expect(assembly).not.toContain("WorkflowWorkbenchSurface");
+    expect(assembly).not.toContain("buildWorkflowWorkbenchSurface");
+    expect(model).not.toMatch(/\bworkbench\s*:/);
+    expect(builders).not.toContain("buildWorkflowWorkbenchSurface");
+    expect(builders).not.toContain("showWorkbench");
+  });
 });
