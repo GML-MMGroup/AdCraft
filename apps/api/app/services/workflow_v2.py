@@ -109,6 +109,9 @@ from app.services.v2_creative_inventory_reconciler import (
 )
 from app.services.v2_data_boundary import V2DataBoundaryError, validate_v2_relative_path
 from app.services.v2_execution_service import TERMINAL_EXECUTION_STATUSES, V2ExecutionService
+from app.services.v2_execution_result_publication import (
+    V2ExecutionResultPublicationService,
+)
 from app.services.v2_execution_recovery import V2ExecutionRecoveryService
 from app.services.v2_expert_brief_planner import (
     V2ExpertBriefPlanner,
@@ -439,6 +442,9 @@ class WorkflowV2Service:
             data_dir=self._data_dir,
         )
         self._execution_service = V2ExecutionService(self._data_dir)
+        self._execution_result_publication = V2ExecutionResultPublicationService(
+            self._data_dir
+        )
         self._execution_recovery = V2ExecutionRecoveryService(
             self._data_dir,
             stale_running_timeout_seconds=settings.v2_stale_running_timeout_seconds,
@@ -1721,6 +1727,9 @@ class WorkflowV2Service:
             "created_at": now,
             "updated_at": now,
             "events_cursor": self._runtime_events.events_cursor(workflow.workflow_id),
+            "authoring_base_state_version": workflow.state_version,
+            "authoring_base_revision_no": workflow.semantic_revision_no,
+            "pending_selections": {},
             "metadata": {
                 "shot_reference_selections": _execution_shot_reference_selections(workflow),
             },
