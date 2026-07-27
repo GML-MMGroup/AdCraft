@@ -272,11 +272,7 @@ def _load_planning_evidence(
             stage_timings_ms[record.operation] = (
                 stage_timings_ms.get(record.operation, 0) + duration_ms
             )
-        audit = (
-            record.terminal_result.get("agent_runtime_audit")
-            if isinstance(record.terminal_result, dict)
-            else None
-        )
+        audit = record.audit_metadata
         if isinstance(audit, dict):
             model_policy = str(audit.get("model_policy_id") or "").strip()
             prompt_id = str(audit.get("prompt_id") or "").strip()
