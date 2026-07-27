@@ -95,16 +95,6 @@
   text-shadow: 0 1px 12px rgba(255, 255, 255, 0.32);
 }
 
-.card-meta {
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
 .asset-preview {
   height: 168px;
   background:

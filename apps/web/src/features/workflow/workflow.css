@@ -444,31 +444,11 @@
   font-weight: 700;
 }
 
-.composer-footer {
-  justify-content: space-between;
-  gap: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.48);
-  padding-top: 13px;
-}
-
 .composer-tools,
-.mode-row,
-.toolbar-row {
+.mode-row {
   display: flex;
   flex-wrap: wrap;
   gap: 9px;
-}
-
-.send-btn {
-  min-width: 112px;
-  padding: 0 18px;
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.74));
-  color: white;
-  font-weight: 600;
-}
-
-.send-btn.icon-only {
-  min-width: 42px;
 }
 
 .mode-row {
@@ -483,7 +463,6 @@
 }
 
 .mode.is-active,
-.filter-btn.is-active,
 .pill-btn.is-active {
   background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.76));
   color: white;
