@@ -131,3 +131,15 @@ it is the standalone backend rather than this merged AdCraft monorepo. No
 service from the other repository was restarted or modified. Tasks 7.2 through
 7.6 remain open pending a deployable AdCraft runtime with the required FFmpeg
 capabilities.
+
+## 2026-07-27: FFmpeg environment recovery
+
+The host now uses a pinned FFmpeg 7.0.2 static build for both `ffmpeg` and
+`ffprobe`; the former Conda 4.3 executables are retained as backups. The build
+provides `libx264`, AAC, overlay, concat, and a verified short H.264/AAC
+transcode. The native deployment capability probe was also corrected to avoid a
+`pipefail`-induced false negative when FFmpeg emits its encoder list.
+
+The complete non-mutating native preflight now passes. AdCraft API/Pi services
+have not yet been started or restarted for the real-provider acceptance, so
+tasks 7.2 through 7.6 remain open.
