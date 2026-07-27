@@ -349,3 +349,38 @@ class AssetBindingRow(Base):
     removed_at: Mapped[str | None] = mapped_column(Text)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentRunRow(Base):
+    """Durable idempotency, lease, and terminal state for one Pi Agent run."""
+
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')",
+            name="ck_agent_runs_status",
+        ),
+        CheckConstraint("last_event_seq >= 0", name="ck_agent_runs_nonnegative_event_seq"),
+        UniqueConstraint("request_id", name="uq_agent_runs_request_id"),
+        Index("ix_agent_runs_status_lease", "status", "lease_expires_at"),
+    )
+
+    run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_id: Mapped[str] = mapped_column(Text, nullable=False)
+    parent_run_id: Mapped[str | None] = mapped_column(Text)
+    conversation_id: Mapped[str | None] = mapped_column(Text)
+    workflow_id: Mapped[str | None] = mapped_column(Text)
+    agent_name: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
+    lease_owner_id: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    last_event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expected_target_revision: Mapped[int | None] = mapped_column(Integer)
+    terminal_result_json: Mapped[str | None] = mapped_column(Text)
+    tool_results_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    safe_error_code: Mapped[str | None] = mapped_column(Text)
+    audit_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    finished_at: Mapped[str | None] = mapped_column(Text)
