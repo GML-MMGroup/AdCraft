@@ -42,4 +42,67 @@ describe("settled query resource", () => {
     await expect(resource.get("first", async () => "new first")).resolves.toBe("new first");
     await expect(resource.get("second", async () => "new second")).resolves.toBe("new second");
   });
+
+  it("expires settled values after the configured TTL", async () => {
+    let now = 0;
+    const resource = createSettledQueryResource<string>({
+      ttlMs: 100,
+      now: () => now,
+    });
+    const load = vi.fn(async () => "fresh");
+
+    await expect(resource.get("asset", load)).resolves.toBe("fresh");
+    now = 99;
+    await expect(resource.get("asset", async () => "wrong")).resolves.toBe("fresh");
+    now = 100;
+    await expect(resource.get("asset", load)).resolves.toBe("fresh");
+
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts the least-recently-used settled value at its configured capacity", async () => {
+    let now = 0;
+    const resource = createSettledQueryResource<string>({
+      maxEntries: 2,
+      now: () => now,
+    });
+
+    await resource.get("first", async () => "first");
+    now += 1;
+    await resource.get("second", async () => "second");
+    now += 1;
+    await expect(resource.get("first", async () => "wrong")).resolves.toBe("first");
+    now += 1;
+    await resource.get("third", async () => "third");
+
+    await expect(resource.get("first", async () => "wrong")).resolves.toBe("first");
+    await expect(resource.get("second", async () => "second reloaded")).resolves.toBe("second reloaded");
+  });
+
+  it("does not let pending work consume settled-cache capacity", async () => {
+    const resource = createSettledQueryResource<string>({ maxEntries: 2 });
+    await resource.get("first", async () => "first");
+    await resource.get("second", async () => "second");
+    const pending = resource.subscribe("pending", () => new Promise<string>(() => {}));
+
+    await expect(resource.get("first", async () => "wrong")).resolves.toBe("first");
+    await expect(resource.get("second", async () => "wrong")).resolves.toBe("second");
+
+    pending.release();
+  });
+
+  it("aborts an evicted pending entry when its final subscriber releases", () => {
+    const resource = createSettledQueryResource();
+    let signal: AbortSignal | undefined;
+    const subscription = resource.subscribe("pending", (nextSignal) => {
+      signal = nextSignal;
+      return new Promise<string>(() => {});
+    });
+
+    resource.evict("pending");
+    expect(signal?.aborted).toBe(false);
+    subscription.release();
+
+    expect(signal?.aborted).toBe(true);
+  });
 });

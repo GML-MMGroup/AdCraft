@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 const nginxConfig = readFileSync(resolve(process.cwd(), "../../deploy/nginx.conf"), "utf8");
 
 function regexLocation() {
-  const match = nginxConfig.match(/location ~\* (\S+) \{([\s\S]*?)\n {4}\}/);
+  const match = nginxConfig.match(/location ~\* ("[^"\n]+"|\S+) \{([\s\S]*?)\n {4}\}/);
   if (!match) throw new Error("Expected an nginx regex location");
-  return { matcher: new RegExp(match[1], "i"), body: match[2] };
+  const directiveToken = match[1];
+  const regexSource = directiveToken.startsWith('"') ? directiveToken.slice(1, -1) : directiveToken;
+  return { directiveToken, matcher: new RegExp(regexSource, "i"), body: match[2] };
 }
 
 function prefixLocation(path: string) {
@@ -18,6 +20,14 @@ function prefixLocation(path: string) {
 }
 
 describe("static cache policy", () => {
+  it("quotes regex locations containing repetition braces for nginx grammar", () => {
+    const { directiveToken } = regexLocation();
+
+    expect(directiveToken).toContain("{8}");
+    expect(directiveToken).toMatch(/^".*"$/);
+    expect(nginxConfig).not.toMatch(/location ~\* [^"\s][^\n]*\{\d+\}/);
+  });
+
   it("caches only Vite-hashed build assets for one year with immutable semantics", () => {
     const { matcher, body } = regexLocation();
     const generatedViteAssets = [

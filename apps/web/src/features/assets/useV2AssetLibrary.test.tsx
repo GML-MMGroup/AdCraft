@@ -134,7 +134,79 @@ describe("useV2AssetLibrary", () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it("aborts pagination on unmount and does not retain its one-shot cache entry", async () => {
+  it("keeps a refreshed result fresh across unmount and remount", async () => {
+    fixture.listAssetLibraryEntities
+      .mockResolvedValueOnce({ entities: [entity("before-upload")], next_cursor: null })
+      .mockResolvedValueOnce({ entities: [entity("after-upload")], next_cursor: null });
+    const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    await act(async () => {});
+    expect(first.result.current.entities.map((item) => item.entity_id)).toEqual(["before-upload"]);
+    await act(async () => { first.result.current.refresh(); });
+    expect(first.result.current.entities.map((item) => item.entity_id)).toEqual(["after-upload"]);
+    first.unmount();
+
+    const second = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+    await act(async () => {});
+
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(2);
+    expect(second.result.current.entities.map((item) => item.entity_id)).toEqual(["after-upload"]);
+  });
+
+  it("runs duplicate loadMore calls from one render as one operation", async () => {
+    const nextPage = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    fixture.listAssetLibraryEntities
+      .mockResolvedValueOnce({ entities: [entity("first")], next_cursor: "next-page" })
+      .mockReturnValueOnce(nextPage.promise);
+    const view = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    await act(async () => {});
+    let firstLoad!: Promise<void>;
+    let duplicateLoad!: Promise<void>;
+    await act(async () => {
+      firstLoad = view.result.current.loadMore();
+      duplicateLoad = view.result.current.loadMore();
+    });
+
+    expect(firstLoad).toBe(duplicateLoad);
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      nextPage.resolve({ entities: [entity("second")], next_cursor: null });
+      await Promise.all([firstLoad, duplicateLoad]);
+    });
+    expect(view.result.current.entities.map((item) => item.entity_id)).toEqual(["first", "second"]);
+  });
+
+  it("does not join pre-refresh pagination still owned by another hook", async () => {
+    const stalePage = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    const freshPage = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
+    fixture.listAssetLibraryEntities
+      .mockResolvedValueOnce({ entities: [entity("before-upload")], next_cursor: "next-page" })
+      .mockReturnValueOnce(stalePage.promise)
+      .mockResolvedValueOnce({ entities: [entity("after-upload")], next_cursor: "next-page" })
+      .mockReturnValueOnce(freshPage.promise);
+    const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+    const second = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
+
+    await act(async () => {});
+    void first.result.current.loadMore();
+    void second.result.current.loadMore();
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(2);
+
+    await act(async () => { first.result.current.refresh(); });
+    expect(first.result.current.entities.map((item) => item.entity_id)).toEqual(["after-upload"]);
+    void first.result.current.loadMore();
+
+    expect(fixture.listAssetLibraryEntities).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      stalePage.resolve({ entities: [entity("stale-page")], next_cursor: null });
+      freshPage.resolve({ entities: [entity("fresh-page")], next_cursor: null });
+    });
+    expect(first.result.current.entities.map((item) => item.entity_id)).toEqual(["after-upload", "fresh-page"]);
+    expect(second.result.current.entities.map((item) => item.entity_id)).toEqual(["before-upload", "stale-page"]);
+  });
+
+  it("aborts pagination after duplicate calls unmount and does not retain its one-shot cache entry", async () => {
     const nextPage = deferred<{ entities: ReturnType<typeof entity>[]; next_cursor: string | null }>();
     fixture.listAssetLibraryEntities
       .mockResolvedValueOnce({ entities: [entity("first")], next_cursor: "next-page" })
@@ -144,6 +216,7 @@ describe("useV2AssetLibrary", () => {
     const first = renderHook(() => useV2AssetLibrary({ scope: "my", category: "characters", search: "" }));
 
     await act(async () => {});
+    void first.result.current.loadMore();
     void first.result.current.loadMore();
     const signal = fixture.listAssetLibraryEntities.mock.calls[1]?.[1]?.signal as AbortSignal;
     first.unmount();
