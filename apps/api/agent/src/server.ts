@@ -10,6 +10,7 @@ import {
   FakeAgentModelAdapter,
   type AgentModelAdapter,
 } from "./runtime.js";
+import { EventBuffer, EventBufferOverflow } from "./event-buffer.js";
 import { loadRuntimeManifest } from "./manifest.js";
 import { validateAgentRunRequest } from "./protocol-validator.js";
 import { RunBudget, RunBudgetFailure } from "./run-budget.js";
@@ -162,26 +163,22 @@ async function handleRun(
   });
   const active: ActiveRun = { controller };
   activeRuns.set(request.run_id, active);
-  let seq = 0;
+  const eventBuffer = new EventBuffer(response, maxQueueBytes);
   let terminalEmitted = false;
   const emit = async (candidate: AgentRuntimeEvent): Promise<void> => {
     if (terminalEmitted) return;
-    const next = event(request, seq + 1, candidate.event_type, candidate.payload ?? {});
+    const next = event(request, 0, candidate.event_type, candidate.payload ?? {});
     const encoded = `${JSON.stringify(next)}\n`;
     const terminal = terminalEvents.has(next.event_type);
     budget.observeEvent(Buffer.byteLength(encoded), !terminal);
     if (next.event_type === "output_delta") {
       budget.observeOutput(Buffer.byteLength(JSON.stringify(next.payload)));
     }
-    if (!terminal && Buffer.byteLength(encoded) > maxQueueBytes) {
-      throw new RuntimeFailure(
-        "agent_stream_backpressure_exceeded",
-        "Agent runtime event exceeded the bounded output queue.",
-      );
+    if (terminal) {
+      terminalEmitted = eventBuffer.enqueueTerminal(next);
+      return;
     }
-    seq = next.seq;
-    if (terminal) terminalEmitted = true;
-    response.write(encoded);
+    eventBuffer.enqueue(next);
   };
   const heartbeat = setInterval(() => {
     if (!terminalEmitted && !controller.signal.aborted) {
@@ -217,6 +214,7 @@ async function handleRun(
     clearInterval(heartbeat);
     clearTimeout(timeout);
     activeRuns.delete(request.run_id);
+    await eventBuffer.close();
     response.end();
   }
 }
@@ -262,6 +260,9 @@ class RuntimeFailure extends Error {
 function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
   if (error instanceof RunBudgetFailure) {
     return new RuntimeFailure(error.code, "Agent runtime policy rejected the operation.");
+  }
+  if (error instanceof EventBufferOverflow) {
+    return new RuntimeFailure(error.code, error.message);
   }
   if (error instanceof RuntimeFailure) return error;
   if (error instanceof Error && safeAdapterErrorCodes.has(error.message)) {
