@@ -139,6 +139,7 @@ from app.services.v2_script_plan_reconciler import reconcile_script_plan
 from app.services.v2_script_versions import V2ScriptVersionError, V2ScriptVersionService
 from app.services.v2_script_writer import V2ScriptWriterError, V2ScriptWriterService
 from app.services.v2_slot_scheduler import V2SlotScheduler
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_shot_reference_planner import (
     reference_dependency_slot_ids,
     resolve_storyboard_shot_references,
@@ -431,6 +432,10 @@ class WorkflowV2Service:
         self._slot_scheduler = V2SlotScheduler(
             asset_exists=self._asset_store.asset_exists,
             shot_reference_resolver=V2ShotReferenceResolver(self._data_dir),
+            simple_composition_plan_service=V2SimpleCompositionPlanService(
+                self._data_dir,
+                asset_store=self._asset_store,
+            ),
         )
         self._execution_context = threading.local()
         self._event_context = threading.local()
@@ -4727,6 +4732,65 @@ class WorkflowV2Service:
                     continue
                 if submitted:
                     continue
+                settlement = self._slot_scheduler.final_input_settlement(workflow)
+                settled_blocked_input = False
+                for slot_id in settlement.permanently_blocked_slot_ids:
+                    slot = self._find_slot(workflow, slot_id)
+                    if slot is None or slot.status == "skipped":
+                        continue
+                    slot.metadata["skipped_reason"] = "upstream_dependency_failed"
+                    self._transition_slot(
+                        workflow,
+                        slot,
+                        "skipped",
+                        result.slot_transitions,
+                        event_type="slot_generation_skipped",
+                        payload={
+                            "status": "skipped",
+                            "skipped_reason": "upstream_dependency_failed",
+                            "slot_type": slot.slot_type,
+                            "media_type": slot.media_type,
+                        },
+                    )
+                    settled_blocked_input = True
+                if settled_blocked_input:
+                    continue
+                if settlement.settled and not settlement.usable_video_slot_ids:
+                    final_item = self._slot_scheduler.final_composition_item(workflow)
+                    final_slot = (
+                        next(
+                            (
+                                slot
+                                for slot in final_item.slots
+                                if is_final_composition_slot(slot)
+                            ),
+                            None,
+                        )
+                        if final_item is not None
+                        else None
+                    )
+                    if final_slot is not None and final_slot.status not in {
+                        "completed",
+                        "failed",
+                        "skipped",
+                    }:
+                        final_slot.metadata["skipped_reason"] = (
+                            "no_successful_video_segments"
+                        )
+                        self._transition_slot(
+                            workflow,
+                            final_slot,
+                            "skipped",
+                            result.slot_transitions,
+                            event_type="slot_generation_skipped",
+                            payload={
+                                "status": "skipped",
+                                "skipped_reason": "no_successful_video_segments",
+                                "slot_type": final_slot.slot_type,
+                                "media_type": final_slot.media_type,
+                            },
+                        )
+                        continue
                 break
         self._refresh_workflow_state(workflow)
         if result.executed_slot_ids:
