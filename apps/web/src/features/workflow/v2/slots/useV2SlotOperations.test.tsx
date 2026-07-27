@@ -522,6 +522,115 @@ describe("V2 slot reference operations", () => {
     expect(args.syncV2Snapshot).not.toHaveBeenCalled();
     expect(args.setV2SlotVersionsById).not.toHaveBeenCalled();
   });
+
+  it.each(["workflow", "snapshot", "versions"] as const)(
+    "stops replacement refresh when navigation occurs during the %s await",
+    async (pendingStage) => {
+      let releaseStage!: () => void;
+      const stagePending = new Promise<void>((resolve) => {
+        releaseStage = resolve;
+      });
+      const replacementAsset = normalizeAssetVersionV2({
+        asset_id: "library-asset",
+        version_id: "library-version",
+        media_type: "image",
+        source_type: "library",
+        semantic_type: "product_image",
+        status: "completed",
+      });
+      const refreshV2WorkflowGraph = vi.fn(async () => {
+        if (pendingStage === "workflow") await stagePending;
+        return workflow();
+      });
+      const syncV2Snapshot = vi.fn(async () => {
+        if (pendingStage === "snapshot") await stagePending;
+      });
+      const { args, setStatus, v2SlotMicroEdit } = createHarness({
+        refreshV2WorkflowGraph,
+        syncV2Snapshot,
+      });
+      vi.spyOn(v2Api, "registerLibraryReference").mockResolvedValue({
+        source_asset_id: replacementAsset.asset_id,
+        asset: replacementAsset,
+        workflow: workflow(),
+      });
+      const selectVersion = vi.spyOn(v2Api, "selectSlotVersion")
+        .mockResolvedValue(undefined);
+      const slotVersions = vi.spyOn(v2Api, "slotVersions")
+        .mockImplementation(async () => {
+          if (pendingStage === "versions") await stagePending;
+          return { slot_id: "slot-1", versions: [replacementAsset] };
+        });
+      const nextSetStatus = vi.fn();
+      const nextSetSubmitting = vi.fn();
+      const nextSyncV2Snapshot = vi.fn(async () => undefined);
+      const nextSetV2SlotVersionsById = vi.fn();
+      const nextMicroEdit = {
+        ...args.v2SlotMicroEdit,
+        setSubmitting: nextSetSubmitting,
+      } as HookArgs["v2SlotMicroEdit"];
+      const { result, rerender } = renderHook(
+        ({ hookArgs }: { hookArgs: HookArgs }) => useV2SlotOperations(hookArgs),
+        { initialProps: { hookArgs: args } },
+      );
+      const entity = {
+        entity_id: "product-1",
+        entity_type: "product" as const,
+        display_name: "Product one",
+        tags: [],
+        asset_count: 1,
+        is_archived: false,
+      };
+
+      let replacementPromise: Promise<void>;
+      await act(async () => {
+        replacementPromise = result.current.actions
+          .replaceV2SlotWithLibraryEntity("slot-1", entity);
+        await vi.waitFor(() => {
+          expect(selectVersion).toHaveBeenCalledTimes(1);
+          if (pendingStage === "workflow") {
+            expect(refreshV2WorkflowGraph).toHaveBeenCalledTimes(1);
+          } else if (pendingStage === "snapshot") {
+            expect(syncV2Snapshot).toHaveBeenCalledTimes(1);
+          } else {
+            expect(slotVersions).toHaveBeenCalledTimes(1);
+          }
+        });
+      });
+      const nextArgs: HookArgs = {
+        ...args,
+        workflowId: "workflow-2",
+        activeWorkflowIdRef: { current: "workflow-2" },
+        v2SlotMicroEdit: nextMicroEdit,
+        setStatus: nextSetStatus,
+        syncV2Snapshot: nextSyncV2Snapshot,
+        setV2SlotVersionsById: nextSetV2SlotVersionsById,
+      };
+      rerender({ hookArgs: nextArgs });
+
+      releaseStage();
+      await act(async () => {
+        await replacementPromise;
+      });
+
+      expect(setStatus).not.toHaveBeenCalledWith(
+        "product_image replaced from Asset Library.",
+      );
+      expect(nextSetStatus).not.toHaveBeenCalled();
+      expect(nextSetSubmitting).not.toHaveBeenCalled();
+      expect(nextSyncV2Snapshot).not.toHaveBeenCalled();
+      expect(nextSetV2SlotVersionsById).not.toHaveBeenCalled();
+      expect(v2SlotMicroEdit.setSubmitting.mock.calls).toEqual([
+        ["slot-1", true],
+      ]);
+      if (pendingStage === "workflow") {
+        expect(syncV2Snapshot).not.toHaveBeenCalled();
+        expect(slotVersions).not.toHaveBeenCalled();
+      } else if (pendingStage === "snapshot") {
+        expect(slotVersions).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe("V2 slot generation and versions", () => {

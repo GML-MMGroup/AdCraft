@@ -73,7 +73,8 @@ export function createSlotReferenceLibraryOperations(
         : "",
       failureMessage: "V2 slot library replacement failed",
       cleanupBeforeErrorStatus: true,
-    }, async () => {
+    }, async (scope) => {
+      if (!scope) return false;
       const revisionCapture = runner.capture(workflowId);
       const registered = await api.registerLibraryReference(
         workflowId,
@@ -106,7 +107,11 @@ export function createSlotReferenceLibraryOperations(
       if (!runner.isWorkflowCurrent(workflowId)) return false;
       await runner.refreshWorkflowSnapshotAndVersions(
         workflowId,
-        () => dependencies.loadSlotVersions(slotId),
+        (refreshScope) => dependencies.loadSlotVersions(
+          slotId,
+          refreshScope,
+        ),
+        scope,
       );
       return true;
     });

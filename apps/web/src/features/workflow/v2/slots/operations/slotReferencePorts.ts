@@ -7,7 +7,10 @@ import type {
   SlotMicroEditAttachment,
   SlotMicroEditDraft,
 } from "../useSlotMicroEdit.ts";
-import type { SlotMutationRunner } from "./slotMutationRunner.ts";
+import type {
+  SlotMutationRunner,
+  SlotWorkflowMutationScope,
+} from "./slotMutationRunner.ts";
 
 export type SlotReferenceApi = Pick<
   typeof v2Api,
@@ -62,7 +65,10 @@ export type SlotReferenceOperationDependencies = {
   getSlot: (slotId: string) => WorkflowSlotV2 | null;
   getWorkflow: () => WorkflowV2 | null | undefined;
   microEdit: SlotReferenceMicroEdit;
-  loadSlotVersions: (slotId: string) => Promise<unknown>;
+  loadSlotVersions: (
+    slotId: string,
+    scope?: SlotWorkflowMutationScope,
+  ) => Promise<unknown>;
   setStatus: (status: string) => void;
 };
 

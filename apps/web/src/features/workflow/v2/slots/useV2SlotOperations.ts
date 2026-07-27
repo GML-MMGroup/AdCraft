@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { v2Api } from "../../../../api/v2Client.ts";
 import type {
@@ -72,6 +72,19 @@ type V2SlotOperationsArgs = {
 
 export function useV2SlotOperations(args: V2SlotOperationsArgs) {
   const argsRef = useRef(args);
+  const workflowEpochRef = useRef({
+    workflowId: args.workflowId ?? null,
+    epoch: 0,
+  });
+  const renderedWorkflowId = args.workflowId ?? null;
+  useLayoutEffect(() => {
+    if (workflowEpochRef.current.workflowId !== renderedWorkflowId) {
+      workflowEpochRef.current = {
+        workflowId: renderedWorkflowId,
+        epoch: workflowEpochRef.current.epoch + 1,
+      };
+    }
+  }, [renderedWorkflowId]);
 
   useEffect(() => {
     argsRef.current = args;
@@ -101,6 +114,7 @@ export function useV2SlotOperations(args: V2SlotOperationsArgs) {
     getWorkflowId: () => argsRef.current.workflowId,
     currentWorkflowIsV2: () => argsRef.current.currentWorkflowIsV2(),
     getActiveWorkflowId: () => argsRef.current.activeWorkflowIdRef.current,
+    getWorkflowEpoch: () => workflowEpochRef.current.epoch,
     captureRevision: (workflowId) => (
       argsRef.current.captureV2WorkflowApplicationRevision(workflowId)
     ),

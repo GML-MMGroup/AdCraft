@@ -19,6 +19,7 @@ function workflow(stateVersion: number) {
 function createRunner(options: {
   activeWorkflowId?: string | null;
   currentRevision?: boolean;
+  workflowEpoch?: number;
 } = {}) {
   const order: string[] = [];
   const latest = workflow(3);
@@ -26,6 +27,7 @@ function createRunner(options: {
     getWorkflowId: () => "workflow-1",
     currentWorkflowIsV2: () => true,
     getActiveWorkflowId: () => options.activeWorkflowId === undefined ? "workflow-1" : options.activeWorkflowId,
+    getWorkflowEpoch: () => options.workflowEpoch ?? 1,
     captureRevision: (workflowId: string) => ({ workflowId, revision: 1 }),
     isCurrentRevision: () => options.currentRevision ?? true,
     applyWorkflow: vi.fn(async () => {
@@ -126,5 +128,45 @@ describe("slotMutationRunner", () => {
       setStatus.mock.invocationCallOrder[1],
     );
     expect(setStatus.mock.calls).toEqual([["Saving..."], ["etag conflict"]]);
+  });
+
+  it("stops refresh stages and lifecycle updates after the workflow epoch changes", async () => {
+    const options = {
+      activeWorkflowId: "workflow-1" as string | null,
+      workflowEpoch: 1,
+    };
+    const { runner, deps, latest } = createRunner(options);
+    let releaseWorkflowRefresh!: () => void;
+    const workflowRefreshPending = new Promise<void>((resolve) => {
+      releaseWorkflowRefresh = resolve;
+    });
+    deps.refreshWorkflow.mockImplementation(async () => {
+      await workflowRefreshPending;
+      return latest;
+    });
+    const setStatus = vi.fn();
+    const setInFlight = vi.fn();
+
+    const operation = runner.execute({
+      setStatus,
+      setInFlight,
+      startStatus: "Refreshing...",
+      successStatus: "Refreshed",
+      failureMessage: "Refresh failed",
+    }, async () => {
+      await runner.refreshWorkflowSnapshotAndVersions("workflow-1");
+      return true;
+    });
+    await vi.waitFor(() => expect(deps.refreshWorkflow).toHaveBeenCalledTimes(1));
+
+    options.activeWorkflowId = "workflow-2";
+    options.workflowEpoch += 1;
+    options.activeWorkflowId = "workflow-1";
+    releaseWorkflowRefresh();
+    await operation;
+
+    expect(deps.syncSnapshot).not.toHaveBeenCalled();
+    expect(setInFlight).toHaveBeenCalledTimes(1);
+    expect(setStatus.mock.calls).toEqual([["Refreshing..."]]);
   });
 });

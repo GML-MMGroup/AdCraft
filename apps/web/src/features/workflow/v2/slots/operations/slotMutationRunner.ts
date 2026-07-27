@@ -8,6 +8,7 @@ export type SlotMutationRunnerDependencies = {
   getWorkflowId: () => string | null | undefined;
   currentWorkflowIsV2: () => boolean;
   getActiveWorkflowId: () => string | null;
+  getWorkflowEpoch: () => number;
   captureRevision: (workflowId: string) => V2WorkflowApplicationCapture;
   isCurrentRevision: (
     capture: V2WorkflowApplicationCapture,
@@ -26,6 +27,11 @@ export type SlotMutationRunnerDependencies = {
 type MutationResult = {
   stale: boolean;
   workflow: WorkflowV2 | null;
+};
+
+export type SlotWorkflowMutationScope = {
+  workflowId: string;
+  epoch: number;
 };
 
 type MutationLifecycle<T> = {
@@ -53,6 +59,13 @@ const STALE_WITH_REFRESH_MESSAGE =
 const STALE_WITHOUT_REFRESH_MESSAGE =
   "V2 slot changed while this request was in flight. Review the latest state and retry.";
 
+class StaleSlotWorkflowMutationError extends Error {
+  constructor() {
+    super("V2 slot operation cancelled after workflow navigation.");
+    this.name = "StaleSlotWorkflowMutationError";
+  }
+}
+
 export function createSlotMutationRunner(dependencies: SlotMutationRunnerDependencies) {
   function activeWorkflowId() {
     const workflowId = dependencies.getWorkflowId();
@@ -65,6 +78,30 @@ export function createSlotMutationRunner(dependencies: SlotMutationRunnerDepende
 
   function capture(workflowId: string) {
     return dependencies.captureRevision(workflowId);
+  }
+
+  function captureWorkflowScope(
+    workflowId: string,
+  ): SlotWorkflowMutationScope {
+    return {
+      workflowId,
+      epoch: dependencies.getWorkflowEpoch(),
+    };
+  }
+
+  function isWorkflowScopeCurrent(scope: SlotWorkflowMutationScope) {
+    return isWorkflowCurrent(scope.workflowId)
+      && dependencies.getWorkflowEpoch() === scope.epoch;
+  }
+
+  function requireCurrentWorkflowScope(scope: SlotWorkflowMutationScope) {
+    if (!isWorkflowScopeCurrent(scope)) {
+      throw new StaleSlotWorkflowMutationError();
+    }
+  }
+
+  function isStaleWorkflowMutation(error: unknown) {
+    return error instanceof StaleSlotWorkflowMutationError;
   }
 
   async function applyReconciledWorkflow(
@@ -130,40 +167,69 @@ export function createSlotMutationRunner(dependencies: SlotMutationRunnerDepende
 
   async function refreshWorkflowSnapshotAndVersions(
     workflowId: string,
-    refreshSlotVersions?: () => Promise<unknown>,
+    refreshSlotVersions?: (
+      scope: SlotWorkflowMutationScope,
+    ) => Promise<unknown>,
+    scope = captureWorkflowScope(workflowId),
   ) {
+    if (scope.workflowId !== workflowId) {
+      throw new StaleSlotWorkflowMutationError();
+    }
+    requireCurrentWorkflowScope(scope);
     const workflow = await dependencies.refreshWorkflow(workflowId);
+    requireCurrentWorkflowScope(scope);
     await dependencies.syncSnapshot(workflowId);
-    await refreshSlotVersions?.();
+    requireCurrentWorkflowScope(scope);
+    await refreshSlotVersions?.(scope);
+    requireCurrentWorkflowScope(scope);
     return workflow;
   }
 
   async function execute<T>(
     lifecycle: MutationLifecycle<T>,
-    operation: () => Promise<T>,
+    operation: (
+      scope: SlotWorkflowMutationScope | null,
+    ) => Promise<T>,
   ): Promise<T | undefined> {
+    const workflowId = activeWorkflowId();
+    const scope = workflowId ? captureWorkflowScope(workflowId) : null;
+    const lifecycleIsCurrent = () => (
+      !scope || isWorkflowScopeCurrent(scope)
+    );
     lifecycle.setInFlight?.(true);
     if (lifecycle.startStatus) lifecycle.setStatus(lifecycle.startStatus);
     let result: T | undefined;
     let failure: { error: unknown; message: string } | null = null;
     try {
-      result = await operation();
-      const successStatus = typeof lifecycle.successStatus === "function"
-        ? lifecycle.successStatus(result)
-        : lifecycle.successStatus;
-      if (successStatus) lifecycle.setStatus(successStatus);
+      result = await operation(scope);
+      if (lifecycleIsCurrent()) {
+        const successStatus = typeof lifecycle.successStatus === "function"
+          ? lifecycle.successStatus(result)
+          : lifecycle.successStatus;
+        if (successStatus) lifecycle.setStatus(successStatus);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : lifecycle.failureMessage;
       failure = { error, message };
-      lifecycle.onError?.(error, message);
-      if (lifecycle.cleanupBeforeErrorStatus === false) {
+      if (lifecycleIsCurrent()) {
+        lifecycle.onError?.(error, message);
+      }
+      if (
+        lifecycle.cleanupBeforeErrorStatus === false
+        && lifecycleIsCurrent()
+      ) {
         lifecycle.setStatus(message);
       }
     } finally {
-      lifecycle.setInFlight?.(false, failure?.message);
+      if (lifecycleIsCurrent()) {
+        lifecycle.setInFlight?.(false, failure?.message);
+      }
     }
     if (!failure) return result;
-    if (lifecycle.cleanupBeforeErrorStatus !== false) {
+    if (
+      lifecycle.cleanupBeforeErrorStatus !== false
+      && lifecycleIsCurrent()
+    ) {
       lifecycle.setStatus(failure.message);
     }
     if (lifecycle.propagateError) throw failure.error;
@@ -174,6 +240,9 @@ export function createSlotMutationRunner(dependencies: SlotMutationRunnerDepende
     activeWorkflowId,
     isWorkflowCurrent,
     capture,
+    captureWorkflowScope,
+    isWorkflowScopeCurrent,
+    isStaleWorkflowMutation,
     applyReconciledWorkflow,
     requireFresh,
     requireFreshWorkflow,

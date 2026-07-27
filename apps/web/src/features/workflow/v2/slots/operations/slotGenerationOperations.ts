@@ -14,7 +14,10 @@ import {
   slotDraftHasPromptChanges,
   type SlotMicroEditDraft,
 } from "../useSlotMicroEdit.ts";
-import type { SlotMutationRunner } from "./slotMutationRunner.ts";
+import type {
+  SlotMutationRunner,
+  SlotWorkflowMutationScope,
+} from "./slotMutationRunner.ts";
 
 type GenerationApi = Pick<
   typeof v2Api,
@@ -56,7 +59,10 @@ type SlotGenerationOperationDependencies = {
     ) => AssetVersionV2 | undefined;
   };
   versions: {
-    load: (slotId: string) => Promise<SlotVersionsResponseV2 | null>;
+    load: (
+      slotId: string,
+      scope?: SlotWorkflowMutationScope,
+    ) => Promise<SlotVersionsResponseV2 | null>;
   };
   microEdit: GenerationMicroEdit;
   references: {
@@ -308,7 +314,10 @@ export function createSlotGenerationOperations(
       setStatus(`Provider task ${task.status}`);
       await runner.refreshWorkflowSnapshotAndVersions(workflowId);
     } catch (error) {
-      if (!runner.isWorkflowCurrent(workflowId)) return;
+      if (
+        runner.isStaleWorkflowMutation(error)
+        || !runner.isWorkflowCurrent(workflowId)
+      ) return;
       setStatus(
         error instanceof Error ? error.message : "Provider task poll failed",
       );
@@ -345,7 +354,8 @@ export function createSlotGenerationOperations(
         ? `${slotId} selected version updated`
         : "",
       failureMessage: "V2 version selection failed",
-    }, async () => {
+    }, async (scope) => {
+      if (!scope) return false;
       await api.selectSlotVersion(workflowId, slotId, {
         asset_id: asset.asset_id,
         version_id: asset.version_id,
@@ -357,7 +367,8 @@ export function createSlotGenerationOperations(
       }
       await runner.refreshWorkflowSnapshotAndVersions(
         workflowId,
-        () => dependencies.versions.load(slotId),
+        (refreshScope) => dependencies.versions.load(slotId, refreshScope),
+        scope,
       );
       return true;
     });
@@ -438,16 +449,23 @@ type SlotVersionLoaderDependencies = {
 export function createSlotVersionLoader(
   dependencies: SlotVersionLoaderDependencies,
 ) {
-  return async function loadV2SlotVersions(slotId: string) {
-    const workflowId = dependencies.runner.activeWorkflowId();
+  return async function loadV2SlotVersions(
+    slotId: string,
+    initiatingScope?: SlotWorkflowMutationScope,
+  ) {
+    const workflowId = initiatingScope?.workflowId
+      ?? dependencies.runner.activeWorkflowId();
     if (!workflowId || !slotId) return null;
+    const scope = initiatingScope
+      ?? dependencies.runner.captureWorkflowScope(workflowId);
+    if (!dependencies.runner.isWorkflowScopeCurrent(scope)) return null;
     try {
       const versions = await dependencies.api.slotVersions(workflowId, slotId);
-      if (!dependencies.runner.isWorkflowCurrent(workflowId)) return null;
+      if (!dependencies.runner.isWorkflowScopeCurrent(scope)) return null;
       dependencies.setVersions(slotId, versions);
       return versions;
     } catch (error) {
-      if (dependencies.runner.isWorkflowCurrent(workflowId)) {
+      if (dependencies.runner.isWorkflowScopeCurrent(scope)) {
         dependencies.setStatus(
           error instanceof Error
             ? error.message
