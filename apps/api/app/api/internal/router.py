@@ -166,10 +166,7 @@ def execute_agent_tool(
             "agent_structured_submission_rejected contract=%s attempt=%s violations=%s",
             submission.contract_name,
             submission.attempt,
-            [
-                {"path": item["path"], "code": item["code"]}
-                for item in serialized_violations
-            ],
+            [{"path": item["path"], "code": item["code"]} for item in serialized_violations],
         )
         return AgentToolResult(
             run_id=call.run_id,

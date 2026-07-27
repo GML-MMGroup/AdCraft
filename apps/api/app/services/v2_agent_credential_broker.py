@@ -10,9 +10,7 @@ from app.schemas.agent_runtime import AgentName
 
 _AGENT_OPERATIONS: dict[AgentName, frozenset[str]] = {
     "front_desk": frozenset({"workflow_creation", "intent_contract_planner"}),
-    "script_writer": frozenset(
-        {"script_writer", "script_edit_normalization", "targeted_revision"}
-    ),
+    "script_writer": frozenset({"script_writer", "script_edit_normalization", "targeted_revision"}),
     "product_designer": frozenset(
         {
             "product_expert_brief",
@@ -38,9 +36,7 @@ _AGENT_OPERATIONS: dict[AgentName, frozenset[str]] = {
             "targeted_revision",
         }
     ),
-    "storyboard_artist": frozenset(
-        {"storyboard_detail", "storyboard_prompt", "targeted_revision"}
-    ),
+    "storyboard_artist": frozenset({"storyboard_detail", "storyboard_prompt", "targeted_revision"}),
     "video_director": frozenset({"shot_video_prompt", "targeted_revision"}),
     "bgm_director": frozenset({"bgm_expert_brief", "bgm_prompt", "targeted_revision"}),
     "quick_media_agent": frozenset({"free_image", "free_video", "free_audio"}),
