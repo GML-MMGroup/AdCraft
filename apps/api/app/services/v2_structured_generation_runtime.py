@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 import json
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -38,6 +38,7 @@ from app.services.v2_pi_planning_session import AgentInvocation
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
 QualityValidator = Callable[[TOutput], None]
+OutputNormalizer = Callable[[TOutput], TOutput]
 RepairContextBuilder = Callable[[V2StructuredLLMError], dict[str, Any]]
 FallbackBuilder = Callable[[V2StructuredLLMError], TOutput]
 
@@ -88,6 +89,7 @@ class StructuredGenerationSpec(Generic[TOutput]):
     system_prompt: str
     input_payload: dict[str, Any]
     output_model: type[TOutput]
+    output_normalizer: OutputNormalizer[TOutput] | None = None
     quality_validator: QualityValidator[TOutput] | None = None
     repair_context_builder: RepairContextBuilder | None = None
     fallback_builder: FallbackBuilder[TOutput] | None = None
@@ -428,9 +430,14 @@ class StructuredGenerationRuntime:
     ) -> TOutput:
         if not isinstance(output, spec.output_model):
             output = spec.output_model.model_validate(output.model_dump(mode="json"))
+        normalized = cast(TOutput, output)
+        if spec.output_normalizer is not None:
+            normalized = spec.output_normalizer(normalized)
+            if not isinstance(normalized, spec.output_model):
+                normalized = spec.output_model.model_validate(normalized.model_dump(mode="json"))
         if spec.quality_validator is not None:
-            spec.quality_validator(output)
-        return output
+            spec.quality_validator(normalized)
+        return normalized
 
     def _result(
         self,
@@ -671,6 +678,8 @@ def _agent_name_for_operation(operation: str) -> str:
         return "storyboard_artist"
     if operation == "shot_video_prompt":
         return "video_director"
+    if operation == "bgm_prompt":
+        return "bgm_director"
     if operation == "visual_style_scope_repair":
         return "scene_designer"
     return "front_desk"
