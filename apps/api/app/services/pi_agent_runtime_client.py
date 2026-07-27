@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from dataclasses import dataclass
 import json
 from typing import Any, Callable
 
@@ -24,6 +24,14 @@ class PiAgentRuntimeError(RuntimeError):
         self.code = code
         self.message = message
         self.retryable = retryable
+
+
+@dataclass(frozen=True, slots=True)
+class PiAgentRunOutcome:
+    """Bounded result retained after an incrementally consumed Agent stream."""
+
+    terminal_event: AgentRuntimeEvent
+    last_seq: int
 
 
 class PiAgentRuntimeClient:
@@ -86,13 +94,14 @@ class PiAgentRuntimeClient:
         request: AgentRunRequest,
         *,
         on_event: Callable[[AgentRuntimeEvent], None] | None = None,
-    ) -> tuple[AgentRuntimeEvent, ...]:
+    ) -> PiAgentRunOutcome:
         if request.protocol_version != self._protocol_version:
             raise _protocol_error()
         payload = request.model_dump_json().encode("utf-8")
-        events: list[AgentRuntimeEvent] = []
         total_bytes = 0
         terminal_count = 0
+        last_seq = 0
+        terminal: AgentRuntimeEvent | None = None
         try:
             with self._client.stream(
                 "POST",
@@ -120,7 +129,7 @@ class PiAgentRuntimeClient:
                     if not line:
                         continue
                     event = _parse_event(line)
-                    expected_seq = len(events) + 1
+                    expected_seq = last_seq + 1
                     if (
                         event.protocol_version != self._protocol_version
                         or event.run_id != request.run_id
@@ -130,9 +139,10 @@ class PiAgentRuntimeClient:
                         raise _protocol_error()
                     if event.event_type in _TERMINAL_EVENTS:
                         terminal_count += 1
+                        terminal = event
                     elif terminal_count:
                         raise _protocol_error()
-                    events.append(event)
+                    last_seq = event.seq
                     if on_event is not None:
                         on_event(event)
         except PiAgentRuntimeError:
@@ -143,9 +153,9 @@ class PiAgentRuntimeClient:
                 "Agent runtime is unavailable.",
                 retryable=True,
             ) from error
-        if terminal_count != 1 or not events or events[-1].event_type not in _TERMINAL_EVENTS:
+        if terminal_count != 1 or terminal is None:
             raise _protocol_error()
-        return tuple(events)
+        return PiAgentRunOutcome(terminal_event=terminal, last_seq=last_seq)
 
     def cancel(self, run_id: str, *, reason: str = "client_cancelled") -> dict[str, Any]:
         try:
@@ -175,12 +185,6 @@ def _parse_event(line: str) -> AgentRuntimeEvent:
         return AgentRuntimeEvent.model_validate_json(line)
     except ValidationError as error:
         raise _protocol_error() from error
-
-
-def terminal_event(events: Sequence[AgentRuntimeEvent]) -> AgentRuntimeEvent:
-    if not events or events[-1].event_type not in _TERMINAL_EVENTS:
-        raise _protocol_error()
-    return events[-1]
 
 
 def _protocol_error() -> PiAgentRuntimeError:

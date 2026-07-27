@@ -31,7 +31,6 @@ from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
-    terminal_event,
 )
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
@@ -198,10 +197,8 @@ class StructuredGenerationRuntime:
                 )
                 request = request.model_copy(update={"run_id": record.run_id})
                 persisted_sequences.update(range(1, record.last_event_seq + 1))
-            events = self._agent_runtime_client.run(request, on_event=persist_event)
-            for event in events:
-                persist_event(event)
-            terminal = terminal_event(events)
+            outcome = self._agent_runtime_client.run(request, on_event=persist_event)
+            terminal = outcome.terminal_event
             repository.finish(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
