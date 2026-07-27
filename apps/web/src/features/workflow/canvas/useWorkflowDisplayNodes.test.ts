@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
+import type { AssetVersionV2, WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
 import type { CanvasNode } from "../types.ts";
 import {
   createWorkflowDisplayNodeProjector,
@@ -90,6 +90,18 @@ function runtime(runningSlotIds: string[]): WorkflowRuntimeV2 {
   };
 }
 
+function asset(assetId: string, nodeId: string, publicUrl = `/media/${assetId}.png`): AssetVersionV2 {
+  return {
+    asset_id: assetId,
+    version_id: `${assetId}-v1`,
+    media_type: "image",
+    source_type: "generated",
+    semantic_type: "image",
+    node_id: nodeId,
+    public_url: publicUrl,
+  };
+}
+
 describe("workflow display node projection", () => {
   it("keeps unaffected display node references stable when one status changes", () => {
     const sourceNodes = [canvasNode("first"), canvasNode("second")];
@@ -172,5 +184,32 @@ describe("workflow display node projection", () => {
     expect(readsAfterInitialProjection).toBeGreaterThan(0);
     expect(valueReads).toBe(readsAfterInitialProjection);
     expect(runtimeFieldReads).toBe(fieldReadsAfterInitialProjection);
+  });
+
+  it("preserves unaffected display nodes when another node's asset changes", () => {
+    const first = canvasNode("first");
+    const second = canvasNode("second");
+    const projector = createWorkflowDisplayNodeProjector();
+    const baseline = {
+      ...input([first, second], {}),
+      v2AssetVersions: [
+        asset("first-asset", "first"),
+        asset("second-asset", "second"),
+      ],
+    };
+    const firstProjection = projector.project(baseline);
+    const secondProjection = projector.project({
+      ...baseline,
+      v2AssetVersions: [
+        asset("first-asset", "first", "/media/first-asset-updated.png"),
+        asset("second-asset", "second"),
+      ],
+    });
+
+    expect(secondProjection[0]).not.toBe(firstProjection[0]);
+    expect(secondProjection[1]).toBe(firstProjection[1]);
+    expect(secondProjection[1].data.v2AssetVersions).toBe(
+      firstProjection[1].data.v2AssetVersions,
+    );
   });
 });

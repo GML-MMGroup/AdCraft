@@ -166,12 +166,16 @@ export function createWorkflowDisplayNodeProjector(): WorkflowDisplayNodeProject
           const items = node.data.v2Items ?? EMPTY_ITEMS;
           const slotIds = slots.map((slot) => slot.slot_id);
           const itemIds = items.map((item) => item.item_id);
-          const assets = assetIndex!.assetsForNode({
+          const projectedAssets = assetIndex!.assetsForNode({
             nodeId: node.id,
             items,
             slots,
             localAssets: node.data.v2AssetVersions ?? EMPTY_ASSET_LIST,
           });
+          const assets = reuseEquivalentAssetList(
+            projectedAssets,
+            previous?.assets,
+          );
           const slotRuntimeStatusById = scopeRecord(
             input.v2SlotRuntimeStatusById,
             slotIds,
@@ -406,4 +410,42 @@ function pickRuntimeRecords<T>(
     if (source[key] !== undefined) result[key] = source[key];
   }
   return result;
+}
+
+function reuseEquivalentAssetList(
+  next: AssetVersionV2[],
+  previous: AssetVersionV2[] | undefined,
+) {
+  if (!previous || next.length !== previous.length) return next;
+  for (let index = 0; index < next.length; index += 1) {
+    if (!sameSerializableValue(next[index], previous[index])) return next;
+  }
+  return previous;
+}
+
+function sameSerializableValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameSerializableValue(value, right[index]));
+  }
+  if (
+    !left
+    || !right
+    || typeof left !== "object"
+    || typeof right !== "object"
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key) => (
+      Object.hasOwn(rightRecord, key)
+      && sameSerializableValue(leftRecord[key], rightRecord[key])
+    ));
 }
