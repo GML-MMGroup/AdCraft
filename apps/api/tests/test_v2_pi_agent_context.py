@@ -145,12 +145,16 @@ def test_parallel_pi_expert_invocations_keep_distinct_identity_and_context() -> 
     assert len({run_id for run_id, _payload in outputs}) == 4
     assert all(
         sentinel in payload
-        and all(other not in payload for other in {
-            "PRODUCT_SENTINEL",
-            "CHARACTER_SENTINEL",
-            "SCENE_SENTINEL",
-            "BGM_SENTINEL",
-        } - {sentinel})
+        and all(
+            other not in payload
+            for other in {
+                "PRODUCT_SENTINEL",
+                "CHARACTER_SENTINEL",
+                "SCENE_SENTINEL",
+                "BGM_SENTINEL",
+            }
+            - {sentinel}
+        )
         for sentinel, (_run_id, payload) in zip(
             ("PRODUCT_SENTINEL", "CHARACTER_SENTINEL", "SCENE_SENTINEL", "BGM_SENTINEL"),
             outputs,

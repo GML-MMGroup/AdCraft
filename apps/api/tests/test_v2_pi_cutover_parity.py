@@ -29,9 +29,12 @@ def test_deployed_pi_v2_cutover_collaborators_are_present_and_wired(
             "publish_terminal",
         )
     )
-    assert "workflow_override" in inspect.signature(
-        V2FinalCompositionTimelineService.load_or_create_and_reconcile
-    ).parameters
+    assert (
+        "workflow_override"
+        in inspect.signature(
+            V2FinalCompositionTimelineService.load_or_create_and_reconcile
+        ).parameters
+    )
 
 
 def test_execution_state_starts_with_the_publication_overlay(

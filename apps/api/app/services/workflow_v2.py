@@ -442,9 +442,7 @@ class WorkflowV2Service:
             data_dir=self._data_dir,
         )
         self._execution_service = V2ExecutionService(self._data_dir)
-        self._execution_result_publication = V2ExecutionResultPublicationService(
-            self._data_dir
-        )
+        self._execution_result_publication = V2ExecutionResultPublicationService(self._data_dir)
         self._execution_recovery = V2ExecutionRecoveryService(
             self._data_dir,
             stale_running_timeout_seconds=settings.v2_stale_running_timeout_seconds,

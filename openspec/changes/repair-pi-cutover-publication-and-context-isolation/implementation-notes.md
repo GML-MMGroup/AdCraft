@@ -33,3 +33,20 @@
   ownership, unsafe field rejection, and parallel invocation identity.
 - Tightened the shared typed-context validator to reject data URLs and base64
   payloads before a Pi sidecar or provider can receive them.
+
+## 2026-07-27: Verification and scope audit
+
+- Read-only inspection of `adwf_v2_bdb9a906250b` retained the diagnostic
+  evidence: failed main-image runtime entries already carried canonical asset
+  and version IDs while their matching multi-view slots were blocked with null
+  selections. No persisted workflow, runtime, asset, or provider-task file was
+  modified.
+- The standalone-to-deployed audit classified the publication service, public
+  authoring lookup, execution overlay fields, and timeline override as required
+  production dependencies. The remaining compared Pi/V2 collaborators were
+  already present or intentionally owned by the deployed package.
+- Scope audit found no Agno path, V1 fallback, frontend change, provider
+  redesign, or prompt-content rewrite. The only `frontend` match is a test name
+  describing polling behavior.
+- The earlier Pi equivalence record received a dated additive correction; its
+  historical evidence remains intact.

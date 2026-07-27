@@ -6,10 +6,10 @@
 - [x] 1.2 Add a focused failing scheduler test reproducing provider success
   followed by null selected IDs, blocked matching multi-view, and duplicate
   main generation on the next fill-missing run.
-- [ ] 1.3 Preserve diagnostic evidence from
+- [x] 1.3 Preserve diagnostic evidence from
   `adwf_v2_bdb9a906250b` without adding a production recovery path or modifying
   its persisted data.
-- [ ] 1.4 Compare only production-reachable Pi/V2 dependencies between the
+- [x] 1.4 Compare only production-reachable Pi/V2 dependencies between the
   standalone backend and `apps/api`; classify each absent file as required,
   intentionally replaced, or unrelated.
 
@@ -68,11 +68,11 @@
   the Pi/V2 execution roots.
 - [x] 5.2 Restore the focused publication, scheduler, context-isolation, and
   cutover tests that were omitted from the deployed backend package.
-- [ ] 5.3 Update the existing Pi equivalence matrix and append a dated
+- [x] 5.3 Update the existing Pi equivalence matrix and append a dated
   correction to
   `openspec/changes/verify-pi-cutover-equivalence/verification.md`; retain the
   prior record for audit history.
-- [ ] 5.4 Verify no Agno path, V1 fallback, frontend change, provider redesign,
+- [x] 5.4 Verify no Agno path, V1 fallback, frontend change, provider redesign,
   or Prompt-content rewrite was introduced.
 
 ## 6. Deterministic Verification
@@ -85,13 +85,13 @@
   tests/test_v2_parallel_scheduler.py -q`.
 - [x] 6.3 Run the Pi context and expert-isolation files, including the newly
   added sentinel and parallel-invocation tests.
-- [ ] 6.4 Run a deterministic fake-provider critical path from main images
+- [x] 6.4 Run a deterministic fake-provider critical path from main images
   through multi-views, storyboard media, and Final Composition.
-- [ ] 6.5 Run `uv run pytest -m "integration or media" -q` only after focused
+- [x] 6.5 Run `uv run pytest -m "integration or media" -q` only after focused
   suites pass.
-- [ ] 6.6 Run the full backend suite once at final merge readiness; diagnose
+- [x] 6.6 Run the full backend suite once at final merge readiness; diagnose
   failures without skip, xfail, deletion, or weakened assertions.
-- [ ] 6.7 Run `uv run ruff format .`, `uv run ruff check .`,
+- [x] 6.7 Run `uv run ruff format .`, `uv run ruff check .`,
   `openspec validate repair-pi-cutover-publication-and-context-isolation
   --type change --strict`, and `git diff --check`.
 
