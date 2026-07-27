@@ -96,20 +96,36 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     "Create an instrumental music brief from the screenplay rhythm, duration, emotion, and audio constraints.",
   ),
   registration(
-    "adcraft.product_designer.product_prompt.v1",
+    "adcraft.product_designer.product_main_prompt.v1",
     "product_designer",
     "product_prompt",
-    "V2ProductPromptPlan",
+    "V2ProductMainPromptPlan",
     "Product Designer",
-    "Compile one Product slot prompt while preserving exact Product identity and only its declared references.",
+    "Compile one single-product main-image prompt while preserving exact Product identity and only its declared references.",
   ),
   registration(
-    "adcraft.character_designer.character_prompt.v1",
+    "adcraft.product_designer.product_multi_view_prompt.v1",
+    "product_designer",
+    "product_prompt",
+    "V2ProductMultiViewPromptPlan",
+    "Product Designer",
+    "Compile one 2x2 multi-view Product grid from the selected main Product image while preserving the same Product identity.",
+  ),
+  registration(
+    "adcraft.character_designer.character_main_prompt.v1",
     "character_designer",
     "character_prompt",
-    "V2CharacterPromptPlan",
+    "V2CharacterMainPromptPlan",
     "Character Designer",
-    "Compile one Character slot prompt while preserving exact Character identity, view requirements, and references.",
+    "Compile one single-character main-image prompt while preserving exact Character identity and only its declared references.",
+  ),
+  registration(
+    "adcraft.character_designer.character_three_view_prompt.v1",
+    "character_designer",
+    "character_prompt",
+    "V2CharacterThreeViewPromptPlan",
+    "Character Designer",
+    "Compile one front-side-back Character turnaround from the selected main Character image while preserving the same identity, face, styling, and wardrobe.",
   ),
   registration(
     "adcraft.character_designer.targeted_revision.v1",
@@ -120,12 +136,20 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     "Revise only the Character prompt identified by the typed context. The exact target is already resolved. Do not call mutation or generation tools; submit a revised_item_prompt result for Python to apply.",
   ),
   registration(
-    "adcraft.scene_designer.scene_prompt.v1",
+    "adcraft.scene_designer.scene_main_prompt.v1",
     "scene_designer",
     "scene_prompt",
-    "V2ScenePromptPlan",
+    "V2SceneMainPromptPlan",
     "Scene Designer",
-    "Compile one Scene slot prompt from the owning environment brief and only Scene-relevant references.",
+    "Compile one single-environment main-image prompt from the owning Scene brief and only Scene-relevant references.",
+  ),
+  registration(
+    "adcraft.scene_designer.scene_multi_view_prompt.v1",
+    "scene_designer",
+    "scene_prompt",
+    "V2SceneMultiViewPromptPlan",
+    "Scene Designer",
+    "Compile one 2x2 multi-view Scene grid from the selected main Scene image while preserving the same location, layout, materials, lighting, and time of day.",
   ),
   registration(
     "adcraft.scene_designer.targeted_revision.v1",
@@ -208,8 +232,14 @@ const descriptors = Object.freeze(
   }),
 );
 
-const byOperation = new Map(
-  descriptors.map((item) => [`${item.agent_name}:${item.operation}`, item]),
+const byOperationAndContract = new Map(
+  descriptors.map((item) => [
+    `${item.agent_name}:${item.operation}:${item.contract_name}`,
+    item,
+  ]),
+);
+const operationKeys = new Set(
+  descriptors.map((item) => `${item.agent_name}:${item.operation}`),
 );
 const planningOperations = new Set(descriptors.map((item) => item.operation));
 
@@ -226,11 +256,14 @@ export function getPromptDescriptor(
   operation: string,
   contractName: string,
 ): PromptDescriptor {
-  const descriptor = byOperation.get(`${agentName}:${operation}`);
-  if (!descriptor) throw new Error("agent_prompt_not_found");
-  if (descriptor.contract_name !== contractName) {
+  const operationKey = `${agentName}:${operation}`;
+  const descriptor = byOperationAndContract.get(
+    `${operationKey}:${contractName}`,
+  );
+  if (!descriptor && operationKeys.has(operationKey)) {
     throw new Error("agent_prompt_contract_mismatch");
   }
+  if (!descriptor) throw new Error("agent_prompt_not_found");
   return descriptor;
 }
 

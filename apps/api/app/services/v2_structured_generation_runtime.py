@@ -653,6 +653,8 @@ def _agent_operation(spec: StructuredGenerationSpec[Any]) -> str:
         return "storyboard_prompt"
     if spec.contract_name == "V2ShotVideoPromptPlan":
         return "shot_video_prompt"
+    if spec.contract_name == "V2BgmPromptPlan":
+        return "bgm_prompt"
     return spec.stage_name
 
 
