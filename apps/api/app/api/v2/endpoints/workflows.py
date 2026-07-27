@@ -1196,6 +1196,8 @@ def _workflow_v2_http_error(exc: WorkflowV2Error) -> HTTPException:
         "composition_probe_failed",
         "provider_output_missing",
         "quality_gate_failed",
+        "quick_media_output_invalid",
+        "quick_media_planning_failed",
         "specialist_execution_failed",
         "specialist_output_invalid",
         "specialist_real_mode_unavailable",

@@ -1281,6 +1281,12 @@ def _provider_prompt(
         "quick_video_generator",
         "quick_audio_generator",
     }:
+        quick_media_plan = slot.metadata.get("quick_media_prompt_plan")
+        if isinstance(quick_media_plan, dict):
+            planned_prompt = str(quick_media_plan.get("provider_prompt") or "").strip()
+            planned_media_type = str(quick_media_plan.get("output_media_type") or "")
+            if planned_prompt and planned_media_type == slot.media_type:
+                return planned_prompt
         media_type = slot.media_type or "media"
         return f"Generate a standalone {media_type} asset: {slot.slot_prompt or item.item_prompt}"
     return slot.slot_prompt or item.item_prompt or item.shot_summary_prompt

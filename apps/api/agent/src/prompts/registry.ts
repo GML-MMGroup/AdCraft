@@ -151,6 +151,30 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     "BGM Director",
     "Compile one instrumental BGM provider prompt with duration, mood, pacing, no-vocals, and safety constraints.",
   ),
+  registration(
+    "adcraft.quick_media.free_image.v1",
+    "quick_media_agent",
+    "free_image",
+    "V2QuickMediaPromptPlan",
+    "Quick Media Agent",
+    "Compile one standalone image provider prompt. Do not classify the output as a Product, Character, Scene, or storyboard asset.",
+  ),
+  registration(
+    "adcraft.quick_media.free_video.v1",
+    "quick_media_agent",
+    "free_video",
+    "V2QuickMediaPromptPlan",
+    "Quick Media Agent",
+    "Compile one standalone video provider prompt. Do not classify the output as a Product, Character, Scene, or storyboard asset.",
+  ),
+  registration(
+    "adcraft.quick_media.free_audio.v1",
+    "quick_media_agent",
+    "free_audio",
+    "V2QuickMediaPromptPlan",
+    "Quick Media Agent",
+    "Compile one standalone audio provider prompt. Do not classify the output as a Product, Character, Scene, or BGM-owned workflow asset.",
+  ),
 ];
 
 const descriptors = Object.freeze(

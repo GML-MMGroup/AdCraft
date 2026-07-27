@@ -139,6 +139,10 @@ from app.services.v2_pi_planning_session import (
     freeze_explicit_planning_facts,
     merge_planning_degradation,
 )
+from app.services.v2_quick_media_agent_service import (
+    V2QuickMediaAgentError,
+    V2QuickMediaAgentService,
+)
 from app.services.v2_linked_context import V2LinkedContextSynchronizer
 from app.services.v2_provider_executor import V2ProviderExecutor
 from app.services.v2_provider_result_committer import (
@@ -476,6 +480,7 @@ class WorkflowV2Service:
             target_resolver=self._agent_target_resolver,
             conversation_context_source=V2AgentConversationRepository(self._authoring_database),
         )
+        self._quick_media_agent = V2QuickMediaAgentService(settings)
 
     def plan_from_prompt(
         self,
@@ -3271,7 +3276,20 @@ class WorkflowV2Service:
         slot = _slot_by_type(item, "free_output")
         if slot is None:
             raise WorkflowV2Error("slot_not_found")
+        try:
+            quick_media_plan = self._quick_media_agent.plan(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                request=request,
+            )
+        except V2QuickMediaAgentError as exc:
+            raise WorkflowV2Error(exc.code, str(exc)) from exc
         slot.media_type = request.output_media_type
+        slot.slot_prompt = quick_media_plan.provider_prompt
+        slot.negative_prompt = quick_media_plan.negative_prompt
+        slot.prompt_source = "agent"
+        slot.manual_prompt_dirty = False
+        slot.metadata["quick_media_prompt_plan"] = quick_media_plan.model_dump(mode="json")
         executed_slot_ids: list[str] = []
         provider_calls: list[dict[str, Any]] = []
         slot_transitions: list[dict[str, Any]] = []
