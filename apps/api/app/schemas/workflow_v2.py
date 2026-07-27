@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.schemas.asset_library import AssetReference
 from app.schemas.assets import WorkflowAssetReference
 from app.schemas.front_desk import FrontDeskChatResponse
+from app.schemas.workflow_v2_composition import WorkflowV2CompositionCapabilities
 from app.schemas.workflow_v2_intent import V2FrontDeskPlanningSeed
 
 
@@ -1407,6 +1408,7 @@ class WorkflowV2TimelineResponse(BaseModel):
     available_sources: list["WorkflowV2TimelineSource"] = Field(default_factory=list)
     stale_clip_ids: list[str] = Field(default_factory=list)
     missing_source_clip_ids: list[str] = Field(default_factory=list)
+    composition_capabilities: WorkflowV2CompositionCapabilities | None = None
 
 
 class WorkflowV2TimelineUpdateRequest(BaseModel):

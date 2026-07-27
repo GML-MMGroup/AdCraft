@@ -136,6 +136,10 @@ class Settings:
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     final_composition_subtitle_font_path: str | None = None
+    final_composition_render_mode: str = "simple_sequence"
+    final_composition_bgm_gain_db_with_source: float = -18.0
+    final_composition_bgm_gain_db_without_source: float = -10.0
+    final_composition_bgm_fade_out_seconds: float = 0.5
     ffmpeg_capability_timeout_seconds: int = 10
     ffmpeg_video_codec: str | None = None
     ffmpeg_allowed_video_encoders: str = "libx264,libopenh264"
@@ -280,6 +284,22 @@ class Settings:
             ffprobe_path=os.getenv("FFPROBE_PATH", cls.ffprobe_path),
             final_composition_subtitle_font_path=(
                 os.getenv("FINAL_COMPOSITION_SUBTITLE_FONT_PATH") or None
+            ),
+            final_composition_render_mode=os.getenv(
+                "FINAL_COMPOSITION_RENDER_MODE",
+                cls.final_composition_render_mode,
+            ),
+            final_composition_bgm_gain_db_with_source=_read_float(
+                "FINAL_COMPOSITION_BGM_GAIN_DB_WITH_SOURCE",
+                cls.final_composition_bgm_gain_db_with_source,
+            ),
+            final_composition_bgm_gain_db_without_source=_read_float(
+                "FINAL_COMPOSITION_BGM_GAIN_DB_WITHOUT_SOURCE",
+                cls.final_composition_bgm_gain_db_without_source,
+            ),
+            final_composition_bgm_fade_out_seconds=_read_float(
+                "FINAL_COMPOSITION_BGM_FADE_OUT_SECONDS",
+                cls.final_composition_bgm_fade_out_seconds,
             ),
             ffmpeg_capability_timeout_seconds=_read_int(
                 "FFMPEG_CAPABILITY_TIMEOUT_SECONDS",
