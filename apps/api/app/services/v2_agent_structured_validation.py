@@ -61,6 +61,23 @@ class V2AgentStructuredValidationService:
             )
 
         normalized_value = normalized.model_dump(mode="json")
+        if run.validation_profile == "canary_reject_first_v1":
+            if submission.attempt == 1:
+                return _rejected(
+                    submission,
+                    (
+                        StructuredViolation(
+                            code="canary_first_submission_rejected",
+                            message="The verification canary requires one scoped repair.",
+                        ),
+                    ),
+                )
+            return AgentStructuredValidationResult(
+                accepted=True,
+                normalized_result_id=submission.submission_id,
+                normalized_value=normalized_value,
+                repair_allowed=False,
+            )
         semantic_violations = _semantic_violations(
             run.validation_profile,
             run.validation_context,

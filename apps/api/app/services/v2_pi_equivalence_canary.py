@@ -3,8 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal, Protocol
+from uuid import uuid4
 
 from app.core.config import Settings, get_settings
+from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.database import create_v2_database
+from app.schemas.workflow_v2_expert_brief_contracts import V2CharacterExpertPlan
 from app.schemas.workflow_v2 import (
     WorkflowV2ChatActionRequest,
     WorkflowV2ChatActionTarget,
@@ -14,6 +18,10 @@ from app.services.v2_chat_planning_canary import (
     V2ChatPlanningCanaryResult,
     V2ChatPlanningCanaryService,
     _load_planning_evidence,
+)
+from app.services.v2_structured_generation_runtime import (
+    StructuredGenerationRuntime,
+    StructuredGenerationSpec,
 )
 from app.services.workflow_v2 import WorkflowV2Service
 
@@ -38,12 +46,11 @@ V2_PI_CANARY_CASE_IDS: tuple[V2PiCanaryCaseId, ...] = (
     "targeted_scene_revision",
 )
 
-_PLANNING_FIXTURES: dict[V2PiCanaryCaseId, str] = {
+_PLANNING_FIXTURES: dict[str, str] = {
     "planning_en": "chat_planning_canary_en",
     "planning_zh": "chat_planning_canary_zh",
     "planning_explicit_counts": "chat_planning_canary_en",
     "planning_unspecified_counts": "chat_planning_canary_zh",
-    "planning_forced_repair": "chat_planning_canary",
 }
 
 
@@ -53,6 +60,10 @@ class _PlanningCanary(Protocol):
 
 class _TargetedRevisionRunner(Protocol):
     def run(self, case_id: str) -> "V2PiCanaryCaseResult": ...
+
+
+class _ForcedRepairRunner(Protocol):
+    def run(self) -> "V2PiCanaryCaseResult": ...
 
 
 @dataclass(frozen=True)
@@ -106,6 +117,7 @@ class V2PiEquivalenceCanaryService:
         *,
         planning_canary: _PlanningCanary | None = None,
         targeted_revision_runner: _TargetedRevisionRunner | None = None,
+        forced_repair_runner: _ForcedRepairRunner | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._planning = planning_canary or V2ChatPlanningCanaryService(self._settings)
@@ -113,12 +125,25 @@ class V2PiEquivalenceCanaryService:
             self._settings,
             planning_canary=self._planning,
         )
+        self._forced_repair = forced_repair_runner or _ProductionForcedRepairRunner(
+            self._settings
+        )
 
     def run_case(self, case_id: V2PiCanaryCaseId) -> V2PiCanaryCaseResult:
         started_at = perf_counter()
         try:
             if case_id in _PLANNING_FIXTURES:
                 result = self._run_planning_case(case_id)
+            elif case_id == "planning_forced_repair":
+                result = self._forced_repair.run()
+                if result.repair_attempt_count < 1:
+                    result = V2PiCanaryCaseResult(
+                        **{
+                            **result.__dict__,
+                            "status": "failed",
+                            "error_code": "v2_pi_canary_repair_not_observed",
+                        }
+                    )
             elif case_id in {
                 "targeted_character_revision",
                 "targeted_scene_revision",
@@ -167,11 +192,6 @@ class V2PiEquivalenceCanaryService:
             assertions.append("explicit_counts_preserved")
         if case_id == "planning_unspecified_counts":
             assertions.append("unspecified_counts_preserved")
-        if case_id == "planning_forced_repair":
-            if planned.repair_attempt_count < 1:
-                error_code = "v2_pi_canary_repair_not_observed"
-            else:
-                assertions.append("structured_repair_observed")
         return V2PiCanaryCaseResult(
             case_id=case_id,
             workflow_id=planned.workflow_id,
@@ -181,6 +201,46 @@ class V2PiEquivalenceCanaryService:
             prompt_id=_first(planned.prompt_descriptors),
             repair_attempt_count=planned.repair_attempt_count,
             error_code=error_code,
+        )
+
+
+class _ProductionForcedRepairRunner:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def run(self) -> V2PiCanaryCaseResult:
+        workflow_id = f"canary_{uuid4().hex[:16]}"
+        StructuredGenerationRuntime(settings=self._settings).run(
+            StructuredGenerationSpec(
+                stage_name="character_expert_brief",
+                operation="character_expert_brief",
+                agent_name="character_designer",
+                contract_name="V2CharacterExpertPlan",
+                model_id=self._settings.llm_character_model,
+                system_prompt="",
+                input_payload={
+                    "verification_goal": (
+                        "Return a valid minimal Character expert plan with no media work."
+                    )
+                },
+                output_model=V2CharacterExpertPlan,
+                validation_profile="canary_reject_first_v1",
+                trace_metadata={"workflow_id": workflow_id},
+            )
+        )
+        repair_attempt_count, model_id, prompt_id = _agent_run_evidence(
+            self._settings,
+            workflow_id,
+        )
+        return V2PiCanaryCaseResult(
+            case_id="planning_forced_repair",
+            workflow_id=workflow_id,
+            status="passed",
+            assertions=("structured_repair_observed",),
+            agent_id="character_designer",
+            model_id=model_id or self._settings.llm_character_model,
+            prompt_id=prompt_id,
+            repair_attempt_count=repair_attempt_count,
         )
 
 
@@ -247,3 +307,37 @@ class _ProductionTargetedRevisionRunner:
 
 def _first(values: tuple[str, ...]) -> str | None:
     return values[0] if values else None
+
+
+def _agent_run_evidence(
+    settings: Settings,
+    workflow_id: str,
+) -> tuple[int, str | None, str | None]:
+    database = create_v2_database(settings.media_data_dir)
+    try:
+        records = AgentRunRepository(database).list_for_workflow(workflow_id)
+    finally:
+        database.dispose()
+    repair_attempt_count = sum(
+        1
+        for record in records
+        for key in record.tool_results
+        if key.endswith(":structured:2")
+    )
+    model_id = next(
+        (
+            str(record.audit_metadata.get("model_id") or "").strip()
+            for record in records
+            if record.audit_metadata.get("model_id")
+        ),
+        None,
+    )
+    prompt_id = next(
+        (
+            str(record.audit_metadata.get("prompt_id") or "").strip()
+            for record in records
+            if record.audit_metadata.get("prompt_id")
+        ),
+        None,
+    )
+    return repair_attempt_count, model_id, prompt_id
