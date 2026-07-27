@@ -194,9 +194,7 @@ def _wait_for_health(settings: Settings, children: list[SupervisedChild]) -> Non
             raise AgentStackSupervisorError(
                 "agent_stack_child_failed: a supervised child exited during startup."
             )
-        if _healthy("http://127.0.0.1:8000/api/v1/health") and _runtime_compatible(
-            settings
-        ):
+        if _healthy("http://127.0.0.1:8000/api/v1/health") and _runtime_compatible(settings):
             return
         time.sleep(0.25)
     raise AgentStackSupervisorError(

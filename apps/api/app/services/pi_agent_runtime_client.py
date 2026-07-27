@@ -81,10 +81,7 @@ class PiAgentRuntimeClient:
                 retryable=True,
             ) from error
         expected = V2AgentRuntimeManifestService().expected()
-        actual = {
-            field: getattr(health, field)
-            for field in type(expected).model_fields
-        }
+        actual = {field: getattr(health, field) for field in type(expected).model_fields}
         if actual != expected.model_dump(mode="python"):
             raise _protocol_error()
         return health
