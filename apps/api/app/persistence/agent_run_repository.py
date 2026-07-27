@@ -77,7 +77,6 @@ class AgentRunRepository:
         _validate_validation_context(request.validation_context)
         lease_expiry = timestamp + timedelta(seconds=_lease_duration(lease_duration_seconds))
         context = request.context
-        target = getattr(context, "target", None)
         values = {
             "run_id": request.run_id,
             "request_id": request.request_id,
@@ -94,7 +93,7 @@ class AgentRunRepository:
             "lease_owner_id": lease_owner_id,
             "lease_expires_at": _iso(lease_expiry),
             "last_event_seq": 0,
-            "expected_target_revision": (target.expected_revision if target is not None else None),
+            "expected_target_revision": _expected_target_revision(request),
             "terminal_result_json": None,
             "tool_results_json": "{}",
             "safe_error_code": None,
@@ -113,11 +112,15 @@ class AgentRunRepository:
                     .one_or_none()
                 )
                 if existing is not None:
-                    return _record(existing), False
+                    record = _record(existing)
+                    _validate_matching_request(record, request)
+                    return record, False
                 connection.execute(insert(AgentRunRow).values(**values))
                 row = _get_row(connection, request.run_id)
         except IntegrityError:
-            return self._load_by_request_id(request.request_id), False
+            record = self._load_by_request_id(request.request_id)
+            _validate_matching_request(record, request)
+            return record, False
         except SQLAlchemyError as error:
             raise _persistence_error() from error
         return _record(row), True
@@ -403,6 +406,41 @@ def _validate_metadata(metadata: dict[str, Any]) -> None:
             "agent_run_metadata_invalid",
             "Agent run audit metadata is not safe to persist.",
         ) from error
+
+
+def _validate_matching_request(
+    record: AgentRunRecord,
+    request: AgentRunRequest,
+) -> None:
+    expected_revision = _expected_target_revision(request)
+    stored_digest = record.audit_metadata.get("request_identity_digest")
+    request_digest = request.audit_metadata.get("request_identity_digest")
+    if (
+        record.agent_name != request.agent_name
+        or record.operation != request.operation
+        or record.contract_name != request.contract_name
+        or record.validation_profile != request.validation_profile
+        or record.expected_target_revision != expected_revision
+        or (
+            stored_digest is not None
+            and request_digest is not None
+            and stored_digest != request_digest
+        )
+    ):
+        raise _error(
+            "agent_run_request_conflict",
+            "Agent request identity was reused with different semantic input.",
+        )
+
+
+def _expected_target_revision(request: AgentRunRequest) -> int | None:
+    target = getattr(request.context, "target", None)
+    value = (
+        target.expected_revision
+        if target is not None
+        else request.audit_metadata.get("expected_target_revision")
+    )
+    return int(value) if value is not None else None
 
 
 def _validate_validation_context(context: dict[str, Any]) -> None:

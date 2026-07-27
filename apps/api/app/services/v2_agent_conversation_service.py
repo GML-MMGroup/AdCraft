@@ -285,7 +285,14 @@ class V2AgentConversationService:
                 message=request.message,
                 target=target,
                 action_mode=request.action_mode,
-                metadata={"conversation_id": conversation_id},
+                metadata={
+                    "conversation_id": conversation_id,
+                    "action_id": _stable_id(
+                        "action",
+                        conversation_id,
+                        request.request_id,
+                    ),
+                },
             ),
         )
         return response.message

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 import json
 from typing import Any, Generic, Literal, TypeVar
@@ -10,7 +10,11 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
-from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.agent_run_repository import (
+    AgentRunRepository,
+    AgentRunRepositoryError,
+    AgentRunRecord,
+)
 from app.persistence.database import create_v2_database
 from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunPolicy, AgentRunRequest
@@ -21,6 +25,7 @@ from app.services.v2_high_risk_prompt_renderer import (
     V2HighRiskPromptRenderer,
 )
 from app.services.v2_agent_event_projector import V2AgentEventProjector
+from app.services.v2_agent_request_identity import agent_request_identity
 from app.services.v2_prompt_registry import V2PromptRegistry
 from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.pi_agent_runtime_client import (
@@ -166,19 +171,34 @@ class StructuredGenerationRuntime:
             persisted_sequences.add(event.seq)
 
         try:
-            repository.create_or_load(
+            record, created = repository.create_or_load(
                 request,
                 lease_owner_id=lease_owner_id,
                 lease_duration_seconds=lease_duration,
             )
-            set_callback = getattr(self._agent_runtime_client, "set_event_callback", None)
-            if callable(set_callback):
-                set_callback(persist_event)
-            try:
-                events = self._agent_runtime_client.run(request)
-            finally:
-                if callable(set_callback):
-                    set_callback(None)
+            if not created:
+                replay = self._existing_run_result(spec, record)
+                if replay is not None:
+                    return replay
+                now = datetime.now(timezone.utc)
+                if (
+                    record.lease_owner_id is not None
+                    and record.lease_expires_at is not None
+                    and record.lease_expires_at > now
+                ):
+                    raise StructuredGenerationRuntimeError(
+                        "agent_run_in_progress",
+                        "The matching Agent action is already running.",
+                        trace_metadata=self._trace_metadata(spec, None),
+                    )
+                record = repository.acquire_lease(
+                    record.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_duration_seconds=lease_duration,
+                )
+                request = request.model_copy(update={"run_id": record.run_id})
+                persisted_sequences.update(range(1, record.last_event_seq + 1))
+            events = self._agent_runtime_client.run(request, on_event=persist_event)
             for event in events:
                 persist_event(event)
             terminal = terminal_event(events)
@@ -205,6 +225,20 @@ class StructuredGenerationRuntime:
             value = terminal.payload.get("value")
             output = spec.output_model.model_validate(value)
             output = self._validate_output(spec, output)
+        except StructuredGenerationRuntimeError:
+            raise
+        except AgentRunRepositoryError as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                error,
+            )
+            raise StructuredGenerationRuntimeError(
+                error.code,
+                error.message,
+                trace_metadata=self._trace_metadata(spec, None),
+            ) from error
         except (PiAgentRuntimeError, QualityValidationError, ValueError) as error:
             self._finish_failed_agent_run(
                 repository,
@@ -275,6 +309,43 @@ class StructuredGenerationRuntime:
             original_error=None,
             call_metadata=None,
         )
+
+    def _existing_run_result(
+        self,
+        spec: StructuredGenerationSpec[TOutput],
+        record: AgentRunRecord,
+    ) -> StructuredGenerationResult[TOutput] | None:
+        if record.status == "completed":
+            value = (record.terminal_result or {}).get("value")
+            output = spec.output_model.model_validate(value)
+            output = self._validate_output(spec, output)
+            replay_spec = replace(
+                spec,
+                trace_metadata={
+                    **spec.trace_metadata,
+                    "agent_run_replayed": True,
+                    "agent_run_id": record.run_id,
+                },
+            )
+            return self._result(
+                replay_spec,
+                output=output,
+                mode="pi",
+                warnings=[],
+                original_error=None,
+                call_metadata=None,
+            )
+        if record.status in {"failed", "cancelled"}:
+            raise StructuredGenerationRuntimeError(
+                record.safe_error_code or f"agent_run_{record.status}",
+                "The matching Agent action is already terminal.",
+                trace_metadata={
+                    **self._trace_metadata(spec, None),
+                    "agent_run_replayed": True,
+                    "agent_run_id": record.run_id,
+                },
+            )
+        return None
 
     @staticmethod
     def _finish_failed_agent_run(
@@ -476,7 +547,6 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
     operation = spec.operation or _agent_operation(spec)
     invocation = spec.invocation
-    run_id = invocation.run_id if invocation else f"arun_{uuid4().hex}"
     agent_name = spec.agent_name or _agent_name_for_operation(operation)
     context = spec.agent_context or AgentRunContext(
         operation=operation,
@@ -485,9 +555,46 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         input_payload=payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
+    identity = None
+    action_id = str(spec.trace_metadata.get("action_id") or "").strip()
+    if invocation is None and action_id:
+        target = getattr(context, "target", None)
+        target_revision = (
+            target.expected_revision
+            if target is not None
+            else spec.trace_metadata.get("expected_target_revision")
+        )
+        identity = agent_request_identity(
+            conversation_id=(
+                getattr(context, "conversation_id", None)
+                or str(spec.trace_metadata.get("conversation_id") or "").strip()
+                or None
+            ),
+            action_id=action_id,
+            operation=operation,
+            target_revision=int(target_revision) if target_revision is not None else None,
+            normalized_input=context,
+        )
+    expected_target_revision = (
+        getattr(getattr(context, "target", None), "expected_revision", None)
+        or spec.trace_metadata.get("expected_target_revision")
+    )
+    run_id = (
+        invocation.run_id
+        if invocation
+        else identity.run_id
+        if identity is not None
+        else f"arun_{uuid4().hex}"
+    )
     return AgentRunRequest(
         run_id=run_id,
-        request_id=invocation.request_id if invocation else f"req_{uuid4().hex}",
+        request_id=(
+            invocation.request_id
+            if invocation
+            else identity.request_id
+            if identity is not None
+            else f"req_{uuid4().hex}"
+        ),
         parent_run_id=invocation.parent_run_id if invocation else None,
         agent_name=agent_name,
         operation=operation,
@@ -514,6 +621,16 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             "stage_name": spec.stage_name,
             "contract_name": spec.contract_name,
             "workflow_id": workflow_id,
+            **(
+                {"expected_target_revision": int(expected_target_revision)}
+                if expected_target_revision is not None
+                else {}
+            ),
+            **(
+                {"request_identity_digest": identity.input_digest}
+                if identity is not None
+                else {}
+            ),
         },
         contract_schema=spec.output_model.model_json_schema(),
     )

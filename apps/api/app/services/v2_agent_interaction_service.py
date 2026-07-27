@@ -119,7 +119,9 @@ class V2AgentInteractionService:
     ) -> WorkflowV2ChatActionResponse:
         action_mode = _resolve_action_mode(request)
         conversation_id = str(request.metadata.get("conversation_id") or f"conv_{workflow_id}")
-        action_id = f"act_{uuid4().hex[:12]}"
+        action_id = str(request.metadata.get("action_id") or "").strip() or (
+            f"act_{uuid4().hex[:12]}"
+        )
         try:
             target = self._target_resolver.resolve(workflow_id, request.target)
         except V2AgentTargetResolutionError as exc:
@@ -155,6 +157,7 @@ class V2AgentInteractionService:
             workflow = self._revise_prompt(
                 workflow_id=workflow_id,
                 conversation_id=conversation_id,
+                action_id=action_id,
                 request=request,
                 specialist=specialist,
                 target=target,
@@ -239,6 +242,7 @@ class V2AgentInteractionService:
         *,
         workflow_id: str,
         conversation_id: str,
+        action_id: str,
         request: WorkflowV2ChatActionRequest,
         specialist: SpecialistAgentName,
         target: Any,
@@ -304,6 +308,7 @@ class V2AgentInteractionService:
                 ],
             },
             constraints={
+                "action_id": action_id,
                 "expected_revision": expected_revision,
                 "requested_scope": target.requested_scope,
             },
