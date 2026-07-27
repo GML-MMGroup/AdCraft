@@ -67,7 +67,10 @@ from app.services.v2_shot_reference_resolver import (
     V2ShotReferenceResolver,
     V2ShotReferenceResolverError,
 )
-from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
+from app.services.v2_simple_composition_plan import (
+    V2SimpleCompositionPlanError,
+    V2SimpleCompositionPlanService,
+)
 from app.services.v2_storyboard_namespace import (
     V2StoryboardNamespaceError,
     validate_storyboard_slot_namespace,
@@ -362,6 +365,7 @@ class V2GenerationPipeline:
             V2AgentRouteError,
             V2PromptMaterializationError,
             V2PromptGovernanceError,
+            V2SimpleCompositionPlanError,
             V2StoryboardNamespaceError,
         ) as exc:
             self._fail_slot(
@@ -860,6 +864,7 @@ class V2GenerationPipeline:
         except (
             V2AgentRouteError,
             V2PromptMaterializationError,
+            V2SimpleCompositionPlanError,
             V2StoryboardNamespaceError,
         ) as exc:
             provider_result = V2ProviderResult(

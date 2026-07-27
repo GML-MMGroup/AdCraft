@@ -351,8 +351,7 @@ class V2SlotScheduler:
             return V2FinalCompositionInputSettlement(
                 settled=ready,
                 usable_video_slot_ids=[
-                    slot.slot_id
-                    for _item, slot in self.selected_shot_video_slots(workflow)
+                    slot.slot_id for _item, slot in self.selected_shot_video_slots(workflow)
                 ],
             )
         return self._simple_composition_plan_service.inspect(workflow)

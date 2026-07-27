@@ -4759,11 +4759,7 @@ class WorkflowV2Service:
                     final_item = self._slot_scheduler.final_composition_item(workflow)
                     final_slot = (
                         next(
-                            (
-                                slot
-                                for slot in final_item.slots
-                                if is_final_composition_slot(slot)
-                            ),
+                            (slot for slot in final_item.slots if is_final_composition_slot(slot)),
                             None,
                         )
                         if final_item is not None
@@ -4774,9 +4770,7 @@ class WorkflowV2Service:
                         "failed",
                         "skipped",
                     }:
-                        final_slot.metadata["skipped_reason"] = (
-                            "no_successful_video_segments"
-                        )
+                        final_slot.metadata["skipped_reason"] = "no_successful_video_segments"
                         self._transition_slot(
                             workflow,
                             final_slot,

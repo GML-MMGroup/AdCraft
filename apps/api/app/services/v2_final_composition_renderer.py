@@ -750,6 +750,13 @@ class V2FinalCompositionRenderer:
         bgm_status = plan.bgm_status
         gain_db: float | None = None
         bgm_is_available = False
+        if workflow.audio_mode != "none" and plan.bgm is None and bgm_status == "unavailable":
+            warnings.append(
+                {
+                    "code": "composition_audio_missing_soft",
+                    "message": "Selected BGM is unavailable; composition continued without it.",
+                }
+            )
         if plan.bgm is not None and workflow.audio_mode != "none":
             bgm_resolved = self._resolve_asset(plan.bgm.asset_id, plan.bgm.version_id)
             bgm_probe = (
@@ -781,13 +788,12 @@ class V2FinalCompositionRenderer:
                     joined_duration,
                 )
                 fade_start = max(0.0, joined_duration - fade_duration)
-                filter_complex = (
-                    f"[1:a]atrim=duration={joined_duration:.6f},"
-                    f"asetpts=PTS-STARTPTS,volume={gain_db:.3f}dB,"
-                    f"afade=t=out:st={fade_start:.6f}:d={fade_duration:.6f}[bgm];"
-                    "[0:a][bgm]amix=inputs=2:duration=first:"
-                    "dropout_transition=0:normalize=0,"
-                    "alimiter=limit=0.95[aout]"
+                filter_complex = _simple_bgm_mix_filter(
+                    joined_duration=joined_duration,
+                    gain_db=gain_db,
+                    fade_start=fade_start,
+                    fade_duration=fade_duration,
+                    legacy_amix=False,
                 )
                 mix_args = [
                     self._settings.ffmpeg_path,
@@ -819,6 +825,23 @@ class V2FinalCompositionRenderer:
                     temporary_output.as_posix(),
                 ]
                 completed = self._run_ffmpeg(mix_args)
+                if (
+                    completed is not None
+                    and completed.returncode != 0
+                    and "Option 'normalize' not found" in (completed.stderr or "")
+                ):
+                    temporary_output.unlink(missing_ok=True)
+                    legacy_mix_args = list(mix_args)
+                    legacy_mix_args[legacy_mix_args.index("-filter_complex") + 1] = (
+                        _simple_bgm_mix_filter(
+                            joined_duration=joined_duration,
+                            gain_db=gain_db,
+                            fade_start=fade_start,
+                            fade_duration=fade_duration,
+                            legacy_amix=True,
+                        )
+                    )
+                    completed = self._run_ffmpeg(legacy_mix_args)
                 if completed is None:
                     return self._failure(
                         payload,
@@ -963,6 +986,14 @@ class V2FinalCompositionRenderer:
                 message="Mock Final Composition output is not playable.",
             )
         os.replace(temporary_output, output_path)
+        warnings = []
+        if workflow.audio_mode != "none" and plan.bgm is None and plan.bgm_status == "unavailable":
+            warnings.append(
+                {
+                    "code": "composition_audio_missing_soft",
+                    "message": "Selected BGM is unavailable; composition continued without it.",
+                }
+            )
         metadata = {
             "provider": FINAL_COMPOSITION_PROVIDER,
             "composition_provider": FINAL_COMPOSITION_PROVIDER,
@@ -985,7 +1016,7 @@ class V2FinalCompositionRenderer:
             "output_height": output_probe.height,
             "output_fps": output_probe.fps,
             "output_sample_aspect_ratio": output_probe.sample_aspect_ratio,
-            "warnings": [],
+            "warnings": warnings,
         }
         return V2ProviderResult(
             status="completed",
@@ -1865,6 +1896,34 @@ def _encoder_missing(stderr: str | None) -> bool:
 
 def _escape_concat_path(path: Path) -> str:
     return path.as_posix().replace("'", r"'\''")
+
+
+def _simple_bgm_mix_filter(
+    *,
+    joined_duration: float,
+    gain_db: float,
+    fade_start: float,
+    fade_duration: float,
+    legacy_amix: bool,
+) -> str:
+    source_chain = ""
+    source_label = "[0:a]"
+    bgm_gain = f"volume={gain_db:.3f}dB"
+    amix_options = "inputs=2:duration=first:dropout_transition=0"
+    if legacy_amix:
+        source_chain = "[0:a]volume=2.0[source];"
+        source_label = "[source]"
+        bgm_gain += ",volume=2.0"
+    else:
+        amix_options += ":normalize=0"
+    return (
+        f"{source_chain}"
+        f"[1:a]atrim=duration={joined_duration:.6f},"
+        f"asetpts=PTS-STARTPTS,{bgm_gain},"
+        f"afade=t=out:st={fade_start:.6f}:d={fade_duration:.6f}[bgm];"
+        f"{source_label}[bgm]amix={amix_options},"
+        "alimiter=limit=0.95[aout]"
+    )
 
 
 def _truncate(value: str | None, limit: int = 2000) -> str | None:

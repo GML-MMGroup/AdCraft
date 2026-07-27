@@ -202,8 +202,7 @@ class V2SimpleCompositionPlanService:
         if slot.status != "blocked":
             return False
         dependencies = [
-            self._find_slot(workflow, dependency_id)
-            for dependency_id in slot.dependency_slot_ids
+            self._find_slot(workflow, dependency_id) for dependency_id in slot.dependency_slot_ids
         ]
         return bool(dependencies) and any(
             dependency is not None
