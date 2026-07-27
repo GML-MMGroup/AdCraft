@@ -20,6 +20,12 @@ function prefixLocation(path: string) {
   return match[1];
 }
 
+function apiProxyMatcher() {
+  const match = viteConfig.match(/proxy:\s*\{\s*"([^"]+)": \{/);
+  if (!match) throw new Error("Expected the Vite API proxy context");
+  return new RegExp(JSON.parse(`"${match[1]}"`));
+}
+
 describe("static cache policy", () => {
   it("quotes regex locations containing repetition braces for nginx grammar", () => {
     const { directiveToken } = regexLocation();
@@ -70,7 +76,13 @@ describe("static cache policy", () => {
   });
 
   it("does not proxy the API Space browser route to the backend", () => {
-    expect(viteConfig).toContain('"^/api(?:/|$)"');
-    expect(viteConfig).not.toMatch(/^\s*"\/api": \{/m);
+    const matcher = apiProxyMatcher();
+
+    for (const path of ["/api", "/api?health=1", "/api/v1/health"]) {
+      expect(path).toMatch(matcher);
+    }
+    for (const path of ["/api-space", "/apiary", "/apiculture"]) {
+      expect(path).not.toMatch(matcher);
+    }
   });
 });
