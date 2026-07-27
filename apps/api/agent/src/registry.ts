@@ -105,6 +105,16 @@ export function getOperationDescriptor(
   });
 }
 
+export function listOperationDescriptors(): ReadonlyArray<OperationDescriptor> {
+  return Object.freeze(
+    definitions.flatMap((definition) =>
+      definition.operations.map((operation) =>
+        getOperationDescriptor(definition.name, operation),
+      ),
+    ),
+  );
+}
+
 export function toolsForOperation(
   agentName: AgentName,
   operation: string,
