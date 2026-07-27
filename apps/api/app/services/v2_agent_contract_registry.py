@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from app.schemas.front_desk import FrontDeskIntentOutput
 from app.schemas.agent_runtime import SpecialistDraft
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import V2ExpertBriefPlannerOutput
@@ -28,6 +29,7 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
     for model in (
         SpecialistDraft,
         SpecialistResult,
+        FrontDeskIntentOutput,
         V2EditableScriptDocument,
         V2ExpertBriefPlannerOutput,
         V2IntentPlan,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hmac
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
@@ -28,6 +29,7 @@ from app.services.v2_agent_tool_gateway import (
 
 
 router = APIRouter(prefix="/internal/v1")
+logger = logging.getLogger(__name__)
 
 
 def require_agent_internal_auth(
@@ -111,6 +113,19 @@ def execute_agent_tool(
                     "message": "The requested Agent contract is not registered.",
                 }
             ]
+        )
+        logger.warning(
+            "agent_structured_submission_rejected contract=%s attempt=%s violations=%s",
+            (
+                submission.contract_name
+                if "submission" in locals()
+                else "unparseable_submission"
+            ),
+            submission.attempt if "submission" in locals() else None,
+            [
+                {"path": item["path"], "code": item["code"]}
+                for item in violations
+            ],
         )
         return AgentToolResult(
             run_id=call.run_id,

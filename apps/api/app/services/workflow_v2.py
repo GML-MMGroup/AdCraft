@@ -508,6 +508,7 @@ class WorkflowV2Service:
                 )
             raise WorkflowV2Error(exc.code, str(exc), details=details) from exc
 
+        explicit_constraints = intent_outcome.explicit_constraints
         try:
             reconciliation = self._creative_inventory_reconciler.reconcile(
                 request,

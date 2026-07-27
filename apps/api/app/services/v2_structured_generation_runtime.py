@@ -21,10 +21,7 @@ from app.services.v2_high_risk_prompt_renderer import (
 from app.services.v2_agent_event_projector import V2AgentEventProjector
 from app.services.v2_prompt_registry import V2PromptRegistry
 from app.services.v2_runtime_prompt_packs import prompt_content_profile_metadata
-from app.services.v2_structured_llm import (
-    V2StructuredLLMClient,
-    V2StructuredLLMError,
-)
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
@@ -110,11 +107,9 @@ class StructuredGenerationRuntime:
         self,
         *,
         settings: Settings | None = None,
-        structured_llm: V2StructuredLLMClient | None = None,
         agent_runtime_client: PiAgentRuntimeClient | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._structured_llm = structured_llm
         self._agent_runtime_client = agent_runtime_client or PiAgentRuntimeClient(
             base_url=self._settings.agent_runtime_base_url,
             internal_token=self._settings.agent_runtime_internal_token or "",
@@ -127,26 +122,7 @@ class StructuredGenerationRuntime:
         )
 
     def run(self, spec: StructuredGenerationSpec[TOutput]) -> StructuredGenerationResult[TOutput]:
-        if self._structured_llm is None:
-            return self._run_pi(spec)
-        try:
-            output, warnings, call_metadata = self._generate_once(
-                spec,
-                spec.input_payload,
-                attempt_kind="initial",
-            )
-            return self._result(
-                spec,
-                output=output,
-                mode="llm",
-                warnings=warnings,
-                original_error=None,
-                call_metadata=call_metadata,
-            )
-        except V2StructuredLLMError as first_error:
-            if spec.fallback_builder is None:
-                raise self._runtime_error(spec, first_error) from first_error
-            return self._repair_or_fallback(spec, first_error)
+        return self._run_pi(spec)
 
     def _run_pi(
         self, spec: StructuredGenerationSpec[TOutput]
@@ -230,15 +206,25 @@ class StructuredGenerationRuntime:
                 lease_owner_id,
                 error,
             )
-            normalized = V2StructuredLLMError(
-                (
-                    error.code
-                    if isinstance(error, PiAgentRuntimeError)
-                    else "agent_structured_output_invalid"
-                ),
-                str(error),
-                failure_kind="provider_terminal",
-            )
+            if isinstance(error, QualityValidationError):
+                normalized = V2StructuredLLMError(
+                    "structured_output_quality_failed",
+                    str(error),
+                    quality_error_code=error.code,
+                    quality_error_message=str(error),
+                    quality_error_details=error.details,
+                    failure_kind="content",
+                )
+            else:
+                normalized = V2StructuredLLMError(
+                    (
+                        error.code
+                        if isinstance(error, PiAgentRuntimeError)
+                        else "agent_structured_output_invalid"
+                    ),
+                    str(error),
+                    failure_kind="provider_terminal",
+                )
             if spec.fallback_builder is None:
                 raise self._runtime_error(spec, normalized) from error
             return self._fallback(
@@ -306,71 +292,6 @@ class StructuredGenerationRuntime:
         except Exception:
             return
 
-    def _repair_or_fallback(
-        self,
-        spec: StructuredGenerationSpec[TOutput],
-        first_error: V2StructuredLLMError,
-    ) -> StructuredGenerationResult[TOutput]:
-        attempts = [self._attempt_diagnostic(spec, "initial", first_error)]
-        if first_error.failure_kind != "content":
-            return self._fallback(spec, first_error, attempts=attempts)
-        repair_context = self._repair_context(spec, first_error)
-        repair_prompt = _render_runtime_high_risk_prompt(
-            prompt_id="v2.repair.structured_generation.v1",
-            spec=spec,
-            path_kind="repair",
-            context={
-                "stage_name": spec.stage_name,
-                "contract_name": spec.contract_name,
-            },
-        )
-        repair_payload = sanitize_context_for_llm_text(
-            {
-                "repair": True,
-                "instruction": repair_prompt["prompt_text"],
-                "prompt_registry_ref": repair_prompt["prompt_registry_ref"],
-                "prompt_lineage": repair_prompt["prompt_lineage"],
-                "stage_name": spec.stage_name,
-                "contract_name": spec.contract_name,
-                "original_request": spec.input_payload,
-                "repair_context": repair_context,
-                "quality_repair_context": repair_context,
-                "validation_error_paths": list(repair_context.get("schema_error_paths") or []),
-            }
-        )
-        try:
-            output, warnings, call_metadata = self._generate_once(
-                spec,
-                repair_payload,
-                attempt_kind="repair",
-            )
-            repair_warning = {
-                "code": "structured_generation_repair_used",
-                "stage_name": spec.stage_name,
-                "original_error_code": self._generic_error_code(first_error),
-            }
-            return self._result(
-                spec,
-                output=output,
-                mode="repair",
-                warnings=[*warnings, repair_warning],
-                original_error=first_error,
-                call_metadata=call_metadata,
-            )
-        except V2StructuredLLMError as repair_error:
-            fallback_error = V2StructuredLLMError(
-                "structured_generation_repair_failed",
-                str(repair_error),
-                validation_error_paths=repair_error.validation_error_paths,
-                quality_error_code=repair_error.quality_error_code,
-                quality_error_message=repair_error.quality_error_message,
-                quality_error_details=repair_error.quality_error_details,
-                failure_kind=repair_error.failure_kind,
-                call_metadata=repair_error.call_metadata,
-            )
-            attempts.append(self._attempt_diagnostic(spec, "repair", repair_error))
-            return self._fallback(spec, fallback_error, attempts=attempts)
-
     def _fallback(
         self,
         spec: StructuredGenerationSpec[TOutput],
@@ -419,34 +340,6 @@ class StructuredGenerationRuntime:
             call_metadata=error.call_metadata,
         )
 
-    def _generate_once(
-        self,
-        spec: StructuredGenerationSpec[TOutput],
-        payload: dict[str, Any],
-        *,
-        attempt_kind: Literal["initial", "repair"],
-    ) -> tuple[TOutput, list[dict[str, Any]], V2StructuredLLMCallMetadata | None]:
-        if self._structured_llm is None:
-            raise RuntimeError("Legacy structured client is not configured.")
-        result = self._structured_llm.generate(
-            model_id=spec.model_id,
-            system_prompt=spec.system_prompt,
-            user_payload=payload,
-            output_model=spec.output_model,
-            contract_name=spec.contract_name,
-            quality_validator=spec.quality_validator,
-            temperature=spec.temperature,
-            repair_on_failure=False,
-            stage_name=spec.stage_name,
-            attempt_kind=attempt_kind,
-        )
-        output = self._validate_output(spec, result.output)
-        return (
-            output,
-            sanitize_context_for_llm_text(result.warnings),
-            getattr(result, "call_metadata", None),
-        )
-
     def _validate_output(
         self,
         spec: StructuredGenerationSpec[TOutput],
@@ -457,25 +350,6 @@ class StructuredGenerationRuntime:
         if spec.quality_validator is not None:
             spec.quality_validator(output)
         return output
-
-    def _repair_context(
-        self,
-        spec: StructuredGenerationSpec[TOutput],
-        error: V2StructuredLLMError,
-    ) -> dict[str, Any]:
-        base = {
-            "stage_name": spec.stage_name,
-            "contract_name": spec.contract_name,
-            "schema_error_paths": list(error.validation_error_paths),
-            "quality_error_code": error.quality_error_code,
-            "quality_error_message": error.quality_error_message,
-            "quality_error_details": error.quality_error_details,
-            "error_code": self._generic_error_code(error),
-            "error_message": _safe_error_message(error),
-        }
-        if spec.repair_context_builder is not None:
-            base.update(spec.repair_context_builder(error))
-        return sanitize_context_for_llm_text(base)
 
     def _result(
         self,
