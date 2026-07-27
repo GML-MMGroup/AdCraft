@@ -109,6 +109,9 @@ from app.services.v2_creative_inventory_reconciler import (
 )
 from app.services.v2_data_boundary import V2DataBoundaryError, validate_v2_relative_path
 from app.services.v2_execution_service import TERMINAL_EXECUTION_STATUSES, V2ExecutionService
+from app.services.v2_execution_result_publication import (
+    V2ExecutionResultPublicationService,
+)
 from app.services.v2_execution_recovery import V2ExecutionRecoveryService
 from app.services.v2_expert_brief_planner import (
     V2ExpertBriefPlanner,
@@ -439,6 +442,7 @@ class WorkflowV2Service:
             data_dir=self._data_dir,
         )
         self._execution_service = V2ExecutionService(self._data_dir)
+        self._execution_result_publication = V2ExecutionResultPublicationService(self._data_dir)
         self._execution_recovery = V2ExecutionRecoveryService(
             self._data_dir,
             stale_running_timeout_seconds=settings.v2_stale_running_timeout_seconds,
@@ -1721,6 +1725,9 @@ class WorkflowV2Service:
             "created_at": now,
             "updated_at": now,
             "events_cursor": self._runtime_events.events_cursor(workflow.workflow_id),
+            "authoring_base_state_version": workflow.state_version,
+            "authoring_base_revision_no": workflow.semantic_revision_no,
+            "pending_selections": {},
             "metadata": {
                 "shot_reference_selections": _execution_shot_reference_selections(workflow),
             },
@@ -3831,6 +3838,7 @@ class WorkflowV2Service:
                 workflow,
                 updated_task.execution_id,
                 extra_completed_slot_ids=scheduler_result.executed_slot_ids,
+                publish_terminal_results=False,
             )
         return result
 
@@ -3910,6 +3918,10 @@ class WorkflowV2Service:
                 committed_selection is not None
                 and committed_selection.selected_asset_id
                 and committed_selection.selected_version_id
+                and not self._execution_result_publication.uses_pending_publication(
+                    workflow.workflow_id,
+                    task.execution_id,
+                )
             ):
                 workflow = self._commit_semantic_workflow(
                     workflow,
@@ -3953,6 +3965,7 @@ class WorkflowV2Service:
                     workflow,
                     updated_task.execution_id,
                     extra_completed_slot_ids=scheduler_result.executed_slot_ids,
+                    publish_terminal_results=False,
                 )
             if updated_task.asset_id and updated_task.version_id:
                 self._provider_result_committer.mark_committed(
@@ -4438,12 +4451,17 @@ class WorkflowV2Service:
     ) -> _SchedulerRunResult:
         if not tasks:
             return _SchedulerRunResult()
+        source_task = tasks[0]
+        if source_task.execution_id:
+            workflow = self._execution_result_publication.apply_pending_selections(
+                workflow,
+                source_task.execution_id,
+            )
         result = self._run_missing_slot_scheduler(
             workflow,
             source_action="provider_task_resume",
             include_failed_slots=False,
         )
-        source_task = tasks[0]
         source_task_ids = [task.task_id for task in tasks]
         source_slot_ids = [task.slot_id for task in tasks]
         execution_status = _execution_status_from_slots(
@@ -5055,7 +5073,13 @@ class WorkflowV2Service:
                         continue
                 break
         self._refresh_workflow_state(workflow)
-        if result.executed_slot_ids:
+        if (
+            result.executed_slot_ids
+            and not self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            )
+        ):
             committed = self._commit_selected_slot_results(
                 workflow,
                 result.executed_slot_ids,
@@ -5601,9 +5625,14 @@ class WorkflowV2Service:
                 finally:
                     self._execution_context.execution_id = previous_execution_id
                 recovered_slot_ids.append(slot.slot_id)
-                recovered_slot_ids_by_execution.setdefault(manifest.execution_id, []).append(
-                    slot.slot_id
-                )
+                if self._execution_result_publication.uses_pending_publication(
+                    current_workflow.workflow_id,
+                    manifest.execution_id,
+                ):
+                    recovered_slot_ids_by_execution.setdefault(
+                        manifest.execution_id,
+                        [],
+                    ).append(slot.slot_id)
                 committed_manifest = self._provider_result_store.load_manifest(
                     workflow_id=manifest.workflow_id,
                     execution_id=manifest.execution_id,
@@ -5629,16 +5658,25 @@ class WorkflowV2Service:
                         },
                     )
             if recovered_slot_ids:
-                current_workflow = self._commit_selected_slot_results(
-                    current_workflow,
-                    recovered_slot_ids,
-                    source="execution_result",
-                )
                 for execution_id, completed_slot_ids in recovered_slot_ids_by_execution.items():
                     self._sync_execution_state_from_workflow(
                         current_workflow,
                         execution_id,
                         extra_completed_slot_ids=completed_slot_ids,
+                    )
+                unowned_slot_ids = [
+                    slot_id
+                    for slot_id in recovered_slot_ids
+                    if all(
+                        slot_id not in execution_slot_ids
+                        for execution_slot_ids in recovered_slot_ids_by_execution.values()
+                    )
+                ]
+                if unowned_slot_ids:
+                    current_workflow = self._commit_selected_slot_results(
+                        current_workflow,
+                        unowned_slot_ids,
+                        source="execution_result",
                     )
             self._overwrite_workflow_model(workflow, current_workflow)
         return recovered_slot_ids
@@ -5653,6 +5691,7 @@ class WorkflowV2Service:
         workflow: WorkflowV2,
         result: _SchedulerRunResult,
     ) -> None:
+        execution_id = getattr(self._execution_context, "execution_id", None)
         self._refresh_workflow_state(workflow)
         if self._visual_reference_bundles_complete(workflow):
             new_items, new_slots = self._ensure_storyboard_shots(workflow)
@@ -5667,7 +5706,14 @@ class WorkflowV2Service:
             selected_shot_slot_ids = [
                 slot.slot_id for _item, slot in self._selected_shot_video_slots(workflow)
             ]
-            if selected_shot_slot_ids and (final_slot is None or not final_slot.selected_asset_id):
+            if (
+                not self._execution_result_publication.uses_pending_publication(
+                    workflow.workflow_id,
+                    execution_id,
+                )
+                and selected_shot_slot_ids
+                and (final_slot is None or not final_slot.selected_asset_id)
+            ):
                 committed = self._commit_selected_slot_results(
                     workflow,
                     selected_shot_slot_ids,
@@ -5680,7 +5726,12 @@ class WorkflowV2Service:
             # The timeline renderer loads its source workflow through the
             # authoring read model. Persist a newly unlocked final-composition
             # item before the scheduler can submit its final-video slot.
-            if new_items or new_slots:
+            if (
+                new_items or new_slots
+            ) and not self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            ):
                 committed = self._commit_semantic_then_operational(
                     workflow,
                     source="structure_edit",
@@ -5881,7 +5932,10 @@ class WorkflowV2Service:
         if not execution_id:
             active = self._execution_service.load_active(workflow.workflow_id)
             execution_id = active.get("execution_id") if active else None
-        if execution_id:
+        if self._execution_result_publication.uses_pending_publication(
+            workflow.workflow_id,
+            str(execution_id) if execution_id else None,
+        ):
             self._execution_service.update_slot_runtime(
                 workflow.workflow_id,
                 str(execution_id),
@@ -5957,6 +6011,22 @@ class WorkflowV2Service:
         version_id: str,
         source_action: str,
     ) -> WorkflowAssetRelationV2:
+        execution_id = getattr(self._execution_context, "execution_id", None)
+        if execution_id:
+            self._execution_result_publication.record_pending_selection(
+                workflow.workflow_id,
+                str(execution_id),
+                slot_id=slot.slot_id,
+                asset_id=asset_id,
+                version_id=version_id,
+            )
+            working = self._asset_store.list_relations(
+                target_workflow_id=workflow.workflow_id,
+                target_slot_id=slot.slot_id,
+                relation_type="working_version_for_slot",
+            )
+            if working:
+                return working[-1]
         self._asset_store.delete_slot_relations(
             target_workflow_id=workflow.workflow_id,
             target_slot_id=slot.slot_id,

@@ -242,6 +242,29 @@ class WorkflowAuthoringRepository:
             )
         return _revision_detail_from_row(row)
 
+    def get_execution_result_revision(
+        self,
+        workflow_id: str,
+        source_execution_id: str,
+    ) -> WorkflowRevisionV2Summary | None:
+        """Return an execution-owned revision for idempotent terminal publication."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        _revision_select().where(
+                            WorkflowRevisionRow.workflow_id == workflow_id,
+                            WorkflowRevisionRow.source_execution_id == source_execution_id,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return None if row is None else _revision_summary_from_row(row)
+
     def commit_revision(
         self, request: WorkflowRevisionCommitRequest
     ) -> WorkflowRevisionCommitResult:
