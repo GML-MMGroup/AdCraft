@@ -15,7 +15,14 @@ from app.persistence.agent_run_repository import (
     AgentRunRepositoryError,
 )
 from app.schemas.agent_runtime import AgentToolCall, AgentToolResult
-from app.schemas.workflow_v2 import WorkflowV2FreeNodeGenerateRequest
+from app.schemas.workflow_v2 import (
+    WorkflowV2ChatActionTarget,
+    WorkflowV2FreeNodeGenerateRequest,
+)
+from app.services.v2_agent_target_resolver import (
+    V2AgentTargetResolutionError,
+    V2AgentTargetResolver,
+)
 from app.services.v2_asset_locator import V2AssetLocatorError, V2AssetLocatorResolver
 from app.services.workflow_v2 import WorkflowV2Error, WorkflowV2Service
 
@@ -109,8 +116,6 @@ _CAPABILITIES = {
     ),
 }
 _ASYNC_TOOLS = {"start_slot_generation", "start_free_media_generation"}
-_MAIN_SLOT_TYPES = {"character_main_image", "scene_main_image"}
-_ALLOWED_CANVAS_NODES = {"character-generation", "scene-generation"}
 
 
 class _ToolArguments(BaseModel):
@@ -187,6 +192,7 @@ class WorkflowV2AgentToolDomain:
     def __init__(self, settings: Settings) -> None:
         self._service = WorkflowV2Service(settings)
         self._locator = V2AssetLocatorResolver(settings.media_data_dir)
+        self._target_resolver = V2AgentTargetResolver(settings)
 
     def current_revision(self, workflow_id: str) -> int:
         workflow = self._service.get_workflow(workflow_id)
@@ -235,39 +241,10 @@ class WorkflowV2AgentToolDomain:
         )
 
     def _list_canvas_targets(self, workflow_id: str) -> dict[str, Any]:
-        workflow = self._service.get_workflow(workflow_id)
-        targets: list[dict[str, Any]] = []
-        for node in workflow.nodes:
-            if node.node_id not in _ALLOWED_CANVAS_NODES:
-                continue
-            for item in node.items:
-                if getattr(item, "deleted_at", None):
-                    continue
-                main_slot = next(
-                    (slot for slot in item.slots if slot.slot_type in _MAIN_SLOT_TYPES),
-                    None,
-                )
-                targets.append(
-                    {
-                        "target_locator": f"item:{item.item_id}",
-                        "target_type": "item",
-                        "node_id": node.node_id,
-                        "item_id": item.item_id,
-                        "display_name": item.display_name,
-                        "selected_main_asset_locator": (
-                            f"asset:{main_slot.selected_asset_id}@{main_slot.selected_version_id}"
-                            if main_slot
-                            and main_slot.selected_asset_id
-                            and main_slot.selected_version_id
-                            else None
-                        ),
-                    }
-                )
-        return {
-            "workflow_id": workflow_id,
-            "state_version": workflow.state_version,
-            "targets": targets,
-        }
+        try:
+            return self._target_resolver.list_active_targets(workflow_id).model_dump(mode="json")
+        except V2AgentTargetResolutionError as error:
+            raise AgentToolDomainError(error.code, error.message) from error
 
     def _resolve_canvas_target(self, arguments: dict[str, Any]) -> dict[str, Any]:
         workflow_id = arguments["workflow_id"]
@@ -282,47 +259,23 @@ class WorkflowV2AgentToolDomain:
             ]
             if len(candidates) != 1:
                 raise AgentToolDomainError(
-                    "clarification_required",
+                    "agent_target_clarification_required",
                     "The canvas target is not unambiguous.",
                 )
             return candidates[0]
-        if locator.startswith("item:"):
-            matches = [
-                target
-                for target in self._list_canvas_targets(workflow_id)["targets"]
-                if target["target_locator"] == locator
-            ]
-            if len(matches) != 1:
-                raise AgentToolDomainError("target_not_found", "Canvas target was not found.")
-            return matches[0]
-        resolved = self._locator.resolve(workflow_id, locator)
-        if resolved.owner_node_id not in _ALLOWED_CANVAS_NODES:
-            raise AgentToolDomainError(
-                "agent_target_not_allowed",
-                "Only character and scene canvas targets are available.",
-            )
-        workflow = self._service.get_workflow(workflow_id)
-        slot = _find_slot(workflow, resolved.owner_slot_id)
-        if resolved.target_type == "asset" and (
-            slot is None
-            or slot.slot_type not in _MAIN_SLOT_TYPES
-            or slot.selected_asset_id != resolved.asset_id
-        ):
-            raise AgentToolDomainError(
-                "agent_target_not_allowed",
-                "Only selected character and scene main images are targetable.",
-            )
-        return {
-            **resolved.model_dump(mode="json"),
-            "target_locator": locator,
-            "related_multiview_slot_id": _related_multiview_slot_id(workflow, slot),
-        }
+        try:
+            return self._target_resolver.resolve(
+                workflow_id,
+                WorkflowV2ChatActionTarget(target_type="node", locator=locator),
+            ).model_dump(mode="json")
+        except V2AgentTargetResolutionError as error:
+            raise AgentToolDomainError(error.code, error.message) from error
 
     def _read_target_context(self, arguments: dict[str, Any]) -> dict[str, Any]:
         resolved = self._resolve_canvas_target(arguments)
         workflow = self._service.get_workflow(arguments["workflow_id"])
-        item = _find_item(workflow, resolved.get("item_id") or resolved.get("owner_item_id"))
-        slot = _find_slot(workflow, resolved.get("slot_id") or resolved.get("owner_slot_id"))
+        item = _find_item(workflow, resolved.get("item_id"))
+        slot = _find_slot(workflow, resolved.get("slot_id"))
         return {
             "workflow_id": workflow.workflow_id,
             "state_version": workflow.state_version,
@@ -599,22 +552,6 @@ def _find_slot(workflow: Any, slot_id: str | None) -> Any | None:
         ),
         None,
     )
-
-
-def _related_multiview_slot_id(workflow: Any, main_slot: Any | None) -> str | None:
-    if main_slot is None:
-        return None
-    item = _find_item(workflow, main_slot.item_id)
-    if item is None:
-        return None
-    expected = {
-        "character_main_image": "character_three_view",
-        "scene_main_image": "scene_multi_view_grid",
-    }.get(main_slot.slot_type)
-    if expected is None:
-        return None
-    related = next((slot for slot in item.slots if slot.slot_type == expected), None)
-    return related.slot_id if related else None
 
 
 def _split_locator(locator: str) -> tuple[str, str]:

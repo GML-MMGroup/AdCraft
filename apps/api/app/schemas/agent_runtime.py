@@ -50,6 +50,35 @@ class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class V2ResolvedAgentTarget(_StrictModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    state_version: int = Field(ge=1)
+    target_locator: str = Field(min_length=1, max_length=320)
+    target_type: Literal["node", "item", "slot", "asset"]
+    node_id: Literal["character-generation", "scene-generation"]
+    item_id: str = Field(min_length=1, max_length=160)
+    slot_id: str = Field(min_length=1, max_length=240)
+    slot_type: Literal[
+        "character_main_image",
+        "character_three_view",
+        "scene_main_image",
+        "scene_multi_view_grid",
+    ]
+    owner_type: Literal["character", "scene"]
+    display_name: str = Field(min_length=1, max_length=256)
+    requested_scope: Literal["main", "multiview"] = "main"
+    asset_id: str | None = Field(default=None, max_length=160)
+    version_id: str | None = Field(default=None, max_length=160)
+    selected_main_asset_locator: str | None = Field(default=None, max_length=320)
+    related_multiview_slot_id: str | None = Field(default=None, max_length=240)
+
+
+class V2AgentTargetCatalog(_StrictModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    state_version: int = Field(ge=1)
+    targets: list[V2ResolvedAgentTarget] = Field(default_factory=list, max_length=256)
+
+
 def _validate_safe_payload(value: Any, *, field_name: str = "payload") -> Any:
     encoded_size = len(str(value).encode("utf-8"))
     if encoded_size > _MAX_SAFE_PAYLOAD_BYTES:

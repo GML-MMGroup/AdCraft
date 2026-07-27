@@ -82,6 +82,10 @@ from app.services.agent_trace import V2AgentTraceWriter, utc_now
 from app.services.front_desk import FrontDeskError, FrontDeskService
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_agent_router import V2AgentRouteError, V2AgentRouter
+from app.services.v2_agent_target_resolver import (
+    V2AgentTargetResolutionError,
+    V2AgentTargetResolver,
+)
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_creative_inventory import (
     apply_creative_inventory_to_expert_brief_plan,
@@ -413,6 +417,7 @@ class WorkflowV2Service:
         self._storyboard_director = V2StoryboardDirector(settings)
         self._final_composition = V2FinalCompositionService()
         self._agent_router = V2AgentRouter()
+        self._agent_target_resolver = V2AgentTargetResolver(settings)
         self._provider_executor = V2ProviderExecutor(
             settings=settings,
             data_dir=self._data_dir,
@@ -2683,28 +2688,8 @@ class WorkflowV2Service:
         request: WorkflowV2ChatActionRequest,
     ) -> tuple[V2GenerationTarget, WorkflowItemV2 | None, WorkflowSlotV2 | None]:
         target = request.target
-        if target.locator:
+        if target.locator and target.locator.startswith("free_node:"):
             target = _target_from_locator(target.locator, target)
-        if target.target_type == "slot":
-            chat_request = WorkflowV2ChatTargetRequest(
-                target={
-                    "target_type": "slot",
-                    "workflow_id": workflow.workflow_id,
-                    "slot_id": target.slot_id,
-                },
-                instruction=request.message,
-            )
-            return self._resolve_chat_target(workflow, chat_request)
-        if target.target_type == "asset":
-            chat_request = WorkflowV2ChatTargetRequest(
-                target={
-                    "target_type": "asset",
-                    "workflow_id": workflow.workflow_id,
-                    "asset_id": target.asset_id,
-                },
-                instruction=request.message,
-            )
-            return self._resolve_chat_target(workflow, chat_request)
         if target.target_type == "free_node":
             if not target.node_id:
                 raise WorkflowV2Error("free_node_not_found")
@@ -2734,7 +2719,34 @@ class WorkflowV2Service:
                 item,
                 slot,
             )
-        raise WorkflowV2Error("target_type_not_supported")
+        try:
+            resolved = self._agent_target_resolver.resolve(
+                workflow.workflow_id,
+                target,
+            )
+        except V2AgentTargetResolutionError as exc:
+            raise WorkflowV2Error(exc.code, str(exc)) from exc
+        item = self._find_item(workflow, resolved.node_id, resolved.item_id)
+        slot = self._find_slot(workflow, resolved.slot_id)
+        if item is None or slot is None:
+            raise WorkflowV2Error("agent_target_not_found")
+        node = _node_by_id(workflow, resolved.node_id)
+        return (
+            V2GenerationTarget(
+                workflow_id=workflow.workflow_id,
+                target_type=resolved.target_type,
+                node_id=resolved.node_id,
+                node_type=node.node_type if node is not None else resolved.node_id,
+                item_id=resolved.item_id,
+                item_type=item.item_type,
+                slot_id=resolved.slot_id,
+                slot_type=resolved.slot_type,
+                asset_id=resolved.asset_id,
+                media_type=slot.media_type,
+            ),
+            item,
+            slot,
+        )
 
     def _write_chat_action_audit(
         self,
