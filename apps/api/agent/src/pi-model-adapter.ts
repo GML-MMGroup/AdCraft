@@ -23,10 +23,11 @@ import {
 } from "./prompts/registry.js";
 import {
   getAgentDefinition,
+  getOperationDescriptor,
   toolsForOperation,
   type AgentToolName,
 } from "./registry.js";
-import { loadRequiredSkills } from "./skills.js";
+import { loadRequiredSkills, type LoadedSkill } from "./skills.js";
 
 const structuredValueSchema = Type.Record(Type.String(), Type.Unknown());
 
@@ -57,7 +58,11 @@ export class PiModelAdapter implements AgentModelAdapter {
       request.operation,
       request.model_policy_id,
     );
-    const skills = await loadRequiredSkills(request.agent_name, request.operation);
+    const operationDescriptor = getOperationDescriptor(
+      request.agent_name,
+      request.operation,
+    );
+    const skills = await loadRequiredSkills(operationDescriptor);
     const skillContext = skills
       .map(
         (skill) =>
@@ -174,7 +179,11 @@ export class PiModelAdapter implements AgentModelAdapter {
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
       ...acceptedResult,
-      agent_runtime_audit: agentRuntimeAuditForRequest(request, credential),
+      agent_runtime_audit: agentRuntimeAuditForRequest(
+        request,
+        credential,
+        skills,
+      ),
     };
   }
 
@@ -245,12 +254,18 @@ export function promptAuditForRequest(
 export function agentRuntimeAuditForRequest(
   request: AgentRunRequest,
   credential: AgentCredentialSnapshot,
-): Readonly<Record<string, string>> {
+  skills: ReadonlyArray<LoadedSkill> = [],
+): Readonly<Record<string, unknown>> {
   return {
     ...promptAuditForRequest(request),
     provider: credential.provider,
     model_id: credential.model_id,
     model_policy_id: credential.model_policy_id,
+    skills: skills.map((skill) => ({
+      skill_id: skill.skill_id,
+      version: skill.version,
+      sha256: skill.sha256,
+    })),
   };
 }
 
