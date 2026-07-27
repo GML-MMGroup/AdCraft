@@ -8,7 +8,10 @@ import type {
 } from "./generated/agent-runtime.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
 import { event } from "./runtime.js";
-import { PythonInternalClient } from "./python-internal-client.js";
+import {
+  PythonInternalClient,
+  type AgentCredentialSnapshot,
+} from "./python-internal-client.js";
 import {
   structuredRepairPrompt,
   structuredSubmissionPrompt,
@@ -45,7 +48,12 @@ export class PiModelAdapter implements AgentModelAdapter {
           request.contract_name ?? "",
         )
       : undefined;
-    const credential = await this.python.credential(request.credential_ref ?? "llm-default");
+    const credential = await this.python.credential(
+      request.credential_ref ?? "llm-default",
+      request.agent_name,
+      request.operation,
+      request.model_policy_id,
+    );
     const skills = await loadRequiredSkills(request.agent_name, request.operation);
     const skillContext = skills
       .map(
@@ -162,7 +170,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
       ...acceptedResult,
-      agent_runtime_audit: promptAuditForRequest(request),
+      agent_runtime_audit: agentRuntimeAuditForRequest(request, credential),
     };
   }
 
@@ -225,6 +233,18 @@ export function promptAuditForRequest(
     prompt_id: descriptor.prompt_id,
     prompt_version: descriptor.prompt_version,
     prompt_digest: descriptor.prompt_digest,
+  };
+}
+
+export function agentRuntimeAuditForRequest(
+  request: AgentRunRequest,
+  credential: AgentCredentialSnapshot,
+): Readonly<Record<string, string>> {
+  return {
+    ...promptAuditForRequest(request),
+    provider: credential.provider,
+    model_id: credential.model_id,
+    model_policy_id: credential.model_policy_id,
   };
 }
 

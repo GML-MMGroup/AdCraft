@@ -14,6 +14,7 @@ from app.persistence.agent_run_repository import AgentRunRepository
 from app.persistence.agent_run_repository import AgentRunRepositoryError
 from app.persistence.database import create_v2_database
 from app.schemas.agent_runtime import (
+    AgentName,
     AgentStructuredSubmission,
     AgentToolCall,
     AgentToolResult,
@@ -58,11 +59,19 @@ def require_agent_internal_auth(
 def get_agent_runtime_config(
     credential_ref: str,
     response: Response,
+    agent_name: AgentName,
+    operation: str,
+    model_policy_id: str,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     response.headers["Cache-Control"] = "no-store"
     try:
-        snapshot = V2AgentCredentialBroker(settings).snapshot(credential_ref)
+        snapshot = V2AgentCredentialBroker(settings).snapshot(
+            credential_ref,
+            agent_name=agent_name,
+            operation=operation,
+            model_policy_id=model_policy_id,
+        )
     except AgentCredentialError as error:
         raise HTTPException(
             status_code=503,
@@ -72,6 +81,7 @@ def get_agent_runtime_config(
         "protocol_version": snapshot.protocol_version,
         "provider": snapshot.provider,
         "model_id": snapshot.model_id,
+        "model_policy_id": snapshot.model_policy_id,
         "base_url": snapshot.base_url,
         "api_key": snapshot.api_key,
     }

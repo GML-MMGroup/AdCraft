@@ -1,4 +1,5 @@
 import type {
+  AgentRunRequest,
   AgentToolCall,
   AgentToolResult,
 } from "./generated/agent-runtime.js";
@@ -7,6 +8,7 @@ export interface AgentCredentialSnapshot {
   readonly protocol_version: "1";
   readonly provider: string;
   readonly model_id: string;
+  readonly model_policy_id: string;
   readonly base_url: string;
   readonly api_key: string;
 }
@@ -28,9 +30,19 @@ export class PythonInternalClient {
     this.#fetch = options.fetchImpl ?? fetch;
   }
 
-  async credential(credentialRef: string): Promise<AgentCredentialSnapshot> {
+  async credential(
+    credentialRef: string,
+    agentName: AgentRunRequest["agent_name"],
+    operation: string,
+    modelPolicyId: string,
+  ): Promise<AgentCredentialSnapshot> {
+    const query = new URLSearchParams({
+      agent_name: agentName,
+      operation,
+      model_policy_id: modelPolicyId,
+    });
     const response = await this.#fetch(
-      `${this.#baseUrl}/internal/v1/agent-runtime-config/${encodeURIComponent(credentialRef)}`,
+      `${this.#baseUrl}/internal/v1/agent-runtime-config/${encodeURIComponent(credentialRef)}?${query.toString()}`,
       {
         headers: {
           authorization: `Bearer ${this.#internalToken}`,
@@ -43,6 +55,7 @@ export class PythonInternalClient {
     if (
       payload.protocol_version !== "1" ||
       typeof payload.model_id !== "string" ||
+      typeof payload.model_policy_id !== "string" ||
       typeof payload.base_url !== "string" ||
       typeof payload.api_key !== "string" ||
       typeof payload.provider !== "string"
