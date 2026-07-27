@@ -98,6 +98,7 @@ class StructuredGenerationSpec(Generic[TOutput]):
     agent_name: AgentName | None = None
     operation: str | None = None
     tool_mode: Literal["default", "structured_only"] = "default"
+    policy: AgentRunPolicy | None = None
     invocation: AgentInvocation | None = None
     agent_context: PlanningAgentContext | AgentRunContext | None = None
 
@@ -548,6 +549,11 @@ class StructuredGenerationRuntime:
 def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
     payload = isolate_agent_input_payload(sanitize_context_for_llm_text(spec.input_payload))
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
+    timeout_seconds = (
+        spec.policy.timeout_seconds
+        if spec.policy is not None
+        else float(spec.trace_metadata.get("timeout_seconds", 120.0))
+    )
     operation = spec.operation or _agent_operation(spec)
     invocation = spec.invocation
     agent_name = spec.agent_name or _agent_name_for_operation(operation)
@@ -603,8 +609,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         deadline_at=(
             invocation.deadline_at
             if invocation
-            else datetime.now(timezone.utc)
-            + timedelta(seconds=spec.trace_metadata.get("timeout_seconds", 120.0))
+            else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
         ),
         model_policy_id=(
             invocation.model_policy_id if invocation else f"{agent_name}.{operation}.v1"
@@ -616,7 +621,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         policy=(
             AgentRunPolicy(timeout_seconds=invocation.timeout_seconds)
             if invocation
-            else AgentRunPolicy()
+            else spec.policy or AgentRunPolicy(timeout_seconds=timeout_seconds)
         ),
         credential_ref="llm-default",
         audit_metadata={

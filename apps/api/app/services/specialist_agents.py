@@ -5,6 +5,7 @@ from typing import Any, Callable
 from pydantic import ValidationError
 
 from app.core.config import Settings
+from app.schemas.agent_runtime import AgentRunPolicy
 from app.schemas.specialist_agents import (
     SpecialistAgentName,
     SpecialistAgentOutcome,
@@ -136,6 +137,11 @@ class SpecialistAgentService:
                     agent_name=_pi_agent_name(request.specialist),
                     contract_name="SpecialistResult",
                     tool_mode="structured_only",
+                    policy=AgentRunPolicy(
+                        timeout_seconds=600.0,
+                        max_output_bytes=1_048_576,
+                        max_event_bytes=1_048_576,
+                    ),
                     model_id=_model_id_for_specialist(request.specialist, self._settings),
                     system_prompt="",
                     input_payload=_request_context(request),
