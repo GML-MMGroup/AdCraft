@@ -499,7 +499,9 @@ class V2FinalCompositionPublicationService:
             return False
         if self._settings.media_mode.strip().lower() == "mock":
             return True
-        probe: V2MediaProbeResult = V2MediaProbe(ffprobe_path=self._settings.ffprobe_path)(path)
+        probe: V2MediaProbeResult = V2MediaProbe(ffprobe_path=self._settings.ffprobe_path)(
+            path, "video"
+        )
         return probe.error is None and bool(probe.video_codec)
 
 
