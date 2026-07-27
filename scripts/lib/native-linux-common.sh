@@ -118,10 +118,10 @@ native_verify_ffmpeg() {
     || native_die "ffmpeg 和 ffprobe 主版本不一致：$ffmpeg_version / $ffprobe_version。"
 
   LC_ALL=C ffmpeg -hide_banner -encoders 2>/dev/null \
-    | grep -Eq '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+(libx264|libopenh264)([[:space:]]|$)' \
+    | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+(libx264|libopenh264)([[:space:]]|$)' >/dev/null \
     || native_die "FFmpeg 缺少允许的 H.264 编码器（libx264 或 libopenh264）。"
   LC_ALL=C ffmpeg -hide_banner -encoders 2>/dev/null \
-    | grep -Eq '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)' \
+    | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)' >/dev/null \
     || native_die "FFmpeg 缺少 AAC 编码器。"
   native_info "已验证 FFmpeg 工具链：ffmpeg $ffmpeg_version，ffprobe $ffprobe_version。"
 }
