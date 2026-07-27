@@ -429,7 +429,10 @@ class V2ProviderExecutor:
                     error=exc,
                 )
             payload = apply_compiled_prompt_to_payload(payload, compiled_prompt)
-        elif not str(payload.get("provider_prompt") or "").strip():
+        elif (
+            slot.slot_type not in {"bgm_audio", "shot_video_segment"}
+            and not str(payload.get("provider_prompt") or "").strip()
+        ):
             return _prompt_governance_failure_result(
                 slot=slot,
                 payload=payload,
