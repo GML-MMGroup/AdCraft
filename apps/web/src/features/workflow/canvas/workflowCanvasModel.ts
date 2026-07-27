@@ -2,6 +2,7 @@ import { MarkerType, Position, type ReactFlowInstance } from "@xyflow/react";
 import type { NodeRunResult, WorkflowEdge, WorkflowNode } from "../../../types.ts";
 import { workflowEdgeMappingOrDefault } from "../../../workflow/edgeMapping.ts";
 import { createNodeRunMap, findNodeRunForWorkflowNode, mergeWorkflowNodesWithRuns } from "../../../workflow/runtimeResults.ts";
+import { isCanvasEntityAreaNode } from "../../../workflow/canvasEntityAreas.ts";
 import { getNodeContentPreview, getNodeOutputCount, getNodePreviewAssets, qualitySummaryForNode } from "../assets/workflowAssetPreviewModel.ts";
 import type { CanvasEdge, CanvasNode, ConnectionLike, NodePort, NodePortType } from "../types.ts";
 import { isV2RegionWorkflowNode, v2RegionAssetVersionsForNode, v2RegionItemsForNode, v2RegionSlotsForNode } from "../v2/v2RegionNode.ts";
@@ -770,9 +771,27 @@ function fallbackLayoutNodeDimensions(node: CanvasNode) {
   if (node.data.isV2Region && kind.includes("script")) return { width: 360, height: 600 };
   if (node.data.isV2Region && (kind.includes("final") || kind.includes("composition"))) return { width: 760, height: 520 };
   if (node.data.isV2Region) return { width: 980, height: 640 };
-  if (node.data.family === "Image" || node.data.family === "Video" || node.data.family === "Preview") return { width: 252, height: 238 };
+  if (isCanvasEntityAreaNode(node.data.kind)) return { width: 330, height: 226 };
+  if (node.data.family === "Image" || node.data.family === "Video" || node.data.family === "Preview") {
+    const width = 252;
+    const aspectRatio = previewAssetAspectRatio(node);
+    if (aspectRatio) return { width, height: width / aspectRatio };
+    return { width, height: 448 };
+  }
   if (node.data.family === "Comment") return { width: 252, height: 124 };
   return DEFAULT_LAYOUT_NODE_DIMENSIONS;
+}
+
+function previewAssetAspectRatio(node: CanvasNode) {
+  const asset = node.data.previewAssets[0] as (CanvasNode["data"]["previewAssets"][number] & {
+    width?: unknown;
+    height?: unknown;
+  }) | undefined;
+  if (!asset) return undefined;
+  const metadata = asset.metadata ?? {};
+  const width = finiteLayoutDimension(Number(asset.width ?? metadata.width));
+  const height = finiteLayoutDimension(Number(asset.height ?? metadata.height));
+  return width && height ? width / height : undefined;
 }
 
 function finiteLayoutDimension(value: number | null | undefined) {

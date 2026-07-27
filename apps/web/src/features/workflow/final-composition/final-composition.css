@@ -1149,29 +1149,10 @@ body:has(.v2-final-composition-panel) .floating-rail {
   display: flex;
   min-width: 0;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   padding: 10px 11px;
   border-bottom: 1px solid rgba(89, 96, 112, 0.13);
-}
-
-.v2-final-composition-card-heading > div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.v2-final-composition-card-heading strong {
-  overflow: hidden;
-  color: rgba(34, 39, 52, 0.92);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.v2-final-composition-card-heading > div span {
-  color: rgba(65, 73, 91, 0.6);
-  font-size: 9px;
 }
 
 .v2-final-composition-card-status {

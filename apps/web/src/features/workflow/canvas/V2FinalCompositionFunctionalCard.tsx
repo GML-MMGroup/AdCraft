@@ -29,10 +29,6 @@ export function V2FinalCompositionFunctionalCard({
       data-slot-status={status}
     >
       <header className="v2-final-composition-card-heading">
-        <div>
-          <strong>Final Composition</strong>
-          <span>Final video</span>
-        </div>
         <span className={`v2-final-composition-card-status status-${status}`}>{status}</span>
       </header>
       <div className="v2-final-composition-card-preview nodrag">
