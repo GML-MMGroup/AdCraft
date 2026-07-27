@@ -30,3 +30,4 @@ Define scene order, shot type, visual action, text, duration, camera, and input 
 
 - Do not create unfilmable abstract beats.
 - Do not ignore product, character, or scene consistency.
+

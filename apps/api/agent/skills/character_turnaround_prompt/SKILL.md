@@ -31,3 +31,4 @@ Describe one character per sheet with front, side, and back views on a plain bac
 - Do not add complex scenes.
 - Do not add extra people.
 - Do not change clothing or identity across views.
+

@@ -30,3 +30,4 @@ Describe prompt constraints for each storyboard image.
 
 - Do not mix reference identities.
 - Do not omit required product visibility when product showcase is needed.
+

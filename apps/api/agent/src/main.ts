@@ -1,6 +1,8 @@
 import { createAgentRuntimeServer } from "./server.js";
 import { PiModelAdapter } from "./pi-model-adapter.js";
 import { PythonInternalClient } from "./python-internal-client.js";
+import { SkillBundleError } from "./skills.js";
+import { startVerifiedServer } from "./startup.js";
 
 const token = process.env.AGENT_RUNTIME_INTERNAL_TOKEN?.trim();
 if (!token) {
@@ -28,7 +30,14 @@ const server = createAgentRuntimeServer({
   mode,
   ...(adapter ? { adapter } : {}),
 });
-server.listen(port, host);
+await startVerifiedServer(server, port, host).catch((error: unknown) => {
+  const code =
+    error instanceof SkillBundleError
+      ? error.code
+      : "agent_runtime_startup_failed";
+  console.error(`Agent runtime startup failed: ${code}.`);
+  process.exit(1);
+});
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {

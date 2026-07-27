@@ -30,3 +30,4 @@ List which asset roles should be passed to each downstream media model.
 
 - Do not pretend a local path is a public URL.
 - Do not silently ignore required reference assets.
+

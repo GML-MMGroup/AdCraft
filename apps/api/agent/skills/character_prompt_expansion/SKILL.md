@@ -30,3 +30,4 @@ Add stable visual details such as face shape, hair, outfit, body type, age, and 
 
 - Do not add complex scenes.
 - Do not change character identity between views.
+

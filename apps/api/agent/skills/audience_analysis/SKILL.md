@@ -30,3 +30,4 @@ Describe audience needs, triggers, objections, and preferred tone.
 
 - Do not create broad demographic stereotypes.
 - Do not add unsupported audience segments.
+

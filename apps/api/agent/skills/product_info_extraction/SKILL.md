@@ -30,3 +30,4 @@ Summarize facts that downstream strategy, script, and visual nodes can safely re
 
 - Do not invent unsupported claims.
 - Do not turn internal user instructions into audience-facing copy.
+

@@ -31,3 +31,4 @@ Guide hook, body, CTA, subtitle lines, and approximate timing.
 
 - Do not put raw user requests into script body or subtitles.
 - Do not exceed the requested duration.
+

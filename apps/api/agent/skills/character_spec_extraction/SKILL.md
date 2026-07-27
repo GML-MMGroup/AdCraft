@@ -30,3 +30,4 @@ Describe each main character with role, appearance, personality, and brand fit.
 
 - Do not add unnecessary extra characters.
 - Do not include scene background in pure character design.
+

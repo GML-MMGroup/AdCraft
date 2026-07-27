@@ -30,3 +30,4 @@ Provide a concise appeal statement and tone guidance for script and visuals.
 
 - Do not create unrelated campaign themes.
 - Do not overcomplicate the concept for short video duration.
+

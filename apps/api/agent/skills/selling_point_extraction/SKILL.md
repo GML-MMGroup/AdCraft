@@ -30,3 +30,4 @@ Return one primary selling point and optional secondary support points.
 
 - Do not list every product feature equally.
 - Do not use unverifiable superlatives.
+

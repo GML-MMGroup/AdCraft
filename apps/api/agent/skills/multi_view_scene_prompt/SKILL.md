@@ -30,3 +30,4 @@ Describe scene continuity details and possible camera viewpoints.
 
 - Do not create conflicting scene layouts.
 - Do not mix unrelated environments in one scene reference.
+

@@ -30,3 +30,4 @@ Provide shot prompt, duration, camera motion, action, and input asset guidance.
 
 - Do not submit a full 30 second ad as one short video task.
 - Do not use local file paths as remote image URLs.
+
