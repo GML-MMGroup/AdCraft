@@ -1,6 +1,6 @@
 import json
 from time import perf_counter
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -44,8 +44,14 @@ class SpecialistAgentError(ValueError):
 
 
 class SpecialistAgentService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        trace_writer_factory: Callable[[Any, str], AgentTraceWriter] = AgentTraceWriter,
+    ) -> None:
         self._settings = settings
+        self._trace_writer_factory = trace_writer_factory
         self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def invoke(self, request: SpecialistInvocationRequest) -> SpecialistAgentOutcome:
@@ -213,7 +219,7 @@ class SpecialistAgentService:
         duration_ms: int,
     ) -> None:
         result = outcome.result if outcome is not None else None
-        writer = AgentTraceWriter(self._settings.media_data_dir, request.workflow_id)
+        writer = self._trace_writer_factory(self._settings.media_data_dir, request.workflow_id)
         writer.append(
             agent=request.specialist,
             model=outcome.model_id if outcome is not None else None,

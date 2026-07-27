@@ -89,6 +89,10 @@ from app.services.agent_trace import V2AgentTraceWriter, utc_now
 from app.services.front_desk import FrontDeskError, FrontDeskService
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_agent_router import V2AgentRouteError, V2AgentRouter
+from app.services.v2_agent_interaction_service import (
+    V2AgentInteractionError,
+    V2AgentInteractionService,
+)
 from app.services.v2_agent_target_resolver import (
     V2AgentTargetResolutionError,
     V2AgentTargetResolver,
@@ -465,6 +469,12 @@ class WorkflowV2Service:
             router=self._agent_router,
             provider_executor=self._provider_executor,
             task_store=self._provider_task_store,
+        )
+        self._agent_interaction = V2AgentInteractionService(
+            settings,
+            domain=self,
+            target_resolver=self._agent_target_resolver,
+            conversation_context_source=V2AgentConversationRepository(self._authoring_database),
         )
 
     def plan_from_prompt(
@@ -2130,6 +2140,19 @@ class WorkflowV2Service:
             source_action="slot_generate",
         )
 
+    def generate_agent_candidate(
+        self,
+        workflow_id: str,
+        slot_id: str,
+    ) -> WorkflowV2RunResponse:
+        return self._run_single_slot(
+            workflow_id,
+            slot_id,
+            mode="slot_generate",
+            source_action="chat_revise_and_generate",
+            preflight_source_action="slot_generate",
+        )
+
     def regenerate_slot(self, workflow_id: str, slot_id: str) -> WorkflowV2RunResponse:
         return self._run_single_slot(
             workflow_id,
@@ -2145,10 +2168,11 @@ class WorkflowV2Service:
         *,
         mode: str,
         source_action: str,
+        preflight_source_action: str | None = None,
     ) -> WorkflowV2RunResponse:
         workflow = self._preflight_visual_style_scope(
             workflow_id,
-            source=source_action,  # type: ignore[arg-type]
+            source=preflight_source_action or source_action,  # type: ignore[arg-type]
         )
         target = self._find_slot(workflow, slot_id)
         if target is None:
@@ -2490,6 +2514,13 @@ class WorkflowV2Service:
         workflow = self.get_workflow(workflow_id)
         if request.target.target_type == "node" and request.target.node_id == "script":
             return self._chat_script_action(workflow, request)
+        if request.target.target_type != "free_node" and not (
+            request.target.locator and request.target.locator.startswith("free_node:")
+        ):
+            try:
+                return self._agent_interaction.execute_chat_action(workflow_id, request)
+            except V2AgentInteractionError as exc:
+                raise WorkflowV2Error(exc.code, str(exc)) from exc
         action_mode = _resolve_chat_action_mode(request)
         if action_mode == "clarification_required":
             raise WorkflowV2Error(
@@ -2654,6 +2685,74 @@ class WorkflowV2Service:
             },
         )
         return response
+
+    def apply_agent_prompt_revision(
+        self,
+        workflow_id: str,
+        slot_id: str,
+        *,
+        revised_prompt: str,
+        negative_prompt: str | None,
+        expected_revision: int,
+    ) -> WorkflowV2:
+        workflow = self.get_workflow(workflow_id)
+        if workflow.state_version != expected_revision:
+            raise WorkflowV2Error(
+                "workflow_state_conflict",
+                "The workflow changed before this Agent action could be applied.",
+            )
+        slot = self._find_slot(workflow, slot_id)
+        if slot is None:
+            raise WorkflowV2Error("slot_not_found")
+        slot.slot_prompt = revised_prompt
+        slot.user_prompt = revised_prompt
+        if negative_prompt is not None:
+            slot.negative_prompt = negative_prompt
+        slot.prompt_source = "user"
+        slot.manual_prompt_dirty = True
+        workflow = self._commit_semantic_workflow(workflow, source="prompt_edit")
+        self._append_event(
+            workflow_id,
+            "slot_prompt_updated",
+            node_id=slot.node_id,
+            item_id=slot.item_id,
+            slot_id=slot.slot_id,
+            payload={
+                "slot_prompt": revised_prompt,
+                "negative_prompt": negative_prompt,
+                "source_action": "agent_chat_action",
+            },
+        )
+        return workflow
+
+    def append_agent_interaction_event(
+        self,
+        workflow_id: str,
+        event_type: str,
+        *,
+        node_id: str,
+        item_id: str,
+        slot_id: str,
+        asset_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        self._append_event(
+            workflow_id,
+            event_type,
+            node_id=node_id,
+            item_id=item_id,
+            slot_id=slot_id,
+            asset_id=asset_id,
+            payload=payload or {},
+        )
+
+    def write_agent_interaction_audit(
+        self,
+        workflow_id: str,
+        action_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self._write_chat_action_audit(workflow_id, action_id, payload)
 
     def _chat_script_action(
         self,

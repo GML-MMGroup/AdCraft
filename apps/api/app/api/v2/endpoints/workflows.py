@@ -1118,6 +1118,7 @@ def _workflow_v2_http_error(exc: WorkflowV2Error) -> HTTPException:
         "script_plan_unavailable",
         "v2_data_boundary_violation",
         "shot_reference_contract_mismatch",
+        "workflow_state_conflict",
     }:
         return HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1195,6 +1196,10 @@ def _workflow_v2_http_error(exc: WorkflowV2Error) -> HTTPException:
         "composition_probe_failed",
         "provider_output_missing",
         "quality_gate_failed",
+        "specialist_execution_failed",
+        "specialist_output_invalid",
+        "specialist_real_mode_unavailable",
+        "specialist_target_mismatch",
     }:
         detail = _workflow_v2_error_detail(exc)
         return HTTPException(
