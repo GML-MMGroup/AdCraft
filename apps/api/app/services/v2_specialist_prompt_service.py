@@ -71,6 +71,20 @@ class V2SpecialistPromptService:
                 _validate_specialist_result(result)
                 return _with_result_provenance(result, safe_request, config)
             except V2SpecialistLLMClientError as exc:
+                if (
+                    not self._settings.v2_prompt_materializer_strict
+                    and exc.code == "specialist_output_quality_failed"
+                ):
+                    return self.materialize_fallback(
+                        safe_request,
+                        warning={
+                            "code": "specialist_content_quality_fallback_used",
+                            "message": (
+                                "The specialist model output failed content quality "
+                                "validation; a deterministic slot-safe prompt was used."
+                            ),
+                        },
+                    )
                 raise V2SpecialistPromptError(
                     "prompt_materialization_failed",
                     f"{exc.code}: {exc}",

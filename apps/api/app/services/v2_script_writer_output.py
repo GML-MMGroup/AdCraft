@@ -86,6 +86,7 @@ def normalize_script_writer_output(payload: Any, *, model_id: str | None) -> dic
 
     for list_key, canonical_id in _ALIASES:
         _map_id_alias(normalized.get(list_key), canonical_id)
+    _canonicalize_shot_references(normalized.get("shots"))
 
     normalized.setdefault("script_plan_version", 2)
     normalized["materializer_mode"] = "real"
@@ -164,6 +165,26 @@ def _map_id_alias(value: Any, canonical_id: str) -> None:
         if canonical_id not in item and isinstance(alias_value, str) and alias_value.strip():
             item[canonical_id] = alias_value.strip()
         item.pop("id", None)
+
+
+def _canonicalize_shot_references(value: Any) -> None:
+    if not isinstance(value, list):
+        return
+    for shot in value:
+        if not isinstance(shot, dict):
+            continue
+        scene_id = shot.get("scene_id")
+        product_ids = shot.get("product_ids", [])
+        character_ids = shot.get("character_ids", [])
+        if (
+            not isinstance(scene_id, str)
+            or not isinstance(product_ids, list)
+            or not isinstance(character_ids, list)
+            or not all(isinstance(item, str) for item in [*product_ids, *character_ids])
+        ):
+            continue
+        shot["scene_ids"] = [scene_id]
+        shot["reference_item_ids"] = list(dict.fromkeys([*product_ids, *character_ids, scene_id]))
 
 
 def _strip_strings(value: Any) -> Any:

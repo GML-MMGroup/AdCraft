@@ -309,4 +309,5 @@ def _client_error_code(code: str) -> str:
         "structured_generation_schema_failed": "specialist_output_invalid_json",
         "structured_output_schema_invalid": "specialist_output_schema_invalid",
         "structured_output_quality_failed": "specialist_output_quality_failed",
+        "structured_generation_quality_failed": "specialist_output_quality_failed",
     }.get(code, "specialist_llm_call_failed")
