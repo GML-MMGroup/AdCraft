@@ -1042,13 +1042,17 @@ def update_final_composition_timeline(
 def render_final_composition_timeline(
     workflow_id: str,
     request: WorkflowV2TimelineRenderRequest,
+    response: Response,
     service: Annotated[
         V2FinalCompositionRenderService,
         Depends(get_v2_final_composition_render_service),
     ],
 ) -> WorkflowV2TimelineRenderStartResponse:
     try:
-        return service.start_render(workflow_id, request)
+        result = service.start_render(workflow_id, request)
+        if result.status == "completed" and result.reused:
+            response.status_code = status.HTTP_200_OK
+        return result
     except V2FinalCompositionTimelineError as exc:
         raise _workflow_v2_timeline_http_error(exc) from exc
 

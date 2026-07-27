@@ -1445,13 +1445,27 @@ class WorkflowV2TimelineRenderResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class V2FinalCompositionFingerprint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal["v2-final-composition-fingerprint-v1"]
+    fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    canonical_payload: dict[str, Any]
+
+
 class WorkflowV2TimelineRenderStartResponse(BaseModel):
     workflow_id: str
     render_id: str
-    status: Literal["queued"] = "queued"
+    status: Literal["queued", "running", "completed"] = "queued"
+    purpose: Literal["final"] = "final"
     timeline_id: str
     timeline_version: int
     events_cursor: int = Field(ge=0)
+    output_url: str | None = None
+    asset_id: str | None = None
+    version_id: str | None = None
+    reused: bool = False
+    composition_fingerprint: str | None = None
 
 
 class WorkflowV2TimelineRenderStateResponse(BaseModel):
@@ -1476,6 +1490,14 @@ class WorkflowV2TimelineRenderStateResponse(BaseModel):
     version_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    output_url: str | None = None
+    reused: bool = False
+    reused_from_render_id: str | None = None
+    reuse_kind: Literal["active_render", "completed_asset"] | None = None
+    composition_fingerprint: str | None = None
+    fingerprint_contract_version: str | None = None
+    source_action: Literal["global_run", "editor_export"] | None = None
+    select_result: bool | None = None
     created_at: str
     updated_at: str
 

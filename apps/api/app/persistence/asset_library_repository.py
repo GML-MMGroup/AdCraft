@@ -339,6 +339,90 @@ class V2AssetLibraryRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def list_versions_for_slot(
+        self,
+        *,
+        workflow_id: str,
+        slot_id: str,
+    ) -> tuple[AssetVersionMetadataV2, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AssetVersionRow.__table__)
+                        .where(
+                            AssetVersionRow.source_workflow_id == workflow_id,
+                            AssetVersionRow.source_slot_id == slot_id,
+                        )
+                        .order_by(AssetVersionRow.created_at.desc())
+                    )
+                    .mappings()
+                    .all()
+                )
+                return tuple(_version_from_row(row) for row in rows)
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def mark_version_unavailable(
+        self,
+        *,
+        asset_id: str,
+        version_id: str,
+        reason: str,
+    ) -> AssetVersionMetadataV2:
+        try:
+            with self._database.engine.begin() as connection:
+                current = _find_version(
+                    connection,
+                    asset_id=asset_id,
+                    version_id=version_id,
+                    slot_id=None,
+                )
+                if current is None:
+                    raise V2PersistenceError(
+                        "asset_version_not_found",
+                        "Asset version was not found.",
+                        stage="asset_library",
+                    )
+                metadata = dict(current.metadata)
+                projection = metadata.get("workflow_asset_version")
+                if isinstance(projection, dict):
+                    projection = dict(projection)
+                    record_metadata = projection.get("metadata")
+                    projection["metadata"] = {
+                        **(dict(record_metadata) if isinstance(record_metadata, dict) else {}),
+                        "availability_status": "unavailable",
+                        "unavailable_reason": reason,
+                    }
+                    metadata["workflow_asset_version"] = projection
+                connection.execute(
+                    update(AssetVersionRow)
+                    .where(
+                        AssetVersionRow.asset_id == asset_id,
+                        AssetVersionRow.version_id == version_id,
+                    )
+                    .values(
+                        status="unavailable",
+                        metadata_json=json.dumps(
+                            metadata,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                    )
+                )
+                updated = _find_version(
+                    connection,
+                    asset_id=asset_id,
+                    version_id=version_id,
+                    slot_id=None,
+                )
+                assert updated is not None
+                return updated
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
     def create_binding(
         self,
         binding: AssetBindingCreate,
@@ -554,7 +638,29 @@ class V2AssetLibraryRepository:
             )
         ).scalar_one_or_none()
         if existing is not None:
-            return _get_version(connection, version.version_id)
+            current = _get_version(connection, version.version_id)
+            if current.status == "unavailable" and version.status == "ready":
+                connection.execute(
+                    update(AssetVersionRow)
+                    .where(AssetVersionRow.version_id == version.version_id)
+                    .values(
+                        storage_key=version.storage_key,
+                        sha256=version.sha256,
+                        size_bytes=version.size_bytes,
+                        mime_type=version.mime_type,
+                        width=version.width,
+                        height=version.height,
+                        duration_seconds=version.duration_seconds,
+                        metadata_json=json.dumps(
+                            version.metadata,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                        status="ready",
+                    )
+                )
+                return _get_version(connection, version.version_id)
+            return current
         return self._create_asset_version_in_transaction(connection, asset, version)
 
     def _create_entity_in_transaction(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
@@ -11,6 +12,7 @@ from uuid import uuid4
 
 from app.core.config import Settings
 from app.schemas.workflow_v2 import (
+    V2FinalCompositionFingerprint,
     WorkflowV2TimelineRenderRequest,
     WorkflowV2TimelineRenderStartResponse,
     WorkflowV2TimelineRenderStateResponse,
@@ -19,6 +21,16 @@ from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.services.agent_trace import utc_now
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.services.v2_final_composition_renderer import V2FinalCompositionRenderer
+from app.services.v2_final_composition_fingerprint import (
+    V2FinalCompositionFingerprintError,
+    V2FinalCompositionFingerprintService,
+)
+from app.services.v2_final_composition_publication import (
+    V2FinalCompositionPublicationService,
+)
+from app.services.v2_final_composition_orphan_reconciler import (
+    V2FinalCompositionOrphanReconciler,
+)
 from app.services.v2_final_composition_timeline import (
     FINAL_NODE_ID,
     V2FinalCompositionTimelineError,
@@ -34,12 +46,14 @@ from app.services.v2_simple_composition_plan import (
     V2SimpleCompositionPlanError,
     V2SimpleCompositionPlanService,
 )
+from app.services.v2_workflow_lock import v2_workflow_lock
 
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 _ACTIVE_STATUSES = {"queued", "running", "cancellation_requested"}
 _REGISTRY_LOCK = threading.RLock()
 _PROCESS_REGISTRY: dict[tuple[str, str], subprocess.Popen[str] | None] = {}
+_LOGGER = logging.getLogger(__name__)
 
 
 class V2FinalCompositionRenderService:
@@ -51,6 +65,15 @@ class V2FinalCompositionRenderService:
         self._events = V2RuntimeEventService(self._data_dir)
         self._timeline_service = V2FinalCompositionTimelineService(settings)
         self._simple_plan_service = V2SimpleCompositionPlanService(self._data_dir)
+        self._fingerprints = V2FinalCompositionFingerprintService(
+            self._data_dir,
+            settings,
+        )
+        self._publication = V2FinalCompositionPublicationService(settings)
+        self._orphans = V2FinalCompositionOrphanReconciler(
+            self._data_dir,
+            manifest_reconciler=self._timeline_service.reconcile_pending_publications,
+        )
 
     def start_render(
         self,
@@ -60,6 +83,7 @@ class V2FinalCompositionRenderService:
         workflow, item, slot, timeline, _source = (
             self._timeline_service.load_or_create_and_reconcile(workflow_id)
         )
+        self.reconcile_final_composition_artifacts(workflow_id)
         if (
             request.timeline_id != timeline.timeline_id
             or request.timeline_version != timeline.version
@@ -106,6 +130,22 @@ class V2FinalCompositionRenderService:
                     str(exc),
                     status_code=400,
                 ) from exc
+        try:
+            fingerprint = self._fingerprints.build_for_composition(
+                workflow_id=workflow_id,
+                slot_id=slot.slot_id,
+                timeline=timeline,
+                render_settings=request.render_settings,
+                render_mode=render_mode,
+                audio_mode=workflow.audio_mode,
+                simple_plan=simple_plan,
+            )
+        except V2FinalCompositionFingerprintError as exc:
+            raise V2FinalCompositionTimelineError(
+                "v2_final_composition_fingerprint_invalid",
+                str(exc),
+                status_code=500,
+            ) from exc
         render_id = f"render_{uuid4().hex[:12]}"
         now = utc_now().isoformat()
         state = {
@@ -128,21 +168,97 @@ class V2FinalCompositionRenderService:
             "updated_at": now,
             "events_cursor": self._events.events_cursor(workflow_id),
             "request": request.model_dump(mode="json"),
+            "composition_fingerprint": fingerprint.fingerprint,
+            "fingerprint_contract_version": fingerprint.contract_version,
+            "composition_fingerprint_payload": fingerprint.canonical_payload,
+            "source_action": "editor_export",
+            "select_result": True,
+            "reused": False,
+            "reused_from_render_id": None,
+            "reuse_kind": None,
+            "output_url": None,
             **self._simple_plan_state_metadata(simple_plan),
         }
-        with _REGISTRY_LOCK:
-            active = self._active_state(workflow_id)
-            if active is not None:
-                raise V2FinalCompositionTimelineError(
-                    "v2_timeline_render_already_active",
-                    f"Render already active: {active['render_id']}",
-                    status_code=409,
-                    details={"active_render_id": active["render_id"]},
+        with v2_workflow_lock(self._data_dir, workflow_id):
+            with _REGISTRY_LOCK:
+                self._publication.reconcile_pending(
+                    workflow=workflow,
+                    item=item,
+                    slot=slot,
                 )
-            if simple_plan is not None:
-                self._write_simple_plan(workflow_id, render_id, simple_plan)
-            self._write_state(workflow_id, render_id, state)
-            _PROCESS_REGISTRY[(str(self._data_dir), workflow_id)] = None
+                active = self._active_state(workflow_id)
+                if active is not None:
+                    if (
+                        active.get("status") in {"queued", "running"}
+                        and active.get("composition_fingerprint") == fingerprint.fingerprint
+                    ):
+                        reused_state = {
+                            **active,
+                            "reused": True,
+                            "reused_from_render_id": active["render_id"],
+                            "reuse_kind": "active_render",
+                        }
+                        self._append_render_event(
+                            workflow_id,
+                            "final_composition_render_reused",
+                            reused_state,
+                        )
+                        return self._start_response(reused_state)
+                    raise V2FinalCompositionTimelineError(
+                        "v2_timeline_render_already_active",
+                        f"Render already active: {active['render_id']}",
+                        status_code=409,
+                        details={
+                            "active_render_id": active["render_id"],
+                            "purpose": "final",
+                        },
+                    )
+                reusable = self._publication.find_reusable(
+                    workflow_id=workflow_id,
+                    slot_id=slot.slot_id,
+                    composition_fingerprint=fingerprint.fingerprint,
+                )
+                if reusable is not None:
+                    workflow = self._timeline_service.select_published_result(
+                        workflow=workflow,
+                        item=item,
+                        slot=slot,
+                        record=reusable,
+                        source_action="editor_export",
+                    )
+                    del workflow
+                    reused_render_id = str(
+                        reusable.metadata.get("source_render_id")
+                        or f"render_{reusable.version_id.removeprefix('ver_comp_')[:12]}"
+                    )
+                    completed_state = {
+                        **state,
+                        "render_id": reused_render_id,
+                        "status": "completed",
+                        "asset_id": reusable.asset_id,
+                        "version_id": reusable.version_id,
+                        "output_url": reusable.public_url,
+                        "reused": True,
+                        "reused_from_render_id": reusable.metadata.get("source_render_id"),
+                        "reuse_kind": "completed_asset",
+                        "progress_seconds": state["total_seconds"],
+                        "progress_percent": 100.0,
+                    }
+                    self._write_state(
+                        workflow_id,
+                        reused_render_id,
+                        completed_state,
+                    )
+                    self._append_render_event(
+                        workflow_id,
+                        "final_composition_render_reused",
+                        completed_state,
+                    )
+                    return self._start_response(completed_state)
+                if simple_plan is not None:
+                    self._write_simple_plan(workflow_id, render_id, simple_plan)
+                self._write_state(workflow_id, render_id, state)
+                _PROCESS_REGISTRY[(str(self._data_dir), workflow_id)] = None
         event = self._events.append_event(
             workflow_id,
             "final_composition_render_queued",
@@ -163,12 +279,11 @@ class V2FinalCompositionRenderService:
             daemon=True,
         )
         thread.start()
-        return WorkflowV2TimelineRenderStartResponse(
-            workflow_id=workflow_id,
-            render_id=render_id,
-            timeline_id=timeline.timeline_id,
-            timeline_version=timeline.version,
-            events_cursor=event.seq,
+        return self._start_response(
+            {
+                **state,
+                "events_cursor": event.seq,
+            }
         )
 
     def load_render_state(
@@ -202,6 +317,13 @@ class V2FinalCompositionRenderService:
 
     def recover_interrupted_renders(self, workflow_id: str) -> list[str]:
         recovered: list[str] = []
+        try:
+            self._timeline_service.reconcile_pending_publications(workflow_id)
+        except Exception:  # noqa: BLE001 - recovery cannot prevent backend startup.
+            _LOGGER.exception(
+                "Pending Final Composition publication recovery failed.",
+                extra={"workflow_id": workflow_id},
+            )
         for state_path in self._composition_dir(workflow_id).glob("render_*/state.json"):
             state = json.loads(state_path.read_text(encoding="utf-8"))
             status = state.get("status")
@@ -232,7 +354,17 @@ class V2FinalCompositionRenderService:
                 self._write_state(workflow_id, str(state["render_id"]), failed)
                 self._append_render_event(workflow_id, "final_composition_render_failed", failed)
                 recovered.append(str(state["render_id"]))
+        self.reconcile_final_composition_artifacts(workflow_id)
         return recovered
+
+    def reconcile_final_composition_artifacts(self, workflow_id: str) -> None:
+        try:
+            self._orphans.reconcile(workflow_id)
+        except Exception:  # noqa: BLE001 - maintenance cannot fail render lifecycle.
+            _LOGGER.exception(
+                "Final composition artifact reconciliation failed.",
+                extra={"workflow_id": workflow_id},
+            )
 
     def _run_render(self, workflow_id: str, render_id: str) -> None:
         state = self._load_state(workflow_id, render_id)
@@ -261,6 +393,13 @@ class V2FinalCompositionRenderService:
                 emit_lifecycle_events=False,
                 simple_plan_override=simple_plan,
                 enforce_current_timeline_version=False,
+                composition_fingerprint=V2FinalCompositionFingerprint(
+                    contract_version=running["fingerprint_contract_version"],
+                    fingerprint=running["composition_fingerprint"],
+                    canonical_payload=running["composition_fingerprint_payload"],
+                ),
+                source_action="editor_export",
+                select_result=True,
             )
         except V2FinalCompositionTimelineError as exc:
             self._fail_render(workflow_id, render_id, exc.code, str(exc))
@@ -278,12 +417,14 @@ class V2FinalCompositionRenderService:
             "completed",
             asset_id=result.asset_id,
             version_id=result.version_id,
+            output_url=result.public_url,
             progress_seconds=running["total_seconds"],
             progress_percent=100.0,
         )
         self._write_state(workflow_id, render_id, completed)
         with _REGISTRY_LOCK:
             _PROCESS_REGISTRY.pop((str(self._data_dir), workflow_id), None)
+        self.reconcile_final_composition_artifacts(workflow_id)
 
     def _fail_render(
         self,
@@ -310,6 +451,7 @@ class V2FinalCompositionRenderService:
         self._append_render_event(workflow_id, "final_composition_render_failed", failed)
         with _REGISTRY_LOCK:
             _PROCESS_REGISTRY.pop((str(self._data_dir), workflow_id), None)
+        self.reconcile_final_composition_artifacts(workflow_id)
 
     def _renderer_factory(
         self,
@@ -397,6 +539,7 @@ class V2FinalCompositionRenderService:
         )
         with _REGISTRY_LOCK:
             _PROCESS_REGISTRY.pop((str(self._data_dir), cancelled["workflow_id"]), None)
+        self.reconcile_final_composition_artifacts(cancelled["workflow_id"])
         return WorkflowV2TimelineRenderStateResponse.model_validate(cancelled)
 
     def _transition(self, state: dict[str, Any], status: str, **updates: Any) -> dict[str, Any]:
@@ -425,7 +568,28 @@ class V2FinalCompositionRenderService:
             "bgm_status": state.get("bgm_status"),
             "bgm_gain_db": state.get("bgm_gain_db"),
             "timeline_controls_applied": state.get("timeline_controls_applied"),
+            "composition_fingerprint": state.get("composition_fingerprint"),
+            "fingerprint_contract_version": state.get("fingerprint_contract_version"),
+            "reused": state.get("reused", False),
+            "reused_from_render_id": state.get("reused_from_render_id"),
+            "reuse_kind": state.get("reuse_kind"),
         }
+
+    @staticmethod
+    def _start_response(state: dict[str, Any]) -> WorkflowV2TimelineRenderStartResponse:
+        return WorkflowV2TimelineRenderStartResponse(
+            workflow_id=state["workflow_id"],
+            render_id=state["render_id"],
+            status=state["status"],
+            timeline_id=state["timeline_id"],
+            timeline_version=state["timeline_version"],
+            events_cursor=state["events_cursor"],
+            output_url=state.get("output_url"),
+            asset_id=state.get("asset_id"),
+            version_id=state.get("version_id"),
+            reused=bool(state.get("reused", False)),
+            composition_fingerprint=state.get("composition_fingerprint"),
+        )
 
     def _append_render_event(
         self,
