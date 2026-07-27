@@ -74,4 +74,20 @@ describe("workflow asset index", () => {
 
     expect(index.assetsForNode(scope)).toBe(index.assetsForNode(scope));
   });
+
+  it("includes implicit reference assets even when another node owns the asset", () => {
+    const implicitReference = asset("shared-reference", { node_id: "source-node" });
+    const targetSlot = slot("target-slot", "target-node", "target-item");
+    targetSlot.implicit_reference_ids = ["shared-reference"];
+    const index = createWorkflowAssetIndex([implicitReference], []);
+
+    const result = index.assetsForNode({
+      nodeId: "target-node",
+      items: [item("target-item", "target-node")],
+      slots: [targetSlot],
+      localAssets: [],
+    });
+
+    expect(result.map((entry) => entry.asset_id)).toEqual(["shared-reference"]);
+  });
 });

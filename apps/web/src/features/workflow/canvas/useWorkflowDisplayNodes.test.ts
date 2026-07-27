@@ -127,4 +127,50 @@ describe("workflow display node projection", () => {
     expect(secondProjection[0]).not.toBe(firstProjection[0]);
     expect(secondProjection[1]).toBe(firstProjection[1]);
   });
+
+  it("indexes a stable runtime only once while source node positions change", () => {
+    const first = canvasNode("first");
+    const second = canvasNode("second");
+    first.data.isV2Region = true;
+    first.data.v2Slots = [slot("first-slot", "first")];
+    second.data.isV2Region = true;
+    second.data.v2Slots = [slot("second-slot", "second")];
+    const stableRuntime = runtime(["first-slot"]);
+    let valueReads = 0;
+    let runtimeFieldReads = 0;
+    Object.defineProperty(stableRuntime.running_slot_ids, 0, {
+      configurable: true,
+      get() {
+        valueReads += 1;
+        return "first-slot";
+      },
+    });
+    Object.defineProperty(stableRuntime, "execution_status", {
+      configurable: true,
+      get() {
+        runtimeFieldReads += 1;
+        return "running";
+      },
+    });
+    const projector = createWorkflowDisplayNodeProjector();
+    const baseline = {
+      ...input([first, second], {}),
+      v2Runtime: stableRuntime,
+    };
+
+    projector.project(baseline);
+    const readsAfterInitialProjection = valueReads;
+    const fieldReadsAfterInitialProjection = runtimeFieldReads;
+    projector.project({
+      ...baseline,
+      flowNodes: [
+        { ...first, position: { x: 100, y: 80 } },
+        second,
+      ],
+    });
+
+    expect(readsAfterInitialProjection).toBeGreaterThan(0);
+    expect(valueReads).toBe(readsAfterInitialProjection);
+    expect(runtimeFieldReads).toBe(fieldReadsAfterInitialProjection);
+  });
 });

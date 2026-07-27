@@ -29,6 +29,16 @@ export type WorkflowDocumentCommand =
       ) => CanvasNode;
     };
 
+export type WorkflowPositionCommand = Extract<
+  WorkflowDocumentCommand,
+  { type: "move-node" | "set-node-positions" }
+>;
+
+export type WorkflowPositionProjection = {
+  canvasNodes: WorkflowNode[];
+  flowNodes: CanvasNode[];
+};
+
 export type WorkflowDocumentCommandTargets = {
   setWorkflow: (update: (current: WorkflowGraph | null) => WorkflowGraph | null) => void;
   setCanvasNodes: (update: (current: WorkflowNode[]) => WorkflowNode[]) => void;
@@ -44,6 +54,16 @@ export function dispatchWorkflowDocumentCommand(
   ));
   targets.setCanvasNodes((current) => applyWorkflowNodeListCommand(current, command));
   targets.setFlowNodes((current) => applyCanvasNodeListCommand(current, command));
+}
+
+export function projectWorkflowPositionCommand(
+  projection: WorkflowPositionProjection,
+  command: WorkflowPositionCommand,
+): WorkflowPositionProjection {
+  return {
+    canvasNodes: applyWorkflowNodeListCommand(projection.canvasNodes, command),
+    flowNodes: applyCanvasNodeListCommand(projection.flowNodes, command),
+  };
 }
 
 export function applyWorkflowDocumentCommand(

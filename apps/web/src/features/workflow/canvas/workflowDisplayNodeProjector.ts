@@ -84,6 +84,38 @@ type DisplayNodeCacheEntry = {
   result: CanvasNode;
 };
 
+const RUNTIME_MEMBERSHIP_KEYS = [
+  "running_slot_ids",
+  "running_item_ids",
+  "running_node_ids",
+  "waiting_slot_ids",
+  "waiting_item_ids",
+  "waiting_node_ids",
+  "failed_slot_ids",
+  "failed_item_ids",
+  "failed_node_ids",
+  "completed_slot_ids",
+  "completed_item_ids",
+  "completed_node_ids",
+  "blocked_slot_ids",
+  "blocked_item_ids",
+  "blocked_node_ids",
+  "skipped_slot_ids",
+  "skipped_item_ids",
+  "skipped_node_ids",
+] as const;
+
+type RuntimeMembershipKey = typeof RUNTIME_MEMBERSHIP_KEYS[number];
+type WorkflowRuntimeMembershipIndex = {
+  runtime: WorkflowRuntimeV2;
+  memberships: Record<RuntimeMembershipKey, ReadonlySet<string>>;
+  scopeByNodeId: Map<string, {
+    items: readonly WorkflowItemV2[];
+    slots: readonly WorkflowSlotV2[];
+    result: { runtime: WorkflowRuntimeV2 | undefined; signature: string };
+  }>;
+};
+
 export type WorkflowDisplayNodeProjector = {
   project: (input: WorkflowDisplayNodeProjectionInput) => CanvasNode[];
 };
@@ -98,6 +130,7 @@ export function createWorkflowDisplayNodeProjector(): WorkflowDisplayNodeProject
   let workflowAssets: AssetVersionV2[] | null = null;
   let slotAssets: AssetVersionV2[] | null = null;
   let assetIndex: WorkflowAssetIndex | null = null;
+  let runtimeIndex: WorkflowRuntimeMembershipIndex | undefined;
   let cache = new Map<string, DisplayNodeCacheEntry>();
 
   return {
@@ -113,6 +146,12 @@ export function createWorkflowDisplayNodeProjector(): WorkflowDisplayNodeProject
       }
 
       const nextCache = new Map<string, DisplayNodeCacheEntry>();
+      const sourceRuntime = input.v2Runtime ?? input.v2FallbackRuntime;
+      if (runtimeIndex?.runtime !== sourceRuntime) {
+        runtimeIndex = sourceRuntime
+          ? createWorkflowRuntimeMembershipIndex(sourceRuntime)
+          : undefined;
+      }
       const displayNodes = input.flowNodes
         .filter((node) => isUserVisibleWorkflowNode({ id: node.id, node_type: node.data.kind }))
         .map((node) => {
@@ -163,8 +202,10 @@ export function createWorkflowDisplayNodeProjector(): WorkflowDisplayNodeProject
           const candidateWarningCount = summary?.warningCount ?? 0;
           const pendingVisibleCandidateCount = summary?.pendingVisibleCandidateCount ?? 0;
           const scopedRuntime = scopeWorkflowRuntime(
-            input.v2Runtime ?? input.v2FallbackRuntime,
+            runtimeIndex,
             node.id,
+            items,
+            slots,
             itemIds,
             slotIds,
             previous?.runtime,
@@ -273,40 +314,43 @@ function scopeRecord<T>(
 }
 
 function scopeWorkflowRuntime(
-  runtime: WorkflowRuntimeV2 | undefined,
+  runtimeIndex: WorkflowRuntimeMembershipIndex | undefined,
   nodeId: string,
+  items: readonly WorkflowItemV2[],
+  slots: readonly WorkflowSlotV2[],
   itemIds: string[],
   slotIds: string[],
   previous: WorkflowRuntimeV2 | undefined,
   previousSignature: string | undefined,
 ): { runtime: WorkflowRuntimeV2 | undefined; signature: string } {
-  if (!runtime) return { runtime: undefined, signature: "" };
-  const itemIdSet = new Set(itemIds);
-  const slotIdSet = new Set(slotIds);
-  const filter = (values: string[], ids: Set<string>) => values.filter((id) => ids.has(id));
-  const nodeIds = new Set([nodeId]);
+  if (!runtimeIndex) return { runtime: undefined, signature: "" };
+  const cached = runtimeIndex.scopeByNodeId.get(nodeId);
+  if (cached?.items === items && cached.slots === slots) {
+    return cached.result;
+  }
+  const { runtime, memberships } = runtimeIndex;
   const scoped: WorkflowRuntimeV2 = {
     workflow_id: runtime.workflow_id,
     active_execution_id: runtime.active_execution_id,
     execution_status: runtime.execution_status,
-    running_slot_ids: filter(runtime.running_slot_ids, slotIdSet),
-    running_item_ids: filter(runtime.running_item_ids, itemIdSet),
-    running_node_ids: filter(runtime.running_node_ids, nodeIds),
-    waiting_slot_ids: filter(runtime.waiting_slot_ids, slotIdSet),
-    waiting_item_ids: filter(runtime.waiting_item_ids, itemIdSet),
-    waiting_node_ids: filter(runtime.waiting_node_ids, nodeIds),
-    failed_slot_ids: filter(runtime.failed_slot_ids, slotIdSet),
-    failed_item_ids: filter(runtime.failed_item_ids, itemIdSet),
-    failed_node_ids: filter(runtime.failed_node_ids, nodeIds),
-    completed_slot_ids: filter(runtime.completed_slot_ids, slotIdSet),
-    completed_item_ids: filter(runtime.completed_item_ids, itemIdSet),
-    completed_node_ids: filter(runtime.completed_node_ids, nodeIds),
-    blocked_slot_ids: filter(runtime.blocked_slot_ids, slotIdSet),
-    blocked_item_ids: filter(runtime.blocked_item_ids, itemIdSet),
-    blocked_node_ids: filter(runtime.blocked_node_ids, nodeIds),
-    skipped_slot_ids: filter(runtime.skipped_slot_ids, slotIdSet),
-    skipped_item_ids: filter(runtime.skipped_item_ids, itemIdSet),
-    skipped_node_ids: filter(runtime.skipped_node_ids, nodeIds),
+    running_slot_ids: selectRuntimeIds(slotIds, memberships.running_slot_ids),
+    running_item_ids: selectRuntimeIds(itemIds, memberships.running_item_ids),
+    running_node_ids: selectRuntimeNodeId(nodeId, memberships.running_node_ids),
+    waiting_slot_ids: selectRuntimeIds(slotIds, memberships.waiting_slot_ids),
+    waiting_item_ids: selectRuntimeIds(itemIds, memberships.waiting_item_ids),
+    waiting_node_ids: selectRuntimeNodeId(nodeId, memberships.waiting_node_ids),
+    failed_slot_ids: selectRuntimeIds(slotIds, memberships.failed_slot_ids),
+    failed_item_ids: selectRuntimeIds(itemIds, memberships.failed_item_ids),
+    failed_node_ids: selectRuntimeNodeId(nodeId, memberships.failed_node_ids),
+    completed_slot_ids: selectRuntimeIds(slotIds, memberships.completed_slot_ids),
+    completed_item_ids: selectRuntimeIds(itemIds, memberships.completed_item_ids),
+    completed_node_ids: selectRuntimeNodeId(nodeId, memberships.completed_node_ids),
+    blocked_slot_ids: selectRuntimeIds(slotIds, memberships.blocked_slot_ids),
+    blocked_item_ids: selectRuntimeIds(itemIds, memberships.blocked_item_ids),
+    blocked_node_ids: selectRuntimeNodeId(nodeId, memberships.blocked_node_ids),
+    skipped_slot_ids: selectRuntimeIds(slotIds, memberships.skipped_slot_ids),
+    skipped_item_ids: selectRuntimeIds(itemIds, memberships.skipped_item_ids),
+    skipped_node_ids: selectRuntimeNodeId(nodeId, memberships.skipped_node_ids),
     node_runtime: pickRuntimeRecords(runtime.node_runtime, [nodeId]),
     item_runtime: pickRuntimeRecords(runtime.item_runtime, itemIds),
     slot_runtime: pickRuntimeRecords(runtime.slot_runtime, slotIds),
@@ -318,9 +362,39 @@ function scopeWorkflowRuntime(
     events_cursor: undefined,
     updated_at: undefined,
   });
-  return signature === previousSignature
+  const result = signature === previousSignature
     ? { runtime: previous, signature }
     : { runtime: scoped, signature };
+  runtimeIndex.scopeByNodeId.set(nodeId, { items, slots, result });
+  return result;
+}
+
+function createWorkflowRuntimeMembershipIndex(
+  runtime: WorkflowRuntimeV2,
+): WorkflowRuntimeMembershipIndex {
+  const memberships = {} as Record<RuntimeMembershipKey, ReadonlySet<string>>;
+  for (const key of RUNTIME_MEMBERSHIP_KEYS) {
+    memberships[key] = new Set(runtime[key]);
+  }
+  return { runtime, memberships, scopeByNodeId: new Map() };
+}
+
+function selectRuntimeIds(
+  ids: string[],
+  membership: ReadonlySet<string>,
+) {
+  const selected: string[] = [];
+  for (const id of ids) {
+    if (membership.has(id)) selected.push(id);
+  }
+  return selected;
+}
+
+function selectRuntimeNodeId(
+  nodeId: string,
+  membership: ReadonlySet<string>,
+) {
+  return membership.has(nodeId) ? [nodeId] : [];
 }
 
 function pickRuntimeRecords<T>(

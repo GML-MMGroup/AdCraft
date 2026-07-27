@@ -3,7 +3,9 @@ import type { WorkflowGraph, WorkflowNode } from "../../../types.ts";
 import {
   applyWorkflowDocumentCommand,
   applyWorkflowNodeListCommand,
+  projectWorkflowPositionCommand,
 } from "./workflowDocumentCommands.ts";
+import type { CanvasNode } from "../types.ts";
 
 function node(id: string, status = "pending"): WorkflowNode {
   return {
@@ -20,6 +22,28 @@ function workflow(nodes: WorkflowNode[]): WorkflowGraph {
     workflow_id: "workflow-1",
     nodes,
     edges: [],
+  };
+}
+
+function flowNode(source: WorkflowNode): CanvasNode {
+  return {
+    id: source.id,
+    type: "workflowNode",
+    position: source.position ?? { x: 0, y: 0 },
+    data: {
+      title: source.title,
+      description: "",
+      status: source.status,
+      nodeType: source.node_type,
+      kind: source.node_type,
+      family: "Image",
+      category: "Generation",
+      contentPreview: "",
+      outputCount: 0,
+      previewAssets: [],
+      inputPorts: [],
+      outputPorts: [],
+    },
   };
 }
 
@@ -96,5 +120,34 @@ describe("workflow document commands", () => {
     expect(next[0]).toBe(first);
     expect(next[1]).not.toBe(second);
     expect(next[1].status).toBe("completed");
+  });
+
+  it("composes consecutive position commands before React renders new props", () => {
+    const first = node("first");
+    const second = node("second");
+    let projection = {
+      canvasNodes: [first, second],
+      flowNodes: [flowNode(first), flowNode(second)],
+    };
+
+    projection = projectWorkflowPositionCommand(projection, {
+      type: "move-node",
+      nodeId: "first",
+      position: { x: 120, y: 80 },
+    });
+    projection = projectWorkflowPositionCommand(projection, {
+      type: "move-node",
+      nodeId: "second",
+      position: { x: 420, y: 220 },
+    });
+
+    expect(projection.canvasNodes.map((entry) => entry.position)).toEqual([
+      { x: 120, y: 80 },
+      { x: 420, y: 220 },
+    ]);
+    expect(projection.flowNodes.map((entry) => entry.position)).toEqual([
+      { x: 120, y: 80 },
+      { x: 420, y: 220 },
+    ]);
   });
 });

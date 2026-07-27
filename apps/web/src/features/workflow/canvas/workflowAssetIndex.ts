@@ -67,6 +67,7 @@ export function createWorkflowAssetIndex(
       appendAssets(selected, selectedKeys, bySlotId.get(slot.slot_id));
       for (const referenceId of [
         ...(slot.explicit_reference_ids ?? []),
+        ...(slot.implicit_reference_ids ?? []),
         ...(slot.media_prompt_asset_ids ?? []),
         slot.selected_asset_id,
         slot.selected_version_id,
