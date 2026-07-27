@@ -85,6 +85,7 @@ describe("slotMutationRunner", () => {
 
     const result = await runner.completeGeneration({
       workflowId: "workflow-1",
+      scope: runner.captureWorkflowScope("workflow-1"),
       capture: { workflowId: "workflow-1", revision: 1 },
       returnedWorkflow: workflow(2),
       refreshAssetsReason: "slot-run-completed",
@@ -105,6 +106,61 @@ describe("slotMutationRunner", () => {
       "mark-clean",
     ]);
   });
+
+  it.each(["refresh-assets", "sync-snapshot"] as const)(
+    "stops generation completion after the workflow epoch changes during %s",
+    async (deferredStage) => {
+      const options = {
+        activeWorkflowId: "workflow-1" as string | null,
+        workflowEpoch: 1,
+      };
+      const { runner, deps, order } = createRunner(options);
+      const scope = runner.captureWorkflowScope("workflow-1");
+      let releaseStage!: () => void;
+      const stagePending = new Promise<void>((resolve) => {
+        releaseStage = resolve;
+      });
+      if (deferredStage === "refresh-assets") {
+        deps.refreshAssets.mockImplementation(async () => {
+          order.push("refresh-assets");
+          await stagePending;
+        });
+      } else {
+        deps.syncSnapshot.mockImplementation(async () => {
+          order.push("sync-snapshot");
+          await stagePending;
+        });
+      }
+      const refreshSlotVersions = vi.fn(async () => {
+        order.push("refresh-versions");
+      });
+      const afterRefresh = vi.fn(() => {
+        order.push("mark-clean");
+      });
+
+      const completion = runner.completeGeneration({
+        workflowId: "workflow-1",
+        capture: { workflowId: "workflow-1", revision: 1 },
+        returnedWorkflow: workflow(2),
+        refreshAssetsReason: "slot-run-completed",
+        refreshSlotVersions,
+        afterRefresh,
+        scope,
+      });
+      await vi.waitFor(() => expect(order).toContain(deferredStage));
+
+      options.activeWorkflowId = "workflow-2";
+      options.workflowEpoch += 1;
+      options.activeWorkflowId = "workflow-1";
+      releaseStage();
+
+      await expect(completion).rejects.toThrow(
+        "V2 slot operation cancelled after workflow navigation.",
+      );
+      expect(refreshSlotVersions).not.toHaveBeenCalled();
+      expect(afterRefresh).not.toHaveBeenCalled();
+    },
+  );
 
   it("centralizes status, error propagation, and in-flight cleanup", async () => {
     const { runner } = createRunner();

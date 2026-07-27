@@ -47,10 +47,13 @@ type MutationLifecycle<T> = {
 
 type GenerationCompletion = {
   workflowId: string;
+  scope: SlotWorkflowMutationScope;
   capture: V2WorkflowApplicationCapture;
   returnedWorkflow: WorkflowV2 | null;
   refreshAssetsReason: string;
-  refreshSlotVersions?: () => Promise<unknown>;
+  refreshSlotVersions?: (
+    scope: SlotWorkflowMutationScope,
+  ) => Promise<unknown>;
   afterRefresh?: (workflow: WorkflowV2 | null) => void | Promise<void>;
 };
 
@@ -148,20 +151,29 @@ export function createSlotMutationRunner(dependencies: SlotMutationRunnerDepende
   }
 
   async function completeGeneration(options: GenerationCompletion) {
+    if (options.scope.workflowId !== options.workflowId) {
+      throw new StaleSlotWorkflowMutationError();
+    }
+    requireCurrentWorkflowScope(options.scope);
     const reconciled = requireFresh(await applyReconciledWorkflow(
       options.workflowId,
       options.capture,
       options.returnedWorkflow,
       { refreshAssetsReason: false },
     ));
+    requireCurrentWorkflowScope(options.scope);
     await dependencies.refreshAssets(
       options.workflowId,
       options.refreshAssetsReason,
       options.returnedWorkflow,
     );
+    requireCurrentWorkflowScope(options.scope);
     await dependencies.syncSnapshot(options.workflowId);
-    await options.refreshSlotVersions?.();
+    requireCurrentWorkflowScope(options.scope);
+    await options.refreshSlotVersions?.(options.scope);
+    requireCurrentWorkflowScope(options.scope);
     await options.afterRefresh?.(reconciled.workflow);
+    requireCurrentWorkflowScope(options.scope);
     return reconciled;
   }
 

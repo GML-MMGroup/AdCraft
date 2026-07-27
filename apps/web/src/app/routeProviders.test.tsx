@@ -157,6 +157,38 @@ describe("route providers", () => {
     expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
   });
 
+  test("consumes the new-project route state so a reload can restore the saved project", async () => {
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("API ready");
+    fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
+    await screen.findByText("Workflow page empty");
+
+    await waitFor(() => expect(window.history.state?.usr ?? null).toBeNull());
+
+    cleanup();
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-after-planning");
+    v2Api.projectWorkflow.mockResolvedValue({
+      value: {
+        workflow_id: "workflow-after-planning",
+        project_id: "project-after-planning",
+      },
+    });
+
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("Workflow page workflow-after-planning");
+    expect(v2Api.projectWorkflow).toHaveBeenCalledWith("project-after-planning");
+  });
+
   test("restores the persisted active project on a workspace route", async () => {
     window.history.replaceState({}, "", "/workflow");
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-restored");

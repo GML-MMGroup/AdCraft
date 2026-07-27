@@ -138,7 +138,8 @@ export function createSlotGenerationOperations(
       successStatus: `${slot.slot_type} working candidate generated`,
       failureMessage: "V2 slot candidate generation failed",
       cleanupBeforeErrorStatus: true,
-    }, async () => {
+    }, async (scope) => {
+      if (!scope) return;
       let savedSlot: WorkflowSlotV2 | undefined;
       if (promptPersisted) {
         const revisionCapture = runner.capture(workflowId);
@@ -162,12 +163,15 @@ export function createSlotGenerationOperations(
       const response = await api.regenerateSlot(workflowId, slotId);
       await runner.completeGeneration({
         workflowId,
+        scope,
         capture: regenerateCapture,
         returnedWorkflow: response.workflow ?? null,
         refreshAssetsReason: response.workflow
           ? "slot-run-completed"
           : "slot-run-started",
-        refreshSlotVersions: () => dependencies.versions.load(slotId),
+        refreshSlotVersions: (refreshScope) => (
+          dependencies.versions.load(slotId, refreshScope)
+        ),
         afterRefresh: (workflow) => {
           microEdit.markClean(
             slotId,
@@ -211,7 +215,8 @@ export function createSlotGenerationOperations(
       successStatus: `${slot.slot_type} working candidate generated`,
       failureMessage: "V2 slot candidate generation failed",
       cleanupBeforeErrorStatus: true,
-    }, async () => {
+    }, async (scope) => {
+      if (!scope) return;
       let savedSlot: WorkflowSlotV2 | undefined;
       if (promptPersisted) {
         const revisionCapture = runner.capture(workflowId);
@@ -235,12 +240,15 @@ export function createSlotGenerationOperations(
       const response = await api.regenerateSlot(workflowId, slotId);
       await runner.completeGeneration({
         workflowId,
+        scope,
         capture: regenerateCapture,
         returnedWorkflow: response.workflow ?? null,
         refreshAssetsReason: response.workflow
           ? "slot-run-completed"
           : "slot-run-started",
-        refreshSlotVersions: () => dependencies.versions.load(slotId),
+        refreshSlotVersions: (refreshScope) => (
+          dependencies.versions.load(slotId, refreshScope)
+        ),
         afterRefresh: (workflow) => {
           microEdit.markClean(
             slotId,
