@@ -5184,15 +5184,33 @@ class WorkflowV2Service:
                     "v2_provider_result_manifest_invalid",
                     "Provider result target no longer exists in the workflow.",
                 )
-            self._commit_slot_execution_result_locked(
-                current_workflow,
-                current_item,
-                current_slot,
-                execution_result,
-                scheduler_result,
-                source_action=source_action,
-                mark_manifest_committed=mark_manifest_committed,
-            )
+            try:
+                self._commit_slot_execution_result_locked(
+                    current_workflow,
+                    current_item,
+                    current_slot,
+                    execution_result,
+                    scheduler_result,
+                    source_action=source_action,
+                    mark_manifest_committed=mark_manifest_committed,
+                )
+            except V2GenerationPipelineError:
+                self._overwrite_workflow_model(workflow, current_workflow)
+                raise
+            execution_id = execution_result.job.execution_id
+            if (
+                execution_id
+                and execution_result.job.select_generated
+                and current_slot.selected_asset_id
+                and current_slot.selected_version_id
+            ):
+                self._execution_result_publication.record_pending_selection(
+                    current_workflow.workflow_id,
+                    execution_id,
+                    slot_id=current_slot.slot_id,
+                    asset_id=current_slot.selected_asset_id,
+                    version_id=current_slot.selected_version_id,
+                )
             self._overwrite_workflow_model(workflow, current_workflow)
 
     def _merge_uncommitted_scheduler_slot_results(

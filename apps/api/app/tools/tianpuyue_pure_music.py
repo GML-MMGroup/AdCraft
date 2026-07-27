@@ -768,12 +768,31 @@ def _duration_seconds(value: object) -> int:
     return duration
 
 
+TIANPUYUE_PROMPT_MAX_CHARS = 1000
+
+
 def _instrumental_prompt(prompt: str, duration_seconds: int) -> str:
-    return (
-        f"{prompt.strip()}\n\n"
+    suffix = (
         f"Target duration: {duration_seconds} seconds. Instrumental only: no vocals, no lyrics, "
         "no narration, no spoken dialogue, and no sound effects."
     )
+    separator = "\n\n"
+    creative_prompt = prompt.strip()
+    creative_limit = TIANPUYUE_PROMPT_MAX_CHARS - len(separator) - len(suffix)
+    if len(creative_prompt) > creative_limit:
+        creative_prompt = _truncate_prompt(creative_prompt, creative_limit)
+    return f"{creative_prompt}{separator}{suffix}"
+
+
+def _truncate_prompt(prompt: str, limit: int) -> str:
+    candidate = prompt[:limit].rstrip()
+    sentence_end = max(candidate.rfind(". "), candidate.rfind("! "), candidate.rfind("? "))
+    if sentence_end >= limit // 2:
+        return candidate[: sentence_end + 1].rstrip()
+    word_end = candidate.rfind(" ")
+    if word_end >= limit // 2:
+        return candidate[:word_end].rstrip()
+    return candidate
 
 
 def _endpoint(base_url: str | None, path: str) -> str:
