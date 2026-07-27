@@ -3,7 +3,7 @@ import { useWorkflowRunController } from "../runtime/useWorkflowRunController.ts
 import { useAgentConversationBridge } from "../copilot/useAgentConversationBridge.ts";
 import { useWorkflowLocalSnapshotController } from "./useWorkflowLocalSnapshotController.ts";
 import { useWorkflowGraphMutationController } from "../graph/useWorkflowGraphMutationController.ts";
-import { defaultAdRequest, demoEdges, demoNodes } from "./workflowPageDefaults.ts";
+import { defaultAdRequest } from "./workflowPageDefaults.ts";
 import type { WorkflowPageRunGraphControllersArgs } from "./workflowPageContracts.ts";
 
 export function useWorkflowPageRunGraphControllers(args: WorkflowPageRunGraphControllersArgs) {
@@ -34,8 +34,6 @@ export function useWorkflowPageRunGraphControllers(args: WorkflowPageRunGraphCon
 
   const workflowGraphMutations = useWorkflowGraphMutationController({
     ...args.graph,
-    demoNodes,
-    demoEdges,
     getCurrentRunAdRequest: workflowRunController.actions.getCurrentRunAdRequest,
     persistLocalSnapshot: localSnapshot.actions.persistLocalSnapshot,
     persistNodePositionSnapshot: localSnapshot.actions.persistNodePositionSnapshot,

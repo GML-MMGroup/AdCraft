@@ -1,6 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { ReactFlowInstance } from "@xyflow/react";
-import type { CanvasPosition, NodeRunResult, WorkflowEdge, WorkflowGraph, WorkflowNode, WorkflowVariable } from "../../../types";
+import type { CanvasPosition, NodeRunResult, WorkflowGraph, WorkflowNode, WorkflowVariable } from "../../../types";
 import { createNodeRunMap } from "../../../workflow/runtimeResults.ts";
 import { firstVisibleWorkflowNodeId } from "../../../workflow/visibility.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
@@ -28,7 +28,6 @@ export function useWorkflowPageLifecycle({
   workflowId,
   workflowSchemaVersion,
   workflowV2IsV2,
-  activeProjectId,
   isRestoringWorkspace,
   currentWorkflowIsV2,
   nodeRunByType,
@@ -37,8 +36,6 @@ export function useWorkflowPageLifecycle({
   flowEdges,
   selectedNodeId,
   reactFlow,
-  demoNodes,
-  demoEdges,
   setCanvasNodes,
   setFlowNodes,
   setFlowEdges,
@@ -55,7 +52,6 @@ export function useWorkflowPageLifecycle({
   workflowId: string;
   workflowSchemaVersion?: unknown;
   workflowV2IsV2: boolean;
-  activeProjectId?: string | null;
   isRestoringWorkspace: boolean;
   currentWorkflowIsV2: () => boolean;
   nodeRunByType: ReturnType<typeof createNodeRunMap>;
@@ -64,8 +60,6 @@ export function useWorkflowPageLifecycle({
   flowEdges: CanvasEdge[];
   selectedNodeId: string;
   reactFlow: ReactFlowInstance<CanvasNode, CanvasEdge> | null;
-  demoNodes: WorkflowGraph["nodes"];
-  demoEdges: WorkflowEdge[];
   setCanvasNodes: Dispatch<SetStateAction<WorkflowNode[]>>;
   setFlowNodes: Dispatch<SetStateAction<CanvasNode[]>>;
   setFlowEdges: Dispatch<SetStateAction<CanvasEdge[]>>;
@@ -99,8 +93,7 @@ export function useWorkflowPageLifecycle({
       setStatus("Restoring current project...");
       return;
     }
-    const shouldUseDemoGraph = Boolean(!activeProjectId && !workflow);
-    const baseNodes = workflow?.nodes?.length ? workflow.nodes : shouldUseDemoGraph ? demoNodes : [];
+    const baseNodes = workflow?.nodes ?? [];
     const isSameV2WorkflowRefresh = Boolean(
       workflow?.workflow_id &&
       hydratedWorkflowIdRef.current === workflow.workflow_id,
@@ -108,9 +101,7 @@ export function useWorkflowPageLifecycle({
     const canReuseCurrentFlowNodes = hydratedWorkflowIdRef.current === workflow?.workflow_id;
     const currentFlowNodes = canReuseCurrentFlowNodes ? currentFlowNodesForWorkflow(baseNodes, flowNodesRef.current) : [];
     const baseFlowNodes = mapWorkflowNodes(baseNodes, nodeRunByType, currentFlowNodes);
-    const baseEdges = workflow?.edges?.length
-      ? mapWorkflowEdges(workflow.edges, baseFlowNodes)
-      : shouldUseDemoGraph ? mapWorkflowEdges(demoEdges, baseFlowNodes) : [];
+    const baseEdges = workflow?.edges?.length ? mapWorkflowEdges(workflow.edges, baseFlowNodes) : [];
     const baseLayoutNodes = isSameV2WorkflowRefresh
       ? baseFlowNodes
       : layoutNodes(baseFlowNodes, baseEdges, {
@@ -158,10 +149,7 @@ export function useWorkflowPageLifecycle({
     setWorkflowVariables(workflow?.variables ?? []);
     setSelectedNodeId((current) => isSameV2WorkflowRefresh ? preserveSelectedNodeId(baseNodes, current) : firstVisibleWorkflowNodeId(baseNodes, "prompt"));
   }, [
-    activeProjectId,
     currentWorkflowIsV2,
-    demoEdges,
-    demoNodes,
     isRestoringWorkspace,
     nodeRunByType,
     setCanvasNodes,

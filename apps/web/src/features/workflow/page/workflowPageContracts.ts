@@ -117,8 +117,6 @@ export type WorkflowPageRunGraphControllersArgs = {
   snapshot: WorkflowLocalSnapshotControllerArgs;
   graph: StrictOmit<
     WorkflowGraphMutationControllerArgs,
-    | "demoNodes"
-    | "demoEdges"
     | "getCurrentRunAdRequest"
     | "persistLocalSnapshot"
     | "persistNodePositionSnapshot"

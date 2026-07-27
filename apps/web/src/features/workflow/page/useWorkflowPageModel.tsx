@@ -59,8 +59,6 @@ import { isV2WorkflowId, useWorkflowV2Model } from "../../../workflow-v2/pageAda
 import { selectedAssetForSlot } from "../../../workflow-v2/selectors.ts";
 import {
   defaultAdRequest,
-  demoEdges,
-  demoNodes,
   nodeTypes,
 } from "./workflowPageDefaults.ts";
 import { useSlotMicroEdit } from "../v2/slots/useSlotMicroEdit.ts";
@@ -175,8 +173,7 @@ export function useWorkflowPageModel() {
     setStaleReason,
     setWorkflowVariables,
   } = workflowRuntime.actions;
-  const shouldUseDemoCanvasNodes = !activeProjectId && !workflow;
-  const initialCanvasNodes = shouldUseDemoCanvasNodes ? demoNodes : workflow?.nodes ?? [];
+  const initialCanvasNodes = workflow?.nodes ?? [];
   const workflowCanvas = useWorkflowCanvasController({
     workflow,
     initialNodes: initialCanvasNodes,
@@ -1361,7 +1358,6 @@ export function useWorkflowPageModel() {
     workflowId,
     workflowSchemaVersion: workflow?.metadata?.workflow_schema_version,
     workflowV2IsV2: workflowV2Model.isV2,
-    activeProjectId,
     isRestoringWorkspace,
     currentWorkflowIsV2,
     nodeRunByType,
@@ -1370,8 +1366,6 @@ export function useWorkflowPageModel() {
     flowEdges,
     selectedNodeId,
     reactFlow,
-    demoNodes,
-    demoEdges,
     setCanvasNodes,
     setFlowNodes,
     setFlowEdges,
