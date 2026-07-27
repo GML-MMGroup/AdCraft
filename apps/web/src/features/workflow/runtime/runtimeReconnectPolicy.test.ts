@@ -265,21 +265,122 @@ describe("createRuntimeReconnectPolicy", () => {
     expect(scheduler.timers.size).toBe(0);
   });
 
-  it("makes a stale poll completion inert after workflow generation replacement recovers SSE", async () => {
+  it("makes an aborted poll finalizer inert when SSE opens", async () => {
+    const scheduler = createScheduler();
+    let completePoll: (() => void) | undefined;
+    let pollSignal: AbortSignal | undefined;
+    const policy = createRuntimeReconnectPolicy({
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: () => {},
+      onPoll: (_generation, signal) => new Promise<void>((resolve) => {
+        pollSignal = signal;
+        completePoll = resolve;
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    policy.sseOpened();
+
+    expect(pollSignal?.aborted).toBe(true);
+    expect(policy.state()).toBe("connected");
+    completePoll?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(policy.state()).toBe("connected");
+    expect(scheduler.timers.size).toBe(0);
+  });
+
+  it("hands connected SSE ownership to one awaited poll before reconnecting", async () => {
+    const scheduler = createScheduler();
+    let connects = 0;
+    let disconnects = 0;
+    let polls = 0;
+    let completePoll: (() => void) | undefined;
+    const policy = createRuntimeReconnectPolicy({
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      onConnect: () => { connects += 1; },
+      onDisconnect: () => { disconnects += 1; },
+      onPoll: () => new Promise<void>((resolve) => {
+        polls += 1;
+        completePoll = resolve;
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseOpened();
+    const synchronization = policy.synchronize();
+
+    expect(disconnects).toBe(1);
+    expect(polls).toBe(1);
+    expect(policy.state()).toBe("degraded_polling");
+    completePoll?.();
+    await synchronization;
+
+    expect(connects).toBe(2);
+    expect(policy.state()).toBe("connecting");
+    expect(scheduler.timers.size).toBe(0);
+  });
+
+  it("joins direct synchronization to the active degraded poll", async () => {
+    const scheduler = createScheduler();
+    let polls = 0;
+    let completePoll: (() => void) | undefined;
+    const policy = createRuntimeReconnectPolicy({
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: () => {},
+      onPoll: () => new Promise<void>((resolve) => {
+        polls += 1;
+        completePoll = resolve;
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    const firstSync = policy.synchronize();
+    const secondSync = policy.synchronize();
+
+    expect(polls).toBe(1);
+    completePoll?.();
+    await Promise.all([firstSync, secondSync]);
+    expect(polls).toBe(1);
+  });
+
+  it("awaits a stale poll before workflow generation replacement starts transport", async () => {
     const scheduler = createScheduler();
     const completePolls: Array<() => void> = [];
     let eligible = true;
     let connects = 0;
     let polls = 0;
+    let pollsInFlight = 0;
+    const pollsInFlightWhenConnecting: number[] = [];
     const policy = createRuntimeReconnectPolicy({
       isEligible: () => eligible,
       setTimeout: scheduler.setTimeout,
       clearTimeout: scheduler.clearTimeout,
       maxSseFailures: 0,
-      onConnect: () => { connects += 1; },
+      onConnect: () => {
+        connects += 1;
+        pollsInFlightWhenConnecting.push(pollsInFlight);
+      },
       onPoll: () => new Promise<void>((resolve) => {
         polls += 1;
-        completePolls.push(resolve);
+        pollsInFlight += 1;
+        completePolls.push(() => {
+          pollsInFlight -= 1;
+          resolve();
+        });
       }),
       onStateChange: () => {},
     });
@@ -294,6 +395,16 @@ describe("createRuntimeReconnectPolicy", () => {
     policy.reconcile();
 
     policy.start();
+    expect(connects).toBe(1);
+    expect(polls).toBe(1);
+    expect(pollsInFlight).toBe(1);
+
+    completePolls[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(connects).toBe(2);
+    expect(pollsInFlightWhenConnecting).toEqual([0, 0]);
+
     policy.sseFailed();
     scheduler.runNext();
     expect(polls).toBe(2);
@@ -301,7 +412,6 @@ describe("createRuntimeReconnectPolicy", () => {
     await Promise.resolve();
     policy.sseOpened();
 
-    completePolls[0]?.();
     await Promise.resolve();
 
     expect(connects).toBe(2);

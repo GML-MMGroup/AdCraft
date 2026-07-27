@@ -557,8 +557,8 @@ export const v2Api = {
     );
   },
 
-  async events(workflowId: string, afterSeq = 0): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, {}, (value) => {
+  async events(workflowId: string, afterSeq = 0, signal?: AbortSignal): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, { signal }, (value) => {
       const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
       const events = Array.isArray(record.events) ? record.events.map(normalizeWorkflowRuntimeEventV2) : [];
       const next = typeof record.next_after_seq === "number" ? record.next_after_seq : events.at(-1)?.seq ?? afterSeq;

@@ -194,4 +194,168 @@ describe("useV2RuntimeController", () => {
     expect(result.current.connectionState).toBe("connected");
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("hands connected SSE ownership to direct synchronization without duplicate side effects", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(v2Api, "runtime").mockResolvedValue(
+      normalizeWorkflowRuntimeV2({ workflow_id: "workflow-a", events_cursor: 0 }),
+    );
+    const terminalEvent = {
+      seq: 11,
+      event_type: "execution_completed",
+      workflow_id: "workflow-a",
+      payload: { execution_id: "execution-a", status: "completed" },
+    };
+    const streamClosedWhenPolling: boolean[] = [];
+    const events = vi.spyOn(v2Api, "events").mockImplementation(async () => {
+      streamClosedWhenPolling.push(TestEventSource.instances.at(-1)?.closed ?? false);
+      return {
+        events: [],
+        next_after_seq: 11,
+      };
+    });
+    const openEventStream = vi.spyOn(v2Api, "openEventStream")
+      .mockImplementation((workflowId) => new TestEventSource(workflowId) as unknown as EventSource);
+    const onEvents = vi.fn();
+
+    const { result } = renderHook(() => useV2RuntimeController({
+      workflowId: "workflow-a",
+      onEvents,
+    }));
+    await flushPromises();
+
+    act(() => {
+      TestEventSource.instances.at(-1)?.onopen?.();
+      TestEventSource.instances.at(-1)?.emit(terminalEvent);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16);
+    });
+    await act(async () => {
+      await result.current.syncEvents("workflow-a");
+    });
+
+    expect(events).toHaveBeenCalledTimes(1);
+    expect(events).toHaveBeenLastCalledWith("workflow-a", 11, expect.any(AbortSignal));
+    expect(streamClosedWhenPolling).toEqual([true]);
+    expect(openEventStream).toHaveBeenCalledTimes(2);
+    expect(openEventStream).toHaveBeenLastCalledWith("workflow-a", 11);
+    expect(onEvents).toHaveBeenCalledTimes(1);
+    expect(onEvents).toHaveBeenLastCalledWith("workflow-a", [terminalEvent]);
+    expect(result.current.store.lastEventSeq).toBe(11);
+    expect(result.current.store.executionStatus).toBe("completed");
+  });
+
+  it("aborts a deferred fallback poll before replacement transport opens", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(v2Api, "runtime").mockImplementation(async (workflowId) => (
+      normalizeWorkflowRuntimeV2({ workflow_id: workflowId, events_cursor: 0 })
+    ));
+    let activePolls = 0;
+    const pollSignals: Array<AbortSignal | undefined> = [];
+    const completePolls: Array<() => void> = [];
+    vi.spyOn(v2Api, "events").mockImplementation((...args) => {
+      const [, afterSeq = 0, signal] = args as unknown as [string, number?, AbortSignal?];
+      pollSignals.push(signal);
+      activePolls += 1;
+      return new Promise((resolve) => {
+        let settled = false;
+        const complete = () => {
+          if (settled) return;
+          settled = true;
+          activePolls -= 1;
+          resolve({ events: [], next_after_seq: afterSeq });
+        };
+        completePolls.push(complete);
+        signal?.addEventListener("abort", complete, { once: true });
+      });
+    });
+    const activePollsWhenOpening: number[] = [];
+    vi.spyOn(v2Api, "openEventStream").mockImplementation((workflowId) => {
+      activePollsWhenOpening.push(activePolls);
+      return new TestEventSource(workflowId) as unknown as EventSource;
+    });
+
+    const { rerender } = renderHook(
+      ({ workflowId }) => useV2RuntimeController({ workflowId }),
+      { initialProps: { workflowId: "workflow-a" } },
+    );
+    await flushPromises();
+
+    for (let failure = 0; failure < 3; failure += 1) {
+      act(() => {
+        TestEventSource.instances.at(-1)?.onerror?.();
+      });
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    }
+    act(() => {
+      TestEventSource.instances.at(-1)?.onerror?.();
+    });
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+    expect(activePolls).toBe(1);
+
+    rerender({ workflowId: "workflow-b" });
+    await flushPromises();
+
+    expect(pollSignals).toHaveLength(1);
+    expect(pollSignals[0]?.aborted).toBe(true);
+    expect(activePolls).toBe(0);
+    expect(activePollsWhenOpening.at(-1)).toBe(0);
+    expect(TestEventSource.instances.at(-1)?.workflowId).toBe("workflow-b");
+
+    completePolls.forEach((complete) => complete());
+  });
+
+  it("does not apply a deferred snapshot older than a streamed terminal event", async () => {
+    vi.useFakeTimers();
+    const staleSnapshot = deferred<ReturnType<typeof normalizeWorkflowRuntimeV2>>();
+    vi.spyOn(v2Api, "runtime")
+      .mockResolvedValueOnce(normalizeWorkflowRuntimeV2({
+        workflow_id: "workflow-a",
+        events_cursor: 0,
+      }))
+      .mockReturnValueOnce(staleSnapshot.promise);
+    vi.spyOn(v2Api, "openEventStream")
+      .mockImplementation((workflowId) => new TestEventSource(workflowId) as unknown as EventSource);
+    const onSnapshot = vi.fn();
+
+    const { result } = renderHook(() => useV2RuntimeController({
+      workflowId: "workflow-a",
+      onSnapshot,
+    }));
+    await flushPromises();
+
+    let pendingSnapshot!: Promise<unknown>;
+    act(() => {
+      pendingSnapshot = result.current.syncSnapshot("workflow-a");
+      TestEventSource.instances.at(-1)?.emit({
+        seq: 11,
+        event_type: "execution_completed",
+        workflow_id: "workflow-a",
+        payload: { execution_id: "execution-a", status: "completed" },
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16);
+    });
+    staleSnapshot.resolve(normalizeWorkflowRuntimeV2({
+      workflow_id: "workflow-a",
+      events_cursor: 10,
+      active_execution_id: "execution-a",
+      execution_status: "running",
+      running_slot_ids: ["slot-a"],
+    }));
+    await act(async () => {
+      await pendingSnapshot;
+    });
+
+    expect(result.current.store.lastEventSeq).toBe(11);
+    expect(result.current.store.executionStatus).toBe("completed");
+    expect(result.current.store.runningSlotIds).toEqual([]);
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+  });
 });

@@ -4,7 +4,8 @@ type Timer = number;
 
 export type RuntimeReconnectPolicyOptions = {
   onConnect: (generation: number) => void;
-  onPoll: (generation: number) => Promise<void> | void;
+  onDisconnect?: () => void;
+  onPoll: (generation: number, signal: AbortSignal) => Promise<void> | void;
   onStateChange: (state: RuntimeReconnectState) => void;
   isEligible?: () => boolean;
   setTimeout?: (callback: () => void, delayMs: number) => Timer;
@@ -30,7 +31,11 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
   let timer: { id: Timer; generation: number } | null = null;
   let active = false;
   let lifecycleGeneration = 0;
-  let pollGeneration: number | null = null;
+  let activePoll: {
+    generation: number;
+    controller: AbortController;
+    promise: Promise<void>;
+  } | null = null;
   let resumeAfterPollGeneration: number | null = null;
   let failureCount = 0;
   let pollCount = 0;
@@ -69,39 +74,50 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     }
   };
   const schedulePoll = (delayMs: number, generation = lifecycleGeneration) => {
-    if (!canRun(generation) || pollGeneration === generation) return;
+    if (!canRun(generation) || activePoll?.generation === generation) return;
     schedule((scheduledGeneration) => void poll(scheduledGeneration), delayMs, generation);
   };
-  const poll = async (generation = lifecycleGeneration) => {
-    if (!canRun(generation) || pollGeneration === generation) return;
-    pollGeneration = generation;
+  const poll = (generation = lifecycleGeneration): Promise<void> => {
+    if (!canRun(generation)) return Promise.resolve();
+    if (activePoll) return activePoll.promise;
+    const entry = {
+      generation,
+      controller: new AbortController(),
+      promise: Promise.resolve(),
+    };
+    activePoll = entry;
     transition("degraded_polling");
-    try {
-      await options.onPoll(generation);
-    } finally {
-      if (pollGeneration === generation) {
-        pollGeneration = null;
-        const resumeAfterPoll = resumeAfterPollGeneration === generation;
-        if (resumeAfterPoll) resumeAfterPollGeneration = null;
-        if (canRun(generation)) {
-          if (resumeAfterPoll) {
-            pollCount = 0;
-            connect(generation);
-          } else {
-            pollCount += 1;
-            if (pollCount >= sseRecoveryPolls) {
+    entry.promise = (async () => {
+      try {
+        await options.onPoll(generation, entry.controller.signal);
+      } catch {
+        // Poll failures retain degraded transport state and follow the same retry lane.
+      } finally {
+        if (activePoll === entry) {
+          activePoll = null;
+          const resumeAfterPoll = resumeAfterPollGeneration === generation;
+          if (resumeAfterPoll) resumeAfterPollGeneration = null;
+          if (canRun(generation)) {
+            if (resumeAfterPoll) {
               pollCount = 0;
               connect(generation);
             } else {
-              schedulePoll(pollIntervalMs, generation);
+              pollCount += 1;
+              if (pollCount >= sseRecoveryPolls) {
+                pollCount = 0;
+                connect(generation);
+              } else {
+                schedulePoll(pollIntervalMs, generation);
+              }
             }
           }
         }
       }
-    }
+    })();
+    return entry.promise;
   };
   const pause = () => {
-    if (active && pollGeneration === lifecycleGeneration) {
+    if (active && activePoll?.generation === lifecycleGeneration) {
       resumeAfterPollGeneration = lifecycleGeneration;
     }
     clearScheduledWork();
@@ -127,26 +143,50 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
   return {
     start() {
       lifecycleGeneration += 1;
+      const generation = lifecycleGeneration;
       active = true;
-      pollGeneration = null;
       resumeAfterPollGeneration = null;
       pollCount = 0;
       clearScheduledWork();
-      connect(lifecycleGeneration);
+      const previousPoll = activePoll;
+      if (!previousPoll) {
+        connect(generation);
+        return;
+      }
+      previousPoll.controller.abort();
+      void previousPoll.promise.then(
+        () => {
+          if (canRun(generation)) connect(generation);
+        },
+        () => {
+          if (canRun(generation)) connect(generation);
+        },
+      );
     },
     stop() {
       lifecycleGeneration += 1;
       active = false;
-      pollGeneration = null;
       resumeAfterPollGeneration = null;
       failureCount = 0;
       pollCount = 0;
+      activePoll?.controller.abort();
       pause();
     },
     reconcile() {
       if (!active || !isEligible()) return pause();
-      if (pollGeneration === lifecycleGeneration) return;
+      if (activePoll?.generation === lifecycleGeneration) return;
       if (currentState === "idle") connect();
+    },
+    synchronize() {
+      const generation = lifecycleGeneration;
+      if (!canRun(generation)) return Promise.resolve();
+      if (activePoll?.generation === generation) return activePoll.promise;
+      clearScheduledWork();
+      if (currentState !== "degraded_polling") {
+        options.onDisconnect?.();
+        resumeAfterPollGeneration = generation;
+      }
+      return poll(generation);
     },
     sseOpened(generation = lifecycleGeneration) {
       if (!canRun(generation)) {
@@ -154,7 +194,11 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
         return;
       }
       clearScheduledWork();
-      if (pollGeneration === generation) pollGeneration = null;
+      if (activePoll?.generation === generation) {
+        const pollToAbort = activePoll;
+        activePoll = null;
+        pollToAbort.controller.abort();
+      }
       if (resumeAfterPollGeneration === generation) resumeAfterPollGeneration = null;
       pollCount = 0;
       transition("connected");

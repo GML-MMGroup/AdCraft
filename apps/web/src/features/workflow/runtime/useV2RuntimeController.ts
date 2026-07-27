@@ -113,6 +113,8 @@ export function useV2RuntimeController(options: {
 
   const applySnapshot = useCallback(async (workflowId: string, snapshot: WorkflowRuntimeV2, lifecycleGeneration = lifecycleGenerationRef.current) => {
     if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return snapshot;
+    const latestEventCursor = Math.max(eventCursorRef.current, storeRef.current.lastEventSeq);
+    if ((snapshot.events_cursor ?? 0) < latestEventCursor) return snapshot;
     eventCursorRef.current = Math.max(eventCursorRef.current, snapshot.events_cursor ?? 0);
     setRuntime((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId ? snapshot : current);
     setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId ? applyV2RuntimeSnapshot(current, snapshot) : current);
@@ -146,11 +148,17 @@ export function useV2RuntimeController(options: {
     });
   }
 
-  const syncEvents = useCallback(async (workflowId: string, lifecycleGeneration = lifecycleGenerationRef.current) => {
+  const pollEvents = useCallback(async (
+    workflowId: string,
+    lifecycleGeneration = lifecycleGenerationRef.current,
+    signal?: AbortSignal,
+  ) => {
     try {
       const afterSeq = Math.max(storeRef.current.lastEventSeq, eventCursorRef.current);
-      const response = await v2Api.events(workflowId, afterSeq);
+      const response = await v2Api.events(workflowId, afterSeq, signal);
       if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
+      const responseCursor = Math.max(response.next_after_seq, ...response.events.map((event) => event.seq));
+      eventCursorRef.current = Math.max(eventCursorRef.current, responseCursor);
       if (response.events.length) {
         emptyPollCountRef.current = 0;
         setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
@@ -169,11 +177,11 @@ export function useV2RuntimeController(options: {
         }
       }
       if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
-      eventCursorRef.current = Math.max(eventCursorRef.current, response.next_after_seq);
       setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
-        ? { ...current, lastEventSeq: Math.max(current.lastEventSeq, response.next_after_seq), connectionState: "degraded_polling" }
+        ? { ...current, lastEventSeq: Math.max(current.lastEventSeq, responseCursor), connectionState: "degraded_polling" }
         : current);
     } catch {
+      if (signal?.aborted) return;
       if (lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId) {
         setStore((current) => lifecycleGenerationRef.current === lifecycleGeneration && workflowIdRef.current === workflowId
           ? { ...current, connectionState: "degraded_polling" }
@@ -225,10 +233,14 @@ export function useV2RuntimeController(options: {
         const lifecycleGeneration = lifecycleGenerationRef.current;
         if (workflowId) openEventStream(workflowId, transportGeneration, lifecycleGeneration);
       },
-      onPoll: async () => {
+      onDisconnect: () => {
+        eventSourceRef.current?.close();
+        eventSourceRef.current = null;
+      },
+      onPoll: async (_transportGeneration, signal) => {
         const workflowId = workflowIdRef.current;
         const lifecycleGeneration = lifecycleGenerationRef.current;
-        if (workflowId) await syncEvents(workflowId, lifecycleGeneration);
+        if (workflowId) await pollEvents(workflowId, lifecycleGeneration, signal);
       },
       onStateChange: (state) => {
         const connectionState: V2ConnectionState = state === "idle" ? "disconnected" : state;
@@ -236,6 +248,11 @@ export function useV2RuntimeController(options: {
       },
     });
   }
+
+  const syncEvents = useCallback(async (workflowId: string) => {
+    if (workflowIdRef.current !== workflowId) return;
+    await transportRef.current?.synchronize();
+  }, []);
 
   const stop = useCallback(() => {
     lifecycleGenerationRef.current += 1;
