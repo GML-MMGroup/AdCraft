@@ -512,6 +512,119 @@ describe("useV2RuntimeController", () => {
     expect(polledWorkflowIds).toEqual(["workflow-a"]);
   });
 
+  it("gives queued replacement synchronization ownership before opening SSE", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    vi.spyOn(v2Api, "runtime").mockImplementation(async (workflowId) => (
+      normalizeWorkflowRuntimeV2({ workflow_id: workflowId, events_cursor: 0 })
+    ));
+    const polls: Array<{
+      workflowId: string;
+      signal?: AbortSignal;
+      complete: () => void;
+    }> = [];
+    let activePolls = 0;
+    const openStreamsWhenPolling: number[] = [];
+    vi.spyOn(v2Api, "events").mockImplementation((workflowId, afterSeq = 0, signal) => {
+      activePolls += 1;
+      openStreamsWhenPolling.push(TestEventSource.instances.filter((stream) => !stream.closed).length);
+      return new Promise((resolve) => {
+        let settled = false;
+        polls.push({
+          workflowId,
+          signal,
+          complete: () => {
+            if (settled) return;
+            settled = true;
+            activePolls -= 1;
+            resolve({ events: [], next_after_seq: afterSeq });
+          },
+        });
+      });
+    });
+    const activePollsWhenOpening: number[] = [];
+    const openEventStream = vi.spyOn(v2Api, "openEventStream").mockImplementation((workflowId) => {
+      activePollsWhenOpening.push(activePolls);
+      return new TestEventSource(workflowId) as unknown as EventSource;
+    });
+
+    const { result, rerender } = renderHook(
+      ({ workflowId }) => useV2RuntimeController({ workflowId }),
+      { initialProps: { workflowId: "workflow-a" } },
+    );
+    await flushPromises();
+
+    for (let failure = 0; failure < 3; failure += 1) {
+      act(() => {
+        TestEventSource.instances.at(-1)?.onerror?.();
+      });
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    }
+    act(() => {
+      TestEventSource.instances.at(-1)?.onerror?.();
+    });
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+    expect(polls.map(({ workflowId }) => workflowId)).toEqual(["workflow-a"]);
+
+    rerender({ workflowId: "workflow-b" });
+    await flushPromises();
+    let synchronizationsSettled = 0;
+    let firstSynchronization!: Promise<void>;
+    let secondSynchronization!: Promise<void>;
+    act(() => {
+      firstSynchronization = result.current.syncEvents("workflow-b").then(() => {
+        synchronizationsSettled += 1;
+      });
+      secondSynchronization = result.current.syncEvents("workflow-b").then(() => {
+        synchronizationsSettled += 1;
+      });
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("online"));
+    });
+    await flushPromises();
+
+    expect(polls[0]?.signal?.aborted).toBe(true);
+    expect(synchronizationsSettled).toBe(0);
+    expect(polls.map(({ workflowId }) => workflowId)).toEqual(["workflow-a"]);
+    expect(openEventStream.mock.calls.filter(([workflowId]) => workflowId === "workflow-b")).toHaveLength(0);
+
+    polls[0]?.complete();
+    await flushPromises();
+    await flushPromises();
+
+    expect(synchronizationsSettled).toBe(0);
+    expect(polls.map(({ workflowId }) => workflowId)).toEqual(["workflow-a", "workflow-b"]);
+    expect(openStreamsWhenPolling).toEqual([0, 0]);
+    expect(openEventStream.mock.calls.filter(([workflowId]) => workflowId === "workflow-b")).toHaveLength(0);
+
+    let thirdSynchronization!: Promise<void>;
+    act(() => {
+      thirdSynchronization = result.current.syncEvents("workflow-b").then(() => {
+        synchronizationsSettled += 1;
+      });
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("online"));
+    });
+    await flushPromises();
+
+    expect(polls.map(({ workflowId }) => workflowId)).toEqual(["workflow-a", "workflow-b"]);
+    expect(openEventStream.mock.calls.filter(([workflowId]) => workflowId === "workflow-b")).toHaveLength(0);
+
+    polls[1]?.complete();
+    await act(async () => {
+      await Promise.all([firstSynchronization, secondSynchronization, thirdSynchronization]);
+    });
+
+    expect(synchronizationsSettled).toBe(3);
+    expect(polls.map(({ workflowId }) => workflowId)).toEqual(["workflow-a", "workflow-b"]);
+    expect(openEventStream.mock.calls.filter(([workflowId]) => workflowId === "workflow-b")).toHaveLength(1);
+    expect(activePollsWhenOpening.every((count) => count === 0)).toBe(true);
+  });
+
   it("does not apply a deferred snapshot older than a streamed terminal event", async () => {
     vi.useFakeTimers();
     const staleSnapshot = deferred<ReturnType<typeof normalizeWorkflowRuntimeV2>>();

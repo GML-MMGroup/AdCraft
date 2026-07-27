@@ -469,4 +469,68 @@ describe("createRuntimeReconnectPolicy", () => {
     expect(pollGenerations).toEqual([1]);
     expect(scheduler.timers.size).toBe(0);
   });
+
+  it("gives queued synchronization priority over replacement connection ownership", async () => {
+    const scheduler = createScheduler();
+    const connectGenerations: number[] = [];
+    const pollGenerations: number[] = [];
+    const connectCountsWhenPolling: number[] = [];
+    const completePolls: Array<() => void> = [];
+    const policy = createRuntimeReconnectPolicy({
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: (generation) => {
+        connectGenerations.push(generation);
+      },
+      onPoll: (generation) => new Promise<void>((resolve) => {
+        pollGenerations.push(generation);
+        connectCountsWhenPolling.push(connectGenerations.length);
+        completePolls.push(resolve);
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    let replacementReady = false;
+    const replacementReadiness = policy.start().then(() => {
+      replacementReady = true;
+    });
+    const firstSynchronization = policy.synchronize();
+    const secondSynchronization = policy.synchronize();
+    policy.reconcile();
+    policy.reconcile();
+
+    expect(connectGenerations).toEqual([1]);
+    expect(pollGenerations).toEqual([1]);
+
+    completePolls[0]?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(connectGenerations).toEqual([1]);
+    expect(pollGenerations).toEqual([1, 2]);
+    expect(connectCountsWhenPolling).toEqual([1, 1]);
+    expect(replacementReady).toBe(false);
+
+    const thirdSynchronization = policy.synchronize();
+    policy.reconcile();
+    policy.reconcile();
+    expect(pollGenerations).toEqual([1, 2]);
+
+    completePolls[1]?.();
+    await Promise.all([
+      Promise.resolve(replacementReadiness),
+      firstSynchronization,
+      secondSynchronization,
+      thirdSynchronization,
+    ]);
+
+    expect(connectGenerations).toEqual([1, 2]);
+    expect(pollGenerations).toEqual([1, 2]);
+    expect(replacementReady).toBe(true);
+    expect(scheduler.timers.size).toBe(0);
+  });
 });

@@ -73,7 +73,9 @@ export const V2_RUNTIME_EVENT_STREAM_TYPES = [
 type RuntimeTransportActivation = {
   workflowId: string;
   lifecycleGeneration: number;
+  startedPromise: Promise<boolean>;
   promise: Promise<boolean>;
+  settleStarted: (started: boolean) => void;
   settle: (active: boolean) => void;
 };
 
@@ -81,15 +83,26 @@ function createRuntimeTransportActivation(
   workflowId: string,
   lifecycleGeneration: number,
 ): RuntimeTransportActivation {
+  let settleStartedPromise!: (started: boolean) => void;
   let settlePromise!: (active: boolean) => void;
+  let startedSettled = false;
   let settled = false;
+  const startedPromise = new Promise<boolean>((resolve) => {
+    settleStartedPromise = resolve;
+  });
   const promise = new Promise<boolean>((resolve) => {
     settlePromise = resolve;
   });
   return {
     workflowId,
     lifecycleGeneration,
+    startedPromise,
     promise,
+    settleStarted(started) {
+      if (startedSettled) return;
+      startedSettled = true;
+      settleStartedPromise(started);
+    },
     settle(active) {
       if (settled) return;
       settled = true;
@@ -287,8 +300,14 @@ export function useV2RuntimeController(options: {
       && activation.workflowId === workflowId
       && activation.lifecycleGeneration === lifecycleGeneration
     ) {
+      const started = await activation.startedPromise;
+      if (!started) return;
+      if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
+      const synchronization = transportRef.current?.synchronize();
       const active = await activation.promise;
       if (!active) return;
+      await synchronization;
+      return;
     }
     if (lifecycleGenerationRef.current !== lifecycleGeneration || workflowIdRef.current !== workflowId) return;
     await transportRef.current?.synchronize();
@@ -298,6 +317,7 @@ export function useV2RuntimeController(options: {
     lifecycleGenerationRef.current += 1;
     const activation = transportActivationRef.current;
     transportActivationRef.current = null;
+    activation?.settleStarted(false);
     activation?.settle(false);
     transportRef.current?.stop();
     eventSourceRef.current?.close();
@@ -332,11 +352,23 @@ export function useV2RuntimeController(options: {
         || workflowIdRef.current !== workflowId
         || transportActivationRef.current !== activation
       ) {
+        activation.settleStarted(false);
         activation.settle(false);
         return;
       }
-      transportRef.current?.start();
-      activation.settle(true);
+      const readiness = transportRef.current!.start();
+      activation.settleStarted(true);
+      void readiness.then(() => {
+        if (
+          lifecycleGenerationRef.current !== lifecycleGeneration
+          || workflowIdRef.current !== workflowId
+          || transportActivationRef.current !== activation
+        ) {
+          activation.settle(false);
+          return;
+        }
+        activation.settle(true);
+      });
     };
     void syncSnapshot(workflowId, { queueRefresh: false }, lifecycleGeneration)
       .then(activateTransport)

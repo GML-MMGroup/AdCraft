@@ -153,7 +153,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
   };
 
   return {
-    start() {
+    start(): Promise<void> {
       lifecycleGeneration += 1;
       const generation = lifecycleGeneration;
       active = true;
@@ -164,17 +164,15 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       const previousPoll = activePoll;
       if (!previousPoll) {
         connect(generation);
-        return;
+        return Promise.resolve();
       }
+      const resume = () => {
+        if (!canRun(generation)) return;
+        if (resumeAfterPollGeneration === generation) return poll(generation);
+        connect(generation);
+      };
       previousPoll.controller.abort();
-      void previousPoll.promise.then(
-        () => {
-          if (canRun(generation)) connect(generation);
-        },
-        () => {
-          if (canRun(generation)) connect(generation);
-        },
-      );
+      return previousPoll.promise.then(resume, resume);
     },
     stop() {
       lifecycleGeneration += 1;
@@ -196,8 +194,9 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       if (!canRun(generation)) return Promise.resolve();
       if (activePoll?.generation === generation) return activePoll.promise;
       clearScheduledWork();
-      if (currentState !== "degraded_polling") {
-        options.onDisconnect?.();
+      const replacingStalePoll = activePoll !== null && activePoll.generation !== generation;
+      if (currentState !== "degraded_polling" || replacingStalePoll) {
+        if (currentState !== "degraded_polling") options.onDisconnect?.();
         connectionGeneration = null;
         resumeAfterPollGeneration = generation;
       }
