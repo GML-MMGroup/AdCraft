@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { EmptyState, PageHeader } from "../components/Layout";
 import { trashItems } from "../data";
 import { useApp } from "../AppContextValue";
+import "./projects.css";
 
 export function TrashPage() {
   const [type, setType] = useState<"project" | "role" | "scene">("project");

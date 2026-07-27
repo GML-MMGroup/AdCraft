@@ -57,6 +57,8 @@ function entryGraph(manifest, entry, { staticOnly }) {
   if (!manifest[entry]) usage(`Vite manifest does not contain entry: ${entry}`);
 
   const modules = [];
+  const css = [];
+  const visitedCss = new Set();
   const visited = new Set();
   const queue = [entry];
   while (queue.length) {
@@ -67,13 +69,18 @@ function entryGraph(manifest, entry, { staticOnly }) {
 
     visited.add(moduleId);
     modules.push(moduleId);
+    for (const stylesheet of module.css ?? []) {
+      if (visitedCss.has(stylesheet)) continue;
+      visitedCss.add(stylesheet);
+      css.push(stylesheet);
+    }
     const dependencies = staticOnly ? (module.imports ?? []) : [...(module.imports ?? []), ...(module.dynamicImports ?? [])];
     for (const dependency of dependencies) {
       if (!visited.has(dependency)) queue.push(dependency);
     }
   }
 
-  return { entry, modules };
+  return { entry, modules, css };
 }
 
 const options = parseArguments(process.argv.slice(2));
@@ -84,4 +91,8 @@ if (options.json) {
 } else {
   console.log(`Entry graph for ${report.entry}`);
   for (const moduleId of report.modules) console.log(`- ${moduleId}`);
+  if (report.css.length) {
+    console.log("CSS");
+    for (const stylesheet of report.css) console.log(`- ${stylesheet}`);
+  }
 }

@@ -19,12 +19,8 @@ function routePath(route: RouteName) {
 function RouteFallback() {
   return (
     <section className="content-wrap route-fallback" aria-label="Loading page">
-      <div className="workflow-card-preview-loading is-generic" role="status" aria-label="Loading page">
-        <span className="workflow-card-preview-loading-core" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
+      <div className="route-loading" role="status" aria-label="Loading page">
+        <span className="route-loading-spinner" aria-hidden="true" />
       </div>
     </section>
   );

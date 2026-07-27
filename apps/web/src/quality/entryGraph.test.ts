@@ -24,16 +24,19 @@ describe("entry graph analyzer", () => {
       "src/pages/HomePage.tsx": {
         file: "assets/home.js",
         isDynamicEntry: true,
+        css: ["assets/home.css"],
         dynamicImports: ["src/features/home/HomeWorkspace.tsx"],
       },
       "src/features/home/HomeWorkspace.tsx": {
         file: "assets/home-workspace.js",
         isDynamicEntry: true,
+        css: ["assets/home-workspace.css"],
         dynamicImports: ["src/features/workflow/WorkflowPage.tsx"],
       },
       "src/features/workflow/WorkflowPage.tsx": {
         file: "assets/workflow.js",
         isDynamicEntry: true,
+        css: ["assets/workflow.css"],
       },
     }));
 
@@ -52,6 +55,11 @@ describe("entry graph analyzer", () => {
         "src/pages/HomePage.tsx",
         "src/features/home/HomeWorkspace.tsx",
         "src/features/workflow/WorkflowPage.tsx",
+      ],
+      css: [
+        "assets/home.css",
+        "assets/home-workspace.css",
+        "assets/workflow.css",
       ],
     });
   });

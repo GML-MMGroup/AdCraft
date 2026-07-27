@@ -7,6 +7,7 @@ import type { RouteName } from "../types";
 import { ProjectList } from "./projects/ProjectList";
 import type { ProjectListItem } from "./projects/ProjectList";
 import { ProjectRenameDialog } from "./projects/ProjectRenameDialog";
+import "./projects.css";
 
 export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => void }) {
   const [tab, setTab] = useState<"all" | "favorite">("all");

@@ -1,8 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-const DIST_ASSETS = new URL("../../dist/assets/", import.meta.url);
-const DIST_MANIFEST = new URL("../../dist/.vite/manifest.json", import.meta.url);
+const DEFAULT_DIST_DIRECTORY = new URL("../../dist/", import.meta.url).pathname;
 const MAX_MAIN_JS_BYTES = 650 * 1024;
 const MAX_INITIAL_JS_BYTES = 475 * 1024;
 // The core total includes lazy route chunks such as the Project cover preview UI.
@@ -11,17 +10,44 @@ const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
 const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
 const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;
 const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
-const MAX_CSS_BYTES = 180 * 1024;
+const MAX_CSS_BYTES = 16 * 1024;
+const MAX_HOME_ROUTE_CSS_BYTES = 16 * 1024;
 const MAX_TIMELINE_EDITOR_CSS_BYTES = 6 * 1024;
 
 function bytes(value) {
   return `${Math.round(value / 1024)} KiB`;
 }
 
+function parseArguments(argumentsList) {
+  let distDirectory = DEFAULT_DIST_DIRECTORY;
+
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const argument = argumentsList[index];
+    if (argument !== "--dist") {
+      console.error(`Unknown argument: ${argument}`);
+      process.exit(1);
+    }
+    const value = argumentsList[index + 1];
+    if (!value) {
+      console.error("Missing value for --dist.");
+      process.exit(1);
+    }
+    distDirectory = resolve(value);
+    index += 1;
+  }
+
+  return {
+    assetsDirectory: join(distDirectory, "assets"),
+    manifestPath: join(distDirectory, ".vite", "manifest.json"),
+  };
+}
+
+const { assetsDirectory, manifestPath } = parseArguments(process.argv.slice(2));
+
 function listAssets() {
   try {
-    return readdirSync(DIST_ASSETS).map((name) => {
-      const path = join(DIST_ASSETS.pathname, name);
+    return readdirSync(assetsDirectory).map((name) => {
+      const path = join(assetsDirectory, name);
       return { name, size: statSync(path).size };
     });
   } catch {
@@ -32,16 +58,16 @@ function listAssets() {
 
 function readManifest() {
   try {
-    return JSON.parse(readFileSync(DIST_MANIFEST, "utf8"));
+    return JSON.parse(readFileSync(manifestPath, "utf8"));
   } catch {
     console.error("dist/.vite/manifest.json is missing. Run npm run build before npm run perf:bundle.");
     process.exit(1);
   }
 }
 
-function initialManifestEntries(manifest) {
+function staticManifestEntries(manifest, rootEntryName) {
   const entries = new Set();
-  const queue = ["index.html"];
+  const queue = [rootEntryName];
   while (queue.length) {
     const entryName = queue.shift();
     if (!entryName || entries.has(entryName)) continue;
@@ -62,7 +88,9 @@ function assetName(manifestFile) {
 
 const assets = listAssets();
 const manifest = readManifest();
-const initialEntries = initialManifestEntries(manifest);
+const homeEntry = manifest["src/pages/HomePage.tsx"];
+const initialEntries = staticManifestEntries(manifest, "index.html");
+const homeEntries = homeEntry ? staticManifestEntries(manifest, "src/pages/HomePage.tsx") : [];
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
 const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
@@ -78,6 +106,10 @@ const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)
 const initialCssAssetNames = new Set(initialEntries.flatMap((entry) => (entry.css ?? []).map(assetName)));
 const initialJs = jsAssets.filter((asset) => initialNames.has(asset.name));
 const initialCss = cssAssets.filter((asset) => initialCssAssetNames.has(asset.name));
+const homeRouteCssNames = new Set(homeEntries.flatMap((entry) => (entry.css ?? []).map(assetName)));
+// Core CSS has its own budget; the Home limit covers incremental CSS after the initial entry loads.
+for (const initialCssAssetName of initialCssAssetNames) homeRouteCssNames.delete(initialCssAssetName);
+const homeRouteCss = cssAssets.filter((asset) => homeRouteCssNames.has(asset.name));
 const initialJsBytes = initialJs.reduce((sum, asset) => sum + asset.size, 0);
 const totalJs = jsAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreJsBytes = jsAssets
@@ -85,6 +117,7 @@ const coreJsBytes = jsAssets
   .reduce((sum, asset) => sum + asset.size, 0);
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
+const homeRouteCssBytes = homeRouteCss.reduce((sum, asset) => sum + asset.size, 0);
 
 console.log("Bundle budget report");
 for (const asset of assets.sort((a, b) => b.size - a.size)) {
@@ -93,6 +126,7 @@ for (const asset of assets.sort((a, b) => b.size - a.size)) {
 console.log(`- core JS total: ${bytes(coreJsBytes)}`);
 console.log(`- all JS total: ${bytes(totalJs)}`);
 console.log(`- core CSS total: ${bytes(coreCssBytes)}`);
+console.log(`- Home route CSS total: ${bytes(homeRouteCssBytes)}`);
 console.log(`- all CSS total: ${bytes(totalCss)}`);
 
 const failures = [];
@@ -135,6 +169,11 @@ if (!assetEntityViewerJs) {
 }
 if (coreCssBytes > MAX_CSS_BYTES) {
   failures.push(`core CSS is ${bytes(coreCssBytes)}, expected <= ${bytes(MAX_CSS_BYTES)}`);
+}
+if (!homeEntry || !homeRouteCss.length) {
+  failures.push("Home route CSS chunk is missing");
+} else if (homeRouteCssBytes > MAX_HOME_ROUTE_CSS_BYTES) {
+  failures.push(`Home route CSS is ${bytes(homeRouteCssBytes)}, expected <= ${bytes(MAX_HOME_ROUTE_CSS_BYTES)}`);
 }
 if (!timelineEditorCss) {
   failures.push("timeline editor lazy CSS chunk is missing");
