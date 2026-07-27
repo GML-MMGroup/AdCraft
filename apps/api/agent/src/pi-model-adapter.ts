@@ -143,6 +143,7 @@ export class PiModelAdapter implements AgentModelAdapter {
         .filter((toolName) => toolName !== "submit_structured_result")
         .map((toolName) => this.#pythonTool(request, toolName, emit, budget)),
     ];
+    const toolChoice = toolChoiceForRequest(request);
     const agent = new Agent({
       initialState: {
         systemPrompt: [
@@ -159,11 +160,18 @@ export class PiModelAdapter implements AgentModelAdapter {
         tools,
         thinkingLevel: "off",
       },
-      streamFn: (selectedModel, context, options) =>
-        streamSimple(selectedModel as Model<"openai-completions">, context, {
+      streamFn: (selectedModel, context, options) => {
+        const streamOptions = {
           ...options,
           apiKey: credential.api_key,
-        }),
+          ...(toolChoice ? { toolChoice } : {}),
+        };
+        return streamSimple(
+          selectedModel as Model<"openai-completions">,
+          context,
+          streamOptions,
+        );
+      },
     });
     const eventProjection = new AgentEventProjection(() => agent.abort());
     const unsubscribe = agent.subscribe((agentEvent) => {
@@ -251,6 +259,22 @@ export function toolsForRequest(
     return ["submit_structured_result"];
   }
   return toolsForOperation(request.agent_name, request.operation);
+}
+
+export function toolChoiceForRequest(
+  request: AgentRunRequest,
+):
+  | {
+      readonly type: "function";
+      readonly function: { readonly name: "submit_structured_result" };
+    }
+  | undefined {
+  return request.audit_metadata?.tool_mode === "structured_only"
+    ? {
+        type: "function",
+        function: { name: "submit_structured_result" },
+      }
+    : undefined;
 }
 
 export class AgentEventProjection {
