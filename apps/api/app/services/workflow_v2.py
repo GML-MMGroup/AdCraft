@@ -1574,6 +1574,7 @@ class WorkflowV2Service:
                 waiting_slot_ids=result.waiting_slot_ids,
                 failed_slot_ids=result.failed_slot_ids,
             )
+            terminal_candidate_workflow = workflow.model_copy(deep=True)
             workflow = self._persist_operational_workflow(workflow)
             final_state = (
                 self._sync_execution_state_from_workflow(
@@ -1590,9 +1591,11 @@ class WorkflowV2Service:
                     },
                     status_override=execution_status,
                     clear_terminal_active=False,
+                    terminal_candidate_workflow=terminal_candidate_workflow,
                 )
                 or state
             )
+            workflow = self.get_workflow(workflow_id)
             self._write_execution_record(
                 workflow_id,
                 mode=source_action,
@@ -4540,6 +4543,8 @@ class WorkflowV2Service:
         metadata_updates: dict[str, Any] | None = None,
         status_override: str | None = None,
         clear_terminal_active: bool = True,
+        publish_terminal_results: bool = True,
+        terminal_candidate_workflow: WorkflowV2 | None = None,
     ) -> dict[str, Any] | None:
         state = self._execution_service.load_state(workflow.workflow_id, execution_id)
         if state is None:
@@ -4568,6 +4573,39 @@ class WorkflowV2Service:
                 status = "completed"
         if status_override:
             status = status_override
+        if not publish_terminal_results and status in {"completed", "partial_failed"}:
+            status = "running"
+        if (
+            publish_terminal_results
+            and status in {"completed", "partial_failed"}
+            and self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            )
+        ):
+            runtime_source = terminal_candidate_workflow or workflow
+            workflow = self._execution_result_publication.publish_terminal(
+                workflow_id=workflow.workflow_id,
+                execution_id=execution_id,
+                candidate_workflow=runtime_source,
+            )
+            self._workflow_projection.save_operational_overlay(
+                runtime_source,
+                expected_revision_no=workflow.semantic_revision_no or 0,
+            )
+            workflow = self.get_workflow(workflow.workflow_id)
+            snapshot = self._runtime_events.runtime_snapshot(
+                workflow,
+                active_execution=state,
+                provider_tasks=self._provider_task_store.list_tasks(workflow.workflow_id),
+            )
+            state = (
+                self._execution_service.load_state(
+                    workflow.workflow_id,
+                    execution_id,
+                )
+                or state
+            )
         metadata = {
             **dict(state.get("metadata") or {}),
             **dict(metadata_updates or {}),
