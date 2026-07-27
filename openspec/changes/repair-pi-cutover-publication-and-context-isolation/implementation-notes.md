@@ -23,3 +23,13 @@
   authoring mutation.
 - Restored the focused scheduler, provider-result recovery, and Pi context
   tests omitted from the deployed package.
+
+## 2026-07-27: Context isolation and parity checkpoint
+
+- Added a bounded parity test for every deployment dependency restored by this
+  change: publication collaborator, repository idempotency query, execution
+  overlay fields, and Final Composition timeline override.
+- Added isolated expert context tests for Product, Character, Scene, and BGM
+  ownership, unsafe field rejection, and parallel invocation identity.
+- Tightened the shared typed-context validator to reject data URLs and base64
+  payloads before a Pi sidecar or provider can receive them.

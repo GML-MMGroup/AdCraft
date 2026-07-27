@@ -52,18 +52,18 @@
 - [x] 4.2 Restore any migration-omitted typed context schema, builder, registry,
   or direct dependency; do not add arbitrary dictionary or full-workflow
   compatibility fallbacks.
-- [ ] 4.3 Add Product, Character, Scene, BGM, targeted revision, Storyboard, and
+- [x] 4.3 Add Product, Character, Scene, BGM, targeted revision, Storyboard, and
   Video Director sentinel tests proving sibling full prompts do not cross
   contexts.
-- [ ] 4.4 Add parallel expert invocation coverage proving distinct invocation
+- [x] 4.4 Add parallel expert invocation coverage proving distinct invocation
   identities and no shared mutable context.
-- [ ] 4.5 Assert media bytes, base64/data URLs, credentials, absolute paths,
+- [x] 4.5 Assert media bytes, base64/data URLs, credentials, absolute paths,
   unknown fields, complete workflow documents, and sibling full prompts are
   rejected before Pi/provider calls.
 
 ## 5. Migration Parity Gate
 
-- [ ] 5.1 Add a bounded production dependency/parity test that catches a
+- [x] 5.1 Add a bounded production dependency/parity test that catches a
   referenced-but-absent module or referenced-but-uninitialized collaborator in
   the Pi/V2 execution roots.
 - [x] 5.2 Restore the focused publication, scheduler, context-isolation, and

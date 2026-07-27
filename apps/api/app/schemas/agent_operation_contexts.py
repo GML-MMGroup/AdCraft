@@ -23,10 +23,12 @@ _FORBIDDEN_KEY_PARTS = (
     "workflow_json",
 )
 _FORBIDDEN_TEXT_MARKERS = (
+    ";base64,",
     "api_key=",
     "authorization:",
     "bearer ",
     "credential=",
+    "data:",
     "secret=",
     "token=",
 )

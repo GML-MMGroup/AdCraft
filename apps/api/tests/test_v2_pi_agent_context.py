@@ -1,10 +1,23 @@
+from concurrent.futures import ThreadPoolExecutor
+
+import pytest
+from pydantic import ValidationError
+
 from app.core.config import Settings
+from app.schemas.agent_operation_contexts import (
+    BgmExpertAgentContext,
+    CharacterExpertAgentContext,
+    FrozenPlanningFacts,
+    ProductExpertAgentContext,
+    SceneExpertAgentContext,
+)
 from app.schemas.workflow_v2 import (
     WorkflowV2ChatActionTarget,
     WorkflowV2FreeNodeCreateRequest,
     WorkflowV2FreeNodeGenerateRequest,
 )
 from app.services.v2_agent_target_resolver import V2AgentTargetResolver
+from app.services.v2_pi_planning_session import V2PiPlanningSession
 from app.services.v2_pi_agent_context import (
     V2AgentContextBuilder,
     agent_for_semantic_family,
@@ -50,6 +63,99 @@ class FakeConversationContextSource:
                 for index in range(1, 31)
             ][-limit:],
         )
+
+
+@pytest.mark.parametrize(
+    ("context_type", "context_kind"),
+    [
+        (ProductExpertAgentContext, "product_expert"),
+        (CharacterExpertAgentContext, "character_expert"),
+        (SceneExpertAgentContext, "scene_expert"),
+        (BgmExpertAgentContext, "bgm_expert"),
+    ],
+)
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        {"sibling_provider_prompt": "SIBLING_SENTINEL"},
+        {"user_input": "data:image/png;base64,AAAA"},
+        {"user_input": "/private/full-workflow.json"},
+        {"credentials": {"api_key": "secret"}},
+        {"full_workflow": {"nodes": []}},
+    ],
+)
+def test_expert_contexts_reject_sibling_and_unsafe_payloads(
+    context_type: type[ProductExpertAgentContext],
+    context_kind: str,
+    unsafe: dict[str, object],
+) -> None:
+    payload = {
+        "context_kind": context_kind,
+        "user_input": "Target-owned instruction.",
+        "frozen_facts": FrozenPlanningFacts(product_name="Product"),
+        **unsafe,
+    }
+
+    with pytest.raises(ValidationError):
+        context_type.model_validate(payload)
+
+
+def test_parallel_pi_expert_invocations_keep_distinct_identity_and_context() -> None:
+    session = V2PiPlanningSession.start(workflow_id="adwf_v2_context_parallel")
+    contexts = [
+        ProductExpertAgentContext(
+            context_kind="product_expert",
+            user_input="PRODUCT_SENTINEL",
+            frozen_facts=FrozenPlanningFacts(product_name="Product"),
+        ),
+        CharacterExpertAgentContext(
+            context_kind="character_expert",
+            user_input="CHARACTER_SENTINEL",
+            frozen_facts=FrozenPlanningFacts(product_name="Product"),
+        ),
+        SceneExpertAgentContext(
+            context_kind="scene_expert",
+            user_input="SCENE_SENTINEL",
+            frozen_facts=FrozenPlanningFacts(product_name="Product"),
+        ),
+        BgmExpertAgentContext(
+            context_kind="bgm_expert",
+            user_input="BGM_SENTINEL",
+            frozen_facts=FrozenPlanningFacts(product_name="Product"),
+        ),
+    ]
+
+    def create(index: int) -> tuple[str, str]:
+        context = contexts[index]
+        invocation = session.child(
+            agent_name=(
+                "product_designer",
+                "character_designer",
+                "scene_designer",
+                "bgm_director",
+            )[index],
+            operation=f"expert-{index}",
+            logical_key=f"expert-{index}",
+        )
+        return invocation.run_id, context.model_dump_json()
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        outputs = list(executor.map(create, range(4)))
+
+    assert len({run_id for run_id, _payload in outputs}) == 4
+    assert all(
+        sentinel in payload
+        and all(other not in payload for other in {
+            "PRODUCT_SENTINEL",
+            "CHARACTER_SENTINEL",
+            "SCENE_SENTINEL",
+            "BGM_SENTINEL",
+        } - {sentinel})
+        for sentinel, (_run_id, payload) in zip(
+            ("PRODUCT_SENTINEL", "CHARACTER_SENTINEL", "SCENE_SENTINEL", "BGM_SENTINEL"),
+            outputs,
+        )
+    )
 
 
 def test_pi_agent_owner_map_has_one_owner_for_each_generation_family() -> None:

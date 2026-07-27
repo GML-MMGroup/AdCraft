@@ -41,5 +41,15 @@ uv run pytest tests/test_v2_execution_result_publication.py \
 ```
 
 These tests use deterministic fakes and isolated SQLite roots. Sentinel,
-parallel-context, parity-gate, integration/media, full-suite, and real-provider
-acceptance remain open.
+integration/media, full-suite, and real-provider acceptance remain open.
+
+## 2026-07-27: Context isolation and parity checkpoint
+
+```text
+uv run pytest tests/test_v2_pi_agent_context.py tests/test_v2_pi_cutover_parity.py -q
+28 passed in 3.95s
+```
+
+The initial context test failed for all four expert context kinds because
+`data:image/png;base64,...` was accepted. The shared typed-context validator
+now rejects `data:` and `;base64,` text before the runtime boundary.
