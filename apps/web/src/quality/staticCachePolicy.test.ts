@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const nginxConfig = readFileSync(resolve(process.cwd(), "../../deploy/nginx.conf"), "utf8");
+const viteConfig = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
 
 function regexLocation() {
   const match = nginxConfig.match(/location ~\* ("[^"\n]+"|\S+) \{([\s\S]*?)\n {4}\}/);
@@ -17,6 +18,12 @@ function prefixLocation(path: string) {
   const match = nginxConfig.match(new RegExp(`location ${escapedPath} \\{([\\s\\S]*?)\\n    \\}`));
   if (!match) throw new Error(`Expected nginx location for ${path}`);
   return match[1];
+}
+
+function apiProxyMatcher() {
+  const match = viteConfig.match(/proxy:\s*\{\s*"([^"]+)": \{/);
+  if (!match) throw new Error("Expected the Vite API proxy context");
+  return new RegExp(JSON.parse(`"${match[1]}"`));
 }
 
 describe("static cache policy", () => {
@@ -66,5 +73,16 @@ describe("static cache policy", () => {
   it("requires index.html to revalidate while preserving media proxy semantics", () => {
     expect(nginxConfig).toMatch(/location = \/index\.html \{[\s\S]*?Cache-Control "no-cache, must-revalidate"/);
     expect(nginxConfig).toMatch(/location \/media\/ \{[\s\S]*?proxy_pass http:\/\/api:8000;[\s\S]*?proxy_buffering off;/);
+  });
+
+  it("does not proxy the API Space browser route to the backend", () => {
+    const matcher = apiProxyMatcher();
+
+    for (const path of ["/api", "/api?health=1", "/api/v1/health"]) {
+      expect(path).toMatch(matcher);
+    }
+    for (const path of ["/api-space", "/apiary", "/apiculture"]) {
+      expect(path).not.toMatch(matcher);
+    }
   });
 });

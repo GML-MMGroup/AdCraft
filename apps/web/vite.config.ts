@@ -65,7 +65,7 @@ export default defineConfig({
       ignored: ["**/node_modules/**", "**/dist/**"],
     },
     proxy: {
-      "/api": {
+      "^/api(?=/|\\?|$)": {
         target: BACKEND_ORIGIN,
         changeOrigin: true,
         configure: configureApiMetadataProxy,
