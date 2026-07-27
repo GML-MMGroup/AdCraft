@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { OperationDescriptor } from "./registry.js";
@@ -23,7 +23,31 @@ export interface LoadedSkill {
   readonly content: string;
 }
 
+export interface VerifiedSkillBundle {
+  readonly version: "1";
+  readonly skills: ReadonlyMap<string, LoadedSkill>;
+}
+
+export class SkillBundleError extends Error {
+  constructor(readonly code: string) {
+    super(code);
+    this.name = "SkillBundleError";
+  }
+}
+
 const bundleRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../skills");
+let defaultBundle: Promise<VerifiedSkillBundle> | undefined;
+
+export function verifySkillBundle(
+  root: string = bundleRoot,
+): Promise<VerifiedSkillBundle> {
+  const resolvedRoot = resolve(root);
+  if (resolvedRoot !== bundleRoot) {
+    return verifyBundleAt(resolvedRoot);
+  }
+  defaultBundle ??= verifyBundleAt(resolvedRoot);
+  return defaultBundle;
+}
 
 export async function loadRequiredSkills(
   descriptor: OperationDescriptor,
@@ -39,28 +63,12 @@ export async function loadRequiredSkills(
       (skillId) => !descriptor.required_skills.includes(skillId),
     ),
   ];
-  const manifest = await readManifest();
-  const entries = new Map(manifest.skills.map((entry) => [entry.skill_id, entry]));
-  const skills = await Promise.all(
-    selectedIds.map(async (skillId) => {
-      const entry = entries.get(skillId);
-      if (!entry) throw new Error("agent_required_skill_missing");
-      if (!/^[a-z0-9_]+\/SKILL\.md$/.test(entry.path)) {
-        throw new Error("agent_skill_path_invalid");
-      }
-      const path = resolve(bundleRoot, entry.path);
-      if (!path.startsWith(`${bundleRoot}/`)) throw new Error("agent_skill_path_invalid");
-      const bytes = await readFile(path);
-      const digest = createHash("sha256").update(bytes).digest("hex");
-      if (digest !== entry.sha256) throw new Error("agent_skill_digest_mismatch");
-      return {
-        skill_id: entry.skill_id,
-        version: manifest.version,
-        sha256: digest,
-        content: bytes.toString("utf-8"),
-      };
-    }),
-  );
+  const bundle = await verifySkillBundle();
+  const skills = selectedIds.map((skillId) => {
+    const skill = bundle.skills.get(skillId);
+    if (!skill) throw new Error("agent_required_skill_missing");
+    return skill;
+  });
   const contextBytes = skills.reduce(
     (total, skill) => total + Buffer.byteLength(skill.content),
     0,
@@ -71,16 +79,69 @@ export async function loadRequiredSkills(
   return skills;
 }
 
-async function readManifest(): Promise<SkillManifest> {
-  const bytes = await readFile(resolve(bundleRoot, "manifest.json"));
-  const value: unknown = JSON.parse(bytes.toString("utf-8"));
+async function verifyBundleAt(root: string): Promise<VerifiedSkillBundle> {
+  const manifest = await readManifest(root);
+  const skills = new Map<string, LoadedSkill>();
+  for (const entry of manifest.skills) {
+    if (skills.has(entry.skill_id)) {
+      throw new SkillBundleError("agent_skill_manifest_duplicate_id");
+    }
+    const path = resolveSkillPath(root, entry.path);
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(path);
+    } catch {
+      throw new SkillBundleError("agent_skill_file_missing");
+    }
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== entry.sha256) {
+      throw new SkillBundleError("agent_skill_digest_mismatch");
+    }
+    skills.set(entry.skill_id, {
+      skill_id: entry.skill_id,
+      version: manifest.version,
+      sha256: digest,
+      content: bytes.toString("utf-8"),
+    });
+  }
+  return { version: manifest.version, skills };
+}
+
+function resolveSkillPath(root: string, declaredPath: string): string {
+  if (!/^[a-z0-9_]+\/SKILL\.md$/.test(declaredPath)) {
+    throw new SkillBundleError("agent_skill_path_invalid");
+  }
+  const path = resolve(root, declaredPath);
+  const relativePath = relative(root, path);
+  if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new SkillBundleError("agent_skill_path_invalid");
+  }
+  return path;
+}
+
+async function readManifest(root: string): Promise<SkillManifest> {
+  let value: unknown;
+  try {
+    const bytes = await readFile(resolve(root, "manifest.json"));
+    value = JSON.parse(bytes.toString("utf-8"));
+  } catch {
+    throw new SkillBundleError("agent_skill_manifest_invalid");
+  }
   if (
     !value ||
     typeof value !== "object" ||
     (value as { version?: unknown }).version !== "1" ||
-    !Array.isArray((value as { skills?: unknown }).skills)
+    !Array.isArray((value as { skills?: unknown }).skills) ||
+    !(value as { skills: unknown[] }).skills.every(
+      (entry) =>
+        entry !== null &&
+        typeof entry === "object" &&
+        typeof (entry as { skill_id?: unknown }).skill_id === "string" &&
+        typeof (entry as { path?: unknown }).path === "string" &&
+        typeof (entry as { sha256?: unknown }).sha256 === "string",
+    )
   ) {
-    throw new Error("agent_skill_manifest_invalid");
+    throw new SkillBundleError("agent_skill_manifest_invalid");
   }
   return value as SkillManifest;
 }

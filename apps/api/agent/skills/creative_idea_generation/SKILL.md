@@ -30,3 +30,4 @@ Provide the central idea that script hook, body, and CTA should express.
 
 - Do not generate abstract slogans without scene potential.
 - Do not include production notes as audience-facing dialogue.
+

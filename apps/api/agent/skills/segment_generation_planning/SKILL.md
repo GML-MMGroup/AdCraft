@@ -30,3 +30,4 @@ Define segment prompts, order, legal duration, and task submission notes.
 
 - Do not submit 30 or 60 seconds as one Seedance task.
 - Do not fake completed video URLs before tasks finish.
+

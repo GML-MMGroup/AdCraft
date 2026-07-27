@@ -30,3 +30,4 @@ Describe locations, lighting, color, spatial layout, and atmosphere.
 
 - Do not add people to pure scene references.
 - Do not add extra products unless explicitly required.
+

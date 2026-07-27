@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 class FrontDeskError(RuntimeError):
     """Raised when the front desk agent cannot classify a user message."""
 
+    def __init__(self, code: str, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+
 
 class FrontDeskOutputParseError(ValueError):
     """Raised when an LLM response does not contain extractable JSON."""
@@ -128,7 +133,16 @@ class FrontDeskService:
             ).output
         except StructuredGenerationRuntimeError as exc:
             _log_front_desk_error("run_agent", exc)
-            raise FrontDeskError(f"{exc.code}: {_safe_error_message(exc)}") from exc
+            if exc.code == "structured_generation_unavailable":
+                raise FrontDeskError(
+                    "agent_runtime_unavailable",
+                    "Agent runtime is temporarily unavailable.",
+                    retryable=True,
+                ) from exc
+            raise FrontDeskError(
+                "front_desk_failed",
+                _safe_error_message(exc),
+            ) from exc
 
         try:
             return _normalize_front_desk_output(output, request)
@@ -139,7 +153,8 @@ class FrontDeskService:
                 output_preview=output.model_dump(mode="json"),
             )
             raise FrontDeskError(
-                f"normalize_ad_request_failed: {_safe_error_message(exc)}"
+                "front_desk_failed",
+                f"normalize_ad_request_failed: {_safe_error_message(exc)}",
             ) from exc
 
 

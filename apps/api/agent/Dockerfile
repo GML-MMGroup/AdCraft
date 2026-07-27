@@ -5,7 +5,9 @@ COPY agent/package.json agent/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY agent/src ./src
 COPY agent/skills ./skills
+COPY agent/scripts/verify-skills.ts ./scripts/verify-skills.ts
 COPY agent/tsconfig.json ./
+RUN npm run verify:skills
 RUN npm run build
 RUN npm prune --omit=dev
 

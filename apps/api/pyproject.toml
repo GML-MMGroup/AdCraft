@@ -26,6 +26,7 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+pythonpath = ["."]
 markers = [
     "slow: tests taking more than about 1 second or known to dominate full-suite runtime",
     "integration: tests crossing API/service/storage/runtime boundaries",

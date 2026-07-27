@@ -30,3 +30,4 @@ Create short spoken or on-screen lines that can become subtitles or narration.
 
 - Do not include user brief text.
 - Do not include internal planning labels or workflow instructions.
+

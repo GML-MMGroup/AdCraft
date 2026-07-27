@@ -31,3 +31,4 @@ List continuity constraints that downstream image and video nodes should preserv
 
 - Do not act as a separate frontend QA node.
 - Do not rewrite approved story beats unless needed for consistency.
+
