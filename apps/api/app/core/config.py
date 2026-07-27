@@ -80,6 +80,15 @@ class Settings:
     v2_production_acceptance_enabled: bool = False
     v2_prompt_materializer_strict: bool = False
     v2_provider_allow_fallback: bool = False
+    agent_runtime_mode: str = "real"
+    agent_runtime_base_url: str = "http://127.0.0.1:8765"
+    agent_runtime_internal_token: str | None = None
+    agent_runtime_protocol_version: str = "1"
+    agent_runtime_connect_timeout_seconds: float = 5.0
+    agent_runtime_read_timeout_seconds: float = 30.0
+    agent_runtime_run_timeout_seconds: float = 120.0
+    agent_runtime_max_event_bytes: int = 65_536
+    agent_runtime_max_stream_bytes: int = 1_048_576
     llm_provider: str = "OpenAI Compatible"
     llm_api_key: str | None = None
     llm_base_url: str | None = None
@@ -189,6 +198,33 @@ class Settings:
             v2_provider_allow_fallback=_read_bool(
                 "V2_PROVIDER_ALLOW_FALLBACK",
                 cls.v2_provider_allow_fallback,
+            ),
+            agent_runtime_mode=os.getenv("AGENT_RUNTIME_MODE", cls.agent_runtime_mode),
+            agent_runtime_base_url=os.getenv("AGENT_RUNTIME_BASE_URL", cls.agent_runtime_base_url),
+            agent_runtime_internal_token=os.getenv("AGENT_RUNTIME_INTERNAL_TOKEN") or None,
+            agent_runtime_protocol_version=os.getenv(
+                "AGENT_RUNTIME_PROTOCOL_VERSION",
+                cls.agent_runtime_protocol_version,
+            ),
+            agent_runtime_connect_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_CONNECT_TIMEOUT_SECONDS",
+                cls.agent_runtime_connect_timeout_seconds,
+            ),
+            agent_runtime_read_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_READ_TIMEOUT_SECONDS",
+                cls.agent_runtime_read_timeout_seconds,
+            ),
+            agent_runtime_run_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_RUN_TIMEOUT_SECONDS",
+                cls.agent_runtime_run_timeout_seconds,
+            ),
+            agent_runtime_max_event_bytes=_read_int(
+                "AGENT_RUNTIME_MAX_EVENT_BYTES",
+                cls.agent_runtime_max_event_bytes,
+            ),
+            agent_runtime_max_stream_bytes=_read_int(
+                "AGENT_RUNTIME_MAX_STREAM_BYTES",
+                cls.agent_runtime_max_stream_bytes,
             ),
             llm_provider=os.getenv("LLM_PROVIDER", cls.llm_provider),
             llm_api_key=os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or None,

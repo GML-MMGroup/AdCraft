@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router as api_v1_router
+from app.api.internal.router import router as internal_agent_router
 from app.api.v2.persistence import v2_persistence_exception_handler
 from app.api.v2.router import api_router as api_v2_router
 from app.core.config import Settings, get_settings
@@ -52,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_exception_handler(V2PersistenceError, v2_persistence_exception_handler)
     application.include_router(api_v1_router, prefix="/api/v1")
     application.include_router(api_v2_router, prefix="/api/v2")
+    application.include_router(internal_agent_router)
     return application
 
 
