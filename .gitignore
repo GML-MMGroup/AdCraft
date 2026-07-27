@@ -30,6 +30,7 @@ apps/*/.env.*
 # Python backend local runtime
 apps/api/.venv/
 apps/api/data/
+data/
 
 # Local caches and generated indexes
 .pytest_cache/
