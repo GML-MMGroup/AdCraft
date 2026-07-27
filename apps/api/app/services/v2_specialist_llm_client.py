@@ -16,7 +16,11 @@ from app.services.v2_prompt_contract_adapter import (
 )
 from app.services.v2_prompt_contract_quality import validate_prompt_contract
 from app.services.v2_specialist_configs import V2SpecialistConfig
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_generation_runtime import (
+    StructuredGenerationRuntime,
+    StructuredGenerationRuntimeError,
+    StructuredGenerationSpec,
+)
 
 
 class V2SpecialistLLMClientError(RuntimeError):
@@ -28,7 +32,7 @@ class V2SpecialistLLMClientError(RuntimeError):
 class V2SpecialistLLMClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._structured_llm = V2StructuredLLMClient(settings)
+        self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def materialize(
         self,
@@ -52,23 +56,25 @@ class V2SpecialistLLMClient:
         payload = _safe_llm_payload(request, config, slot_type=slot_type)
         allowed_reference_ids = _allowed_reference_ids(request)
         try:
-            structured = self._structured_llm.generate(
-                model_id=config.model_id,
-                system_prompt=_system_prompt(config, slot_type),
-                user_payload=payload,
-                output_model=output_model,
-                contract_name=prompt_contract_name_for_slot(slot_type),
-                quality_validator=lambda contract: validate_prompt_contract(
-                    cast(V2PromptContractModel, contract),
-                    slot_type=slot_type,
-                    required_reference_asset_ids=_required_reference_ids(
-                        slot_type,
-                        allowed_reference_ids,
+            structured = self._structured_runtime.run(
+                StructuredGenerationSpec(
+                    stage_name="specialist_materializer",
+                    contract_name=prompt_contract_name_for_slot(slot_type),
+                    model_id=config.model_id,
+                    system_prompt=_system_prompt(config, slot_type),
+                    input_payload=payload,
+                    output_model=output_model,
+                    quality_validator=lambda contract: validate_prompt_contract(
+                        cast(V2PromptContractModel, contract),
+                        slot_type=slot_type,
+                        required_reference_asset_ids=_required_reference_ids(
+                            slot_type,
+                            allowed_reference_ids,
+                        ),
                     ),
-                ),
-                stage_name="specialist_materializer",
+                )
             )
-        except V2StructuredLLMError as exc:
+        except StructuredGenerationRuntimeError as exc:
             raise V2SpecialistLLMClientError(
                 _client_error_code(exc.code),
                 str(exc),

@@ -28,7 +28,7 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_llm import V2StructuredLLMError
 from app.services.v2_generation_integrity import planning_constraints_from_metadata
 from app.services.v2_versioning import V2_SCRIPT_WRITER_VERSION
 
@@ -57,11 +57,7 @@ class V2ScriptWriterService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._skill_context = V2SkillContextService()
-        self._structured_llm = V2StructuredLLMClient(settings)
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=settings,
-            structured_llm=self._structured_llm,
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def write_script(
         self,

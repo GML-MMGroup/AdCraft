@@ -35,7 +35,7 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_llm import V2StructuredLLMError
 from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 from app.services.v2_script_persistence import V2ScriptPersistenceAdapter
 from app.services.v2_versioning import V2_EXPERT_BRIEF_BUILDER_VERSION
@@ -63,11 +63,7 @@ class V2ExpertBriefPlanner:
         self._skill_context = V2SkillContextService()
         self._quality = quality or V2ExpertBriefQualityService()
         self._specialist_quality = specialist_quality or V2SpecialistAssetPromptQualityValidator()
-        self._structured_llm = V2StructuredLLMClient(self._settings)
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=self._settings,
-            structured_llm=self._structured_llm,
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
 
     def plan_briefs(
         self,

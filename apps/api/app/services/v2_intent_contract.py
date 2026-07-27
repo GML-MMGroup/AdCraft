@@ -36,7 +36,7 @@ from app.services.v2_planning_seed import (
     canonicalize_v2_planning_seed,
     merge_v2_planning_seed_constraints,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_llm import V2StructuredLLMError
 from app.services.v2_storyboard_planning import (
     V2_MAX_SHOT_DURATION_SECONDS,
     V2_MAX_STORYBOARD_SHOT_COUNT,
@@ -134,10 +134,7 @@ class V2IntentPlanner:
         self._validator = validator or V2IntentValidator()
         self._repairer = repairer or V2IntentRepairer()
         self._fallback_builder = fallback_builder or V2IntentFallbackBuilder()
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=self._settings,
-            structured_llm=V2StructuredLLMClient(self._settings),
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
 
     def plan(
         self,

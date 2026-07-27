@@ -13,12 +13,12 @@ from app.schemas.agent_runtime import (
     AgentStructuredSubmission,
     AgentToolCall,
     AgentToolResult,
-    SpecialistDraft,
 )
 from app.services.v2_agent_credential_broker import (
     AgentCredentialError,
     V2AgentCredentialBroker,
 )
+from app.services.v2_agent_contract_registry import validate_agent_contract
 
 
 router = APIRouter(prefix="/internal/v1")
@@ -82,17 +82,33 @@ def execute_agent_tool(call: AgentToolCall) -> AgentToolResult:
         )
     try:
         submission = AgentStructuredSubmission.model_validate(call.arguments)
-        if submission.contract_name != "SpecialistDraft":
-            raise ValueError("Unsupported structured contract")
-        SpecialistDraft.model_validate(submission.value)
-    except (ValidationError, ValueError):
+        normalized = validate_agent_contract(submission.contract_name, submission.value)
+    except (ValidationError, ValueError) as error:
+        violations = (
+            [
+                {
+                    "path": ".".join(str(part) for part in item["loc"]),
+                    "code": str(item["type"]),
+                    "message": str(item["msg"]),
+                }
+                for item in error.errors()
+            ]
+            if isinstance(error, ValidationError)
+            else [
+                {
+                    "path": "contract_name",
+                    "code": "agent_contract_not_allowed",
+                    "message": "The requested Agent contract is not registered.",
+                }
+            ]
+        )
         return AgentToolResult(
             run_id=call.run_id,
             tool_call_id=call.tool_call_id,
             status="rejected",
             result={
                 "accepted": False,
-                "violations": ["Structured submission does not match the requested contract."],
+                "violations": violations,
                 "repair_allowed": submission.attempt < 2 if "submission" in locals() else True,
             },
             error_code="agent_structured_output_invalid",
@@ -105,6 +121,7 @@ def execute_agent_tool(call: AgentToolCall) -> AgentToolResult:
         result={
             "accepted": True,
             "normalized_result_id": submission.submission_id,
+            "value": normalized.model_dump(mode="json"),
             "repair_allowed": False,
         },
     )

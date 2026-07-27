@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import json
 from typing import Any, Generic, Literal, TypeVar
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.schemas.agent_runtime import AgentRunContext, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_high_risk_prompt_renderer import (
@@ -19,6 +22,12 @@ from app.services.v2_structured_llm import (
     V2StructuredLLMClient,
     V2StructuredLLMError,
 )
+from app.services.pi_agent_runtime_client import (
+    PiAgentRuntimeClient,
+    PiAgentRuntimeError,
+    terminal_event,
+)
+from app.services.v2_pi_agent_context import isolate_agent_input_payload
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
@@ -84,6 +93,7 @@ class StructuredGenerationSpec(Generic[TOutput]):
 class StructuredGenerationResult(Generic[TOutput]):
     output: TOutput
     mode: str
+    degraded: bool
     warnings: list[dict[str, Any]]
     trace_metadata: dict[str, Any]
     original_error_code: str | None = None
@@ -96,11 +106,24 @@ class StructuredGenerationRuntime:
         *,
         settings: Settings | None = None,
         structured_llm: V2StructuredLLMClient | None = None,
+        agent_runtime_client: PiAgentRuntimeClient | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._structured_llm = structured_llm or V2StructuredLLMClient(self._settings)
+        self._structured_llm = structured_llm
+        self._agent_runtime_client = agent_runtime_client or PiAgentRuntimeClient(
+            base_url=self._settings.agent_runtime_base_url,
+            internal_token=self._settings.agent_runtime_internal_token or "",
+            protocol_version=self._settings.agent_runtime_protocol_version,
+            connect_timeout_seconds=self._settings.agent_runtime_connect_timeout_seconds,
+            read_timeout_seconds=self._settings.agent_runtime_read_timeout_seconds,
+            run_timeout_seconds=self._settings.agent_runtime_run_timeout_seconds,
+            max_event_bytes=self._settings.agent_runtime_max_event_bytes,
+            max_stream_bytes=self._settings.agent_runtime_max_stream_bytes,
+        )
 
     def run(self, spec: StructuredGenerationSpec[TOutput]) -> StructuredGenerationResult[TOutput]:
+        if self._structured_llm is None:
+            return self._run_pi(spec)
         try:
             output, warnings, call_metadata = self._generate_once(
                 spec,
@@ -119,6 +142,47 @@ class StructuredGenerationRuntime:
             if spec.fallback_builder is None:
                 raise self._runtime_error(spec, first_error) from first_error
             return self._repair_or_fallback(spec, first_error)
+
+    def _run_pi(
+        self, spec: StructuredGenerationSpec[TOutput]
+    ) -> StructuredGenerationResult[TOutput]:
+        request = _agent_run_request(spec)
+        try:
+            events = self._agent_runtime_client.run(request)
+            terminal = terminal_event(events)
+            if terminal.event_type != "run_completed":
+                raise PiAgentRuntimeError(
+                    str(terminal.payload.get("code") or "agent_runtime_unavailable"),
+                    str(terminal.payload.get("message") or "Agent runtime failed."),
+                )
+            value = terminal.payload.get("value")
+            output = spec.output_model.model_validate(value)
+            output = self._validate_output(spec, output)
+        except (PiAgentRuntimeError, ValueError) as error:
+            normalized = V2StructuredLLMError(
+                (
+                    error.code
+                    if isinstance(error, PiAgentRuntimeError)
+                    else "agent_structured_output_invalid"
+                ),
+                str(error),
+                failure_kind="provider_terminal",
+            )
+            if spec.fallback_builder is None:
+                raise self._runtime_error(spec, normalized) from error
+            return self._fallback(
+                spec,
+                normalized,
+                attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
+            )
+        return self._result(
+            spec,
+            output=output,
+            mode="pi",
+            warnings=[],
+            original_error=None,
+            call_metadata=None,
+        )
 
     def _repair_or_fallback(
         self,
@@ -240,6 +304,8 @@ class StructuredGenerationRuntime:
         *,
         attempt_kind: Literal["initial", "repair"],
     ) -> tuple[TOutput, list[dict[str, Any]], V2StructuredLLMCallMetadata | None]:
+        if self._structured_llm is None:
+            raise RuntimeError("Legacy structured client is not configured.")
         result = self._structured_llm.generate(
             model_id=spec.model_id,
             system_prompt=spec.system_prompt,
@@ -304,6 +370,7 @@ class StructuredGenerationRuntime:
         return StructuredGenerationResult(
             output=output,
             mode=mode,
+            degraded=mode == "fallback",
             warnings=sanitized_warnings,
             trace_metadata=self._trace_metadata(
                 spec,
@@ -396,6 +463,70 @@ class StructuredGenerationRuntime:
         if error.code == "structured_generation_repair_failed":
             return "structured_generation_repair_failed"
         return "structured_generation_unavailable"
+
+
+def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
+    run_id = f"arun_{uuid4().hex}"
+    payload = isolate_agent_input_payload(
+        sanitize_context_for_llm_text(spec.input_payload)
+    )
+    workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
+    operation = _agent_operation(spec)
+    return AgentRunRequest(
+        run_id=run_id,
+        request_id=f"req_{uuid4().hex}",
+        agent_name=_agent_name_for_operation(operation),
+        operation=operation,
+        contract_name=spec.contract_name,
+        context=AgentRunContext(
+            operation=operation,
+            user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            workflow_id=workflow_id,
+            system_prompt=spec.system_prompt,
+            input_payload=payload,
+            contract_schema=spec.output_model.model_json_schema(),
+        ),
+        credential_ref="llm-default",
+        audit_metadata={
+            "stage_name": spec.stage_name,
+            "contract_name": spec.contract_name,
+            "workflow_id": workflow_id,
+        },
+    )
+
+
+def _agent_operation(spec: StructuredGenerationSpec[Any]) -> str:
+    if spec.stage_name != "specialist_materializer":
+        return spec.stage_name
+    if spec.contract_name.startswith("V2Product"):
+        return "product_prompt"
+    if spec.contract_name.startswith("V2Character"):
+        return "character_prompt"
+    if spec.contract_name.startswith("V2Scene"):
+        return "scene_prompt"
+    if spec.contract_name == "V2ShotCellPromptPlan":
+        return "storyboard_prompt"
+    if spec.contract_name == "V2ShotVideoPromptPlan":
+        return "shot_video_prompt"
+    return spec.stage_name
+
+
+def _agent_name_for_operation(operation: str) -> str:
+    if operation == "script_writer" or operation == "script_edit_normalization":
+        return "script_writer"
+    if operation == "product_prompt":
+        return "product_designer"
+    if operation == "character_prompt":
+        return "character_designer"
+    if operation == "scene_prompt":
+        return "scene_designer"
+    if operation in {"storyboard_detail", "storyboard_prompt"}:
+        return "storyboard_artist"
+    if operation == "shot_video_prompt":
+        return "video_director"
+    if operation == "visual_style_scope_repair":
+        return "scene_designer"
+    return "front_desk"
 
 
 def _with_output_warnings(output: TOutput, warnings: list[dict[str, Any]]) -> TOutput:

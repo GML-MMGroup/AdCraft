@@ -110,6 +110,9 @@ class AgentRunContext(_StrictModel):
         default=(), max_length=_MAX_COLLECTION_ITEMS
     )
     constraints: tuple[str, ...] = Field(default=(), max_length=_MAX_COLLECTION_ITEMS)
+    system_prompt: str | None = Field(default=None, max_length=32_768)
+    input_payload: dict[str, Any] = Field(default_factory=dict)
+    contract_schema: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentRunPolicy(_StrictModel):

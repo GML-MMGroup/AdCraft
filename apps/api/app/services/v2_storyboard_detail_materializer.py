@@ -18,7 +18,7 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_llm import V2StructuredLLMError
 from app.services.v2_versioning import V2_STORYBOARD_DETAIL_MATERIALIZER_VERSION
 
 
@@ -44,11 +44,7 @@ class V2StoryboardDetailMaterializer:
     ) -> None:
         self._settings = settings or get_settings()
         self._quality = quality or V2StoryboardDetailQualityService()
-        self._structured_llm = V2StructuredLLMClient(self._settings)
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=self._settings,
-            structured_llm=self._structured_llm,
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
 
     def materialize_detail(
         self,
