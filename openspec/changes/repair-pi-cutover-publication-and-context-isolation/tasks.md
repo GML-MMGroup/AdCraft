@@ -97,7 +97,7 @@
 
 ## 7. Real Acceptance And Completion
 
-- [ ] 7.1 Audit canonical runtime state and wait until no workflow execution is
+- [x] 7.1 Audit canonical runtime state and wait until no workflow execution is
   active before merging into the live `main` worktree.
 - [ ] 7.2 Merge the verified task branch, restart the backend/Pi supervisor
   once, and verify compatible health.

@@ -111,5 +111,23 @@ git diff --check
 passed
 ```
 
-No deterministic test failures remain. Real-provider, live-service, frontend
-proxy, merge, and restart acceptance remain intentionally open in section 7.
+No deterministic test failures remain.
+
+## 2026-07-27: Merge and live-acceptance status
+
+The verified branch was merged into the AdCraft deployment branch
+`chore/monorepo-migration` with merge commit `3ab179c` after the canonical
+active-execution audit reported:
+
+```json
+{"active_execution_count": 0, "active_executions": [], "quiescent": true}
+```
+
+The merged API/Pi supervisor could not be restarted for real-provider
+acceptance. The native deployment script correctly rejects this host's FFmpeg
+`4.3`; it requires a version in the range `>=6.1,<8`. The existing service on
+port 8000 has a process working directory of `/data/wenwu.meng/adWorkflow`, so
+it is the standalone backend rather than this merged AdCraft monorepo. No
+service from the other repository was restarted or modified. Tasks 7.2 through
+7.6 remain open pending a deployable AdCraft runtime with the required FFmpeg
+capabilities.
