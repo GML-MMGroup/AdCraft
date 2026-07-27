@@ -163,6 +163,7 @@ async function handleRun(
   });
   const active: ActiveRun = { controller };
   activeRuns.set(request.run_id, active);
+  const startedAt = Date.now();
   const eventBuffer = new EventBuffer(response, maxQueueBytes);
   let terminalEmitted = false;
   const emit = async (candidate: AgentRuntimeEvent): Promise<void> => {
@@ -198,7 +199,14 @@ async function handleRun(
   try {
     await emit(event(request, 0, "run_started", { fake: false }));
     const result = await adapter.run(request, controller.signal, emit, budget);
-    await emit(event(request, 0, "run_completed", { value: result }));
+    await emit(
+      event(
+        request,
+        0,
+        "run_completed",
+        completedPayload(result, Date.now() - startedAt),
+      ),
+    );
   } catch (error) {
     if (!terminalEmitted) {
       const failure = safeRuntimeFailure(error);
@@ -207,6 +215,7 @@ async function handleRun(
         event(request, 0, terminal.eventType, {
           code: terminal.code,
           message: terminal.message,
+          audit: { duration_ms: Math.max(0, Date.now() - startedAt) },
         }),
       );
     }
@@ -217,6 +226,26 @@ async function handleRun(
     await eventBuffer.close();
     response.end();
   }
+}
+
+function completedPayload(
+  result: Readonly<Record<string, unknown>>,
+  durationMs: number,
+): Readonly<Record<string, unknown>> {
+  const { agent_runtime_audit: candidateAudit, ...value } = result;
+  const audit =
+    candidateAudit &&
+    typeof candidateAudit === "object" &&
+    !Array.isArray(candidateAudit)
+      ? candidateAudit
+      : {};
+  return {
+    value,
+    audit: {
+      ...audit,
+      duration_ms: Math.max(0, durationMs),
+    },
+  };
 }
 
 function terminalForFailure(

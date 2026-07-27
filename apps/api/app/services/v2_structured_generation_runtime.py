@@ -208,6 +208,11 @@ class StructuredGenerationRuntime:
                     "run_cancelled": "cancelled",
                 }[terminal.event_type],
                 terminal_result=terminal.payload,
+                audit_metadata=(
+                    terminal.payload.get("audit")
+                    if isinstance(terminal.payload.get("audit"), dict)
+                    else {}
+                ),
                 safe_error_code=(
                     str(terminal.payload.get("code") or "") or None
                     if terminal.event_type != "run_completed"

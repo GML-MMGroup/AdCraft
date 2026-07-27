@@ -183,6 +183,7 @@ export class PiModelAdapter implements AgentModelAdapter {
         request,
         credential,
         skills,
+        attempts,
       ),
     };
   }
@@ -255,12 +256,15 @@ export function agentRuntimeAuditForRequest(
   request: AgentRunRequest,
   credential: AgentCredentialSnapshot,
   skills: ReadonlyArray<LoadedSkill> = [],
+  structuredAttempts = 0,
 ): Readonly<Record<string, unknown>> {
   return {
     ...promptAuditForRequest(request),
     provider: credential.provider,
     model_id: credential.model_id,
     model_policy_id: credential.model_policy_id,
+    structured_attempts: structuredAttempts,
+    repair_stage: structuredAttempts > 1 ? "repair" : "initial",
     skills: skills.map((skill) => ({
       skill_id: skill.skill_id,
       version: skill.version,

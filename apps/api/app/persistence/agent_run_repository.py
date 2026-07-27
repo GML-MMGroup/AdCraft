@@ -245,15 +245,22 @@ class AgentRunRepository:
         status: Literal["completed", "failed", "cancelled"],
         terminal_result: dict[str, Any],
         safe_error_code: str | None = None,
+        audit_metadata: dict[str, Any] | None = None,
         now: datetime | None = None,
     ) -> AgentRunRecord:
         timestamp = _utc(now)
         if status not in _TERMINAL_STATUSES:
             raise _error("agent_run_status_invalid", "Agent run terminal status is invalid.")
         _validate_safe_json(terminal_result, maximum_bytes=_MAX_TOOL_RESULTS_BYTES)
+        _validate_metadata(audit_metadata or {})
         try:
             with self._database.engine.begin() as connection:
-                _get_owned_row(connection, run_id, lease_owner_id, timestamp)
+                row = _get_owned_row(connection, run_id, lease_owner_id, timestamp)
+                merged_audit = {
+                    **_object(row["audit_metadata_json"]),
+                    **(audit_metadata or {}),
+                }
+                _validate_metadata(merged_audit)
                 connection.execute(
                     update(AgentRunRow)
                     .where(AgentRunRow.run_id == run_id)
@@ -262,6 +269,7 @@ class AgentRunRepository:
                         lease_owner_id=None,
                         lease_expires_at=None,
                         terminal_result_json=_json(terminal_result),
+                        audit_metadata_json=_json(merged_audit),
                         safe_error_code=safe_error_code,
                         updated_at=_iso(timestamp),
                         finished_at=_iso(timestamp),
