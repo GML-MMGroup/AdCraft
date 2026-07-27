@@ -66,6 +66,7 @@ class V2SpecialistLLMClient:
                     system_prompt="",
                     input_payload=payload,
                     output_model=output_model,
+                    tool_mode="structured_only",
                     output_normalizer=lambda contract: _canonicalize_prompt_contract(
                         cast(V2PromptContractModel, contract),
                         request=request,

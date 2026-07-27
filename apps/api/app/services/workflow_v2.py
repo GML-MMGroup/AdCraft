@@ -388,6 +388,7 @@ class _SchedulerRunResult:
     waiting_slot_ids: list[str] = field(default_factory=list)
     created_item_ids: list[str] = field(default_factory=list)
     created_slot_ids: list[str] = field(default_factory=list)
+    candidate_workflow: WorkflowV2 | None = field(default=None, repr=False)
 
 
 class WorkflowV2Service:
@@ -3683,7 +3684,9 @@ class WorkflowV2Service:
                 workflow,
                 updated_task,
             )
-            workflow = self._persist_operational_workflow(workflow)
+            workflow = self._persist_operational_workflow(
+                scheduler_result.candidate_workflow or workflow
+            )
         elif result.status == "waiting":
             self._append_provider_task_event(
                 workflow,
@@ -3707,7 +3710,9 @@ class WorkflowV2Service:
                 extra_completed_slot_ids=scheduler_result.executed_slot_ids,
                 extra_waiting_slot_ids=scheduler_result.waiting_slot_ids,
                 extra_failed_slot_ids=scheduler_result.failed_slot_ids,
+                terminal_candidate_workflow=scheduler_result.candidate_workflow,
             )
+            workflow = self.get_workflow(workflow_id)
         safe_result = result.model_copy(update={"asset_bytes": None})
         provider_call_summaries = _provider_call_summaries(scheduler_result.provider_calls)
         return V2ProviderTaskPollResponse(
@@ -4057,6 +4062,7 @@ class WorkflowV2Service:
                 result.waiting_slot_ids.extend(scheduler_result.waiting_slot_ids)
                 result.failed_slot_ids.extend(scheduler_result.failed_slot_ids)
                 workflow = self.get_workflow(workflow_id)
+                candidate_workflow = scheduler_result.candidate_workflow
                 for completed_execution_id in {
                     task.execution_id for task in completed_tasks if task.execution_id
                 }:
@@ -4066,6 +4072,7 @@ class WorkflowV2Service:
                         extra_completed_slot_ids=scheduler_result.executed_slot_ids,
                         extra_waiting_slot_ids=scheduler_result.waiting_slot_ids,
                         extra_failed_slot_ids=scheduler_result.failed_slot_ids,
+                        terminal_candidate_workflow=candidate_workflow,
                     )
         finally:
             self._execution_context.execution_id = previous_execution_id
@@ -5064,6 +5071,7 @@ class WorkflowV2Service:
                 ]
             )
         )
+        result.candidate_workflow = workflow.model_copy(deep=True)
         return result
 
     def _drain_started_scheduler_futures(
