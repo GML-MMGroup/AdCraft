@@ -35,8 +35,10 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     generation: number;
     controller: AbortController;
     promise: Promise<void>;
+    ownsResult: boolean;
   } | null = null;
   let resumeAfterPollGeneration: number | null = null;
+  let connectionGeneration: number | null = null;
   let failureCount = 0;
   let pollCount = 0;
   let currentState: RuntimeReconnectState = "idle";
@@ -65,7 +67,9 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       if (generation === lifecycleGeneration) pause();
       return;
     }
+    if (activePoll || connectionGeneration === generation) return;
     clearScheduledWork();
+    connectionGeneration = generation;
     transition(failureCount ? "reconnecting" : "connecting");
     try {
       options.onConnect(generation);
@@ -74,16 +78,20 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     }
   };
   const schedulePoll = (delayMs: number, generation = lifecycleGeneration) => {
-    if (!canRun(generation) || activePoll?.generation === generation) return;
+    if (!canRun(generation) || activePoll) return;
     schedule((scheduledGeneration) => void poll(scheduledGeneration), delayMs, generation);
   };
   const poll = (generation = lifecycleGeneration): Promise<void> => {
     if (!canRun(generation)) return Promise.resolve();
-    if (activePoll) return activePoll.promise;
+    if (activePoll) {
+      if (activePoll.generation === generation && activePoll.ownsResult) return activePoll.promise;
+      return activePoll.promise.then(() => poll(generation));
+    }
     const entry = {
       generation,
       controller: new AbortController(),
       promise: Promise.resolve(),
+      ownsResult: true,
     };
     activePoll = entry;
     transition("degraded_polling");
@@ -97,7 +105,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
           activePoll = null;
           const resumeAfterPoll = resumeAfterPollGeneration === generation;
           if (resumeAfterPoll) resumeAfterPollGeneration = null;
-          if (canRun(generation)) {
+          if (entry.ownsResult && canRun(generation)) {
             if (resumeAfterPoll) {
               pollCount = 0;
               connect(generation);
@@ -110,6 +118,8 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
                 schedulePoll(pollIntervalMs, generation);
               }
             }
+          } else if (resumeAfterPoll && canRun(generation)) {
+            connect(generation);
           }
         }
       }
@@ -121,6 +131,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       resumeAfterPollGeneration = lifecycleGeneration;
     }
     clearScheduledWork();
+    connectionGeneration = null;
     transition("idle");
   };
   const sseFailed = (generation = lifecycleGeneration) => {
@@ -128,6 +139,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       if (generation === lifecycleGeneration) pause();
       return;
     }
+    if (connectionGeneration === generation) connectionGeneration = null;
     failureCount += 1;
     if (failureCount > maxSseFailures) {
       transition("degraded_polling");
@@ -146,6 +158,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       const generation = lifecycleGeneration;
       active = true;
       resumeAfterPollGeneration = null;
+      connectionGeneration = null;
       pollCount = 0;
       clearScheduledWork();
       const previousPoll = activePoll;
@@ -167,6 +180,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       lifecycleGeneration += 1;
       active = false;
       resumeAfterPollGeneration = null;
+      connectionGeneration = null;
       failureCount = 0;
       pollCount = 0;
       activePoll?.controller.abort();
@@ -174,7 +188,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     },
     reconcile() {
       if (!active || !isEligible()) return pause();
-      if (activePoll?.generation === lifecycleGeneration) return;
+      if (activePoll) return;
       if (currentState === "idle") connect();
     },
     synchronize() {
@@ -184,6 +198,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       clearScheduledWork();
       if (currentState !== "degraded_polling") {
         options.onDisconnect?.();
+        connectionGeneration = null;
         resumeAfterPollGeneration = generation;
       }
       return poll(generation);
@@ -196,10 +211,11 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       clearScheduledWork();
       if (activePoll?.generation === generation) {
         const pollToAbort = activePoll;
-        activePoll = null;
+        pollToAbort.ownsResult = false;
         pollToAbort.controller.abort();
       }
       if (resumeAfterPollGeneration === generation) resumeAfterPollGeneration = null;
+      connectionGeneration = generation;
       pollCount = 0;
       transition("connected");
     },

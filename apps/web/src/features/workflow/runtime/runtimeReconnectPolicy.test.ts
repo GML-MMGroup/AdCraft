@@ -419,4 +419,54 @@ describe("createRuntimeReconnectPolicy", () => {
     expect(scheduler.timers.size).toBe(0);
     expect(policy.state()).toBe("connected");
   });
+
+  it("keeps replacement transport behind an aborted physical poll across reconcile", async () => {
+    const scheduler = createScheduler();
+    let eligible = true;
+    const connectGenerations: number[] = [];
+    const pollGenerations: number[] = [];
+    let oldPollSignal: AbortSignal | undefined;
+    let completeOldPoll: (() => void) | undefined;
+    const policy = createRuntimeReconnectPolicy({
+      isEligible: () => eligible,
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: (generation) => {
+        connectGenerations.push(generation);
+      },
+      onPoll: (generation, signal) => new Promise<void>((resolve) => {
+        pollGenerations.push(generation);
+        oldPollSignal = signal;
+        completeOldPoll = resolve;
+      }),
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    policy.start();
+
+    eligible = false;
+    policy.reconcile();
+    eligible = true;
+    policy.reconcile();
+    policy.reconcile();
+
+    expect(oldPollSignal?.aborted).toBe(true);
+    expect(connectGenerations).toEqual([1]);
+    expect(pollGenerations).toEqual([1]);
+
+    completeOldPoll?.();
+    await Promise.resolve();
+    policy.reconcile();
+    await Promise.resolve();
+    policy.reconcile();
+    policy.reconcile();
+
+    expect(connectGenerations).toEqual([1, 2]);
+    expect(pollGenerations).toEqual([1]);
+    expect(scheduler.timers.size).toBe(0);
+  });
 });
