@@ -78,8 +78,7 @@ def _validate_front_desk_contract(value: object) -> FrontDeskIntentOutput:
         if not isinstance(value, dict) or "v2_planning_seed" not in value:
             raise
         if not error.errors() or any(
-            item.get("loc", ())[:1] != ("v2_planning_seed",)
-            for item in error.errors()
+            item.get("loc", ())[:1] != ("v2_planning_seed",) for item in error.errors()
         ):
             raise
         core_value = dict(value)

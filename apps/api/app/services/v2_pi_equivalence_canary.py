@@ -127,9 +127,7 @@ class V2PiEquivalenceCanaryService:
             self._settings,
             planning_canary=self._planning,
         )
-        self._forced_repair = forced_repair_runner or _ProductionForcedRepairRunner(
-            self._settings
-        )
+        self._forced_repair = forced_repair_runner or _ProductionForcedRepairRunner(self._settings)
 
     def run_case(self, case_id: V2PiCanaryCaseId) -> V2PiCanaryCaseResult:
         started_at = perf_counter()
