@@ -2,11 +2,17 @@ import type {
   AgentRunRequest,
   AgentRuntimeEvent,
 } from "./generated/agent-runtime.js";
+import type { RunBudget } from "./run-budget.js";
 
 export type EventSink = (event: AgentRuntimeEvent) => Promise<void>;
 
 export interface AgentModelAdapter {
-  run(request: AgentRunRequest, signal: AbortSignal, emit: EventSink): Promise<Record<string, unknown>>;
+  run(
+    request: AgentRunRequest,
+    signal: AbortSignal,
+    emit: EventSink,
+    budget?: RunBudget,
+  ): Promise<Record<string, unknown>>;
 }
 
 export class FakeAgentModelAdapter implements AgentModelAdapter {
@@ -14,7 +20,9 @@ export class FakeAgentModelAdapter implements AgentModelAdapter {
     request: AgentRunRequest,
     signal: AbortSignal,
     emit: EventSink,
+    budget?: RunBudget,
   ): Promise<Record<string, unknown>> {
+    budget?.consumeTurn();
     if (signal.aborted) throw new DOMException("Run cancelled.", "AbortError");
     await emit(event(request, 0, "output_delta", { text: "fake-output" }));
     return { submission_id: `submission_${request.run_id}`, fake: true };

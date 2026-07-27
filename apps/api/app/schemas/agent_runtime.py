@@ -299,6 +299,7 @@ class AgentRuntimeError(_StrictModel):
         "agent_model_unavailable",
         "agent_structured_output_invalid",
         "agent_run_budget_exceeded",
+        "agent_deadline_exceeded",
         "agent_stream_backpressure_exceeded",
         "agent_tool_not_allowed",
         "agent_target_revision_conflict",

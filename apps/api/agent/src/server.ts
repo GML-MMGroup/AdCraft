@@ -12,6 +12,7 @@ import {
 } from "./runtime.js";
 import { loadRuntimeManifest } from "./manifest.js";
 import { validateAgentRunRequest } from "./protocol-validator.js";
+import { RunBudget, RunBudgetFailure } from "./run-budget.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -25,7 +26,14 @@ interface ServerOptions {
 
 interface ActiveRun {
   readonly controller: AbortController;
+  abortCause?: AbortCause;
 }
+
+type AbortCause =
+  | "deadline"
+  | "explicit_cancel"
+  | "server_shutdown"
+  | "client_transport_lost";
 
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
@@ -44,7 +52,7 @@ export function createAgentRuntimeServer(options: ServerOptions) {
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
   const activeRuns = new Map<string, ActiveRun>();
 
-  return createServer(async (incoming, response) => {
+  const server = createServer(async (incoming, response) => {
     if (!authorized(incoming, options.internalToken)) {
       json(response, 401, { code: "agent_internal_auth_failed" });
       return;
@@ -79,7 +87,10 @@ export function createAgentRuntimeServer(options: ServerOptions) {
     if (incoming.method === "POST" && cancellationMatch) {
       const runId = decodeURIComponent(cancellationMatch[1] ?? "");
       const active = activeRuns.get(runId);
-      active?.controller.abort();
+      if (active && !active.abortCause) {
+        active.abortCause = "explicit_cancel";
+        active.controller.abort();
+      }
       json(response, 200, {
         protocol_version: "1",
         run_id: runId,
@@ -89,6 +100,13 @@ export function createAgentRuntimeServer(options: ServerOptions) {
     }
     json(response, 404, { code: "agent_internal_route_not_found" });
   });
+  server.on("close", () => {
+    for (const active of activeRuns.values()) {
+      if (!active.abortCause) active.abortCause = "server_shutdown";
+      active.controller.abort();
+    }
+  });
+  return server;
 }
 
 async function handleRun(
@@ -116,14 +134,34 @@ async function handleRun(
     json(response, 503, { code: "agent_run_capacity_exceeded" });
     return;
   }
+  const controller = new AbortController();
+  const policy = {
+    max_turns: request.policy?.max_turns ?? 8,
+    max_tool_calls: request.policy?.max_tool_calls ?? 16,
+    max_handoffs: request.policy?.max_handoffs ?? 8,
+    timeout_seconds: request.policy?.timeout_seconds ?? 120,
+    max_input_bytes: request.policy?.max_input_bytes ?? 131_072,
+    max_output_bytes: request.policy?.max_output_bytes ?? 262_144,
+    max_event_bytes: request.policy?.max_event_bytes ?? 65_536,
+  };
+  const effectiveDeadline = Math.min(
+    Date.parse(request.deadline_at),
+    Date.now() + policy.timeout_seconds * 1000,
+  );
+  const budget = new RunBudget(policy, effectiveDeadline);
+  try {
+    budget.observeInput(Buffer.byteLength(JSON.stringify(request)));
+  } catch {
+    json(response, 422, { code: "agent_run_budget_exceeded" });
+    return;
+  }
   response.writeHead(200, {
     "content-type": "application/x-ndjson; charset=utf-8",
     "cache-control": "no-store",
     "x-content-type-options": "nosniff",
   });
-
-  const controller = new AbortController();
-  activeRuns.set(request.run_id, { controller });
+  const active: ActiveRun = { controller };
+  activeRuns.set(request.run_id, active);
   let seq = 0;
   let terminalEmitted = false;
   const emit = async (candidate: AgentRuntimeEvent): Promise<void> => {
@@ -131,6 +169,10 @@ async function handleRun(
     const next = event(request, seq + 1, candidate.event_type, candidate.payload ?? {});
     const encoded = `${JSON.stringify(next)}\n`;
     const terminal = terminalEvents.has(next.event_type);
+    budget.observeEvent(Buffer.byteLength(encoded), !terminal);
+    if (next.event_type === "output_delta") {
+      budget.observeOutput(Buffer.byteLength(JSON.stringify(next.payload)));
+    }
     if (!terminal && Buffer.byteLength(encoded) > maxQueueBytes) {
       throw new RuntimeFailure(
         "agent_stream_backpressure_exceeded",
@@ -148,29 +190,26 @@ async function handleRun(
   }, heartbeatIntervalMs);
   heartbeat.unref();
   const timeout = setTimeout(
-    () => controller.abort(new DOMException("Run timed out.", "TimeoutError")),
-    Math.max(1, request.policy?.timeout_seconds ?? 120) * 1000,
+    () => {
+      if (!active.abortCause) active.abortCause = "deadline";
+      controller.abort(new DOMException("Run timed out.", "TimeoutError"));
+    },
+    Math.max(1, budget.remainingMs()),
   );
   timeout.unref();
 
   try {
     await emit(event(request, 0, "run_started", { fake: false }));
-    const result = await adapter.run(request, controller.signal, emit);
+    const result = await adapter.run(request, controller.signal, emit, budget);
     await emit(event(request, 0, "run_completed", { value: result }));
   } catch (error) {
     if (!terminalEmitted) {
-      const cancelled =
-        controller.signal.aborted ||
-        (error instanceof DOMException && error.name === "AbortError");
       const failure = safeRuntimeFailure(error);
+      const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
-        event(request, 0, cancelled ? "run_cancelled" : "run_failed", {
-          code: cancelled
-            ? "agent_run_cancelled"
-            : (failure?.code ?? "agent_runtime_unavailable"),
-          message: cancelled
-            ? "Agent run was cancelled."
-            : (failure?.message ?? "Agent runtime failed."),
+        event(request, 0, terminal.eventType, {
+          code: terminal.code,
+          message: terminal.message,
         }),
       );
     }
@@ -180,6 +219,35 @@ async function handleRun(
     activeRuns.delete(request.run_id);
     response.end();
   }
+}
+
+function terminalForFailure(
+  cause: AbortCause | undefined,
+  failure: RuntimeFailure | undefined,
+): {
+  eventType: "run_failed" | "run_cancelled";
+  code: string;
+  message: string;
+} {
+  if (cause === "deadline") {
+    return {
+      eventType: "run_failed",
+      code: "agent_deadline_exceeded",
+      message: "Agent run deadline exceeded.",
+    };
+  }
+  if (cause === "explicit_cancel" || cause === "server_shutdown") {
+    return {
+      eventType: "run_cancelled",
+      code: "agent_run_cancelled",
+      message: "Agent run was cancelled.",
+    };
+  }
+  return {
+    eventType: "run_failed",
+    code: failure?.code ?? "agent_runtime_unavailable",
+    message: failure?.message ?? "Agent runtime failed.",
+  };
 }
 
 class RuntimeFailure extends Error {
@@ -192,6 +260,9 @@ class RuntimeFailure extends Error {
 }
 
 function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
+  if (error instanceof RunBudgetFailure) {
+    return new RuntimeFailure(error.code, "Agent runtime policy rejected the operation.");
+  }
   if (error instanceof RuntimeFailure) return error;
   if (error instanceof Error && safeAdapterErrorCodes.has(error.message)) {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");

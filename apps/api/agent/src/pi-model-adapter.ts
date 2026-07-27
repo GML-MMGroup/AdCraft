@@ -6,6 +6,7 @@ import type {
   AgentRunRequest,
   AgentRuntimeEvent,
 } from "./generated/agent-runtime.js";
+import type { RunBudget } from "./run-budget.js";
 import type { AgentModelAdapter, EventSink } from "./runtime.js";
 import { event } from "./runtime.js";
 import {
@@ -36,7 +37,9 @@ export class PiModelAdapter implements AgentModelAdapter {
     request: AgentRunRequest,
     signal: AbortSignal,
     emit: EventSink,
+    budget?: RunBudget,
   ): Promise<Record<string, unknown>> {
+    budget?.consumeTurn();
     const definition = getAgentDefinition(request.agent_name);
     if (!definition.operations.includes(request.operation)) {
       throw new Error("agent_operation_not_allowed");
@@ -89,6 +92,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       description: "Submit the final validated result for this operation.",
       parameters: structuredToolParameters(request),
       execute: async (toolCallId, params) => {
+        budget?.consumeToolCall();
         attempts += 1;
         if (attempts > 2) throw new Error("agent_structured_output_invalid");
         const result = await this.python.executeTool({
@@ -132,7 +136,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       structuredTool,
       ...toolsForOperation(request.agent_name, request.operation)
         .filter((toolName) => toolName !== "submit_structured_result")
-        .map((toolName) => this.#pythonTool(request, toolName, emit)),
+        .map((toolName) => this.#pythonTool(request, toolName, emit, budget)),
     ];
     const agent = new Agent({
       initialState: {
@@ -178,6 +182,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     request: AgentRunRequest,
     toolName: Exclude<AgentToolName, "submit_structured_result">,
     emit: EventSink,
+    budget?: RunBudget,
   ): AgentTool<typeof structuredValueSchema> {
     return {
       name: toolName,
@@ -185,6 +190,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       description: `Execute the bounded Python ${toolName} capability.`,
       parameters: structuredValueSchema,
       execute: async (toolCallId, params) => {
+        budget?.consumeToolCall();
         const argumentsPayload = { ...params };
         const expectedRevision =
           typeof argumentsPayload.expected_revision === "number"
