@@ -117,4 +117,62 @@ describe("build budget", () => {
     expect(result.stdout).toContain("Home route CSS total: 17 KiB");
     expect(result.stderr).toContain("Home route CSS is 17 KiB, expected <= 16 KiB");
   });
+
+  test("rejects a production-shaped final composition entry without the shot timeline dynamic import", () => {
+    const distDirectory = mkdtempSync(join(tmpdir(), "adcraft-build-budget-"));
+    temporaryDirectories.push(distDirectory);
+    const assetsDirectory = join(distDirectory, "assets");
+    const manifestDirectory = join(distDirectory, ".vite");
+    mkdirSync(assetsDirectory);
+    mkdirSync(manifestDirectory);
+
+    for (const asset of [
+      "index-fixture.js",
+      "home-fixture.js",
+      "screenplay-editor-fixture.js",
+      "V2FinalCompositionEditor-fixture.js",
+      "V2ShotTimeline-fixture.js",
+      "timeline-editor-fixture.js",
+      "AssetEntityViewer-fixture.js",
+      "global-fixture.css",
+      "home-fixture.css",
+      "timeline-editor-fixture.css",
+    ]) {
+      writeAsset(assetsDirectory, asset);
+    }
+
+    writeFileSync(join(manifestDirectory, "manifest.json"), JSON.stringify({
+      "index.html": {
+        file: "assets/index-fixture.js",
+        css: ["assets/global-fixture.css"],
+      },
+      "src/pages/HomePage.tsx": {
+        file: "assets/home-fixture.js",
+        css: ["assets/home-fixture.css"],
+      },
+      "_V2FinalCompositionEditor-fixture.js": {
+        name: "V2FinalCompositionEditor",
+        file: "assets/V2FinalCompositionEditor-fixture.js",
+      },
+      "src/features/workflow/final-composition/V2ShotTimeline.tsx": {
+        name: "V2ShotTimeline",
+        file: "assets/V2ShotTimeline-fixture.js",
+        imports: ["_timeline-editor.js"],
+      },
+      "_timeline-editor.js": {
+        file: "assets/timeline-editor-fixture.js",
+      },
+    }));
+
+    const result = spawnSync(process.execPath, [
+      budgetScriptPath,
+      "--dist",
+      distDirectory,
+    ], { encoding: "utf8" });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "final composition editor must dynamically import the advanced shot timeline",
+    );
+  });
 });

@@ -87,6 +87,15 @@ function assetName(manifestFile) {
   return manifestFile.replace(/^assets\//, "");
 }
 
+function manifestEntryName(manifest, sourcePath, chunkName) {
+  if (manifest[sourcePath]) return sourcePath;
+
+  return Object.entries(manifest).find(([, entry]) => (
+    entry.name === chunkName
+    || assetName(entry.file).startsWith(`${chunkName}-`)
+  ))?.[0];
+}
+
 const assets = listAssets();
 const manifest = readManifest();
 const homeEntry = manifest["src/pages/HomePage.tsx"];
@@ -126,8 +135,16 @@ const coreJsBytes = jsAssets
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
 const homeRouteCssBytes = homeRouteCss.reduce((sum, asset) => sum + asset.size, 0);
-const finalCompositionEntryName = "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx";
-const shotTimelineEntryName = "src/features/workflow/final-composition/V2ShotTimeline.tsx";
+const finalCompositionEntryName = manifestEntryName(
+  manifest,
+  "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx",
+  "V2FinalCompositionEditor",
+);
+const shotTimelineEntryName = manifestEntryName(
+  manifest,
+  "src/features/workflow/final-composition/V2ShotTimeline.tsx",
+  "V2ShotTimeline",
+);
 const finalCompositionEntry = manifest[finalCompositionEntryName];
 const shotTimelineEntry = manifest[shotTimelineEntryName];
 const finalCompositionStaticFiles = finalCompositionEntry
