@@ -171,7 +171,11 @@ class V2ExpertBriefPlanner:
             if not fallback_used:
                 raise
             raise V2ExpertBriefPlannerError(
-                "expert_brief_fallback_failed",
+                (
+                    "specialist_asset_prompt_fallback_failed"
+                    if isinstance(exc, V2SpecialistAssetPromptQualityError)
+                    else "expert_brief_fallback_failed"
+                ),
                 "Deterministic expert brief fallback failed validation.",
             ) from exc
         violations = [

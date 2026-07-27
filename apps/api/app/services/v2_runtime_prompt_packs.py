@@ -306,7 +306,7 @@ def _compact_provider_sections(
         "scene_main_image": 110,
         "product_main_image": 220,
         "product_multi_view_grid": 220,
-        "character_main_image": 220,
+        "character_main_image": 195,
         "character_three_view": 220,
         "scene_multi_view_grid": 220,
     }
@@ -316,10 +316,19 @@ def _compact_provider_sections(
         limit = 90
     else:
         limit = limits.get(slot_type, 220)
-    return [
-        _truncate_words(section, limit) if index == 0 else section
-        for index, section in enumerate(sections)
-    ]
+    compacted: list[str] = []
+    remaining = limit
+    for section in sections:
+        if remaining <= 0:
+            break
+        word_count = len(section.split())
+        if word_count <= remaining:
+            compacted.append(section)
+            remaining -= word_count
+            continue
+        compacted.append(_truncate_words(section, remaining))
+        break
+    return compacted
 
 
 def _truncate_words(value: str, limit: int) -> str:
