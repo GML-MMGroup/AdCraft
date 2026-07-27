@@ -14,6 +14,10 @@ import {
   structuredSubmissionPrompt,
 } from "./prompts/agents.js";
 import {
+  getPromptDescriptor,
+  isPlanningOperation,
+} from "./prompts/registry.js";
+import {
   getAgentDefinition,
   toolsForOperation,
   type AgentToolName,
@@ -30,11 +34,18 @@ export class PiModelAdapter implements AgentModelAdapter {
     signal: AbortSignal,
     emit: EventSink,
   ): Promise<Record<string, unknown>> {
-    const credential = await this.python.credential(request.credential_ref ?? "llm-default");
     const definition = getAgentDefinition(request.agent_name);
     if (!definition.operations.includes(request.operation)) {
       throw new Error("agent_operation_not_allowed");
     }
+    const promptDescriptor = isPlanningOperation(request.operation)
+      ? getPromptDescriptor(
+          request.agent_name,
+          request.operation,
+          request.contract_name ?? "",
+        )
+      : undefined;
+    const credential = await this.python.credential(request.credential_ref ?? "llm-default");
     const skills = await loadRequiredSkills(request.agent_name, request.operation);
     const skillContext = skills
       .map(
@@ -118,7 +129,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     const agent = new Agent({
       initialState: {
         systemPrompt: [
-          definition.system_prompt,
+          promptDescriptor?.system_prompt ?? definition.system_prompt,
           skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
           structuredSubmissionPrompt,
           structuredRepairPrompt,
@@ -149,7 +160,10 @@ export class PiModelAdapter implements AgentModelAdapter {
       unsubscribe();
     }
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
-    return acceptedResult;
+    return {
+      ...acceptedResult,
+      agent_runtime_audit: promptAuditForRequest(request),
+    };
   }
 
   #pythonTool(
@@ -196,6 +210,22 @@ export class PiModelAdapter implements AgentModelAdapter {
       },
     };
   }
+}
+
+export function promptAuditForRequest(
+  request: AgentRunRequest,
+): Readonly<Record<string, string>> {
+  if (!isPlanningOperation(request.operation)) return {};
+  const descriptor = getPromptDescriptor(
+    request.agent_name,
+    request.operation,
+    request.contract_name ?? "",
+  );
+  return {
+    prompt_id: descriptor.prompt_id,
+    prompt_version: descriptor.prompt_version,
+    prompt_digest: descriptor.prompt_digest,
+  };
 }
 
 export function structuredToolParameters(

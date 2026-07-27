@@ -26,14 +26,14 @@ export interface AgentDefinition {
 }
 
 const definitions: ReadonlyArray<AgentDefinition> = [
-  definition("front_desk", ["workflow_creation", "intent_contract_planner", "expert_brief_planner"], 8),
+  definition("front_desk", ["workflow_creation", "intent_contract_planner"], 8),
   definition("script_writer", ["script_writer", "script_edit_normalization", "targeted_revision"], 0),
-  definition("product_designer", ["product_prompt", "product_revision", "targeted_revision"], 0),
-  definition("character_designer", ["character_prompt", "character_revision", "targeted_revision"], 0),
-  definition("scene_designer", ["scene_prompt", "scene_revision", "visual_style_scope_repair", "targeted_revision"], 0),
+  definition("product_designer", ["product_expert_brief", "product_prompt", "product_revision", "targeted_revision"], 0),
+  definition("character_designer", ["character_expert_brief", "character_prompt", "character_revision", "targeted_revision"], 0),
+  definition("scene_designer", ["scene_expert_brief", "scene_prompt", "scene_revision", "visual_style_scope_repair", "targeted_revision"], 0),
   definition("storyboard_artist", ["storyboard_detail", "storyboard_prompt", "targeted_revision"], 0),
   definition("video_director", ["shot_video_prompt", "targeted_revision"], 0),
-  definition("bgm_director", ["bgm_prompt", "targeted_revision"], 0),
+  definition("bgm_director", ["bgm_expert_brief", "bgm_prompt", "targeted_revision"], 0),
   definition("quick_media_agent", ["free_image", "free_video", "free_audio"], 0),
 ];
 
