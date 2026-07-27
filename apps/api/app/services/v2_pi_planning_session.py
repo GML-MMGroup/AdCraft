@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 
 from app.schemas.agent_runtime import AgentName
+from app.schemas.agent_operation_contexts import FrozenPlanningFacts
+from app.schemas.workflow_v2_intent import V2ExplicitConstraints
 
 
 class V2PiPlanningDeadlineError(RuntimeError):
@@ -35,6 +37,24 @@ class V2PiPlanningSession:
         repr=False,
         compare=False,
     )
+
+    @classmethod
+    def start(
+        cls,
+        *,
+        workflow_id: str,
+        clock: Callable[[], datetime] | None = None,
+    ) -> V2PiPlanningSession:
+        effective_clock = clock or (lambda: datetime.now(timezone.utc))
+        started_at = effective_clock()
+        if started_at.tzinfo is None:
+            raise ValueError("planning session clock must return timezone-aware values")
+        return cls(
+            parent_run_id=f"arun_plan_{_stable_digest(workflow_id, 'parent')}",
+            workflow_id=workflow_id,
+            deadline_at=started_at + timedelta(seconds=600),
+            clock=effective_clock,
+        )
 
     def __post_init__(self) -> None:
         if self.deadline_at.tzinfo is None:
@@ -78,3 +98,28 @@ class V2PiPlanningSession:
 
 def _stable_digest(identity: str, purpose: str) -> str:
     return sha256(f"{purpose}:{identity}".encode("utf-8")).hexdigest()[:32]
+
+
+def freeze_explicit_planning_facts(
+    constraints: V2ExplicitConstraints,
+) -> FrozenPlanningFacts:
+    requirements = tuple(
+        value
+        for value in (
+            constraints.product_source_span,
+            constraints.storyboard_shot_count_span,
+            constraints.duration_source_span,
+            *(character.source_span for character in constraints.characters),
+            *(scene.source_span for scene in constraints.scenes),
+        )
+        if value
+    )
+    return FrozenPlanningFacts(
+        product_name=constraints.product_name,
+        duration_seconds=constraints.duration_seconds,
+        aspect_ratio=constraints.aspect_ratio,
+        character_count=constraints.character_count,
+        scene_count=constraints.scene_count,
+        shot_count=constraints.storyboard_shot_count,
+        explicit_requirements=requirements,
+    )

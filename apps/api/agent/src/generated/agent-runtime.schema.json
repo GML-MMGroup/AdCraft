@@ -343,6 +343,11 @@
           "default": null,
           "title": "Contract Name"
         },
+        "contract_schema": {
+          "additionalProperties": true,
+          "title": "Contract Schema",
+          "type": "object"
+        },
         "credential_ref": {
           "default": "llm-default",
           "maxLength": 120,

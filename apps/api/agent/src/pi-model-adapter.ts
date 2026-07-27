@@ -261,6 +261,13 @@ export function structuredToolParameters(
 }
 
 function contractSchema(request: AgentRunRequest): Readonly<Record<string, unknown>> {
+  if (
+    request.contract_schema &&
+    typeof request.contract_schema === "object" &&
+    !Array.isArray(request.contract_schema)
+  ) {
+    return request.contract_schema;
+  }
   return "contract_schema" in request.context &&
     request.context.contract_schema &&
     typeof request.context.contract_schema === "object" &&

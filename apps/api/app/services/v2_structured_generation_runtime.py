@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 from app.core.config import Settings, get_settings
 from app.persistence.agent_run_repository import AgentRunRepository
 from app.persistence.database import create_v2_database
-from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunRequest
+from app.schemas.agent_operation_contexts import PlanningAgentContext
+from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunPolicy, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_high_risk_prompt_renderer import (
@@ -28,6 +29,7 @@ from app.services.pi_agent_runtime_client import (
     terminal_event,
 )
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
+from app.services.v2_pi_planning_session import AgentInvocation
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
@@ -91,6 +93,8 @@ class StructuredGenerationSpec(Generic[TOutput]):
     temperature: float = 0.3
     agent_name: AgentName | None = None
     operation: str | None = None
+    invocation: AgentInvocation | None = None
+    agent_context: PlanningAgentContext | AgentRunContext | None = None
 
 
 @dataclass(frozen=True)
@@ -468,27 +472,42 @@ class StructuredGenerationRuntime:
 
 
 def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
-    run_id = f"arun_{uuid4().hex}"
     payload = isolate_agent_input_payload(sanitize_context_for_llm_text(spec.input_payload))
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
     operation = spec.operation or _agent_operation(spec)
+    invocation = spec.invocation
+    run_id = invocation.run_id if invocation else f"arun_{uuid4().hex}"
+    agent_name = spec.agent_name or _agent_name_for_operation(operation)
+    context = spec.agent_context or AgentRunContext(
+        operation=operation,
+        user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        workflow_id=workflow_id,
+        input_payload=payload,
+        contract_schema=spec.output_model.model_json_schema(),
+    )
     return AgentRunRequest(
         run_id=run_id,
-        request_id=f"req_{uuid4().hex}",
-        agent_name=spec.agent_name or _agent_name_for_operation(operation),
+        request_id=invocation.request_id if invocation else f"req_{uuid4().hex}",
+        parent_run_id=invocation.parent_run_id if invocation else None,
+        agent_name=agent_name,
         operation=operation,
-        deadline_at=datetime.now(timezone.utc)
-        + timedelta(seconds=spec.trace_metadata.get("timeout_seconds", 120.0)),
-        model_policy_id=f"{spec.agent_name or _agent_name_for_operation(operation)}.{operation}.v1",
+        deadline_at=(
+            invocation.deadline_at
+            if invocation
+            else datetime.now(timezone.utc)
+            + timedelta(seconds=spec.trace_metadata.get("timeout_seconds", 120.0))
+        ),
+        model_policy_id=(
+            invocation.model_policy_id if invocation else f"{agent_name}.{operation}.v1"
+        ),
         contract_name=spec.contract_name,
         validation_profile=spec.validation_profile,
         validation_context=sanitize_context_for_llm_text(spec.validation_context),
-        context=AgentRunContext(
-            operation=operation,
-            user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
-            workflow_id=workflow_id,
-            input_payload=payload,
-            contract_schema=spec.output_model.model_json_schema(),
+        context=context,
+        policy=(
+            AgentRunPolicy(timeout_seconds=invocation.timeout_seconds)
+            if invocation
+            else AgentRunPolicy()
         ),
         credential_ref="llm-default",
         audit_metadata={
@@ -496,6 +515,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             "contract_name": spec.contract_name,
             "workflow_id": workflow_id,
         },
+        contract_schema=spec.output_model.model_json_schema(),
     )
 
 

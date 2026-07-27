@@ -5,6 +5,12 @@ from hashlib import sha1
 from typing import Any
 
 from app.core.config import Settings
+from app.schemas.agent_operation_contexts import (
+    FrozenPlanningFacts,
+    PlanningItemSummary,
+    PlanningReferenceSummary,
+    ScriptWriterAgentContext,
+)
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.schemas.workflow_v2_planning import (
     V2ScriptCharacter,
@@ -28,6 +34,8 @@ from app.services.v2_structured_generation_runtime import (
 )
 from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_generation_integrity import planning_constraints_from_metadata
+from app.services.v2_creative_inventory import creative_inventory_from_metadata
+from app.services.v2_pi_planning_session import V2PiPlanningSession
 from app.services.v2_versioning import V2_SCRIPT_WRITER_VERSION
 
 
@@ -51,6 +59,59 @@ class V2ScriptWriterQualityError(V2ScriptWriterError):
         self.repair_details = {"failures": failures}
 
 
+def _bounded_context_summary(value: dict[str, Any]) -> str:
+    return json.dumps(
+        sanitize_context_for_llm_text(value),
+        ensure_ascii=False,
+        sort_keys=True,
+    )[:16_384]
+
+
+def _planning_reference_summaries(
+    descriptors: list[dict[str, Any]],
+) -> tuple[PlanningReferenceSummary, ...]:
+    summaries: list[PlanningReferenceSummary] = []
+    for descriptor in descriptors:
+        asset_id = str(descriptor.get("asset_id") or "").strip()
+        semantic_type = str(descriptor.get("semantic_type") or "").strip()
+        if not asset_id or not semantic_type:
+            continue
+        media_type = descriptor.get("media_type")
+        summaries.append(
+            PlanningReferenceSummary(
+                asset_id=asset_id,
+                version_id=str(descriptor.get("version_id") or "") or None,
+                semantic_type=semantic_type,
+                display_name=str(descriptor.get("display_name") or ""),
+                media_type=(
+                    media_type if media_type in {"image", "video", "audio", "text"} else None
+                ),
+            )
+        )
+    return tuple(summaries)
+
+
+def _planning_item_inventory(
+    metadata: dict[str, Any],
+) -> tuple[PlanningItemSummary, ...]:
+    inventory = creative_inventory_from_metadata(metadata)
+    if inventory is None:
+        return ()
+    return tuple(
+        PlanningItemSummary(
+            item_id=item.item_id,
+            item_type=item_type,
+            display_name=item.display_name,
+        )
+        for item_type, items in (
+            ("product", inventory.products),
+            ("character", inventory.characters),
+            ("scene", inventory.scenes),
+        )
+        for item in items
+    )
+
+
 class V2ScriptWriterService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -64,6 +125,8 @@ class V2ScriptWriterService:
         input_asset_descriptors: list[dict[str, Any]],
         normalized_request: dict[str, Any] | None = None,
         force_mock: bool = False,
+        planning_session: V2PiPlanningSession | None = None,
+        frozen_facts: FrozenPlanningFacts | None = None,
     ) -> V2ScriptPlanV2:
         request_model = _coerce_request(request)
         payload = self._build_llm_input(
@@ -86,6 +149,30 @@ class V2ScriptWriterService:
                 "LLM API key and base URL are required for V2 Script Writer real mode.",
             )
         try:
+            invocation = (
+                planning_session.child(
+                    agent_name="script_writer",
+                    operation="script_writer",
+                    logical_key="script",
+                )
+                if planning_session
+                else None
+            )
+            agent_context = (
+                ScriptWriterAgentContext(
+                    context_kind="script_writer",
+                    user_input=request_model.prompt,
+                    workflow_id=planning_session.workflow_id,
+                    frozen_facts=frozen_facts or FrozenPlanningFacts(),
+                    reference_summaries=_planning_reference_summaries(
+                        payload["input_asset_descriptors"]
+                    ),
+                    ad_request_summary=_bounded_context_summary(payload),
+                    item_inventory=_planning_item_inventory(request_model.metadata),
+                )
+                if planning_session
+                else None
+            )
             spec = StructuredGenerationSpec[V2ScriptPlanV2](
                 stage_name="script_writer",
                 contract_name="V2ScriptPlanV2",
@@ -93,6 +180,8 @@ class V2ScriptWriterService:
                 system_prompt="",
                 input_payload=payload,
                 output_model=V2ScriptPlanV2,
+                invocation=invocation,
+                agent_context=agent_context,
                 quality_validator=lambda plan: _validate_script_plan_quality(
                     _render_screenplay(plan),
                     request_model,

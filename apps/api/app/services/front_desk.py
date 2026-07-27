@@ -7,6 +7,10 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import Settings
 from app.schemas.ad_workflow import AdWorkflowGenerateRequest
+from app.schemas.agent_operation_contexts import (
+    FrontDeskIntentAgentContext,
+    FrozenPlanningFacts,
+)
 from app.schemas.front_desk import (
     FrontDeskChatRequest,
     FrontDeskChatResponse,
@@ -14,6 +18,7 @@ from app.schemas.front_desk import (
     PartialAdWorkflowRequest,
 )
 from app.services.v2_planning_seed import build_v2_planning_seed
+from app.services.v2_pi_planning_session import V2PiPlanningSession
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
@@ -55,16 +60,51 @@ REQUIRED_FIELDS = ("product_name", "product_description", "target_audience")
 LIST_SEPARATOR_RE = re.compile(r"[,，、/；;]+")
 
 
+def _conversation_summary(request: FrontDeskChatRequest) -> str | None:
+    if not request.history:
+        return None
+    return json.dumps(
+        [message.model_dump(mode="json") for message in request.history],
+        ensure_ascii=False,
+        sort_keys=True,
+    )[:16_384]
+
+
 class FrontDeskService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
-    def chat(self, request: FrontDeskChatRequest) -> FrontDeskChatResponse:
+    def chat(
+        self,
+        request: FrontDeskChatRequest,
+        *,
+        planning_session: V2PiPlanningSession | None = None,
+    ) -> FrontDeskChatResponse:
         if self._settings.agent_runtime_mode == "fake":
             return _mock_front_desk_response(request)
 
         try:
+            invocation = (
+                planning_session.child(
+                    agent_name="front_desk",
+                    operation="workflow_creation",
+                    logical_key="front-desk",
+                )
+                if planning_session
+                else None
+            )
+            agent_context = (
+                FrontDeskIntentAgentContext(
+                    context_kind="front_desk_intent",
+                    user_input=request.message,
+                    workflow_id=planning_session.workflow_id,
+                    frozen_facts=FrozenPlanningFacts(),
+                    conversation_summary=_conversation_summary(request),
+                )
+                if planning_session
+                else None
+            )
             output = self._structured_runtime.run(
                 StructuredGenerationSpec(
                     stage_name="front_desk",
@@ -75,6 +115,8 @@ class FrontDeskService:
                     system_prompt="",
                     input_payload=request.model_dump(mode="json"),
                     output_model=FrontDeskIntentOutput,
+                    invocation=invocation,
+                    agent_context=agent_context,
                     trace_metadata={
                         "workflow_schema_version": request.workflow_schema_version,
                     },

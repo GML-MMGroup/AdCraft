@@ -119,6 +119,10 @@ from app.services.v2_intent_contract import (
     V2IntentValidator,
     validation_summary,
 )
+from app.services.v2_pi_planning_session import (
+    V2PiPlanningSession,
+    freeze_explicit_planning_facts,
+)
 from app.services.v2_linked_context import V2LinkedContextSynchronizer
 from app.services.v2_provider_executor import V2ProviderExecutor
 from app.services.v2_provider_result_committer import (
@@ -455,6 +459,7 @@ class WorkflowV2Service:
         request: WorkflowV2PlanFromPromptRequest,
         *,
         planning_seed: V2FrontDeskPlanningSeed | None = None,
+        planning_session: V2PiPlanningSession | None = None,
     ) -> WorkflowV2 | WorkflowV2PlanningClarificationResponse:
         self._asset_store.ensure_directories()
         normalized_request = (
@@ -462,7 +467,10 @@ class WorkflowV2Service:
             if isinstance(request.metadata.get("front_desk_ad_request"), dict)
             else None
         )
-        workflow_id = f"adwf_v2_{uuid4().hex[:12]}"
+        workflow_id = (
+            planning_session.workflow_id if planning_session else f"adwf_v2_{uuid4().hex[:12]}"
+        )
+        planning_session = planning_session or V2PiPlanningSession.start(workflow_id=workflow_id)
         input_assets = self._resolve_input_asset_locators(request.input_asset_locators)
         if not request.product_name and any(
             record.semantic_type == "product_reference" for record in input_assets
@@ -472,10 +480,13 @@ class WorkflowV2Service:
             request,
             normalized_request=normalized_request,
         )
+        frozen_facts = freeze_explicit_planning_facts(explicit_constraints)
         planner_kwargs: dict[str, Any] = {
             "normalized_request": normalized_request,
             "explicit_constraints": explicit_constraints,
             "workflow_id_seed": workflow_id,
+            "planning_session": planning_session,
+            "frozen_facts": frozen_facts,
         }
         if planning_seed is not None:
             planner_kwargs["planning_seed"] = planning_seed
@@ -639,6 +650,8 @@ class WorkflowV2Service:
                 workflow_id=workflow_id,
                 input_asset_descriptors=input_asset_descriptors,
                 normalized_request=planning_normalized_request,
+                planning_session=planning_session,
+                frozen_facts=frozen_facts,
             )
         except V2ScriptWriterError as exc:
             raise WorkflowV2Error(exc.code, str(exc)) from exc
@@ -958,8 +971,16 @@ class WorkflowV2Service:
     ) -> WorkflowV2PlanFromChatResponse:
         service = front_desk_service or FrontDeskService(self._settings)
         v2_chat_request = request.model_copy(update={"workflow_schema_version": 2})
+        planning_session = V2PiPlanningSession.start(workflow_id=f"adwf_v2_{uuid4().hex[:12]}")
         try:
-            front_desk = service.chat(v2_chat_request)
+            front_desk = (
+                service.chat(
+                    v2_chat_request,
+                    planning_session=planning_session,
+                )
+                if front_desk_service is None
+                else service.chat(v2_chat_request)
+            )
         except FrontDeskError as exc:
             raise WorkflowV2Error("front_desk_failed", str(exc)) from exc
         except Exception as exc:
@@ -984,7 +1005,11 @@ class WorkflowV2Service:
             v2_request,
             planning_seed=planning_seed,
         )
-        workflow = self.plan_from_prompt(v2_request, planning_seed=planning_seed)
+        workflow = self.plan_from_prompt(
+            v2_request,
+            planning_seed=planning_seed,
+            planning_session=planning_session,
+        )
         if isinstance(workflow, WorkflowV2PlanningClarificationResponse):
             return WorkflowV2PlanFromChatResponse(
                 front_desk=_front_desk_clarification_response(front_desk, workflow),
