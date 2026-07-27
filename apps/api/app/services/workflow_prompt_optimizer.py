@@ -12,8 +12,8 @@ from app.schemas.prompt_optimization import (
 from app.services.agent_trace import AgentTraceWriter, utc_now
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text_with_warnings
 from app.services.provider_identity_certification import model_id_for_provider
-from app.skills.loader import SkillLoadError, load_skill
-from app.skills.registry import SKILL_IDS_BY_NODE
+from app.services.workflow_skill_loader import SkillLoadError, load_skill
+from app.services.workflow_skill_registry import SKILL_IDS_BY_NODE
 
 
 PROMPT_OPTIMIZER_AGENT_BY_NODE: dict[str, str] = {

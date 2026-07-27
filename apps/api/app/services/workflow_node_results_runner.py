@@ -33,7 +33,7 @@ from app.services.workflow_run_utils import new_items as _new_items
 from app.services.workflow_run_utils import (
     should_skip_node_results_only_node as _should_skip_node_results_only_node,
 )
-from app.skills.registry import CORE_AGENT_BY_NODE, record_skill_trace
+from app.services.workflow_skill_registry import CORE_AGENT_BY_NODE, record_skill_trace
 
 
 class WorkflowNodeResultsRunnerMixin:

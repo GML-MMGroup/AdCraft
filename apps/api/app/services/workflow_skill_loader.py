@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from app.skills.base import WorkflowSkill
+from app.core.config import PROJECT_ROOT
+from app.services.workflow_skill import WorkflowSkill
 
-SKILL_PACKS_DIR = Path(__file__).parent / "skill_packs"
+SKILL_PACKS_DIR = PROJECT_ROOT / "agent" / "skills"
 
 
 class SkillLoadError(RuntimeError):

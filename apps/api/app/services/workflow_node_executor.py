@@ -53,7 +53,7 @@ from app.services.workflow_shot_bindings import (
     build_storyboard_video_binding_plan,
     storyboard_binding_failure_output,
 )
-from app.skills.registry import CORE_AGENT_BY_NODE, record_skill_trace
+from app.services.workflow_skill_registry import CORE_AGENT_BY_NODE, record_skill_trace
 
 
 OPTIMIZER_AGENT_BY_NODE: dict[str, str] = {

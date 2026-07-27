@@ -2,7 +2,7 @@ from time import perf_counter
 from typing import Any
 
 from app.services.agent_trace import AgentTraceWriter, utc_now
-from app.skills.loader import load_skill
+from app.services.workflow_skill_loader import load_skill
 
 CORE_AGENT_BY_NODE: dict[str, str] = {
     "director": "Director Agent",
