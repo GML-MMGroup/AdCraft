@@ -19,6 +19,7 @@ from app.services.v2_chat_planning_canary import (
     V2ChatPlanningCanaryService,
     _load_planning_evidence,
 )
+from app.services.persistence_bootstrap import PersistenceBootstrapService
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationSpec,
@@ -120,6 +121,7 @@ class V2PiEquivalenceCanaryService:
         forced_repair_runner: _ForcedRepairRunner | None = None,
     ) -> None:
         self._settings = settings or get_settings()
+        PersistenceBootstrapService(self._settings).bootstrap()
         self._planning = planning_canary or V2ChatPlanningCanaryService(self._settings)
         self._targeted = targeted_revision_runner or _ProductionTargetedRevisionRunner(
             self._settings,
@@ -319,10 +321,13 @@ def _agent_run_evidence(
     finally:
         database.dispose()
     repair_attempt_count = sum(
-        1
+        max(0, attempts - 1)
         for record in records
-        for key in record.tool_results
-        if key.endswith(":structured:2")
+        if isinstance(
+            attempts := record.audit_metadata.get("structured_attempts"),
+            int,
+        )
+        and not isinstance(attempts, bool)
     )
     model_id = next(
         (

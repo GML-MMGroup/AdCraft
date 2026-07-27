@@ -123,7 +123,7 @@ export class PiModelAdapter implements AgentModelAdapter {
           }),
         );
         if (result.status === "completed") {
-          acceptedResult = result.result;
+          acceptedResult = acceptedStructuredValue(result.result);
         } else if (
           attempts >= 2 &&
           result.error_code === "agent_structured_output_invalid"
@@ -165,13 +165,21 @@ export class PiModelAdapter implements AgentModelAdapter {
           apiKey: credential.api_key,
         }),
     });
+    const eventProjection = new AgentEventProjection(() => agent.abort());
     const unsubscribe = agent.subscribe((agentEvent) => {
-      void projectOutputDelta(request, agentEvent, emit);
+      eventProjection.add(projectOutputDelta(request, agentEvent, emit));
     });
     const abort = () => agent.abort();
     signal.addEventListener("abort", abort, { once: true });
     try {
-      await agent.prompt(request.context.user_input);
+      let promptError: unknown;
+      try {
+        await agent.prompt(request.context.user_input);
+      } catch (error) {
+        promptError = error;
+      }
+      await eventProjection.settle();
+      if (promptError) throw promptError;
     } finally {
       signal.removeEventListener("abort", abort);
       unsubscribe();
@@ -236,6 +244,31 @@ export class PiModelAdapter implements AgentModelAdapter {
   }
 }
 
+export class AgentEventProjection {
+  readonly #tasks = new Set<Promise<void>>();
+  #failure: unknown;
+
+  constructor(private readonly abort: () => void) {}
+
+  add(task: Promise<void>): void {
+    let tracked: Promise<void>;
+    tracked = task
+      .catch((error: unknown) => {
+        if (this.#failure === undefined) this.#failure = error;
+        this.abort();
+      })
+      .finally(() => {
+        this.#tasks.delete(tracked);
+      });
+    this.#tasks.add(tracked);
+  }
+
+  async settle(): Promise<void> {
+    await Promise.all(this.#tasks);
+    if (this.#failure !== undefined) throw this.#failure;
+  }
+}
+
 export function promptAuditForRequest(
   request: AgentRunRequest,
 ): Readonly<Record<string, string>> {
@@ -271,6 +304,19 @@ export function agentRuntimeAuditForRequest(
       sha256: skill.sha256,
     })),
   };
+}
+
+export function acceptedStructuredValue(
+  result: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> {
+  if (!result || result.accepted !== true) {
+    throw new Error("agent_structured_output_invalid");
+  }
+  const value = result.value ?? result.normalized_value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("agent_structured_output_invalid");
+  }
+  return { ...value } as Record<string, unknown>;
 }
 
 export function structuredToolParameters(

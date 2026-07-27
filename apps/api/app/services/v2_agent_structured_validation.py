@@ -60,7 +60,11 @@ class V2AgentStructuredValidationService:
                 ),
             )
 
-        normalized_value = normalized.model_dump(mode="json")
+        normalized_value = _canonicalize_profile_value(
+            run.validation_profile,
+            run.validation_context,
+            normalized.model_dump(mode="json"),
+        )
         if run.validation_profile == "canary_reject_first_v1":
             if submission.attempt == 1:
                 return _rejected(
@@ -125,6 +129,8 @@ def _semantic_violations(
 ) -> tuple[StructuredViolation, ...]:
     if profile in {None, "schema_only_v1"}:
         return ()
+    if profile == "front_desk_core_v1":
+        return _front_desk_core_violations(value)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -155,6 +161,59 @@ def _semantic_violations(
                     field_path=field_path,
                     expected=expected,
                     actual=actual,
+                )
+            )
+    return tuple(violations)
+
+
+def _canonicalize_profile_value(
+    profile: str | None,
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> dict[str, Any]:
+    if profile != "front_desk_core_v1":
+        return value
+    if value.get("intent") not in {"ready_for_workflow", "ad_request"}:
+        return value
+    ad_request = value.get("ad_request")
+    fallback = context.get("fallback_product_description")
+    if (
+        isinstance(ad_request, dict)
+        and not str(ad_request.get("product_description") or "").strip()
+        and isinstance(fallback, str)
+        and fallback.strip()
+    ):
+        value = dict(value)
+        value["ad_request"] = {
+            **ad_request,
+            "product_description": fallback.strip()[:1_000],
+        }
+    return value
+
+
+def _front_desk_core_violations(
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    if value.get("intent") not in {"ready_for_workflow", "ad_request"}:
+        return ()
+    ad_request = value.get("ad_request")
+    if not isinstance(ad_request, dict):
+        return (
+            StructuredViolation(
+                code="front_desk_core_field_missing",
+                message="Workflow creation requires a structured advertising request.",
+                field_path="ad_request",
+            ),
+        )
+    violations: list[StructuredViolation] = []
+    for field_name in ("product_name", "product_description", "target_audience"):
+        field_value = ad_request.get(field_name)
+        if field_value is None or not str(field_value).strip():
+            violations.append(
+                StructuredViolation(
+                    code="front_desk_core_field_missing",
+                    message="Workflow creation is missing required advertising information.",
+                    field_path=f"ad_request.{field_name}",
                 )
             )
     return tuple(violations)

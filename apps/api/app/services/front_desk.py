@@ -115,6 +115,10 @@ class FrontDeskService:
                     system_prompt="",
                     input_payload=request.model_dump(mode="json"),
                     output_model=FrontDeskIntentOutput,
+                    validation_profile="front_desk_core_v1",
+                    validation_context={
+                        "fallback_product_description": request.message,
+                    },
                     invocation=invocation,
                     agent_context=agent_context,
                     trace_metadata={

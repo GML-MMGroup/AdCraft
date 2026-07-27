@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.schemas.front_desk import FrontDeskIntentOutput
 from app.schemas.agent_runtime import SpecialistDraft
@@ -66,4 +66,22 @@ def validate_agent_contract(contract_name: str, value: object) -> BaseModel:
     model = _CONTRACTS.get(contract_name)
     if model is None:
         raise ValueError("Agent structured contract is not registered.")
+    if model is FrontDeskIntentOutput:
+        return _validate_front_desk_contract(value)
     return model.model_validate(value)
+
+
+def _validate_front_desk_contract(value: object) -> FrontDeskIntentOutput:
+    try:
+        return FrontDeskIntentOutput.model_validate(value)
+    except ValidationError as error:
+        if not isinstance(value, dict) or "v2_planning_seed" not in value:
+            raise
+        if not error.errors() or any(
+            item.get("loc", ())[:1] != ("v2_planning_seed",)
+            for item in error.errors()
+        ):
+            raise
+        core_value = dict(value)
+        core_value.pop("v2_planning_seed", None)
+        return FrontDeskIntentOutput.model_validate(core_value)
