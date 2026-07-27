@@ -13,5 +13,5 @@ def get_health(settings: Settings = Depends(get_settings)) -> HealthResponse:
         status="ok",
         service=settings.app_name,
         version=settings.app_version,
-        mode="mock" if settings.agno_mock_mode else "real",
+        mode="mock" if settings.agent_runtime_mode == "fake" else "real",
     )

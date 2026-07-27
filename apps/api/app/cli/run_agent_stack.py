@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from types import FrameType
+from typing import Any, Callable, Mapping
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -59,7 +60,14 @@ def main() -> None:
     signal.signal(signal.SIGTERM, shutdown)
     try:
         _wait_for_health(settings, children)
-        while all(child.poll() is None for child in children):
+        sidecar_restart_count = 0
+        while children[0].poll() is None:
+            sidecar_restart_count = _restart_sidecar_if_needed(
+                children,
+                sidecar_command=sidecar_command,
+                environment=environment,
+                restart_count=sidecar_restart_count,
+            )
             time.sleep(0.25)
     finally:
         shutdown(signal.SIGTERM, None)
@@ -75,6 +83,33 @@ def main() -> None:
             raise AgentStackSupervisorError(
                 "agent_stack_child_failed: a supervised child exited unexpectedly."
             )
+
+
+def _restart_sidecar_if_needed(
+    children: list[Any],
+    *,
+    sidecar_command: tuple[str, ...],
+    environment: Mapping[str, str],
+    restart_count: int,
+    popen: Callable[..., Any] = subprocess.Popen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    if children[1].poll() is None:
+        return restart_count
+    if restart_count >= 3:
+        raise AgentStackSupervisorError(
+            "agent_runtime_restart_budget_exceeded: "
+            "the Agent runtime exceeded its bounded restart budget."
+        )
+
+    next_restart_count = restart_count + 1
+    sleep(min(float(2 ** (next_restart_count - 1)), 4.0))
+    children[1] = popen(
+        sidecar_command,
+        cwd=PROJECT_ROOT,
+        env=dict(environment),
+    )
+    return next_restart_count
 
 
 def _wait_for_health(settings: Settings, children: list[subprocess.Popen[bytes]]) -> None:

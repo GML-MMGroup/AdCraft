@@ -8,7 +8,6 @@ from app.services.llm_context_sanitizer import (
     sanitize_context_for_llm_text,
     sanitize_context_for_llm_text_with_warnings,
 )
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 
 SCRIPT_WRITER_REQUIRED_TOP_LEVEL_FIELDS = [
     "script_plan_version",
@@ -75,22 +74,6 @@ def script_writer_json_schema_response_format() -> dict[str, Any]:
 
 def script_writer_json_object_response_format() -> dict[str, Any]:
     return {"type": "json_object"}
-
-
-def script_writer_system_prompt() -> str:
-    return (
-        V2HighRiskPromptRenderer()
-        .render(
-            prompt_id="v2.script_writer.plan.v1",
-            context={
-                "required_top_level_fields": SCRIPT_WRITER_REQUIRED_TOP_LEVEL_FIELDS,
-                "canonical_id_fields": SCRIPT_WRITER_CANONICAL_ID_FIELDS,
-                "forbidden_alias_only_fields": SCRIPT_WRITER_FORBIDDEN_ALIAS_ONLY_FIELDS,
-            },
-            identity={"path_kind": "normal"},
-        )
-        .prompt_text
-    )
 
 
 def normalize_script_writer_output(payload: Any, *, model_id: str | None) -> dict[str, Any]:

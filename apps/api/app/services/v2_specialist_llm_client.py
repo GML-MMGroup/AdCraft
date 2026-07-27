@@ -10,7 +10,6 @@ from app.schemas.workflow_v2_prompt_contracts import (
     prompt_contract_name_for_slot,
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 from app.services.v2_prompt_contract_adapter import (
     specialist_result_from_prompt_contract,
 )
@@ -61,7 +60,7 @@ class V2SpecialistLLMClient:
                     stage_name="specialist_materializer",
                     contract_name=prompt_contract_name_for_slot(slot_type),
                     model_id=config.model_id,
-                    system_prompt=_system_prompt(config, slot_type),
+                    system_prompt="",
                     input_payload=payload,
                     output_model=output_model,
                     quality_validator=lambda contract: validate_prompt_contract(
@@ -109,27 +108,6 @@ def _safe_llm_payload(
     return sanitize_context_for_llm_text(payload)
 
 
-def _system_prompt(config: V2SpecialistConfig, slot_type: str) -> str:
-    rendered = V2HighRiskPromptRenderer().render(
-        prompt_id="v2.specialist.materializer.v1",
-        context={
-            "specialist": config.specialist,
-            "slot_type": slot_type,
-        },
-        identity={
-            "slot_type": slot_type,
-            "specialist": config.specialist,
-            "path_kind": "normal",
-        },
-    )
-    return (
-        f"{rendered.prompt_text}\n\n"
-        f"{config.system_prompt}\n\n"
-        f"Return only the JSON object required by the backend-owned prompt contract "
-        f"for slot_type={slot_type}. Do not include markdown."
-    )
-
-
 def _allowed_reference_ids(request: V2SpecialistPromptRequest) -> set[str]:
     return {
         str(summary.get("asset_id"))
@@ -171,6 +149,8 @@ def _client_error_code(code: str) -> str:
         "structured_llm_unavailable": "real_specialist_unavailable",
         "structured_llm_call_failed": "specialist_llm_call_failed",
         "structured_output_invalid_json": "specialist_output_invalid_json",
+        "agent_structured_output_invalid": "specialist_output_invalid_json",
+        "structured_generation_schema_failed": "specialist_output_invalid_json",
         "structured_output_schema_invalid": "specialist_output_schema_invalid",
         "structured_output_quality_failed": "specialist_output_quality_failed",
     }.get(code, "specialist_llm_call_failed")

@@ -20,7 +20,6 @@ from app.services.v2_high_risk_prompt_renderer import (
 )
 from app.services.v2_agent_event_projector import V2AgentEventProjector
 from app.services.v2_prompt_registry import V2PromptRegistry
-from app.services.v2_runtime_prompt_packs import prompt_content_profile_metadata
 from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
@@ -452,7 +451,11 @@ class StructuredGenerationRuntime:
     def _generic_error_code(self, error: V2StructuredLLMError) -> str:
         if error.code == "structured_llm_unavailable":
             return "structured_generation_unavailable"
-        if error.code in {"structured_output_invalid_json", "structured_output_schema_invalid"}:
+        if error.code in {
+            "agent_structured_output_invalid",
+            "structured_output_invalid_json",
+            "structured_output_schema_invalid",
+        }:
             return "structured_generation_schema_failed"
         if error.code == "structured_output_quality_failed":
             return "structured_generation_quality_failed"
@@ -551,37 +554,8 @@ def _structured_prompt_lineage(
     *,
     path_kind: str | None = None,
 ) -> dict[str, Any]:
-    prompt_id = _structured_prompt_id(spec.stage_name)
-    if not prompt_id:
-        return {}
-    registry = V2PromptRegistry()
-    render_result = registry.render_result_for_prompt_id(
-        prompt_id=prompt_id,
-        rendered_prompt=spec.system_prompt,
-        render_context={
-            "input_payload": spec.input_payload,
-            "contract_name": spec.contract_name,
-            "stage_name": spec.stage_name,
-        },
-        workflow_id=str(metadata.get("workflow_id") or "") or None,
-        node_id=str(metadata.get("node_id") or "") or None,
-        item_id=str(metadata.get("item_id") or "") or None,
-        slot_id=str(metadata.get("slot_id") or "") or None,
-        slot_type=str(metadata.get("slot_type") or "") or None,
-        path_kind=path_kind or _path_kind_for_mode(metadata),
-    )
-    lineage = registry.lineage_for_render(render_result).model_dump(mode="json")
-    payload = {
-        "prompt_registry_ref": render_result.prompt_registry_ref.model_dump(mode="json"),
-        "prompt_lineage": lineage,
-    }
-    profile = prompt_content_profile_metadata(
-        prompt_id=prompt_id,
-        prompt_text=spec.system_prompt,
-    )
-    if profile is not None:
-        payload["prompt_content_profile"] = profile
-    return payload
+    del spec, metadata, path_kind
+    return {}
 
 
 def _render_runtime_high_risk_prompt(
@@ -616,26 +590,6 @@ def _render_runtime_high_risk_prompt(
         "prompt_registry_ref": render_result.prompt_registry_ref.model_dump(mode="json"),
         "prompt_lineage": lineage,
     }
-
-
-def _structured_prompt_id(stage_name: str) -> str | None:
-    if stage_name == "script_writer":
-        return "v2.script_writer.plan.v1"
-    if stage_name == "expert_brief_planner":
-        return "v2.expert_brief.plan.v1"
-    if stage_name == "storyboard_detail":
-        return "v2.storyboard.detail.v1"
-    if stage_name == "visual_style_scope_repair":
-        return "v2.visual_style.scope_repair.v1"
-    return None
-
-
-def _path_kind_for_mode(metadata: dict[str, Any]) -> str:
-    if metadata.get("error_code") == "structured_generation_repair_failed":
-        return "fallback"
-    if metadata.get("error_code"):
-        return "repair"
-    return "normal"
 
 
 def _path_kind_for_result_mode(mode: str) -> str:

@@ -185,9 +185,9 @@ class WorkflowNodeRunPreparationMixin:
     def _effective_settings(self, request: WorkflowNodeRunRequest) -> Settings:
         updates: dict[str, Any] = {}
         if request.mode == "mock":
-            updates["agno_mock_mode"] = True
+            updates["agent_runtime_mode"] = "fake"
         elif request.mode == "real":
-            updates["agno_mock_mode"] = False
+            updates["agent_runtime_mode"] = "real"
         if request.media_mode is not None:
             updates["media_mode"] = request.media_mode
         return replace(self._settings, **updates) if updates else self._settings

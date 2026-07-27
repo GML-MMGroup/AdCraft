@@ -613,7 +613,7 @@ class V2WorkflowAcceptanceRunner:
     ) -> tuple[WorkflowV2, list[dict[str, Any]]]:
         from app.services.v2_prompt_eval_runner import V2PromptEvalRunner
 
-        prompt_eval = V2PromptEvalRunner(replace(self._settings, agno_mock_mode=True))
+        prompt_eval = V2PromptEvalRunner(replace(self._settings, agent_runtime_mode="fake"))
         prompt_fixture = V2PromptEvalFixture(
             fixture_id=fixture.fixture_id,
             title=fixture.title,

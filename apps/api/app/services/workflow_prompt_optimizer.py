@@ -4,26 +4,26 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.agents.advertising import (
-    build_bgm_agent,
-    build_character_designer_agent,
-    build_final_video_generation_agent,
-    build_product_designer_agent,
-    build_scene_designer_agent,
-    build_storyboard_agent,
-)
-from app.agents.prompt_optimizers import PROMPT_OPTIMIZER_AGENT_BY_NODE
 from app.core.config import Settings
 from app.schemas.prompt_optimization import (
     PromptOptimizationRequest,
     PromptOptimizationResult,
 )
-from app.services.agno_orchestrator import _run_agent
 from app.services.agent_trace import AgentTraceWriter, utc_now
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text_with_warnings
 from app.services.provider_identity_certification import model_id_for_provider
 from app.skills.loader import SkillLoadError, load_skill
 from app.skills.registry import SKILL_IDS_BY_NODE
+
+
+PROMPT_OPTIMIZER_AGENT_BY_NODE: dict[str, str] = {
+    "product-generation": "Product Designer Agent",
+    "character-generation": "Character Designer Agent",
+    "scene-generation": "Scene Designer Agent",
+    "storyboard": "Storyboard Agent",
+    "storyboard-video-generation": "Video Generation Agent",
+    "bgm": "BGM Agent",
+}
 
 
 class WorkflowPromptOptimizerError(ValueError):
@@ -46,7 +46,7 @@ class WorkflowPromptOptimizerService:
         warnings = [*request.warnings, *warnings]
         model_id: str | None = None
         try:
-            if self._settings.agno_mock_mode:
+            if self._settings.agent_runtime_mode == "fake":
                 result = self._mock_result(
                     request,
                     optimizer_agent=optimizer_agent,
@@ -204,27 +204,11 @@ class WorkflowPromptOptimizerService:
         selected_skill_ids: list[str],
         skill_outputs: dict[str, dict[str, Any]],
     ) -> dict[str, Any] | str:
-        del optimizer_agent
-        context = _real_optimizer_context(request, selected_skill_ids, skill_outputs)
-        task = _build_optimizer_task(request, selected_skill_ids=selected_skill_ids)
-        try:
-            agent = _build_optimizer_agent(request.node_type, self._settings)
-            output = _run_agent(
-                agent=agent,
-                output_model=PromptOptimizationResult,
-                task=task,
-                context=context,
-                trace_writer=AgentTraceWriter(self._settings.media_data_dir, request.workflow_id),
-                node_id=request.node_id,
-            )
-            return output.model_dump(mode="json")
-        except WorkflowPromptOptimizerError:
-            raise
-        except Exception as exc:
-            raise WorkflowPromptOptimizerError(
-                "prompt_optimizer_real_mode_unavailable",
-                f"Real prompt optimizer is unavailable: {exc}",
-            ) from exc
+        del request, optimizer_agent, selected_skill_ids, skill_outputs
+        raise WorkflowPromptOptimizerError(
+            "prompt_optimizer_real_mode_unavailable",
+            "The legacy V1 prompt optimizer was removed; use the V2 owning Pi expert.",
+        )
 
     def _repair_real_optimizer_payload(
         self,
@@ -341,7 +325,9 @@ class WorkflowPromptOptimizerService:
                             "node_type": request.node_type,
                             "selection_reason": selection_reason,
                             "selection_error": selection_error,
-                            "mode": "mock" if self._settings.agno_mock_mode else "real",
+                            "mode": "mock"
+                            if self._settings.agent_runtime_mode == "fake"
+                            else "real",
                             "input_summary": output.get("key_points", []),
                             "output_summary": output.get("summary"),
                         },
@@ -381,7 +367,9 @@ class WorkflowPromptOptimizerService:
                 else optimizer_agent_for_node(request.node_type),
                 "selected_skill_ids": result.selected_skill_ids if result else [],
                 "model_id": model_id,
-                "mock_mode": result.mock_mode if result else self._settings.agno_mock_mode,
+                "mock_mode": result.mock_mode
+                if result
+                else self._settings.agent_runtime_mode == "fake",
                 "prompt_input_summary": _prompt_input_summary(request),
             },
         )
@@ -438,26 +426,6 @@ def _dedupe_warnings(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         deduped.append(warning)
     return deduped
-
-
-def _build_optimizer_agent(node_type: str, settings: Settings) -> Any:
-    if node_type == "product-generation":
-        return build_product_designer_agent(settings)
-    if node_type == "character-generation":
-        return build_character_designer_agent(settings)
-    if node_type == "scene-generation":
-        return build_scene_designer_agent(settings)
-    if node_type == "storyboard":
-        return build_storyboard_agent(settings)
-    if node_type == "storyboard-video-generation":
-        # TODO: replace with dedicated video optimizer agent when added.
-        return build_final_video_generation_agent(settings)
-    if node_type == "bgm":
-        return build_bgm_agent(settings)
-    raise WorkflowPromptOptimizerError(
-        "prompt_optimizer_not_supported",
-        f"node_type does not support real prompt optimization: {node_type}",
-    )
 
 
 def _build_optimizer_task(
@@ -544,11 +512,17 @@ def _resolved_prompt_optimizer_model_id(
             "scene-generation",
             "storyboard",
         }:
-            selected_provider = "mock_image" if settings.agno_mock_mode else "volcengine_image"
+            selected_provider = (
+                "mock_image" if settings.agent_runtime_mode == "fake" else "volcengine_image"
+            )
         elif node_type == "storyboard-video-generation":
-            selected_provider = "mock_video" if settings.agno_mock_mode else "volcengine_video"
+            selected_provider = (
+                "mock_video" if settings.agent_runtime_mode == "fake" else "volcengine_video"
+            )
         elif node_type == "bgm":
-            selected_provider = "mock_bgm" if settings.agno_mock_mode else "volcengine_audio"
+            selected_provider = (
+                "mock_bgm" if settings.agent_runtime_mode == "fake" else "volcengine_audio"
+            )
         else:
             selected_provider = provider_media_type
     if selected_provider is None:

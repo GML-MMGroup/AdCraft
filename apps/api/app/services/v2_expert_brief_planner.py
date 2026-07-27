@@ -23,7 +23,6 @@ from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_expert_brief_quality import (
     V2ExpertBriefQualityService,
 )
-from app.services.v2_skill_context import V2SkillContextService
 from app.services.v2_specialist_asset_prompt_quality import (
     V2SpecialistAssetPromptQualityError,
     V2SpecialistAssetPromptQualityValidator,
@@ -35,8 +34,7 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMError
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_script_persistence import V2ScriptPersistenceAdapter
 from app.services.v2_versioning import V2_EXPERT_BRIEF_BUILDER_VERSION
 from app.schemas.workflow_v2_screenplay import (
@@ -60,7 +58,6 @@ class V2ExpertBriefPlanner:
         specialist_quality: V2SpecialistAssetPromptQualityValidator | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._skill_context = V2SkillContextService()
         self._quality = quality or V2ExpertBriefQualityService()
         self._specialist_quality = specialist_quality or V2SpecialistAssetPromptQualityValidator()
         self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
@@ -76,7 +73,7 @@ class V2ExpertBriefPlanner:
         specialist_handoffs: list[V2SpecialistHandoffContext] | None = None,
     ) -> V2ExpertBriefPlan:
         script_plan = _canonical_script_plan(script_plan)
-        if force_mock or self._settings.agno_mock_mode:
+        if force_mock or self._settings.agent_runtime_mode == "fake":
             plan = self._deterministic_plan(script_plan, request)
             self._validate_plan(plan, script_plan=script_plan, request=request)
             return _with_specialist_quality_audit(
@@ -119,7 +116,7 @@ class V2ExpertBriefPlanner:
             stage_name="expert_brief_planner",
             contract_name="V2ExpertBriefPlannerOutput",
             model_id=self._settings.llm_creative_model,
-            system_prompt=_system_prompt(),
+            system_prompt="",
             input_payload=_planner_payload(planner_input),
             output_model=V2ExpertBriefPlannerOutput,
             quality_validator=lambda output: self._validate_plan(
@@ -459,14 +456,10 @@ class V2ExpertBriefPlanner:
         slot_type: str,
         media_type: str,
     ) -> dict[str, object]:
-        context = self._skill_context.skill_context_for_specialist(
-            specialist=specialist,
-            slot_type=slot_type,
-            media_type=media_type,
-        )
+        del specialist, slot_type, media_type
         return {
-            "source_skill_ids": context.skill_ids,
-            "source_skill_paths": context.source_paths,
+            "source_skill_ids": [],
+            "source_skill_paths": [],
             "brief_builder_version": V2_EXPERT_BRIEF_BUILDER_VERSION,
         }
 
@@ -589,27 +582,6 @@ def _canonical_script_plan(
             "script_plan_unavailable",
             "Expert brief planning requires a canonical version-2 screenplay.",
         ) from exc
-
-
-def _system_prompt() -> str:
-    return (
-        V2HighRiskPromptRenderer()
-        .render(
-            prompt_id="v2.expert_brief.plan.v1",
-            context={
-                "inventory_constraints": {
-                    "product_count": 1,
-                    "character_count": "requested",
-                    "scene_count": "requested",
-                    "shot_count": "requested",
-                    "duration_seconds": "requested",
-                    "aspect_ratio": "requested",
-                }
-            },
-            identity={"path_kind": "normal"},
-        )
-        .prompt_text
-    )
 
 
 def _planner_runtime_error_code(exc: StructuredGenerationRuntimeError) -> str:

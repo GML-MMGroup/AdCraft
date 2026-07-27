@@ -36,7 +36,7 @@ from app.services.v2_planning_seed import (
     canonicalize_v2_planning_seed,
     merge_v2_planning_seed_constraints,
 )
-from app.services.v2_structured_llm import V2StructuredLLMError
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_storyboard_planning import (
     V2_MAX_SHOT_DURATION_SECONDS,
     V2_MAX_STORYBOARD_SHOT_COUNT,
@@ -155,7 +155,7 @@ class V2IntentPlanner:
                 planning_seed,
             )
         _raise_if_intent_clarification_required(request, explicit_constraints)
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             intent = self._deterministic_plan(request, explicit_constraints, planning_seed)
             return self._validate_repair_or_fallback(
                 intent,
@@ -170,7 +170,7 @@ class V2IntentPlanner:
             stage_name="intent_contract_planner",
             contract_name="V2IntentPlan",
             model_id=self._settings.llm_creative_model,
-            system_prompt=_intent_planner_system_prompt(),
+            system_prompt="",
             input_payload=_intent_planner_payload(
                 request=request,
                 normalized_request=normalized_request,
@@ -1314,18 +1314,6 @@ def _scene_display_name(kind: str) -> str:
     if kind == "product_lifestyle":
         return "Product Lifestyle Scene"
     return f"{kind.replace('_', ' ').title()} Scene"
-
-
-def _intent_planner_system_prompt() -> str:
-    return (
-        "You are the V2 Intent Contract Planner. Return one JSON object matching V2IntentPlan. "
-        "Preserve explicit user constraints for product, characters, scenes, storyboard shot count, "
-        "duration, aspect ratio, and audio. Every core fact must include source provenance: "
-        "source, source_span, confidence, and reason. System fields and schema keys must be English. "
-        "Use concise English snake_case scene kinds matching ^[a-z][a-z0-9_]{0,63}$. "
-        "Keep setting_type and time_of_day as separate technical facets. "
-        "The user prompt may be Chinese or any other language."
-    )
 
 
 def _intent_planner_payload(

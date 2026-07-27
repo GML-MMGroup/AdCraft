@@ -143,7 +143,7 @@ class V2ChatPlanningCanaryService:
         self,
         fixture_id: str = DEFAULT_CHAT_PLANNING_CANARY_FIXTURE,
     ) -> V2ChatPlanningCanaryResult:
-        if self._require_real_agents and self._settings.agno_mock_mode:
+        if self._require_real_agents and self._settings.agent_runtime_mode == "fake":
             raise V2ChatPlanningCanaryError(
                 "v2_chat_planning_canary_requires_real_agents",
                 "The chat-planning canary requires real agent mode.",

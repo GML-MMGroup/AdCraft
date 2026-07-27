@@ -2,10 +2,8 @@ from collections.abc import Callable
 from typing import Any
 
 from app.core.config import Settings
-from app.schemas.agent_outputs import CharacterDesignOutput, SceneDesignOutput, ScriptOutput
 from app.schemas.workflow_nodes import WorkflowNodeRunRequest
 from app.services.agent_trace import AgentTraceWriter
-from app.services.agno_orchestrator import _run_agent
 from app.services.final_composition_timeline import (
     FinalCompositionTimelineError,
     FinalCompositionTimelineService,
@@ -18,7 +16,6 @@ from app.services.workflow_node_direct_outputs import (
     product_design_output,
     requirements_analysis_output,
     storyboard_scenes,
-    task_with_override,
     with_override_in_character_design,
     with_override_in_scene_design,
     with_override_in_storyboard_scenes,
@@ -56,8 +53,7 @@ from app.services.workflow_shot_bindings import (
     build_storyboard_video_binding_plan,
     storyboard_binding_failure_output,
 )
-from app.skills.registry import CORE_AGENT_BY_NODE, augment_context_with_skills, record_skill_trace
-from app.teams.advertising import build_advertising_team
+from app.skills.registry import CORE_AGENT_BY_NODE, record_skill_trace
 
 
 OPTIMIZER_AGENT_BY_NODE: dict[str, str] = {
@@ -207,7 +203,7 @@ class WorkflowNodeExecutor:
         _input_assets: list[dict[str, Any]],
     ) -> dict[str, Any]:
         trace_writer = AgentTraceWriter(self._settings.media_data_dir, workflow_id)
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             record_skill_trace(
                 node_id=request.node_type,
                 core_agent_name=CORE_AGENT_BY_NODE.get(request.node_type, request.node_type),
@@ -220,71 +216,9 @@ class WorkflowNodeExecutor:
                 request.input_context,
                 request.override_prompt,
             )
-        team = build_advertising_team(self._settings)
-        members = {member.name: member for member in team.members if getattr(member, "name", None)}
-        if request.node_type == "script":
-            output = _run_agent(
-                members["Script Writer Agent"],
-                ScriptOutput,
-                task_with_override(
-                    (
-                        "Write a short advertising script with a hook, product showcase, "
-                        "call to action, and 4-6 ordered shot_beats for the requested duration."
-                    ),
-                    request.override_prompt,
-                ),
-                augment_context_with_skills(
-                    node_id=request.node_type,
-                    core_agent_name=CORE_AGENT_BY_NODE["script"],
-                    context=request.input_context,
-                    trace_writer=trace_writer,
-                    mock_mode=False,
-                ),
-                trace_writer,
-                request.node_type,
-            )
-        elif request.node_type == "character-design":
-            output = _run_agent(
-                members["Character Designer Agent"],
-                CharacterDesignOutput,
-                task_with_override(
-                    "Design brand-aligned characters for the advertising short film.",
-                    request.override_prompt,
-                ),
-                augment_context_with_skills(
-                    node_id=request.node_type,
-                    core_agent_name=CORE_AGENT_BY_NODE["character-design"],
-                    context=request.input_context,
-                    trace_writer=trace_writer,
-                    mock_mode=False,
-                ),
-                trace_writer,
-                request.node_type,
-            )
-        elif request.node_type == "scene-design":
-            output = _run_agent(
-                members["Scene Designer Agent"],
-                SceneDesignOutput,
-                task_with_override(
-                    (
-                        "Design at least 3 distinct scene specs with stable scene_id values "
-                        "from the script shot_beats, unless the script explicitly uses one location."
-                    ),
-                    request.override_prompt,
-                ),
-                augment_context_with_skills(
-                    node_id=request.node_type,
-                    core_agent_name=CORE_AGENT_BY_NODE["scene-design"],
-                    context=request.input_context,
-                    trace_writer=trace_writer,
-                    mock_mode=False,
-                ),
-                trace_writer,
-                request.node_type,
-            )
-        else:
-            raise WorkflowNodeInputError(f"unsupported agent node_type: {request.node_type}")
-        return output.model_dump()
+        raise WorkflowNodeInputError(
+            "legacy_agent_node_removed: use the corresponding /api/v2 workflow operation"
+        )
 
     def _product_generation(
         self,

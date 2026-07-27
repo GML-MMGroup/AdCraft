@@ -5,7 +5,6 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from app.agents.front_desk import build_front_desk_agent
 from app.core.config import Settings
 from app.schemas.ad_workflow import AdWorkflowGenerateRequest
 from app.schemas.front_desk import (
@@ -15,6 +14,11 @@ from app.schemas.front_desk import (
     PartialAdWorkflowRequest,
 )
 from app.services.v2_planning_seed import build_v2_planning_seed
+from app.services.v2_structured_generation_runtime import (
+    StructuredGenerationRuntime,
+    StructuredGenerationRuntimeError,
+    StructuredGenerationSpec,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,41 +58,40 @@ LIST_SEPARATOR_RE = re.compile(r"[,，、/；;]+")
 class FrontDeskService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def chat(self, request: FrontDeskChatRequest) -> FrontDeskChatResponse:
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             return _mock_front_desk_response(request)
 
         try:
-            agent = build_front_desk_agent(self._settings)
-        except Exception as exc:
-            _log_front_desk_error("build_agent", exc)
-            raise FrontDeskError(f"build_agent_failed: {_safe_error_message(exc)}") from exc
-
-        prompt = _build_prompt(request)
-        try:
-            response = agent.run(prompt)
-        except Exception as exc:
+            output = self._structured_runtime.run(
+                StructuredGenerationSpec(
+                    stage_name="front_desk",
+                    operation="workflow_creation",
+                    agent_name="front_desk",
+                    contract_name="FrontDeskIntentOutput",
+                    model_id=self._settings.llm_front_desk_model,
+                    system_prompt="",
+                    input_payload=request.model_dump(mode="json"),
+                    output_model=FrontDeskIntentOutput,
+                    trace_metadata={
+                        "workflow_schema_version": request.workflow_schema_version,
+                    },
+                )
+            ).output
+        except StructuredGenerationRuntimeError as exc:
             _log_front_desk_error("run_agent", exc)
-            raise FrontDeskError(f"run_agent_failed: {_safe_error_message(exc)}") from exc
-
-        try:
-            raw_output = _extract_json(response.content)
-        except FrontDeskOutputParseError as exc:
-            _log_front_desk_error("parse_output", exc, output_preview=response.content)
-            return _front_desk_output_clarification(["front_desk_output"])
-
-        try:
-            output = _parse_front_desk_intent_output(raw_output)
-        except ValidationError as exc:
-            field_errors = _intent_validation_field_errors(exc)
-            _log_front_desk_error("validate_intent", exc, output_preview=raw_output)
-            return _front_desk_output_clarification(_unique_fields(list(field_errors)))
+            raise FrontDeskError(f"{exc.code}: {_safe_error_message(exc)}") from exc
 
         try:
             return _normalize_front_desk_output(output, request)
         except Exception as exc:
-            _log_front_desk_error("normalize_ad_request", exc, output_preview=raw_output)
+            _log_front_desk_error(
+                "normalize_ad_request",
+                exc,
+                output_preview=output.model_dump(mode="json"),
+            )
             raise FrontDeskError(
                 f"normalize_ad_request_failed: {_safe_error_message(exc)}"
             ) from exc
@@ -180,59 +183,6 @@ def _mock_front_desk_response(request: FrontDeskChatRequest) -> FrontDeskChatRes
     )
 
 
-def _build_prompt(request: FrontDeskChatRequest) -> str:
-    schema = FrontDeskIntentOutput.model_json_schema()
-    v2_seed_instruction = (
-        "For this V2 workflow-creation request, include v2_planning_seed. Use canonical "
-        "English schema fields only. Mark facts backed by an exact user source span, typed "
-        "request field, or input asset as explicit; mark omitted optional character, scene, "
-        "and storyboard-count facts as unspecified. Do not use unknown for optional facts.\n"
-        if request.workflow_schema_version == 2
-        else ""
-    )
-    return (
-        "You are the Front Desk Agent for an advertising workflow backend.\n"
-        "Return only valid JSON matching this JSON Schema:\n"
-        f"{json.dumps(schema, ensure_ascii=False)}\n\n"
-        "Classify the latest user message.\n"
-        "Use intent=conversation for casual chat.\n"
-        "If the user wants to modify an existing workflow node, keep intent=conversation, "
-        "set workflow_action=modify_node, and set target_node_type to one of script, "
-        "character-generation, scene-generation, storyboard, bgm, "
-        "storyboard-video-generation, or final-composition.\n"
-        "Also return Creative Director metadata when applicable: active_speaker, "
-        "suggested_agent, handoff_reason, target_node_id, target_asset_id, and "
-        "conversation_mode. Allowed conversation_mode values are director_discussion, "
-        "specialist_handoff, node_revision, workflow_creation, workflow_execution, "
-        "ordinary_conversation.\n"
-        "Use intent=needs_clarification when the user likely wants an ad workflow but required "
-        "fields are missing. Ask one concise follow-up question and include missing_fields.\n"
-        "Use intent=ready_for_workflow only when product_name, product_description, and "
-        "target_audience are known. In that case, include a complete ad_request that can be "
-        "validated as AdWorkflowGenerateRequest.\n"
-        "Supported ad_request values: duration_seconds must be an integer from 15 to 60; "
-        "audio_mode must be one of none, bgm_only, full; output_resolution must be one of "
-        "480p, 720p, 1080p; aspect_ratio must be one of 16:9, 9:16, 4:3, 3:4, 1:1, 21:9. "
-        "Map user phrases before returning JSON: 横版/横屏/landscape to 16:9, "
-        "竖版/竖屏/portrait/vertical to 9:16, 方形/square to 1:1, "
-        "宽银幕/电影宽屏 to 21:9, 高清/HD/FHD to 1080p, 标清/SD to 480p, "
-        "背景音乐/配乐/BGM to bgm_only, 静音/无声/no audio/silent to none, "
-        "旁白加音乐/完整音频 to full.\n"
-        "If a user provides an unsupported explicit value, use intent=needs_clarification "
-        "and put the concrete field name in missing_fields; do not use ad_request as a "
-        "missing field name.\n"
-        "When references or channels are not provided, return [] or omit the field; "
-        "do not return null. Remove null or empty items from references and channels. "
-        "When no fields are missing, return missing_fields=[]; do not return null.\n"
-        "Never use ready_for_workflow while asking a follow-up question.\n\n"
-        f"{v2_seed_instruction}"
-        "Conversation history:\n"
-        f"{json.dumps([message.model_dump() for message in request.history], ensure_ascii=False)}\n\n"
-        "Latest user message:\n"
-        f"{request.message}"
-    )
-
-
 def _parse_front_desk_intent_output(raw_output: Any) -> FrontDeskIntentOutput:
     payload = _normalize_raw_front_desk_payload(raw_output)
     try:
@@ -284,7 +234,7 @@ def _normalize_front_desk_output(
     output: FrontDeskIntentOutput, request: FrontDeskChatRequest
 ) -> FrontDeskChatResponse:
     if output.intent in {"conversation", "needs_clarification"}:
-        target_node_type = output.target_node_type or route_node_edit_intent(request.message)
+        target_node_type = output.target_node_type
         workflow_action = output.workflow_action
         if target_node_type and workflow_action is None:
             workflow_action = "modify_node"

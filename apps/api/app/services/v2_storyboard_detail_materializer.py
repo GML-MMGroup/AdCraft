@@ -12,13 +12,12 @@ from app.schemas.workflow_v2_storyboard_detail import (
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_storyboard_detail_quality import V2StoryboardDetailQualityService
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMError
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_versioning import V2_STORYBOARD_DETAIL_MATERIALIZER_VERSION
 
 
@@ -52,7 +51,7 @@ class V2StoryboardDetailMaterializer:
         *,
         force_mock: bool = False,
     ) -> V2StoryboardDetailPlan:
-        if force_mock or self._settings.agno_mock_mode:
+        if force_mock or self._settings.agent_runtime_mode == "fake":
             plan = self._mock_plan(input_data)
             self._quality.validate_plan(plan, input_data=input_data)
             return plan
@@ -97,7 +96,7 @@ class V2StoryboardDetailMaterializer:
                 stage_name="storyboard_detail",
                 contract_name="V2StoryboardDetailPlan",
                 model_id=self._settings.llm_creative_model,
-                system_prompt=_system_prompt(),
+                system_prompt="",
                 input_payload=_materializer_payload(input_data),
                 output_model=V2StoryboardDetailPlan,
                 quality_validator=lambda output: self._quality.validate_plan(
@@ -395,18 +394,6 @@ def _materializer_payload(input_data: V2StoryboardDetailInput) -> dict[str, Any]
                 "no_base64_data_urls_raw_bytes_local_file_content_or_secrets": True,
             },
         }
-    )
-
-
-def _system_prompt() -> str:
-    return (
-        V2HighRiskPromptRenderer()
-        .render(
-            prompt_id="v2.storyboard.detail.v1",
-            context={},
-            identity={"path_kind": "normal"},
-        )
-        .prompt_text
     )
 
 

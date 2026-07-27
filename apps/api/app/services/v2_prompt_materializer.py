@@ -39,7 +39,6 @@ from app.services.v2_specialist_prompt_service import (
     V2SpecialistPromptService,
 )
 from app.services.v2_specialist_prompt_sanitizer import V2SpecialistPromptSanitizer
-from app.services.v2_skill_context import V2SkillContextService
 from app.services.v2_storyboard_cell_prompts import (
     cell_prompt_record_for_slot,
     storyboard_cell_prompt_records,
@@ -127,7 +126,6 @@ class V2PromptMaterializer:
         specialist_service: V2SpecialistPromptService | None = None,
     ) -> None:
         self._specialist_service = specialist_service or V2SpecialistPromptService()
-        self._skill_context = V2SkillContextService()
         self._slot_context_assembler = V2SlotContextAssembler()
         self._provider_prompt_compiler = V2ProviderPromptCompiler()
         self._prompt_sanitizer = V2SpecialistPromptSanitizer()
@@ -162,11 +160,6 @@ class V2PromptMaterializer:
                     ]
                 )
             )
-        skill_context = self._skill_context.skill_context_for_specialist(
-            specialist=route.specialist,
-            slot_type=slot.slot_type,
-            media_type=slot.media_type,
-        )
         director_context_summary = (
             dict(handoff.get("hard_constraints", {}))
             if handoff
@@ -212,7 +205,7 @@ class V2PromptMaterializer:
                 "negative_prompt": slot.negative_prompt,
                 "negative_constraints": slot.negative_constraints,
             },
-            skill_context=skill_context.model_dump(mode="json"),
+            skill_context={},
             provider_capability_summary=dict(slot.provider_params),
         )
         if route.specialist == "composition_tool":
@@ -385,11 +378,6 @@ class V2PromptMaterializer:
             if slot.prompt_source == "user" or slot.manual_prompt_dirty
             else (slot.slot_prompt or _provider_prompt(item, slot, route))
         )
-        fallback_skill_context = self._skill_context.skill_context_for_specialist(
-            specialist=route.specialist,
-            slot_type=slot.slot_type,
-            media_type=slot.media_type,
-        )
         fallback_request = V2SpecialistPromptRequest(
             workflow_id=workflow.workflow_id,
             target=_target_payload(target, slot),
@@ -411,7 +399,7 @@ class V2PromptMaterializer:
                 "negative_prompt": slot.negative_prompt,
                 "negative_constraints": slot.negative_constraints,
             },
-            skill_context=fallback_skill_context.model_dump(mode="json"),
+            skill_context={},
             provider_capability_summary=dict(slot.provider_params),
         )
         warning = {

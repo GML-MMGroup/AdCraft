@@ -54,7 +54,7 @@ class SpecialistAgentService:
         outcome: SpecialistAgentOutcome | None = None
         error: str | None = None
         try:
-            if self._settings.agno_mock_mode:
+            if self._settings.agent_runtime_mode == "fake":
                 outcome = SpecialistAgentOutcome(
                     result=self._mock_result(request),
                     used_fallback=False,
@@ -111,27 +111,12 @@ class SpecialistAgentService:
         return result
 
     def _real_outcome(self, request: SpecialistInvocationRequest) -> SpecialistAgentOutcome:
-        try:
-            payload, model_id = self._run_real_specialist_payload(request)
-            return SpecialistAgentOutcome(
-                result=self.normalize_result(request, payload),
-                used_fallback=False,
-                model_id=model_id,
-            )
-        except SpecialistAgentError as exc:
-            if request.require_real_specialist or exc.code not in {
-                "specialist_real_mode_unavailable",
-                "specialist_execution_failed",
-            }:
-                raise
-            warning = {
-                "code": "specialist_real_mode_fallback",
-                "message": (
-                    "Real specialist agent is unavailable; deterministic fallback was used."
-                ),
-            }
-            result = self._mock_result(request, warnings=[warning])
-            return SpecialistAgentOutcome(result=result, used_fallback=True, model_id=None)
+        payload, model_id = self._run_real_specialist_payload(request)
+        return SpecialistAgentOutcome(
+            result=self.normalize_result(request, payload),
+            used_fallback=False,
+            model_id=model_id,
+        )
 
     def _run_real_specialist_payload(
         self,

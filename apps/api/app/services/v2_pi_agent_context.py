@@ -57,11 +57,7 @@ def _isolate_value(value: Any) -> Any:
             and (isolated := _isolate_value(child)) is not None
         }
     if isinstance(value, (list, tuple)):
-        return [
-            isolated
-            for child in value
-            if (isolated := _isolate_value(child)) is not None
-        ]
+        return [isolated for child in value if (isolated := _isolate_value(child)) is not None]
     if isinstance(value, bytes):
         return None
     if isinstance(value, str):

@@ -116,16 +116,9 @@ def execute_agent_tool(
         )
         logger.warning(
             "agent_structured_submission_rejected contract=%s attempt=%s violations=%s",
-            (
-                submission.contract_name
-                if "submission" in locals()
-                else "unparseable_submission"
-            ),
+            (submission.contract_name if "submission" in locals() else "unparseable_submission"),
             submission.attempt if "submission" in locals() else None,
-            [
-                {"path": item["path"], "code": item["code"]}
-                for item in violations
-            ],
+            [{"path": item["path"], "code": item["code"]} for item in violations],
         )
         return AgentToolResult(
             run_id=call.run_id,

@@ -76,7 +76,6 @@ def _read_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 class Settings:
     app_name: str = "AdCraft"
     app_version: str = "1.0.0"
-    agno_mock_mode: bool = False
     v2_production_acceptance_enabled: bool = False
     v2_prompt_materializer_strict: bool = False
     v2_provider_allow_fallback: bool = False
@@ -186,7 +185,6 @@ class Settings:
         return cls(
             app_name=os.getenv("APP_NAME", cls.app_name),
             app_version=os.getenv("APP_VERSION", cls.app_version),
-            agno_mock_mode=_read_bool("AGNO_MOCK_MODE", cls.agno_mock_mode),
             v2_production_acceptance_enabled=_read_bool(
                 "V2_PRODUCTION_ACCEPTANCE_ENABLED",
                 cls.v2_production_acceptance_enabled,
