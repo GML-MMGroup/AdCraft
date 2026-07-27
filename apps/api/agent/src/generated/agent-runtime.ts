@@ -42,7 +42,9 @@ export type AgentToolResult = { readonly "protocol_version"?: "1"; readonly "run
 
 export type AgentStructuredSubmission = { readonly "protocol_version"?: "1"; readonly "run_id": string; readonly "submission_id": string; readonly "contract_name": string; readonly "value": Readonly<Record<string, unknown>>; readonly "attempt"?: number };
 
-export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "violations"?: ReadonlyArray<string>; readonly "repair_allowed"?: boolean };
+export type StructuredViolation = { readonly "code": string; readonly "message": string; readonly "field_path"?: string | null; readonly "expected"?: unknown | null; readonly "actual"?: unknown | null };
+
+export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean };
 
 export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "status": "ready" | "degraded" | "unavailable"; readonly "mode": "real" | "fake"; readonly "contract_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
 

@@ -86,6 +86,8 @@ class StructuredGenerationSpec(Generic[TOutput]):
     repair_context_builder: RepairContextBuilder | None = None
     fallback_builder: FallbackBuilder[TOutput] | None = None
     trace_metadata: dict[str, Any] = field(default_factory=dict)
+    validation_profile: str | None = None
+    validation_context: dict[str, Any] = field(default_factory=dict)
     temperature: float = 0.3
     agent_name: AgentName | None = None
     operation: str | None = None
@@ -479,6 +481,8 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         + timedelta(seconds=spec.trace_metadata.get("timeout_seconds", 120.0)),
         model_policy_id=f"{spec.agent_name or _agent_name_for_operation(operation)}.{operation}.v1",
         contract_name=spec.contract_name,
+        validation_profile=spec.validation_profile,
+        validation_context=sanitize_context_for_llm_text(spec.validation_context),
         context=AgentRunContext(
             operation=operation,
             user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),

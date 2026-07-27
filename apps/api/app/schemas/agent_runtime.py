@@ -194,11 +194,20 @@ class AgentStructuredSubmission(_StrictModel):
     attempt: int = Field(default=1, ge=1, le=2)
 
 
+class StructuredViolation(_StrictModel):
+    code: str = Field(min_length=1, max_length=160)
+    message: str = Field(min_length=1, max_length=1_024)
+    field_path: str | None = Field(default=None, max_length=512)
+    expected: Any | None = None
+    actual: Any | None = None
+
+
 class AgentStructuredValidationResult(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     accepted: bool
     normalized_result_id: str | None = Field(default=None, max_length=160)
-    violations: tuple[str, ...] = Field(default=(), max_length=128)
+    normalized_value: dict[str, Any] | None = None
+    violations: tuple[StructuredViolation, ...] = Field(default=(), max_length=128)
     repair_allowed: bool = False
 
 

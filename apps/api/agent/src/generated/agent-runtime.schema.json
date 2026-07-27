@@ -669,6 +669,19 @@
           "default": null,
           "title": "Normalized Result Id"
         },
+        "normalized_value": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Value"
+        },
         "protocol_version": {
           "const": "1",
           "default": "1",
@@ -683,7 +696,7 @@
         "violations": {
           "default": [],
           "items": {
-            "type": "string"
+            "$ref": "#/$defs/StructuredViolation"
           },
           "maxItems": 128,
           "title": "Violations",
@@ -1913,6 +1926,62 @@
         "summary"
       ],
       "title": "SpecialistDraft",
+      "type": "object"
+    },
+    "StructuredViolation": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Actual"
+        },
+        "code": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "expected": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "field_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Field Path"
+        },
+        "message": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "title": "StructuredViolation",
       "type": "object"
     }
   },

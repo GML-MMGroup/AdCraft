@@ -34,6 +34,7 @@ CONTRACT_MODELS = (
     agent_runtime.AgentToolCall,
     agent_runtime.AgentToolResult,
     agent_runtime.AgentStructuredSubmission,
+    agent_runtime.StructuredViolation,
     agent_runtime.AgentStructuredValidationResult,
     agent_runtime.AgentRuntimeHealth,
     agent_runtime.AgentRuntimeError,

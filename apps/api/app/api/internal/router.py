@@ -11,6 +11,7 @@ from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.agent_run_repository import AgentRunRepositoryError
 from app.persistence.database import create_v2_database
 from app.schemas.agent_runtime import (
     AgentStructuredSubmission,
@@ -21,7 +22,9 @@ from app.services.v2_agent_credential_broker import (
     AgentCredentialError,
     V2AgentCredentialBroker,
 )
-from app.services.v2_agent_contract_registry import validate_agent_contract
+from app.services.v2_agent_structured_validation import (
+    V2AgentStructuredValidationService,
+)
 from app.services.v2_agent_tool_gateway import (
     V2AgentToolGateway,
     WorkflowV2AgentToolDomain,
@@ -92,28 +95,31 @@ def execute_agent_tool(
             ).execute(call)
         finally:
             database.dispose()
+    database = create_v2_database(settings.media_data_dir)
+    repository = AgentRunRepository(database)
     try:
         submission = AgentStructuredSubmission.model_validate(call.arguments)
-        normalized = validate_agent_contract(submission.contract_name, submission.value)
-    except (ValidationError, ValueError) as error:
-        violations = (
-            [
-                {
-                    "path": ".".join(str(part) for part in item["loc"]),
-                    "code": str(item["type"]),
-                    "message": str(item["msg"]),
-                }
-                for item in error.errors()
-            ]
-            if isinstance(error, ValidationError)
-            else [
-                {
-                    "path": "contract_name",
-                    "code": "agent_contract_not_allowed",
-                    "message": "The requested Agent contract is not registered.",
-                }
-            ]
+        run = repository.load(call.run_id)
+        result = V2AgentStructuredValidationService(repository).validate(
+            run=run,
+            submission=submission,
         )
+    except (ValidationError, AgentRunRepositoryError) as error:
+        violations = [
+            {
+                "path": "run_id" if isinstance(error, AgentRunRepositoryError) else None,
+                "code": (
+                    error.code
+                    if isinstance(error, AgentRunRepositoryError)
+                    else "agent_submission_invalid"
+                ),
+                "message": (
+                    error.message
+                    if isinstance(error, AgentRunRepositoryError)
+                    else "The structured Agent submission is invalid."
+                ),
+            }
+        ]
         logger.warning(
             "agent_structured_submission_rejected contract=%s attempt=%s violations=%s",
             (submission.contract_name if "submission" in locals() else "unparseable_submission"),
@@ -132,14 +138,49 @@ def execute_agent_tool(
             error_code="agent_structured_output_invalid",
             error_message="Structured Agent output is invalid.",
         )
+    finally:
+        database.dispose()
+
+    serialized_violations = [
+        {
+            "path": violation.field_path,
+            "code": violation.code,
+            "message": violation.message,
+            "expected": violation.expected,
+            "actual": violation.actual,
+        }
+        for violation in result.violations
+    ]
+    if not result.accepted:
+        logger.warning(
+            "agent_structured_submission_rejected contract=%s attempt=%s violations=%s",
+            submission.contract_name,
+            submission.attempt,
+            [
+                {"path": item["path"], "code": item["code"]}
+                for item in serialized_violations
+            ],
+        )
+        return AgentToolResult(
+            run_id=call.run_id,
+            tool_call_id=call.tool_call_id,
+            status="rejected",
+            result={
+                "accepted": False,
+                "violations": serialized_violations,
+                "repair_allowed": result.repair_allowed,
+            },
+            error_code="agent_structured_output_invalid",
+            error_message="Structured Agent output is invalid.",
+        )
     return AgentToolResult(
         run_id=call.run_id,
         tool_call_id=call.tool_call_id,
         status="completed",
         result={
             "accepted": True,
-            "normalized_result_id": submission.submission_id,
-            "value": normalized.model_dump(mode="json"),
+            "normalized_result_id": result.normalized_result_id,
+            "value": result.normalized_value,
             "repair_allowed": False,
         },
     )
