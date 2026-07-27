@@ -1,12 +1,11 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { useApp } from "../AppContextValue";
-import { SectionTitle } from "../components/Cards";
+import { useHealth } from "../app/useHealth";
 import { demoProjects, images, imageSrc } from "../data";
-import { PlayIcon, PlusIcon } from "../icons";
 import type { RouteName } from "../types";
 import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
 import { useHomeSectionReveal } from "./useHomeSectionReveal";
+import "./home.css";
 
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
 const homeProductPoster = "/assets/card1.webp";
@@ -27,6 +26,15 @@ type HeroCharacterStyle = CSSProperties & {
   "--home-character-delay": string;
   "--home-accent-position"?: string;
 };
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="section-title">
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </div>
+  );
+}
 
 function motionStyle(property: "--home-reveal-delay", value: string): CSSProperties {
   return { [property]: value } as CSSProperties;
@@ -53,13 +61,13 @@ function heroCharacterStyle(
   return style;
 }
 
-export function HomePage({ navigate }: { navigate: (route: RouteName) => void }) {
+export function HomePage({ navigate }: { navigate: (route: RouteName, options?: { state?: unknown }) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [introVideoFailed, setIntroVideoFailed] = useState(false);
   const isHeroMotionReady = useHomeHeroMotionReady();
   const recentReveal = useHomeSectionReveal();
   const discoverReveal = useHomeSectionReveal({ replay: true });
-  const { startNewProject } = useApp();
+  const { startNewProject } = useHealth();
   const hasIntroVideo = Boolean(homeProductVideoUrl) && !introVideoFailed;
 
   const discoverCards: Array<[string, string, number]> = [
@@ -73,9 +81,9 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
     ["Color Script", images[7], 350],
   ];
 
-  function createProject() {
-    startNewProject();
-    navigate("workflow");
+  async function createProject() {
+    await startNewProject();
+    navigate("workflow", { state: { startNewProject: true } });
   }
 
   return (
@@ -122,8 +130,8 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
           </p>
           <div className="home-product-hero__create-stage">
-            <button className="home-product-hero__create" type="button" onClick={createProject}>
-              <PlusIcon />
+            <button className="home-product-hero__create" type="button" onClick={() => void createProject()}>
+              <span aria-hidden="true">+</span>
               <span>Create Your Project</span>
             </button>
           </div>
@@ -216,7 +224,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
                 <img className="discover-card-image" src={imageSrc(img)} alt="" loading="lazy" decoding="async" />
                 <span className="play-dot">
                   <span>
-                    <PlayIcon />
+                    <span aria-hidden="true">▶</span>
                   </span>
                 </span>
               </button>
@@ -228,7 +236,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName) => void })
       <div className={`video-modal ${modalOpen ? "is-open" : ""}`}>
         <div className="modal-card">
           <div className="modal-preview">
-            <PlayIcon />
+            <span aria-hidden="true">▶</span>
           </div>
           <div className="composer-footer" style={{ marginTop: 14 }}>
             <strong>Preview Case</strong>

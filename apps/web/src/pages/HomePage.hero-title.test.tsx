@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
-const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
 const mobileHeroTitleStyles = styles.match(
   /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
 )?.[0] ?? "";
 
-vi.mock("../AppContextValue", () => ({
-  useApp: () => ({ startNewProject }),
+vi.mock("../app/useHealth", () => ({
+  useHealth: () => ({ startNewProject }),
 }));
 
 describe("HomePage hero title", () => {

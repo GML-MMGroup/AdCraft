@@ -1,7 +1,7 @@
 import { mediaUrl } from "../api/client";
 import { ChevronDownIcon, EditIcon, ImageIcon, StarIcon, TrashIcon, VideoIcon } from "../icons";
 import type { V2ProjectCover } from "../projects/v2ProjectCover";
-import { memo, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { memo, useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type Ref } from "react";
 
 export const ProjectCard = memo(function ProjectCard({
   projectId,
@@ -14,6 +14,7 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash,
   onToggleFavorite,
   onRename,
+  cardRef,
 }: {
   projectId: string;
   name: string;
@@ -25,6 +26,7 @@ export const ProjectCard = memo(function ProjectCard({
   onTrash?: () => void;
   onToggleFavorite?: () => void;
   onRename?: (trigger: HTMLButtonElement) => void;
+  cardRef?: Ref<HTMLElement>;
 }) {
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionTriggerRef = useRef<HTMLButtonElement>(null);
@@ -60,7 +62,7 @@ export const ProjectCard = memo(function ProjectCard({
   }
 
   return (
-    <article className="project-card" data-project-card={name.toLowerCase()}>
+    <article ref={cardRef} className="project-card" data-project-id={projectId} data-project-card={name.toLowerCase()}>
       <button className="project-card-open" type="button" onClick={() => onOpen(projectId)}>
         <ProjectPreviewImage projectId={projectId} workflowId={workflowId} cover={cover} name={name} />
         <div className="card-body">

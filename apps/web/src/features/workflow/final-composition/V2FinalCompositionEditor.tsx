@@ -1,6 +1,14 @@
-import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css";
 /* eslint-disable react-refresh/only-export-components */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { mediaUrl } from "../../../api/client.ts";
 import { AssetsIcon, CloseIcon, PlusIcon, VideoIcon } from "../../../icons.tsx";
 import type { V2FinalCompositionTimeline, V2FinalTimelineSource } from "../../../types-v2.ts";
@@ -11,7 +19,6 @@ import {
   V2CompositionPreview,
   type V2CompositionPreviewHandle,
 } from "./V2CompositionPreview.tsx";
-import { fitShotTimelineZoom, SHOT_TIMELINE_HEADER_WIDTH, V2ShotTimeline } from "./V2ShotTimeline.tsx";
 import { V2TimelineToolbar } from "./V2TimelineToolbar.tsx";
 import { V2SimpleSequenceComposition } from "./V2SimpleSequenceComposition.tsx";
 import { isFinalRenderActive } from "./finalRenderSession.ts";
@@ -24,6 +31,10 @@ import {
 
 const V2_AUTHORING_DRAFT_DISCARDED_EVENT = "v2-authoring-draft-discarded";
 const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
+const loadV2ShotTimeline = () => import("./V2ShotTimeline.tsx");
+const LazyV2ShotTimeline = lazy(() => loadV2ShotTimeline().then((module) => ({
+  default: module.V2ShotTimeline,
+})));
 
 type V2AuthoringConflictResolution = {
   target: { resource: "project" | "workflow"; id: string };
@@ -262,6 +273,29 @@ export function V2FinalCompositionEditor({
   const renderId = editor.renderState?.render_id ?? editor.renderJob?.render_id ?? null;
   const renderIsActive = renderStatus ? isFinalRenderActive(renderStatus) : false;
   const renderCanRetry = !editor.renderIssue && (renderStatus === "failed" || renderStatus === "cancelled");
+  const fitTimeline = useCallback(() => {
+    const requestedSession = editorSessionRef.current;
+    void loadV2ShotTimeline().then((module) => {
+      const activeSession = editorSessionRef.current;
+      if (
+        !activeSession.active
+        || activeSession.workflowId !== requestedSession.workflowId
+        || activeSession.generation !== requestedSession.generation
+      ) {
+        return;
+      }
+      const currentEditor = editorRef.current;
+      currentEditor.setZoom(currentEditor.draft
+        ? module.fitShotTimelineZoom(
+            currentEditor.draft,
+            Math.max(
+              160,
+              (mainRef.current?.clientWidth ?? 0) - module.SHOT_TIMELINE_HEADER_WIDTH,
+            ),
+          )
+        : 1);
+    });
+  }, []);
 
   if (!active) return null;
   return (
@@ -297,9 +331,7 @@ export function V2FinalCompositionEditor({
           onRedo={editor.redo}
           onZoomOut={() => editor.setZoom(editor.zoom / 1.25)}
           onZoomIn={() => editor.setZoom(editor.zoom * 1.25)}
-          onFitTimeline={() => editor.setZoom(editor.draft
-            ? fitShotTimelineZoom(editor.draft, Math.max(160, (mainRef.current?.clientWidth ?? 0) - SHOT_TIMELINE_HEADER_WIDTH))
-            : 1)}
+          onFitTimeline={fitTimeline}
           onTogglePlaying={() => previewRef.current?.togglePlayback()}
           onRefresh={() => void editor.load({ preserveDraft: true })}
           onSave={() => void editor.save()}
@@ -392,28 +424,30 @@ export function V2FinalCompositionEditor({
               selectedClipId={editor.selectedClipId}
               onSelectClip={editor.setSelectedClipId}
             />
-            <V2ShotTimeline
-              workflowId={workflowId}
-              timeline={editor.draft}
-              sources={editor.sources}
-              selectedClipIds={editor.selectedClipIds}
-              playheadSeconds={editor.playheadSeconds}
-              zoom={editor.zoom}
-              snapEnabled={editor.snapEnabled}
-              tool={editor.tool}
-              onSetSnapEnabled={editor.setSnapEnabled}
-              onSetSelectedClipIds={editor.setSelectedClipIds}
-              onSetPlayheadSeconds={editor.setPlayheadSeconds}
-              onSplitAtPlayhead={editor.splitAtPlayhead}
-              onUpdateTrack={editor.updateTrack}
-              onSetClipAudio={editor.setClipAudio}
-              onReorderLane={editor.reorderLane}
-              onRemoveImportedLane={editor.removeImportedLane}
-              mediaUrl={mediaUrl}
-              moveClip={editor.moveClip}
-              trimClip={editor.trimClip}
-              finalizeGesture={editor.finalizeGesture}
-            />
+            <Suspense fallback={<ShotTimelineLoading />}>
+              <LazyV2ShotTimeline
+                workflowId={workflowId}
+                timeline={editor.draft}
+                sources={editor.sources}
+                selectedClipIds={editor.selectedClipIds}
+                playheadSeconds={editor.playheadSeconds}
+                zoom={editor.zoom}
+                snapEnabled={editor.snapEnabled}
+                tool={editor.tool}
+                onSetSnapEnabled={editor.setSnapEnabled}
+                onSetSelectedClipIds={editor.setSelectedClipIds}
+                onSetPlayheadSeconds={editor.setPlayheadSeconds}
+                onSplitAtPlayhead={editor.splitAtPlayhead}
+                onUpdateTrack={editor.updateTrack}
+                onSetClipAudio={editor.setClipAudio}
+                onReorderLane={editor.reorderLane}
+                onRemoveImportedLane={editor.removeImportedLane}
+                mediaUrl={mediaUrl}
+                moveClip={editor.moveClip}
+                trimClip={editor.trimClip}
+                finalizeGesture={editor.finalizeGesture}
+              />
+            </Suspense>
           </div>
           <V2CompositionInspector
             clip={editor.selectedClip?.clip_type === "video" || editor.selectedClip?.clip_type === "audio"
@@ -507,6 +541,18 @@ export function V2FinalCompositionEditor({
           </div>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function ShotTimelineLoading() {
+  return (
+    <section
+      className="v2-composition-timeline v2-shot-timeline"
+      role="status"
+      aria-label="Loading shot timeline editor"
+    >
+      <span className="v2-composition-empty">Loading timeline editor...</span>
     </section>
   );
 }

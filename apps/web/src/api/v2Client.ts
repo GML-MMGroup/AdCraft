@@ -452,13 +452,16 @@ export const v2Api = {
     );
   },
 
-  listAssetLibraryEntities(request: V2AssetLibraryListRequest): Promise<V2AssetLibraryListResponse> {
+  listAssetLibraryEntities(
+    request: V2AssetLibraryListRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<V2AssetLibraryListResponse> {
     const query = new URLSearchParams({ scope: request.scope });
     if (request.category) query.set("category", request.category);
     if (request.search?.trim()) query.set("search", request.search.trim());
     if (request.cursor) query.set("cursor", request.cursor);
     if (request.limit) query.set("limit", String(request.limit));
-    return requestV2(`/asset-library/entities?${query.toString()}`, {}, normalizeV2AssetLibraryListResponse);
+    return requestV2(`/asset-library/entities?${query.toString()}`, { signal: options.signal }, normalizeV2AssetLibraryListResponse);
   },
 
   assetLibraryEntity(entityId: string): Promise<V2AssetLibraryEntityDetail> {
@@ -557,8 +560,8 @@ export const v2Api = {
     );
   },
 
-  async events(workflowId: string, afterSeq = 0): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, {}, (value) => {
+  async events(workflowId: string, afterSeq = 0, signal?: AbortSignal): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, { signal }, (value) => {
       const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
       const events = Array.isArray(record.events) ? record.events.map(normalizeWorkflowRuntimeEventV2) : [];
       const next = typeof record.next_after_seq === "number" ? record.next_after_seq : events.at(-1)?.seq ?? afterSeq;
@@ -570,11 +573,15 @@ export const v2Api = {
     return new EventSource(`${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/events/stream?after_seq=${encodeURIComponent(String(afterSeq))}`);
   },
 
-  listWorkflowAssets(workflowId: string, filters: V2WorkflowAssetFilters = {}): Promise<WorkflowAssetListResponseV2> {
+  listWorkflowAssets(
+    workflowId: string,
+    filters: V2WorkflowAssetFilters = {},
+    options: { signal?: AbortSignal } = {},
+  ): Promise<WorkflowAssetListResponseV2> {
     const query = v2WorkflowAssetFilterQuery(filters);
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/assets${query}`,
-      {},
+      { signal: options.signal },
       normalizeWorkflowAssetListResponseV2,
     );
   },

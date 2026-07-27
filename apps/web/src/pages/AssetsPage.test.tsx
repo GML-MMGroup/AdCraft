@@ -7,7 +7,7 @@ import { AssetEntityViewerFallback, AssetsPage } from "./AssetsPage.tsx";
 import AssetEntityViewer from "../features/assets/AssetEntityViewer.tsx";
 import { v2AssetMediaUrl } from "../features/assets/v2AssetLibraryModel.ts";
 
-const assetStyles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const assetStyles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
 
 const assetFixture = vi.hoisted(() => {
   const summary = {
@@ -128,6 +128,7 @@ describe("AssetsPage", () => {
 
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -245,6 +246,33 @@ describe("AssetsPage", () => {
     expect(rule).not.toBeNull();
     declarations.cssText = rule?.[1] ?? "";
     expect(declarations.objectFit).toBe("contain");
+  });
+
+  it("defers card video metadata and shows its poster first", () => {
+    class DeferredIntersectionObserver {
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("IntersectionObserver", DeferredIntersectionObserver);
+    assetFixture.entities.splice(0, assetFixture.entities.length, {
+      ...assetFixture.summary,
+      preview_member: {
+        member_id: "video-preview",
+        asset_id: "video-asset",
+        version_id: "video-version",
+        public_url: "/media/preview.mp4",
+        thumbnail_url: "/media/preview-poster.webp",
+        media_type: "video",
+      },
+    });
+
+    const { container } = render(<AssetsPage />);
+    const video = container.querySelector(".v2-asset-media.is-card") as HTMLVideoElement;
+
+    expect(video.tagName).toBe("VIDEO");
+    expect(video.getAttribute("src")).toBeNull();
+    expect(video.getAttribute("preload")).toBe("none");
+    expect(video.getAttribute("poster")).toBe("/media/preview-poster.webp");
   });
 
   it("opens the selected asset in a dismissible modal viewer", async () => {
