@@ -7,6 +7,7 @@ import { mediaAssetOriginalPath, mediaAssetPosterPath, mediaAssetPreviewPath, us
 import { buildSemanticAssetGallery, type SemanticAssetGallery, type SemanticGalleryItem } from "../../../workflow/semanticGallery.ts";
 import { ensureVideoPoster, videoNeedsLocalPoster } from "../../../workflow/videoPosterCache.ts";
 import type { PreviewLoadingType, WorkflowNodeData } from "../types";
+import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
 import { V2RegionCardPreview } from "./V2RegionCardPreview.tsx";
 import { CanvasEntityAreaPreview } from "./WorkflowCanvasEntityAreaPreview.tsx";
 
@@ -215,7 +216,6 @@ export function NodeCardPreview({
         >
           <img src={mediaUrl(previewPath)} alt={asset.filename ?? data.title} loading="lazy" decoding="async" />
           {isRunning ? <NodePreviewLoading type={loadingType} /> : null}
-          <NodePreviewMeta asset={asset} assetPath={originalPath} count={assets.length} />
         </button>
       );
     }
@@ -325,54 +325,6 @@ function SemanticGalleryImage({ asset, label, className, onOpenMedia }: { asset?
     >
       <img src={mediaUrl(previewPath)} alt={label} loading="lazy" decoding="async" />
     </button>
-  );
-}
-
-const loadingLabelByType: Record<PreviewLoadingType, string> = {
-  text: "Text preview loading",
-  image: "Image preview loading",
-  audio: "Audio preview loading",
-  video: "Video preview loading",
-  generic: "Node preview loading",
-};
-
-export function NodePreviewLoading({ type = "generic" }: { type?: PreviewLoadingType }) {
-  return (
-    <span className={`workflow-card-preview-loading is-${type}`} role="status" aria-label={loadingLabelByType[type]}>
-      <span className="workflow-card-preview-loading-core" aria-hidden="true">
-        {type === "text" ? (
-          <>
-            <i />
-            <i />
-            <i />
-          </>
-        ) : null}
-        {type === "image" ? (
-          <>
-            <i />
-            <i />
-            <i />
-            <i />
-          </>
-        ) : null}
-        {type === "audio" ? (
-          <>
-            <i />
-            <i />
-            <i />
-            <i />
-            <i />
-          </>
-        ) : null}
-        {type === "video" ? (
-          <>
-            <i />
-            <i />
-            <i />
-          </>
-        ) : null}
-      </span>
-    </span>
   );
 }
 
