@@ -158,7 +158,7 @@ class StructuredGenerationRuntime:
             value = terminal.payload.get("value")
             output = spec.output_model.model_validate(value)
             output = self._validate_output(spec, output)
-        except (PiAgentRuntimeError, ValueError) as error:
+        except (PiAgentRuntimeError, QualityValidationError, ValueError) as error:
             normalized = V2StructuredLLMError(
                 (
                     error.code
@@ -167,6 +167,28 @@ class StructuredGenerationRuntime:
                 ),
                 str(error),
                 failure_kind="provider_terminal",
+            )
+            if spec.fallback_builder is None:
+                raise self._runtime_error(spec, normalized) from error
+            return self._fallback(
+                spec,
+                normalized,
+                attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
+            )
+        except Exception as error:
+            quality_code = getattr(error, "code", None)
+            if not isinstance(quality_code, str):
+                raise
+            normalized = V2StructuredLLMError(
+                "structured_output_quality_failed",
+                str(error),
+                quality_error_code=quality_code,
+                quality_error_message=str(error),
+                quality_error_details=(
+                    getattr(error, "details", None)
+                    or getattr(error, "repair_details", None)
+                ),
+                failure_kind="content",
             )
             if spec.fallback_builder is None:
                 raise self._runtime_error(spec, normalized) from error
