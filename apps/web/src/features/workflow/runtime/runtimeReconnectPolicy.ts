@@ -31,6 +31,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
   let active = false;
   let lifecycleGeneration = 0;
   let pollGeneration: number | null = null;
+  let resumeAfterPollGeneration: number | null = null;
   let failureCount = 0;
   let pollCount = 0;
   let currentState: RuntimeReconnectState = "idle";
@@ -59,6 +60,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       if (generation === lifecycleGeneration) pause();
       return;
     }
+    clearScheduledWork();
     transition(failureCount ? "reconnecting" : "connecting");
     try {
       options.onConnect(generation);
@@ -79,19 +81,29 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
     } finally {
       if (pollGeneration === generation) {
         pollGeneration = null;
+        const resumeAfterPoll = resumeAfterPollGeneration === generation;
+        if (resumeAfterPoll) resumeAfterPollGeneration = null;
         if (canRun(generation)) {
-          pollCount += 1;
-          if (pollCount >= sseRecoveryPolls) {
+          if (resumeAfterPoll) {
             pollCount = 0;
             connect(generation);
           } else {
-            schedulePoll(pollIntervalMs, generation);
+            pollCount += 1;
+            if (pollCount >= sseRecoveryPolls) {
+              pollCount = 0;
+              connect(generation);
+            } else {
+              schedulePoll(pollIntervalMs, generation);
+            }
           }
         }
       }
     }
   };
   const pause = () => {
+    if (active && pollGeneration === lifecycleGeneration) {
+      resumeAfterPollGeneration = lifecycleGeneration;
+    }
     clearScheduledWork();
     transition("idle");
   };
@@ -117,6 +129,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       lifecycleGeneration += 1;
       active = true;
       pollGeneration = null;
+      resumeAfterPollGeneration = null;
       pollCount = 0;
       clearScheduledWork();
       connect(lifecycleGeneration);
@@ -125,6 +138,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       lifecycleGeneration += 1;
       active = false;
       pollGeneration = null;
+      resumeAfterPollGeneration = null;
       failureCount = 0;
       pollCount = 0;
       pause();
@@ -141,6 +155,7 @@ export function createRuntimeReconnectPolicy(options: RuntimeReconnectPolicyOpti
       }
       clearScheduledWork();
       if (pollGeneration === generation) pollGeneration = null;
+      if (resumeAfterPollGeneration === generation) resumeAfterPollGeneration = null;
       pollCount = 0;
       transition("connected");
     },

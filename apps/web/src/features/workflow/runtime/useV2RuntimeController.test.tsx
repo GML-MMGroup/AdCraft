@@ -116,4 +116,82 @@ describe("useV2RuntimeController", () => {
     expect(openEventStream).not.toHaveBeenCalled();
     expect(TestEventSource.instances).toEqual([]);
   });
+
+  it("serializes eligibility recovery after an in-flight fallback poll", async () => {
+    vi.useFakeTimers();
+    let online = true;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(v2Api, "runtime").mockResolvedValue(
+      normalizeWorkflowRuntimeV2({ workflow_id: "workflow-a", events_cursor: 0 }),
+    );
+    const poll = deferred<Awaited<ReturnType<typeof v2Api.events>>>();
+    vi.spyOn(v2Api, "events").mockReturnValue(poll.promise);
+    const openEventStream = vi.spyOn(v2Api, "openEventStream")
+      .mockImplementation((workflowId) => new TestEventSource(workflowId) as unknown as EventSource);
+    const onEvents = vi.fn();
+
+    const { result } = renderHook(() => useV2RuntimeController({
+      workflowId: "workflow-a",
+      onEvents,
+    }));
+    await flushPromises();
+
+    for (let failure = 0; failure < 3; failure += 1) {
+      act(() => {
+        TestEventSource.instances.at(-1)?.onerror?.();
+      });
+      await act(async () => {
+        await vi.runOnlyPendingTimersAsync();
+      });
+    }
+    act(() => {
+      TestEventSource.instances.at(-1)?.onerror?.();
+    });
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    expect(openEventStream).toHaveBeenCalledTimes(4);
+    expect(v2Api.events).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      online = false;
+      window.dispatchEvent(new Event("offline"));
+      online = true;
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("online"));
+    });
+
+    expect(openEventStream).toHaveBeenCalledTimes(4);
+    expect(onEvents).not.toHaveBeenCalled();
+
+    poll.resolve({
+      events: [{
+        seq: 1,
+        event_type: "execution_started",
+        workflow_id: "workflow-a",
+        payload: { execution_id: "execution-a" },
+      }],
+      next_after_seq: 1,
+    });
+    await flushPromises();
+    await flushPromises();
+
+    expect(onEvents).toHaveBeenCalledTimes(1);
+    expect(result.current.store.activeExecutionId).toBe("execution-a");
+    expect(openEventStream).toHaveBeenCalledTimes(5);
+    expect(openEventStream).toHaveBeenLastCalledWith("workflow-a", 1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+      window.dispatchEvent(new Event("online"));
+      TestEventSource.instances.at(-1)?.onopen?.();
+    });
+
+    expect(openEventStream).toHaveBeenCalledTimes(5);
+    expect(onEvents).toHaveBeenCalledTimes(1);
+    expect(result.current.connectionState).toBe("connected");
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

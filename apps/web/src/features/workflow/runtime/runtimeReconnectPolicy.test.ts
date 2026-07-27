@@ -149,10 +149,11 @@ describe("createRuntimeReconnectPolicy", () => {
     expect(policy.failures()).toBe(0);
   });
 
-  it("does not reconnect SSE while a paused fallback poll is still in flight", async () => {
+  it("recovers SSE once when eligibility returns before a paused fallback poll settles", async () => {
     const scheduler = createScheduler();
     let eligible = true;
     let connects = 0;
+    let polls = 0;
     let completePoll: (() => void) | undefined;
     const policy = createRuntimeReconnectPolicy({
       isEligible: () => eligible,
@@ -160,7 +161,10 @@ describe("createRuntimeReconnectPolicy", () => {
       clearTimeout: scheduler.clearTimeout,
       maxSseFailures: 0,
       onConnect: () => { connects += 1; },
-      onPoll: () => new Promise<void>((resolve) => { completePoll = resolve; }),
+      onPoll: () => new Promise<void>((resolve) => {
+        polls += 1;
+        completePoll = resolve;
+      }),
       onStateChange: () => {},
     });
 
@@ -171,13 +175,25 @@ describe("createRuntimeReconnectPolicy", () => {
     policy.reconcile();
     eligible = true;
     policy.reconcile();
+    policy.reconcile();
 
     expect(connects).toBe(1);
+    expect(polls).toBe(1);
+    expect(policy.state()).toBe("idle");
     completePoll?.();
     await Promise.resolve();
+    await Promise.resolve();
+
+    policy.reconcile();
+    policy.reconcile();
+
+    expect(connects).toBe(2);
+    expect(polls).toBe(1);
+    expect(policy.state()).toBe("reconnecting");
+    expect(scheduler.timers.size).toBe(0);
   });
 
-  it("clears a completed paused poll lane so eligibility restoration reconnects exactly once", async () => {
+  it("recovers SSE once when a paused fallback poll settles before eligibility returns", async () => {
     const scheduler = createScheduler();
     let eligible = true;
     let connects = 0;
@@ -213,20 +229,50 @@ describe("createRuntimeReconnectPolicy", () => {
     eligible = true;
     policy.reconcile();
     policy.reconcile();
-    scheduler.runNext();
-    await Promise.resolve();
 
     expect(connects).toBe(2);
     expect(polls).toBe(1);
     expect(scheduler.timers.size).toBe(0);
   });
 
-  it("makes a stale poll completion inert after replacement polling has recovered SSE", async () => {
+  it("cancels a scheduled fallback poll when SSE opens first", async () => {
     const scheduler = createScheduler();
-    const completePolls: Array<() => void> = [];
     let connects = 0;
     let polls = 0;
     const policy = createRuntimeReconnectPolicy({
+      setTimeout: scheduler.setTimeout,
+      clearTimeout: scheduler.clearTimeout,
+      maxSseFailures: 0,
+      onConnect: () => { connects += 1; },
+      onPoll: async () => { polls += 1; },
+      onStateChange: () => {},
+    });
+
+    policy.start();
+    policy.sseFailed();
+    scheduler.runNext();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(scheduler.timers.size).toBe(1);
+    policy.sseOpened();
+    scheduler.runNext();
+    await Promise.resolve();
+
+    expect(connects).toBe(1);
+    expect(polls).toBe(1);
+    expect(policy.state()).toBe("connected");
+    expect(scheduler.timers.size).toBe(0);
+  });
+
+  it("makes a stale poll completion inert after workflow generation replacement recovers SSE", async () => {
+    const scheduler = createScheduler();
+    const completePolls: Array<() => void> = [];
+    let eligible = true;
+    let connects = 0;
+    let polls = 0;
+    const policy = createRuntimeReconnectPolicy({
+      isEligible: () => eligible,
       setTimeout: scheduler.setTimeout,
       clearTimeout: scheduler.clearTimeout,
       maxSseFailures: 0,
@@ -242,6 +288,10 @@ describe("createRuntimeReconnectPolicy", () => {
     policy.sseFailed();
     scheduler.runNext();
     expect(polls).toBe(1);
+    eligible = false;
+    policy.reconcile();
+    eligible = true;
+    policy.reconcile();
 
     policy.start();
     policy.sseFailed();
