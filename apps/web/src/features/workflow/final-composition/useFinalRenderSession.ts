@@ -112,6 +112,7 @@ export function useFinalRenderSession({
   const cancellingRenderRef = useRef(false);
   const onWorkflowRefreshRef = useRef(onWorkflowRefresh);
   const completedRenderSessionsRef = useRef(new Set<string>());
+  const detachedTimelineOperationRef = useRef<TimelineOperationIdentity | null>(null);
   const pollRenderRef = useRef<
     (identity: FinalRenderSessionIdentity, resetBackoff?: boolean) => Promise<void>
   >(async () => {});
@@ -124,8 +125,16 @@ export function useFinalRenderSession({
       renderPollTimerRef.current = null;
     }
   }, []);
+  const invalidateDetachedTimelineOperation = useCallback(() => {
+    const operation = detachedTimelineOperationRef.current;
+    detachedTimelineOperationRef.current = null;
+    if (operation !== null && isOperationCurrent(operation)) {
+      beginOperation(false);
+    }
+  }, [beginOperation, isOperationCurrent]);
   const invalidateRenderSession = useCallback(() => {
     clearRenderPollTimer();
+    invalidateDetachedTimelineOperation();
     renderGenerationRef.current += 1;
     renderStateRequestRef.current += 1;
     renderCancelRequestRef.current += 1;
@@ -136,7 +145,7 @@ export function useFinalRenderSession({
     renderingRef.current = false;
     cancellingRenderRef.current = false;
     completedRenderSessionsRef.current.clear();
-  }, [clearRenderPollTimer]);
+  }, [clearRenderPollTimer, invalidateDetachedTimelineOperation]);
   const resetRenderProgress = useCallback(() => {
     invalidateRenderSession();
     setRenderJob(null);
@@ -227,25 +236,32 @@ export function useFinalRenderSession({
         && claimFinalRenderCompletion(completedRenderSessionsRef.current, identity)) {
         setRenderIssue(null);
         const completionOperation = beginOperation(true);
+        detachedTimelineOperationRef.current = completionOperation;
         const completionIsCurrent = () => (
           isOperationCurrent(completionOperation) && renderIdentityIsCurrent(identity)
         );
         void (async () => {
-          const timeline = await load({
-            preserveDraft: true,
-            operation: completionOperation,
-          });
-          if (!timeline || !completionIsCurrent()) return;
-          const refreshedWorkflow = await onWorkflowRefreshRef.current?.(
-            identity.session.workflowId!,
-          );
-          if (!completionIsCurrent()) return;
-          await loadFinalVideo(
-            identity.session,
-            refreshedWorkflow,
-            true,
-            completionOperation,
-          );
+          try {
+            const timeline = await load({
+              preserveDraft: true,
+              operation: completionOperation,
+            });
+            if (!timeline || !completionIsCurrent()) return;
+            const refreshedWorkflow = await onWorkflowRefreshRef.current?.(
+              identity.session.workflowId!,
+            );
+            if (!completionIsCurrent()) return;
+            await loadFinalVideo(
+              identity.session,
+              refreshedWorkflow,
+              true,
+              completionOperation,
+            );
+          } finally {
+            if (detachedTimelineOperationRef.current === completionOperation) {
+              detachedTimelineOperationRef.current = null;
+            }
+          }
         })();
       }
       return true;

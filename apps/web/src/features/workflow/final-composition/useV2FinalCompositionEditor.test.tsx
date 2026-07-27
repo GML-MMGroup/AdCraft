@@ -14,6 +14,7 @@ import type {
   V2FinalTimelineRenderStateResponse,
   V2FinalTimelineUpdateResponse,
 } from "../../../types-v2.ts";
+import { FINAL_COMPOSITION_EVENT_NAME } from "./finalCompositionEvents.ts";
 import { useV2FinalCompositionEditor } from "./useV2FinalCompositionEditor.ts";
 
 function simpleTimelineResponse({
@@ -601,6 +602,61 @@ describe("useV2FinalCompositionEditor", () => {
     expect(result.current.draft?.clips[0].duration).toBe(5);
     expect(result.current.advancedEditorEnabled).toBe(true);
     expect(result.current.finalVideo?.public_url).toBe("/media/previous.mp4");
+  });
+
+  it("does not commit a detached completion load after a later poll invalidates the render", async () => {
+    const completedTimelineRefresh = deferred<ReturnType<typeof simpleTimelineResponse>>();
+    const getTimeline = vi.spyOn(v2Api, "getFinalTimeline")
+      .mockResolvedValueOnce(simpleTimelineResponse({ advanced: true }))
+      .mockImplementationOnce(() => completedTimelineRefresh.promise);
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(
+      workflowWithFinalVideo("/media/previous.mp4"),
+    );
+    vi.spyOn(v2Api, "renderFinalTimeline").mockResolvedValue(renderStart());
+    const getRender = vi.spyOn(v2Api, "getFinalTimelineRender")
+      .mockResolvedValueOnce(renderState("completed"))
+      .mockRejectedValueOnce(apiError(404, "render_not_found"));
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    await act(async () => {
+      await result.current.render();
+    });
+    await waitFor(() => expect(getTimeline).toHaveBeenCalledTimes(2));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(FINAL_COMPOSITION_EVENT_NAME, {
+        detail: {
+          workflowId: "workflow-1",
+          events: [{
+            event_id: "event-1",
+            workflow_id: "workflow-1",
+            event_type: "final_composition_render_completed",
+            payload: { render_id: "render-1" },
+          }],
+        },
+      }));
+    });
+    await waitFor(() => expect(getRender).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.renderJob).toBeNull());
+
+    completedTimelineRefresh.resolve(simpleTimelineResponse({
+      version: 9,
+      duration: 9,
+      advanced: false,
+    }));
+    await act(async () => {
+      await completedTimelineRefresh.promise;
+      await Promise.resolve();
+    });
+
+    expect(result.current.baseline?.version).toBe(4);
+    expect(result.current.draft?.clips[0].duration).toBe(5);
+    expect(result.current.advancedEditorEnabled).toBe(true);
   });
 
   it("does not attach a render POST response after a newer preserved load", async () => {
