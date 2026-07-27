@@ -295,8 +295,10 @@
                   "front_desk_intent": "#/$defs/FrontDeskIntentAgentContext",
                   "intent_contract": "#/$defs/IntentContractAgentContext",
                   "product_expert": "#/$defs/ProductExpertAgentContext",
+                  "quick_media": "#/$defs/QuickMediaAgentContext",
                   "scene_expert": "#/$defs/SceneExpertAgentContext",
-                  "script_writer": "#/$defs/ScriptWriterAgentContext"
+                  "script_writer": "#/$defs/ScriptWriterAgentContext",
+                  "targeted_revision": "#/$defs/TargetedRevisionAgentContext"
                 },
                 "propertyName": "context_kind"
               },
@@ -321,6 +323,12 @@
                 },
                 {
                   "$ref": "#/$defs/BgmExpertAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/TargetedRevisionAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/QuickMediaAgentContext"
                 }
               ]
             },
@@ -1469,6 +1477,154 @@
       "title": "IntentContractAgentContext",
       "type": "object"
     },
+    "InteractionMessageSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "system"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "sequence_no": {
+          "minimum": 1,
+          "title": "Sequence No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence_no",
+        "role",
+        "content"
+      ],
+      "title": "InteractionMessageSummary",
+      "type": "object"
+    },
+    "InteractionTargetSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "current_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Prompt"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "item_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "node_id": {
+          "enum": [
+            "character-generation",
+            "scene-generation"
+          ],
+          "title": "Node Id",
+          "type": "string"
+        },
+        "owner_display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Owner Display Name",
+          "type": "string"
+        },
+        "owner_type": {
+          "enum": [
+            "character",
+            "scene"
+          ],
+          "title": "Owner Type",
+          "type": "string"
+        },
+        "related_multiview_slot_id": {
+          "anyOf": [
+            {
+              "maxLength": 240,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Related Multiview Slot Id"
+        },
+        "selected_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningReferenceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "slot_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "slot_type": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Slot Type",
+          "type": "string"
+        },
+        "target_locator": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Target Locator",
+          "type": "string"
+        },
+        "working_version": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PlanningReferenceSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "target_locator",
+        "node_id",
+        "item_id",
+        "slot_id",
+        "slot_type",
+        "owner_type",
+        "owner_display_name",
+        "expected_revision"
+      ],
+      "title": "InteractionTargetSummary",
+      "type": "object"
+    },
     "PlanningItemSummary": {
       "additionalProperties": false,
       "properties": {
@@ -1687,6 +1843,94 @@
         "context_kind"
       ],
       "title": "ProductExpertAgentContext",
+      "type": "object"
+    },
+    "QuickMediaAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "quick_media",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "item_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Item Id",
+          "type": "string"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "output_media_type": {
+          "enum": [
+            "image",
+            "video",
+            "audio"
+          ],
+          "title": "Output Media Type",
+          "type": "string"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "slot_id": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Slot Id",
+          "type": "string"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_kind",
+        "user_input",
+        "workflow_id",
+        "node_id",
+        "item_id",
+        "slot_id",
+        "output_media_type"
+      ],
+      "title": "QuickMediaAgentContext",
       "type": "object"
     },
     "SceneExpertAgentContext": {
@@ -1987,6 +2231,94 @@
         "message"
       ],
       "title": "StructuredViolation",
+      "type": "object"
+    },
+    "TargetedRevisionAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "targeted_revision",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "continuity_slice": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Continuity Slice",
+          "type": "string"
+        },
+        "conversation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "conversation_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Conversation Summary",
+          "type": "string"
+        },
+        "recent_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InteractionMessageSummary"
+          },
+          "maxItems": 32,
+          "title": "Recent Messages",
+          "type": "array"
+        },
+        "reference_summaries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningReferenceSummary"
+          },
+          "maxItems": 128,
+          "title": "Reference Summaries",
+          "type": "array"
+        },
+        "screenplay_slice": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Screenplay Slice",
+          "type": "string"
+        },
+        "style_scope": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Scope",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/InteractionTargetSummary"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_kind",
+        "user_input",
+        "workflow_id",
+        "target"
+      ],
+      "title": "TargetedRevisionAgentContext",
       "type": "object"
     },
     "V2BgmBrief": {

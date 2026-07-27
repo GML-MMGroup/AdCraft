@@ -169,6 +169,63 @@ class BgmExpertAgentContext(_ExpertAgentContext):
     )
 
 
+class InteractionMessageSummary(_PlanningContextModel):
+    sequence_no: int = Field(ge=1)
+    role: Literal["user", "assistant", "system"]
+    content: str = Field(min_length=1, max_length=4_096)
+
+
+class InteractionTargetSummary(_PlanningContextModel):
+    target_locator: str = Field(min_length=1, max_length=320)
+    node_id: Literal["character-generation", "scene-generation"]
+    item_id: str = Field(min_length=1, max_length=160)
+    slot_id: str = Field(min_length=1, max_length=240)
+    slot_type: str = Field(min_length=1, max_length=80)
+    owner_type: Literal["character", "scene"]
+    owner_display_name: str = Field(min_length=1, max_length=256)
+    current_prompt: str | None = Field(default=None, max_length=16_384)
+    expected_revision: int = Field(ge=1)
+    related_multiview_slot_id: str | None = Field(default=None, max_length=240)
+    selected_version: PlanningReferenceSummary | None = None
+    working_version: PlanningReferenceSummary | None = None
+
+
+class TargetedRevisionAgentContext(_PlanningContextModel):
+    context_kind: Literal["targeted_revision"]
+    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    conversation_id: str | None = Field(default=None, max_length=160)
+    target: InteractionTargetSummary
+    conversation_summary: str = Field(default="", max_length=16_384)
+    recent_messages: tuple[InteractionMessageSummary, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+    screenplay_slice: str = Field(default="", max_length=16_384)
+    style_scope: str = Field(default="", max_length=8_192)
+    continuity_slice: str = Field(default="", max_length=8_192)
+    reference_summaries: tuple[PlanningReferenceSummary, ...] = Field(
+        default=(),
+        max_length=_MAX_COLLECTION_ITEMS,
+    )
+
+
+class QuickMediaAgentContext(_PlanningContextModel):
+    context_kind: Literal["quick_media"]
+    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    node_id: str = Field(min_length=1, max_length=160)
+    item_id: str = Field(min_length=1, max_length=160)
+    slot_id: str = Field(min_length=1, max_length=240)
+    output_media_type: Literal["image", "video", "audio"]
+    negative_prompt: str | None = Field(default=None, max_length=8_192)
+    style_scope: str = Field(default="", max_length=8_192)
+    reference_summaries: tuple[PlanningReferenceSummary, ...] = Field(
+        default=(),
+        max_length=_MAX_COLLECTION_ITEMS,
+    )
+
+
 PlanningAgentContext = Annotated[
     Union[
         FrontDeskIntentAgentContext,
@@ -178,6 +235,8 @@ PlanningAgentContext = Annotated[
         CharacterExpertAgentContext,
         SceneExpertAgentContext,
         BgmExpertAgentContext,
+        TargetedRevisionAgentContext,
+        QuickMediaAgentContext,
     ],
     Field(discriminator="context_kind"),
 ]
