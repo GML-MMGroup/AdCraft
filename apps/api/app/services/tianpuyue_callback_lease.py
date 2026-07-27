@@ -158,9 +158,7 @@ class TianpuyueCallbackLeaseService:
             raise TianpuyueCallbackLeaseError() from exc
 
     def _save(self, lease: TianpuyueCallbackLease) -> None:
-        temporary_path = self._state_path.with_name(
-            f".{self._state_path.name}.{uuid4().hex}.tmp"
-        )
+        temporary_path = self._state_path.with_name(f".{self._state_path.name}.{uuid4().hex}.tmp")
         try:
             self._state_path.parent.mkdir(parents=True, exist_ok=True)
             descriptor = os.open(
