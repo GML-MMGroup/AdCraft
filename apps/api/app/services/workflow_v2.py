@@ -122,6 +122,7 @@ from app.services.v2_intent_contract import (
 from app.services.v2_pi_planning_session import (
     V2PiPlanningSession,
     freeze_explicit_planning_facts,
+    merge_planning_degradation,
 )
 from app.services.v2_linked_context import V2LinkedContextSynchronizer
 from app.services.v2_provider_executor import V2ProviderExecutor
@@ -744,16 +745,16 @@ class WorkflowV2Service:
         degraded_metadata: dict[str, Any] = {}
         if script_reconciliation.audit.fallback_used:
             degraded_metadata = {
-                "planning_degraded": True,
                 "fallback_stage": "script_writer",
                 "original_error_code": script_reconciliation.audit.original_error_code,
-                "repaired_violation_codes": list(
-                    dict.fromkeys(
-                        [
-                            *repaired_validation_codes,
-                            *script_reconciliation.audit.repair_codes,
-                        ]
-                    )
+                **merge_planning_degradation(
+                    {},
+                    stage="script_writer",
+                    reason_codes=[script_reconciliation.audit.original_error_code],
+                    repaired_violation_codes=[
+                        *repaired_validation_codes,
+                        *script_reconciliation.audit.repair_codes,
+                    ],
                 ),
             }
         now = utc_now().isoformat()
@@ -891,6 +892,10 @@ class WorkflowV2Service:
             script_reconciliation=script_reconciliation.audit.model_dump(mode="json"),
         )
         planner_warnings = _planner_warnings(expert_brief_plan)
+        expert_degraded_metadata = _expert_degraded_metadata(
+            expert_brief_plan,
+            current_metadata=workflow.metadata,
+        )
         workflow = workflow.model_copy(
             update={
                 "nodes": self._planner.build_default_nodes(
@@ -905,6 +910,7 @@ class WorkflowV2Service:
                     "expert_brief_plan": expert_brief_plan.model_dump(mode="json"),
                     "specialist_quality_audit": dict(expert_brief_plan.specialist_quality_audit),
                     "planner_warnings": planner_warnings,
+                    **expert_degraded_metadata,
                     **intent_metadata,
                 },
                 "updated_at": utc_now().isoformat(),
@@ -6861,6 +6867,33 @@ def _planner_warnings(expert_brief_plan: Any) -> list[dict[str, Any]]:
             }
         )
     return warnings
+
+
+def _expert_degraded_metadata(
+    expert_brief_plan: Any,
+    *,
+    current_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    expert_metadata = getattr(expert_brief_plan, "metadata", {}) or {}
+    if not expert_metadata.get("planning_degraded"):
+        return {}
+    return merge_planning_degradation(
+        current_metadata,
+        stage=(
+            str(current_metadata["fallback_stage"])
+            if current_metadata.get("fallback_stage")
+            else None
+        ),
+        stages=list(expert_metadata.get("degraded_stages") or []),
+        reason_codes=[
+            *(
+                [str(current_metadata["original_error_code"])]
+                if current_metadata.get("original_error_code")
+                else []
+            ),
+            *list(expert_metadata.get("degraded_reason_codes") or []),
+        ],
+    )
 
 
 def _normalized_v2_request_view(

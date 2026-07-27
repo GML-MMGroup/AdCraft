@@ -6,6 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
+from typing import Any
 
 from app.schemas.agent_runtime import AgentName
 from app.schemas.agent_operation_contexts import FrozenPlanningFacts
@@ -122,4 +123,51 @@ def freeze_explicit_planning_facts(
         scene_count=constraints.scene_count,
         shot_count=constraints.storyboard_shot_count,
         explicit_requirements=requirements,
+    )
+
+
+def merge_planning_degradation(
+    current: dict[str, Any],
+    *,
+    stage: str | None = None,
+    stages: list[str] | tuple[str, ...] = (),
+    reason_codes: list[str] | tuple[str, ...] = (),
+    repaired_violation_codes: list[str] | tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """Merge normalized degraded-planning evidence in stable order."""
+
+    merged_stages = _dedupe_nonempty(
+        [
+            *list(current.get("degraded_stages") or []),
+            *([stage] if stage else []),
+            *stages,
+        ]
+    )
+    merged_reasons = _dedupe_nonempty(
+        [
+            *list(current.get("degraded_reason_codes") or []),
+            *reason_codes,
+        ]
+    )
+    merged_repairs = _dedupe_nonempty(
+        [
+            *list(current.get("repaired_violation_codes") or []),
+            *repaired_violation_codes,
+        ]
+    )
+    result: dict[str, Any] = {
+        "planning_degraded": True,
+        "degraded_stages": merged_stages,
+        "degraded_reason_codes": merged_reasons,
+    }
+    if merged_repairs:
+        result["repaired_violation_codes"] = merged_repairs
+    return result
+
+
+def _dedupe_nonempty(values: list[Any]) -> list[str]:
+    return list(
+        dict.fromkeys(
+            str(value).strip() for value in values if value is not None and str(value).strip()
+        )
     )
