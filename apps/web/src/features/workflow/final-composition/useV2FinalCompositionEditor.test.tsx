@@ -185,6 +185,23 @@ function apiError(status: number, code = "timeline_version_conflict") {
   });
 }
 
+function activeRenderError() {
+  return new V2ApiError({
+    status: 409,
+    code: "v2_timeline_render_already_active",
+    message: "A render is already active.",
+    details: {},
+    violations: [],
+    suggestedActions: [],
+    payload: {
+      detail: {
+        code: "v2_timeline_render_already_active",
+        active_render_id: "render-existing",
+      },
+    },
+  });
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -534,6 +551,246 @@ describe("useV2FinalCompositionEditor", () => {
 
     expect(result.current.baseline?.version).toBe(7);
     expect(result.current.draft?.clips[0].duration).toBe(7);
+  });
+
+  it("does not let a detached completion load overwrite a newer clean advanced render", async () => {
+    const completedTimelineRefresh = deferred<ReturnType<typeof simpleTimelineResponse>>();
+    const getTimeline = vi.spyOn(v2Api, "getFinalTimeline")
+      .mockResolvedValueOnce(simpleTimelineResponse({ advanced: true }))
+      .mockImplementationOnce(() => completedTimelineRefresh.promise);
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(workflowWithFinalVideo("/media/previous.mp4"));
+    vi.spyOn(v2Api, "renderFinalTimeline")
+      .mockResolvedValueOnce(renderStart())
+      .mockResolvedValueOnce({ ...renderStart(), render_id: "render-2" });
+    vi.spyOn(v2Api, "getFinalTimelineRender")
+      .mockResolvedValueOnce(renderState("completed"))
+      .mockResolvedValueOnce(renderState("running", { render_id: "render-2" }));
+    const onWorkflowRefresh = vi.fn().mockResolvedValue(
+      workflowWithFinalVideo("/media/render-1.mp4"),
+    );
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+      onWorkflowRefresh,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    await act(async () => {
+      await result.current.render();
+    });
+    await waitFor(() => expect(getTimeline).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      await result.current.render();
+    });
+    await waitFor(() => expect(result.current.renderJob?.render_id).toBe("render-2"));
+
+    completedTimelineRefresh.resolve(simpleTimelineResponse({
+      version: 9,
+      duration: 9,
+      advanced: false,
+    }));
+    await act(async () => {
+      await completedTimelineRefresh.promise;
+      await Promise.resolve();
+    });
+
+    expect(onWorkflowRefresh).not.toHaveBeenCalled();
+    expect(result.current.baseline?.version).toBe(4);
+    expect(result.current.draft?.clips[0].duration).toBe(5);
+    expect(result.current.advancedEditorEnabled).toBe(true);
+    expect(result.current.finalVideo?.public_url).toBe("/media/previous.mp4");
+  });
+
+  it("does not attach a render POST response after a newer preserved load", async () => {
+    const renderPost = deferred<ReturnType<typeof renderStart>>();
+    const getTimeline = vi.spyOn(v2Api, "getFinalTimeline")
+      .mockResolvedValueOnce(simpleTimelineResponse({ advanced: true }))
+      .mockResolvedValueOnce(simpleTimelineResponse({
+        advanced: true,
+        version: 8,
+        duration: 8,
+      }));
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(workflowWithFinalVideo());
+    vi.spyOn(v2Api, "renderFinalTimeline").mockImplementation(() => renderPost.promise);
+    const getRender = vi.spyOn(v2Api, "getFinalTimelineRender");
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    let renderPromise!: Promise<ReturnType<typeof renderStart> | null>;
+    act(() => {
+      renderPromise = result.current.render();
+    });
+    await waitFor(() => expect(v2Api.renderFinalTimeline).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      await result.current.load({ preserveDraft: true });
+    });
+    expect(result.current.baseline?.version).toBe(8);
+
+    renderPost.resolve(renderStart());
+    let renderResult!: ReturnType<typeof renderStart> | null;
+    await act(async () => {
+      renderResult = await renderPromise;
+    });
+
+    expect(renderResult).toBeNull();
+    expect(getRender).not.toHaveBeenCalled();
+    expect(result.current.renderJob).toBeNull();
+    expect(result.current.rendering).toBe(false);
+    expect(result.current.baseline?.version).toBe(8);
+  });
+
+  it.each([
+    ["active-render attachment", activeRenderError],
+    ["version conflict", () => apiError(412, "v2_timeline_version_conflict")],
+    ["generic error", () => apiError(500, "render_request_failed")],
+  ])("ignores stale render POST %s after a newer save", async (_caseName, makeError) => {
+    const renderPost = deferred<ReturnType<typeof renderStart>>();
+    vi.spyOn(v2Api, "getFinalTimeline").mockResolvedValue(
+      simpleTimelineResponse({ advanced: true }),
+    );
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(workflowWithFinalVideo());
+    vi.spyOn(v2Api, "renderFinalTimeline").mockImplementation(() => renderPost.promise);
+    const getRender = vi.spyOn(v2Api, "getFinalTimelineRender")
+      .mockResolvedValue(renderState("running", { render_id: "render-existing" }));
+    const saveTimeline = vi.spyOn(v2Api, "saveFinalTimeline")
+      .mockImplementation(async (_workflowId, request) => savedTimeline(request.timeline, 5));
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    let renderPromise!: Promise<ReturnType<typeof renderStart> | null>;
+    act(() => {
+      renderPromise = result.current.render();
+    });
+    await waitFor(() => expect(v2Api.renderFinalTimeline).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.updateClip("shot-1", (clip) => ({
+        ...clip,
+        duration: 4,
+        trim_out: 4,
+      }));
+    });
+    await act(async () => {
+      await result.current.save();
+    });
+    expect(saveTimeline).toHaveBeenCalledTimes(1);
+    expect(result.current.baseline?.version).toBe(5);
+
+    renderPost.reject(makeError());
+    let renderResult!: ReturnType<typeof renderStart> | null;
+    await act(async () => {
+      renderResult = await renderPromise;
+    });
+
+    expect(renderResult).toBeNull();
+    expect(getRender).not.toHaveBeenCalled();
+    expect(result.current.renderJob).toBeNull();
+    expect(result.current.rendering).toBe(false);
+    expect(result.current.conflict).toBeNull();
+    expect(result.current.error).toBe("");
+    expect(result.current.baseline?.version).toBe(5);
+  });
+
+  it("clears loading when a newer save supersedes a pending load", async () => {
+    const pendingLoad = deferred<ReturnType<typeof simpleTimelineResponse>>();
+    vi.spyOn(v2Api, "getFinalTimeline")
+      .mockResolvedValueOnce(simpleTimelineResponse({ advanced: true }))
+      .mockImplementationOnce(() => pendingLoad.promise);
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(workflowWithFinalVideo());
+    const saveTimeline = vi.spyOn(v2Api, "saveFinalTimeline")
+      .mockImplementation(async (_workflowId, request) => savedTimeline(request.timeline, 5));
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    let loadPromise!: Promise<ReturnType<typeof simpleTimelineResponse> | null>;
+    act(() => {
+      loadPromise = result.current.load({ preserveDraft: true });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    act(() => {
+      result.current.updateClip("shot-1", (clip) => ({
+        ...clip,
+        duration: 4,
+        trim_out: 4,
+      }));
+    });
+    await act(async () => {
+      await result.current.save();
+    });
+
+    expect(saveTimeline).toHaveBeenCalledTimes(1);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.baseline?.version).toBe(5);
+
+    pendingLoad.resolve(simpleTimelineResponse({
+      advanced: false,
+      version: 9,
+      duration: 9,
+    }));
+    await act(async () => {
+      await loadPromise;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.baseline?.version).toBe(5);
+    expect(result.current.draft?.clips[0].duration).toBe(4);
+  });
+
+  it("clears loading and rejects a pending load when a clean advanced render starts", async () => {
+    const pendingLoad = deferred<ReturnType<typeof simpleTimelineResponse>>();
+    vi.spyOn(v2Api, "getFinalTimeline")
+      .mockResolvedValueOnce(simpleTimelineResponse({ advanced: true }))
+      .mockImplementationOnce(() => pendingLoad.promise);
+    vi.spyOn(v2Api, "workflow").mockResolvedValue(workflowWithFinalVideo());
+    vi.spyOn(v2Api, "renderFinalTimeline").mockResolvedValue(renderStart());
+    vi.spyOn(v2Api, "getFinalTimelineRender").mockResolvedValue(renderState("running"));
+
+    const { result } = renderHook(() => useV2FinalCompositionEditor({
+      workflowId: "workflow-1",
+      active: true,
+    }));
+    await waitFor(() => expect(result.current.advancedEditorEnabled).toBe(true));
+
+    let loadPromise!: Promise<ReturnType<typeof simpleTimelineResponse> | null>;
+    act(() => {
+      loadPromise = result.current.load({ preserveDraft: true });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+
+    await act(async () => {
+      await result.current.render();
+    });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.renderJob?.render_id).toBe("render-1");
+
+    pendingLoad.resolve(simpleTimelineResponse({
+      advanced: false,
+      version: 9,
+      duration: 9,
+    }));
+    await act(async () => {
+      await loadPromise;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.baseline?.version).toBe(4);
+    expect(result.current.advancedEditorEnabled).toBe(true);
   });
 
   it.each([412, 428])("preserves the local draft for HTTP %s precondition conflicts", async (status) => {

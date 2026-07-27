@@ -41,6 +41,7 @@ import type { TimelinePersistenceDocumentContract } from "./useTimelineDocument.
 import {
   isTimelineVersionConflict,
   readableTimelineError,
+  type TimelineOperationIdentity,
   type TimelineRenderPersistenceContract,
 } from "./useTimelinePersistence.ts";
 import {
@@ -86,7 +87,7 @@ export function useFinalRenderSession({
   const [baselineRef, draftRef, , , , , , , finalizeGesture] = document;
   const [
     sessionController,
-    remoteState,
+    operations,
     capabilitiesRef,
     conflictRef,
     load,
@@ -96,6 +97,7 @@ export function useFinalRenderSession({
     setVersionConflict,
   ] = persistence;
   const [captureSession, isSessionCurrent] = sessionController;
+  const [beginOperation, isOperationCurrent] = operations;
 
   const activeRef = useRef(active);
   const renderingRef = useRef(rendering);
@@ -168,15 +170,21 @@ export function useFinalRenderSession({
     session: TimelineSessionToken,
     workflow?: unknown,
     autoplay = false,
+    operation?: TimelineOperationIdentity,
   ) => {
+    const isCurrent = () => (
+      isSessionCurrent(session)
+      && (operation === undefined || isOperationCurrent(operation))
+    );
+    if (!isCurrent()) return null;
     try {
       const candidate = workflow ?? await v2Api.workflow(session.workflowId!);
-      if (!isSessionCurrent(session)) return null;
+      if (!isCurrent()) return null;
       return applyFinalVideoWorkflow(candidate, autoplay);
     } catch {
       return null;
     }
-  }, [applyFinalVideoWorkflow, isSessionCurrent]);
+  }, [applyFinalVideoWorkflow, isOperationCurrent, isSessionCurrent]);
   const renderIdentityIsCurrent = useCallback((identity: FinalRenderSessionIdentity) => (
     isSessionCurrent(identity.session)
     && finalRenderSessionMatches(renderSessionRef.current, identity, activeRef.current)
@@ -218,14 +226,26 @@ export function useFinalRenderSession({
       if (state.status === "completed"
         && claimFinalRenderCompletion(completedRenderSessionsRef.current, identity)) {
         setRenderIssue(null);
+        const completionOperation = beginOperation(true);
+        const completionIsCurrent = () => (
+          isOperationCurrent(completionOperation) && renderIdentityIsCurrent(identity)
+        );
         void (async () => {
-          await load({ preserveDraft: true });
-          if (!renderIdentityIsCurrent(identity)) return;
+          const timeline = await load({
+            preserveDraft: true,
+            operation: completionOperation,
+          });
+          if (!timeline || !completionIsCurrent()) return;
           const refreshedWorkflow = await onWorkflowRefreshRef.current?.(
             identity.session.workflowId!,
           );
-          if (!renderIdentityIsCurrent(identity)) return;
-          await loadFinalVideo(identity.session, refreshedWorkflow, true);
+          if (!completionIsCurrent()) return;
+          await loadFinalVideo(
+            identity.session,
+            refreshedWorkflow,
+            true,
+            completionOperation,
+          );
         })();
       }
       return true;
@@ -240,6 +260,8 @@ export function useFinalRenderSession({
     clearRenderPollTimer,
     load,
     loadFinalVideo,
+    beginOperation,
+    isOperationCurrent,
     renderIdentityIsCurrent,
     scheduleRenderPoll,
     setError,
@@ -313,10 +335,12 @@ export function useFinalRenderSession({
   const beginRenderSession = useCallback((
     session: TimelineSessionToken,
     renderGeneration: number,
+    operation: TimelineOperationIdentity,
     start: V2FinalTimelineRenderStartResponse,
   ) => {
     if (!activeRef.current
       || !isSessionCurrent(session)
+      || !isOperationCurrent(operation)
       || renderGenerationRef.current !== renderGeneration
       || start.workflow_id !== session.workflowId) return null;
     clearRenderPollTimer();
@@ -342,7 +366,7 @@ export function useFinalRenderSession({
     setRendering(true);
     void pollRenderRef.current(identity, true);
     return identity;
-  }, [clearRenderPollTimer, isSessionCurrent]);
+  }, [clearRenderPollTimer, isOperationCurrent, isSessionCurrent]);
 
   const render = useCallback(async () => {
     const session = captureSession();
@@ -352,6 +376,10 @@ export function useFinalRenderSession({
       || !draftRef.current
       || !baselineRef.current
       || renderingRef.current) return null;
+    let attached = false;
+    const operation = beginOperation(false, () => {
+      if (!attached) resetRenderProgress();
+    });
     const renderGeneration = ++renderGenerationRef.current;
     clearRenderPollTimer();
     renderStateRequestRef.current += 1;
@@ -370,46 +398,46 @@ export function useFinalRenderSession({
     setRenderIssue(null);
     setAutoPlayFinalVideo(false);
     setError("");
-    let attached = false;
     let timeline: V2FinalCompositionTimeline | null = baselineRef.current;
     try {
       if (supportsAdvancedTimelineEditor(capabilitiesRef.current)) {
         timeline = await flushTimelineForRender({
           session,
-          isSessionCurrent: (candidate) => activeRef.current
-            && renderGenerationRef.current === renderGeneration
-            && isSessionCurrent(candidate),
+          isSessionCurrent: () => activeRef.current && isOperationCurrent(operation),
           finalizeGesture,
           readDraft: () => draftRef.current,
           readBaseline: () => baselineRef.current,
           equals: shotTimelineEquals,
           hasConflict: () => conflictRef.current !== null,
-          save,
+          save: () => save(operation),
         });
       } else {
-        const remoteEpoch = remoteState.claim();
         const response = await v2Api.getFinalTimeline(requestedWorkflowId);
         if (!activeRef.current
-          || renderGenerationRef.current !== renderGeneration
           || !isSessionCurrent(session)
-          || !remoteState.isCurrent(remoteEpoch)) return null;
+          || !isOperationCurrent(operation)) return null;
         acceptTimelineResponse(response);
         timeline = response.timeline;
       }
       if (!timeline
         || !activeRef.current
-        || renderGenerationRef.current !== renderGeneration
-        || !isSessionCurrent(session)) return null;
+        || !isSessionCurrent(session)
+        || !isOperationCurrent(operation)) return null;
       const response = await v2Api.renderFinalTimeline(requestedWorkflowId, {
         timeline_id: timeline.timeline_id,
         timeline_version: timeline.version,
       });
-      attached = beginRenderSession(session, renderGeneration, response) !== null;
-      return response;
+      attached = beginRenderSession(
+        session,
+        renderGeneration,
+        operation,
+        response,
+      ) !== null;
+      return attached ? response : null;
     } catch (renderError) {
       if (activeRef.current
-        && renderGenerationRef.current === renderGeneration
-        && isSessionCurrent(session)) {
+        && isSessionCurrent(session)
+        && isOperationCurrent(operation)) {
         const activeRenderId = renderError instanceof V2ApiError
           ? activeRenderIdFromPayload(renderError.payload)
           : null;
@@ -423,7 +451,12 @@ export function useFinalRenderSession({
             timeline_version: activeTimeline.version,
             events_cursor: 0,
           };
-          attached = beginRenderSession(session, renderGeneration, activeStart) !== null;
+          attached = beginRenderSession(
+            session,
+            renderGeneration,
+            operation,
+            activeStart,
+          ) !== null;
           if (attached) return activeStart;
         } else if (isTimelineVersionConflict(renderError, "v2_timeline_version_conflict")) {
           setVersionConflict(
@@ -439,8 +472,7 @@ export function useFinalRenderSession({
       return null;
     } finally {
       if (!attached
-        && renderGenerationRef.current === renderGeneration
-        && isSessionCurrent(session)) {
+        && isOperationCurrent(operation)) {
         renderingRef.current = false;
         setRendering(false);
       }
@@ -454,7 +486,9 @@ export function useFinalRenderSession({
     conflictRef,
     draftRef,
     finalizeGesture,
-    remoteState,
+    beginOperation,
+    isOperationCurrent,
+    resetRenderProgress,
     save,
     captureSession,
     isSessionCurrent,
