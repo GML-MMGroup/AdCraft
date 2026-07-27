@@ -9,6 +9,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.database import create_v2_database
 from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
@@ -16,6 +18,7 @@ from app.services.v2_high_risk_prompt_renderer import (
     V2HighRiskPromptRenderError,
     V2HighRiskPromptRenderer,
 )
+from app.services.v2_agent_event_projector import V2AgentEventProjector
 from app.services.v2_prompt_registry import V2PromptRegistry
 from app.services.v2_runtime_prompt_packs import prompt_content_profile_metadata
 from app.services.v2_structured_llm import (
@@ -149,9 +152,69 @@ class StructuredGenerationRuntime:
         self, spec: StructuredGenerationSpec[TOutput]
     ) -> StructuredGenerationResult[TOutput]:
         request = _agent_run_request(spec)
+        database = create_v2_database(self._settings.media_data_dir)
+        repository = AgentRunRepository(database)
+        lease_owner_id = f"python_{uuid4().hex}"
+        lease_duration = max(
+            60.0,
+            self._settings.agent_runtime_run_timeout_seconds * 2,
+        )
+        event_projector = V2AgentEventProjector(self._settings.media_data_dir)
+        persisted_sequences: set[int] = set()
+
+        def persist_event(event: Any) -> None:
+            if event.seq in persisted_sequences:
+                return
+            if event.event_type == "heartbeat":
+                repository.acquire_lease(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_duration_seconds=lease_duration,
+                )
+            repository.record_event_seq(
+                request.run_id,
+                lease_owner_id=lease_owner_id,
+                seq=event.seq,
+            )
+            event_projector.consume(
+                event,
+                workflow_id=request.context.workflow_id,
+                model_id=spec.model_id,
+            )
+            persisted_sequences.add(event.seq)
+
         try:
-            events = self._agent_runtime_client.run(request)
+            repository.create_or_load(
+                request,
+                lease_owner_id=lease_owner_id,
+                lease_duration_seconds=lease_duration,
+            )
+            set_callback = getattr(self._agent_runtime_client, "set_event_callback", None)
+            if callable(set_callback):
+                set_callback(persist_event)
+            try:
+                events = self._agent_runtime_client.run(request)
+            finally:
+                if callable(set_callback):
+                    set_callback(None)
+            for event in events:
+                persist_event(event)
             terminal = terminal_event(events)
+            repository.finish(
+                request.run_id,
+                lease_owner_id=lease_owner_id,
+                status={
+                    "run_completed": "completed",
+                    "run_failed": "failed",
+                    "run_cancelled": "cancelled",
+                }[terminal.event_type],
+                terminal_result=terminal.payload,
+                safe_error_code=(
+                    str(terminal.payload.get("code") or "") or None
+                    if terminal.event_type != "run_completed"
+                    else None
+                ),
+            )
             if terminal.event_type != "run_completed":
                 raise PiAgentRuntimeError(
                     str(terminal.payload.get("code") or "agent_runtime_unavailable"),
@@ -161,6 +224,12 @@ class StructuredGenerationRuntime:
             output = spec.output_model.model_validate(value)
             output = self._validate_output(spec, output)
         except (PiAgentRuntimeError, QualityValidationError, ValueError) as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                error,
+            )
             normalized = V2StructuredLLMError(
                 (
                     error.code
@@ -178,6 +247,12 @@ class StructuredGenerationRuntime:
                 attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
             )
         except Exception as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                error,
+            )
             quality_code = getattr(error, "code", None)
             if not isinstance(quality_code, str):
                 raise
@@ -187,8 +262,7 @@ class StructuredGenerationRuntime:
                 quality_error_code=quality_code,
                 quality_error_message=str(error),
                 quality_error_details=(
-                    getattr(error, "details", None)
-                    or getattr(error, "repair_details", None)
+                    getattr(error, "details", None) or getattr(error, "repair_details", None)
                 ),
                 failure_kind="content",
             )
@@ -199,6 +273,8 @@ class StructuredGenerationRuntime:
                 normalized,
                 attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
             )
+        finally:
+            database.dispose()
         return self._result(
             spec,
             output=output,
@@ -207,6 +283,28 @@ class StructuredGenerationRuntime:
             original_error=None,
             call_metadata=None,
         )
+
+    @staticmethod
+    def _finish_failed_agent_run(
+        repository: AgentRunRepository,
+        run_id: str,
+        lease_owner_id: str,
+        error: Exception,
+    ) -> None:
+        try:
+            record = repository.load(run_id)
+            if record.status in {"completed", "failed", "cancelled"}:
+                return
+            code = str(getattr(error, "code", None) or "agent_runtime_unavailable")
+            repository.finish(
+                run_id,
+                lease_owner_id=lease_owner_id,
+                status="failed",
+                terminal_result={"code": code, "message": "Agent runtime failed."},
+                safe_error_code=code,
+            )
+        except Exception:
+            return
 
     def _repair_or_fallback(
         self,
@@ -491,9 +589,7 @@ class StructuredGenerationRuntime:
 
 def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
     run_id = f"arun_{uuid4().hex}"
-    payload = isolate_agent_input_payload(
-        sanitize_context_for_llm_text(spec.input_payload)
-    )
+    payload = isolate_agent_input_payload(sanitize_context_for_llm_text(spec.input_payload))
     workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
     operation = spec.operation or _agent_operation(spec)
     return AgentRunRequest(

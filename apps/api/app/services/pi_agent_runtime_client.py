@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import json
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from pydantic import ValidationError
@@ -47,6 +47,7 @@ class PiAgentRuntimeClient:
         self._run_timeout_seconds = run_timeout_seconds
         self._max_event_bytes = max_event_bytes
         self._max_stream_bytes = max_stream_bytes
+        self._event_callback: Callable[[AgentRuntimeEvent], None] | None = None
         self._client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=connect_timeout_seconds,
@@ -104,6 +105,8 @@ class PiAgentRuntimeClient:
                     elif terminal_count:
                         raise _protocol_error()
                     events.append(event)
+                    if self._event_callback is not None:
+                        self._event_callback(event)
         except PiAgentRuntimeError:
             raise
         except (httpx.HTTPError, OSError) as error:
@@ -115,6 +118,14 @@ class PiAgentRuntimeClient:
         if terminal_count != 1 or not events or events[-1].event_type not in _TERMINAL_EVENTS:
             raise _protocol_error()
         return tuple(events)
+
+    def set_event_callback(
+        self,
+        callback: Callable[[AgentRuntimeEvent], None] | None,
+    ) -> None:
+        """Set an in-process callback for validated events as they arrive."""
+
+        self._event_callback = callback
 
     def cancel(self, run_id: str, *, reason: str = "client_cancelled") -> dict[str, Any]:
         try:

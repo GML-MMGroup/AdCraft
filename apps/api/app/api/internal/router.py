@@ -9,6 +9,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
+from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.database import create_v2_database
 from app.schemas.agent_runtime import (
     AgentStructuredSubmission,
     AgentToolCall,
@@ -19,6 +21,10 @@ from app.services.v2_agent_credential_broker import (
     V2AgentCredentialBroker,
 )
 from app.services.v2_agent_contract_registry import validate_agent_contract
+from app.services.v2_agent_tool_gateway import (
+    V2AgentToolGateway,
+    WorkflowV2AgentToolDomain,
+)
 
 
 router = APIRouter(prefix="/internal/v1")
@@ -71,15 +77,19 @@ def get_agent_runtime_config(
     response_model=AgentToolResult,
     dependencies=[Depends(require_agent_internal_auth)],
 )
-def execute_agent_tool(call: AgentToolCall) -> AgentToolResult:
+def execute_agent_tool(
+    call: AgentToolCall,
+    settings: Settings = Depends(get_settings),
+) -> AgentToolResult:
     if call.tool_name != "submit_structured_result":
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "code": "agent_tool_not_allowed",
-                "message": "Agent tool is not available for this operation.",
-            },
-        )
+        database = create_v2_database(settings.media_data_dir)
+        try:
+            return V2AgentToolGateway(
+                repository=AgentRunRepository(database),
+                domain=WorkflowV2AgentToolDomain(settings),
+            ).execute(call)
+        finally:
+            database.dispose()
     try:
         submission = AgentStructuredSubmission.model_validate(call.arguments)
         normalized = validate_agent_contract(submission.contract_name, submission.value)

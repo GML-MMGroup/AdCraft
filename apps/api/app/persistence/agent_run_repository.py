@@ -112,6 +112,18 @@ class AgentRunRepository:
             raise _persistence_error() from error
         return _record(row), True
 
+    def load(self, run_id: str) -> AgentRunRecord:
+        """Load one durable Agent run without changing its lease or status."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = _get_row(connection, run_id)
+        except AgentRunRepositoryError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _record(row)
+
     def acquire_lease(
         self,
         run_id: str,
