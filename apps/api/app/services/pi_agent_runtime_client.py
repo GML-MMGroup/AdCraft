@@ -9,7 +9,8 @@ from typing import Any, Callable
 import httpx
 from pydantic import ValidationError
 
-from app.schemas.agent_runtime import AgentRunRequest, AgentRuntimeEvent
+from app.schemas.agent_runtime import AgentRunRequest, AgentRuntimeEvent, AgentRuntimeHealth
+from app.services.v2_agent_runtime_manifest import V2AgentRuntimeManifestService
 
 
 _TERMINAL_EVENTS = {"run_completed", "run_failed", "run_cancelled"}
@@ -56,6 +57,29 @@ class PiAgentRuntimeClient:
             ),
             transport=transport,
         )
+
+    def health(self) -> AgentRuntimeHealth:
+        try:
+            response = self._client.get(
+                f"{self._base_url}/internal/v1/health",
+                headers={"authorization": f"Bearer {self._internal_token}"},
+            )
+            response.raise_for_status()
+            health = AgentRuntimeHealth.model_validate(response.json())
+        except (httpx.HTTPError, OSError, ValueError, ValidationError) as error:
+            raise PiAgentRuntimeError(
+                "agent_runtime_unavailable",
+                "Agent runtime health is unavailable.",
+                retryable=True,
+            ) from error
+        expected = V2AgentRuntimeManifestService().expected()
+        actual = {
+            field: getattr(health, field)
+            for field in type(expected).model_fields
+        }
+        if actual != expected.model_dump(mode="python"):
+            raise _protocol_error()
+        return health
 
     def run(
         self,

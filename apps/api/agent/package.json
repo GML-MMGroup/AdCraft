@@ -9,6 +9,7 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "build": "tsc",
+    "generate:manifest": "tsx scripts/generate-runtime-manifest.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

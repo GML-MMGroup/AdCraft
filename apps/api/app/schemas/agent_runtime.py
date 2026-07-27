@@ -243,11 +243,22 @@ class AgentStructuredValidationResult(_StrictModel):
 
 class AgentRuntimeHealth(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
+    runtime_version: str = Field(min_length=1, max_length=80)
     status: Literal["ready", "degraded", "unavailable"]
     mode: Literal["real", "fake"]
-    contract_digest: str = Field(min_length=1, max_length=160)
+    contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    prompt_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    skill_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     pi_version: str = Field(min_length=1, max_length=80)
     active_runs: int = Field(default=0, ge=0)
+
+
+class AgentRuntimeManifest(_StrictModel):
+    runtime_version: str = Field(min_length=1, max_length=80)
+    protocol_version: Literal["1"] = _PROTOCOL_VERSION
+    contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    prompt_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    skill_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class AgentRuntimeError(_StrictModel):

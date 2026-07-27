@@ -80,7 +80,7 @@ export type StructuredViolation = { readonly "code": string; readonly "message":
 
 export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean };
 
-export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "status": "ready" | "degraded" | "unavailable"; readonly "mode": "real" | "fake"; readonly "contract_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
+export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "runtime_version": string; readonly "status": "ready" | "degraded" | "unavailable"; readonly "mode": "real" | "fake"; readonly "contract_digest": string; readonly "prompt_digest": string; readonly "skill_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
 
 export type AgentRuntimeError = { readonly "protocol_version"?: "1"; readonly "code": "agent_runtime_unavailable" | "agent_protocol_mismatch" | "agent_model_unavailable" | "agent_structured_output_invalid" | "agent_run_budget_exceeded" | "agent_stream_backpressure_exceeded" | "agent_tool_not_allowed" | "agent_target_revision_conflict" | "agent_run_cancelled" | "agent_runtime_fake_forbidden"; readonly "message": string; readonly "retryable"?: boolean };
 

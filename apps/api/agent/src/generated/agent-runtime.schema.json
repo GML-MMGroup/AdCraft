@@ -577,8 +577,7 @@
           "type": "integer"
         },
         "contract_digest": {
-          "maxLength": 160,
-          "minLength": 1,
+          "pattern": "^[a-f0-9]{64}$",
           "title": "Contract Digest",
           "type": "string"
         },
@@ -596,10 +595,26 @@
           "title": "Pi Version",
           "type": "string"
         },
+        "prompt_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
         "protocol_version": {
           "const": "1",
           "default": "1",
           "title": "Protocol Version",
+          "type": "string"
+        },
+        "runtime_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Runtime Version",
+          "type": "string"
+        },
+        "skill_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Skill Digest",
           "type": "string"
         },
         "status": {
@@ -613,9 +628,12 @@
         }
       },
       "required": [
+        "runtime_version",
         "status",
         "mode",
         "contract_digest",
+        "prompt_digest",
+        "skill_digest",
         "pi_version"
       ],
       "title": "AgentRuntimeHealth",

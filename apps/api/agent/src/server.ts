@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
 import type {
@@ -10,6 +10,7 @@ import {
   FakeAgentModelAdapter,
   type AgentModelAdapter,
 } from "./runtime.js";
+import { loadRuntimeManifest } from "./manifest.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -50,10 +51,9 @@ export function createAgentRuntimeServer(options: ServerOptions) {
     const url = new URL(incoming.url ?? "/", "http://agent-runtime.local");
     if (incoming.method === "GET" && url.pathname === "/internal/v1/health") {
       json(response, 200, {
-        protocol_version: "1",
+        ...loadRuntimeManifest(),
         status: "ready",
         mode: options.mode,
-        contract_digest: createHash("sha256").update("agent-runtime-v1").digest("hex"),
         pi_version: "0.81.1",
         active_runs: activeRuns.size,
       });
