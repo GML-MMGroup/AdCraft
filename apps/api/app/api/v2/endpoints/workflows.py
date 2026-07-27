@@ -1206,6 +1206,8 @@ def _workflow_v2_http_error(exc: WorkflowV2Error) -> HTTPException:
         "specialist_output_invalid",
         "specialist_real_mode_unavailable",
         "specialist_target_mismatch",
+        "agent_runtime_unavailable",
+        "front_desk_failed",
     }:
         detail = _workflow_v2_error_detail(exc)
         return HTTPException(
@@ -1244,6 +1246,10 @@ def _workflow_v2_error_detail(exc: WorkflowV2Error) -> dict[str, Any]:
     detail: dict[str, Any] = {"code": exc.code, "message": str(exc)}
     if not exc.details:
         return detail
+    if "retryable" in exc.details:
+        detail["retryable"] = bool(exc.details["retryable"])
+        if len(exc.details) == 1:
+            return detail
     if exc.code in _SCRIPT_WORKFLOW_ERROR_CODES:
         for key in ("stage", "violations"):
             if key in exc.details:

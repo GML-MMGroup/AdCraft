@@ -1018,7 +1018,11 @@ class WorkflowV2Service:
                 else service.chat(v2_chat_request)
             )
         except FrontDeskError as exc:
-            raise WorkflowV2Error("front_desk_failed", str(exc)) from exc
+            raise WorkflowV2Error(
+                exc.code,
+                str(exc),
+                details={"retryable": exc.retryable},
+            ) from exc
         except Exception as exc:
             raise WorkflowV2Error("front_desk_failed", str(exc)) from exc
 
