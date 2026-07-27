@@ -17,6 +17,7 @@ from app.schemas.agent_runtime import AgentRunRequest
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
 _MAX_AUDIT_BYTES = 16_384
+_MAX_VALIDATION_CONTEXT_BYTES = 16_384
 _MAX_TOOL_RESULTS_BYTES = 65_536
 _SENSITIVE_KEYS = ("api_key", "authorization", "credential", "secret", "token")
 
@@ -39,6 +40,10 @@ class AgentRunRecord:
     workflow_id: str | None
     agent_name: str
     operation: str
+    contract_name: str | None
+    validation_profile: str | None
+    validation_context: dict[str, Any]
+    deadline_at: datetime | None
     status: str
     lease_owner_id: str | None
     lease_expires_at: datetime | None
@@ -69,21 +74,28 @@ class AgentRunRepository:
     ) -> tuple[AgentRunRecord, bool]:
         timestamp = _utc(now)
         _validate_metadata(request.audit_metadata)
+        _validate_validation_context(request.validation_context)
         lease_expiry = timestamp + timedelta(seconds=_lease_duration(lease_duration_seconds))
+        context = request.context
+        target = getattr(context, "target", None)
         values = {
             "run_id": request.run_id,
             "request_id": request.request_id,
             "parent_run_id": request.parent_run_id,
-            "conversation_id": request.context.conversation_id,
-            "workflow_id": request.context.workflow_id,
+            "conversation_id": getattr(context, "conversation_id", None),
+            "workflow_id": getattr(context, "workflow_id", None),
             "agent_name": request.agent_name,
             "operation": request.operation,
+            "contract_name": request.contract_name,
+            "validation_profile": request.validation_profile,
+            "validation_context_json": _json(request.validation_context),
+            "deadline_at": _iso(request.deadline_at),
             "status": "running",
             "lease_owner_id": lease_owner_id,
             "lease_expires_at": _iso(lease_expiry),
             "last_event_seq": 0,
             "expected_target_revision": (
-                request.context.target.expected_revision if request.context.target else None
+                target.expected_revision if target is not None else None
             ),
             "terminal_result_json": None,
             "tool_results_json": "{}",
@@ -344,6 +356,10 @@ def _record(row: Any) -> AgentRunRecord:
         workflow_id=row["workflow_id"],
         agent_name=row["agent_name"],
         operation=row["operation"],
+        contract_name=row["contract_name"],
+        validation_profile=row["validation_profile"],
+        validation_context=_object(row["validation_context_json"]),
+        deadline_at=_datetime(row["deadline_at"]),
         status=row["status"],
         lease_owner_id=row["lease_owner_id"],
         lease_expires_at=_datetime(row["lease_expires_at"]),
@@ -370,6 +386,16 @@ def _validate_metadata(metadata: dict[str, Any]) -> None:
         raise _error(
             "agent_run_metadata_invalid",
             "Agent run audit metadata is not safe to persist.",
+        ) from error
+
+
+def _validate_validation_context(context: dict[str, Any]) -> None:
+    try:
+        _validate_safe_json(context, maximum_bytes=_MAX_VALIDATION_CONTEXT_BYTES)
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "agent_run_validation_context_invalid",
+            "Agent run validation context is not safe to persist.",
         ) from error
 
 

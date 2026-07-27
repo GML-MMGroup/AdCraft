@@ -400,6 +400,24 @@
           "minLength": 1,
           "title": "Run Id",
           "type": "string"
+        },
+        "validation_context": {
+          "additionalProperties": true,
+          "title": "Validation Context",
+          "type": "object"
+        },
+        "validation_profile": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validation Profile"
         }
       },
       "required": [

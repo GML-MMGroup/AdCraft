@@ -140,6 +140,8 @@ class AgentRunRequest(_StrictModel):
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)
     contract_name: str | None = Field(default=None, max_length=160)
+    validation_profile: str | None = Field(default=None, max_length=160)
+    validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
