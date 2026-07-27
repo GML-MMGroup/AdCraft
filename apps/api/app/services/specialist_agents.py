@@ -115,7 +115,7 @@ class SpecialistAgentService:
                     f"to action {request.action}."
                 ),
             )
-        return result
+        return result.model_copy(update={"target": request.target})
 
     def _real_outcome(self, request: SpecialistInvocationRequest) -> SpecialistAgentOutcome:
         payload, model_id = self._run_real_specialist_payload(request)
