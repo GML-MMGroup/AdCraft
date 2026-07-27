@@ -24,6 +24,13 @@
   font-size: 13px;
 }
 
+@media (max-width: 700px) {
+  .v2-screenplay-drawer {
+    width: 100%;
+    border-left: 0;
+  }
+}
+
 .copilot-panel,
 .workflow-board,
 .workflow-card {

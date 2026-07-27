@@ -97,10 +97,16 @@ describe("route-scoped styles", () => {
     expect(declarationBlock(workflowStyles, ".v2-screenplay-status")).toMatch(
       /margin:\s*10px 0;[\s\S]*color:\s*var\(--muted\);[\s\S]*font-size:\s*13px;/,
     );
+    expect(workflowStyles).toMatch(
+      /@media\s*\(max-width:\s*700px\)\s*\{\s*\.v2-screenplay-drawer\s*\{\s*width:\s*100%;\s*border-left:\s*0;\s*\}/,
+    );
 
     expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer-backdrop\s*\{/);
     expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer\s*\{/);
     expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-status(?:\s|,|\{)/);
+    expect(screenplayStyles).not.toMatch(
+      /\.v2-screenplay-drawer\s*\{[^}]*\b(?:width|border-left)\s*:/,
+    );
   });
 
   it("keeps workflow and final-composition selectors out of Home styles", () => {

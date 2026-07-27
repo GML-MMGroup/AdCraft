@@ -104,7 +104,6 @@
 .v2-screenplay-discard-confirmation > dialog > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 @media (max-width: 700px) {
-  .v2-screenplay-drawer { width: 100%; border-left: 0; }
   .v2-screenplay-fields, .v2-screenplay-fields--compact { grid-template-columns: 1fr; }
   .v2-screenplay-drawer__footer { align-items: flex-end; }
   .v2-screenplay-confirm { flex: 0 0 auto; }
