@@ -1,3 +1,29 @@
+.v2-screenplay-drawer-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(32, 34, 53, 0.24);
+}
+
+.v2-screenplay-drawer {
+  position: relative;
+  display: grid;
+  width: min(760px, 92vw);
+  height: 100dvh;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-left: 1px solid rgba(108, 93, 171, 0.2);
+  background: rgba(247, 249, 253, 0.98);
+  box-shadow: -18px 0 50px rgba(32, 34, 53, 0.2);
+}
+
+.v2-screenplay-status {
+  margin: 10px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .copilot-panel,
 .workflow-board,
 .workflow-card {

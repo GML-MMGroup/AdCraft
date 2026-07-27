@@ -1,23 +1,3 @@
-.v2-screenplay-drawer-backdrop {
-  position: fixed;
-  z-index: 80;
-  inset: 0;
-  display: flex;
-  justify-content: flex-end;
-  background: rgba(32, 34, 53, 0.24);
-}
-
-.v2-screenplay-drawer {
-  position: relative;
-  display: grid;
-  width: min(760px, 92vw);
-  height: 100dvh;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  border-left: 1px solid rgba(108, 93, 171, 0.2);
-  background: rgba(247, 249, 253, 0.98);
-  box-shadow: -18px 0 50px rgba(32, 34, 53, 0.2);
-}
-
 .v2-screenplay-drawer__header,
 .v2-screenplay-drawer__footer,
 .v2-screenplay-section-heading,
@@ -96,7 +76,7 @@
 .v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(108, 93, 171, .17); }
 .v2-screenplay-beat { padding: 10px 0; border-top: 1px solid rgba(108, 93, 171, .12); }
 .v2-screenplay-dialogue h5 { font-size: 13px; }
-.v2-screenplay-empty, .v2-screenplay-status, .v2-screenplay-hint { margin: 10px 0; color: var(--muted); font-size: 13px; }
+.v2-screenplay-empty, .v2-screenplay-hint { margin: 10px 0; color: var(--muted); font-size: 13px; }
 .v2-screenplay-empty em { display: block; margin-top: 5px; color: #a42e40; font-style: normal; }
 .v2-screenplay-validation-summary { margin: 0 0 12px; padding: 12px; border: 1px solid rgba(171, 71, 87, .36); border-radius: 4px; background: rgba(255, 236, 238, .66); color: #8d2335; font-size: 13px; }
 .v2-screenplay-validation-summary ul { margin: 8px 0 0; padding-left: 20px; }

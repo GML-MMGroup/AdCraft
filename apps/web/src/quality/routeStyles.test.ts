@@ -73,6 +73,36 @@ describe("route-scoped styles", () => {
     expect(baseStyles).toContain("@keyframes route-loading-spin");
   });
 
+  it("styles the screenplay Suspense fallback before the lazy editor stylesheet resolves", () => {
+    const lazyDrawerSource = source("features/workflow/page/LazyV2ScreenplayDrawer.tsx");
+    const workflowPageSource = source("pages/WorkflowPage.tsx");
+    const workflowStyles = source("features/workflow/workflow.css");
+    const screenplayDrawerSource = source("features/workflow/v2/screenplay/V2ScreenplayDrawer.tsx");
+    const screenplayStyles = source("features/workflow/v2/screenplay/screenplay.css");
+
+    expect(lazyDrawerSource).toContain('lazy(() => import("./screenplay-editor.tsx")');
+    expect(lazyDrawerSource).toContain('className="v2-screenplay-drawer-backdrop"');
+    expect(lazyDrawerSource).toContain('className="v2-screenplay-drawer" role="status"');
+    expect(lazyDrawerSource).toContain('className="v2-screenplay-status"');
+    expect(workflowPageSource).toContain('import "../features/workflow/workflow.css"');
+    expect(workflowPageSource).not.toContain("screenplay.css");
+    expect(screenplayDrawerSource).toContain('import "./screenplay.css"');
+
+    expect(declarationBlock(workflowStyles, ".v2-screenplay-drawer-backdrop")).toMatch(
+      /position:\s*fixed;[\s\S]*z-index:\s*80;[\s\S]*inset:\s*0;[\s\S]*display:\s*flex;[\s\S]*justify-content:\s*flex-end;[\s\S]*background:/,
+    );
+    expect(declarationBlock(workflowStyles, ".v2-screenplay-drawer")).toMatch(
+      /position:\s*relative;[\s\S]*display:\s*grid;[\s\S]*width:\s*min\(760px,\s*92vw\);[\s\S]*height:\s*100dvh;[\s\S]*grid-template-rows:[\s\S]*background:[\s\S]*box-shadow:/,
+    );
+    expect(declarationBlock(workflowStyles, ".v2-screenplay-status")).toMatch(
+      /margin:\s*10px 0;[\s\S]*color:\s*var\(--muted\);[\s\S]*font-size:\s*13px;/,
+    );
+
+    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer-backdrop\s*\{/);
+    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer\s*\{/);
+    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-status(?:\s|,|\{)/);
+  });
+
   it("keeps workflow and final-composition selectors out of Home styles", () => {
     expect(existsSync(resolve(sourceRoot, "pages/home.css"))).toBe(true);
     const homeStyles = source("pages/home.css");
