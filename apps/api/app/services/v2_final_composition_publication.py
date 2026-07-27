@@ -269,7 +269,7 @@ class V2FinalCompositionPublicationService:
                 asset_id=asset_id,
                 version_id=version_id,
                 media_type="video",
-                source_type="derived",
+                source_type=("derived" if source_action == "editor_export" else "generated"),
                 file_path=relative_path.as_posix(),
                 public_url=public_url_for_path(relative_path.as_posix()),
                 workflow_id=workflow.workflow_id,

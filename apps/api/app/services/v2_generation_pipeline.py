@@ -1722,10 +1722,11 @@ class V2GenerationPipeline:
         slot: WorkflowSlotV2,
         provider_payload: dict[str, Any],
     ) -> V2FinalCompositionFingerprint:
+        fingerprint_workflow = workflow.model_copy(deep=True)
         _stored_workflow, _item, _final_slot, timeline, _source = (
             self._final_timeline_service.load_or_create_and_reconcile(
                 workflow.workflow_id,
-                workflow_override=workflow,
+                workflow_override=fingerprint_workflow,
             )
         )
         simple_plan_payload = provider_payload.get("simple_composition_plan")
@@ -1976,9 +1977,11 @@ class V2GenerationPipeline:
             provider_payload.get("composition_fingerprint"),
             str,
         ):
-            source_path = Path(str(provider_result.local_file_path or ""))
-            if not source_path.is_absolute():
-                source_path = self._data_dir / source_path
+            source_path = self._final_composition_source_path(
+                workflow,
+                provider_payload,
+                provider_result,
+            )
             item = next(
                 (
                     candidate
@@ -2184,6 +2187,41 @@ class V2GenerationPipeline:
             },
         )
         return self._asset_store.save_asset_version(record)
+
+    def _final_composition_source_path(
+        self,
+        workflow: WorkflowV2,
+        provider_payload: dict[str, Any],
+        provider_result: V2ProviderResult,
+    ) -> Path:
+        if provider_result.local_file_path:
+            source_path = Path(provider_result.local_file_path)
+            return source_path if source_path.is_absolute() else self._data_dir / source_path
+        if provider_result.asset_bytes is None:
+            raise V2GenerationPipelineError(
+                "provider_output_missing",
+                "Final composition result did not include asset bytes or a local file path.",
+            )
+        fingerprint = str(provider_payload["composition_fingerprint"]).removeprefix("sha256:")
+        render_id = str(provider_payload.get("render_id") or f"global_{fingerprint[:24]}")
+        relative_path = (
+            Path("v2")
+            / "runs"
+            / workflow.workflow_id
+            / "composition"
+            / render_id
+            / "final-ad-video.mp4.part"
+        )
+        source_path = validate_v2_data_path(
+            self._data_dir,
+            self._data_dir / relative_path,
+            operation="v2-final-composition-stage-bytes",
+        )
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = source_path.with_name(f".{source_path.name}.tmp")
+        temporary.write_bytes(provider_result.asset_bytes)
+        temporary.replace(source_path)
+        return source_path
 
     def _shot_reference_snapshot_metadata(
         self,
