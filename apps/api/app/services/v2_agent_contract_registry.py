@@ -7,11 +7,18 @@ from pydantic import BaseModel
 from app.schemas.front_desk import FrontDeskIntentOutput
 from app.schemas.agent_runtime import SpecialistDraft
 from app.schemas.specialist_agents import SpecialistResult
-from app.schemas.workflow_v2_expert_brief_contracts import V2ExpertBriefPlannerOutput
+from app.schemas.workflow_v2_expert_brief_contracts import (
+    V2BgmExpertPlan,
+    V2CharacterExpertPlan,
+    V2ExpertBriefPlannerOutput,
+    V2ProductExpertPlan,
+    V2SceneExpertPlan,
+)
 from app.schemas.workflow_v2_intent import V2IntentPlan
 from app.schemas.workflow_v2_prompt_contracts import (
     V2CharacterMainPromptPlan,
     V2CharacterThreeViewPromptPlan,
+    V2BgmPromptPlan,
     V2ProductMainPromptPlan,
     V2ProductMultiViewPromptPlan,
     V2SceneMainPromptPlan,
@@ -32,6 +39,10 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
         V2ExpertBriefPlannerOutput,
+        V2ProductExpertPlan,
+        V2CharacterExpertPlan,
+        V2SceneExpertPlan,
+        V2BgmExpertPlan,
         V2IntentPlan,
         V2ScriptPlanV2,
         V2StoryboardDetailPlan,
@@ -44,6 +55,7 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         V2SceneMultiViewPromptPlan,
         V2ShotCellPromptPlan,
         V2ShotVideoPromptPlan,
+        V2BgmPromptPlan,
     )
 }
 

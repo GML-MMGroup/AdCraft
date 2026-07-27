@@ -11,6 +11,9 @@ from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
 from app.schemas import agent_operation_contexts
+from app.schemas import workflow_v2_expert_brief_contracts
+from app.schemas import workflow_v2_planning
+from app.schemas import workflow_v2_prompt_contracts
 
 
 CONTRACT_MODELS = (
@@ -25,6 +28,15 @@ CONTRACT_MODELS = (
     agent_operation_contexts.CharacterExpertAgentContext,
     agent_operation_contexts.SceneExpertAgentContext,
     agent_operation_contexts.BgmExpertAgentContext,
+    workflow_v2_planning.V2ProductBrief,
+    workflow_v2_planning.V2CharacterBrief,
+    workflow_v2_planning.V2SceneBrief,
+    workflow_v2_planning.V2BgmBrief,
+    workflow_v2_expert_brief_contracts.V2ProductExpertPlan,
+    workflow_v2_expert_brief_contracts.V2CharacterExpertPlan,
+    workflow_v2_expert_brief_contracts.V2SceneExpertPlan,
+    workflow_v2_expert_brief_contracts.V2BgmExpertPlan,
+    workflow_v2_prompt_contracts.V2BgmPromptPlan,
     agent_runtime.AgentReferenceSummary,
     agent_runtime.AgentTargetContext,
     agent_runtime.AgentRunContext,
@@ -91,8 +103,8 @@ def _typescript_type(schema: dict[str, Any]) -> str:
         return " | ".join(_typescript_type(option) for option in schema["oneOf"])
     schema_type = schema.get("type")
     if schema_type == "object" or "properties" in schema:
-        if schema.get("additionalProperties") not in {None, False}:
-            additional = schema["additionalProperties"]
+        additional = schema.get("additionalProperties")
+        if additional is not None and additional is not False:
             value_type = _typescript_type(additional) if isinstance(additional, dict) else "unknown"
             return f"Readonly<Record<string, {value_type}>>"
         required = frozenset(schema.get("required", []))

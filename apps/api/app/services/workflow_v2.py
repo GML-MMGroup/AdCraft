@@ -820,6 +820,8 @@ class WorkflowV2Service:
                 input_asset_descriptors=input_asset_descriptors,
                 normalized_request=planning_normalized_request,
                 specialist_handoffs=specialist_handoffs,
+                planning_session=planning_session,
+                frozen_facts=frozen_facts,
             )
         except V2ExpertBriefPlannerError as exc:
             raise WorkflowV2Error(exc.code, str(exc)) from exc

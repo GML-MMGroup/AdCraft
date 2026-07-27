@@ -1988,6 +1988,672 @@
       ],
       "title": "StructuredViolation",
       "type": "object"
+    },
+    "V2BgmBrief": {
+      "properties": {
+        "asset_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Asset Prompts",
+          "type": "object"
+        },
+        "audio_mode": {
+          "enum": [
+            "none",
+            "bgm_only",
+            "full"
+          ],
+          "title": "Audio Mode",
+          "type": "string"
+        },
+        "brief_builder_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Builder Version"
+        },
+        "creative_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Brief"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "minimum": 1,
+          "title": "Duration Seconds",
+          "type": "integer"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_prompt": {
+          "title": "Item Prompt",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "music_mood": {
+          "title": "Music Mood",
+          "type": "string"
+        },
+        "pace": {
+          "title": "Pace",
+          "type": "string"
+        },
+        "slot_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Slot Prompts",
+          "type": "object"
+        },
+        "source_scene_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Scene Ids",
+          "type": "array"
+        },
+        "source_shot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Shot Ids",
+          "type": "array"
+        },
+        "source_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Ids",
+          "type": "array"
+        },
+        "source_skill_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Paths",
+          "type": "array"
+        },
+        "specialist_quality_audit": {
+          "additionalProperties": true,
+          "title": "Specialist Quality Audit",
+          "type": "object"
+        }
+      },
+      "required": [
+        "item_id",
+        "display_name",
+        "description",
+        "item_prompt",
+        "slot_prompts",
+        "duration_seconds",
+        "music_mood",
+        "pace",
+        "audio_mode"
+      ],
+      "title": "V2BgmBrief",
+      "type": "object"
+    },
+    "V2BgmExpertPlan": {
+      "properties": {
+        "bgm_brief": {
+          "$ref": "#/$defs/V2BgmBrief"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bgm_brief"
+      ],
+      "title": "V2BgmExpertPlan",
+      "type": "object"
+    },
+    "V2BgmPromptPlan": {
+      "properties": {
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "energy_curve": {
+          "title": "Energy Curve",
+          "type": "string"
+        },
+        "instrumental_only": {
+          "const": true,
+          "default": true,
+          "title": "Instrumental Only",
+          "type": "boolean"
+        },
+        "music_brief": {
+          "title": "Music Brief",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "no_lyrics": {
+          "const": true,
+          "default": true,
+          "title": "No Lyrics",
+          "type": "boolean"
+        },
+        "no_vocals": {
+          "const": true,
+          "default": true,
+          "title": "No Vocals",
+          "type": "boolean"
+        },
+        "pace": {
+          "title": "Pace",
+          "type": "string"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "slot_type": {
+          "const": "bgm_audio",
+          "default": "bgm_audio",
+          "title": "Slot Type",
+          "type": "string"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "summary_prompt",
+        "provider_prompt",
+        "specialist_prompt",
+        "music_brief",
+        "duration_seconds",
+        "pace",
+        "energy_curve"
+      ],
+      "title": "V2BgmPromptPlan",
+      "type": "object"
+    },
+    "V2CharacterBrief": {
+      "properties": {
+        "asset_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Asset Prompts",
+          "type": "object"
+        },
+        "brief_builder_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Builder Version"
+        },
+        "creative_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Brief"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_prompt": {
+          "title": "Item Prompt",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "slot_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Slot Prompts",
+          "type": "object"
+        },
+        "source_scene_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Scene Ids",
+          "type": "array"
+        },
+        "source_shot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Shot Ids",
+          "type": "array"
+        },
+        "source_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Ids",
+          "type": "array"
+        },
+        "source_skill_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Paths",
+          "type": "array"
+        },
+        "specialist_quality_audit": {
+          "additionalProperties": true,
+          "title": "Specialist Quality Audit",
+          "type": "object"
+        }
+      },
+      "required": [
+        "item_id",
+        "display_name",
+        "description",
+        "item_prompt",
+        "slot_prompts"
+      ],
+      "title": "V2CharacterBrief",
+      "type": "object"
+    },
+    "V2CharacterExpertPlan": {
+      "properties": {
+        "character_briefs": {
+          "items": {
+            "$ref": "#/$defs/V2CharacterBrief"
+          },
+          "title": "Character Briefs",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "V2CharacterExpertPlan",
+      "type": "object"
+    },
+    "V2ProductBrief": {
+      "properties": {
+        "asset_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Asset Prompts",
+          "type": "object"
+        },
+        "brief_builder_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Builder Version"
+        },
+        "creative_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Brief"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_prompt": {
+          "title": "Item Prompt",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "slot_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Slot Prompts",
+          "type": "object"
+        },
+        "source_scene_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Scene Ids",
+          "type": "array"
+        },
+        "source_shot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Shot Ids",
+          "type": "array"
+        },
+        "source_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Ids",
+          "type": "array"
+        },
+        "source_skill_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Paths",
+          "type": "array"
+        },
+        "specialist_quality_audit": {
+          "additionalProperties": true,
+          "title": "Specialist Quality Audit",
+          "type": "object"
+        }
+      },
+      "required": [
+        "item_id",
+        "display_name",
+        "description",
+        "item_prompt",
+        "slot_prompts"
+      ],
+      "title": "V2ProductBrief",
+      "type": "object"
+    },
+    "V2ProductExpertPlan": {
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "product_briefs": {
+          "items": {
+            "$ref": "#/$defs/V2ProductBrief"
+          },
+          "title": "Product Briefs",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "V2ProductExpertPlan",
+      "type": "object"
+    },
+    "V2SceneBrief": {
+      "properties": {
+        "asset_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Asset Prompts",
+          "type": "object"
+        },
+        "brief_builder_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Builder Version"
+        },
+        "creative_brief": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Brief"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "display_name": {
+          "title": "Display Name",
+          "type": "string"
+        },
+        "item_id": {
+          "title": "Item Id",
+          "type": "string"
+        },
+        "item_prompt": {
+          "title": "Item Prompt",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "slot_prompts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Slot Prompts",
+          "type": "object"
+        },
+        "source_scene_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Scene Ids",
+          "type": "array"
+        },
+        "source_shot_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Shot Ids",
+          "type": "array"
+        },
+        "source_skill_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Ids",
+          "type": "array"
+        },
+        "source_skill_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Skill Paths",
+          "type": "array"
+        },
+        "specialist_quality_audit": {
+          "additionalProperties": true,
+          "title": "Specialist Quality Audit",
+          "type": "object"
+        }
+      },
+      "required": [
+        "item_id",
+        "display_name",
+        "description",
+        "item_prompt",
+        "slot_prompts"
+      ],
+      "title": "V2SceneBrief",
+      "type": "object"
+    },
+    "V2SceneExpertPlan": {
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "scene_briefs": {
+          "items": {
+            "$ref": "#/$defs/V2SceneBrief"
+          },
+          "title": "Scene Briefs",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "title": "V2SceneExpertPlan",
+      "type": "object"
     }
   },
   "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
