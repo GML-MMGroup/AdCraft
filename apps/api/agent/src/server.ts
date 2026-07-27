@@ -171,9 +171,11 @@ async function handleRun(
     const next = event(request, 0, candidate.event_type, candidate.payload ?? {});
     const encoded = `${JSON.stringify(next)}\n`;
     const terminal = terminalEvents.has(next.event_type);
-    budget.observeEvent(Buffer.byteLength(encoded), !terminal);
-    if (next.event_type === "output_delta") {
-      budget.observeOutput(Buffer.byteLength(JSON.stringify(next.payload)));
+    if (!terminal) {
+      budget.observeEvent(Buffer.byteLength(encoded));
+      if (next.event_type === "output_delta") {
+        budget.observeOutput(Buffer.byteLength(JSON.stringify(next.payload)));
+      }
     }
     if (terminal) {
       terminalEmitted = eventBuffer.enqueueTerminal(next);
