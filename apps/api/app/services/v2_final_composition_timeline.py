@@ -33,6 +33,10 @@ from app.schemas.workflow_v2 import (
     WorkflowV2TimelineUpdateRequest,
     WorkflowV2TimelineUpdateResponse,
 )
+from app.schemas.workflow_v2_composition import (
+    V2SimpleCompositionPlan,
+    WorkflowV2CompositionCapabilities,
+)
 from app.services.agent_trace import utc_now
 from app.services.media_paths import public_url_for_path
 from app.services.v2_asset_store import V2AssetStoreService
@@ -44,6 +48,7 @@ from app.services.v2_final_composition_renderer import (
     V2MediaProbeResult,
 )
 from app.services.v2_runtime_events import V2RuntimeEventService
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_workflow_assets import V2WorkflowAssetError, V2WorkflowAssetService
 from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 from app.schemas.workflow_v2_authoring import WorkflowRevisionChangeSource
@@ -88,6 +93,7 @@ class V2FinalCompositionTimelineService:
                 settings=renderer_settings,
             )
         )
+        self._simple_plan_service = V2SimpleCompositionPlanService(self._data_dir)
 
     def get_timeline(self, workflow_id: str) -> WorkflowV2TimelineResponse:
         workflow, item, _slot, timeline, source = self.load_or_create_and_reconcile(workflow_id)
@@ -205,9 +211,22 @@ class V2FinalCompositionTimelineService:
         *,
         render_id: str | None = None,
         emit_lifecycle_events: bool = True,
+        simple_plan_override: V2SimpleCompositionPlan | None = None,
+        enforce_current_timeline_version: bool = True,
     ) -> WorkflowV2TimelineRenderResponse:
-        workflow, item, slot, timeline, _source = self.load_or_create_and_reconcile(workflow_id)
-        if (
+        if simple_plan_override is not None and not enforce_current_timeline_version:
+            workflow = self._load_workflow(workflow_id)
+            item, slot = self._final_item_and_slot(workflow)
+            timeline = self._load_timeline(workflow_id)
+            if timeline is None:
+                raise V2FinalCompositionTimelineError(
+                    "v2_timeline_not_found",
+                    "The accepted Final Composition timeline is unavailable.",
+                    status_code=500,
+                )
+        else:
+            workflow, item, slot, timeline, _source = self.load_or_create_and_reconcile(workflow_id)
+        if enforce_current_timeline_version and (
             request.timeline_id != timeline.timeline_id
             or request.timeline_version != timeline.version
         ):
@@ -218,11 +237,22 @@ class V2FinalCompositionTimelineService:
             )
         self._validate_timeline(workflow_id, timeline)
         resolved_render_id = render_id or f"render_{uuid4().hex[:12]}"
+        simple_plan = simple_plan_override
+        if (
+            self._settings.final_composition_render_mode.strip().lower() == "simple_sequence"
+            and simple_plan is None
+        ):
+            simple_plan = self._simple_plan_service.build(workflow)
         provider_payload = self._provider_payload(
             timeline,
             request.render_settings.model_dump(mode="json"),
+            simple_plan=simple_plan,
         )
         provider_payload["render_id"] = resolved_render_id
+        provider_payload["accepted_timeline"] = {
+            "timeline_id": request.timeline_id,
+            "timeline_version": request.timeline_version,
+        }
         if emit_lifecycle_events:
             self._events.append_event(
                 workflow_id,
@@ -257,6 +287,8 @@ class V2FinalCompositionTimelineService:
                 "Timeline render did not create an output file.",
                 status_code=400,
             )
+        workflow = self._load_workflow(workflow_id)
+        item, slot = self._final_item_and_slot(workflow)
         record = self._register_final_asset_version(
             workflow,
             item,
@@ -809,7 +841,23 @@ class V2FinalCompositionTimelineService:
         self,
         timeline: WorkflowV2Timeline,
         render_settings: dict[str, Any],
+        *,
+        simple_plan: V2SimpleCompositionPlan | None,
     ) -> dict[str, Any]:
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        if mode == "simple_sequence":
+            if simple_plan is None:
+                raise V2FinalCompositionTimelineError(
+                    "v2_simple_composition_plan_invalid",
+                    "Simple Final Composition requires a valid immutable input plan.",
+                    status_code=500,
+                )
+            return {
+                "composition_tool": "local_composition_ffmpeg",
+                "simple_composition_plan": simple_plan.model_dump(mode="json"),
+                "render_mode": "simple_sequence",
+                "render_settings": dict(render_settings),
+            }
         track_order = {track.track_id: track.order for track in timeline.tracks}
         timeline_clips: list[dict[str, Any]] = []
         for index, clip in enumerate(
@@ -868,17 +916,36 @@ class V2FinalCompositionTimelineService:
         previous_version_id = slot.selected_version_id
         asset_id = previous_asset_id or "asset_final_composition_1_final_video"
         version_id = f"ver_{render_id}"
-        source_clip_ids = [clip.clip_id for clip in timeline.clips if clip.clip_type == "video"]
-        source_asset_ids = [
-            str(clip.source_asset_id) for clip in timeline.clips if clip.source_asset_id
-        ]
-        source_version_ids = [
-            str(clip.source_version_id) for clip in timeline.clips if clip.source_version_id
-        ]
+        simple_plan_payload = provider_payload.get("simple_composition_plan")
+        if isinstance(simple_plan_payload, dict):
+            simple_plan = V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+            source_clip_ids: list[str] = []
+            source_asset_ids = [source.asset_id for source in simple_plan.videos]
+            source_version_ids = [source.version_id for source in simple_plan.videos]
+        else:
+            source_clip_ids = [clip.clip_id for clip in timeline.clips if clip.clip_type == "video"]
+            source_asset_ids = [
+                str(clip.source_asset_id) for clip in timeline.clips if clip.source_asset_id
+            ]
+            source_version_ids = [
+                str(clip.source_version_id) for clip in timeline.clips if clip.source_version_id
+            ]
+        accepted_timeline = provider_payload.get("accepted_timeline")
+        timeline_id = (
+            str(accepted_timeline["timeline_id"])
+            if isinstance(accepted_timeline, dict) and accepted_timeline.get("timeline_id")
+            else timeline.timeline_id
+        )
+        timeline_version = (
+            int(accepted_timeline["timeline_version"])
+            if isinstance(accepted_timeline, dict)
+            and accepted_timeline.get("timeline_version") is not None
+            else timeline.version
+        )
         metadata = {
             **result.metadata,
-            "timeline_id": timeline.timeline_id,
-            "timeline_version": timeline.version,
+            "timeline_id": timeline_id,
+            "timeline_version": timeline_version,
             "render_id": render_id,
             "source_clip_ids": source_clip_ids,
             "source_asset_ids": source_asset_ids,
@@ -1089,6 +1156,17 @@ class V2FinalCompositionTimelineService:
             available_sources=self._available_sources(workflow),
             stale_clip_ids=self._stale_clip_ids(workflow, timeline),
             missing_source_clip_ids=self._missing_source_clip_ids(workflow.workflow_id, timeline),
+            composition_capabilities=self._composition_capabilities(),
+        )
+
+    def _composition_capabilities(self) -> WorkflowV2CompositionCapabilities:
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        timeline_controls = mode == "timeline_editor"
+        return WorkflowV2CompositionCapabilities(
+            render_mode=mode,  # type: ignore[arg-type]
+            supports_timeline_controls=timeline_controls,
+            supports_shot_reorder=timeline_controls,
+            supports_bgm_volume_edit=timeline_controls,
         )
 
     def _runtime_snapshot(self, workflow: WorkflowV2) -> WorkflowV2RuntimeSnapshot:

@@ -15,6 +15,7 @@ from app.schemas.workflow_v2 import (
     WorkflowV2TimelineRenderStartResponse,
     WorkflowV2TimelineRenderStateResponse,
 )
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.services.agent_trace import utc_now
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.services.v2_final_composition_renderer import V2FinalCompositionRenderer
@@ -29,6 +30,10 @@ from app.services.v2_media_toolchain_capabilities import (
     V2MediaToolchainCapabilityService,
 )
 from app.services.v2_runtime_events import V2RuntimeEventService
+from app.services.v2_simple_composition_plan import (
+    V2SimpleCompositionPlanError,
+    V2SimpleCompositionPlanService,
+)
 
 
 _TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
@@ -45,6 +50,7 @@ class V2FinalCompositionRenderService:
         self._data_dir = settings.media_data_dir
         self._events = V2RuntimeEventService(self._data_dir)
         self._timeline_service = V2FinalCompositionTimelineService(settings)
+        self._simple_plan_service = V2SimpleCompositionPlanService(self._data_dir)
 
     def start_render(
         self,
@@ -63,12 +69,35 @@ class V2FinalCompositionRenderService:
                 "Render request does not match the saved timeline version.",
                 status_code=409,
             )
+        simple_plan: V2SimpleCompositionPlan | None = None
+        render_mode = self._settings.final_composition_render_mode.strip().lower()
+        if render_mode == "simple_sequence":
+            settlement = self._simple_plan_service.inspect(workflow)
+            if not settlement.settled:
+                raise V2FinalCompositionTimelineError(
+                    "composition_inputs_not_settled",
+                    "Final Composition inputs have not settled.",
+                    status_code=409,
+                    details={"pending_slot_ids": settlement.pending_slot_ids},
+                )
+            try:
+                simple_plan = self._simple_plan_service.build(workflow)
+            except V2SimpleCompositionPlanError as exc:
+                raise V2FinalCompositionTimelineError(
+                    exc.code,
+                    str(exc),
+                    status_code=409,
+                ) from exc
         if self._settings.media_mode.strip().lower() != "mock":
             try:
                 V2MediaToolchainCapabilityService(self._settings).require_profile(
                     PROFILE_ID,
-                    requires_subtitles=any(
-                        clip.enabled and clip.clip_type == "subtitle" for clip in timeline.clips
+                    requires_subtitles=(
+                        False
+                        if render_mode == "simple_sequence"
+                        else any(
+                            clip.enabled and clip.clip_type == "subtitle" for clip in timeline.clips
+                        )
                     ),
                 )
             except V2MediaToolchainCapabilityError as exc:
@@ -99,6 +128,7 @@ class V2FinalCompositionRenderService:
             "updated_at": now,
             "events_cursor": self._events.events_cursor(workflow_id),
             "request": request.model_dump(mode="json"),
+            **self._simple_plan_state_metadata(simple_plan),
         }
         with _REGISTRY_LOCK:
             active = self._active_state(workflow_id)
@@ -109,6 +139,8 @@ class V2FinalCompositionRenderService:
                     status_code=409,
                     details={"active_render_id": active["render_id"]},
                 )
+            if simple_plan is not None:
+                self._write_simple_plan(workflow_id, render_id, simple_plan)
             self._write_state(workflow_id, render_id, state)
             _PROCESS_REGISTRY[(str(self._data_dir), workflow_id)] = None
         event = self._events.append_event(
@@ -209,9 +241,15 @@ class V2FinalCompositionRenderService:
         try:
             running = self._transition(state, "running")
             self._write_state(workflow_id, render_id, running)
-            self._timeline_service.load_or_create_and_reconcile(workflow_id)
+            if running.get("render_mode") != "simple_sequence":
+                self._timeline_service.load_or_create_and_reconcile(workflow_id)
             self._append_render_event(workflow_id, "final_composition_render_started", running)
             request = WorkflowV2TimelineRenderRequest.model_validate(running["request"])
+            simple_plan = (
+                self._load_simple_plan(workflow_id, render_id)
+                if running.get("render_mode") == "simple_sequence"
+                else None
+            )
             service = V2FinalCompositionTimelineService(
                 self._settings,
                 renderer_factory=self._renderer_factory(workflow_id, render_id),
@@ -221,6 +259,8 @@ class V2FinalCompositionRenderService:
                 request,
                 render_id=render_id,
                 emit_lifecycle_events=False,
+                simple_plan_override=simple_plan,
+                enforce_current_timeline_version=False,
             )
         except V2FinalCompositionTimelineError as exc:
             self._fail_render(workflow_id, render_id, exc.code, str(exc))
@@ -378,6 +418,13 @@ class V2FinalCompositionRenderService:
             "progress_seconds": state.get("progress_seconds"),
             "total_seconds": state.get("total_seconds"),
             "progress_percent": state.get("progress_percent"),
+            "render_mode": state.get("render_mode"),
+            "included_shot_ids": state.get("included_shot_ids", []),
+            "missing_shot_ids": state.get("missing_shot_ids", []),
+            "source_asset_versions": state.get("source_asset_versions", []),
+            "bgm_status": state.get("bgm_status"),
+            "bgm_gain_db": state.get("bgm_gain_db"),
+            "timeline_controls_applied": state.get("timeline_controls_applied"),
         }
 
     def _append_render_event(
@@ -443,6 +490,73 @@ class V2FinalCompositionRenderService:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+
+    def _simple_plan_path(self, workflow_id: str, render_id: str) -> Path:
+        path = self._composition_dir(workflow_id) / render_id / "simple-sequence-plan.json"
+        return validate_v2_data_path(
+            self._data_dir,
+            path,
+            operation="v2-simple-composition-plan-write",
+        )
+
+    def _write_simple_plan(
+        self,
+        workflow_id: str,
+        render_id: str,
+        plan: V2SimpleCompositionPlan,
+    ) -> None:
+        path = self._simple_plan_path(workflow_id, render_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".tmp")
+        with temporary.open("w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(plan.model_dump(mode="json"), ensure_ascii=False, indent=2) + "\n"
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+
+    def _load_simple_plan(
+        self,
+        workflow_id: str,
+        render_id: str,
+    ) -> V2SimpleCompositionPlan:
+        path = self._simple_plan_path(workflow_id, render_id)
+        try:
+            return V2SimpleCompositionPlan.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise V2FinalCompositionTimelineError(
+                "v2_simple_composition_plan_invalid",
+                "Persisted simple composition input snapshot is unavailable.",
+                status_code=500,
+            ) from exc
+
+    def _simple_plan_state_metadata(
+        self,
+        plan: V2SimpleCompositionPlan | None,
+    ) -> dict[str, Any]:
+        if plan is None:
+            return {
+                "render_mode": "timeline_editor",
+                "timeline_controls_applied": True,
+            }
+        has_source_audio = True
+        return {
+            "render_mode": plan.render_mode,
+            "included_shot_ids": [source.shot_id for source in plan.videos],
+            "missing_shot_ids": list(plan.missing_shot_ids),
+            "source_asset_versions": [
+                {"asset_id": source.asset_id, "version_id": source.version_id}
+                for source in plan.videos
+            ],
+            "bgm_status": plan.bgm_status,
+            "bgm_gain_db": (
+                self._settings.final_composition_bgm_gain_db_with_source
+                if has_source_audio
+                else self._settings.final_composition_bgm_gain_db_without_source
+            ),
+            "timeline_controls_applied": False,
+        }
 
     def _composition_dir(self, workflow_id: str) -> Path:
         path = self._data_dir / "v2" / "runs" / workflow_id / "composition"
