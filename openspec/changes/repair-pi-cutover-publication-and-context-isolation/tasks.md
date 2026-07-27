@@ -3,7 +3,7 @@
 - [x] 1.1 In a dedicated monorepo backend worktree, add a focused failing test
   that constructs `WorkflowV2Service` and proves the missing
   `_execution_result_publication` collaborator.
-- [ ] 1.2 Add a focused failing scheduler test reproducing provider success
+- [x] 1.2 Add a focused failing scheduler test reproducing provider success
   followed by null selected IDs, blocked matching multi-view, and duplicate
   main generation on the next fill-missing run.
 - [ ] 1.3 Preserve diagnostic evidence from
@@ -35,21 +35,21 @@
   `tests/test_v2_execution_result_publication.py` proving pending selection,
   terminal publication, repeated publication, and concurrent-authoring
   deferral.
-- [ ] 3.2 Add/update scheduler tests proving a stale failure/queued snapshot
+- [x] 3.2 Add/update scheduler tests proving a stale failure/queued snapshot
   cannot erase a successfully published selected version.
-- [ ] 3.3 Prove a valid selected main image is skipped by a later
+- [x] 3.3 Prove a valid selected main image is skipped by a later
   `fill_missing_required_slots` run.
-- [ ] 3.4 Prove one main-image success unlocks only its matching multi-view
+- [x] 3.4 Prove one main-image success unlocks only its matching multi-view
   slot and supplies the matching selected reference version.
-- [ ] 3.5 Prove provider/publication infrastructure errors remain distinct from
+- [x] 3.5 Prove provider/publication infrastructure errors remain distinct from
   actual provider-generation errors and preserve durable output for recovery.
 
 ## 4. Re-Prove Pi Context Isolation
 
-- [ ] 4.1 Inspect `app/schemas/agent_operation_contexts.py`,
+- [x] 4.1 Inspect `app/schemas/agent_operation_contexts.py`,
   `app/services/v2_pi_agent_context.py`, the Pi Sidecar operation registry,
   expert prompt registry, and current isolation tests.
-- [ ] 4.2 Restore any migration-omitted typed context schema, builder, registry,
+- [x] 4.2 Restore any migration-omitted typed context schema, builder, registry,
   or direct dependency; do not add arbitrary dictionary or full-workflow
   compatibility fallbacks.
 - [ ] 4.3 Add Product, Character, Scene, BGM, targeted revision, Storyboard, and
@@ -66,7 +66,7 @@
 - [ ] 5.1 Add a bounded production dependency/parity test that catches a
   referenced-but-absent module or referenced-but-uninitialized collaborator in
   the Pi/V2 execution roots.
-- [ ] 5.2 Restore the focused publication, scheduler, context-isolation, and
+- [x] 5.2 Restore the focused publication, scheduler, context-isolation, and
   cutover tests that were omitted from the deployed backend package.
 - [ ] 5.3 Update the existing Pi equivalence matrix and append a dated
   correction to
@@ -79,11 +79,11 @@
 
 - [x] 6.1 Run the exact new failing tests before implementation and record the
   expected failure reason.
-- [ ] 6.2 Run the publication and scheduler files:
+- [x] 6.2 Run the publication and scheduler files:
   `uv run pytest tests/test_v2_execution_result_publication.py
   tests/test_v2_provider_result_commit_recovery.py
   tests/test_v2_parallel_scheduler.py -q`.
-- [ ] 6.3 Run the Pi context and expert-isolation files, including the newly
+- [x] 6.3 Run the Pi context and expert-isolation files, including the newly
   added sentinel and parallel-invocation tests.
 - [ ] 6.4 Run a deterministic fake-provider critical path from main images
   through multi-views, storyboard media, and Final Composition.

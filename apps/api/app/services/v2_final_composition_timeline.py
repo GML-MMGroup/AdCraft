@@ -118,8 +118,10 @@ class V2FinalCompositionTimelineService:
     def load_or_create_and_reconcile(
         self,
         workflow_id: str,
+        *,
+        workflow_override: WorkflowV2 | None = None,
     ) -> tuple[WorkflowV2, WorkflowItemV2, WorkflowSlotV2, WorkflowV2Timeline, str]:
-        workflow = self._load_workflow(workflow_id)
+        workflow = workflow_override or self._load_workflow(workflow_id)
         item, slot = self._final_item_and_slot(workflow)
         saved = self._load_timeline(workflow_id)
         source_hash = self._source_selection_hash(workflow)
@@ -169,8 +171,9 @@ class V2FinalCompositionTimelineService:
         else:
             timeline = saved
         if self._project_compatibility_timeline(item, timeline):
-            workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
-            item, slot = self._final_item_and_slot(workflow)
+            if workflow_override is None:
+                workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
+                item, slot = self._final_item_and_slot(workflow)
         return workflow, item, slot, timeline, source
 
     def project_compatibility_timeline(

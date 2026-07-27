@@ -11,6 +11,7 @@ from app.persistence.schema import upgrade_v2_schema
 @pytest.fixture
 def v2_media_data_dir(tmp_path: Path) -> Path:
     data_dir = tmp_path / "data"
+    (data_dir / "v2").mkdir(parents=True)
     database = create_v2_database(data_dir)
     try:
         upgrade_v2_schema(database)
