@@ -102,9 +102,9 @@ The Linux checks use the same rules as Windows: Node must be v22, FFmpeg and ffp
 
 ## Step 2: Start AdCraft with one command
 
-The first start creates missing .env files, installs backend and frontend dependencies, starts both services, and prints the local web address. Do not close the terminal until it says Native deployment completed.
+The first start creates missing .env files, installs backend, internal Agent Runtime, and frontend dependencies, starts all three local services, and prints the local web address. Do not close the terminal until it says Native deployment completed.
 
-The launcher displays stages [1/6] through [6/6]. Stages 3/6 and 4/6 show dependency download and installation output. Stages 5/6 and 6/6 display a continuous spinner with elapsed seconds while each service starts. These messages mean the program is still working.
+The launcher displays stages [1/8] through [8/8]. Stages 3/8 through 5/8 show dependency download and installation output. Stages 6/8 through 8/8 display a continuous spinner with elapsed seconds while each local service starts. These messages mean the program is still working.
 
 ### Linux
 
@@ -130,6 +130,7 @@ You can also double-click scripts/deploy-native-windows.cmd. Starting it from Po
 Default addresses:
 
     API: http://127.0.0.1:8000
+    Agent Runtime: http://127.0.0.1:8765 (internal; do not open or expose it)
     Web: http://127.0.0.1:5189
 
 The browser normally opens after a successful start. If it does not, open the Web address in a browser on the same computer. In the web page, enter provider API keys in API Space.
@@ -140,11 +141,12 @@ First stop any previous AdCraft native service. If another program still owns th
 
 Linux:
 
-    ADCRAFT_NATIVE_API_PORT=8001 ADCRAFT_NATIVE_WEB_PORT=5190 bash scripts/deploy-native-linux.sh
+    ADCRAFT_NATIVE_API_PORT=8001 ADCRAFT_NATIVE_AGENT_PORT=8766 ADCRAFT_NATIVE_WEB_PORT=5190 bash scripts/deploy-native-linux.sh
 
 Windows PowerShell:
 
     $env:ADCRAFT_NATIVE_API_PORT = '8001'
+    $env:ADCRAFT_NATIVE_AGENT_PORT = '8766'
     $env:ADCRAFT_NATIVE_WEB_PORT = '5190'
     .\scripts\deploy-native-windows.cmd
 
@@ -152,11 +154,11 @@ The launcher saves these ports and automatically uses them for later status, log
 
 ### Change a port after AdCraft is already running
 
-The frontend proxy reads the API port when the frontend starts. The backend reads the trusted Web origins when the backend starts. Therefore, do not change only one running service's port. Set both desired port variables and run the native launcher again; it stops only the native API and Web processes it started, then starts the matching pair. It keeps .env, runtime-data, .venv, node_modules, and saved API keys.
+The frontend proxy reads the API port when the frontend starts. The backend reads the trusted Web origins and Agent Runtime address when it starts. Therefore, do not change only one running service's port. Set all required port variables and run the native launcher again; it stops only the native processes it started, then starts a matching Agent/API/Web set. It keeps .env, runtime-data, .venv, node_modules, and saved API keys.
 
 ## If the one-command launch fails: manual startup
 
-Use the following only to find a failure in the one-command launcher. Do not run these commands while a successful launcher is already running. These manual commands use the default ports 8000 and 5189. When you need different ports, use the one-command launcher above; it synchronizes both the frontend proxy and the credential interface's trusted local origins.
+Use the following only to find a failure in the one-command launcher. Do not run these commands while a successful launcher is already running. These manual commands use API port 8000, internal Agent port 8765, and Web port 5189. When you need different ports, use the one-command launcher above; it synchronizes the frontend proxy, Agent Runtime, and credential interface's trusted local origins.
 
 ### 1. Create local configuration in the AdCraft project root
 
@@ -164,24 +166,46 @@ Linux:
 
     if [ ! -f apps/api/.env ]; then cp apps/api/.env.example apps/api/.env; chmod 600 apps/api/.env; fi
     if [ ! -f apps/web/.env ]; then cp apps/web/.env.example apps/web/.env; chmod 600 apps/web/.env; fi
-    mkdir -p runtime-data/api
-    chmod 700 runtime-data runtime-data/api
+    mkdir -p runtime-data/api runtime-data/native
+    chmod 700 runtime-data runtime-data/api runtime-data/native
+    umask 077; od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]' > runtime-data/native/agent-runtime-token
 
 Windows PowerShell:
 
     if (-not (Test-Path apps/api/.env)) { Copy-Item apps/api/.env.example apps/api/.env }
     if (-not (Test-Path apps/web/.env)) { Copy-Item apps/web/.env.example apps/web/.env }
-    New-Item -ItemType Directory -Force runtime-data/api | Out-Null
+    New-Item -ItemType Directory -Force runtime-data/api, runtime-data/native | Out-Null
+    $bytes = New-Object byte[] 32; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; [IO.File]::WriteAllText('runtime-data\native\agent-runtime-token', (-join ($bytes | ForEach-Object { $_.ToString('x2') })), [Text.UTF8Encoding]::new($false))
 
 Do not overwrite an existing .env. It can contain API keys saved by AdCraft.
 
-### 2. Start the backend in the first terminal
+### 2. Start the Agent Runtime in the first terminal
+
+Linux: from the AdCraft project root, run:
+
+    cd apps/api/agent
+    npm ci --progress=true
+    TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
+    AGENT_RUNTIME_HOST=127.0.0.1 AGENT_RUNTIME_PORT=8765 AGENT_RUNTIME_PYTHON_BASE_URL=http://127.0.0.1:8000 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" node --import tsx src/main.ts
+
+Windows PowerShell: from the AdCraft project root, run:
+
+    Set-Location apps/api/agent
+    npm ci --progress=true
+    $token = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
+    $env:AGENT_RUNTIME_HOST = '127.0.0.1'; $env:AGENT_RUNTIME_PORT = '8765'; $env:AGENT_RUNTIME_PYTHON_BASE_URL = 'http://127.0.0.1:8000'; $env:AGENT_RUNTIME_INTERNAL_TOKEN = $token
+    node --import tsx src/main.ts
+
+Keep the first terminal open.
+
+### 3. Start the backend in the second terminal
 
 Linux: from the AdCraft project root, run:
 
     cd apps/api
     uv sync
-    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
+    TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
+    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" AGENT_RUNTIME_BASE_URL=http://127.0.0.1:8765 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
 Windows PowerShell: from the AdCraft project root, run:
 
@@ -190,11 +214,13 @@ Windows PowerShell: from the AdCraft project root, run:
     $env:MEDIA_DATA_DIR = Join-Path (Resolve-Path ../..) 'runtime-data\api'
     $env:FFMPEG_PATH = (Get-Command ffmpeg).Source
     $env:FFPROBE_PATH = (Get-Command ffprobe).Source
+    $env:AGENT_RUNTIME_BASE_URL = 'http://127.0.0.1:8765'
+    $env:AGENT_RUNTIME_INTERNAL_TOKEN = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
     uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
-Keep the first terminal open. Open http://127.0.0.1:8000/api/v1/health in a browser and continue only after it gives a normal response.
+Keep the second terminal open. Open http://127.0.0.1:8000/api/v1/health in a browser and continue only after it gives a normal response.
 
-### 3. Start the web UI in the second terminal
+### 4. Start the web UI in the third terminal
 
 Open a second terminal and return to the AdCraft project root first.
 
