@@ -10,6 +10,7 @@ from app.schemas.workflow_v2 import (
     WorkflowSlotV2,
     WorkflowV2,
 )
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.schemas.workflow_v2_prompt_contracts import (
     V2CanonicalProviderPayload,
     prompt_contract_name_for_slot,
@@ -824,6 +825,28 @@ class V2PromptMaterializer:
         if slot.slot_type == "final_video":
             segment_ids = list(context.get("shot_video_segment_asset_ids", []))
             bgm_asset_id = context.get("bgm_asset_id") if workflow.audio_mode != "none" else None
+            simple_plan_payload = context.get("simple_composition_plan")
+            if isinstance(simple_plan_payload, dict):
+                simple_plan = V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+                reference_asset_ids = [source.asset_id for source in simple_plan.videos]
+                if simple_plan.bgm is not None:
+                    reference_asset_ids.append(simple_plan.bgm.asset_id)
+                return canonicalize(
+                    {
+                        **base_payload,
+                        "slot_prompt": slot.slot_prompt,
+                        "composition_tool": "local_composition_ffmpeg",
+                        "simple_composition_plan": simple_plan.model_dump(mode="json"),
+                        "shot_video_segment_asset_ids": segment_ids,
+                        "bgm_asset_id": bgm_asset_id,
+                        "reference_asset_ids": list(dict.fromkeys(reference_asset_ids)),
+                        "render_settings": {
+                            "provider": "local_composition_ffmpeg",
+                            "aspect_ratio": workflow.aspect_ratio,
+                            "audio_mode": workflow.audio_mode,
+                        },
+                    }
+                )
             canonical_timeline = context.get("canonical_timeline")
             if not isinstance(canonical_timeline, dict):
                 raise V2PromptMaterializationError(

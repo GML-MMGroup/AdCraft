@@ -25,6 +25,7 @@ from app.schemas.workflow_v2 import (
 )
 from app.schemas.workflow_v2_provider_results import V2ProviderExecutionContext
 from app.schemas.workflow_v2_screenplay import V2GenerationLineage
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_agent_router import V2AgentRouteError, V2AgentRouter
 from app.services.v2_asset_store import V2AssetStoreService
@@ -66,6 +67,7 @@ from app.services.v2_shot_reference_resolver import (
     V2ShotReferenceResolver,
     V2ShotReferenceResolverError,
 )
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_storyboard_namespace import (
     V2StoryboardNamespaceError,
     validate_storyboard_slot_namespace,
@@ -247,6 +249,10 @@ class V2GenerationPipeline:
         self._handoff_builder = V2SpecialistHandoffBuilder(data_dir)
         self._final_timeline_service = V2FinalCompositionTimelineService(
             replace(self._settings, media_data_dir=data_dir)
+        )
+        self._simple_composition_plan_service = V2SimpleCompositionPlanService(
+            data_dir,
+            asset_store=asset_store,
         )
 
     def input_fingerprint(
@@ -1577,7 +1583,7 @@ class V2GenerationPipeline:
             ),
         )
         context = self._context_for_slot(workflow, item, slot)
-        self._attach_canonical_final_timeline_context(workflow, item, context, slot)
+        self._attach_final_composition_context(workflow, item, context, slot)
         _apply_reference_bundle_to_context(context, bundle)
         handoff_payload: dict[str, Any] | None = None
         if _uses_canonical_specialist_handoff(slot):
@@ -1773,6 +1779,12 @@ class V2GenerationPipeline:
                 "slot_id": slot.slot_id,
             },
         }
+        simple_plan_payload = provider_payload.get("simple_composition_plan")
+        if isinstance(simple_plan_payload, dict):
+            simple_plan = V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+            provider_payload["simple_composition_plan"] = simple_plan.model_copy(
+                update={"created_from_execution_id": execution_id}
+            ).model_dump(mode="json")
         materialized_prompt = plan.materialized_prompt.model_copy(
             update={"provider_payload": provider_payload},
             deep=True,
@@ -1835,7 +1847,7 @@ class V2GenerationPipeline:
             generation_mode="chat_revise_and_generate",
         )
         context = self._context_for_slot(workflow, revision_item, revision_slot)
-        self._attach_canonical_final_timeline_context(
+        self._attach_final_composition_context(
             workflow,
             revision_item,
             context,
@@ -2474,6 +2486,28 @@ class V2GenerationPipeline:
                 }
             ]
         return context
+
+    def _attach_final_composition_context(
+        self,
+        workflow: WorkflowV2,
+        item: WorkflowItemV2,
+        context: dict[str, Any],
+        slot: WorkflowSlotV2,
+    ) -> None:
+        if slot.slot_type != "final_video":
+            return
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        if mode == "simple_sequence":
+            plan = self._simple_composition_plan_service.build(workflow)
+            context["simple_composition_plan"] = plan.model_dump(mode="json")
+            return
+        if mode == "timeline_editor":
+            self._attach_canonical_final_timeline_context(workflow, item, context, slot)
+            return
+        raise V2GenerationPipelineError(
+            "v2_final_composition_render_mode_invalid",
+            "Configured Final Composition render mode is unsupported.",
+        )
 
     def _attach_canonical_final_timeline_context(
         self,
