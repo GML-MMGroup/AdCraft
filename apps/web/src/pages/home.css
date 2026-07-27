@@ -616,3 +616,84 @@
     grid-template-columns: 1fr;
   }
 }
+
+html[data-theme="dark"] .home-product-hero__title {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .home-product-hero__description {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .home-product-hero__create {
+  border-color: var(--brand);
+  background: var(--brand);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+  color: var(--text-inverse);
+}
+
+html[data-theme="dark"] .home-product-hero__create:hover {
+  border-color: var(--brand-hover);
+  background: var(--brand-hover);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+}
+
+html[data-theme="dark"] .home-product-hero__create:focus-visible {
+  outline-color: var(--focus-ring);
+}
+
+html[data-theme="dark"] .home-product-film::after {
+  background: rgba(8, 9, 13, 0.08);
+}
+
+html[data-theme="dark"] :is(.recent-strip, .recent-card) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] .recent-card.featured::after {
+  background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.7));
+}
+
+html[data-theme="dark"] :is(.recent-card h3, .section-title h2) {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :is(.recent-card p, .section-title p) {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .recent-card.featured p {
+  color: rgba(241, 242, 246, 0.82);
+}
+
+html[data-theme="dark"] .discover-tabs {
+  border: 1px solid var(--border-default);
+  background: rgba(13, 15, 20, 0.9);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] .discover-card {
+  background: var(--surface-contrast);
+}
+
+html[data-theme="dark"] .discover-card::before {
+  background: linear-gradient(180deg, transparent 38%, var(--media-overlay));
+}
+
+html[data-theme="dark"] .play-dot span {
+  border: 1px solid var(--border-default);
+  background: rgba(19, 22, 29, 0.86);
+  color: var(--brand);
+}
+
+html[data-theme="dark"] .video-modal {
+  background: var(--overlay);
+}
+
+html[data-theme="dark"] .modal-card {
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}

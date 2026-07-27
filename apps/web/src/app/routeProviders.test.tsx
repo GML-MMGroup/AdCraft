@@ -118,6 +118,21 @@ describe("route providers", () => {
     expect(api.workflowNodes).not.toHaveBeenCalled();
   });
 
+  test("switches the application theme from the shared shell", async () => {
+    render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("API ready");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to dark theme" }));
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(window.localStorage.getItem("adcraft-theme")).toBe("dark");
+    expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeTruthy();
+  });
+
   test("renders the workflow Layout shell inside WorkspaceProvider", async () => {
     window.history.replaceState({}, "", "/workflow");
 

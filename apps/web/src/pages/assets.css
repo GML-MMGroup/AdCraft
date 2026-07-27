@@ -1031,3 +1031,123 @@
     flex-direction: column;
   }
 }
+
+html[data-theme="dark"] :is(.asset-toolbar, .asset-library-toolbar, .asset-library-upload-form, .asset-library-section, .asset-library-detail-panel) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] :is(.asset-card, .asset-library-card) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .asset-card {
+  background: var(--surface-contrast);
+}
+
+html[data-theme="dark"] .asset-card::after {
+  background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.76));
+}
+
+html[data-theme="dark"] :is(.asset-card h3, .asset-library-card h3, .asset-library-card strong) {
+  color: var(--text-primary);
+  text-shadow: none;
+}
+
+html[data-theme="dark"] :is(.asset-card p, .asset-card .card-meta, .asset-library-card p, .asset-library-card small) {
+  color: var(--text-secondary);
+  text-shadow: none;
+}
+
+html[data-theme="dark"] :is(.asset-library-upload-grid input, .asset-library-upload-grid select, .asset-library-group-slots label, .asset-library-group-upload summary, .asset-library-search, .asset-library-filter, .v2-asset-detail-form input, .v2-asset-detail-form textarea, .v2-asset-upload-dialog input, .v2-asset-upload-dialog textarea, .v2-reference-upload input) {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .asset-library-group-slots label {
+  border-style: dashed;
+}
+
+html[data-theme="dark"] .asset-library-card:is(:hover, :focus-visible) {
+  border-color: var(--brand);
+  box-shadow: 0 20px 46px rgba(0, 0, 0, 0.3), var(--shadow-soft);
+}
+
+html[data-theme="dark"] .asset-library-preview {
+  background: var(--surface-contrast);
+}
+
+html[data-theme="dark"] :is(.asset-library-upload-actions span.is-error, .v2-asset-detail-actions .is-danger) {
+  color: var(--error);
+}
+
+html[data-theme="dark"] .asset-library-upload-actions span.is-success {
+  color: var(--success);
+}
+
+html[data-theme="dark"] :is(.asset-entity-viewer-backdrop, .v2-asset-dialog-backdrop, .v2-asset-picker-backdrop) {
+  background: var(--overlay);
+}
+
+html[data-theme="dark"] :is(.asset-entity-viewer, .v2-asset-upload-dialog, .v2-asset-picker) {
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :is(.v2-asset-picker-content, .v2-asset-picker-members) {
+  border-color: var(--border-default);
+}
+
+html[data-theme="dark"] :is(.v2-asset-picker-entity, .v2-asset-picker-member) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+}
+
+html[data-theme="dark"] :is(.v2-asset-picker-entity.is-selected, .v2-asset-picker-member.is-selected) {
+  border-color: var(--brand);
+  background: var(--brand-subtle);
+}
+
+html[data-theme="dark"] :is(.v2-asset-picker-entity-main > span:first-child, .v2-asset-picker-member > span:first-child) {
+  background: var(--surface-input);
+}
+
+html[data-theme="dark"] .v2-asset-library-controls {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] :is(.v2-asset-library-tabs button, .v2-asset-library-categories button) {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] :is(.v2-asset-library-tabs button.is-active, .v2-asset-library-categories button.is-active) {
+  background: var(--brand-subtle);
+  color: var(--brand);
+}
+
+html[data-theme="dark"] .v2-asset-library-actions input {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :is(.asset-library-empty, .v2-asset-library-feedback) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .v2-asset-library-feedback.is-error {
+  border-color: var(--error);
+  background: var(--error-subtle);
+  color: var(--error);
+}

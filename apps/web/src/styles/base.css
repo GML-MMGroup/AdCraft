@@ -63,6 +63,27 @@
   --font-body: var(--font-ui);
 }
 
+/* Keep the first painted frame dark while the lazy application shell loads theme.css. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --mist-blue: #08090D;
+  --mauve: #9E8BEA;
+  --butter: #E4BC62;
+  --iris: #9E8BEA;
+  --rose: #EB788C;
+  --ink: #F1F2F6;
+  --muted: #9399A9;
+  --surface: #13161D;
+  --surface-strong: #191D26;
+  --surface-soft: #0D0F14;
+  --stroke: #222733;
+  --stroke-dark: #222733;
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
+  --glass-button: #191D26;
+  --glass-button-shadow: 0 10px 22px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -86,6 +107,19 @@ body {
   font-family: var(--font-ui);
   letter-spacing: 0;
   overflow-x: hidden;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background: #08090D;
+}
+
+html[data-theme="dark"] body {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+  background-size: 44px 44px;
+  color: var(--ink);
 }
 
 code,
@@ -334,6 +368,25 @@ a {
   box-shadow: var(--glass-button-shadow);
   backdrop-filter: blur(20px) saturate(1.16);
   transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.theme-toggle {
+  display: grid;
+  width: 40px;
+  min-width: 40px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.theme-toggle:focus-visible {
+  outline: 3px solid var(--focus-ring, rgba(108, 93, 171, 0.36));
+  outline-offset: 3px;
 }
 
 .send-btn {

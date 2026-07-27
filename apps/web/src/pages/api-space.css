@@ -230,3 +230,59 @@
     flex: 1 1 160px;
   }
 }
+
+html[data-theme="dark"] .api-space-provider-surface {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] .api-space-eyebrow,
+html[data-theme="dark"] .api-space-credential-status,
+html[data-theme="dark"] .api-space-credential-status.is-not-configured {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] :is(.api-space-local-badge, .api-space-test-unavailable) {
+  background: var(--info-subtle);
+  color: var(--info);
+}
+
+html[data-theme="dark"] .api-space-status-error {
+  border-color: var(--error);
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
+html[data-theme="dark"] :is(.api-space-credential-list, .api-space-credential-row + .api-space-credential-row, .api-space-save-bar) {
+  border-color: var(--border-default);
+}
+
+html[data-theme="dark"] .api-space-credential-status.is-configured,
+html[data-theme="dark"] .api-space-inline-notice.is-success {
+  color: var(--success);
+}
+
+html[data-theme="dark"] .api-space-credential-status code {
+  background: var(--success-subtle);
+}
+
+html[data-theme="dark"] .api-space-credential-control input {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .api-space-credential-control input:focus-visible {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-subtle);
+}
+
+html[data-theme="dark"] .api-space-credential-control input:disabled,
+html[data-theme="dark"] .api-space-save-bar {
+  background: var(--nav-bg);
+}
+
+html[data-theme="dark"] .api-space-inline-notice.is-error {
+  color: var(--error);
+}

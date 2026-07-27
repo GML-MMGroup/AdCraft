@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
-import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
+import { AssetsIcon, FolderIcon, HomeIcon, MoonIcon, SunIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useHealth } from "../app/useHealth";
+import { useTheme } from "../theme/useTheme";
+import "../styles/theme.css";
 import {
   v2AuthoringConflictStore,
   type V2AuthoringConflict,
@@ -30,6 +32,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
   const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const { apiOnline, apiMessage, storageWarning } = useHealth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -104,6 +107,15 @@ export function Layout({ children, workflowControls }: LayoutProps) {
           ) : null}
           <div className="top-actions">
             {workflowControls}
+            <button
+              className="icon-btn theme-toggle"
+              type="button"
+              aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              onClick={toggleTheme}
+            >
+              {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            </button>
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>Tutorial</span>

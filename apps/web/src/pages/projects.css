@@ -600,3 +600,79 @@
     padding: 0 16px 16px;
   }
 }
+
+html[data-theme="dark"] :is(.page-toolbar, .empty-state, .deleted-panel, .asset-toolbar) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] :is(.project-card, .create-card, .trash-card) {
+  border-color: var(--border-default);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] .toolbar-new-project {
+  background: var(--brand);
+  color: var(--text-inverse);
+}
+
+html[data-theme="dark"] .search-box {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .create-card {
+  color: var(--brand);
+}
+
+html[data-theme="dark"] .create-plus {
+  background: var(--brand-subtle);
+  color: var(--brand);
+}
+
+html[data-theme="dark"] .project-card {
+  background: var(--surface-contrast);
+}
+
+html[data-theme="dark"] .project-card::after {
+  background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.76));
+}
+
+html[data-theme="dark"] :is(.project-action-trigger, .project-menu-btn) {
+  border-color: var(--border-default);
+  background: rgba(19, 22, 29, 0.88);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] :is(.project-action-trigger:hover, .project-action-trigger:focus-visible, .project-menu-btn:hover, .project-menu-btn:focus-visible, .project-action-menu:is(:hover, .is-open) .project-action-trigger) {
+  background: var(--surface-raised);
+}
+
+html[data-theme="dark"] :is(.project-card h3, .trash-card h3) {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :is(.project-card p, .trash-card p) {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .project-card .card-body {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :is(.project-rename-dialog, .project-delete-dialog, .trash-restore-dialog) {
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  box-shadow: var(--shadow);
+}
+
+html[data-theme="dark"] :is(.project-rename-dialog input, .project-delete-dialog input) {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
