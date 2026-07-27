@@ -77,6 +77,8 @@ class WorkflowAuthoringProjector:
     _NODE_METADATA_KEYS = (
         "resolved_media_type",
         "resolved_node_role",
+        "execution_disposition",
+        "reason_code",
     )
     _SLOT_METADATA_KEYS = (
         "source_script_brief_id",
