@@ -26,7 +26,16 @@ export interface AgentDefinition {
 }
 
 const definitions: ReadonlyArray<AgentDefinition> = [
-  definition("front_desk", ["workflow_creation", "intent_contract_planner"], 8),
+  definition(
+    "front_desk",
+    [
+      "workflow_creation",
+      "intent_contract_planner",
+      "workflow_conversation",
+      "conversation_summary",
+    ],
+    8,
+  ),
   definition("script_writer", ["script_writer", "script_edit_normalization", "targeted_revision"], 0),
   definition("product_designer", ["product_expert_brief", "product_prompt", "product_revision", "targeted_revision"], 0),
   definition("character_designer", ["character_expert_brief", "character_prompt", "character_revision", "targeted_revision"], 0),

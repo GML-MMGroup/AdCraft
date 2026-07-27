@@ -55,6 +55,10 @@ class V2AgentConversationCreate(_StrictModel):
     title: str = Field(default="", max_length=256)
 
 
+class V2AgentConversationCreateRequest(_StrictModel):
+    title: str = Field(default="", max_length=256)
+
+
 class V2AgentConversation(_StrictModel):
     conversation_id: str
     workflow_id: str
@@ -171,3 +175,12 @@ class V2AgentConversationMessageResponse(_StrictModel):
     user_message: V2AgentMessage
     assistant_message: V2AgentMessage | None = None
     action: V2AgentAction
+
+
+class WorkflowConversationReply(_StrictModel):
+    message: str = Field(min_length=1, max_length=4_000)
+    clarification_required: bool = False
+
+
+class ConversationSummaryResult(_StrictModel):
+    summary: str = Field(min_length=1, max_length=16_384)

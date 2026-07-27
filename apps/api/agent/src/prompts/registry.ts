@@ -40,6 +40,22 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     "Normalize the approved advertising request into the canonical intent contract without inventing explicit counts.",
   ),
   registration(
+    "adcraft.front_desk.workflow_conversation.v1",
+    "front_desk",
+    "workflow_conversation",
+    "WorkflowConversationReply",
+    "Front Desk",
+    "Answer one bounded workflow-scoped conversation turn. Ask for one exact Character or Scene target before proposing a targeted revision.",
+  ),
+  registration(
+    "adcraft.front_desk.conversation_summary.v1",
+    "front_desk",
+    "conversation_summary",
+    "ConversationSummaryResult",
+    "Front Desk",
+    "Compress only visible conversation turns into a bounded factual summary without hidden reasoning or new creative facts.",
+  ),
+  registration(
     "adcraft.script_writer.screenplay.v1",
     "script_writer",
     "script_writer",

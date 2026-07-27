@@ -14,6 +14,9 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
+from app.persistence.v2_agent_conversation_repository import (
+    V2AgentConversationRepository,
+)
 from app.persistence.workflow_authoring_repository import WorkflowAuthoringRepository
 from app.schemas.ad_workflow import AdWorkflowGenerateRequest
 from app.schemas.front_desk import FrontDeskChatRequest, FrontDeskChatResponse
@@ -77,6 +80,10 @@ from app.schemas.workflow_v2_style import VisualStyleScopeSource
 from app.schemas.workflow_v2_provider_results import (
     V2ProviderExecutionContext,
     V2ProviderResultManifest,
+)
+from app.schemas.v2_agent_conversations import (
+    V2AgentConversationCreate,
+    V2AgentMessageCreate,
 )
 from app.services.agent_trace import V2AgentTraceWriter, utc_now
 from app.services.front_desk import FrontDeskError, FrontDeskService
@@ -1034,11 +1041,60 @@ class WorkflowV2Service:
                 details=workflow.details,
                 suggested_actions=workflow.suggested_actions,
             )
+        self._bind_planning_conversation(workflow.workflow_id, v2_chat_request)
         return WorkflowV2PlanFromChatResponse(
             front_desk=front_desk,
             workflow=workflow,
             project_id=workflow.project_id,
             normalized_v2_request=normalized_v2_request,
+        )
+
+    def _bind_planning_conversation(
+        self,
+        workflow_id: str,
+        request: FrontDeskChatRequest,
+    ) -> None:
+        conversation_id = request.metadata.get("conversation_id")
+        if not isinstance(conversation_id, str) or not conversation_id.strip():
+            return
+        conversation_id = conversation_id.strip()
+        request_id = request.metadata.get("request_id")
+        safe_request_id = (
+            request_id.strip()
+            if isinstance(request_id, str) and request_id.strip()
+            else uuid4().hex
+        )
+        repository = V2AgentConversationRepository(self._authoring_database)
+        conversation = repository.create_conversation(
+            V2AgentConversationCreate(
+                conversation_id=conversation_id,
+                workflow_id=workflow_id,
+                title="Planning conversation",
+            )
+        )
+        message = repository.append_message(
+            V2AgentMessageCreate(
+                message_id=f"message_plan_{safe_request_id[:120]}",
+                conversation_id=conversation.conversation_id,
+                role="user",
+                content=request.message,
+            )
+        )
+        self._append_event(
+            workflow_id,
+            "agent_conversation_created",
+            payload={"conversation_id": conversation.conversation_id},
+        )
+        self._append_event(
+            workflow_id,
+            "agent_message_created",
+            payload={
+                "conversation_id": conversation.conversation_id,
+                "message_id": message.message_id,
+                "role": "user",
+                "sequence_no": message.sequence_no,
+                "source": "plan_from_chat",
+            },
         )
 
     def _append_planning_trace(

@@ -226,6 +226,31 @@ class QuickMediaAgentContext(_PlanningContextModel):
     )
 
 
+class WorkflowConversationAgentContext(_PlanningContextModel):
+    context_kind: Literal["workflow_conversation"]
+    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    conversation_id: str = Field(min_length=1, max_length=160)
+    conversation_summary: str = Field(default="", max_length=16_384)
+    recent_messages: tuple[InteractionMessageSummary, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+    workflow_summary: str = Field(default="", max_length=16_384)
+
+
+class ConversationSummaryAgentContext(_PlanningContextModel):
+    context_kind: Literal["conversation_summary"]
+    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    conversation_id: str = Field(min_length=1, max_length=160)
+    previous_summary: str = Field(default="", max_length=16_384)
+    recent_messages: tuple[InteractionMessageSummary, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+
+
 PlanningAgentContext = Annotated[
     Union[
         FrontDeskIntentAgentContext,
@@ -237,6 +262,8 @@ PlanningAgentContext = Annotated[
         BgmExpertAgentContext,
         TargetedRevisionAgentContext,
         QuickMediaAgentContext,
+        WorkflowConversationAgentContext,
+        ConversationSummaryAgentContext,
     ],
     Field(discriminator="context_kind"),
 ]

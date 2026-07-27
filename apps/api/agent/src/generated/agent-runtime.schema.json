@@ -292,13 +292,15 @@
                 "mapping": {
                   "bgm_expert": "#/$defs/BgmExpertAgentContext",
                   "character_expert": "#/$defs/CharacterExpertAgentContext",
+                  "conversation_summary": "#/$defs/ConversationSummaryAgentContext",
                   "front_desk_intent": "#/$defs/FrontDeskIntentAgentContext",
                   "intent_contract": "#/$defs/IntentContractAgentContext",
                   "product_expert": "#/$defs/ProductExpertAgentContext",
                   "quick_media": "#/$defs/QuickMediaAgentContext",
                   "scene_expert": "#/$defs/SceneExpertAgentContext",
                   "script_writer": "#/$defs/ScriptWriterAgentContext",
-                  "targeted_revision": "#/$defs/TargetedRevisionAgentContext"
+                  "targeted_revision": "#/$defs/TargetedRevisionAgentContext",
+                  "workflow_conversation": "#/$defs/WorkflowConversationAgentContext"
                 },
                 "propertyName": "context_kind"
               },
@@ -329,6 +331,12 @@
                 },
                 {
                   "$ref": "#/$defs/QuickMediaAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/WorkflowConversationAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/ConversationSummaryAgentContext"
                 }
               ]
             },
@@ -1222,6 +1230,73 @@
         "context_kind"
       ],
       "title": "CharacterExpertAgentContext",
+      "type": "object"
+    },
+    "ConversationSummaryAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "conversation_summary",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "previous_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Previous Summary",
+          "type": "string"
+        },
+        "recent_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InteractionMessageSummary"
+          },
+          "maxItems": 32,
+          "title": "Recent Messages",
+          "type": "array"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_kind",
+        "user_input",
+        "workflow_id",
+        "conversation_id"
+      ],
+      "title": "ConversationSummaryAgentContext",
+      "type": "object"
+    },
+    "ConversationSummaryResult": {
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "title": "ConversationSummaryResult",
       "type": "object"
     },
     "FrontDeskIntentAgentContext": {
@@ -2985,6 +3060,84 @@
         }
       },
       "title": "V2SceneExpertPlan",
+      "type": "object"
+    },
+    "WorkflowConversationAgentContext": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "workflow_conversation",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "conversation_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Conversation Summary",
+          "type": "string"
+        },
+        "recent_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InteractionMessageSummary"
+          },
+          "maxItems": 32,
+          "title": "Recent Messages",
+          "type": "array"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Workflow Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context_kind",
+        "user_input",
+        "workflow_id",
+        "conversation_id"
+      ],
+      "title": "WorkflowConversationAgentContext",
+      "type": "object"
+    },
+    "WorkflowConversationReply": {
+      "additionalProperties": false,
+      "properties": {
+        "clarification_required": {
+          "default": false,
+          "title": "Clarification Required",
+          "type": "boolean"
+        },
+        "message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "WorkflowConversationReply",
       "type": "object"
     }
   },

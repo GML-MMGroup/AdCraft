@@ -209,6 +209,9 @@ class V2AgentConversationRepository:
             next_cursor=items[-1].sequence_no if has_more and items else None,
         )
 
+    def get_message(self, message_id: str) -> V2AgentMessage:
+        return self._load_message(message_id)
+
     def create_or_load_action(
         self,
         request: V2AgentActionCreate,

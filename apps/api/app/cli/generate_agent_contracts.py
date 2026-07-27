@@ -14,6 +14,7 @@ from app.schemas import agent_operation_contexts
 from app.schemas import workflow_v2_expert_brief_contracts
 from app.schemas import workflow_v2_planning
 from app.schemas import workflow_v2_prompt_contracts
+from app.schemas import v2_agent_conversations
 
 
 CONTRACT_MODELS = (
@@ -32,6 +33,10 @@ CONTRACT_MODELS = (
     agent_operation_contexts.InteractionTargetSummary,
     agent_operation_contexts.TargetedRevisionAgentContext,
     agent_operation_contexts.QuickMediaAgentContext,
+    agent_operation_contexts.WorkflowConversationAgentContext,
+    agent_operation_contexts.ConversationSummaryAgentContext,
+    v2_agent_conversations.WorkflowConversationReply,
+    v2_agent_conversations.ConversationSummaryResult,
     workflow_v2_planning.V2ProductBrief,
     workflow_v2_planning.V2CharacterBrief,
     workflow_v2_planning.V2SceneBrief,
