@@ -94,9 +94,7 @@ class AgentRunRepository:
             "lease_owner_id": lease_owner_id,
             "lease_expires_at": _iso(lease_expiry),
             "last_event_seq": 0,
-            "expected_target_revision": (
-                target.expected_revision if target is not None else None
-            ),
+            "expected_target_revision": (target.expected_revision if target is not None else None),
             "terminal_result_json": None,
             "tool_results_json": "{}",
             "safe_error_code": None,
@@ -135,6 +133,24 @@ class AgentRunRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
         return _record(row)
+
+    def list_for_workflow(self, workflow_id: str) -> list[AgentRunRecord]:
+        """Return Agent runs for one workflow in stable creation order."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentRunRow)
+                        .where(AgentRunRow.workflow_id == workflow_id)
+                        .order_by(AgentRunRow.created_at, AgentRunRow.run_id)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return [_record(row) for row in rows]
 
     def acquire_lease(
         self,

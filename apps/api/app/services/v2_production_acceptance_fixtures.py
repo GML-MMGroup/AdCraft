@@ -10,7 +10,12 @@ from app.schemas.workflow_v2_production_acceptance import V2ProductionAcceptance
 
 
 DEFAULT_FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "v2-production-acceptance"
-DEFAULT_ALLOWLIST = ("core_av_canary", "chat_planning_canary")
+DEFAULT_ALLOWLIST = (
+    "core_av_canary",
+    "chat_planning_canary",
+    "chat_planning_canary_en",
+    "chat_planning_canary_zh",
+)
 
 
 class V2ProductionAcceptanceFixtureRegistryError(RuntimeError):

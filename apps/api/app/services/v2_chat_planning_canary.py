@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Protocol
+from dataclasses import dataclass, field
+from typing import Any, Callable, Protocol
 
 from app.core.config import Settings, get_settings
+from app.persistence.agent_run_repository import AgentRunRepository
+from app.persistence.database import create_v2_database
 from app.schemas.front_desk import FrontDeskChatRequest
 from app.schemas.workflow_v2 import WorkflowV2, WorkflowV2PlanFromChatResponse
 from app.schemas.workflow_v2_production_acceptance import (
@@ -52,10 +54,22 @@ class V2ChatPlanningCanaryError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class V2ChatPlanningCanaryResult:
-    fixture_id: str
-    workflow_id: str
-    input_asset_count: int
+class V2ChatPlanningCanaryEvidence:
+    terminal_status: str = "completed"
+    planning_degraded: bool = False
+    degraded_stages: tuple[str, ...] = ()
+    degraded_reason_codes: tuple[str, ...] = ()
+    stage_timings_ms: dict[str, int] = field(default_factory=dict)
+    model_policies: tuple[str, ...] = ()
+    prompt_descriptors: tuple[str, ...] = ()
+    repair_attempt_count: int = 0
+
+
+@dataclass(frozen=True)
+class V2ChatPlanningCanaryResult(V2ChatPlanningCanaryEvidence):
+    fixture_id: str = ""
+    workflow_id: str = ""
+    input_asset_count: int = 0
     planning_valid: bool = True
 
 
@@ -87,7 +101,12 @@ class V2ChatPlanningCanaryValidator:
             "scene_count": _item_count(workflow, "scene"),
             "storyboard_shot_count": len(script_shots) if isinstance(script_shots, list) else 0,
         }
+        unspecified_count_fields = set(
+            fixture.request.metadata.get("canary_unspecified_count_fields") or []
+        )
         for field_name, expected in expected_counts.items():
+            if field_name in unspecified_count_fields:
+                continue
             actual = actual_counts[field_name]
             if actual != expected:
                 failures.append(
@@ -129,6 +148,7 @@ class V2ChatPlanningCanaryService:
         workflow_service: _PlanningWorkflowService | None = None,
         front_desk_service: FrontDeskService | None = None,
         planning_validator: _PlanningValidator | None = None,
+        evidence_loader: Callable[[WorkflowV2], V2ChatPlanningCanaryEvidence] | None = None,
         require_real_agents: bool = True,
     ) -> None:
         self._settings = settings or get_settings()
@@ -137,6 +157,9 @@ class V2ChatPlanningCanaryService:
         self._workflow_service = workflow_service or WorkflowV2Service(self._settings)
         self._front_desk = front_desk_service or FrontDeskService(self._settings)
         self._planning_validator = planning_validator or V2ChatPlanningCanaryValidator()
+        self._evidence_loader = evidence_loader or (
+            lambda workflow: _load_planning_evidence(self._settings, workflow)
+        )
         self._require_real_agents = require_real_agents
 
     def run(
@@ -207,15 +230,77 @@ class V2ChatPlanningCanaryService:
                 details={"failure": failure.model_dump(mode="json")},
             )
 
+        evidence = self._evidence_loader(planned.workflow)
         return V2ChatPlanningCanaryResult(
             fixture_id=fixture_id,
             workflow_id=planned.workflow.workflow_id,
             input_asset_count=len(locators),
+            terminal_status=evidence.terminal_status,
+            planning_degraded=evidence.planning_degraded,
+            degraded_stages=evidence.degraded_stages,
+            degraded_reason_codes=evidence.degraded_reason_codes,
+            stage_timings_ms=evidence.stage_timings_ms,
+            model_policies=evidence.model_policies,
+            prompt_descriptors=evidence.prompt_descriptors,
+            repair_attempt_count=evidence.repair_attempt_count,
         )
 
 
 def _item_count(workflow: WorkflowV2, item_type: str) -> int:
     return sum(1 for node in workflow.nodes for item in node.items if item.item_type == item_type)
+
+
+def _load_planning_evidence(
+    settings: Settings,
+    workflow: WorkflowV2,
+) -> V2ChatPlanningCanaryEvidence:
+    database = create_v2_database(settings.media_data_dir)
+    try:
+        records = AgentRunRepository(database).list_for_workflow(workflow.workflow_id)
+    finally:
+        database.dispose()
+    stage_timings_ms: dict[str, int] = {}
+    model_policies: list[str] = []
+    prompt_descriptors: list[str] = []
+    repair_attempt_count = 0
+    for record in records:
+        if record.finished_at is not None:
+            duration_ms = max(
+                0,
+                round((record.finished_at - record.created_at).total_seconds() * 1_000),
+            )
+            stage_timings_ms[record.operation] = (
+                stage_timings_ms.get(record.operation, 0) + duration_ms
+            )
+        audit = (
+            record.terminal_result.get("agent_runtime_audit")
+            if isinstance(record.terminal_result, dict)
+            else None
+        )
+        if isinstance(audit, dict):
+            model_policy = str(audit.get("model_policy_id") or "").strip()
+            prompt_id = str(audit.get("prompt_id") or "").strip()
+            if model_policy:
+                model_policies.append(model_policy)
+            if prompt_id:
+                prompt_descriptors.append(prompt_id)
+        repair_attempt_count += sum(
+            1 for key in record.tool_results if key.endswith(":structured:2")
+        )
+    metadata = workflow.metadata
+    degraded = bool(metadata.get("planning_degraded"))
+    return V2ChatPlanningCanaryEvidence(
+        terminal_status="degraded" if degraded else "completed",
+        planning_degraded=degraded,
+        degraded_stages=tuple(str(value) for value in metadata.get("degraded_stages") or []),
+        degraded_reason_codes=tuple(
+            str(value) for value in metadata.get("degraded_reason_codes") or []
+        ),
+        stage_timings_ms=stage_timings_ms,
+        model_policies=tuple(dict.fromkeys(model_policies)),
+        prompt_descriptors=tuple(dict.fromkeys(prompt_descriptors)),
+        repair_attempt_count=repair_attempt_count,
+    )
 
 
 def _planning_failure(
