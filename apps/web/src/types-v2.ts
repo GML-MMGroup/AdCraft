@@ -1587,10 +1587,17 @@ export interface ResolvedMediaInputSnapshotV2 {
   asset_id: string;
   media_type: AgentCanvasAssetMediaTypeV2;
   asset_checksum: string;
-  access_descriptor: Record<string, unknown>;
+  access_descriptor: StorageAccessDescriptorV2;
 }
 
 export type ResolvedInputSnapshotV2 = ResolvedTextInputSnapshotV2 | ResolvedMediaInputSnapshotV2;
+
+export interface StorageAccessDescriptorV2 {
+  descriptor_type: "asset_content";
+  asset_id: string;
+  media_url: string;
+  checksum: string;
+}
 
 export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
 
@@ -1628,8 +1635,6 @@ export interface CanvasRuntimeEventV2 {
   event_type: string;
   node_id: string | null;
   binding_id: string | null;
-  asset_id: string | null;
-  provider_task_id: string | null;
   created_at: string;
   payload: Record<string, unknown> | null;
 }
@@ -1760,7 +1765,7 @@ export interface ChatTimelineListResponseV2 {
 export interface ChatTurnAcceptedV2 {
   workflow_id: string;
   conversation_id: string;
-  message_id: string;
+  message_id: string | null;
   turn_id: string;
   status: "queued";
   events_cursor: number;
@@ -1828,4 +1833,221 @@ export interface EditingNodeContentV2 {
   preview: EditingPreviewV2;
   last_successful_export: EditingExportRuntimeV2 | null;
   active_export: EditingExportRuntimeV2 | null;
+}
+
+export interface AgentCanvasProjectCreateRequestV2 {
+  name: string;
+  description?: string;
+  video_skill_id?: string | null;
+  video_skill_version?: string | null;
+}
+
+export interface CanvasNodeCreateRequestV2 {
+  node_type: CanvasNodeTypeV2;
+  semantic_role: string;
+  title: string;
+  summary_prompt?: string | null;
+  generation_prompt?: string | null;
+  structured_content?: Record<string, unknown>;
+  model_id?: string | null;
+  parameters?: Record<string, unknown>;
+  position: CanvasPositionV2;
+  clone_inputs_from_node_id?: string | null;
+  source_asset_id?: string | null;
+  video_skill_run_id?: string | null;
+}
+
+export interface CanvasNodePatchRequestV2 {
+  title?: string | null;
+  summary_prompt?: string | null;
+  generation_prompt?: string | null;
+  structured_content?: Record<string, unknown> | null;
+  model_id?: string | null;
+  parameters?: Record<string, unknown> | null;
+  position?: CanvasPositionV2 | null;
+}
+
+export interface CanvasBindingCreateRequestV2 {
+  source: CanvasBindingSourceV2;
+  target_node_id: string;
+  binding_kind: CanvasBindingKindV2;
+  required?: boolean;
+  display_order?: number;
+}
+
+export interface CanvasMutationResponseV2 {
+  workflow: AgentCanvasWorkflowV2;
+  node: CanvasNodeV2 | null;
+  binding: CanvasBindingV2 | null;
+}
+
+export interface ProjectAssetUploadMetadataV2 {
+  media_type: AgentCanvasAssetMediaTypeV2;
+  title: string;
+  semantic_role?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProjectAssetUploadResponseV2 {
+  workflow_id: string;
+  asset: ProjectAssetSummaryV2;
+}
+
+export interface ProjectAssetListResponseV2 {
+  workflow_id: string;
+  assets: ProjectAssetSummaryV2[];
+}
+
+export type AgentCanvasImageLibraryCategoryV2 = "character" | "scene" | "prop";
+
+export interface AgentCanvasImageLibraryListResponseV2 {
+  items: Array<Record<string, unknown>>;
+}
+
+export interface SaveAgentCanvasImageToLibraryRequestV2 {
+  category: AgentCanvasImageLibraryCategoryV2;
+  display_name: string;
+}
+
+export interface AgentCanvasChatMessageRequestV2 {
+  text: string;
+  mentioned_node_ids: string[];
+  mentioned_image_asset_ids: string[];
+  video_skill_run_id: string | null;
+  auto_continue: boolean;
+}
+
+export interface AgentCanvasChatTimelineEntryV2 {
+  entry_id: string;
+  workflow_id: string;
+  conversation_id: string;
+  sequence_no: number;
+  entry_type: "message" | "script_artifact";
+  speaker: "user" | "adcraft_video_agent" | null;
+  content: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface AgentCanvasChatTimelineResponseV2 {
+  workflow_id: string;
+  conversation_id: string | null;
+  items: AgentCanvasChatTimelineEntryV2[];
+  next_cursor: number;
+}
+
+export interface AgentCanvasChatTurnV2 {
+  turn_id: string;
+  workflow_id: string;
+  conversation_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  turn_kind: "message" | "proposal_action";
+  request: Record<string, unknown>;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AgentCanvasProposalActionRequestV2 =
+  | {
+      action: "select";
+      option_id: string;
+      next_action: "generate_now" | "continue_planning";
+      position?: CanvasPositionV2 | null;
+      instruction?: null;
+    }
+  | {
+      action: "revise";
+      instruction: string;
+      option_id?: null;
+      next_action?: null;
+      position?: null;
+    }
+  | {
+      action: "skip";
+      option_id?: null;
+      next_action?: null;
+      instruction?: null;
+      position?: null;
+    };
+
+export interface AgentCanvasVideoSkillRunCreateRequestV2 {
+  skill_id: string;
+  skill_version: string;
+  source_skill_run_id?: string | null;
+}
+
+export interface AgentCanvasVideoSkillRunV2 {
+  skill_run_id: string;
+  workflow_id: string;
+  skill_id: string;
+  skill_version: string;
+  source_skill_run_id: string | null;
+  created_at: string;
+}
+
+export interface CanvasRunRequestV2 {
+  scope: "all_drafts" | "selected_nodes";
+  node_ids: string[];
+  retry_failed: boolean;
+  source_action: "global_run" | "node_run" | "retry_failed";
+}
+
+export interface CanvasRunSkippedNodeV2 {
+  node_id: string;
+  reason: string;
+}
+
+export interface CanvasRunAcceptedV2 {
+  workflow_id: string;
+  execution_id: string;
+  status: "queued";
+  accepted_node_ids: string[];
+  joined_node_ids: string[];
+  skipped: CanvasRunSkippedNodeV2[];
+  waiting_node_ids: string[];
+  events_cursor: number;
+}
+
+export interface CanvasRunCancelRequestV2 {
+  reason: string;
+}
+
+export interface CanvasRunCancelResponseV2 {
+  workflow_id: string;
+  execution_id: string;
+  status: "cancellation_requested" | "cancelled";
+  events_cursor: number;
+}
+
+export interface CanvasRuntimeEventsResponseV2 {
+  workflow_id: string;
+  events: CanvasRuntimeEventV2[];
+  next_after_seq: number;
+}
+
+export interface EditingExportRequestV2 {
+  expected_manifest_revision: number;
+  availability_policy: "use_ready_inputs";
+}
+
+export interface EditingExportAcceptedV2 {
+  workflow_id: string;
+  node_id: string;
+  export_id: string;
+  status: "queued";
+  manifest_revision: number;
+  ready_video_node_ids: string[];
+  skipped_inputs: EditingSkippedInputV2[];
+  bgm_node_id: string | null;
+  events_cursor: number;
+}
+
+export interface EditingExportCancelResponseV2 {
+  workflow_id: string;
+  node_id: string;
+  export_id: string;
+  status: "cancellation_requested" | "cancelled";
+  events_cursor: number;
 }

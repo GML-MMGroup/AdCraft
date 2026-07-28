@@ -1,5 +1,9 @@
 import type {
   AgentCanvasWorkflowV2,
+  AgentCanvasChatTurnV2,
+  AgentCanvasChatTimelineResponseV2,
+  AgentCanvasImageLibraryListResponseV2,
+  AgentCanvasVideoSkillRunV2,
   BindingCapabilityDecisionV2,
   CanvasBindingKindV2,
   CanvasBindingSourceImageAssetV2,
@@ -7,22 +11,29 @@ import type {
   CanvasBindingSourceV2,
   CanvasBindingV2,
   CanvasExecutionStatusV2,
+  CanvasMutationResponseV2,
   CanvasNodeErrorV2,
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
   CanvasPositionV2,
   CanvasRuntimeEventV2,
+  CanvasRuntimeEventsResponseV2,
   CanvasRuntimeSnapshotV2,
+  CanvasRunAcceptedV2,
+  CanvasRunCancelResponseV2,
   ChatArtifactCardV2,
   ChatExpertActivityV2,
   ChatMessageV2,
   ChatProposalCardV2,
   ChatTimelineItemV2,
   ChatTimelineListResponseV2,
+  ChatTurnAcceptedV2,
   ConceptOptionV2,
   ConceptProposalV2,
   EditingExportRuntimeV2,
+  EditingExportAcceptedV2,
+  EditingExportCancelResponseV2,
   EditingManifestV2,
   EditingNodeContentV2,
   EditingOutputSettingsV2,
@@ -34,13 +45,16 @@ import type {
   PlanningTopicStateV2,
   PlanningTopicStatusV2,
   ProjectAssetSummaryV2,
+  ProjectAssetListResponseV2,
   ProjectAssetStatusV2,
+  ProjectAssetUploadResponseV2,
   ProviderModelCapabilityListV2,
   ProviderModelCapabilityV2,
   ResolvedInputSnapshotV2,
   ResolvedMediaInputSnapshotV2,
   ResolvedTextInputSnapshotV2,
   SpecialistAgentNameV2,
+  StorageAccessDescriptorV2,
 } from "../../../types-v2.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -193,6 +207,27 @@ function nullableFiniteNumber(value: unknown, path: string) {
   return expectFiniteNumber(value, path);
 }
 
+function nullablePositiveInteger(value: unknown, path: string) {
+  if (value === null) return null;
+  return expectPositiveInteger(value, path);
+}
+
+function nullableNonNegativeNumber(value: unknown, path: string) {
+  if (value === null) return null;
+  const result = expectFiniteNumber(value, path);
+  if (result < 0) fail(path, "expected non-negative number");
+  return result;
+}
+
+function nullableBrowserSafeUrl(value: unknown, path: string) {
+  if (value === null) return null;
+  const result = expectNonEmptyString(value, path);
+  if (!result.startsWith("/api/") && !result.startsWith("https://") && !result.startsWith("http://")) {
+    fail(path, "expected browser-safe URL");
+  }
+  return result;
+}
+
 function optionalNullableString(value: unknown, path: string) {
   if (value === undefined) return undefined;
   return nullableString(value, path);
@@ -303,23 +338,33 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     ],
     path,
   );
+  const nodeType = expectLiteral(record.node_type, CANVAS_NODE_TYPES, `${path}.node_type`);
+  const status = expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`);
+  const outputAssetId = nullableString(record.output_asset_id, `${path}.output_asset_id`);
+  if (
+    status === "ready"
+    && ["image", "video", "audio", "editing"].includes(nodeType)
+    && !outputAssetId
+  ) {
+    fail(`${path}.output_asset_id`, "ready media node requires an output asset");
+  }
   return {
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
-    node_type: expectLiteral(record.node_type, CANVAS_NODE_TYPES, `${path}.node_type`),
+    node_type: nodeType,
     semantic_role: expectNonEmptyString(record.semantic_role, `${path}.semantic_role`),
     title: expectNonEmptyString(record.title, `${path}.title`),
-    status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
+    status,
     summary_prompt: nullableString(record.summary_prompt, `${path}.summary_prompt`),
     generation_prompt: nullableString(record.generation_prompt, `${path}.generation_prompt`),
     structured_content: expectRecordValue(record.structured_content, `${path}.structured_content`),
     model_id: nullableString(record.model_id, `${path}.model_id`),
     parameters: expectRecordValue(record.parameters, `${path}.parameters`),
     prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
-    output_asset_id: nullableString(record.output_asset_id, `${path}.output_asset_id`),
+    output_asset_id: outputAssetId,
     video_skill_run_id: nullableString(record.video_skill_run_id, `${path}.video_skill_run_id`),
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
-    revision: expectNonNegativeInteger(record.revision, `${path}.revision`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
@@ -394,11 +439,11 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
     display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
     mime_type: expectNonEmptyString(record.mime_type, `${path}.mime_type`),
     status: expectLiteral(record.status, PROJECT_ASSET_STATUSES, `${path}.status`),
-    preview_url: nullableString(record.preview_url, `${path}.preview_url`),
-    media_url: nullableString(record.media_url, `${path}.media_url`),
-    width: nullableFiniteNumber(record.width, `${path}.width`),
-    height: nullableFiniteNumber(record.height, `${path}.height`),
-    duration_seconds: nullableFiniteNumber(record.duration_seconds, `${path}.duration_seconds`),
+    preview_url: nullableBrowserSafeUrl(record.preview_url, `${path}.preview_url`),
+    media_url: nullableBrowserSafeUrl(record.media_url, `${path}.media_url`),
+    width: nullablePositiveInteger(record.width, `${path}.width`),
+    height: nullablePositiveInteger(record.height, `${path}.height`),
+    duration_seconds: nullableNonNegativeNumber(record.duration_seconds, `${path}.duration_seconds`),
     checksum: expectNonEmptyString(record.checksum, `${path}.checksum`),
   };
 }
@@ -415,7 +460,7 @@ export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"
     project_id: expectNonEmptyString(record.project_id, `${path}.project_id`),
     workflow_schema_version: 2,
     canvas_model: "agent_canvas_v1",
-    revision: expectNonNegativeInteger(record.revision, `${path}.revision`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
     nodes: expectArray(record.nodes, `${path}.nodes`).map((item, index) => normalizeCanvasNodeV2(item, `${path}.nodes[${index}]`)),
     bindings: expectArray(record.bindings, `${path}.bindings`).map((item, index) => normalizeCanvasBindingV2(item, `${path}.bindings[${index}]`)),
     assets: expectArray(record.assets, `${path}.assets`).map((item, index) => normalizeProjectAssetSummaryV2(item, `${path}.assets[${index}]`)),
@@ -429,7 +474,7 @@ export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "res
     snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedTextInputSnapshotV2["snapshot_type"]>(["text"]), `${path}.snapshot_type`),
     source_kind: expectLiteral(record.source_kind, new Set<ResolvedTextInputSnapshotV2["source_kind"]>(["node"]), `${path}.source_kind`),
     source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
-    source_node_revision: expectNonNegativeInteger(record.source_node_revision, `${path}.source_node_revision`),
+    source_node_revision: expectPositiveInteger(record.source_node_revision, `${path}.source_node_revision`),
     binding_kind: expectLiteral(record.binding_kind, RESOLVED_TEXT_BINDING_KINDS, `${path}.binding_kind`),
     document_kind: expectLiteral(record.document_kind, RESOLVED_DOCUMENT_KINDS, `${path}.document_kind`),
     content: expectString(record.content, `${path}.content`),
@@ -437,19 +482,52 @@ export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "res
   };
 }
 
+export function normalizeStorageAccessDescriptorV2(
+  value: unknown,
+  path = "accessDescriptor",
+): StorageAccessDescriptorV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["descriptor_type", "asset_id", "media_url", "checksum"], path);
+  if (record.descriptor_type !== "asset_content") {
+    fail(`${path}.descriptor_type`, "expected asset_content");
+  }
+  return {
+    descriptor_type: "asset_content",
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    media_url: nullableBrowserSafeUrl(record.media_url, `${path}.media_url`)
+      ?? fail(`${path}.media_url`, "expected URL"),
+    checksum: expectNonEmptyString(record.checksum, `${path}.checksum`),
+  };
+}
+
 export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedMediaInputSnapshotV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "asset_id", "media_type", "asset_checksum", "access_descriptor"], path);
+  const sourceKind = expectLiteral(
+    record.source_kind,
+    new Set<ResolvedMediaInputSnapshotV2["source_kind"]>(["node", "image_asset"]),
+    `${path}.source_kind`,
+  );
+  const sourceNodeId = nullableString(record.source_node_id, `${path}.source_node_id`);
+  const sourceNodeRevision = record.source_node_revision === null
+    ? null
+    : expectPositiveInteger(record.source_node_revision, `${path}.source_node_revision`);
+  if (sourceKind === "node" && (!sourceNodeId || sourceNodeRevision === null)) {
+    fail(path, "node media source requires node identity");
+  }
+  if (sourceKind === "image_asset" && (sourceNodeId !== null || sourceNodeRevision !== null)) {
+    fail(path, "image asset media source cannot include node identity");
+  }
   return {
     snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedMediaInputSnapshotV2["snapshot_type"]>(["media"]), `${path}.snapshot_type`),
-    source_kind: expectLiteral(record.source_kind, new Set<ResolvedMediaInputSnapshotV2["source_kind"]>(["node", "image_asset"]), `${path}.source_kind`),
-    source_node_id: nullableString(record.source_node_id, `${path}.source_node_id`),
-    source_node_revision: record.source_node_revision === null ? null : expectNonNegativeInteger(record.source_node_revision, `${path}.source_node_revision`),
+    source_kind: sourceKind,
+    source_node_id: sourceNodeId,
+    source_node_revision: sourceNodeRevision,
     binding_kind: expectLiteral(record.binding_kind, RESOLVED_MEDIA_BINDING_KINDS, `${path}.binding_kind`),
     asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
     media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
     asset_checksum: expectNonEmptyString(record.asset_checksum, `${path}.asset_checksum`),
-    access_descriptor: expectRecordValue(record.access_descriptor, `${path}.access_descriptor`),
+    access_descriptor: normalizeStorageAccessDescriptorV2(record.access_descriptor, `${path}.access_descriptor`),
   };
 }
 
@@ -517,15 +595,13 @@ export function normalizeCanvasRuntimeSnapshotV2(value: unknown, path = "runtime
 
 export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): CanvasRuntimeEventV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["seq", "workflow_id", "event_type", "node_id", "binding_id", "asset_id", "provider_task_id", "created_at", "payload"], path);
+  forbidUnknownFields(record, ["seq", "workflow_id", "event_type", "node_id", "binding_id", "created_at", "payload"], path);
   return {
     seq: expectNonNegativeInteger(record.seq, `${path}.seq`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     event_type: expectNonEmptyString(record.event_type, `${path}.event_type`),
     node_id: nullableString(record.node_id, `${path}.node_id`),
     binding_id: nullableString(record.binding_id, `${path}.binding_id`),
-    asset_id: nullableString(record.asset_id, `${path}.asset_id`),
-    provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     payload: record.payload === null ? null : expectRecordValue(record.payload, `${path}.payload`),
   };
@@ -823,5 +899,331 @@ export function normalizeEditingNodeContentV2(value: unknown, path = "editing"):
         : record.active_export === undefined
           ? null
           : normalizeEditingExportRuntimeV2(record.active_export, `${path}.active_export`),
+  };
+}
+
+export function normalizeCanvasMutationResponseV2(
+  value: unknown,
+  path = "mutation",
+): CanvasMutationResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow", "node", "binding"], path);
+  return {
+    workflow: normalizeAgentCanvasWorkflowV2(record.workflow, `${path}.workflow`),
+    node: record.node === null || record.node === undefined
+      ? null
+      : normalizeCanvasNodeV2(record.node, `${path}.node`),
+    binding: record.binding === null || record.binding === undefined
+      ? null
+      : normalizeCanvasBindingV2(record.binding, `${path}.binding`),
+  };
+}
+
+export function normalizeProjectAssetUploadResponseV2(
+  value: unknown,
+  path = "assetUpload",
+): ProjectAssetUploadResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "asset"], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    asset: normalizeProjectAssetSummaryV2(record.asset, `${path}.asset`),
+  };
+}
+
+export function normalizeProjectAssetListResponseV2(
+  value: unknown,
+  path = "assetList",
+): ProjectAssetListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "assets"], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    assets: expectArray(record.assets, `${path}.assets`).map((item, index) =>
+      normalizeProjectAssetSummaryV2(item, `${path}.assets[${index}]`),
+    ),
+  };
+}
+
+export function normalizeAgentCanvasImageLibraryListResponseV2(
+  value: unknown,
+  path = "imageLibrary",
+): AgentCanvasImageLibraryListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["items"], path);
+  return {
+    items: expectArray(record.items, `${path}.items`).map((item, index) =>
+      expectUnknownRecord(item, `${path}.items[${index}]`),
+    ),
+  };
+}
+
+export function normalizeAgentCanvasChatTimelineResponseV2(
+  value: unknown,
+  path = "chatTimeline",
+): AgentCanvasChatTimelineResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "conversation_id", "items", "next_cursor"], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: record.conversation_id === null
+      ? null
+      : expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    items: expectArray(record.items, `${path}.items`).map((item, index) => {
+      const itemPath = `${path}.items[${index}]`;
+      const entry = expectRecord(item, itemPath);
+      forbidUnknownFields(
+        entry,
+        [
+          "entry_id",
+          "workflow_id",
+          "conversation_id",
+          "sequence_no",
+          "entry_type",
+          "speaker",
+          "content",
+          "metadata",
+          "created_at",
+        ],
+        itemPath,
+      );
+      const entryType = expectString(entry.entry_type, `${itemPath}.entry_type`);
+      if (entryType !== "message" && entryType !== "script_artifact") {
+        fail(`${itemPath}.entry_type`, "invalid timeline entry type");
+      }
+      const speaker = entry.speaker === null
+        ? null
+        : expectLiteral(entry.speaker, CHAT_MESSAGE_SPEAKERS, `${itemPath}.speaker`);
+      if (entryType === "message" && speaker === null) {
+        fail(`${itemPath}.speaker`, "message requires speaker");
+      }
+      return {
+        entry_id: expectNonEmptyString(entry.entry_id, `${itemPath}.entry_id`),
+        workflow_id: expectNonEmptyString(entry.workflow_id, `${itemPath}.workflow_id`),
+        conversation_id: expectNonEmptyString(entry.conversation_id, `${itemPath}.conversation_id`),
+        sequence_no: expectPositiveInteger(entry.sequence_no, `${itemPath}.sequence_no`),
+        entry_type: entryType,
+        speaker,
+        content: expectString(entry.content, `${itemPath}.content`),
+        metadata: optionalUnknownRecord(entry.metadata, `${itemPath}.metadata`, {}),
+        created_at: expectIsoDateTimeString(entry.created_at, `${itemPath}.created_at`),
+      };
+    }),
+    next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
+  };
+}
+
+export function normalizeChatTurnAcceptedV2(
+  value: unknown,
+  path = "chatAccepted",
+): ChatTurnAcceptedV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["workflow_id", "conversation_id", "message_id", "turn_id", "status", "events_cursor"],
+    path,
+  );
+  if (record.status !== "queued") fail(`${path}.status`, "expected queued");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    message_id: record.message_id === null
+      ? null
+      : expectNonEmptyString(record.message_id, `${path}.message_id`),
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    status: "queued",
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+  };
+}
+
+export function normalizeAgentCanvasChatTurnV2(
+  value: unknown,
+  path = "chatTurn",
+): AgentCanvasChatTurnV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "turn_id",
+      "workflow_id",
+      "conversation_id",
+      "status",
+      "turn_kind",
+      "request",
+      "error_code",
+      "error_message",
+      "created_at",
+      "updated_at",
+    ],
+    path,
+  );
+  const status = expectString(record.status, `${path}.status`);
+  if (!["queued", "running", "completed", "failed"].includes(status)) {
+    fail(`${path}.status`, "invalid chat turn status");
+  }
+  const turnKind = expectString(record.turn_kind, `${path}.turn_kind`);
+  if (turnKind !== "message" && turnKind !== "proposal_action") {
+    fail(`${path}.turn_kind`, "invalid chat turn kind");
+  }
+  return {
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    status: status as AgentCanvasChatTurnV2["status"],
+    turn_kind: turnKind,
+    request: expectUnknownRecord(record.request, `${path}.request`),
+    error_code: nullableString(record.error_code, `${path}.error_code`),
+    error_message: nullableString(record.error_message, `${path}.error_message`),
+    created_at: expectNonEmptyString(record.created_at, `${path}.created_at`),
+    updated_at: expectNonEmptyString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+export function normalizeAgentCanvasVideoSkillRunV2(
+  value: unknown,
+  path = "videoSkillRun",
+): AgentCanvasVideoSkillRunV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["skill_run_id", "workflow_id", "skill_id", "skill_version", "source_skill_run_id", "created_at"],
+    path,
+  );
+  return {
+    skill_run_id: expectNonEmptyString(record.skill_run_id, `${path}.skill_run_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    skill_id: expectNonEmptyString(record.skill_id, `${path}.skill_id`),
+    skill_version: expectNonEmptyString(record.skill_version, `${path}.skill_version`),
+    source_skill_run_id: record.source_skill_run_id === undefined
+      ? null
+      : nullableString(record.source_skill_run_id, `${path}.source_skill_run_id`),
+    created_at: expectNonEmptyString(record.created_at, `${path}.created_at`),
+  };
+}
+
+export function normalizeCanvasRunAcceptedV2(
+  value: unknown,
+  path = "runAccepted",
+): CanvasRunAcceptedV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "workflow_id",
+      "execution_id",
+      "status",
+      "accepted_node_ids",
+      "joined_node_ids",
+      "skipped",
+      "waiting_node_ids",
+      "events_cursor",
+    ],
+    path,
+  );
+  if (record.status !== "queued") fail(`${path}.status`, "expected queued");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    execution_id: expectNonEmptyString(record.execution_id, `${path}.execution_id`),
+    status: "queued",
+    accepted_node_ids: expectStringArray(record.accepted_node_ids, `${path}.accepted_node_ids`),
+    joined_node_ids: expectStringArray(record.joined_node_ids, `${path}.joined_node_ids`),
+    skipped: expectArray(record.skipped, `${path}.skipped`).map((item, index) => {
+      const skipped = expectRecord(item, `${path}.skipped[${index}]`);
+      forbidUnknownFields(skipped, ["node_id", "reason"], `${path}.skipped[${index}]`);
+      return {
+        node_id: expectNonEmptyString(skipped.node_id, `${path}.skipped[${index}].node_id`),
+        reason: expectNonEmptyString(skipped.reason, `${path}.skipped[${index}].reason`),
+      };
+    }),
+    waiting_node_ids: expectStringArray(record.waiting_node_ids, `${path}.waiting_node_ids`),
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+  };
+}
+
+export function normalizeCanvasRunCancelResponseV2(
+  value: unknown,
+  path = "runCancel",
+): CanvasRunCancelResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "execution_id", "status", "events_cursor"], path);
+  const status = expectString(record.status, `${path}.status`);
+  if (status !== "cancellation_requested" && status !== "cancelled") {
+    fail(`${path}.status`, "invalid cancellation status");
+  }
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    execution_id: expectNonEmptyString(record.execution_id, `${path}.execution_id`),
+    status,
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+  };
+}
+
+export function normalizeCanvasRuntimeEventsResponseV2(
+  value: unknown,
+  path = "events",
+): CanvasRuntimeEventsResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "events", "next_after_seq"], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    events: expectArray(record.events, `${path}.events`).map((item, index) =>
+      normalizeCanvasRuntimeEventV2(item, `${path}.events[${index}]`),
+    ),
+    next_after_seq: expectNonNegativeInteger(record.next_after_seq, `${path}.next_after_seq`),
+  };
+}
+
+export function normalizeEditingExportAcceptedV2(
+  value: unknown,
+  path = "editingExportAccepted",
+): EditingExportAcceptedV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "workflow_id",
+      "node_id",
+      "export_id",
+      "status",
+      "manifest_revision",
+      "ready_video_node_ids",
+      "skipped_inputs",
+      "bgm_node_id",
+      "events_cursor",
+    ],
+    path,
+  );
+  if (record.status !== "queued") fail(`${path}.status`, "expected queued");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    export_id: expectNonEmptyString(record.export_id, `${path}.export_id`),
+    status: "queued",
+    manifest_revision: expectNonNegativeInteger(record.manifest_revision, `${path}.manifest_revision`),
+    ready_video_node_ids: expectStringArray(record.ready_video_node_ids, `${path}.ready_video_node_ids`),
+    skipped_inputs: expectArray(record.skipped_inputs, `${path}.skipped_inputs`).map((item, index) =>
+      normalizeEditingSkippedInputV2(item, `${path}.skipped_inputs[${index}]`),
+    ),
+    bgm_node_id: nullableString(record.bgm_node_id, `${path}.bgm_node_id`),
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+  };
+}
+
+export function normalizeEditingExportCancelResponseV2(
+  value: unknown,
+  path = "editingExportCancel",
+): EditingExportCancelResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "node_id", "export_id", "status", "events_cursor"], path);
+  const status = expectString(record.status, `${path}.status`);
+  if (status !== "cancellation_requested" && status !== "cancelled") {
+    fail(`${path}.status`, "invalid cancellation status");
+  }
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    export_id: expectNonEmptyString(record.export_id, `${path}.export_id`),
+    status,
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
   };
 }

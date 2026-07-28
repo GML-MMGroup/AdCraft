@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeAgentCanvasWorkflowV2,
+  normalizeAgentCanvasChatTimelineResponseV2,
   normalizeCanvasBindingV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasRuntimeEventV2,
   normalizeCanvasRuntimeSnapshotV2,
   normalizeChatTimelineListResponseV2,
   normalizeEditingNodeContentV2,
+  normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
+  normalizeResolvedMediaInputSnapshotV2,
 } from "./normalizers.ts";
 
 function validWorkflowPayload() {
@@ -354,5 +358,120 @@ describe("Agent Canvas normalizers", () => {
         active_export: null,
       }),
     ).toThrowError(/bgm_volume/i);
+  });
+
+  it("accepts shared events with asset details inside payload only", () => {
+    const event = normalizeCanvasRuntimeEventV2({
+      seq: 51,
+      workflow_id: "workflow-1",
+      event_type: "asset_published",
+      node_id: "node-image-1",
+      binding_id: null,
+      created_at: "2026-07-28T10:10:00Z",
+      payload: {
+        asset_id: "asset-output-2",
+        provider_task_id: "task-2",
+      },
+    });
+
+    expect(event.payload?.asset_id).toBe("asset-output-2");
+  });
+
+  it("normalizes the persisted Agent Canvas conversation timeline", () => {
+    const timeline = normalizeAgentCanvasChatTimelineResponseV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [
+        {
+          entry_id: "entry-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 1,
+          entry_type: "message",
+          speaker: "user",
+          content: "Create a summer campaign.",
+          metadata: { mentioned_node_ids: [] },
+          created_at: "2026-07-28T10:10:00Z",
+        },
+        {
+          entry_id: "entry-2",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 2,
+          entry_type: "script_artifact",
+          speaker: null,
+          content: "View Script",
+          metadata: { node_id: "node-script-1" },
+          created_at: "2026-07-28T10:10:01Z",
+        },
+      ],
+      next_cursor: 2,
+    });
+
+    expect(timeline.items[1]?.entry_type).toBe("script_artifact");
+  });
+
+  it("enforces ready media output and positive revisions", () => {
+    expect(() =>
+      normalizeCanvasNodeV2({
+        ...validWorkflowPayload().nodes[1],
+        status: "ready",
+        output_asset_id: null,
+      }),
+    ).toThrowError(/output_asset_id/i);
+    expect(() =>
+      normalizeCanvasNodeV2({
+        ...validWorkflowPayload().nodes[0],
+        revision: 0,
+      }),
+    ).toThrowError(/revision/i);
+    expect(() =>
+      normalizeAgentCanvasWorkflowV2({
+        ...validWorkflowPayload(),
+        revision: 0,
+      }),
+    ).toThrowError(/revision/i);
+  });
+
+  it("enforces project asset geometry, duration, and browser-safe URLs", () => {
+    const validAsset = validWorkflowPayload().assets[0];
+    expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, width: 0 })).toThrowError(/width/i);
+    expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, duration_seconds: -1 })).toThrowError(/duration_seconds/i);
+    expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, media_url: "/tmp/private.png" })).toThrowError(/media_url/i);
+  });
+
+  it("validates media access descriptors and source identity", () => {
+    const nodeSnapshot = {
+      snapshot_type: "media",
+      source_kind: "node",
+      source_node_id: "node-image-1",
+      source_node_revision: 2,
+      binding_kind: "image_reference",
+      asset_id: "asset-output-1",
+      media_type: "image",
+      asset_checksum: "checksum-1",
+      access_descriptor: {
+        descriptor_type: "asset_content",
+        asset_id: "asset-output-1",
+        media_url: "/api/v2/assets/asset-output-1/content",
+        checksum: "checksum-1",
+      },
+    };
+    expect(normalizeResolvedMediaInputSnapshotV2(nodeSnapshot).source_node_id).toBe("node-image-1");
+    expect(() =>
+      normalizeResolvedMediaInputSnapshotV2({
+        ...nodeSnapshot,
+        source_kind: "image_asset",
+      }),
+    ).toThrowError(/node identity/i);
+    expect(() =>
+      normalizeResolvedMediaInputSnapshotV2({
+        ...nodeSnapshot,
+        access_descriptor: {
+          ...nodeSnapshot.access_descriptor,
+          media_url: "/tmp/private.png",
+        },
+      }),
+    ).toThrowError(/media_url/i);
   });
 });
