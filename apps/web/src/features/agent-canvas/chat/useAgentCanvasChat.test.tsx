@@ -1,5 +1,5 @@
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
@@ -32,13 +32,18 @@ function workflow(workflowId: string): AgentCanvasWorkflowV2 {
 }
 
 describe("useAgentCanvasChat", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
   afterEach(() => {
+    cleanup();
+    vi.clearAllTimers();
     vi.useRealTimers();
     vi.clearAllMocks();
   });
 
   it("ignores a previous project's timeline response after the workflow changes", async () => {
-    vi.useFakeTimers();
     let finishOldRequest!: (value: ChatTimelineListResponseV2) => void;
     api.agentCanvasChatTimeline.mockImplementation((workflowId: string) => {
       if (workflowId === "workflow-old") {
