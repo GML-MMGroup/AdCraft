@@ -133,26 +133,38 @@ describe("route providers", () => {
     expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeTruthy();
   });
 
-  test("marks only the Home application shell for route-specific artwork", async () => {
-    const home = render(
-      <AppProvider>
-        <App />
-      </AppProvider>,
-    );
+  test("marks non-Workflow application shells for shared cosmic artwork", async () => {
+    for (const path of ["/", "/projects", "/assets", "/trash", "/api-space"]) {
+      cleanup();
+      window.history.replaceState({}, "", path);
+      const view = render(
+        <AppProvider>
+          <App />
+        </AppProvider>,
+      );
 
-    await screen.findByText("API ready");
-    expect(home.container.querySelector(".app-shell--home")).toBeTruthy();
+      await screen.findByText("API ready");
+      expect(
+        view.container.querySelector(".app-shell--cosmic"),
+        `${path} should use the cosmic shell`,
+      ).toBeTruthy();
+    }
 
-    cleanup();
-    window.history.replaceState({}, "", "/workflow");
-    const workflow = render(
-      <AppProvider>
-        <App />
-      </AppProvider>,
-    );
+    for (const path of ["/workflow", "/Workflow", "/%77orkflow"]) {
+      cleanup();
+      window.history.replaceState({}, "", path);
+      const workflow = render(
+        <AppProvider>
+          <App />
+        </AppProvider>,
+      );
 
-    await screen.findByText("Workflow page empty");
-    expect(workflow.container.querySelector(".app-shell--home")).toBeNull();
+      await screen.findByText("Workflow page empty");
+      expect(
+        workflow.container.querySelector(".app-shell--cosmic"),
+        `${path} should retain the Workflow canvas shell`,
+      ).toBeNull();
+    }
   });
 
   test("renders the workflow Layout shell inside WorkspaceProvider", async () => {
