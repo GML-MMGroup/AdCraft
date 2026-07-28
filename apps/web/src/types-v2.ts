@@ -1501,6 +1501,7 @@ export interface CanvasNodeV2 {
   workflow_id: string;
   node_type: CanvasNodeTypeV2;
   semantic_role: string;
+  role_contract_version: "ad-media-role-v1";
   title: string;
   status: CanvasNodeStatusV2;
   summary_prompt: string | null;
@@ -1633,7 +1634,9 @@ export interface CanvasRuntimeEventV2 {
   seq: number;
   workflow_id: string;
   event_type: string;
+  execution_id: string | null;
   node_id: string | null;
+  asset_id: string | null;
   binding_id: string | null;
   created_at: string;
   payload: Record<string, unknown> | null;
@@ -1651,6 +1654,7 @@ export interface ProviderModelCapabilityV2 {
   pixel_bounds: [number, number] | null;
   available: boolean;
   unavailable_reason: string | null;
+  supports_native_audio: boolean;
 }
 
 export type ProviderModelCapabilityListV2 = ProviderModelCapabilityV2[];
@@ -1757,7 +1761,7 @@ export type ChatTimelineItemV2 = ChatMessageV2 | ChatArtifactCardV2 | ChatPropos
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
-  conversation_id: string;
+  conversation_id: string | null;
   items: ChatTimelineItemV2[];
   next_after_seq: number;
 }
@@ -1845,6 +1849,7 @@ export interface AgentCanvasProjectCreateRequestV2 {
 export interface CanvasNodeCreateRequestV2 {
   node_type: CanvasNodeTypeV2;
   semantic_role: string;
+  role_contract_version?: "ad-media-role-v1";
   title: string;
   summary_prompt?: string | null;
   generation_prompt?: string | null;
@@ -2002,7 +2007,7 @@ export interface CanvasRunSkippedNodeV2 {
 export interface CanvasRunAcceptedV2 {
   workflow_id: string;
   execution_id: string;
-  status: "queued";
+  status: CanvasExecutionStatusV2;
   accepted_node_ids: string[];
   joined_node_ids: string[];
   skipped: CanvasRunSkippedNodeV2[];
@@ -2018,11 +2023,12 @@ export interface CanvasRunCancelResponseV2 {
   workflow_id: string;
   execution_id: string;
   status: "cancellation_requested" | "cancelled";
+  cancelled_node_ids: string[];
   events_cursor: number;
 }
 
 export interface CanvasRuntimeEventsResponseV2 {
-  workflow_id: string;
+  workflow_id: string | null;
   events: CanvasRuntimeEventV2[];
   next_after_seq: number;
 }
@@ -2036,7 +2042,7 @@ export interface EditingExportAcceptedV2 {
   workflow_id: string;
   node_id: string;
   export_id: string;
-  status: "queued";
+  status: "queued" | "exporting" | "completed" | "failed" | "cancelled";
   manifest_revision: number;
   ready_video_node_ids: string[];
   skipped_inputs: EditingSkippedInputV2[];

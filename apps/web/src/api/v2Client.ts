@@ -1,6 +1,5 @@
 import type {
   AgentCanvasChatMessageRequestV2,
-  AgentCanvasChatTimelineResponseV2,
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasProjectCreateRequestV2,
@@ -20,6 +19,7 @@ import type {
   CanvasRunRequestV2,
   CanvasRuntimeEventsResponseV2,
   CanvasRuntimeSnapshotV2,
+  ChatTimelineListResponseV2,
   ChatTurnAcceptedV2,
   EditingExportAcceptedV2,
   EditingExportCancelResponseV2,
@@ -136,7 +136,7 @@ import {
 } from "./v2Normalizers.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
-  normalizeAgentCanvasChatTimelineResponseV2,
+  normalizeAgentCanvasChatTimelineCompatV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
@@ -594,7 +594,7 @@ export const v2Api = {
     workflowId: string,
     afterSeq = 0,
     limit = 100,
-  ): Promise<AgentCanvasChatTimelineResponseV2> {
+  ): Promise<ChatTimelineListResponseV2> {
     const query = new URLSearchParams({
       after_seq: String(afterSeq),
       limit: String(limit),
@@ -602,7 +602,7 @@ export const v2Api = {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
       {},
-      normalizeAgentCanvasChatTimelineResponseV2,
+      normalizeAgentCanvasChatTimelineCompatV2,
     );
   },
 

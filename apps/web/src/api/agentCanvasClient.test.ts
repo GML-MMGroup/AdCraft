@@ -19,6 +19,7 @@ const draftNode = {
   workflow_id: "workflow-1",
   node_type: "image",
   semantic_role: "product",
+  role_contract_version: "ad-media-role-v1",
   title: "Product image",
   status: "draft",
   summary_prompt: "A product portrait",

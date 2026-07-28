@@ -6,9 +6,12 @@ import {
   normalizeCanvasBindingV2,
   normalizeCanvasNodeV2,
   normalizeCanvasRuntimeEventV2,
+  normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
+  normalizeCanvasRunAcceptedV2,
   normalizeChatTimelineListResponseV2,
   normalizeEditingNodeContentV2,
+  normalizeEditingExportAcceptedV2,
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
@@ -27,6 +30,7 @@ function validWorkflowPayload() {
         workflow_id: "workflow-1",
         node_type: "text",
         semantic_role: "brief",
+        role_contract_version: "ad-media-role-v1",
         title: "Creative Brief",
         status: "ready",
         summary_prompt: "A compact brand brief.",
@@ -48,6 +52,7 @@ function validWorkflowPayload() {
         workflow_id: "workflow-1",
         node_type: "image",
         semantic_role: "character_main",
+        role_contract_version: "ad-media-role-v1",
         title: "Lead Character",
         status: "draft",
         summary_prompt: "Main character portrait.",
@@ -377,6 +382,54 @@ describe("Agent Canvas normalizers", () => {
     expect(event.payload?.asset_id).toBe("asset-output-2");
   });
 
+  it("normalizes the current backend event envelope into the shared event model", () => {
+    const response = normalizeCanvasRuntimeEventsResponseV2({
+      items: [{
+        sequence_no: 52,
+        workflow_id: "workflow-1",
+        event_type: "asset_published",
+        execution_id: "execution-1",
+        node_id: "node-image-1",
+        asset_id: "asset-output-3",
+        payload: {},
+        created_at: "2026-07-28T10:10:01Z",
+      }],
+      next_cursor: 52,
+    });
+
+    expect(response).toMatchObject({
+      workflow_id: null,
+      next_after_seq: 52,
+      events: [{
+        seq: 52,
+        execution_id: "execution-1",
+        asset_id: "asset-output-3",
+        binding_id: null,
+      }],
+    });
+  });
+
+  it("accepts the backend capability list envelope", () => {
+    const capabilities = normalizeProviderModelCapabilityListV2({
+      items: [{
+        provider: "volcengine",
+        model_id: "seedance",
+        output_type: "video",
+        accepted_input_types: ["text", "image"],
+        max_references: 4,
+        supported_parameters: [],
+        supported_aspect_ratios: ["16:9"],
+        duration_range_seconds: [3, 12],
+        pixel_bounds: null,
+        available: true,
+        unavailable_reason: null,
+        supports_native_audio: true,
+      }],
+    });
+
+    expect(capabilities[0]?.supports_native_audio).toBe(true);
+  });
+
   it("normalizes the persisted Agent Canvas conversation timeline", () => {
     const timeline = normalizeAgentCanvasChatTimelineResponseV2({
       workflow_id: "workflow-1",
@@ -473,5 +526,30 @@ describe("Agent Canvas normalizers", () => {
         },
       }),
     ).toThrowError(/media_url/i);
+  });
+
+  it("accepts joined Run and idempotently completed Editing export responses", () => {
+    expect(normalizeCanvasRunAcceptedV2({
+      workflow_id: "workflow-1",
+      execution_id: "execution-1",
+      status: "running",
+      accepted_node_ids: [],
+      joined_node_ids: ["node-image-1"],
+      skipped: [],
+      waiting_node_ids: [],
+      events_cursor: 18,
+    }).status).toBe("running");
+
+    expect(normalizeEditingExportAcceptedV2({
+      workflow_id: "workflow-1",
+      node_id: "node-editing-1",
+      export_id: "export-1",
+      status: "completed",
+      manifest_revision: 3,
+      ready_video_node_ids: ["node-video-1"],
+      skipped_inputs: [],
+      bgm_node_id: null,
+      events_cursor: 19,
+    }).status).toBe("completed");
   });
 });
