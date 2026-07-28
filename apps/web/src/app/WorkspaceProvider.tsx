@@ -12,21 +12,11 @@ import {
 } from "../api/v2AuthoringConflictEvents.ts";
 import { AppContext, type AppContextValue } from "../AppContextValue";
 import { assetLibraryUploadOptionsForKind, dispatchAssetLibraryUploadEvent, isSupportedUploadFile, uploadOptionsForNode } from "../api/workflowNormalizers";
-import { clearNewProjectStorage, createNewProjectState, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, WORKSPACE_MESSAGES_KEY, WORKSPACE_WORKFLOW_KEY, type ProjectSessionState, type SavedWorkflowProject } from "../projects/newProject";
-import {
-  deleteHybridRecordSync,
-  hybridStoragePointer,
-  isHybridStoragePointer,
-  loadHybridRecord,
-  loadHybridRecordSync,
-  safeRemoveItem,
-  safeWriteJson,
-  saveHybridRecordSync,
-} from "../storage/hybridStorage";
+import { clearNewProjectStorage, loadActiveProjectId, loadDemoProjectFavorites, saveActiveProjectId, setDemoProjectFavorite, type ProjectSessionState, type SavedWorkflowProject } from "../projects/newProject";
 import { shouldApplyWorkflowScopedResult } from "../workflow/sessionGuards";
 import { isWorkflowV2Graph } from "../workflowSchema";
-import type { ProjectV2Summary } from "../types-v2";
-import { loadAllBackendProjectPages, projectTrashClearsActiveWorkflow, shouldPersistMessagesAsLocalDraft } from "../projects/v2ProjectAuthority";
+import type { AgentCanvasWorkflowV2, ProjectV2Summary } from "../types-v2";
+import { loadAllBackendProjectPages, projectTrashClearsActiveWorkflow } from "../projects/v2ProjectAuthority";
 import type {
   AssetLibraryEntitySummary,
   AssetLibraryUploadKind,
@@ -47,8 +37,9 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
   const [assets, setAssets] = useState<UploadedAsset[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<UploadedAsset[]>([]);
   const [promptLibraryEntities, setPromptLibraryEntities] = useState<AssetLibraryEntitySummary[]>([]);
-  const [messages, setMessages] = useState<FrontDeskMessage[]>(() => startWithNewProject ? [] : loadStoredMessages());
-  const [workflow, setWorkflow] = useState<WorkflowGraph | null>(() => startWithNewProject ? null : loadStoredWorkflow());
+  const [messages, setMessages] = useState<FrontDeskMessage[]>([]);
+  const [workflow, setWorkflow] = useState<WorkflowGraph | null>(null);
+  const [agentCanvasWorkflow, setAgentCanvasWorkflow] = useState<AgentCanvasWorkflowV2 | null>(null);
   const [nodeCatalog, setNodeCatalog] = useState<NodeCatalogItem[]>([]);
   const [nodeRuns, setNodeRuns] = useState<NodeRunResult[]>([]);
   const [savedProjects, setSavedProjects] = useState<ProjectV2Summary[]>([]);
@@ -58,7 +49,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
   const [workspaceHydrated, setWorkspaceHydrated] = useState(false);
   const [workspaceRestoreError, setWorkspaceRestoreError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const activeWorkflowIdRef = useRef<string | null>(workflow?.workflow_id ?? null);
+  const activeWorkflowIdRef = useRef<string | null>(null);
   const workspaceSessionGenerationRef = useRef(0);
 
   const setWorkflowState = useCallback<Dispatch<SetStateAction<WorkflowGraph | null>>>((next) => {
@@ -145,8 +136,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     return { workflow, messages, nodeRuns, selectedAssets, promptLibraryEntities };
   }, [messages, nodeRuns, promptLibraryEntities, selectedAssets, workflow]);
 
-  const saveProject = useCallback((state: ProjectSessionState = currentProjectState()) => {
-    if (!state.workflow?.project_id) saveStoredWorkflow(state.workflow);
+  const saveProject = useCallback((_state: ProjectSessionState = currentProjectState()) => {
     return null;
   }, [currentProjectState]);
 
@@ -179,37 +169,54 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     );
   }, []);
 
-  const startNewProject = useCallback(() => {
+  const startNewProject = useCallback(async () => {
     invalidateWorkspaceRestoreRequests();
-    const nextState = createNewProjectState();
-    activeWorkflowIdRef.current = null;
-    setWorkspaceRestoreError(null);
-    clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-    saveActiveProjectId(window.localStorage, null);
-    setActiveProjectId(null);
-    setWorkflow(nextState.workflow);
-    setMessages(nextState.messages);
-    setNodeRuns(nextState.nodeRuns);
-    setSelectedAssets(nextState.selectedAssets);
-    setPromptLibraryEntities(nextState.promptLibraryEntities);
-    setWorkspaceHydrated(true);
-  }, [invalidateWorkspaceRestoreRequests, workflow?.workflow_id]);
+    setBusy(true);
+    try {
+      const { v2Api } = await import("../api/v2Client");
+      const idempotencyKey = `project-${crypto.randomUUID()}`;
+      const created = await v2Api.createAgentCanvasProject(
+        { name: "Untitled Project", description: "" },
+        idempotencyKey,
+      );
+      const nextWorkflow = created.value;
+      activeWorkflowIdRef.current = nextWorkflow.workflow_id;
+      clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
+      saveActiveProjectId(window.localStorage, nextWorkflow.project_id);
+      setActiveProjectId(nextWorkflow.project_id);
+      setWorkflow(null);
+      setAgentCanvasWorkflow(nextWorkflow);
+      setMessages([]);
+      setNodeRuns([]);
+      setSelectedAssets([]);
+      setPromptLibraryEntities([]);
+      setWorkspaceRestoreError(null);
+      setWorkspaceHydrated(true);
+      await refreshProjects();
+      return true;
+    } catch (error) {
+      setWorkspaceRestoreError(error instanceof Error ? error.message : "Project creation failed.");
+      setWorkspaceHydrated(true);
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [invalidateWorkspaceRestoreRequests, refreshProjects, workflow?.workflow_id]);
 
   const openProject = useCallback(async (projectId: string) => {
     const requestGeneration = invalidateWorkspaceRestoreRequests();
-    const [client, adapter] = await Promise.all([
-      import("../api/v2Client"),
-      import("../workflow-v2/pageAdapter"),
-    ]);
-    const response = await client.v2Api.projectWorkflow(projectId);
+    const { v2Api } = await import("../api/v2Client");
+    const project = await v2Api.projectWithEtag(projectId);
+    const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
     if (requestGeneration !== workspaceSessionGenerationRef.current) return false;
     clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-    const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
+    const nextWorkflow = response.value;
     activeWorkflowIdRef.current = nextWorkflow.workflow_id;
     saveActiveProjectId(window.localStorage, projectId);
     setActiveProjectId(projectId);
     setWorkspaceRestoreError(null);
-    setWorkflow(nextWorkflow);
+    setWorkflow(null);
+    setAgentCanvasWorkflow(nextWorkflow);
     setMessages([]);
     setNodeRuns([]);
     setWorkspaceHydrated(true);
@@ -222,6 +229,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     if (projectTrashClearsActiveWorkflow(projectId, activeProjectId)) {
       activeWorkflowIdRef.current = null;
       setWorkflowState(null);
+      setAgentCanvasWorkflow(null);
       saveActiveProjectId(window.localStorage, null);
       setActiveProjectId(null);
     }
@@ -258,39 +266,33 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
       return;
     }
     if (target.id !== activeWorkflowIdRef.current) return;
-    const [client, adapter] = await Promise.all([
-      import("../api/v2Client"),
-      import("../workflow-v2/pageAdapter"),
-    ]);
-    const latest = await client.v2Api.workflowWithEtag(target.id);
+    const { v2Api } = await import("../api/v2Client");
+    const latest = await v2Api.agentCanvasWorkflowWithEtag(target.id);
     if (target.id !== activeWorkflowIdRef.current) return;
-    setWorkflowState(adapter.workflowV2ToWorkflowGraph(latest.value));
-  }, [refreshProjects, setWorkflowState]);
+    setAgentCanvasWorkflow(latest.value);
+  }, [refreshProjects]);
 
   useEffect(() => {
-    activeWorkflowIdRef.current = workflow?.workflow_id ?? null;
-    if (!workflow?.project_id || workflow.project_id === activeProjectId) return;
-    saveActiveProjectId(window.localStorage, workflow.project_id);
-    setActiveProjectId(workflow.project_id);
+    activeWorkflowIdRef.current = agentCanvasWorkflow?.workflow_id ?? null;
+    if (!agentCanvasWorkflow?.project_id || agentCanvasWorkflow.project_id === activeProjectId) return;
+    saveActiveProjectId(window.localStorage, agentCanvasWorkflow.project_id);
+    setActiveProjectId(agentCanvasWorkflow.project_id);
     void refreshProjects();
-  }, [activeProjectId, refreshProjects, workflow?.project_id, workflow?.workflow_id]);
+  }, [activeProjectId, agentCanvasWorkflow?.project_id, agentCanvasWorkflow?.workflow_id, refreshProjects]);
 
   useEffect(() => {
     if (startWithNewProject) {
-      setWorkspaceRestoreError(null);
-      setWorkspaceHydrated(true);
-      return;
+      void startNewProject();
+      return undefined;
     }
     let cancelled = false;
-    async function hydrateLocalDrafts() {
+    async function hydrateBackendWorkspace() {
       const restoreRequest = beginWorkspaceRestoreRequest();
       try {
         const { v2Api } = await import("../api/v2Client");
-        const [activeProjects, trashProjects, storedWorkflow, storedMessages] = await Promise.all([
+        const [activeProjects, trashProjects] = await Promise.all([
           loadAllBackendProjectPages((cursor) => v2Api.listProjects("active", 100, cursor)),
           loadAllBackendProjectPages((cursor) => v2Api.listProjects("trashed", 100, cursor)),
-          loadStoredWorkflowAsync(),
-          loadStoredMessagesAsync(),
         ]);
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
         setSavedProjects(activeProjects);
@@ -298,15 +300,14 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
         const storedProjectId = loadActiveProjectId(window.localStorage);
         if (storedProjectId) {
           try {
-            const [response, adapter] = await Promise.all([
-              v2Api.projectWorkflow(storedProjectId),
-              import("../workflow-v2/pageAdapter"),
-            ]);
+            const project = await v2Api.projectWithEtag(storedProjectId);
+            const response = await v2Api.agentCanvasWorkflowWithEtag(project.value.workflow_id);
             if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
-            const nextWorkflow = adapter.workflowV2ToWorkflowGraph(response.value);
+            const nextWorkflow = response.value;
             activeWorkflowIdRef.current = nextWorkflow.workflow_id;
             setActiveProjectId(storedProjectId);
-            setWorkflow(nextWorkflow);
+            setWorkflow(null);
+            setAgentCanvasWorkflow(nextWorkflow);
             setMessages([]);
             setWorkspaceRestoreError(null);
             setWorkspaceHydrated(true);
@@ -320,12 +321,10 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
         } else {
           setWorkspaceRestoreError(null);
         }
-        setWorkflow((current) => {
-          const next = current ?? storedWorkflow;
-          activeWorkflowIdRef.current = next?.workflow_id ?? null;
-          return next;
-        });
-        setMessages((current) => (current.length ? current : storedMessages));
+        activeWorkflowIdRef.current = null;
+        setWorkflow(null);
+        setAgentCanvasWorkflow(null);
+        setMessages([]);
         setWorkspaceHydrated(true);
       } catch {
         if (cancelled || !shouldApplyWorkspaceRestoreRequest(restoreRequest)) return;
@@ -334,11 +333,16 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
       }
     }
 
-    void hydrateLocalDrafts();
+    void hydrateBackendWorkspace();
     return () => {
       cancelled = true;
     };
-  }, [beginWorkspaceRestoreRequest, shouldApplyWorkspaceRestoreRequest, startWithNewProject]);
+  }, [
+    beginWorkspaceRestoreRequest,
+    shouldApplyWorkspaceRestoreRequest,
+    startNewProject,
+    startWithNewProject,
+  ]);
 
   useEffect(() => {
     return v2AuthoringConflictStore.subscribe((conflict) => {
@@ -364,20 +368,6 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, handleAuthoringConflictResolved as EventListener);
   }, [refreshAuthoringConflictTarget]);
 
-  useEffect(() => {
-    if (!workspaceHydrated) return;
-    if (shouldPersistMessagesAsLocalDraft(workflow)) {
-      saveStoredMessages(messages);
-      return;
-    }
-    clearStoredMessages();
-  }, [messages, workflow, workspaceHydrated]);
-
-  useEffect(() => {
-    if (!workspaceHydrated) return;
-    saveStoredWorkflow(workflow);
-  }, [workflow, workspaceHydrated]);
-
   const value = useMemo<AppContextValue>(
     () => ({
       assets,
@@ -385,6 +375,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
       promptLibraryEntities,
       messages,
       workflow,
+      agentCanvasWorkflow,
       nodeCatalog,
       nodeRuns,
       savedProjects,
@@ -397,6 +388,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
       setMessages,
       setPromptLibraryEntities,
       setWorkflow: setWorkflowState,
+      setAgentCanvasWorkflow,
       saveProject,
       startNewProject,
       openProject,
@@ -412,6 +404,7 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     }),
     [
       activeProjectId,
+      agentCanvasWorkflow,
       assets,
       busy,
       demoProjectFavorites,
@@ -451,110 +444,4 @@ function defaultAssetLibraryUploadKind(role: string, file: File): AssetLibraryUp
   const fileName = file.name.toLowerCase();
   if (mimeType.startsWith("audio/") || /\.(mp3|wav|m4a|aac|ogg)$/i.test(fileName)) return "bgm";
   return "";
-}
-
-function loadStoredWorkflow(): WorkflowGraph | null {
-  try {
-    const value = window.localStorage.getItem(WORKSPACE_WORKFLOW_KEY);
-    if (!value) return null;
-    const parsed = JSON.parse(value);
-    if (isUnsavedWorkflowDraftPointer(parsed)) {
-      return loadHybridRecordSync<WorkflowGraph>("workflowDrafts", parsed.key) ?? null;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadStoredWorkflowAsync(): Promise<WorkflowGraph | null> {
-  try {
-    const value = window.localStorage.getItem(WORKSPACE_WORKFLOW_KEY);
-    const parsed = value ? JSON.parse(value) : null;
-    if (isUnsavedWorkflowDraftPointer(parsed)) {
-      return (await loadHybridRecord<WorkflowGraph>("workflowDrafts", parsed.key)) ?? null;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function saveStoredWorkflow(workflow: WorkflowGraph | null) {
-  if (!workflow || workflow.project_id) {
-    deleteHybridRecordSync("workflowDrafts", "active");
-    safeRemoveItem(window.localStorage, WORKSPACE_WORKFLOW_KEY);
-    return;
-  }
-  saveHybridRecordSync("workflowDrafts", "active", workflow);
-  safeWriteJson(window.localStorage, WORKSPACE_WORKFLOW_KEY, {
-    ...hybridStoragePointer("workflowDrafts", "active"),
-    workflow_id: workflow.workflow_id,
-    unsaved_project_draft: true,
-  });
-}
-
-function isUnsavedWorkflowDraftPointer(value: unknown): value is ReturnType<typeof hybridStoragePointer> & {
-  unsaved_project_draft: true;
-} {
-  return Boolean(
-    isHybridStoragePointer(value) &&
-    value.namespace === "workflowDrafts" &&
-    (value as Record<string, unknown>).unsaved_project_draft === true,
-  );
-}
-
-function loadStoredMessages(): FrontDeskMessage[] {
-  try {
-    const value = window.localStorage.getItem(WORKSPACE_MESSAGES_KEY);
-    const parsed = value ? JSON.parse(value) : null;
-    if (isHybridStoragePointer(parsed) && parsed.namespace === "messageThreads") {
-      return loadHybridRecordSync<FrontDeskMessage[]>("messageThreads", parsed.key) ?? [];
-    }
-    if (!Array.isArray(parsed)) return [];
-    saveStoredMessages(parsed);
-    return Array.isArray(parsed)
-      ? parsed.filter((message): message is FrontDeskMessage => (
-          message &&
-          (message.role === "user" || message.role === "assistant") &&
-          typeof message.content === "string"
-        ))
-      : [];
-  } catch {
-    return loadHybridRecordSync<FrontDeskMessage[]>("messageThreads", "active") ?? [];
-  }
-}
-
-async function loadStoredMessagesAsync(): Promise<FrontDeskMessage[]> {
-  try {
-    const value = window.localStorage.getItem(WORKSPACE_MESSAGES_KEY);
-    const parsed = value ? JSON.parse(value) : null;
-    if (isHybridStoragePointer(parsed) && parsed.namespace === "messageThreads") {
-      return sanitizeMessages((await loadHybridRecord<FrontDeskMessage[]>("messageThreads", parsed.key)) ?? []);
-    }
-  } catch {
-    // Fall through to the standard active thread key.
-  }
-  return sanitizeMessages((await loadHybridRecord<FrontDeskMessage[]>("messageThreads", "active")) ?? []);
-}
-
-function saveStoredMessages(messages: FrontDeskMessage[]) {
-  const recentMessages = sanitizeMessages(messages).slice(-80);
-  saveHybridRecordSync("messageThreads", "active", recentMessages);
-  safeWriteJson(window.localStorage, WORKSPACE_MESSAGES_KEY, hybridStoragePointer("messageThreads", "active"));
-}
-
-function clearStoredMessages() {
-  deleteHybridRecordSync("messageThreads", "active");
-  safeRemoveItem(window.localStorage, WORKSPACE_MESSAGES_KEY);
-}
-
-function sanitizeMessages(messages: FrontDeskMessage[]) {
-  return Array.isArray(messages)
-    ? messages.filter((message): message is FrontDeskMessage => (
-        message &&
-        (message.role === "user" || message.role === "assistant") &&
-        typeof message.content === "string"
-      ))
-    : [];
 }

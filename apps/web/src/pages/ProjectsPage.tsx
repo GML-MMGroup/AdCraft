@@ -17,8 +17,9 @@ export function ProjectsPage({ navigate }: { navigate: (route: RouteName) => voi
   const { savedProjects, startNewProject, openProject, moveProjectToTrash, renameProject, toggleProjectFavorite } = useApp();
 
   const createProject = useCallback(() => {
-    startNewProject();
-    navigate("workflow");
+    void startNewProject().then((created) => {
+      if (created) navigate("workflow");
+    });
   }, [navigate, startNewProject]);
 
   const projects = useMemo(() => {
