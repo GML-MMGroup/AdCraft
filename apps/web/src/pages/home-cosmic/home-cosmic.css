@@ -23,10 +23,11 @@ html[data-theme="dark"] .home-cosmic-scene {
   background:
     linear-gradient(
       90deg,
-      rgba(2, 2, 5, 0.54) 0%,
-      rgba(2, 2, 5, 0.26) 38%,
-      rgba(2, 2, 5, 0.04) 70%,
-      rgba(2, 2, 5, 0.14) 100%
+      rgba(2, 2, 5, 0.86) 0%,
+      rgba(2, 2, 5, 0.7) 34%,
+      rgba(2, 2, 5, 0.34) 58%,
+      rgba(2, 2, 5, 0.08) 78%,
+      rgba(2, 2, 5, 0.16) 100%
     ),
     linear-gradient(
       180deg,
@@ -39,13 +40,13 @@ html[data-theme="dark"] .home-cosmic-scene {
 .home-cosmic-scene__ring {
   position: absolute;
   z-index: 0;
-  top: 50%;
-  left: 50%;
-  width: max(150vw, 1350px);
+  top: 55%;
+  left: 62%;
+  width: max(132vw, 1200px);
   aspect-ratio: 1080 / 2347;
   background: url("/assets/home-cosmic-ring.webp") center / 100% 100% no-repeat;
   mix-blend-mode: screen;
-  opacity: 0.88;
+  opacity: 0.74;
   transform: translate3d(-50%, -50%, 0);
   transform-origin: 50% 50%;
   will-change: transform;

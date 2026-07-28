@@ -65,6 +65,7 @@ function createPointLayer({
   count,
   bounds,
   color,
+  map,
   opacity,
   size,
   idleSpeed,
@@ -73,6 +74,7 @@ function createPointLayer({
   count: number;
   bounds: ParticleBounds;
   color: number;
+  map: THREE.Texture;
   opacity: number;
   size: number;
   idleSpeed: number;
@@ -88,6 +90,7 @@ function createPointLayer({
     blending: THREE.AdditiveBlending,
     color,
     depthWrite: false,
+    map,
     opacity,
     size,
     sizeAttenuation: true,
@@ -107,9 +110,40 @@ function createPointLayer({
   };
 }
 
+function createParticleSpriteTexture() {
+  const size = 64;
+  const pixels = new Uint8Array(size * size * 4);
+  const center = (size - 1) / 2;
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      const distance = Math.hypot(x - center, y - center) / center;
+      const alpha = Math.round(
+        clamp(1 - distance, 0, 1) ** 1.8 * 255,
+      );
+      const offset = (y * size + x) * 4;
+      pixels[offset] = 255;
+      pixels[offset + 1] = 255;
+      pixels[offset + 2] = 255;
+      pixels[offset + 3] = alpha;
+    }
+  }
+
+  const texture = new THREE.DataTexture(
+    pixels,
+    size,
+    size,
+    THREE.RGBAFormat,
+  );
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
 function createStreakLayer(): StreakLayer {
   const particlePositions = createParticlePositions(180, NEAR_BOUNDS);
-  const streakPositions = createStreakPositions(particlePositions, 1.4);
+  const streakPositions = createStreakPositions(particlePositions, 0.35);
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
     "position",
@@ -119,7 +153,7 @@ function createStreakLayer(): StreakLayer {
     blending: THREE.AdditiveBlending,
     color: 0xf4f7ff,
     depthWrite: false,
-    opacity: 0.46,
+    opacity: 0.12,
     transparent: true,
   });
   const object = new THREE.LineSegments(geometry, material);
@@ -159,12 +193,14 @@ export function createHomeCosmicRenderer(
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 180);
   camera.position.z = 5;
+  const particleSprite = createParticleSpriteTexture();
 
   const farLayer = createPointLayer({
     bounds: FAR_BOUNDS,
     color: 0x96a2b8,
     count: 900,
     idleSpeed: 0.75,
+    map: particleSprite,
     opacity: 0.42,
     size: 0.18,
     travelSpeed: 7,
@@ -174,6 +210,7 @@ export function createHomeCosmicRenderer(
     color: 0xd8e2f2,
     count: 520,
     idleSpeed: 1.35,
+    map: particleSprite,
     opacity: 0.58,
     size: 0.28,
     travelSpeed: 15,
@@ -244,13 +281,13 @@ export function createHomeCosmicRenderer(
     syncStreakPositions(
       streakLayer.particlePositions,
       streakLayer.streakPositions,
-      1.2 + 8.4 * intensity,
+      0.35 + 8.2 * intensity,
     );
     markPositionsDirty(streakLayer.geometry);
 
     farLayer.material.opacity = 0.42 + intensity * 0.12;
     middleLayer.material.opacity = 0.58 + intensity * 0.2;
-    streakLayer.material.opacity = 0.38 + intensity * 0.46;
+    streakLayer.material.opacity = 0.12 + intensity * 0.58;
     farLayer.object.rotation.z += frameSeconds * 0.002;
     middleLayer.object.rotation.z -= frameSeconds * 0.003;
 
@@ -268,6 +305,7 @@ export function createHomeCosmicRenderer(
     middleLayer.material.dispose();
     streakLayer.geometry.dispose();
     streakLayer.material.dispose();
+    particleSprite.dispose();
     renderer.dispose();
   }
 
