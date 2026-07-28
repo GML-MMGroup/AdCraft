@@ -69,16 +69,16 @@ describe("theme styles", () => {
     expect(source("components/Layout.tsx")).toContain('import "../styles/theme.css"');
   });
 
-  test("scopes the static cosmic artwork to the dark Home shell", () => {
-    const homeStyles = source("pages/home.css");
-    const darkHomeShell = declarationBlock(
-      homeStyles,
-      'html[data-theme="dark"] .app-shell--home',
+  test("scopes the static cosmic artwork to shared dark non-Workflow shells", () => {
+    const themeStyles = source("styles/theme.css");
+    const darkCosmicShell = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"] .app-shell--cosmic',
     );
 
-    expect(darkHomeShell).toContain('url("/assets/home-dark-cosmic.webp")');
-    expect(darkHomeShell).not.toMatch(/\bfixed\b/);
+    expect(darkCosmicShell).toContain('url("/assets/home-dark-cosmic.webp")');
+    expect(darkCosmicShell).not.toMatch(/\bfixed\b/);
     expect(source("styles/base.css")).not.toContain("home-dark-cosmic.webp");
-    expect(source("styles/theme.css")).not.toContain("home-dark-cosmic.webp");
+    expect(source("pages/home.css")).not.toContain("home-dark-cosmic.webp");
   });
 });

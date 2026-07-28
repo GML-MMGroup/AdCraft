@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
 import { AssetsIcon, FolderIcon, HomeIcon, MoonIcon, SunIcon, TrashIcon, TutorialIcon } from "../icons";
 import { useHealth } from "../app/useHealth";
@@ -35,6 +35,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const isWorkflowRoute = useMatch("/workflow/*") !== null;
 
   useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
 
@@ -83,7 +84,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
       </nav>
 
       <div
-        className={`app-shell ${location.pathname === "/" ? "app-shell--home" : ""}`}
+        className={`app-shell${isWorkflowRoute ? "" : " app-shell--cosmic"}`}
         id="app"
       >
         <header className="topbar">
