@@ -101,7 +101,8 @@ describe("HomePage motion", () => {
     expect(
       characters.at(-1)?.style.getPropertyValue("--home-character-delay"),
     ).toBe("892ms");
-    expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(8);
+    expect(lines[2]?.querySelectorAll(".home-product-hero__glyph")).toHaveLength(8);
+    expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
   });
 
   it("starts the hero motion only after fonts and two paint frames are ready", async () => {
