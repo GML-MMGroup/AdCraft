@@ -1,3 +1,14 @@
+.home-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.home-product-hero,
+.home-page > .content-wrap {
+  position: relative;
+  z-index: 1;
+}
+
 .home-product-hero {
   --home-product-hero-height: 570px;
   --home-product-media-height: 360px;

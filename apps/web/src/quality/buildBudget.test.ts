@@ -47,6 +47,25 @@ describe("build budget", () => {
     expect(budgetSource).toContain('asset.name.startsWith("V2ShotTimeline-")');
   });
 
+  test("budgets the dark Home cosmic renderer as a lazy feature", () => {
+    const viteSource = readFileSync(
+      join(process.cwd(), "vite.config.ts"),
+      "utf8",
+    );
+    const budgetSource = readFileSync(budgetScriptPath, "utf8");
+
+    expect(viteSource).toContain('return "vendor-three"');
+    expect(budgetSource).toContain(
+      "MAX_HOME_COSMIC_RENDERER_JS_BYTES",
+    );
+    expect(budgetSource).toContain(
+      'asset.name.startsWith("homeCosmicRenderer-")',
+    );
+    expect(budgetSource).toContain(
+      'asset.name.startsWith("vendor-three-")',
+    );
+  });
+
   test("counts deduplicated CSS across Home's full static import graph", () => {
     const distDirectory = mkdtempSync(join(tmpdir(), "adcraft-build-budget-"));
     temporaryDirectories.push(distDirectory);

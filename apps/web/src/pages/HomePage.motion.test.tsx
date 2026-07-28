@@ -6,6 +6,24 @@ import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
+const cosmicStyles = readFileSync(
+  resolve(
+    process.cwd(),
+    "src/pages/home-cosmic/home-cosmic.css",
+  ),
+  "utf8",
+);
+const homeSource = readFileSync(
+  resolve(process.cwd(), "src/pages/HomePage.tsx"),
+  "utf8",
+);
+const cosmicSceneSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "src/pages/home-cosmic/HomeCosmicScene.tsx",
+  ),
+  "utf8",
+);
 const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 
 vi.mock("../app/useHealth", () => ({
@@ -56,6 +74,7 @@ describe("HomePage motion", () => {
   beforeEach(() => {
     startNewProject.mockReset();
     IntersectionObserverMock.instances = [];
+    document.documentElement.dataset.theme = "light";
     vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
   });
 
@@ -262,5 +281,34 @@ describe("HomePage motion", () => {
     expect(styles).toMatch(
       /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
     );
+  });
+
+  it("mounts one decorative cosmic scene beneath Home content", () => {
+    document.documentElement.dataset.theme = "dark";
+    const view = render(<HomePage navigate={vi.fn()} />);
+
+    expect(
+      view.container.querySelectorAll(".home-cosmic-scene"),
+    ).toHaveLength(1);
+    expect(styles).toMatch(
+      /\.home-page\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero,[\s\S]*?\.home-page\s*>\s*\.content-wrap\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;/,
+    );
+    expect(cosmicStyles).toMatch(
+      /\.home-cosmic-scene\s*\{[^}]*position:\s*fixed;[^}]*pointer-events:\s*none;/s,
+    );
+  });
+
+  it("keeps Three.js behind a dark-theme dynamic import", () => {
+    expect(homeSource).toContain(
+      'import { HomeCosmicScene } from "./home-cosmic/HomeCosmicScene"',
+    );
+    expect(homeSource).not.toMatch(/from\s+["']three["']/);
+    expect(cosmicSceneSource).toContain(
+      'import("./homeCosmicRenderer")',
+    );
+    expect(cosmicSceneSource).not.toMatch(/from\s+["']three["']/);
   });
 });
