@@ -188,9 +188,9 @@ function NodeSurface({
 
 function nodeAction(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2) {
   if (nodeType === "text") return null;
-  if (status === "failed") return "retry" as const;
   if (nodeType === "editing") return "export" as const;
-  if (RUNNABLE_NODE_TYPES.has(nodeType)) return "run" as const;
+  if (status === "failed") return "retry" as const;
+  if (status === "draft" && RUNNABLE_NODE_TYPES.has(nodeType)) return "run" as const;
   return null;
 }
 

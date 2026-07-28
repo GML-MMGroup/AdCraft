@@ -38,12 +38,13 @@ export interface AgentAssetReferenceSelection {
 }
 
 export interface AgentAssetSourceNodeSelection {
-  source: "project";
+  source: AgentAssetScope;
   assetId: string;
-  entityId: null;
-  versionId: null;
-  mediaType: "video" | "audio";
+  entityId: string | null;
+  versionId: string | null;
+  mediaType: AgentCanvasAssetMediaTypeV2;
   displayName: string;
+  durationSeconds: number | null;
 }
 
 export function toReferenceSelection(
@@ -63,18 +64,14 @@ export function toReferenceSelection(
 export function toSourceNodeSelection(
   item: AgentAssetBrowserItem,
 ): AgentAssetSourceNodeSelection | null {
-  if (
-    item.source !== "project"
-    || (item.mediaType !== "video" && item.mediaType !== "audio")
-  ) {
-    return null;
-  }
+  if (item.status !== "ready") return null;
   return {
-    source: "project",
-    assetId: item.assetId,
-    entityId: null,
-    versionId: null,
+    source: item.source,
+    assetId: item.identity.assetId,
+    entityId: item.identity.entityId,
+    versionId: item.identity.versionId,
     mediaType: item.mediaType,
     displayName: item.displayName,
+    durationSeconds: item.projectAsset?.duration_seconds ?? null,
   };
 }

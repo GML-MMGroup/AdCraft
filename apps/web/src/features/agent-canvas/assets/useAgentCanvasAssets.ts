@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { v2Api } from "../../../api/v2Client.ts";
+import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasAssetMediaTypeV2,
   ProjectAssetSummaryV2,
@@ -132,14 +133,6 @@ function titleForFile(file: File): string {
   return extensionIndex > 0 ? name.slice(0, extensionIndex) : name;
 }
 
-function uploadKey(): string {
-  const randomPart =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `asset-upload-${randomPart}`;
-}
-
 export function useAgentCanvasAssets({
   workflowId,
   scope,
@@ -217,7 +210,7 @@ export function useAgentCanvasAssets({
         const response = await v2Api.uploadAgentCanvasAsset(
           workflowId,
           formData,
-          uploadKey(),
+          createOperationKey("asset-upload"),
         );
         uploaded.push(response.asset);
       }

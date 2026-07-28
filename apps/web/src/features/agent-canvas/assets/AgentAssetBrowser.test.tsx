@@ -180,7 +180,7 @@ describe("AgentAssetBrowser", () => {
     expect(JSON.stringify(selection)).not.toMatch(/base64|data:/i);
   });
 
-  it("creates Ready source-backed nodes from project video and audio through a callback", async () => {
+  it("creates Ready source-backed nodes from project media and library images", async () => {
     const onCreateReadySourceNode = vi.fn().mockResolvedValue(undefined);
     render(
       <AgentAssetBrowser
@@ -191,11 +191,20 @@ describe("AgentAssetBrowser", () => {
     );
     await screen.findByText("video video-a");
 
+    fireEvent.click(screen.getByRole("button", { name: "Create Ready image node from image image-a" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Ready video node from video video-a" }));
     fireEvent.click(screen.getByRole("button", { name: "Create Ready audio node from audio audio-a" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended" }));
+    await screen.findByText("recommended scene");
+    fireEvent.click(screen.getByRole("button", { name: "Create Ready image node from recommended scene" }));
 
-    await waitFor(() => expect(onCreateReadySourceNode).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onCreateReadySourceNode).toHaveBeenCalledTimes(4));
     expect(onCreateReadySourceNode.mock.calls.map((call) => call[0])).toEqual([
+      expect.objectContaining({
+        source: "project",
+        assetId: "image-a",
+        mediaType: "image",
+      }),
       expect.objectContaining({
         source: "project",
         assetId: "video-a",
@@ -205,6 +214,13 @@ describe("AgentAssetBrowser", () => {
         source: "project",
         assetId: "audio-a",
         mediaType: "audio",
+      }),
+      expect.objectContaining({
+        source: "recommended",
+        assetId: "scene-asset",
+        entityId: "scene",
+        versionId: "scene-version",
+        mediaType: "image",
       }),
     ]);
   });

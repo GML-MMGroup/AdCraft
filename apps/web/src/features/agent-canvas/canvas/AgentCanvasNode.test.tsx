@@ -21,6 +21,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     workflow_id: "workflow-1",
     node_type: nodeType,
     semantic_role: nodeType,
+    role_contract_version: "ad-media-role-v1",
     title: `Hidden ${nodeType} title`,
     status,
     summary_prompt: nodeType === "text" ? "A concise campaign brief" : null,
@@ -126,6 +127,18 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: /Run text node/i })).toBeNull();
   });
 
+  it("does not run a Ready generated node in place", () => {
+    render(
+      <AgentCanvasNodeCard
+        node={makeNode("image", "ready")}
+        asset={makeAsset("image")}
+        onRun={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
   it("exports an editing node through its callback", () => {
     const onExport = vi.fn();
     const node = makeNode("editing", "ready");
@@ -159,7 +172,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(onRetry).toHaveBeenCalledWith(node.node_id);
   });
 
-  it("uses the runtime status, shows a restrained working treatment, and disables duplicate runs", () => {
+  it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
     const node = makeNode("script", "draft");
     render(
       <AgentCanvasNodeCard
@@ -171,7 +184,7 @@ describe("AgentCanvasNodeCard", () => {
 
     expect(screen.getByText("Working")).toBeTruthy();
     expect(screen.getByLabelText("script node is working").classList.contains("agent-canvas-node__working")).toBe(true);
-    expect((screen.getByRole("button", { name: "Run script node" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
   });
 
   it("renders image and video posters with the same full-bleed media surface", () => {
