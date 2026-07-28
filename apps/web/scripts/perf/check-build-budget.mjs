@@ -6,16 +6,15 @@ const MAX_MAIN_JS_BYTES = 650 * 1024;
 const MAX_INITIAL_JS_BYTES = 475 * 1024;
 // The core total includes lazy route chunks such as the Project cover preview UI.
 const MAX_TOTAL_JS_BYTES = 1281 * 1024;
-const MAX_SCREENPLAY_EDITOR_JS_BYTES = 32 * 1024;
-const MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES = 96 * 1024;
-const MAX_SHOT_TIMELINE_JS_BYTES = 16 * 1024;
-const MAX_TIMELINE_EDITOR_JS_BYTES = 256 * 1024;
+const MAX_AGENT_CANVAS_ROUTE_JS_BYTES = 96 * 1024;
+const MAX_AGENT_CANVAS_ROUTE_CSS_BYTES = 48 * 1024;
+const MAX_VENDOR_REACT_FLOW_JS_BYTES = 220 * 1024;
+const MAX_VENDOR_REACT_FLOW_CSS_BYTES = 20 * 1024;
 const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
 const MAX_HOME_COSMIC_RENDERER_JS_BYTES = 24 * 1024;
 const MAX_VENDOR_THREE_JS_BYTES = 700 * 1024;
 const MAX_CSS_BYTES = 16 * 1024;
 const MAX_HOME_ROUTE_CSS_BYTES = 16 * 1024;
-const MAX_TIMELINE_EDITOR_CSS_BYTES = 6 * 1024;
 
 function bytes(value) {
   return `${Math.round(value / 1024)} KiB`;
@@ -106,20 +105,17 @@ const homeEntries = homeEntry ? staticManifestEntries(manifest, "src/pages/HomeP
 const jsAssets = assets.filter((asset) => asset.name.endsWith(".js"));
 const cssAssets = assets.filter((asset) => asset.name.endsWith(".css"));
 const mainJs = jsAssets.find((asset) => asset.name.startsWith("index-"));
-const screenplayEditorJs = jsAssets.find((asset) => asset.name.startsWith("screenplay-editor-"));
-const finalCompositionEditorJs = jsAssets.find((asset) => asset.name.startsWith("V2FinalCompositionEditor-"));
-const shotTimelineJs = jsAssets.find((asset) => asset.name.startsWith("V2ShotTimeline-"));
-const timelineEditorJs = jsAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
+const agentCanvasRouteJs = jsAssets.find((asset) => asset.name.startsWith("WorkflowPage-"));
+const agentCanvasRouteCss = cssAssets.find((asset) => asset.name.startsWith("WorkflowPage-"));
+const vendorReactFlowJs = jsAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
+const vendorReactFlowCss = cssAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
 const assetEntityViewerJs = jsAssets.find((asset) => asset.name.startsWith("AssetEntityViewer-"));
 const homeCosmicRendererJs = jsAssets.find((asset) => asset.name.startsWith("homeCosmicRenderer-"));
 const vendorThreeJs = jsAssets.find((asset) => asset.name.startsWith("vendor-three-"));
-const timelineEditorCss = cssAssets.find((asset) => asset.name.startsWith("timeline-editor-"));
 // The asset viewer is loaded only after a user opens an asset card.
 const featureJsAssets = [
-  screenplayEditorJs,
-  finalCompositionEditorJs,
-  shotTimelineJs,
-  timelineEditorJs,
+  agentCanvasRouteJs,
+  vendorReactFlowJs,
   assetEntityViewerJs,
   homeCosmicRendererJs,
   vendorThreeJs,
@@ -141,23 +137,14 @@ const coreJsBytes = jsAssets
 const totalCss = cssAssets.reduce((sum, asset) => sum + asset.size, 0);
 const coreCssBytes = initialCss.reduce((sum, asset) => sum + asset.size, 0);
 const homeRouteCssBytes = homeRouteCss.reduce((sum, asset) => sum + asset.size, 0);
-const finalCompositionEntryName = manifestEntryName(
+const agentCanvasEntryName = manifestEntryName(
   manifest,
-  "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx",
-  "V2FinalCompositionEditor",
+  "src/pages/WorkflowPage.tsx",
+  "WorkflowPage",
 );
-const shotTimelineEntryName = manifestEntryName(
-  manifest,
-  "src/features/workflow/final-composition/V2ShotTimeline.tsx",
-  "V2ShotTimeline",
-);
-const finalCompositionEntry = manifest[finalCompositionEntryName];
-const shotTimelineEntry = manifest[shotTimelineEntryName];
-const finalCompositionStaticFiles = finalCompositionEntry
-  ? new Set(staticManifestEntries(manifest, finalCompositionEntryName).map((entry) => assetName(entry.file)))
-  : new Set();
-const shotTimelineStaticFiles = shotTimelineEntry
-  ? new Set(staticManifestEntries(manifest, shotTimelineEntryName).map((entry) => assetName(entry.file)))
+const agentCanvasEntry = manifest[agentCanvasEntryName];
+const agentCanvasStaticFiles = agentCanvasEntry
+  ? new Set(staticManifestEntries(manifest, agentCanvasEntryName).map((entry) => assetName(entry.file)))
   : new Set();
 
 console.log("Bundle budget report");
@@ -188,50 +175,22 @@ for (const asset of initialJs) {
 if (coreJsBytes > MAX_TOTAL_JS_BYTES) {
   failures.push(`core JS is ${bytes(coreJsBytes)}, expected <= ${bytes(MAX_TOTAL_JS_BYTES)}`);
 }
-if (!screenplayEditorJs) {
-  failures.push("screenplay editor lazy chunk is missing");
-} else if (screenplayEditorJs.size > MAX_SCREENPLAY_EDITOR_JS_BYTES) {
-  failures.push(`screenplay editor JS ${screenplayEditorJs.name} is ${bytes(screenplayEditorJs.size)}, expected <= ${bytes(MAX_SCREENPLAY_EDITOR_JS_BYTES)}`);
+if (!agentCanvasRouteJs || !agentCanvasEntry) {
+  failures.push("Agent Canvas Workflow route chunk is missing");
+} else if (agentCanvasRouteJs.size > MAX_AGENT_CANVAS_ROUTE_JS_BYTES) {
+  failures.push(`Agent Canvas route JS ${agentCanvasRouteJs.name} is ${bytes(agentCanvasRouteJs.size)}, expected <= ${bytes(MAX_AGENT_CANVAS_ROUTE_JS_BYTES)}`);
 }
-if (!finalCompositionEditorJs) {
-  failures.push("final composition editor lazy chunk is missing");
-} else if (finalCompositionEditorJs.size > MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES) {
-  failures.push(`final composition editor JS ${finalCompositionEditorJs.name} is ${bytes(finalCompositionEditorJs.size)}, expected <= ${bytes(MAX_FINAL_COMPOSITION_EDITOR_JS_BYTES)}`);
-}
-if (!shotTimelineJs || !shotTimelineEntry) {
-  failures.push("advanced shot timeline lazy chunk is missing");
-} else if (shotTimelineJs.size > MAX_SHOT_TIMELINE_JS_BYTES) {
-  failures.push(`advanced shot timeline JS ${shotTimelineJs.name} is ${bytes(shotTimelineJs.size)}, expected <= ${bytes(MAX_SHOT_TIMELINE_JS_BYTES)}`);
+if (!vendorReactFlowJs) {
+  failures.push("React Flow lazy vendor chunk is missing");
+} else if (vendorReactFlowJs.size > MAX_VENDOR_REACT_FLOW_JS_BYTES) {
+  failures.push(`React Flow vendor JS ${vendorReactFlowJs.name} is ${bytes(vendorReactFlowJs.size)}, expected <= ${bytes(MAX_VENDOR_REACT_FLOW_JS_BYTES)}`);
 }
 if (
-  finalCompositionEntry
-  && !finalCompositionEntry.dynamicImports?.includes(shotTimelineEntryName)
+  agentCanvasRouteJs
+  && vendorReactFlowJs
+  && !agentCanvasStaticFiles.has(vendorReactFlowJs.name)
 ) {
-  failures.push("final composition editor must dynamically import the advanced shot timeline");
-}
-if (
-  shotTimelineJs
-  && finalCompositionStaticFiles.has(shotTimelineJs.name)
-) {
-  failures.push("final composition editor statically includes the advanced shot timeline");
-}
-if (
-  timelineEditorJs
-  && finalCompositionStaticFiles.has(timelineEditorJs.name)
-) {
-  failures.push("final composition editor statically includes the timeline editor vendor");
-}
-if (
-  timelineEditorJs
-  && shotTimelineEntry
-  && !shotTimelineStaticFiles.has(timelineEditorJs.name)
-) {
-  failures.push("advanced shot timeline does not own the timeline editor vendor");
-}
-if (!timelineEditorJs) {
-  failures.push("timeline editor lazy chunk is missing");
-} else if (timelineEditorJs.size > MAX_TIMELINE_EDITOR_JS_BYTES) {
-  failures.push(`timeline editor JS ${timelineEditorJs.name} is ${bytes(timelineEditorJs.size)}, expected <= ${bytes(MAX_TIMELINE_EDITOR_JS_BYTES)}`);
+  failures.push("Agent Canvas Workflow route does not own the React Flow vendor chunk");
 }
 if (!assetEntityViewerJs) {
   failures.push("asset entity viewer lazy chunk is missing");
@@ -256,10 +215,15 @@ if (!homeEntry || !homeRouteCss.length) {
 } else if (homeRouteCssBytes > MAX_HOME_ROUTE_CSS_BYTES) {
   failures.push(`Home route CSS is ${bytes(homeRouteCssBytes)}, expected <= ${bytes(MAX_HOME_ROUTE_CSS_BYTES)}`);
 }
-if (!timelineEditorCss) {
-  failures.push("timeline editor lazy CSS chunk is missing");
-} else if (timelineEditorCss.size > MAX_TIMELINE_EDITOR_CSS_BYTES) {
-  failures.push(`timeline editor CSS ${timelineEditorCss.name} is ${bytes(timelineEditorCss.size)}, expected <= ${bytes(MAX_TIMELINE_EDITOR_CSS_BYTES)}`);
+if (!agentCanvasRouteCss) {
+  failures.push("Agent Canvas Workflow route CSS chunk is missing");
+} else if (agentCanvasRouteCss.size > MAX_AGENT_CANVAS_ROUTE_CSS_BYTES) {
+  failures.push(`Agent Canvas route CSS ${agentCanvasRouteCss.name} is ${bytes(agentCanvasRouteCss.size)}, expected <= ${bytes(MAX_AGENT_CANVAS_ROUTE_CSS_BYTES)}`);
+}
+if (!vendorReactFlowCss) {
+  failures.push("React Flow vendor CSS chunk is missing");
+} else if (vendorReactFlowCss.size > MAX_VENDOR_REACT_FLOW_CSS_BYTES) {
+  failures.push(`React Flow vendor CSS ${vendorReactFlowCss.name} is ${bytes(vendorReactFlowCss.size)}, expected <= ${bytes(MAX_VENDOR_REACT_FLOW_CSS_BYTES)}`);
 }
 
 if (failures.length) {

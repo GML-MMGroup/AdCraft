@@ -14,7 +14,9 @@ const { api, fetchMock, v2Api } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
   v2Api: {
     listProjects: vi.fn(),
-    projectWorkflow: vi.fn(),
+    createAgentCanvasProject: vi.fn(),
+    projectWithEtag: vi.fn(),
+    agentCanvasWorkflowWithEtag: vi.fn(),
   },
 }));
 
@@ -32,19 +34,6 @@ vi.mock("../pages/AssetsPage", () => ({
 vi.mock("../pages/ApiSpacePage", () => ({
   ApiSpacePage: () => <div>API Space page</div>,
 }));
-vi.mock("../workflow-v2/pageAdapter", () => ({
-  workflowV2ToWorkflowGraph: (workflow: unknown) => workflow,
-}));
-vi.mock("../components/V2WorkflowRevisionControl", async () => {
-  const { useApp } = await import("../AppContextValue");
-  return {
-    default: function RevisionControlProbe() {
-      const { workspaceHydrated } = useApp();
-      return <span>Workspace shell {workspaceHydrated ? "hydrated" : "loading"}</span>;
-    },
-  };
-});
-
 import App from "../App";
 import { AppProvider } from "../AppContext";
 import { useApp } from "../AppContextValue";
@@ -59,8 +48,8 @@ const entryGraphAnalyzer = join(webRoot, "scripts/perf/check-entry-graph.mjs");
 const manifestPath = join(webRoot, "dist/.vite/manifest.json");
 
 function WorkflowPageProbe() {
-  const { workflow } = useApp();
-  return <div>Workflow page {workflow?.workflow_id ?? "empty"}</div>;
+  const { agentCanvasWorkflow } = useApp();
+  return <div>Workflow page {agentCanvasWorkflow?.workflow_id ?? "empty"}</div>;
 }
 
 function ProjectsPageProbe() {
@@ -83,7 +72,40 @@ function resetApiMocks() {
   api.nodeCatalog.mockResolvedValue({ nodes: [] });
   api.workflowNodes.mockResolvedValue({ nodes: [] });
   v2Api.listProjects.mockResolvedValue({ items: [], next_cursor: null });
-  v2Api.projectWorkflow.mockResolvedValue({ value: {} });
+  v2Api.createAgentCanvasProject.mockResolvedValue({
+    value: {
+      workflow_id: "workflow-created",
+      project_id: "project-created",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 1,
+      nodes: [],
+      bindings: [],
+      assets: [],
+    },
+    etag: '"workflow-created-r1"',
+  });
+  v2Api.projectWithEtag.mockResolvedValue({
+    value: {
+      project_id: "project-restored",
+      workflow_id: "workflow-restored",
+      name: "Restored",
+    },
+    etag: '"project-restored-v1"',
+  });
+  v2Api.agentCanvasWorkflowWithEtag.mockResolvedValue({
+    value: {
+      workflow_id: "workflow-restored",
+      project_id: "project-restored",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 1,
+      nodes: [],
+      bindings: [],
+      assets: [],
+    },
+    etag: '"workflow-restored-r1"',
+  });
 }
 
 beforeEach(() => {
@@ -112,7 +134,7 @@ describe("route providers", () => {
     await screen.findByText("API ready");
 
     expect(v2Api.listProjects).not.toHaveBeenCalled();
-    expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
+    expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
     expect(api.listAssets).not.toHaveBeenCalled();
     expect(api.nodeCatalog).not.toHaveBeenCalled();
     expect(api.workflowNodes).not.toHaveBeenCalled();
@@ -176,8 +198,8 @@ describe("route providers", () => {
       </AppProvider>,
     );
 
-    await screen.findByText("Workspace shell hydrated");
-    expect(screen.getByText("Workflow page empty")).toBeTruthy();
+    await screen.findByText("Workflow page empty");
+    expect(screen.getByText("API ready")).toBeTruthy();
   });
 
   test("starts an empty workflow draft from Home without restoring the previous project", async () => {
@@ -196,14 +218,14 @@ describe("route providers", () => {
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
 
-    await screen.findByText("Workflow page empty");
+    await screen.findByText("Workflow page workflow-created");
 
-    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBeNull();
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-created");
     expect(window.localStorage.getItem("ad-workflow-active-workflow")).toBeNull();
     expect(window.localStorage.getItem("ad-workflow-copilot-messages")).not.toBe("persisted-messages");
     await waitFor(() => expect(loadCanvasSnapshot(window.localStorage, "local-workflow")).toBeUndefined());
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
-    expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
+    expect(v2Api.createAgentCanvasProject).toHaveBeenCalledTimes(1);
+    expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
   });
 
   test("consumes the new-project route state so a reload can restore the saved project", async () => {
@@ -215,17 +237,32 @@ describe("route providers", () => {
 
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
-    await screen.findByText("Workflow page empty");
+    await screen.findByText("Workflow page workflow-created");
 
     await waitFor(() => expect(window.history.state?.usr ?? null).toBeNull());
 
     cleanup();
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-after-planning");
-    v2Api.projectWorkflow.mockResolvedValue({
+    v2Api.projectWithEtag.mockResolvedValue({
+      value: {
+        project_id: "project-after-planning",
+        workflow_id: "workflow-after-planning",
+        name: "After planning",
+      },
+      etag: '"project-after-planning-v1"',
+    });
+    v2Api.agentCanvasWorkflowWithEtag.mockResolvedValue({
       value: {
         workflow_id: "workflow-after-planning",
         project_id: "project-after-planning",
+        workflow_schema_version: 2,
+        canvas_model: "agent_canvas_v1",
+        revision: 1,
+        nodes: [],
+        bindings: [],
+        assets: [],
       },
+      etag: '"workflow-after-planning-r1"',
     });
 
     render(
@@ -235,16 +272,13 @@ describe("route providers", () => {
     );
 
     await screen.findByText("Workflow page workflow-after-planning");
-    expect(v2Api.projectWorkflow).toHaveBeenCalledWith("project-after-planning");
+    expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-after-planning");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-after-planning");
   });
 
   test("restores the persisted active project on a workspace route", async () => {
     window.history.replaceState({}, "", "/workflow");
     window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-restored");
-    v2Api.projectWorkflow.mockResolvedValue({
-      value: { workflow_id: "workflow-restored", project_id: "project-restored" },
-    });
-
     render(
       <AppProvider>
         <App />
@@ -252,7 +286,8 @@ describe("route providers", () => {
     );
 
     await screen.findByText("Workflow page workflow-restored");
-    expect(v2Api.projectWorkflow).toHaveBeenCalledWith("project-restored");
+    expect(v2Api.projectWithEtag).toHaveBeenCalledWith("project-restored");
+    expect(v2Api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-restored");
     expect(v2Api.listProjects).toHaveBeenCalledTimes(2);
   });
 
@@ -278,14 +313,14 @@ describe("route providers", () => {
 
     await screen.findByText("API ready");
     fireEvent.click(screen.getByRole("button", { name: /create your project/i }));
-    await screen.findByText("Workflow page empty");
-    expect(v2Api.listProjects).not.toHaveBeenCalled();
+    await screen.findByText("Workflow page workflow-created");
 
     fireEvent.click(screen.getByRole("link", { name: "Projects" }));
 
     await screen.findByText("Restored project list");
     expect(screen.getByText("Projects page hydrated")).toBeTruthy();
-    expect(v2Api.listProjects).toHaveBeenCalledTimes(2);
+    expect(v2Api.listProjects).toHaveBeenCalledWith("active", 100, undefined);
+    expect(v2Api.listProjects).toHaveBeenCalledWith("trashed", 100, undefined);
   });
 
   test.each([
@@ -302,7 +337,7 @@ describe("route providers", () => {
 
     await screen.findByText(page);
     expect(v2Api.listProjects).not.toHaveBeenCalled();
-    expect(v2Api.projectWorkflow).not.toHaveBeenCalled();
+    expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
   });
 
   test("shows the health failure state without workspace hydration", async () => {

@@ -73,39 +73,22 @@ describe("route-scoped styles", () => {
     expect(baseStyles).toContain("@keyframes route-loading-spin");
   });
 
-  it("styles the screenplay Suspense fallback before the lazy editor stylesheet resolves", () => {
-    const lazyDrawerSource = source("features/workflow/page/LazyV2ScreenplayDrawer.tsx");
+  it("loads the Agent Canvas shell and styles directly from the Workflow route", () => {
     const workflowPageSource = source("pages/WorkflowPage.tsx");
-    const workflowStyles = source("features/workflow/workflow.css");
-    const screenplayDrawerSource = source("features/workflow/v2/screenplay/V2ScreenplayDrawer.tsx");
-    const screenplayStyles = source("features/workflow/v2/screenplay/screenplay.css");
+    const agentCanvasPageSource = source("features/agent-canvas/AgentCanvasPage.tsx");
+    const agentCanvasStyles = source("features/agent-canvas/agent-canvas-page.css");
 
-    expect(lazyDrawerSource).toContain('lazy(() => import("./screenplay-editor.tsx")');
-    expect(lazyDrawerSource).toContain('className="v2-screenplay-drawer-backdrop"');
-    expect(lazyDrawerSource).toContain('className="v2-screenplay-drawer" role="status"');
-    expect(lazyDrawerSource).toContain('className="v2-screenplay-status"');
-    expect(workflowPageSource).toContain('import "../features/workflow/workflow.css"');
-    expect(workflowPageSource).not.toContain("screenplay.css");
-    expect(screenplayDrawerSource).toContain('import "./screenplay.css"');
-
-    expect(declarationBlock(workflowStyles, ".v2-screenplay-drawer-backdrop")).toMatch(
-      /position:\s*fixed;[\s\S]*z-index:\s*80;[\s\S]*inset:\s*0;[\s\S]*display:\s*flex;[\s\S]*justify-content:\s*flex-end;[\s\S]*background:/,
+    expect(workflowPageSource).toContain(
+      'import { AgentCanvasPage } from "../features/agent-canvas/AgentCanvasPage.tsx"',
     );
-    expect(declarationBlock(workflowStyles, ".v2-screenplay-drawer")).toMatch(
-      /position:\s*relative;[\s\S]*display:\s*grid;[\s\S]*width:\s*min\(760px,\s*92vw\);[\s\S]*height:\s*100dvh;[\s\S]*grid-template-rows:[\s\S]*background:[\s\S]*box-shadow:/,
+    expect(workflowPageSource).not.toContain("features/workflow/workflow.css");
+    expect(agentCanvasPageSource).toContain('import "@xyflow/react/dist/style.css"');
+    expect(agentCanvasPageSource).toContain('import "./agent-canvas-page.css"');
+    expect(declarationBlock(agentCanvasStyles, ".agent-canvas-page")).toMatch(
+      /position:\s*relative;[\s\S]*display:\s*grid;[\s\S]*height:\s*calc\(100vh - 102px\);[\s\S]*overflow:\s*hidden;/,
     );
-    expect(declarationBlock(workflowStyles, ".v2-screenplay-status")).toMatch(
-      /margin:\s*10px 0;[\s\S]*color:\s*var\(--muted\);[\s\S]*font-size:\s*13px;/,
-    );
-    expect(workflowStyles).toMatch(
-      /@media\s*\(max-width:\s*700px\)\s*\{\s*\.v2-screenplay-drawer\s*\{\s*width:\s*100%;\s*border-left:\s*0;\s*\}/,
-    );
-
-    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer-backdrop\s*\{/);
-    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-drawer\s*\{/);
-    expect(screenplayStyles).not.toMatch(/(?:^|\n)\.v2-screenplay-status(?:\s|,|\{)/);
-    expect(screenplayStyles).not.toMatch(
-      /\.v2-screenplay-drawer\s*\{[^}]*\b(?:width|border-left)\s*:/,
+    expect(declarationBlock(agentCanvasStyles, ".agent-canvas-board")).toMatch(
+      /position:\s*relative;[\s\S]*min-width:\s*0;[\s\S]*min-height:\s*0;[\s\S]*overflow:\s*hidden;/,
     );
   });
 
@@ -122,8 +105,8 @@ describe("route-scoped styles", () => {
     expect(source("pages/TrashPage.tsx")).toContain('import "./projects.css"');
     expect(source("pages/AssetsPage.tsx")).toContain('import "./assets.css"');
     expect(source("pages/ApiSpacePage.tsx")).toContain('import "./api-space.css"');
-    expect(source("pages/WorkflowPage.tsx")).toContain(
-      'import "../features/workflow/workflow.css"',
+    expect(source("features/agent-canvas/AgentCanvasPage.tsx")).toContain(
+      'import "./agent-canvas-page.css"',
     );
   });
 });

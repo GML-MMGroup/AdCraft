@@ -1,8 +1,5 @@
-import { WorkflowPage as WorkflowPageController } from "../features/workflow/WorkflowPageController";
-import "./assets.css";
-import "../features/workflow/workflow.css";
-import "../features/workflow/final-composition/final-composition.css";
+import { AgentCanvasPage } from "../features/agent-canvas/AgentCanvasPage.tsx";
 
 export function WorkflowPage() {
-  return <WorkflowPageController />;
+  return <AgentCanvasPage />;
 }
