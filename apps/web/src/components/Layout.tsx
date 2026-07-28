@@ -82,7 +82,10 @@ export function Layout({ children, workflowControls }: LayoutProps) {
         ))}
       </nav>
 
-      <div className="app-shell" id="app">
+      <div
+        className={`app-shell ${location.pathname === "/" ? "app-shell--home" : ""}`}
+        id="app"
+      >
         <header className="topbar">
           <Link className="brand" to="/" aria-label="AdCraft home" onClick={closeAccountMenu}>
             <picture className="brand-picture">

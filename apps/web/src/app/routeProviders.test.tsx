@@ -133,6 +133,28 @@ describe("route providers", () => {
     expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeTruthy();
   });
 
+  test("marks only the Home application shell for route-specific artwork", async () => {
+    const home = render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("API ready");
+    expect(home.container.querySelector(".app-shell--home")).toBeTruthy();
+
+    cleanup();
+    window.history.replaceState({}, "", "/workflow");
+    const workflow = render(
+      <AppProvider>
+        <App />
+      </AppProvider>,
+    );
+
+    await screen.findByText("Workflow page empty");
+    expect(workflow.container.querySelector(".app-shell--home")).toBeNull();
+  });
+
   test("renders the workflow Layout shell inside WorkspaceProvider", async () => {
     window.history.replaceState({}, "", "/workflow");
 
