@@ -1,9 +1,7 @@
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Layout } from "../components/Layout";
 import { WorkspaceProvider } from "./WorkspaceProvider";
-
-const V2WorkflowRevisionControl = lazy(() => import("../components/V2WorkflowRevisionControl"));
 
 type WorkspaceRouteState = {
   startNewProject?: boolean;
@@ -46,9 +44,7 @@ export function WorkspaceRoute() {
 
   return (
     <WorkspaceProvider startWithNewProject={startWithNewProject}>
-      <Layout workflowControls={location.pathname.startsWith("/workflow") ? (
-        <Suspense fallback={null}><V2WorkflowRevisionControl /></Suspense>
-      ) : null}>
+      <Layout>
         <Outlet />
       </Layout>
     </WorkspaceProvider>

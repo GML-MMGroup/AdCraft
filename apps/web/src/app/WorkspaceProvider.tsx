@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "../api/client";
+import { createOperationKey } from "../api/operationKey.ts";
 import {
   v2AuthoringConflictStore,
 } from "../api/v2AuthoringConflictStore";
@@ -51,6 +52,8 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
   const [busy, setBusy] = useState(false);
   const activeWorkflowIdRef = useRef<string | null>(null);
   const workspaceSessionGenerationRef = useRef(0);
+  const newProjectRequestRef = useRef<Promise<boolean> | null>(null);
+  const routeProjectCreationStartedRef = useRef(false);
 
   const setWorkflowState = useCallback<Dispatch<SetStateAction<WorkflowGraph | null>>>((next) => {
     if (typeof next === "function") {
@@ -169,38 +172,47 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     );
   }, []);
 
-  const startNewProject = useCallback(async () => {
-    invalidateWorkspaceRestoreRequests();
-    setBusy(true);
-    try {
-      const { v2Api } = await import("../api/v2Client");
-      const idempotencyKey = `project-${crypto.randomUUID()}`;
-      const created = await v2Api.createAgentCanvasProject(
-        { name: "Untitled Project", description: "" },
-        idempotencyKey,
-      );
-      const nextWorkflow = created.value;
-      activeWorkflowIdRef.current = nextWorkflow.workflow_id;
-      clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
-      saveActiveProjectId(window.localStorage, nextWorkflow.project_id);
-      setActiveProjectId(nextWorkflow.project_id);
-      setWorkflow(null);
-      setAgentCanvasWorkflow(nextWorkflow);
-      setMessages([]);
-      setNodeRuns([]);
-      setSelectedAssets([]);
-      setPromptLibraryEntities([]);
-      setWorkspaceRestoreError(null);
-      setWorkspaceHydrated(true);
-      await refreshProjects();
-      return true;
-    } catch (error) {
-      setWorkspaceRestoreError(error instanceof Error ? error.message : "Project creation failed.");
-      setWorkspaceHydrated(true);
-      return false;
-    } finally {
-      setBusy(false);
-    }
+  const startNewProject = useCallback(() => {
+    if (newProjectRequestRef.current) return newProjectRequestRef.current;
+    const request = (async () => {
+      invalidateWorkspaceRestoreRequests();
+      setBusy(true);
+      try {
+        const { v2Api } = await import("../api/v2Client");
+        const created = await v2Api.createAgentCanvasProject(
+          { name: "Untitled Project", description: "" },
+          createOperationKey("project"),
+        );
+        const nextWorkflow = created.value;
+        activeWorkflowIdRef.current = nextWorkflow.workflow_id;
+        clearNewProjectStorage(window.localStorage, workflow?.workflow_id);
+        saveActiveProjectId(window.localStorage, nextWorkflow.project_id);
+        setActiveProjectId(nextWorkflow.project_id);
+        setWorkflow(null);
+        setAgentCanvasWorkflow(nextWorkflow);
+        setMessages([]);
+        setNodeRuns([]);
+        setSelectedAssets([]);
+        setPromptLibraryEntities([]);
+        setWorkspaceRestoreError(null);
+        setWorkspaceHydrated(true);
+        void refreshProjects().catch(() => {
+          // The backend project already exists; a list refresh must not turn creation into a failure.
+        });
+        return true;
+      } catch (error) {
+        setWorkspaceRestoreError(error instanceof Error ? error.message : "Project creation failed.");
+        setWorkspaceHydrated(true);
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    })();
+    newProjectRequestRef.current = request;
+    void request.finally(() => {
+      if (newProjectRequestRef.current === request) newProjectRequestRef.current = null;
+    });
+    return request;
   }, [invalidateWorkspaceRestoreRequests, refreshProjects, workflow?.workflow_id]);
 
   const openProject = useCallback(async (projectId: string) => {
@@ -282,9 +294,12 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
 
   useEffect(() => {
     if (startWithNewProject) {
+      if (routeProjectCreationStartedRef.current) return undefined;
+      routeProjectCreationStartedRef.current = true;
       void startNewProject();
       return undefined;
     }
+    routeProjectCreationStartedRef.current = false;
     let cancelled = false;
     async function hydrateBackendWorkspace() {
       const restoreRequest = beginWorkspaceRestoreRequest();

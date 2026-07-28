@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { legacyApi, v2Api } = vi.hoisted(() => ({
@@ -108,9 +109,28 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
   });
 
   it("creates a backend project when the route requests a fresh project", async () => {
-    render(<WorkspaceProvider startWithNewProject><Probe /></WorkspaceProvider>);
+    render(
+      <StrictMode>
+        <WorkspaceProvider startWithNewProject><Probe /></WorkspaceProvider>
+      </StrictMode>,
+    );
 
     await waitFor(() => expect(v2Api.createAgentCanvasProject).toHaveBeenCalledTimes(1));
     await screen.findByText("workflow-1");
+  });
+
+  it("keeps a successfully created Project open when the list refresh is unavailable", async () => {
+    v2Api.listProjects
+      .mockResolvedValueOnce({ items: [], next_cursor: null })
+      .mockResolvedValueOnce({ items: [], next_cursor: null })
+      .mockRejectedValue(new Error("Project list unavailable"));
+
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    await screen.findByText("hydrated");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await screen.findByText("workflow-1");
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
+    expect(v2Api.createAgentCanvasProject).toHaveBeenCalledTimes(1);
   });
 });
