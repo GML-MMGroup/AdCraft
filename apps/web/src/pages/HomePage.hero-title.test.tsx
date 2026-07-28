@@ -9,6 +9,9 @@ const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8"
 const mobileHeroTitleStyles = styles.match(
   /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
 )?.[0] ?? "";
+const darkAccentPseudoStyles = styles.match(
+  /html\[data-theme="dark"\] \.home-product-hero__accent::after\s*\{[^}]*\}/,
+)?.[0] ?? "";
 
 vi.mock("../app/useHealth", () => ({
   useHealth: () => ({ startNewProject }),
@@ -79,5 +82,10 @@ describe("HomePage hero title", () => {
     expect(styles).not.toContain("home-product-hero__accent-glyph");
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*text-shadow:/s);
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*filter:/s);
+  });
+
+  it("keeps the dark-theme gold override from resetting text clipping", () => {
+    expect(darkAccentPseudoStyles).toContain("background-image:");
+    expect(darkAccentPseudoStyles).not.toMatch(/\bbackground\s*:/);
   });
 });
