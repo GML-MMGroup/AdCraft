@@ -99,6 +99,7 @@ describe("HomeCosmicScene", () => {
   });
 
   it("renders a decorative fixed image layer and canvas", () => {
+    setDocumentTheme("dark");
     const view = render(<HomeCosmicScene />);
     const scene = view.container.querySelector(".home-cosmic-scene");
     const ring = view.container.querySelector(
@@ -115,10 +116,16 @@ describe("HomeCosmicScene", () => {
     expect(canvas?.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("does not create a renderer in light theme", async () => {
-    render(<HomeCosmicScene />);
+  it("does not mount or create cosmic media in light theme", async () => {
+    const view = render(<HomeCosmicScene />);
     await act(async () => Promise.resolve());
 
+    expect(
+      view.container.querySelector(".home-cosmic-scene"),
+    ).toBeNull();
+    expect(
+      view.container.querySelector(".home-cosmic-scene__ring"),
+    ).toBeNull();
     expect(rendererMocks.create).not.toHaveBeenCalled();
     expect(animationFrameCallbacks.size).toBe(0);
   });
@@ -139,6 +146,24 @@ describe("HomeCosmicScene", () => {
         .querySelector(".home-cosmic-scene")
         ?.classList.contains("is-active"),
     ).toBe(true);
+  });
+
+  it("unmounts cosmic media and disposes WebGL after switching to light", async () => {
+    setDocumentTheme("dark");
+    const view = render(<HomeCosmicScene />);
+    await waitFor(() => {
+      expect(rendererMocks.create).toHaveBeenCalledOnce();
+    });
+
+    setDocumentTheme("light");
+
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(".home-cosmic-scene"),
+      ).toBeNull();
+      expect(rendererMocks.dispose).toHaveBeenCalledOnce();
+    });
+    expect(animationFrameCallbacks.size).toBe(0);
   });
 
   it("uses scroll direction to update the ring transform", async () => {

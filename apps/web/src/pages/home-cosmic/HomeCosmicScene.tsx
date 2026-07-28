@@ -166,9 +166,11 @@ export function HomeCosmicScene() {
     };
   }, [shouldAnimate]);
 
+  if (!darkTheme) return null;
+
   const sceneClassName = [
     "home-cosmic-scene",
-    darkTheme ? "is-dark" : "",
+    "is-dark",
     shouldAnimate ? "is-active" : "",
     darkTheme && reducedMotion ? "is-static" : "",
     fallback ? "is-fallback" : "",

@@ -284,6 +284,7 @@ describe("HomePage motion", () => {
   });
 
   it("mounts one decorative cosmic scene beneath Home content", () => {
+    document.documentElement.dataset.theme = "dark";
     const view = render(<HomePage navigate={vi.fn()} />);
 
     expect(
