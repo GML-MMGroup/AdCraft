@@ -24,7 +24,6 @@ const heroLineCharacterOffsets = heroTitleLines.map((_, lineIndex) => (
 
 type HeroCharacterStyle = CSSProperties & {
   "--home-character-delay": string;
-  "--home-accent-position"?: string;
 };
 
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
@@ -40,25 +39,12 @@ function motionStyle(property: "--home-reveal-delay", value: string): CSSPropert
   return { [property]: value } as CSSProperties;
 }
 
-function heroCharacterStyle(
-  characterIndex: number,
-  accentIndex?: number,
-  accentLength?: number,
-): HeroCharacterStyle {
-  const style: HeroCharacterStyle = {
+function heroCharacterStyle(characterIndex: number): HeroCharacterStyle {
+  return {
     "--home-character-delay": `${
       HERO_CHARACTER_START_DELAY_MS + characterIndex * HERO_CHARACTER_STAGGER_MS
     }ms`,
   };
-
-  if (accentIndex !== undefined && accentLength !== undefined) {
-    const finalAccentIndex = Math.max(1, accentLength - 1);
-    style["--home-accent-position"] = `${
-      (accentIndex / finalAccentIndex) * 100
-    }%`;
-  }
-
-  return style;
 }
 
 export function HomePage({ navigate }: { navigate: (route: RouteName, options?: { state?: unknown }) => void }) {
@@ -98,6 +84,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName, options?: 
               <span
                 key={line}
                 className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""}`}
+                data-accent-text={lineIndex === 2 ? line : undefined}
                 aria-hidden="true"
               >
                 {Array.from(line).map((character, characterIndex) => {
@@ -111,13 +98,9 @@ export function HomePage({ navigate }: { navigate: (route: RouteName, options?: 
                       key={`${lineIndex}-${characterIndex}`}
                       className={`home-product-hero__character ${isSpace ? "home-product-hero__character--space" : ""}`}
                       data-character-index={globalCharacterIndex}
-                      style={heroCharacterStyle(
-                        globalCharacterIndex,
-                        lineIndex === 2 ? characterIndex : undefined,
-                        lineIndex === 2 ? Array.from(line).length : undefined,
-                      )}
+                      style={heroCharacterStyle(globalCharacterIndex)}
                     >
-                      <span className={`home-product-hero__glyph ${lineIndex === 2 ? "home-product-hero__accent-glyph" : ""}`}>
+                      <span className="home-product-hero__glyph">
                         {character}
                       </span>
                     </span>
