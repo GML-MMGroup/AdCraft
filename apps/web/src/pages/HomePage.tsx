@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useHealth } from "../app/useHealth";
 import { demoProjects, images, imageSrc } from "../data";
 import type { RouteName } from "../types";
+import { HomeCosmicScene } from "./home-cosmic/HomeCosmicScene";
 import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
 import { useHomeSectionReveal } from "./useHomeSectionReveal";
 import "./home.css";
@@ -74,6 +75,7 @@ export function HomePage({ navigate }: { navigate: (route: RouteName, options?: 
 
   return (
     <div className="home-page">
+      <HomeCosmicScene />
       <section
         className={`home-product-hero ${isHeroMotionReady ? "is-motion-ready" : ""}`}
         aria-labelledby="home-product-title"
