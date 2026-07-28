@@ -49,6 +49,7 @@ import {
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvas/canvasGraphModel.ts";
+import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
@@ -289,10 +290,37 @@ export function AgentCanvasPage() {
     }
   }, [createBinding, workflow]);
 
+  const recoverDeletedCanvasState = useCallback(async () => {
+    setNodes(canonicalNodes);
+    await refreshWorkflow();
+  }, [canonicalNodes, refreshWorkflow, setNodes]);
+
   const deleteEdges = useCallback((deleted: Edge[]) => {
-    void Promise.all(deleted.map((edge) => deleteBinding(edge.id)))
+    void deleteCanvasEntities(
+      deleted.map((edge) => edge.id),
+      deleteBinding,
+      recoverDeletedCanvasState,
+    )
       .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The connection could not be removed."));
-  }, [deleteBinding]);
+  }, [deleteBinding, recoverDeletedCanvasState]);
+
+  const deleteNodes = useCallback((deleted: AgentCanvasFlowNode[]) => {
+    void deleteCanvasEntities(
+      deleted.map((node) => node.id),
+      deleteNode,
+      recoverDeletedCanvasState,
+    )
+      .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The node could not be deleted."));
+  }, [deleteNode, recoverDeletedCanvasState]);
+
+  const cancelCurrentRun = useCallback(async () => {
+    setSurfaceError(null);
+    try {
+      await cancelRun();
+    } catch (error) {
+      setSurfaceError(error instanceof Error ? error.message : "The run could not be cancelled.");
+    }
+  }, [cancelRun]);
 
   const createNode = useCallback(async (nodeType: CanvasNodeTypeV2) => {
     if (!workflow) return;
@@ -430,10 +458,7 @@ export function AgentCanvasPage() {
           onNodesChange={handleNodeChanges}
           onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
           onNodeDragStop={(_event, node) => updateNodePosition(node.id, node.position)}
-          onNodesDelete={(deleted) => {
-            void Promise.all(deleted.map((node) => deleteNode(node.id)))
-              .catch((error) => setSurfaceError(error instanceof Error ? error.message : "The node could not be deleted."));
-          }}
+          onNodesDelete={deleteNodes}
           onConnect={(connection) => void connect(connection)}
           onEdgesDelete={deleteEdges}
           onPaneClick={() => {
@@ -496,7 +521,7 @@ export function AgentCanvasPage() {
               type="button"
               aria-label="Cancel run"
               title="Cancel run"
-              onClick={() => void cancelRun()}
+              onClick={() => void cancelCurrentRun()}
             >
               <PauseIcon />
             </button>

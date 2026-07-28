@@ -54,6 +54,7 @@ export function useAgentCanvasChat({
   const [error, setError] = useState<string | null>(null);
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const refreshGenerationRef = useRef(0);
+  const workflowGenerationRef = useRef(0);
   const workflowId = workflow?.workflow_id ?? null;
 
   const refresh = useCallback(async () => {
@@ -91,8 +92,12 @@ export function useAgentCanvasChat({
   }, [workflowId]);
 
   useEffect(() => {
+    refreshGenerationRef.current += 1;
+    workflowGenerationRef.current += 1;
     setPersistedItems([]);
     setOptimisticItems([]);
+    setLoading(false);
+    setSending(false);
     setFailedDraft(null);
     setActingProposalId(null);
     setError(null);
@@ -105,6 +110,7 @@ export function useAgentCanvasChat({
 
   const submit = useCallback(async (draft: SubmitDraft) => {
     if (!workflowId || !draft.text.trim()) return false;
+    const workflowGeneration = workflowGenerationRef.current;
     const optimisticId = createOperationKey("optimistic");
     setOptimisticItems((current) => [...current, {
       item_type: "message",
@@ -128,6 +134,7 @@ export function useAgentCanvasChat({
         video_skill_run_id: null,
         auto_continue: false,
       }, createOperationKey("chat"));
+      if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
         setOptimisticItems((current) => current.map((item) => (
           item.item_type === "message" && item.message_id === optimisticId
@@ -142,6 +149,7 @@ export function useAgentCanvasChat({
       setError(null);
       return true;
     } catch (submitError) {
+      if (workflowGeneration !== workflowGenerationRef.current) return false;
       setOptimisticItems((current) => current.filter((item) => (
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
@@ -149,7 +157,9 @@ export function useAgentCanvasChat({
       setError(submitError instanceof Error ? submitError.message : "Message could not be sent.");
       return false;
     } finally {
-      setSending(false);
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setSending(false);
+      }
     }
   }, [workflowId]);
 
@@ -159,6 +169,7 @@ export function useAgentCanvasChat({
     nextAction: "generate_now" | "continue_planning",
   ) => {
     if (!workflowId || actingProposalId) return;
+    const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
     try {
@@ -169,14 +180,19 @@ export function useAgentCanvasChat({
         position: proposalPosition,
       }, createOperationKey("proposal-select"));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The proposal could not be selected.");
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setError(actionError instanceof Error ? actionError.message : "The proposal could not be selected.");
+      }
     } finally {
-      setActingProposalId(null);
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingProposalId(null);
+      }
     }
   }, [actingProposalId, proposalPosition, workflowId]);
 
   const reviseProposal = useCallback(async (proposalId: string, instruction: string) => {
     if (!workflowId || !instruction.trim() || actingProposalId) return;
+    const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
     try {
@@ -185,14 +201,19 @@ export function useAgentCanvasChat({
         instruction: instruction.trim(),
       }, createOperationKey("proposal-revise"));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The proposal could not be revised.");
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setError(actionError instanceof Error ? actionError.message : "The proposal could not be revised.");
+      }
     } finally {
-      setActingProposalId(null);
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingProposalId(null);
+      }
     }
   }, [actingProposalId, workflowId]);
 
   const skipProposal = useCallback(async (proposalId: string) => {
     if (!workflowId || actingProposalId) return;
+    const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
     try {
@@ -200,9 +221,13 @@ export function useAgentCanvasChat({
         action: "skip",
       }, createOperationKey("proposal-skip"));
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The proposal could not be skipped.");
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setError(actionError instanceof Error ? actionError.message : "The proposal could not be skipped.");
+      }
     } finally {
-      setActingProposalId(null);
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingProposalId(null);
+      }
     }
   }, [actingProposalId, workflowId]);
 

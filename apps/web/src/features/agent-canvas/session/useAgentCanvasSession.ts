@@ -13,6 +13,10 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
+import {
+  mergeAgentCanvasNode,
+  mergeAgentCanvasWorkflow,
+} from "./workflowMerge.ts";
 
 function withNodePatch(
   workflow: AgentCanvasWorkflowV2,
@@ -59,10 +63,7 @@ export function useAgentCanvasSession() {
   }
 
   const applyWorkflow = useCallback((next: AgentCanvasWorkflowV2) => {
-    setAgentCanvasWorkflow((current) => {
-      if (current && current.workflow_id !== next.workflow_id) return current;
-      return !current || next.revision >= current.revision ? next : current;
-    });
+    setAgentCanvasWorkflow((current) => mergeAgentCanvasWorkflow(current, next));
   }, [setAgentCanvasWorkflow]);
 
   const patchNode = useCallback((
@@ -180,7 +181,7 @@ export function useAgentCanvasSession() {
       return {
         ...current,
         nodes: current.nodes.map((node) => node.node_id === nextNode.node_id
-          ? nextNode
+          ? mergeAgentCanvasNode(node, nextNode)
           : node),
       };
     });

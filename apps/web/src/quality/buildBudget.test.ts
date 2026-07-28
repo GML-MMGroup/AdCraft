@@ -24,27 +24,30 @@ afterEach(() => {
 });
 
 describe("build budget", () => {
-  test("keeps advanced shot timeline code out of the default composition editor chunk", () => {
-    const editorSource = readFileSync(
-      join(process.cwd(), "src/features/workflow/final-composition/V2FinalCompositionEditor.tsx"),
+  test("keeps Agent Canvas and React Flow out of the initial application chunk", () => {
+    const appSource = readFileSync(
+      join(process.cwd(), "src/App.tsx"),
       "utf8",
     );
-    const timelineSource = readFileSync(
-      join(process.cwd(), "src/features/workflow/final-composition/V2ShotTimeline.tsx"),
+    const workflowPageSource = readFileSync(
+      join(process.cwd(), "src/pages/WorkflowPage.tsx"),
+      "utf8",
+    );
+    const viteSource = readFileSync(
+      join(process.cwd(), "vite.config.ts"),
       "utf8",
     );
     const budgetSource = readFileSync(budgetScriptPath, "utf8");
 
-    expect(editorSource).not.toContain(
-      'import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css"',
+    expect(appSource).toContain('lazy(() => import("./pages/WorkflowPage")');
+    expect(workflowPageSource).toContain(
+      'import { AgentCanvasPage } from "../features/agent-canvas/AgentCanvasPage.tsx"',
     );
-    expect(editorSource).not.toMatch(/from "\.\/V2ShotTimeline\.tsx"/);
-    expect(editorSource).toContain('import("./V2ShotTimeline.tsx")');
-    expect(timelineSource).toContain(
-      'import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css"',
-    );
-    expect(budgetSource).toContain("MAX_SHOT_TIMELINE_JS_BYTES");
-    expect(budgetSource).toContain('asset.name.startsWith("V2ShotTimeline-")');
+    expect(viteSource).toContain('return "vendor-react-flow"');
+    expect(budgetSource).toContain("MAX_AGENT_CANVAS_ROUTE_JS_BYTES");
+    expect(budgetSource).toContain("MAX_VENDOR_REACT_FLOW_JS_BYTES");
+    expect(budgetSource).toContain('asset.name.startsWith("WorkflowPage-")');
+    expect(budgetSource).toContain('asset.name.startsWith("vendor-react-flow-")');
   });
 
   test("budgets the dark Home cosmic renderer as a lazy feature", () => {
@@ -137,7 +140,7 @@ describe("build budget", () => {
     expect(result.stderr).toContain("Home route CSS is 17 KiB, expected <= 16 KiB");
   });
 
-  test("rejects a production-shaped final composition entry without the shot timeline dynamic import", () => {
+  test("rejects a production-shaped Agent Canvas route without the React Flow vendor import", () => {
     const distDirectory = mkdtempSync(join(tmpdir(), "adcraft-build-budget-"));
     temporaryDirectories.push(distDirectory);
     const assetsDirectory = join(distDirectory, "assets");
@@ -148,14 +151,15 @@ describe("build budget", () => {
     for (const asset of [
       "index-fixture.js",
       "home-fixture.js",
-      "screenplay-editor-fixture.js",
-      "V2FinalCompositionEditor-fixture.js",
-      "V2ShotTimeline-fixture.js",
-      "timeline-editor-fixture.js",
+      "WorkflowPage-fixture.js",
+      "vendor-react-flow-fixture.js",
       "AssetEntityViewer-fixture.js",
+      "homeCosmicRenderer-fixture.js",
+      "vendor-three-fixture.js",
       "global-fixture.css",
       "home-fixture.css",
-      "timeline-editor-fixture.css",
+      "WorkflowPage-fixture.css",
+      "vendor-react-flow-fixture.css",
     ]) {
       writeAsset(assetsDirectory, asset);
     }
@@ -169,17 +173,15 @@ describe("build budget", () => {
         file: "assets/home-fixture.js",
         css: ["assets/home-fixture.css"],
       },
-      "_V2FinalCompositionEditor-fixture.js": {
-        name: "V2FinalCompositionEditor",
-        file: "assets/V2FinalCompositionEditor-fixture.js",
+      "src/pages/WorkflowPage.tsx": {
+        name: "WorkflowPage",
+        file: "assets/WorkflowPage-fixture.js",
+        css: ["assets/WorkflowPage-fixture.css"],
       },
-      "src/features/workflow/final-composition/V2ShotTimeline.tsx": {
-        name: "V2ShotTimeline",
-        file: "assets/V2ShotTimeline-fixture.js",
-        imports: ["_timeline-editor.js"],
-      },
-      "_timeline-editor.js": {
-        file: "assets/timeline-editor-fixture.js",
+      "_vendor-react-flow.js": {
+        name: "vendor-react-flow",
+        file: "assets/vendor-react-flow-fixture.js",
+        css: ["assets/vendor-react-flow-fixture.css"],
       },
     }));
 
@@ -191,7 +193,7 @@ describe("build budget", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      "final composition editor must dynamically import the advanced shot timeline",
+      "Agent Canvas Workflow route does not own the React Flow vendor chunk",
     );
   });
 });

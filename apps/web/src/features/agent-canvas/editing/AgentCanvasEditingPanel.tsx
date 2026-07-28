@@ -106,7 +106,7 @@ export function AgentCanvasEditingPanel({
                 <span>Resolution</span>
                 <select
                   value={editing.content.manifest.output.resolution ?? ""}
-                  disabled={editing.saving || exportRunning}
+                  disabled={exportRunning}
                   onChange={(event) => editing.setOutput({
                     resolution: event.currentTarget.value || null,
                   })}
@@ -121,7 +121,7 @@ export function AgentCanvasEditingPanel({
                 <span>Aspect ratio</span>
                 <select
                   value={editing.content.manifest.output.aspect_ratio ?? ""}
-                  disabled={editing.saving || exportRunning}
+                  disabled={exportRunning}
                   onChange={(event) => editing.setOutput({
                     aspect_ratio: event.currentTarget.value || null,
                   })}
@@ -140,7 +140,7 @@ export function AgentCanvasEditingPanel({
                   max="120"
                   step="1"
                   value={editing.content.manifest.output.fps ?? ""}
-                  disabled={editing.saving || exportRunning}
+                  disabled={exportRunning}
                   onChange={(event) => editing.setOutput({
                     fps: event.currentTarget.value
                       ? Number(event.currentTarget.value)
@@ -209,7 +209,7 @@ export function AgentCanvasEditingPanel({
                       type="button"
                       aria-label={`Move ${input.node.title || `clip ${index + 1}`} earlier`}
                       title="Move earlier"
-                      disabled={editing.saving || exportRunning || index === 0}
+                      disabled={exportRunning || index === 0}
                       onClick={() => editing.moveVideo(input.binding.binding_id, -1)}
                     >
                       <ChevronUpIcon />
@@ -218,7 +218,7 @@ export function AgentCanvasEditingPanel({
                       type="button"
                       aria-label={`Move ${input.node.title || `clip ${index + 1}`} later`}
                       title="Move later"
-                      disabled={editing.saving || exportRunning || index === editing.inputs.videos.length - 1}
+                      disabled={exportRunning || index === editing.inputs.videos.length - 1}
                       onClick={() => editing.moveVideo(input.binding.binding_id, 1)}
                     >
                       <ChevronDownIcon />
@@ -242,7 +242,7 @@ export function AgentCanvasEditingPanel({
                     step="0.05"
                     aria-label="BGM volume"
                     value={editing.content.manifest.bgm_volume}
-                    disabled={!editing.inputs.bgm || editing.saving || exportRunning}
+                    disabled={!editing.inputs.bgm || exportRunning}
                     onChange={(event) => editing.setBgmVolume(Number(event.currentTarget.value))}
                   />
                 </label>
