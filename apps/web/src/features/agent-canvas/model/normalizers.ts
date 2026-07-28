@@ -1,0 +1,827 @@
+import type {
+  AgentCanvasWorkflowV2,
+  BindingCapabilityDecisionV2,
+  CanvasBindingKindV2,
+  CanvasBindingSourceImageAssetV2,
+  CanvasBindingSourceNodeV2,
+  CanvasBindingSourceV2,
+  CanvasBindingV2,
+  CanvasExecutionStatusV2,
+  CanvasNodeErrorV2,
+  CanvasNodeStatusV2,
+  CanvasNodeTypeV2,
+  CanvasNodeV2,
+  CanvasPositionV2,
+  CanvasRuntimeEventV2,
+  CanvasRuntimeSnapshotV2,
+  ChatArtifactCardV2,
+  ChatExpertActivityV2,
+  ChatMessageV2,
+  ChatProposalCardV2,
+  ChatTimelineItemV2,
+  ChatTimelineListResponseV2,
+  ConceptOptionV2,
+  ConceptProposalV2,
+  EditingExportRuntimeV2,
+  EditingManifestV2,
+  EditingNodeContentV2,
+  EditingOutputSettingsV2,
+  EditingPreviewClipV2,
+  EditingPreviewV2,
+  EditingSkippedInputV2,
+  NodeRuntimePhaseV2,
+  NodeRuntimeV2,
+  PlanningTopicStateV2,
+  PlanningTopicStatusV2,
+  ProjectAssetSummaryV2,
+  ProjectAssetStatusV2,
+  ProviderModelCapabilityListV2,
+  ProviderModelCapabilityV2,
+  ResolvedInputSnapshotV2,
+  ResolvedMediaInputSnapshotV2,
+  ResolvedTextInputSnapshotV2,
+  SpecialistAgentNameV2,
+} from "../../../types-v2.ts";
+
+type JsonRecord = Record<string, unknown>;
+
+const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
+const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
+const CANVAS_BINDING_KINDS = new Set<CanvasBindingKindV2>([
+  "brief_context",
+  "script_context",
+  "image_reference",
+  "video_reference",
+  "audio_reference",
+]);
+const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
+  "queued",
+  "running",
+  "waiting",
+  "completed",
+  "partial_completed",
+  "failed",
+  "cancelled",
+]);
+const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
+  "waiting_for_input",
+  "queued",
+  "running",
+  "waiting_provider",
+  "recovering",
+  "publishing",
+]);
+const ASSET_MEDIA_TYPES = new Set<ProjectAssetSummaryV2["media_type"]>(["image", "video", "audio"]);
+const ASSET_SOURCE_TYPES = new Set<ProjectAssetSummaryV2["source_type"]>([
+  "upload",
+  "generated",
+  "recommended",
+  "library",
+  "editing_export",
+]);
+const PROJECT_ASSET_STATUSES = new Set<ProjectAssetStatusV2>(["ready", "unavailable"]);
+const SPECIALIST_AGENT_NAMES = new Set<SpecialistAgentNameV2>([
+  "script_writer",
+  "product_designer",
+  "prop_designer",
+  "character_designer",
+  "scene_designer",
+  "storyboard_artist",
+  "video_director",
+  "bgm_director",
+]);
+const PLANNING_TOPIC_STATUSES = new Set<PlanningTopicStatusV2>(["pending", "in_review", "resolved", "skipped", "not_required"]);
+const CHAT_MESSAGE_SPEAKERS = new Set<ChatMessageV2["speaker"]>(["user", "adcraft_video_agent"]);
+const CONCEPT_PROPOSAL_STATUSES = new Set<ConceptProposalV2["status"]>(["pending", "selected", "revised", "skipped", "superseded"]);
+const PROPOSAL_SELECTION_ACTORS = new Set<NonNullable<ConceptProposalV2["selection_actor"]>>(["user", "agent"]);
+const EXPERT_ACTIVITY_STATUSES = new Set<ChatExpertActivityV2["status"]>(["working", "completed", "failed"]);
+const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queued", "exporting", "completed", "failed", "cancelled"]);
+const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
+  "source_not_ready",
+  "source_failed",
+  "source_output_unavailable",
+  "source_media_invalid",
+]);
+const EDITING_VIDEO_CODEC = new Set<EditingOutputSettingsV2["video_codec"]>(["h264"]);
+const EDITING_AUDIO_CODEC = new Set<EditingOutputSettingsV2["audio_codec"]>(["aac"]);
+const EDITING_CONTAINER = new Set<EditingOutputSettingsV2["container"]>(["mp4"]);
+const RESOLVED_TEXT_BINDING_KINDS = new Set<ResolvedTextInputSnapshotV2["binding_kind"]>(["brief_context", "script_context"]);
+const RESOLVED_DOCUMENT_KINDS = new Set<ResolvedTextInputSnapshotV2["document_kind"]>(["text", "script"]);
+const RESOLVED_MEDIA_BINDING_KINDS = new Set<ResolvedMediaInputSnapshotV2["binding_kind"]>([
+  "image_reference",
+  "video_reference",
+  "audio_reference",
+]);
+const PROVIDER_INPUT_TYPES = new Set<ProviderModelCapabilityV2["accepted_input_types"][number]>(["text", "image", "video", "audio"]);
+
+function fail(path: string, message: string): never {
+  throw new Error(`Invalid ${path}: ${message}`);
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function expectRecord(value: unknown, path: string): JsonRecord {
+  if (!isRecord(value)) fail(path, "expected object");
+  return value;
+}
+
+function forbidUnknownFields(record: JsonRecord, allowed: readonly string[], path: string) {
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(record)) {
+    if (!allowedSet.has(key)) fail(`${path}.${key}`, "unknown field");
+  }
+}
+
+function expectString(value: unknown, path: string) {
+  if (typeof value !== "string") fail(path, "expected string");
+  return value;
+}
+
+function expectNonEmptyString(value: unknown, path: string) {
+  const result = expectString(value, path);
+  if (!result.trim()) fail(path, "expected non-empty string");
+  return result;
+}
+
+function optionalString(value: unknown, path: string) {
+  if (value === undefined) return undefined;
+  return expectString(value, path);
+}
+
+function nullableString(value: unknown, path: string) {
+  if (value === null) return null;
+  return expectString(value, path);
+}
+
+function expectBoolean(value: unknown, path: string) {
+  if (typeof value !== "boolean") fail(path, "expected boolean");
+  return value;
+}
+
+function optionalBoolean(value: unknown, path: string) {
+  if (value === undefined) return undefined;
+  return expectBoolean(value, path);
+}
+
+function expectFiniteNumber(value: unknown, path: string) {
+  if (typeof value !== "number" || !Number.isFinite(value)) fail(path, "expected finite number");
+  return value;
+}
+
+function expectInteger(value: unknown, path: string) {
+  const result = expectFiniteNumber(value, path);
+  if (!Number.isInteger(result)) fail(path, "expected integer");
+  return result;
+}
+
+function expectNonNegativeInteger(value: unknown, path: string) {
+  const result = expectInteger(value, path);
+  if (result < 0) fail(path, "expected non-negative integer");
+  return result;
+}
+
+function expectPositiveInteger(value: unknown, path: string) {
+  const result = expectInteger(value, path);
+  if (result <= 0) fail(path, "expected positive integer");
+  return result;
+}
+
+function nullableFiniteNumber(value: unknown, path: string) {
+  if (value === null) return null;
+  return expectFiniteNumber(value, path);
+}
+
+function optionalNullableString(value: unknown, path: string) {
+  if (value === undefined) return undefined;
+  return nullableString(value, path);
+}
+
+function expectStringArray(value: unknown, path: string) {
+  if (!Array.isArray(value)) fail(path, "expected array");
+  return value.map((item, index) => expectString(item, `${path}[${index}]`));
+}
+
+function optionalStringArray(value: unknown, path: string, defaultValue: string[] = []) {
+  if (value === undefined) return defaultValue;
+  return expectStringArray(value, path);
+}
+
+function expectLiteral<T extends string>(value: unknown, allowed: ReadonlySet<T>, path: string): T {
+  const result = expectString(value, path);
+  if (!allowed.has(result as T)) fail(path, `expected one of ${Array.from(allowed).join(", ")}`);
+  return result as T;
+}
+
+function optionalNullableLiteral<T extends string>(value: unknown, allowed: ReadonlySet<T>, path: string): T | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return expectLiteral(value, allowed, path);
+}
+
+function expectRecordValue(value: unknown, path: string) {
+  return expectRecord(value, path);
+}
+
+function expectUnknownRecord(value: unknown, path: string) {
+  if (!isRecord(value)) fail(path, "expected object");
+  return value;
+}
+
+function optionalUnknownRecord(value: unknown, path: string, defaultValue: JsonRecord = {}) {
+  if (value === undefined) return defaultValue;
+  return expectUnknownRecord(value, path);
+}
+
+function expectNullableRecord(value: unknown, path: string) {
+  if (value === null) return null;
+  return expectRecord(value, path);
+}
+
+function expectArray(value: unknown, path: string) {
+  if (!Array.isArray(value)) fail(path, "expected array");
+  return value;
+}
+
+function expectTuple2Number(value: unknown, path: string, integer = false): [number, number] {
+  const tuple = expectArray(value, path);
+  if (tuple.length !== 2) fail(path, "expected two items");
+  return [
+    integer ? expectInteger(tuple[0], `${path}[0]`) : expectFiniteNumber(tuple[0], `${path}[0]`),
+    integer ? expectInteger(tuple[1], `${path}[1]`) : expectFiniteNumber(tuple[1], `${path}[1]`),
+  ];
+}
+
+function expectIsoDateTimeString(value: unknown, path: string) {
+  return expectNonEmptyString(value, path);
+}
+
+function normalizeCanvasPositionV2(value: unknown, path: string): CanvasPositionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["x", "y"], path);
+  return {
+    x: expectFiniteNumber(record.x, `${path}.x`),
+    y: expectFiniteNumber(record.y, `${path}.y`),
+  };
+}
+
+export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): CanvasNodeErrorV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["code", "message", "retryable"], path);
+  return {
+    code: expectNonEmptyString(record.code, `${path}.code`),
+    message: expectNonEmptyString(record.message, `${path}.message`),
+    retryable: expectBoolean(record.retryable, `${path}.retryable`),
+  };
+}
+
+export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNodeV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "node_id",
+      "workflow_id",
+      "node_type",
+      "semantic_role",
+      "title",
+      "status",
+      "summary_prompt",
+      "generation_prompt",
+      "structured_content",
+      "model_id",
+      "parameters",
+      "prompt_context_snapshot_id",
+      "output_asset_id",
+      "video_skill_run_id",
+      "position",
+      "revision",
+      "error",
+      "created_at",
+      "updated_at",
+    ],
+    path,
+  );
+  return {
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    node_type: expectLiteral(record.node_type, CANVAS_NODE_TYPES, `${path}.node_type`),
+    semantic_role: expectNonEmptyString(record.semantic_role, `${path}.semantic_role`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
+    summary_prompt: nullableString(record.summary_prompt, `${path}.summary_prompt`),
+    generation_prompt: nullableString(record.generation_prompt, `${path}.generation_prompt`),
+    structured_content: expectRecordValue(record.structured_content, `${path}.structured_content`),
+    model_id: nullableString(record.model_id, `${path}.model_id`),
+    parameters: expectRecordValue(record.parameters, `${path}.parameters`),
+    prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
+    output_asset_id: nullableString(record.output_asset_id, `${path}.output_asset_id`),
+    video_skill_run_id: nullableString(record.video_skill_run_id, `${path}.video_skill_run_id`),
+    position: normalizeCanvasPositionV2(record.position, `${path}.position`),
+    revision: expectNonNegativeInteger(record.revision, `${path}.revision`),
+    error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeCanvasBindingSourceNodeV2(value: unknown, path: string): CanvasBindingSourceNodeV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["kind", "node_id"], path);
+  return {
+    kind: expectLiteral(record.kind, new Set<CanvasBindingSourceNodeV2["kind"]>(["node"]), `${path}.kind`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+  };
+}
+
+function normalizeCanvasBindingSourceImageAssetV2(value: unknown, path: string): CanvasBindingSourceImageAssetV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["kind", "asset_id"], path);
+  return {
+    kind: expectLiteral(record.kind, new Set<CanvasBindingSourceImageAssetV2["kind"]>(["image_asset"]), `${path}.kind`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+  };
+}
+
+export function normalizeCanvasBindingSourceV2(value: unknown, path = "binding.source"): CanvasBindingSourceV2 {
+  const record = expectRecord(value, path);
+  const kind = expectString(record.kind, `${path}.kind`);
+  if (kind === "node") return normalizeCanvasBindingSourceNodeV2(record, path);
+  if (kind === "image_asset") return normalizeCanvasBindingSourceImageAssetV2(record, path);
+  fail(`${path}.kind`, "unsupported discriminator");
+}
+
+export function normalizeCanvasBindingV2(value: unknown, path = "binding"): CanvasBindingV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["binding_id", "workflow_id", "source", "target_node_id", "binding_kind", "required", "display_order", "created_at"], path);
+  return {
+    binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    source: normalizeCanvasBindingSourceV2(record.source, `${path}.source`),
+    target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
+    binding_kind: expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`),
+    required: expectBoolean(record.required, `${path}.required`),
+    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
+export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): ProjectAssetSummaryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "asset_id",
+      "media_type",
+      "source_type",
+      "display_name",
+      "mime_type",
+      "status",
+      "preview_url",
+      "media_url",
+      "width",
+      "height",
+      "duration_seconds",
+      "checksum",
+    ],
+    path,
+  );
+  return {
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
+    source_type: expectLiteral(record.source_type, ASSET_SOURCE_TYPES, `${path}.source_type`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    mime_type: expectNonEmptyString(record.mime_type, `${path}.mime_type`),
+    status: expectLiteral(record.status, PROJECT_ASSET_STATUSES, `${path}.status`),
+    preview_url: nullableString(record.preview_url, `${path}.preview_url`),
+    media_url: nullableString(record.media_url, `${path}.media_url`),
+    width: nullableFiniteNumber(record.width, `${path}.width`),
+    height: nullableFiniteNumber(record.height, `${path}.height`),
+    duration_seconds: nullableFiniteNumber(record.duration_seconds, `${path}.duration_seconds`),
+    checksum: expectNonEmptyString(record.checksum, `${path}.checksum`),
+  };
+}
+
+export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"): AgentCanvasWorkflowV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "project_id", "workflow_schema_version", "canvas_model", "revision", "nodes", "bindings", "assets"], path);
+  const schemaVersion = expectInteger(record.workflow_schema_version, `${path}.workflow_schema_version`);
+  if (schemaVersion !== 2) fail(`${path}.workflow_schema_version`, "expected 2");
+  const canvasModel = expectString(record.canvas_model, `${path}.canvas_model`);
+  if (canvasModel !== "agent_canvas_v1") fail(`${path}.canvas_model`, "expected agent_canvas_v1");
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    project_id: expectNonEmptyString(record.project_id, `${path}.project_id`),
+    workflow_schema_version: 2,
+    canvas_model: "agent_canvas_v1",
+    revision: expectNonNegativeInteger(record.revision, `${path}.revision`),
+    nodes: expectArray(record.nodes, `${path}.nodes`).map((item, index) => normalizeCanvasNodeV2(item, `${path}.nodes[${index}]`)),
+    bindings: expectArray(record.bindings, `${path}.bindings`).map((item, index) => normalizeCanvasBindingV2(item, `${path}.bindings[${index}]`)),
+    assets: expectArray(record.assets, `${path}.assets`).map((item, index) => normalizeProjectAssetSummaryV2(item, `${path}.assets[${index}]`)),
+  };
+}
+
+export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedTextInputSnapshotV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "document_kind", "content", "content_hash"], path);
+  return {
+    snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedTextInputSnapshotV2["snapshot_type"]>(["text"]), `${path}.snapshot_type`),
+    source_kind: expectLiteral(record.source_kind, new Set<ResolvedTextInputSnapshotV2["source_kind"]>(["node"]), `${path}.source_kind`),
+    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
+    source_node_revision: expectNonNegativeInteger(record.source_node_revision, `${path}.source_node_revision`),
+    binding_kind: expectLiteral(record.binding_kind, RESOLVED_TEXT_BINDING_KINDS, `${path}.binding_kind`),
+    document_kind: expectLiteral(record.document_kind, RESOLVED_DOCUMENT_KINDS, `${path}.document_kind`),
+    content: expectString(record.content, `${path}.content`),
+    content_hash: expectNonEmptyString(record.content_hash, `${path}.content_hash`),
+  };
+}
+
+export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedMediaInputSnapshotV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "asset_id", "media_type", "asset_checksum", "access_descriptor"], path);
+  return {
+    snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedMediaInputSnapshotV2["snapshot_type"]>(["media"]), `${path}.snapshot_type`),
+    source_kind: expectLiteral(record.source_kind, new Set<ResolvedMediaInputSnapshotV2["source_kind"]>(["node", "image_asset"]), `${path}.source_kind`),
+    source_node_id: nullableString(record.source_node_id, `${path}.source_node_id`),
+    source_node_revision: record.source_node_revision === null ? null : expectNonNegativeInteger(record.source_node_revision, `${path}.source_node_revision`),
+    binding_kind: expectLiteral(record.binding_kind, RESOLVED_MEDIA_BINDING_KINDS, `${path}.binding_kind`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
+    asset_checksum: expectNonEmptyString(record.asset_checksum, `${path}.asset_checksum`),
+    access_descriptor: expectRecordValue(record.access_descriptor, `${path}.access_descriptor`),
+  };
+}
+
+export function normalizeResolvedInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedInputSnapshotV2 {
+  const record = expectRecord(value, path);
+  const snapshotType = expectString(record.snapshot_type, `${path}.snapshot_type`);
+  if (snapshotType === "text") return normalizeResolvedTextInputSnapshotV2(record, path);
+  if (snapshotType === "media") return normalizeResolvedMediaInputSnapshotV2(record, path);
+  fail(`${path}.snapshot_type`, "unsupported discriminator");
+}
+
+export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runtime"): NodeRuntimeV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["node_id", "visible_status", "phase", "execution_id", "provider_task_id", "waiting_for_node_ids", "attempt_no", "updated_at", "error"], path);
+  const phase = optionalNullableLiteral(record.phase, NODE_RUNTIME_PHASES, `${path}.phase`);
+  return {
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    visible_status: expectLiteral(record.visible_status, CANVAS_NODE_STATUSES, `${path}.visible_status`),
+    phase: phase ?? null,
+    execution_id: nullableString(record.execution_id, `${path}.execution_id`),
+    provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
+    waiting_for_node_ids: optionalStringArray(record.waiting_for_node_ids, `${path}.waiting_for_node_ids`, []),
+    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+    error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+  };
+}
+
+export function normalizeCanvasRuntimeSnapshotV2(value: unknown, path = "runtime"): CanvasRuntimeSnapshotV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "workflow_id",
+      "active_execution_id",
+      "execution_status",
+      "node_runtime",
+      "queued_node_ids",
+      "working_node_ids",
+      "waiting_node_ids",
+      "ready_node_ids",
+      "failed_node_ids",
+      "events_cursor",
+      "updated_at",
+    ],
+    path,
+  );
+  const runtimeRecord = expectRecord(record.node_runtime, `${path}.node_runtime`);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    active_execution_id: nullableString(record.active_execution_id, `${path}.active_execution_id`),
+    execution_status: optionalNullableLiteral(record.execution_status, CANVAS_EXECUTION_STATUSES, `${path}.execution_status`) ?? null,
+    node_runtime: Object.fromEntries(
+      Object.entries(runtimeRecord).map(([key, item]) => [key, normalizeNodeRuntimeV2(item, `${path}.node_runtime.${key}`)]),
+    ),
+    queued_node_ids: expectStringArray(record.queued_node_ids, `${path}.queued_node_ids`),
+    working_node_ids: expectStringArray(record.working_node_ids, `${path}.working_node_ids`),
+    waiting_node_ids: expectStringArray(record.waiting_node_ids, `${path}.waiting_node_ids`),
+    ready_node_ids: expectStringArray(record.ready_node_ids, `${path}.ready_node_ids`),
+    failed_node_ids: expectStringArray(record.failed_node_ids, `${path}.failed_node_ids`),
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): CanvasRuntimeEventV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["seq", "workflow_id", "event_type", "node_id", "binding_id", "asset_id", "provider_task_id", "created_at", "payload"], path);
+  return {
+    seq: expectNonNegativeInteger(record.seq, `${path}.seq`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    event_type: expectNonEmptyString(record.event_type, `${path}.event_type`),
+    node_id: nullableString(record.node_id, `${path}.node_id`),
+    binding_id: nullableString(record.binding_id, `${path}.binding_id`),
+    asset_id: nullableString(record.asset_id, `${path}.asset_id`),
+    provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    payload: record.payload === null ? null : expectRecordValue(record.payload, `${path}.payload`),
+  };
+}
+
+export function normalizeProviderModelCapabilityV2(value: unknown, path = "capability"): ProviderModelCapabilityV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "provider",
+      "model_id",
+      "output_type",
+      "accepted_input_types",
+      "max_references",
+      "supported_parameters",
+      "supported_aspect_ratios",
+      "duration_range_seconds",
+      "pixel_bounds",
+      "available",
+      "unavailable_reason",
+    ],
+    path,
+  );
+  return {
+    provider: expectNonEmptyString(record.provider, `${path}.provider`),
+    model_id: expectNonEmptyString(record.model_id, `${path}.model_id`),
+    output_type: expectLiteral(record.output_type, ASSET_MEDIA_TYPES, `${path}.output_type`),
+    accepted_input_types: expectArray(record.accepted_input_types, `${path}.accepted_input_types`).map((item, index) =>
+      expectLiteral(item, PROVIDER_INPUT_TYPES, `${path}.accepted_input_types[${index}]`),
+    ),
+    max_references: expectNonNegativeInteger(record.max_references, `${path}.max_references`),
+    supported_parameters: expectStringArray(record.supported_parameters, `${path}.supported_parameters`),
+    supported_aspect_ratios: expectStringArray(record.supported_aspect_ratios, `${path}.supported_aspect_ratios`),
+    duration_range_seconds: record.duration_range_seconds === null ? null : expectTuple2Number(record.duration_range_seconds, `${path}.duration_range_seconds`),
+    pixel_bounds: record.pixel_bounds === null ? null : expectTuple2Number(record.pixel_bounds, `${path}.pixel_bounds`, true),
+    available: expectBoolean(record.available, `${path}.available`),
+    unavailable_reason: nullableString(record.unavailable_reason, `${path}.unavailable_reason`),
+  };
+}
+
+export function normalizeProviderModelCapabilityListV2(value: unknown, path = "capabilities"): ProviderModelCapabilityListV2 {
+  return expectArray(value, path).map((item, index) => normalizeProviderModelCapabilityV2(item, `${path}[${index}]`));
+}
+
+export function normalizeBindingCapabilityDecisionV2(value: unknown, path = "bindingCapabilityDecision"): BindingCapabilityDecisionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["accepted", "target_node_id", "selected_model_id", "required_input_types", "compatible_model_ids", "switch_model_required"], path);
+  return {
+    accepted: expectBoolean(record.accepted, `${path}.accepted`),
+    target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
+    selected_model_id: nullableString(record.selected_model_id, `${path}.selected_model_id`),
+    required_input_types: expectArray(record.required_input_types, `${path}.required_input_types`).map((item, index) =>
+      expectLiteral(item, PROVIDER_INPUT_TYPES, `${path}.required_input_types[${index}]`),
+    ),
+    compatible_model_ids: expectStringArray(record.compatible_model_ids, `${path}.compatible_model_ids`),
+    switch_model_required: expectBoolean(record.switch_model_required, `${path}.switch_model_required`),
+  };
+}
+
+export function normalizePlanningTopicStateV2(value: unknown, path = "planningTopic"): PlanningTopicStateV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["topic_id", "skill_run_id", "topic_kind", "display_order", "status", "related_node_ids", "updated_at"], path);
+  return {
+    topic_id: expectNonEmptyString(record.topic_id, `${path}.topic_id`),
+    skill_run_id: expectNonEmptyString(record.skill_run_id, `${path}.skill_run_id`),
+    topic_kind: expectNonEmptyString(record.topic_kind, `${path}.topic_kind`),
+    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    status: expectLiteral(record.status, PLANNING_TOPIC_STATUSES, `${path}.status`),
+    related_node_ids: optionalStringArray(record.related_node_ids, `${path}.related_node_ids`, []),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeConceptOptionV2(value: unknown, path: string): ConceptOptionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["option_id", "display_name", "summary_prompt", "semantic_role", "proposed_node_type", "reference_node_ids", "reference_image_asset_ids"], path);
+  return {
+    option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    summary_prompt: expectNonEmptyString(record.summary_prompt, `${path}.summary_prompt`),
+    semantic_role: expectNonEmptyString(record.semantic_role, `${path}.semantic_role`),
+    proposed_node_type: expectLiteral(record.proposed_node_type, CANVAS_NODE_TYPES, `${path}.proposed_node_type`),
+    reference_node_ids: optionalStringArray(record.reference_node_ids, `${path}.reference_node_ids`, []),
+    reference_image_asset_ids: optionalStringArray(record.reference_image_asset_ids, `${path}.reference_image_asset_ids`, []),
+  };
+}
+
+function normalizeConceptProposalV2(value: unknown, path: string): ConceptProposalV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["proposal_id", "workflow_id", "turn_id", "specialist", "status", "options", "workflow_revision", "selection_actor"], path);
+  const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeConceptOptionV2(item, `${path}.options[${index}]`));
+  if (options.length < 1 || options.length > 4) fail(`${path}.options`, "expected between 1 and 4 options");
+  const selectionActor = record.selection_actor === undefined ? null : record.selection_actor === null ? null : expectLiteral(record.selection_actor, PROPOSAL_SELECTION_ACTORS, `${path}.selection_actor`);
+  return {
+    proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    specialist: expectLiteral(record.specialist, SPECIALIST_AGENT_NAMES, `${path}.specialist`),
+    status: expectLiteral(record.status, CONCEPT_PROPOSAL_STATUSES, `${path}.status`),
+    options,
+    workflow_revision: expectNonNegativeInteger(record.workflow_revision, `${path}.workflow_revision`),
+    selection_actor: selectionActor,
+  };
+}
+
+function normalizeChatMessageV2(value: unknown, path: string): ChatMessageV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "message_id", "conversation_id", "speaker", "text", "linked_node_ids", "script_node_id", "proposal_id", "sequence", "created_at"], path);
+  return {
+    item_type: expectLiteral(record.item_type, new Set<ChatMessageV2["item_type"]>(["message"]), `${path}.item_type`),
+    message_id: expectNonEmptyString(record.message_id, `${path}.message_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    speaker: expectLiteral(record.speaker, CHAT_MESSAGE_SPEAKERS, `${path}.speaker`),
+    text: expectString(record.text, `${path}.text`),
+    linked_node_ids: optionalStringArray(record.linked_node_ids, `${path}.linked_node_ids`, []),
+    script_node_id: record.script_node_id === undefined ? null : nullableString(record.script_node_id, `${path}.script_node_id`),
+    proposal_id: record.proposal_id === undefined ? null : nullableString(record.proposal_id, `${path}.proposal_id`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
+function normalizeChatArtifactCardV2(value: unknown, path: string): ChatArtifactCardV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "artifact_id", "artifact_kind", "node_id", "title", "summary", "action_label", "source_turn_id", "sequence", "created_at"], path);
+  const actionLabel = record.action_label === undefined ? "View Script" : expectString(record.action_label, `${path}.action_label`);
+  if (actionLabel !== "View Script") fail(`${path}.action_label`, "expected View Script");
+  return {
+    item_type: expectLiteral(record.item_type, new Set<ChatArtifactCardV2["item_type"]>(["artifact"]), `${path}.item_type`),
+    artifact_id: expectNonEmptyString(record.artifact_id, `${path}.artifact_id`),
+    artifact_kind: expectLiteral(record.artifact_kind, new Set<ChatArtifactCardV2["artifact_kind"]>(["script"]), `${path}.artifact_kind`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    summary: expectNonEmptyString(record.summary, `${path}.summary`),
+    action_label: "View Script",
+    source_turn_id: record.source_turn_id === undefined ? null : nullableString(record.source_turn_id, `${path}.source_turn_id`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
+function normalizeChatProposalCardV2(value: unknown, path: string): ChatProposalCardV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "proposal", "sequence", "created_at"], path);
+  return {
+    item_type: expectLiteral(record.item_type, new Set<ChatProposalCardV2["item_type"]>(["proposal"]), `${path}.item_type`),
+    proposal: normalizeConceptProposalV2(record.proposal, `${path}.proposal`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
+function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpertActivityV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "activity_id", "turn_id", "specialist", "label", "operation", "status", "sequence", "started_at", "finished_at"], path);
+  return {
+    item_type: expectLiteral(record.item_type, new Set<ChatExpertActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
+    activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    specialist: expectLiteral(record.specialist, SPECIALIST_AGENT_NAMES, `${path}.specialist`),
+    label: expectNonEmptyString(record.label, `${path}.label`),
+    operation: expectNonEmptyString(record.operation, `${path}.operation`),
+    status: expectLiteral(record.status, EXPERT_ACTIVITY_STATUSES, `${path}.status`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    started_at: expectIsoDateTimeString(record.started_at, `${path}.started_at`),
+    finished_at: record.finished_at === undefined ? null : nullableString(record.finished_at, `${path}.finished_at`),
+  };
+}
+
+export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): ChatTimelineItemV2 {
+  const record = expectRecord(value, path);
+  const itemType = expectString(record.item_type, `${path}.item_type`);
+  if (itemType === "message") return normalizeChatMessageV2(record, path);
+  if (itemType === "artifact") return normalizeChatArtifactCardV2(record, path);
+  if (itemType === "proposal") return normalizeChatProposalCardV2(record, path);
+  if (itemType === "expert_activity") return normalizeChatExpertActivityV2(record, path);
+  fail(`${path}.item_type`, "unsupported discriminator");
+}
+
+export function normalizeChatTimelineListResponseV2(value: unknown, path = "chatTimeline"): ChatTimelineListResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["workflow_id", "conversation_id", "items", "next_after_seq"], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    items: expectArray(record.items, `${path}.items`).map((item, index) => normalizeChatTimelineItemV2(item, `${path}.items[${index}]`)),
+    next_after_seq: expectNonNegativeInteger(record.next_after_seq, `${path}.next_after_seq`),
+  };
+}
+
+export function normalizeEditingOutputSettingsV2(value: unknown, path = "editing.output"): EditingOutputSettingsV2 {
+  const record = value === undefined ? {} : expectRecord(value, path);
+  forbidUnknownFields(record, ["resolution", "aspect_ratio", "fps", "video_codec", "audio_codec", "container"], path);
+  const fps = record.fps === undefined ? null : nullableFiniteNumber(record.fps, `${path}.fps`);
+  if (fps !== null && fps <= 0) fail(`${path}.fps`, "expected positive number");
+  if (fps !== null && fps > 120) fail(`${path}.fps`, "expected number <= 120");
+  return {
+    resolution: record.resolution === undefined ? null : nullableString(record.resolution, `${path}.resolution`),
+    aspect_ratio: record.aspect_ratio === undefined ? null : nullableString(record.aspect_ratio, `${path}.aspect_ratio`),
+    fps,
+    video_codec: record.video_codec === undefined ? "h264" : expectLiteral(record.video_codec, EDITING_VIDEO_CODEC, `${path}.video_codec`),
+    audio_codec: record.audio_codec === undefined ? "aac" : expectLiteral(record.audio_codec, EDITING_AUDIO_CODEC, `${path}.audio_codec`),
+    container: record.container === undefined ? "mp4" : expectLiteral(record.container, EDITING_CONTAINER, `${path}.container`),
+  };
+}
+
+export function normalizeEditingManifestV2(value: unknown, path = "editing.manifest"): EditingManifestV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["ordered_video_binding_ids", "bgm_audio_binding_id", "bgm_volume", "output", "manifest_revision"], path);
+  const bgmVolume = record.bgm_volume === undefined ? 0.2 : expectFiniteNumber(record.bgm_volume, `${path}.bgm_volume`);
+  if (bgmVolume < 0 || bgmVolume > 1) fail(`${path}.bgm_volume`, "expected value between 0 and 1");
+  return {
+    ordered_video_binding_ids: expectStringArray(record.ordered_video_binding_ids, `${path}.ordered_video_binding_ids`),
+    bgm_audio_binding_id: record.bgm_audio_binding_id === undefined ? null : nullableString(record.bgm_audio_binding_id, `${path}.bgm_audio_binding_id`),
+    bgm_volume: bgmVolume,
+    output: normalizeEditingOutputSettingsV2(record.output, `${path}.output`),
+    manifest_revision: expectNonNegativeInteger(record.manifest_revision, `${path}.manifest_revision`),
+  };
+}
+
+export function normalizeEditingSkippedInputV2(value: unknown, path = "editing.skippedInput"): EditingSkippedInputV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["node_id", "reason"], path);
+  return {
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    reason: expectLiteral(record.reason, EDITING_SKIPPED_REASONS, `${path}.reason`),
+  };
+}
+
+export function normalizeEditingPreviewClipV2(value: unknown, path = "editing.previewClip"): EditingPreviewClipV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["binding_id", "node_id", "asset_id", "status", "display_order", "preview_url", "duration_seconds", "warning"], path);
+  return {
+    binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    asset_id: nullableString(record.asset_id, `${path}.asset_id`),
+    status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
+    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    preview_url: nullableString(record.preview_url, `${path}.preview_url`),
+    duration_seconds: nullableFiniteNumber(record.duration_seconds, `${path}.duration_seconds`),
+    warning: nullableString(record.warning, `${path}.warning`),
+  };
+}
+
+export function normalizeEditingPreviewV2(value: unknown, path = "editing.preview"): EditingPreviewV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["clips", "bgm_binding_id", "bgm_node_id", "bgm_asset_id", "estimated_duration_seconds", "warnings"], path);
+  return {
+    clips: expectArray(record.clips, `${path}.clips`).map((item, index) => normalizeEditingPreviewClipV2(item, `${path}.clips[${index}]`)),
+    bgm_binding_id: record.bgm_binding_id === undefined ? null : nullableString(record.bgm_binding_id, `${path}.bgm_binding_id`),
+    bgm_node_id: record.bgm_node_id === undefined ? null : nullableString(record.bgm_node_id, `${path}.bgm_node_id`),
+    bgm_asset_id: record.bgm_asset_id === undefined ? null : nullableString(record.bgm_asset_id, `${path}.bgm_asset_id`),
+    estimated_duration_seconds: expectFiniteNumber(record.estimated_duration_seconds, `${path}.estimated_duration_seconds`),
+    warnings: optionalStringArray(record.warnings, `${path}.warnings`, []),
+  };
+}
+
+export function normalizeEditingExportRuntimeV2(value: unknown, path = "editing.exportRuntime"): EditingExportRuntimeV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["export_id", "status", "manifest_revision", "fingerprint", "ready_video_node_ids", "skipped_inputs", "bgm_node_id", "output_asset_id", "error", "started_at", "finished_at"], path);
+  return {
+    export_id: expectNonEmptyString(record.export_id, `${path}.export_id`),
+    status: expectLiteral(record.status, EDITING_EXPORT_STATUSES, `${path}.status`),
+    manifest_revision: expectNonNegativeInteger(record.manifest_revision, `${path}.manifest_revision`),
+    fingerprint: expectNonEmptyString(record.fingerprint, `${path}.fingerprint`),
+    ready_video_node_ids: optionalStringArray(record.ready_video_node_ids, `${path}.ready_video_node_ids`, []),
+    skipped_inputs: expectArray(record.skipped_inputs, `${path}.skipped_inputs`).map((item, index) =>
+      normalizeEditingSkippedInputV2(item, `${path}.skipped_inputs[${index}]`),
+    ),
+    bgm_node_id: record.bgm_node_id === undefined ? null : nullableString(record.bgm_node_id, `${path}.bgm_node_id`),
+    output_asset_id: record.output_asset_id === undefined ? null : nullableString(record.output_asset_id, `${path}.output_asset_id`),
+    error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    started_at: record.started_at === undefined ? null : nullableString(record.started_at, `${path}.started_at`),
+    finished_at: record.finished_at === undefined ? null : nullableString(record.finished_at, `${path}.finished_at`),
+  };
+}
+
+export function normalizeEditingNodeContentV2(value: unknown, path = "editing"): EditingNodeContentV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["manifest", "dirty", "preview", "last_successful_export", "active_export"], path);
+  return {
+    manifest: normalizeEditingManifestV2(record.manifest, `${path}.manifest`),
+    dirty: expectBoolean(record.dirty, `${path}.dirty`),
+    preview: normalizeEditingPreviewV2(record.preview, `${path}.preview`),
+    last_successful_export:
+      record.last_successful_export === null
+        ? null
+        : record.last_successful_export === undefined
+          ? null
+          : normalizeEditingExportRuntimeV2(record.last_successful_export, `${path}.last_successful_export`),
+    active_export:
+      record.active_export === null
+        ? null
+        : record.active_export === undefined
+          ? null
+          : normalizeEditingExportRuntimeV2(record.active_export, `${path}.active_export`),
+  };
+}
