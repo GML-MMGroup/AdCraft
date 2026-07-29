@@ -11,6 +11,14 @@
   box-shadow: var(--shadow-soft);
 }
 
+.api-space-provider-surface--tianpuyue {
+  border-color: rgba(86, 112, 166, 0.28);
+}
+
+.api-space-provider-surface--tianpuyue .api-space-save-bar {
+  background: rgba(232, 240, 248, 0.42);
+}
+
 .api-space-provider-header,
 .api-space-save-bar,
 .api-space-credential-actions,
@@ -235,6 +243,10 @@ html[data-theme="dark"] .api-space-provider-surface {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
+}
+
+html[data-theme="dark"] .api-space-provider-surface--tianpuyue {
+  border-color: var(--info);
 }
 
 html[data-theme="dark"] .api-space-eyebrow,

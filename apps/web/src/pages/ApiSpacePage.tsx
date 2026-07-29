@@ -12,6 +12,7 @@ import {
   type VolcengineCredentialTestResponse,
 } from "../apiSpace/volcengineCredentials";
 import { PageHeader } from "../components/Layout";
+import { TianpuyueCredentialSection } from "./api-space/TianpuyueCredentialSection";
 import "./api-space.css";
 
 type Notice = { kind: "success" | "error"; message: string } | null;
@@ -219,6 +220,8 @@ export function ApiSpacePage() {
           {notice ? <InlineNotice notice={notice} /> : null}
         </footer>
       </section>
+
+      <TianpuyueCredentialSection />
     </section>
   );
 }
