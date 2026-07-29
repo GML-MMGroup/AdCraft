@@ -682,7 +682,7 @@ def _agent_name_for_operation(operation: str) -> str:
         return "bgm_director"
     if operation == "visual_style_scope_repair":
         return "scene_designer"
-    return "front_desk"
+    return "director"
 
 
 def _with_output_warnings(output: TOutput, warnings: list[dict[str, Any]]) -> TOutput:
