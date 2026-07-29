@@ -1,5 +1,6 @@
 import type {
   AgentCanvasChatMessageRequestV2,
+  AgentCanvasCommandPlanActionRequestV2,
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasProjectCreateRequestV2,
@@ -9,10 +10,16 @@ import type {
   AgentCanvasWorkflowV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
+  CanvasLayoutPatchRequestV2,
+  CanvasLayoutPatchResponseV2,
   CanvasMutationResponseV2,
   CanvasNodeCreateRequestV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  CanvasVariationDraftResponseV2,
+  CanvasVariationDraftUpsertV2,
+  CanvasVariationMaterializeRequestV2,
+  CanvasVariationMaterializeResponseV2,
   CanvasRunAcceptedV2,
   CanvasRunCancelRequestV2,
   CanvasRunCancelResponseV2,
@@ -141,7 +148,10 @@ import {
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeCanvasMutationResponseV2,
+  normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasVariationDraftResponseV2,
+  normalizeCanvasVariationMaterializeResponseV2,
   normalizeCanvasRunAcceptedV2,
   normalizeCanvasRunCancelResponseV2,
   normalizeCanvasRuntimeEventsResponseV2,
@@ -325,7 +335,8 @@ export function v2AuthoringPreconditionTarget(path: string, method: string): V2P
   const workflowId = decodeURIComponent(workflow[1] ?? "");
   const suffix = workflow[2] ?? "";
   if (
-    suffix === "/run"
+    suffix === "/layout"
+    || suffix === "/run"
     || suffix === "/runs"
     || suffix === "/chat-target"
     || suffix.startsWith("/chat/")
@@ -472,6 +483,20 @@ export const v2Api = {
     );
   },
 
+  patchAgentCanvasLayout(
+    workflowId: string,
+    request: CanvasLayoutPatchRequestV2,
+  ): Promise<CanvasLayoutPatchResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/layout`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasLayoutPatchResponseV2,
+    );
+  },
+
   createAgentCanvasNode(
     workflowId: string,
     request: CanvasNodeCreateRequestV2,
@@ -493,6 +518,48 @@ export const v2Api = {
       { method: "PATCH", body: JSON.stringify(request) },
       normalizeCanvasMutationResponseV2,
     );
+  },
+
+  saveAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+    request: CanvasVariationDraftUpsertV2,
+  ): Promise<CanvasVariationDraftResponseV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
+      {
+        method: "PUT",
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasVariationDraftResponseV2,
+    ).then((response) => response.value);
+  },
+
+  discardAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+  ): Promise<void> {
+    return requestV2WithEtag<void>(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
+      { method: "DELETE" },
+    ).then(() => undefined);
+  },
+
+  materializeAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+    request: CanvasVariationMaterializeRequestV2,
+    idempotencyKey: string,
+  ): Promise<CanvasVariationMaterializeResponseV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft/materialize`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasVariationMaterializeResponseV2,
+    ).then((response) => response.value);
   },
 
   deleteAgentCanvasNode(
@@ -645,6 +712,30 @@ export const v2Api = {
       },
       normalizeChatTurnAcceptedV2,
     );
+  },
+
+  actOnAgentCanvasCommandPlan(
+    workflowId: string,
+    planId: string,
+    request: AgentCanvasCommandPlanActionRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/command-plans/${encodeURIComponent(planId)}/actions`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
   },
 
   createAgentCanvasVideoSkillRun(

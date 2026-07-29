@@ -35,6 +35,7 @@ const workflow: AgentCanvasWorkflowV2 = {
   workflow_schema_version: 2,
   canvas_model: "agent_canvas_v1",
   revision: 1,
+  layout_revision: 1,
   nodes: [],
   bindings: [],
   assets: [],
@@ -98,13 +99,14 @@ describe("useAgentCanvasRuntime", () => {
       mergePublishedAsset: vi.fn(),
       mergeNode: vi.fn(),
     };
-    renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
 
     await waitFor(() => {
       expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200);
     });
     expect(api.agentCanvasRuntime).toHaveBeenCalledWith("workflow-1");
     expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalledWith("workflow-1");
+    expect(result.current.state.chatRevision).toBe(1);
   });
 
   it("performs a trailing Workflow refresh when another event arrives in flight", async () => {
@@ -130,6 +132,7 @@ describe("useAgentCanvasRuntime", () => {
     };
     renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
     await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    await waitFor(() => expect(eventSource.onmessage).not.toBeNull());
 
     const event = (seq: number) => ({
       seq,
@@ -139,16 +142,39 @@ describe("useAgentCanvasRuntime", () => {
       node_id: `node-${seq}`,
       asset_id: null,
       binding_id: null,
-      created_at: `2026-07-28T00:00:0${seq}Z`,
+      created_at: "2026-07-28T00:01:00Z",
       payload: {},
     });
-    eventSource.emit("canvas_node_created", event(1));
-    eventSource.emit("canvas_node_created", event(2));
+    eventSource.onmessage?.({
+      data: JSON.stringify(event(43)),
+    } as MessageEvent<string>);
+    await waitFor(() => expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalledOnce());
+    eventSource.onmessage?.({
+      data: JSON.stringify(event(44)),
+    } as MessageEvent<string>);
     resolveFirstRefresh({ value: { ...workflow, revision: 2 }, etag: "\"workflow-r2\"" });
 
     await waitFor(() => expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(callbacks.applyWorkflow).toHaveBeenLastCalledWith(
       expect.objectContaining({ revision: 3 }),
     ));
+  });
+
+  it("starts replay from the runtime high-water mark instead of replaying historical receipts", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_after_seq: 42,
+    });
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200));
+    expect(result.current.state.chatEvents).toEqual([]);
   });
 });

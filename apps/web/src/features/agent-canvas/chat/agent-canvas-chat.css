@@ -177,8 +177,85 @@
   background: rgb(255 255 255 / 46%);
 }
 
+.agent-chat__command,
+.agent-chat__receipt {
+  padding: 11px;
+  border: 1px solid rgb(111 96 168 / 20%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 46%);
+}
+
+.agent-chat__command > header,
+.agent-chat__receipt > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.agent-chat__command > header span,
+.agent-chat__receipt > header span {
+  color: #81749e;
+  text-transform: capitalize;
+}
+
+.agent-chat__command p,
+.agent-chat__receipt p {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-chat__command ul,
+.agent-chat__receipt ul {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #737487;
+  font-size: 11px;
+}
+
+.agent-chat__receipt small {
+  display: block;
+  margin-top: 8px;
+  color: #7565a9;
+  font-size: 10px;
+}
+
+.agent-chat__command-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.agent-chat__command-actions button {
+  min-height: 29px;
+  padding: 0 11px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 11px;
+}
+
+.agent-chat__command-actions .is-confirm {
+  color: #347c68;
+}
+
+.agent-chat__command-actions .is-reject {
+  color: #b65766;
+}
+
+.agent-chat__receipt.is-failed,
+.agent-chat__receipt.is-applied_with_run_error {
+  border-color: rgb(183 87 102 / 32%);
+}
+
 [data-theme="dark"] .agent-chat__proposal,
-[data-theme="dark"] .agent-chat__artifact {
+[data-theme="dark"] .agent-chat__artifact,
+[data-theme="dark"] .agent-chat__command,
+[data-theme="dark"] .agent-chat__receipt {
   background: rgb(255 255 255 / 5%);
 }
 

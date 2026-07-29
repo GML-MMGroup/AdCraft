@@ -14,6 +14,18 @@ describe("Agent Canvas SSE subscriptions", () => {
       "asset_published",
       "node_run_started",
       "editing_export_completed",
+      "agent_command_plan_created",
+      "agent_command_confirmation_required",
+      "agent_command_confirmation_invalidated",
+      "agent_command_plan_replanned",
+      "agent_command_plan_applied",
+      "agent_command_plan_rejected",
+      "agent_action_receipt_created",
+      "agent_planning_continuation_queued",
+      "canvas_variation_draft_saved",
+      "canvas_variation_draft_discarded",
+      "canvas_variation_materialized",
+      "canvas_layout_updated",
     ]));
   });
 });

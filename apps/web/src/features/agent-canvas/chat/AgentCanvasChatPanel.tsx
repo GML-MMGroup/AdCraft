@@ -3,8 +3,12 @@ import { useMemo, useState } from "react";
 import { AssetsIcon, CloseIcon, DocumentIcon, EditIcon, SendIcon } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
+  AgentActionReceiptV2,
   CanvasPositionV2,
   CanvasRuntimeEventV2,
+  ChatActionReceiptCardV2,
+  ChatCommandPlanCardV2,
+  ChatExpertActivityV2,
   ChatProposalCardV2,
   ConceptOptionV2,
 } from "../../../types-v2.ts";
@@ -17,18 +21,21 @@ export function AgentCanvasChatPanel({
   chatEvents,
   proposalPosition,
   onFocusNode,
+  onActionReceipt,
 }: {
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
   chatEvents: CanvasRuntimeEventV2[];
   proposalPosition: CanvasPositionV2;
   onFocusNode: (nodeId: string) => void;
+  onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
 }) {
   const chat = useAgentCanvasChat({
     workflow,
     chatRevision,
     chatEvents,
     proposalPosition,
+    onActionReceipt,
   });
   const [draft, setDraft] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -89,12 +96,7 @@ export function AgentCanvasChatPanel({
             );
           }
           if (item.item_type === "expert_activity") {
-            return (
-              <div className={`agent-chat__activity is-${item.status}`} key={`activity-${item.activity_id}`}>
-                <i aria-hidden="true" />
-                <span>{item.label} {item.status === "working" ? "is working" : item.status}</span>
-              </div>
-            );
+            return <SpecialistActivityRow key={`activity-${item.activity_id}`} activity={item} />;
           }
           if (item.item_type === "artifact") {
             return (
@@ -111,6 +113,24 @@ export function AgentCanvasChatPanel({
                 </span>
                 <b>View Script</b>
               </button>
+            );
+          }
+          if (item.item_type === "command_plan") {
+            return (
+              <CommandPlanCard
+                key={`command-${item.command_plan.plan_id}`}
+                card={item}
+                pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
+                onAction={chat.actions.actOnCommandPlan}
+              />
+            );
+          }
+          if (item.item_type === "action_receipt") {
+            return (
+              <ActionReceiptCard
+                key={`receipt-${item.action_receipt.receipt_id}`}
+                card={item}
+              />
             );
           }
           return (
@@ -235,6 +255,107 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
     </aside>
+  );
+}
+
+export function SpecialistActivityRow({
+  activity,
+}: {
+  activity: ChatExpertActivityV2;
+}) {
+  const label = activity.status === "working"
+    ? `${activity.label} is working`
+    : activity.status === "completed"
+      ? `${activity.label} finished`
+      : `${activity.label} failed`;
+  return (
+    <div className={`agent-chat__activity is-${activity.status}`}>
+      <i aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function commandOperationLabel(operationType: string): string {
+  return operationType
+    .split("_")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+export function CommandPlanCard({
+  card,
+  pending,
+  onAction,
+}: {
+  card: ChatCommandPlanCardV2;
+  pending: boolean;
+  onAction: (planId: string, action: "confirm" | "reject") => Promise<void>;
+}) {
+  const plan = card.command_plan;
+  const canDecide = plan.confirmation_required && plan.status === "pending_confirmation";
+  return (
+    <article className={`agent-chat__command is-${plan.status}`}>
+      <header>
+        <strong>Proposed canvas change</strong>
+        <span>{plan.status.replaceAll("_", " ")}</span>
+      </header>
+      <p>{plan.target_summary || "Review the proposed canvas changes."}</p>
+      <ul>
+        {plan.operations.map((operation) => (
+          <li key={operation.operation_id}>
+            {commandOperationLabel(operation.operation_type)}
+          </li>
+        ))}
+      </ul>
+      {canDecide ? (
+        <div className="agent-chat__command-actions">
+          <button
+            type="button"
+            className="is-confirm"
+            aria-label="Confirm command"
+            disabled={pending}
+            onClick={() => void onAction(plan.plan_id, "confirm")}
+          >
+            Confirm
+          </button>
+          <button
+            type="button"
+            className="is-reject"
+            aria-label="Reject command"
+            disabled={pending}
+            onClick={() => void onAction(plan.plan_id, "reject")}
+          >
+            Reject
+          </button>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+export function ActionReceiptCard({
+  card,
+}: {
+  card: ChatActionReceiptCardV2;
+}) {
+  const receipt = card.action_receipt;
+  return (
+    <article className={`agent-chat__receipt is-${receipt.status}`}>
+      <header>
+        <strong>Canvas updated</strong>
+        <span>{receipt.status.replaceAll("_", " ")}</span>
+      </header>
+      <p>{receipt.summary}</p>
+      {receipt.run_queue_errors.length ? (
+        <ul>
+          {receipt.run_queue_errors.map((error) => <li key={error}>{error}</li>)}
+        </ul>
+      ) : null}
+      {receipt.continuation_turn_id ? (
+        <small>Planning continues automatically</small>
+      ) : null}
+    </article>
   );
 }
 

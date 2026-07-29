@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeAgentCanvasChatTimelineCompatV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeAgentCanvasChatTimelineResponseV2,
   normalizeCanvasBindingV2,
+  normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
   normalizeCanvasRuntimeEventV2,
   normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
   normalizeCanvasRunAcceptedV2,
+  normalizeCanvasVariationMaterializeResponseV2,
   normalizeChatTimelineListResponseV2,
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
@@ -24,6 +27,7 @@ function validWorkflowPayload() {
     workflow_schema_version: 2,
     canvas_model: "agent_canvas_v1",
     revision: 7,
+    layout_revision: 3,
     nodes: [
       {
         node_id: "node-text-1",
@@ -44,6 +48,7 @@ function validWorkflowPayload() {
         position: { x: 120, y: 80 },
         revision: 3,
         error: null,
+        variation_draft: null,
         created_at: "2026-07-28T10:00:00Z",
         updated_at: "2026-07-28T10:05:00Z",
       },
@@ -70,6 +75,7 @@ function validWorkflowPayload() {
           message: "Provider timed out.",
           retryable: true,
         },
+        variation_draft: null,
         created_at: "2026-07-28T10:06:00Z",
         updated_at: "2026-07-28T10:07:00Z",
       },
@@ -135,9 +141,148 @@ describe("Agent Canvas normalizers", () => {
 
     expect(workflow.canvas_model).toBe("agent_canvas_v1");
     expect(workflow.revision).toBe(7);
+    expect(workflow.layout_revision).toBe(3);
     expect(workflow.nodes).toHaveLength(2);
     expect(workflow.bindings[1]?.source.kind).toBe("image_asset");
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
+  });
+
+  it("normalizes canonical Ready variations, command plans, receipts, and layout responses", () => {
+    const workflowPayload = validWorkflowPayload();
+    workflowPayload.nodes[1] = {
+      ...workflowPayload.nodes[1],
+      status: "ready",
+      variation_draft: {
+        source_node_id: "node-image-1",
+        source_node_revision: 5,
+        title: "Lead Character - night",
+        generation_prompt: "A cinematic night portrait.",
+        model_id: "model-image-1",
+        parameters: { stylization: 80 },
+        variation_revision: 2,
+        created_at: "2026-07-29T01:00:00Z",
+        updated_at: "2026-07-29T01:05:00Z",
+      },
+    };
+    const workflow = normalizeAgentCanvasWorkflowV2(workflowPayload);
+    const timeline = normalizeAgentCanvasChatTimelineCompatV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [
+        {
+          entry_id: "entry-plan-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 13,
+          entry_type: "command_plan",
+          speaker: null,
+          content: "Delete one draft.",
+          metadata: {},
+          command_plan: {
+            plan_id: "plan-1",
+            workflow_id: "workflow-1",
+            conversation_id: "conversation-1",
+            source_turn_id: "turn-1",
+            base_workflow_revision: 7,
+            operations: [{
+              operation_type: "delete_node",
+              operation_id: "delete-1",
+              node: { kind: "node_id", node_id: "node-image-1" },
+            }],
+            continuation_requested: false,
+            risk: "destructive_authoring",
+            confirmation_required: true,
+            target_summary: "Delete one draft.",
+            operation_fingerprint: "fingerprint-1",
+            status: "pending_confirmation",
+            supersedes_plan_id: null,
+            replacement_plan_id: null,
+            actor: "agent",
+            created_at: "2026-07-29T01:06:00Z",
+            updated_at: "2026-07-29T01:06:00Z",
+          },
+          action_receipt: null,
+          created_at: "2026-07-29T01:06:00Z",
+        },
+        {
+          entry_id: "entry-receipt-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 14,
+          entry_type: "action_receipt",
+          speaker: null,
+          content: "Created one sibling draft.",
+          metadata: {},
+          command_plan: null,
+          action_receipt: {
+            receipt_id: "receipt-1",
+            workflow_id: "workflow-1",
+            plan_id: null,
+            action_id: "turn-action-1",
+            status: "applied",
+            summary: "Created one sibling draft.",
+            created_node_ids: ["node-sibling-1"],
+            updated_node_ids: [],
+            deleted_node_ids: [],
+            created_binding_ids: [],
+            deleted_binding_ids: [],
+            queued_execution_ids: ["execution-1"],
+            run_queue_errors: [],
+            operation_results: [],
+            workflow_revision: 8,
+            placement_hints: [{
+              intent: "right_sibling",
+              anchor_node_id: "node-image-1",
+              group_key: null,
+            }],
+            continuation_turn_id: "turn-continuation-1",
+            error_code: null,
+            error_message: null,
+          },
+          created_at: "2026-07-29T01:07:00Z",
+        },
+      ],
+      next_cursor: 14,
+    });
+    const layout = normalizeCanvasLayoutPatchResponseV2({
+      workflow_id: "workflow-1",
+      revision: 8,
+      layout_revision: 4,
+      positions: [{ node_id: "node-sibling-1", x: 840, y: 220 }],
+    });
+    const materialized = normalizeCanvasVariationMaterializeResponseV2({
+      workflow_id: "workflow-1",
+      workflow_revision: 8,
+      source_node_id: "node-image-1",
+      sibling_node: {
+        ...workflowPayload.nodes[1],
+        node_id: "node-sibling-1",
+        status: "draft",
+        output_asset_id: null,
+        variation_draft: null,
+      },
+      copied_binding_ids: ["binding-copy-1"],
+      run: {
+        workflow_id: "workflow-1",
+        execution_id: "execution-1",
+        status: "queued",
+      },
+      run_error: null,
+      placement_hint: {
+        intent: "right_sibling",
+        anchor_node_id: "node-image-1",
+        group_key: null,
+      },
+    });
+
+    expect(workflow.nodes[1]?.variation_draft?.variation_revision).toBe(2);
+    expect(timeline.items.map((item) => item.item_type)).toEqual([
+      "command_plan",
+      "action_receipt",
+    ]);
+    expect(layout.layout_revision).toBe(4);
+    expect(materialized.sibling_node.node_id).toBe("node-sibling-1");
+    expect(materialized.run?.execution_id).toBe("execution-1");
   });
 
   it("normalizes runtime, capability, chat, and editing payloads with bounded defaults", () => {

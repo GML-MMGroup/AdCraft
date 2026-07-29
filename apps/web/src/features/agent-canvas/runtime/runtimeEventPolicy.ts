@@ -27,6 +27,31 @@ const AUTHORING_EVENT_FRAGMENTS = [
   "workflow_",
 ];
 
+const AGENT_COMMAND_CHAT_EVENTS = new Set([
+  "agent_command_plan_created",
+  "agent_command_confirmation_required",
+  "agent_command_confirmation_invalidated",
+  "agent_command_plan_replaced",
+  "agent_command_plan_replanned",
+  "agent_command_plan_applied",
+  "agent_command_plan_rejected",
+  "agent_command_plan_failed",
+  "agent_action_receipt_created",
+  "agent_planning_continuation_queued",
+]);
+
+const AGENT_COMMAND_WORKFLOW_EVENTS = new Set([
+  "agent_command_plan_applied",
+  "agent_action_receipt_created",
+]);
+
+const AGENT_CANVAS_AUTHORING_EVENTS = new Set([
+  "canvas_variation_draft_saved",
+  "canvas_variation_draft_discarded",
+  "canvas_variation_materialized",
+  "canvas_layout_updated",
+]);
+
 export function runtimeEventPolicy(
   event: CanvasRuntimeEventV2,
 ): AgentCanvasRuntimeRefreshPolicy {
@@ -52,9 +77,13 @@ export function runtimeEventPolicy(
     refreshWorkflow:
       editing
       || type === "proposal_selected"
+      || AGENT_COMMAND_WORKFLOW_EVENTS.has(type)
+      || AGENT_CANVAS_AUTHORING_EVENTS.has(type)
       || AUTHORING_EVENT_FRAGMENTS.some((fragment) => type.includes(fragment)),
     refreshAssets: assetPublished,
-    refreshChat: CHAT_EVENT_FRAGMENTS.some((fragment) => type.includes(fragment)),
+    refreshChat:
+      AGENT_COMMAND_CHAT_EVENTS.has(type)
+      || CHAT_EVENT_FRAGMENTS.some((fragment) => type.includes(fragment)),
     refreshNodeId: nodeChanged ? event.node_id : null,
     refreshEditingNodeId: editing ? event.node_id : null,
   };

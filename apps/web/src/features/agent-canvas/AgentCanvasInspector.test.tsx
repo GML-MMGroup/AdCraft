@@ -28,6 +28,7 @@ function imageNode(prompt: string, revision: number): CanvasNodeV2 {
     position: { x: 0, y: 0 },
     revision,
     error: null,
+    variation_draft: null,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
@@ -56,6 +57,7 @@ function workflow(node: CanvasNodeV2): AgentCanvasWorkflowV2 {
     workflow_schema_version: 2,
     canvas_model: "agent_canvas_v1",
     revision: node.revision,
+    layout_revision: 1,
     nodes: [node],
     bindings: [],
     assets: asset ? [asset] : [],
@@ -70,7 +72,9 @@ describe("AgentCanvasInspector", () => {
     const props = {
       patchNode: vi.fn(),
       onRun: vi.fn(),
-      onCreateSibling: vi.fn(),
+      onSaveVariation: vi.fn(),
+      onDiscardVariation: vi.fn(),
+      onMaterializeVariation: vi.fn(),
       onSaveImageToLibrary: vi.fn(),
       onDelete: vi.fn(),
       onOpenEditing: vi.fn(),
@@ -101,7 +105,9 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={patchNode}
         onRun={onRun}
-        onCreateSibling={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -137,7 +143,9 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={patchNode}
         onRun={onRun}
-        onCreateSibling={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -170,7 +178,9 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={vi.fn()}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
         onSaveImageToLibrary={onSaveImageToLibrary}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -216,7 +226,9 @@ describe("AgentCanvasInspector", () => {
           supports_native_audio: false,
         }]}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -251,7 +263,9 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={vi.fn()}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -260,5 +274,100 @@ describe("AgentCanvasInspector", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Run node" })).toBeNull();
+  });
+
+  it("rehydrates a canonical Ready variation and saves it before generating only a sibling", async () => {
+    const current: CanvasNodeV2 = {
+      ...imageNode("Immutable source prompt", 3),
+      status: "ready",
+      output_asset_id: "asset-source-1",
+      variation_draft: {
+        source_node_id: "image-1",
+        source_node_revision: 3,
+        title: "Night variation",
+        generation_prompt: "A night-time product portrait.",
+        model_id: "image-model-v2",
+        parameters: { aspect_ratio: "1:1" },
+        variation_revision: 2,
+        created_at: "2026-07-29T03:00:00Z",
+        updated_at: "2026-07-29T03:02:00Z",
+      },
+    };
+    const onSaveVariation = vi.fn().mockResolvedValue(undefined);
+    const onMaterializeVariation = vi.fn().mockResolvedValue(null);
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(current)}
+        node={current}
+        patchNode={vi.fn()}
+        onRun={vi.fn()}
+        onSaveVariation={onSaveVariation}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={onMaterializeVariation}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const prompt = screen.getByLabelText("Generation prompt") as HTMLTextAreaElement;
+    expect(prompt.disabled).toBe(false);
+    expect(prompt.value).toBe("A night-time product portrait.");
+    fireEvent.change(prompt, { target: { value: "A brighter moonlit portrait." } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate variation" }));
+
+    await waitFor(() => expect(onMaterializeVariation).toHaveBeenCalledOnce());
+    expect(onSaveVariation).toHaveBeenCalledWith("image-1", {
+      title: "Night variation",
+      generation_prompt: "A brighter moonlit portrait.",
+      model_id: "image-model-v2",
+      parameters: { aspect_ratio: "1:1" },
+    });
+    expect(onMaterializeVariation).toHaveBeenCalledWith(current, "generate");
+    expect(onSaveVariation.mock.invocationCallOrder[0])
+      .toBeLessThan(onMaterializeVariation.mock.invocationCallOrder[0]!);
+    expect(current.generation_prompt).toBe("Immutable source prompt");
+    expect(current.output_asset_id).toBe("asset-source-1");
+  });
+
+  it("discards a persisted Ready variation without mutating the source node", async () => {
+    const current: CanvasNodeV2 = {
+      ...imageNode("Immutable source prompt", 3),
+      status: "ready",
+      output_asset_id: "asset-source-1",
+      variation_draft: {
+        source_node_id: "image-1",
+        source_node_revision: 3,
+        title: "Discard me",
+        generation_prompt: "Temporary prompt.",
+        model_id: null,
+        parameters: {},
+        variation_revision: 1,
+        created_at: "2026-07-29T03:00:00Z",
+        updated_at: "2026-07-29T03:00:00Z",
+      },
+    };
+    const onDiscardVariation = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(current)}
+        node={current}
+        patchNode={vi.fn()}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={onDiscardVariation}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard variation draft" }));
+
+    await waitFor(() => expect(onDiscardVariation).toHaveBeenCalledWith("image-1"));
+    expect(current.generation_prompt).toBe("Immutable source prompt");
   });
 });

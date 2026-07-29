@@ -8,6 +8,7 @@ import type {
 import {
   bindingKindForSourceNode,
   findAvailableCanvasPosition,
+  incrementalPlacementForNodes,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvasGraphModel.ts";
@@ -31,6 +32,7 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     position: { x: 40, y: 60 },
     revision: 1,
     error: null,
+    variation_draft: null,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
@@ -42,6 +44,7 @@ const workflow: AgentCanvasWorkflowV2 = {
   workflow_schema_version: 2,
   canvas_model: "agent_canvas_v1",
   revision: 3,
+  layout_revision: 1,
   nodes: [node("image-1", "image"), node("video-1", "video")],
   bindings: [{
     binding_id: "binding-1",
@@ -144,5 +147,66 @@ describe("canvasGraphModel", () => {
       x: -240,
       y: 100,
     });
+  });
+
+  it("places only newly created nodes from backend placement hints", () => {
+    const source = { ...node("source", "image"), position: { x: 100, y: 100 } };
+    const unrelated = { ...node("unrelated", "video"), position: { x: 460, y: 100 } };
+    const sibling = { ...node("sibling", "image"), position: { x: 460, y: 100 } };
+
+    const positions = incrementalPlacementForNodes(
+      [source, unrelated, sibling],
+      ["sibling"],
+      [{
+        intent: "right_sibling",
+        anchor_node_id: "source",
+        group_key: null,
+      }],
+      { x: 200, y: 200 },
+    );
+
+    expect(positions).toEqual([
+      { node_id: "sibling", x: 780, y: 100 },
+    ]);
+    expect(source.position).toEqual({ x: 100, y: 100 });
+    expect(unrelated.position).toEqual({ x: 460, y: 100 });
+  });
+
+  it("keeps sibling-only Working state when the generated variation runs", () => {
+    const source = {
+      ...node("source", "image"),
+      status: "ready" as const,
+      output_asset_id: "asset-source",
+    };
+    const sibling = node("sibling", "image");
+    const variationWorkflow = {
+      ...workflow,
+      nodes: [source, sibling],
+      assets: [{
+        ...workflow.assets[0]!,
+        asset_id: "asset-source",
+      }],
+    };
+    const variationRuntime: CanvasRuntimeSnapshotV2 = {
+      ...runtime,
+      node_runtime: {
+        sibling: {
+          ...runtime.node_runtime["image-1"]!,
+          node_id: "sibling",
+        },
+      },
+      working_node_ids: ["sibling"],
+    };
+
+    const nodes = toAgentCanvasFlowNodes(variationWorkflow, variationRuntime, {
+      onRun: vi.fn(),
+      onRetry: vi.fn(),
+      onExport: vi.fn(),
+      onOpenMedia: vi.fn(),
+    });
+
+    expect(nodes.find((item) => item.id === "source")?.data.runtime).toBeNull();
+    expect(nodes.find((item) => item.id === "source")?.data.node.status).toBe("ready");
+    expect(nodes.find((item) => item.id === "sibling")?.data.runtime?.visible_status).toBe("working");
   });
 });

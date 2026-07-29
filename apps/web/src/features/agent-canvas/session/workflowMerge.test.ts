@@ -6,8 +6,10 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import {
+  mergeAgentCanvasLayout,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
+  overlayAgentCanvasPositions,
 } from "./workflowMerge.ts";
 
 function node(
@@ -32,6 +34,7 @@ function node(
     position: { x: 120, y: 80 },
     revision: 2,
     error: null,
+    variation_draft: null,
     created_at: "2026-07-28T10:00:00Z",
     updated_at: "2026-07-28T10:01:00Z",
     ...overrides,
@@ -62,6 +65,7 @@ function workflow(
     workflow_schema_version: 2,
     canvas_model: "agent_canvas_v1",
     revision: 4,
+    layout_revision: 1,
     nodes: [node()],
     bindings: [],
     assets: [],
@@ -121,16 +125,95 @@ describe("mergeAgentCanvasWorkflow", () => {
     });
   });
 
-  it("replaces the document when the backend workflow revision advances", () => {
+  it("accepts newer semantic data without regressing a newer local layout", () => {
     const current = workflow({
+      layout_revision: 3,
       nodes: [node({ position: { x: 410, y: 220 } })],
     });
     const refreshed = workflow({
       revision: 5,
+      layout_revision: 2,
       nodes: [node({ position: { x: 150, y: 90 } })],
     });
 
-    expect(mergeAgentCanvasWorkflow(current, refreshed)).toBe(refreshed);
+    expect(mergeAgentCanvasWorkflow(current, refreshed)).toMatchObject({
+      revision: 5,
+      layout_revision: 3,
+      nodes: [{ position: { x: 410, y: 220 } }],
+    });
+  });
+
+  it("accepts newer layout positions without regressing semantic state", () => {
+    const current = workflow({
+      revision: 7,
+      layout_revision: 2,
+      nodes: [node({
+        status: "ready",
+        output_asset_id: publishedAsset.asset_id,
+        position: { x: 410, y: 220 },
+        revision: 5,
+      })],
+      assets: [publishedAsset],
+    });
+    const layoutRefresh = workflow({
+      revision: 6,
+      layout_revision: 3,
+      nodes: [node({
+        status: "working",
+        position: { x: 820, y: 360 },
+        revision: 4,
+      })],
+    });
+
+    expect(mergeAgentCanvasWorkflow(current, layoutRefresh)).toMatchObject({
+      revision: 7,
+      layout_revision: 3,
+      nodes: [{
+        status: "ready",
+        output_asset_id: publishedAsset.asset_id,
+        position: { x: 820, y: 360 },
+      }],
+    });
+  });
+
+  it("applies layout responses without advancing semantic revision or accepting stale positions", () => {
+    const current = workflow({
+      revision: 4,
+      layout_revision: 3,
+      nodes: [node({ position: { x: 10, y: 20 } })],
+    });
+    const stale = mergeAgentCanvasLayout(current, {
+      workflow_id: current.workflow_id,
+      revision: 99,
+      layout_revision: 2,
+      positions: [{ node_id: "node-image", x: 500, y: 600 }],
+    });
+    expect(stale).toBe(current);
+
+    const next = mergeAgentCanvasLayout(current, {
+      workflow_id: current.workflow_id,
+      revision: 99,
+      layout_revision: 4,
+      positions: [{ node_id: "node-image", x: 140, y: 260 }],
+    });
+    expect(next.revision).toBe(4);
+    expect(next.layout_revision).toBe(4);
+    expect(next.nodes[0]?.position).toEqual({ x: 140, y: 260 });
+  });
+
+  it("keeps a newer optimistic position over an earlier in-flight layout response", () => {
+    const current = workflow({
+      layout_revision: 3,
+      nodes: [node({ position: { x: 140, y: 260 } })],
+    });
+    const withPending = overlayAgentCanvasPositions(current, [{
+      node_id: "node-image",
+      x: 720,
+      y: 480,
+    }]);
+
+    expect(withPending.layout_revision).toBe(3);
+    expect(withPending.nodes[0]?.position).toEqual({ x: 720, y: 480 });
   });
 });
 

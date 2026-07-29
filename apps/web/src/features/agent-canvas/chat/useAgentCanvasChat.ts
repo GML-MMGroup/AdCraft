@@ -4,6 +4,7 @@ import { v2Api } from "../../../api/v2Client.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
+  AgentActionReceiptV2,
   CanvasPositionV2,
   CanvasRuntimeEventV2,
   ChatMessageV2,
@@ -27,7 +28,9 @@ function mergeTimelineItems(
     if (item.item_type === "message") return `message:${item.message_id}`;
     if (item.item_type === "artifact") return `artifact:${item.artifact_id}`;
     if (item.item_type === "proposal") return `proposal:${item.proposal.proposal_id}`;
-    return `activity:${item.activity_id}`;
+    if (item.item_type === "expert_activity") return `activity:${item.activity_id}`;
+    if (item.item_type === "command_plan") return `command:${item.command_plan.plan_id}`;
+    return `receipt:${item.action_receipt.receipt_id}`;
   };
   [...persisted, ...projected, ...optimistic].forEach((item) => {
     keys.set(keyFor(item), item);
@@ -40,21 +43,29 @@ export function useAgentCanvasChat({
   chatRevision,
   chatEvents,
   proposalPosition,
+  onActionReceipt,
 }: {
   workflow: AgentCanvasWorkflowV2 | null;
   chatRevision: number;
   chatEvents: CanvasRuntimeEventV2[];
   proposalPosition: CanvasPositionV2;
+  onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [actingProposalId, setActingProposalId] = useState<string | null>(null);
+  const [actingCommandPlanId, setActingCommandPlanId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const refreshGenerationRef = useRef(0);
   const workflowGenerationRef = useRef(0);
+  const actionKeysRef = useRef(new Map<string, string>());
+  const pendingActionTurnIdsRef = useRef(new Set<string>());
+  const pendingCommandPlanIdsRef = useRef(new Set<string>());
+  const expectedReceiptIdsRef = useRef(new Set<string>());
+  const deliveredReceiptIdsRef = useRef(new Set<string>());
   const workflowId = workflow?.workflow_id ?? null;
 
   const refresh = useCallback(async () => {
@@ -73,6 +84,28 @@ export function useAgentCanvasChat({
       }
       if (generation !== refreshGenerationRef.current) return;
       setPersistedItems(items);
+      items.forEach((item) => {
+        if (item.item_type !== "action_receipt") return;
+        const receipt = item.action_receipt;
+        const expectedByEvent = expectedReceiptIdsRef.current.has(receipt.receipt_id);
+        const expectedByTurn = Boolean(
+          receipt.action_id
+          && pendingActionTurnIdsRef.current.has(receipt.action_id),
+        );
+        const expectedByPlan = Boolean(
+          receipt.plan_id
+          && pendingCommandPlanIdsRef.current.has(receipt.plan_id),
+        );
+        if (
+          (!expectedByEvent && !expectedByTurn && !expectedByPlan)
+          || deliveredReceiptIdsRef.current.has(receipt.receipt_id)
+        ) return;
+        if (receipt.action_id) pendingActionTurnIdsRef.current.delete(receipt.action_id);
+        if (receipt.plan_id) pendingCommandPlanIdsRef.current.delete(receipt.plan_id);
+        expectedReceiptIdsRef.current.delete(receipt.receipt_id);
+        deliveredReceiptIdsRef.current.add(receipt.receipt_id);
+        onActionReceipt?.(receipt);
+      });
       const persistedMessageIds = new Set(
         items
           .filter((item): item is ChatMessageV2 => item.item_type === "message")
@@ -89,7 +122,7 @@ export function useAgentCanvasChat({
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
     }
-  }, [workflowId]);
+  }, [onActionReceipt, workflowId]);
 
   useEffect(() => {
     refreshGenerationRef.current += 1;
@@ -100,8 +133,32 @@ export function useAgentCanvasChat({
     setSending(false);
     setFailedDraft(null);
     setActingProposalId(null);
+    setActingCommandPlanId(null);
+    actionKeysRef.current.clear();
+    pendingActionTurnIdsRef.current.clear();
+    pendingCommandPlanIdsRef.current.clear();
+    expectedReceiptIdsRef.current.clear();
+    deliveredReceiptIdsRef.current.clear();
     setError(null);
   }, [workflowId]);
+
+  useEffect(() => {
+    chatEvents.forEach((event) => {
+      if (event.event_type !== "agent_action_receipt_created") return;
+      const receiptId = event.payload?.receipt_id;
+      if (typeof receiptId === "string" && !deliveredReceiptIdsRef.current.has(receiptId)) {
+        expectedReceiptIdsRef.current.add(receiptId);
+      }
+    });
+  }, [chatEvents]);
+
+  const actionKey = useCallback((key: string) => {
+    const existing = actionKeysRef.current.get(key);
+    if (existing) return existing;
+    const created = createOperationKey(key);
+    actionKeysRef.current.set(key, created);
+    return created;
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 80);
@@ -173,12 +230,14 @@ export function useAgentCanvasChat({
     setActingProposalId(proposalId);
     setError(null);
     try {
-      await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "select",
         option_id: optionId,
         next_action: nextAction,
         position: proposalPosition,
-      }, createOperationKey("proposal-select"));
+      }, actionKey(`proposal-select:${proposalId}:${optionId}:${nextAction}`));
+      pendingActionTurnIdsRef.current.add(accepted.turn_id);
+      void refresh();
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         setError(actionError instanceof Error ? actionError.message : "The proposal could not be selected.");
@@ -188,7 +247,7 @@ export function useAgentCanvasChat({
         setActingProposalId(null);
       }
     }
-  }, [actingProposalId, proposalPosition, workflowId]);
+  }, [actionKey, actingProposalId, proposalPosition, refresh, workflowId]);
 
   const reviseProposal = useCallback(async (proposalId: string, instruction: string) => {
     if (!workflowId || !instruction.trim() || actingProposalId) return;
@@ -196,10 +255,12 @@ export function useAgentCanvasChat({
     setActingProposalId(proposalId);
     setError(null);
     try {
-      await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "revise",
         instruction: instruction.trim(),
-      }, createOperationKey("proposal-revise"));
+      }, actionKey(`proposal-revise:${proposalId}:${instruction.trim()}`));
+      pendingActionTurnIdsRef.current.add(accepted.turn_id);
+      void refresh();
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         setError(actionError instanceof Error ? actionError.message : "The proposal could not be revised.");
@@ -209,7 +270,7 @@ export function useAgentCanvasChat({
         setActingProposalId(null);
       }
     }
-  }, [actingProposalId, workflowId]);
+  }, [actionKey, actingProposalId, refresh, workflowId]);
 
   const skipProposal = useCallback(async (proposalId: string) => {
     if (!workflowId || actingProposalId) return;
@@ -217,9 +278,11 @@ export function useAgentCanvasChat({
     setActingProposalId(proposalId);
     setError(null);
     try {
-      await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "skip",
-      }, createOperationKey("proposal-skip"));
+      }, actionKey(`proposal-skip:${proposalId}`));
+      pendingActionTurnIdsRef.current.add(accepted.turn_id);
+      void refresh();
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         setError(actionError instanceof Error ? actionError.message : "The proposal could not be skipped.");
@@ -229,7 +292,39 @@ export function useAgentCanvasChat({
         setActingProposalId(null);
       }
     }
-  }, [actingProposalId, workflowId]);
+  }, [actionKey, actingProposalId, refresh, workflowId]);
+
+  const actOnCommandPlan = useCallback(async (
+    planId: string,
+    action: "confirm" | "reject",
+  ) => {
+    if (!workflowId || actingCommandPlanId) return;
+    const workflowGeneration = workflowGenerationRef.current;
+    pendingCommandPlanIdsRef.current.add(planId);
+    setActingCommandPlanId(planId);
+    setError(null);
+    try {
+      const accepted = await v2Api.actOnAgentCanvasCommandPlan(
+        workflowId,
+        planId,
+        { action },
+        actionKey(`command-${action}:${planId}`),
+      );
+      pendingActionTurnIdsRef.current.add(accepted.turn_id);
+      void refresh();
+    } catch (actionError) {
+      pendingCommandPlanIdsRef.current.delete(planId);
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setError(actionError instanceof Error
+          ? actionError.message
+          : `The command could not be ${action === "confirm" ? "confirmed" : "rejected"}.`);
+      }
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingCommandPlanId(null);
+      }
+    }
+  }, [actionKey, actingCommandPlanId, refresh, workflowId]);
 
   const projectedItems = useMemo(() => projectChatEvents(chatEvents), [chatEvents]);
   const items = useMemo(
@@ -243,6 +338,7 @@ export function useAgentCanvasChat({
       loading,
       sending,
       actingProposalId,
+      actingCommandPlanId,
       error,
       failedDraft,
     },
@@ -252,6 +348,7 @@ export function useAgentCanvasChat({
       selectProposal,
       reviseProposal,
       skipProposal,
+      actOnCommandPlan,
       clearFailedDraft: () => setFailedDraft(null),
     },
   };

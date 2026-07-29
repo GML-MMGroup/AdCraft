@@ -41,6 +41,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     error: status === "failed"
       ? { code: "provider_failed", message: "Provider failed", retryable: true }
       : null,
+    variation_draft: null,
     created_at: "2026-07-28T09:00:00Z",
     updated_at: "2026-07-28T09:00:00Z",
   };

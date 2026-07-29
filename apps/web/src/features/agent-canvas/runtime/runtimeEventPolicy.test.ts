@@ -95,4 +95,49 @@ describe("runtimeEventPolicy", () => {
     expect(selected.refreshWorkflow).toBe(true);
     expect(selected.refreshChat).toBe(true);
   });
+
+  it("routes command, receipt, continuation, variation, and layout events without runtime churn", () => {
+    const event = (eventType: string) => runtimeEventPolicy({
+      seq: 18,
+      workflow_id: "workflow-1",
+      event_type: eventType,
+      execution_id: null,
+      node_id: null,
+      asset_id: null,
+      binding_id: null,
+      created_at: "2026-07-28T00:00:06Z",
+      payload: {},
+    });
+
+    expect(event("agent_command_plan_created")).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: false,
+    });
+    expect(event("agent_command_confirmation_invalidated")).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: false,
+    });
+    expect(event("agent_action_receipt_created")).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+    expect(event("agent_planning_continuation_queued")).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: false,
+    });
+    expect(event("canvas_variation_materialized")).toMatchObject({
+      refreshChat: false,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+    expect(event("canvas_layout_updated")).toMatchObject({
+      refreshChat: false,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+  });
 });

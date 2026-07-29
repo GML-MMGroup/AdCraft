@@ -1490,10 +1490,34 @@ export interface CanvasPositionV2 {
   y: number;
 }
 
+export type AgentPlacementIntentV2 =
+  | "append_flow"
+  | "after_anchor"
+  | "right_sibling"
+  | "near_selection";
+
+export interface AgentPlacementHintV2 {
+  intent: AgentPlacementIntentV2;
+  anchor_node_id: string | null;
+  group_key: string | null;
+}
+
 export interface CanvasNodeErrorV2 {
   code: string;
   message: string;
   retryable: boolean;
+}
+
+export interface CanvasVariationDraftV2 {
+  source_node_id: string;
+  source_node_revision: number;
+  title: string;
+  generation_prompt: string;
+  model_id: string | null;
+  parameters: Record<string, unknown>;
+  variation_revision: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CanvasNodeV2 {
@@ -1515,6 +1539,7 @@ export interface CanvasNodeV2 {
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
+  variation_draft: CanvasVariationDraftV2 | null;
   created_at: string;
   updated_at: string;
 }
@@ -1563,6 +1588,7 @@ export interface AgentCanvasWorkflowV2 {
   workflow_schema_version: 2;
   canvas_model: "agent_canvas_v1";
   revision: number;
+  layout_revision: number;
   nodes: CanvasNodeV2[];
   bindings: CanvasBindingV2[];
   assets: ProjectAssetSummaryV2[];
@@ -1757,7 +1783,204 @@ export interface ChatExpertActivityV2 {
   finished_at: string | null;
 }
 
-export type ChatTimelineItemV2 = ChatMessageV2 | ChatArtifactCardV2 | ChatProposalCardV2 | ChatExpertActivityV2;
+export interface AgentNodeIdRefV2 {
+  kind: "node_id";
+  node_id: string;
+}
+
+export interface AgentOperationResultRefV2 {
+  kind: "operation_result";
+  operation_id: string;
+}
+
+export type AgentNodeRefV2 = AgentNodeIdRefV2 | AgentOperationResultRefV2;
+
+export interface AgentImageAssetRefV2 {
+  kind: "image_asset";
+  asset_id: string;
+}
+
+interface AgentCommandOperationBaseV2 {
+  operation_id: string;
+}
+
+export interface AgentCreateNodeOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "create_node";
+  node_type: Exclude<CanvasNodeTypeV2, "editing">;
+  semantic_role: string;
+  title: string;
+  summary_prompt: string | null;
+  generation_prompt: string | null;
+  structured_content: Record<string, unknown>;
+  model_id: string | null;
+  parameters: Record<string, unknown>;
+  source_asset_id: string | null;
+  video_skill_run_id: string | null;
+  placement_hint: AgentPlacementHintV2;
+}
+
+export interface AgentPatchEditableNodeOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "patch_editable_node";
+  node: AgentNodeRefV2;
+  title: string | null;
+  summary_prompt: string | null;
+  generation_prompt: string | null;
+  structured_content: Record<string, unknown> | null;
+  model_id: string | null;
+  parameters: Record<string, unknown> | null;
+}
+
+export interface AgentCreateBindingOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "create_binding";
+  source: AgentNodeRefV2 | AgentImageAssetRefV2;
+  target: AgentNodeRefV2;
+  binding_kind: CanvasBindingKindV2;
+  required: boolean;
+  display_order: number;
+}
+
+export interface AgentDeleteBindingOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "delete_binding";
+  binding_id: string;
+}
+
+export interface AgentDeleteNodeOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "delete_node";
+  node: AgentNodeRefV2;
+}
+
+export interface AgentMaterializeProposalOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "materialize_proposal";
+  proposal_id: string;
+  option_id: string;
+  placement_hint: AgentPlacementHintV2;
+}
+
+export interface AgentForkReadyMediaOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "fork_ready_media";
+  source_node: AgentNodeRefV2;
+  title: string;
+  generation_prompt: string;
+  model_id: string | null;
+  parameters: Record<string, unknown>;
+  placement_hint: AgentPlacementHintV2;
+}
+
+export interface AgentRequestNodeRunOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "request_node_run";
+  node: AgentNodeRefV2;
+}
+
+export interface AgentUpdatePlanningTopicOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "update_planning_topic";
+  skill_run_id: string;
+  topic_id: string;
+  status: "resolved" | "skipped" | "not_required";
+  related_nodes: AgentNodeRefV2[];
+}
+
+export type AgentCommandOperationV2 =
+  | AgentCreateNodeOperationV2
+  | AgentPatchEditableNodeOperationV2
+  | AgentCreateBindingOperationV2
+  | AgentDeleteBindingOperationV2
+  | AgentDeleteNodeOperationV2
+  | AgentMaterializeProposalOperationV2
+  | AgentForkReadyMediaOperationV2
+  | AgentRequestNodeRunOperationV2
+  | AgentUpdatePlanningTopicOperationV2;
+
+export type AgentCommandRiskV2 =
+  | "reversible_authoring"
+  | "destructive_authoring"
+  | "external_effect";
+
+export type AgentCommandPlanStatusV2 =
+  | "pending_confirmation"
+  | "applying"
+  | "applied"
+  | "rejected"
+  | "superseded"
+  | "failed";
+
+export interface AgentCommandPlanV2 {
+  plan_id: string;
+  workflow_id: string;
+  conversation_id: string;
+  source_turn_id: string;
+  base_workflow_revision: number;
+  operations: AgentCommandOperationV2[];
+  continuation_requested: boolean;
+  risk: AgentCommandRiskV2;
+  confirmation_required: boolean;
+  target_summary: string;
+  operation_fingerprint: string;
+  status: AgentCommandPlanStatusV2;
+  supersedes_plan_id: string | null;
+  replacement_plan_id: string | null;
+  actor: "agent" | "user" | "system";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentOperationResultV2 {
+  operation_id: string;
+  node_id: string | null;
+  binding_id: string | null;
+  execution_id: string | null;
+  status: "applied" | "queued" | "failed";
+  error_code: string | null;
+}
+
+export type AgentActionReceiptStatusV2 =
+  | "applied"
+  | "applied_with_run_error"
+  | "rejected"
+  | "failed";
+
+export interface AgentActionReceiptV2 {
+  receipt_id: string;
+  workflow_id: string;
+  plan_id: string | null;
+  action_id: string | null;
+  status: AgentActionReceiptStatusV2;
+  summary: string;
+  created_node_ids: string[];
+  updated_node_ids: string[];
+  deleted_node_ids: string[];
+  created_binding_ids: string[];
+  deleted_binding_ids: string[];
+  queued_execution_ids: string[];
+  run_queue_errors: string[];
+  operation_results: AgentOperationResultV2[];
+  workflow_revision: number;
+  placement_hints: AgentPlacementHintV2[];
+  continuation_turn_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+}
+
+export interface ChatCommandPlanCardV2 {
+  item_type: "command_plan";
+  command_plan: AgentCommandPlanV2;
+  sequence: number;
+  created_at: string;
+}
+
+export interface ChatActionReceiptCardV2 {
+  item_type: "action_receipt";
+  action_receipt: AgentActionReceiptV2;
+  sequence: number;
+  created_at: string;
+}
+
+export type ChatTimelineItemV2 =
+  | ChatMessageV2
+  | ChatArtifactCardV2
+  | ChatProposalCardV2
+  | ChatExpertActivityV2
+  | ChatCommandPlanCardV2
+  | ChatActionReceiptCardV2;
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
@@ -1872,6 +2095,52 @@ export interface CanvasNodePatchRequestV2 {
   position?: CanvasPositionV2 | null;
 }
 
+export interface CanvasVariationDraftUpsertV2 {
+  title: string;
+  generation_prompt: string;
+  model_id?: string | null;
+  parameters?: Record<string, unknown>;
+}
+
+export interface CanvasVariationDraftResponseV2 {
+  workflow_id: string;
+  workflow_revision: number;
+  node_id: string;
+  variation_draft: CanvasVariationDraftV2;
+}
+
+export interface CanvasVariationMaterializeRequestV2 {
+  action: "create_draft" | "generate";
+  position?: CanvasPositionV2 | null;
+}
+
+export interface CanvasVariationMaterializeResponseV2 {
+  workflow_id: string;
+  workflow_revision: number;
+  source_node_id: string;
+  sibling_node: CanvasNodeV2;
+  copied_binding_ids: string[];
+  run: Record<string, unknown> | null;
+  run_error: CanvasNodeErrorV2 | null;
+  placement_hint: AgentPlacementHintV2;
+}
+
+export interface CanvasLayoutPositionV2 extends CanvasPositionV2 {
+  node_id: string;
+}
+
+export interface CanvasLayoutPatchRequestV2 {
+  expected_layout_revision: number;
+  positions: CanvasLayoutPositionV2[];
+}
+
+export interface CanvasLayoutPatchResponseV2 {
+  workflow_id: string;
+  revision: number;
+  layout_revision: number;
+  positions: CanvasLayoutPositionV2[];
+}
+
 export interface CanvasBindingCreateRequestV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
@@ -1927,10 +2196,12 @@ export interface AgentCanvasChatTimelineEntryV2 {
   workflow_id: string;
   conversation_id: string;
   sequence_no: number;
-  entry_type: "message" | "script_artifact";
+  entry_type: "message" | "script_artifact" | "command_plan" | "action_receipt";
   speaker: "user" | "adcraft_video_agent" | null;
   content: string;
   metadata: Record<string, unknown>;
+  command_plan: AgentCommandPlanV2 | null;
+  action_receipt: AgentActionReceiptV2 | null;
   created_at: string;
 }
 
@@ -1946,7 +2217,7 @@ export interface AgentCanvasChatTurnV2 {
   workflow_id: string;
   conversation_id: string;
   status: "queued" | "running" | "completed" | "failed";
-  turn_kind: "message" | "proposal_action";
+  turn_kind: "message" | "proposal_action" | "command_action";
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;
@@ -1976,6 +2247,10 @@ export type AgentCanvasProposalActionRequestV2 =
       instruction?: null;
       position?: null;
     };
+
+export interface AgentCanvasCommandPlanActionRequestV2 {
+  action: "confirm" | "reject";
+}
 
 export interface AgentCanvasVideoSkillRunCreateRequestV2 {
   skill_id: string;

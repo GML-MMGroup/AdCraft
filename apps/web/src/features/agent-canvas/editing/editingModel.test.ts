@@ -37,6 +37,7 @@ function node(
     position: { x: 0, y: 0 },
     revision: 1,
     error: null,
+    variation_draft: null,
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
@@ -94,6 +95,7 @@ const workflow: AgentCanvasWorkflowV2 = {
   workflow_schema_version: 2,
   canvas_model: "agent_canvas_v1",
   revision: 7,
+  layout_revision: 1,
   nodes: [
     node("video-1", "video", "ready", "asset-video-1"),
     node("video-2", "video", "failed", "asset-video-2"),

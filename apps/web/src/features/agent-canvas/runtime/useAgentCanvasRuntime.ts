@@ -222,6 +222,13 @@ export function useAgentCanvasRuntime(
       if (cancelled) return;
       setConnectionState(reconnectAttempt ? "reconnecting" : "connecting");
       try {
+        if (cursorRef.current === 0) {
+          const baselineRuntime = await v2Api.agentCanvasRuntime(workflowId);
+          if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
+          setRuntime(baselineRuntime);
+          cursorRef.current = baselineRuntime.events_cursor;
+          setRuntimeError(null);
+        }
         for (;;) {
           const before = cursorRef.current;
           const replay = await v2Api.agentCanvasEvents(workflowId, before, 200);
@@ -268,6 +275,7 @@ export function useAgentCanvasRuntime(
             setRuntimeError(null);
             await refreshWorkflow();
             if (cancelled) return;
+            setChatRevision((current) => current + 1);
             reconnectAttempt = 0;
             reconnectTimer = window.setTimeout(() => void connect(), 0);
             return;

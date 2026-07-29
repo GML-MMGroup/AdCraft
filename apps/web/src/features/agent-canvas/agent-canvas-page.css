@@ -382,6 +382,34 @@
   height: 15px;
 }
 
+.agent-canvas-inspector__variation {
+  display: grid;
+  gap: 8px;
+}
+
+.agent-canvas-inspector__variation > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.agent-canvas-inspector__variation-discard {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgb(181 86 102 / 24%);
+  border-radius: 6px;
+  background: transparent;
+  color: #ad5262;
+  font-size: 11px;
+}
+
+.agent-canvas-inspector__variation-discard svg {
+  width: 15px;
+}
+
 .agent-canvas-inspector__error {
   margin: 0;
   padding: 9px 10px;
