@@ -1,10 +1,12 @@
 import { MarkerType, type Edge } from "@xyflow/react";
 
 import type {
+  AgentPlacementHintV2,
   AgentCanvasWorkflowV2,
   CanvasBindingKindV2,
   CanvasBindingV2,
   CanvasNodeV2,
+  CanvasLayoutPositionV2,
   CanvasPositionV2,
   CanvasRuntimeSnapshotV2,
 } from "../../../types-v2.ts";
@@ -44,6 +46,53 @@ export function findAvailableCanvasPosition(
     x: preferred.x + nodes.length * 36,
     y: preferred.y + nodes.length * 36,
   };
+}
+
+export function incrementalPlacementForNodes(
+  nodes: CanvasNodeV2[],
+  affectedNodeIds: string[],
+  placementHints: AgentPlacementHintV2[],
+  viewportAnchor: CanvasPositionV2,
+): CanvasLayoutPositionV2[] {
+  const affected = new Set(affectedNodeIds);
+  const nodesById = new Map(nodes.map((node) => [node.node_id, node]));
+  const occupied = nodes.filter((node) => !affected.has(node.node_id));
+  const placed: CanvasLayoutPositionV2[] = [];
+
+  affectedNodeIds.forEach((nodeId, index) => {
+    const node = nodesById.get(nodeId);
+    if (!node) return;
+    const hint = placementHints[index] ?? {
+      intent: "append_flow",
+      anchor_node_id: null,
+      group_key: null,
+    };
+    const anchor = hint.anchor_node_id ? nodesById.get(hint.anchor_node_id) : null;
+    const fallbackX = occupied.length
+      ? Math.max(...occupied.map((item) => item.position.x)) + 340
+      : viewportAnchor.x;
+    const preferred = hint.intent === "near_selection"
+      ? anchor?.position ?? viewportAnchor
+      : hint.intent === "right_sibling" || hint.intent === "after_anchor"
+        ? {
+            x: (anchor?.position.x ?? fallbackX - 340) + 340,
+            y: anchor?.position.y ?? viewportAnchor.y,
+          }
+        : {
+            x: fallbackX,
+            y: anchor?.position.y ?? viewportAnchor.y,
+          };
+    const position = findAvailableCanvasPosition(
+      [
+        ...occupied,
+        ...placed.map((item) => ({ position: { x: item.x, y: item.y } })),
+      ],
+      preferred,
+    );
+    placed.push({ node_id: node.node_id, ...position });
+  });
+
+  return placed;
 }
 
 export function toAgentCanvasFlowNodes(

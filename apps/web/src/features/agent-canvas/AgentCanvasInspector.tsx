@@ -13,6 +13,7 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  CanvasVariationDraftUpsertV2,
   ProviderModelCapabilityV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
@@ -38,7 +39,9 @@ export function AgentCanvasInspector({
   providerCapabilitiesLoading = false,
   providerCapabilitiesError = null,
   onRun,
-  onCreateSibling,
+  onSaveVariation,
+  onDiscardVariation,
+  onMaterializeVariation,
   onSaveImageToLibrary,
   onDelete,
   onOpenEditing,
@@ -51,7 +54,15 @@ export function AgentCanvasInspector({
   providerCapabilitiesLoading?: boolean;
   providerCapabilitiesError?: string | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
-  onCreateSibling: (node: CanvasNodeV2) => Promise<CanvasNodeV2 | null>;
+  onSaveVariation: (
+    nodeId: string,
+    request: CanvasVariationDraftUpsertV2,
+  ) => Promise<void>;
+  onDiscardVariation: (nodeId: string) => Promise<void>;
+  onMaterializeVariation: (
+    node: CanvasNodeV2,
+    action: "create_draft" | "generate",
+  ) => Promise<CanvasNodeV2 | null>;
   onSaveImageToLibrary: (
     assetId: string,
     request: SaveAgentCanvasImageToLibraryRequestV2,
@@ -60,8 +71,10 @@ export function AgentCanvasInspector({
   onOpenEditing: () => void;
   onClose: () => void;
 }) {
-  const [title, setTitle] = useState(node.title);
-  const [prompt, setPrompt] = useState(node.generation_prompt ?? "");
+  const [title, setTitle] = useState(node.variation_draft?.title ?? node.title);
+  const [prompt, setPrompt] = useState(
+    node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "",
+  );
   const [textContent, setTextContent] = useState(
     typeof node.structured_content.content === "string"
       ? node.structured_content.content
@@ -77,15 +90,18 @@ export function AgentCanvasInspector({
   );
   const [libraryName, setLibraryName] = useState(node.title);
   const [librarySaved, setLibrarySaved] = useState(false);
-  const [modelId, setModelId] = useState(node.model_id ?? "");
+  const [modelId, setModelId] = useState(node.variation_draft?.model_id ?? node.model_id ?? "");
+  const [variationParameters, setVariationParameters] = useState<Record<string, unknown>>(
+    node.variation_draft?.parameters ?? node.parameters,
+  );
   const draftNodeIdRef = useRef(node.node_id);
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
     if (!changedNode && dirty) return;
     draftNodeIdRef.current = node.node_id;
-    setTitle(node.title);
-    setPrompt(node.generation_prompt ?? "");
+    setTitle(node.variation_draft?.title ?? node.title);
+    setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
     setTextContent(
       typeof node.structured_content.content === "string"
         ? node.structured_content.content
@@ -96,7 +112,8 @@ export function AgentCanvasInspector({
     setLibraryCategory(defaultLibraryCategory(node));
     setLibraryName(node.title);
     setLibrarySaved(false);
-    setModelId(node.model_id ?? "");
+    setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
+    setVariationParameters(node.variation_draft?.parameters ?? node.parameters);
     setError(null);
     if (changedNode) setDirty(false);
   }, [dirty, node]);
@@ -139,6 +156,20 @@ export function AgentCanvasInspector({
   }
 
   async function save(): Promise<boolean> {
+    if (isReadyMedia) {
+      if (!prompt.trim()) {
+        setError("Enter a generation prompt before saving the variation.");
+        return false;
+      }
+      const saved = await perform(() => onSaveVariation(node.node_id, {
+        title: title.trim() || `${node.title} variation`,
+        generation_prompt: prompt.trim(),
+        model_id: modelId || null,
+        parameters: variationParameters,
+      }));
+      if (saved) setDirty(false);
+      return saved;
+    }
     const structuredContent = editsTextContent
       ? {
           ...node.structured_content,
@@ -153,6 +184,21 @@ export function AgentCanvasInspector({
     }));
     if (saved) setDirty(false);
     return saved;
+  }
+
+  async function materializeVariation(action: "create_draft" | "generate") {
+    if ((dirty || !node.variation_draft) && !(await save())) return;
+    await perform(() => onMaterializeVariation(node, action));
+  }
+
+  async function discardVariation() {
+    const discarded = await perform(() => onDiscardVariation(node.node_id));
+    if (!discarded) return;
+    setTitle(node.title);
+    setPrompt(node.generation_prompt ?? "");
+    setModelId(node.model_id ?? "");
+    setVariationParameters(node.parameters);
+    setDirty(false);
   }
 
   async function run() {
@@ -216,7 +262,7 @@ export function AgentCanvasInspector({
             <span>Generation prompt</span>
             <textarea
               value={prompt}
-              disabled={pending || isReadyMedia}
+              disabled={pending}
               onChange={(event) => {
                 setPrompt(event.currentTarget.value);
                 setDirty(true);
@@ -230,7 +276,7 @@ export function AgentCanvasInspector({
             <span>Provider model</span>
             <select
               value={modelId}
-              disabled={pending || providerCapabilitiesLoading || isReadyMedia}
+              disabled={pending || providerCapabilitiesLoading}
               onChange={(event) => {
                 setModelId(event.currentTarget.value);
                 setDirty(true);
@@ -268,15 +314,42 @@ export function AgentCanvasInspector({
         ) : null}
 
         {isReadyMedia ? (
-          <button
-            type="button"
-            className="agent-canvas-inspector__primary"
-            disabled={pending}
-            onClick={() => void perform(() => onCreateSibling(node))}
-          >
-            <EditIcon />
-            <span>Create editable draft</span>
-          </button>
+          <section className="agent-canvas-inspector__variation" aria-label="Ready media variation">
+            <div>
+              <button
+                type="button"
+                className="agent-canvas-inspector__primary"
+                aria-label="Create variation draft"
+                disabled={pending || !prompt.trim()}
+                onClick={() => void materializeVariation("create_draft")}
+              >
+                <EditIcon />
+                <span>Create draft</span>
+              </button>
+              <button
+                type="button"
+                className="agent-canvas-inspector__primary"
+                aria-label="Generate variation"
+                disabled={pending || !prompt.trim()}
+                onClick={() => void materializeVariation("generate")}
+              >
+                <PlayIcon />
+                <span>Generate</span>
+              </button>
+            </div>
+            {node.variation_draft ? (
+              <button
+                type="button"
+                className="agent-canvas-inspector__variation-discard"
+                aria-label="Discard variation draft"
+                disabled={pending}
+                onClick={() => void discardVariation()}
+              >
+                <TrashIcon />
+                <span>Discard saved variation</span>
+              </button>
+            ) : null}
+          </section>
         ) : null}
 
         {canSaveImageToLibrary ? (
@@ -359,12 +432,12 @@ export function AgentCanvasInspector({
               <PlayIcon />
             </button>
           ) : null}
-          {node.node_type !== "editing" && !isReadyMedia ? (
+          {node.node_type !== "editing" ? (
             <button
               type="button"
               className="agent-canvas-inspector__save"
-              aria-label="Save node"
-              title="Save node"
+              aria-label={isReadyMedia ? "Save variation draft" : "Save node"}
+              title={isReadyMedia ? "Save variation draft" : "Save node"}
               disabled={pending}
               onClick={() => void save()}
             >

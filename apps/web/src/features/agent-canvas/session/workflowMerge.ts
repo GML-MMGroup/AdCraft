@@ -1,5 +1,6 @@
 import type {
   AgentCanvasWorkflowV2,
+  CanvasLayoutPatchResponseV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 
@@ -31,41 +32,87 @@ export function mergeAgentCanvasNode(
   };
 }
 
+export function mergeAgentCanvasLayout(
+  current: AgentCanvasWorkflowV2,
+  response: CanvasLayoutPatchResponseV2,
+): AgentCanvasWorkflowV2 {
+  if (
+    current.workflow_id !== response.workflow_id
+    || response.layout_revision < current.layout_revision
+  ) {
+    return current;
+  }
+  const positions = new Map(
+    response.positions.map((position) => [position.node_id, position]),
+  );
+  return {
+    ...current,
+    layout_revision: response.layout_revision,
+    nodes: current.nodes.map((node) => {
+      const position = positions.get(node.node_id);
+      return position
+        ? { ...node, position: { x: position.x, y: position.y } }
+        : node;
+    }),
+  };
+}
+
+export function overlayAgentCanvasPositions(
+  current: AgentCanvasWorkflowV2,
+  positions: CanvasLayoutPatchResponseV2["positions"],
+): AgentCanvasWorkflowV2 {
+  if (!positions.length) return current;
+  const byNodeId = new Map(positions.map((position) => [position.node_id, position]));
+  return {
+    ...current,
+    nodes: current.nodes.map((node) => {
+      const position = byNodeId.get(node.node_id);
+      return position
+        ? { ...node, position: { x: position.x, y: position.y } }
+        : node;
+    }),
+  };
+}
+
 export function mergeAgentCanvasWorkflow(
   current: AgentCanvasWorkflowV2 | null,
   incoming: AgentCanvasWorkflowV2,
 ): AgentCanvasWorkflowV2 {
   if (!current) return incoming;
   if (current.workflow_id !== incoming.workflow_id) return current;
-  if (incoming.revision > current.revision) return incoming;
-  if (incoming.revision < current.revision) return current;
-
   const currentNodes = new Map(current.nodes.map((node) => [node.node_id, node]));
-  const incomingNodeIds = new Set(incoming.nodes.map((node) => node.node_id));
-  const nodes = incoming.nodes.map((node) => {
+  const incomingNodes = new Map(incoming.nodes.map((node) => [node.node_id, node]));
+  const semanticSource = incoming.revision > current.revision
+    ? incoming
+    : incoming.revision < current.revision
+      ? current
+      : incoming;
+  const semanticNodes = semanticSource.nodes.map((node) => {
+    if (incoming.revision !== current.revision) return node;
     const existing = currentNodes.get(node.node_id);
-    return existing ? mergeAgentCanvasNode(existing, node) : node;
+    return existing ? newerNode(existing, node) : node;
   });
-  current.nodes.forEach((node) => {
-    if (!incomingNodeIds.has(node.node_id)) nodes.push(node);
-  });
-
-  const incomingBindingIds = new Set(incoming.bindings.map((binding) => binding.binding_id));
-  const bindings = [
-    ...incoming.bindings,
-    ...current.bindings.filter((binding) => !incomingBindingIds.has(binding.binding_id)),
-  ];
+  const useIncomingLayout = incoming.layout_revision > current.layout_revision;
+  const positionSource = useIncomingLayout ? incomingNodes : currentNodes;
+  const nodes = semanticNodes.map((node) => ({
+    ...node,
+    position: positionSource.get(node.node_id)?.position ?? node.position,
+  }));
 
   const currentAssetIds = new Set(current.assets.map((asset) => asset.asset_id));
   const assets = [
-    ...current.assets,
-    ...incoming.assets.filter((asset) => !currentAssetIds.has(asset.asset_id)),
+    ...(semanticSource === incoming ? incoming.assets : current.assets),
+    ...(semanticSource === incoming
+      ? current.assets.filter((asset) => !incoming.assets.some((item) => item.asset_id === asset.asset_id))
+      : incoming.assets.filter((asset) => !currentAssetIds.has(asset.asset_id))),
   ];
 
   return {
-    ...incoming,
+    ...semanticSource,
+    revision: Math.max(current.revision, incoming.revision),
+    layout_revision: Math.max(current.layout_revision, incoming.layout_revision),
     nodes,
-    bindings,
+    bindings: semanticSource.bindings,
     assets,
   };
 }

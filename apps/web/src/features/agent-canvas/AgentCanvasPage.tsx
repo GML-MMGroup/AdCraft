@@ -169,14 +169,17 @@ export function AgentCanvasPage() {
     clearAuthoringError,
     createBinding,
     createNode: createCanvasNode,
-    createSiblingDraft,
+    discardVariationDraft,
     deleteBinding,
     deleteNode,
+    materializeVariationDraft,
     mergeNode,
     mergePublishedAsset,
     patchNode,
+    placeActionReceiptNodes,
+    saveVariationDraft,
     setSelectedNodeId,
-    updateNodePosition,
+    updateNodePositions,
   } = session.actions;
   const runtimeCallbacks = useMemo(() => ({
     applyWorkflow,
@@ -402,6 +405,16 @@ export function AgentCanvasPage() {
     });
   }, [setSelectedNodeId]);
 
+  const placeReceiptNodes = useCallback((receipt: Parameters<typeof placeActionReceiptNodes>[0]) => {
+    const viewportAnchor = flowRef.current?.screenToFlowPosition({
+      x: window.innerWidth * 0.46,
+      y: window.innerHeight * 0.42,
+    }) ?? { x: 160, y: 120 };
+    void placeActionReceiptNodes(receipt, viewportAnchor).catch((error) => {
+      setSurfaceError(error instanceof Error ? error.message : "New canvas nodes could not be positioned.");
+    });
+  }, [placeActionReceiptNodes]);
+
   const initializeFlow = useCallback((instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>) => {
     flowRef.current = instance;
     if (!workflow) return;
@@ -464,7 +477,14 @@ export function AgentCanvasPage() {
           onInit={initializeFlow}
           onNodesChange={handleNodeChanges}
           onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
-          onNodeDragStop={(_event, node) => updateNodePosition(node.id, node.position)}
+          onNodeDragStop={(_event, node, draggedNodes) => {
+            const changed = draggedNodes.length ? draggedNodes : [node];
+            void updateNodePositions(changed.map((item) => ({
+              node_id: item.id,
+              x: item.position.x,
+              y: item.position.y,
+            }))).catch(() => {});
+          }}
           onNodesDelete={deleteNodes}
           onConnect={(connection) => void connect(connection)}
           onEdgesDelete={deleteEdges}
@@ -567,7 +587,9 @@ export function AgentCanvasPage() {
             providerCapabilitiesLoading={providerModels.loading}
             providerCapabilitiesError={providerModels.error}
             onRun={runNode}
-            onCreateSibling={createSiblingDraft}
+            onSaveVariation={saveVariationDraft}
+            onDiscardVariation={discardVariationDraft}
+            onMaterializeVariation={materializeVariationDraft}
             onSaveImageToLibrary={saveImageToLibrary}
             onDelete={deleteNode}
             onOpenEditing={() => openEditing(session.state.selectedNode!.node_id)}
@@ -628,6 +650,7 @@ export function AgentCanvasPage() {
         chatEvents={live.state.chatEvents}
         proposalPosition={proposalPosition}
         onFocusNode={focusNode}
+        onActionReceipt={placeReceiptNodes}
       />
     </div>
   );

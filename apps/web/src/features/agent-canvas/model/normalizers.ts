@@ -1,9 +1,15 @@
 import type {
+  AgentActionReceiptV2,
   AgentCanvasWorkflowV2,
   AgentCanvasChatTurnV2,
   AgentCanvasChatTimelineResponseV2,
+  AgentCommandOperationV2,
+  AgentCommandPlanV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasVideoSkillRunV2,
+  AgentNodeRefV2,
+  AgentOperationResultV2,
+  AgentPlacementHintV2,
   BindingCapabilityDecisionV2,
   CanvasBindingKindV2,
   CanvasBindingSourceImageAssetV2,
@@ -12,11 +18,15 @@ import type {
   CanvasBindingV2,
   CanvasExecutionStatusV2,
   CanvasMutationResponseV2,
+  CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
   CanvasPositionV2,
+  CanvasVariationDraftResponseV2,
+  CanvasVariationDraftV2,
+  CanvasVariationMaterializeResponseV2,
   CanvasRuntimeEventV2,
   CanvasRuntimeEventsResponseV2,
   CanvasRuntimeSnapshotV2,
@@ -60,6 +70,7 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
+const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
 const CANVAS_BINDING_KINDS = new Set<CanvasBindingKindV2>([
   "brief_context",
@@ -127,6 +138,31 @@ const RESOLVED_MEDIA_BINDING_KINDS = new Set<ResolvedMediaInputSnapshotV2["bindi
   "audio_reference",
 ]);
 const PROVIDER_INPUT_TYPES = new Set<ProviderModelCapabilityV2["accepted_input_types"][number]>(["text", "image", "video", "audio"]);
+const PLACEMENT_INTENTS = new Set<AgentPlacementHintV2["intent"]>([
+  "append_flow",
+  "after_anchor",
+  "right_sibling",
+  "near_selection",
+]);
+const COMMAND_PLAN_STATUSES = new Set<AgentCommandPlanV2["status"]>([
+  "pending_confirmation",
+  "applying",
+  "applied",
+  "rejected",
+  "superseded",
+  "failed",
+]);
+const COMMAND_RISKS = new Set<AgentCommandPlanV2["risk"]>([
+  "reversible_authoring",
+  "destructive_authoring",
+  "external_effect",
+]);
+const RECEIPT_STATUSES = new Set<AgentActionReceiptV2["status"]>([
+  "applied",
+  "applied_with_run_error",
+  "rejected",
+  "failed",
+]);
 
 function fail(path: string, message: string): never {
   throw new Error(`Invalid ${path}: ${message}`);
@@ -233,6 +269,10 @@ function optionalNullableString(value: unknown, path: string) {
   return nullableString(value, path);
 }
 
+function nullableStringWithDefault(value: unknown, path: string) {
+  return value === undefined ? null : nullableString(value, path);
+}
+
 function expectStringArray(value: unknown, path: string) {
   if (!Array.isArray(value)) fail(path, "expected array");
   return value.map((item, index) => expectString(item, `${path}[${index}]`));
@@ -301,6 +341,48 @@ function normalizeCanvasPositionV2(value: unknown, path: string): CanvasPosition
   };
 }
 
+export function normalizeAgentPlacementHintV2(
+  value: unknown,
+  path = "placementHint",
+): AgentPlacementHintV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["intent", "anchor_node_id", "group_key"], path);
+  return {
+    intent: expectLiteral(record.intent, PLACEMENT_INTENTS, `${path}.intent`),
+    anchor_node_id: nullableStringWithDefault(record.anchor_node_id, `${path}.anchor_node_id`),
+    group_key: nullableStringWithDefault(record.group_key, `${path}.group_key`),
+  };
+}
+
+export function normalizeCanvasVariationDraftV2(
+  value: unknown,
+  path = "variationDraft",
+): CanvasVariationDraftV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "source_node_id",
+    "source_node_revision",
+    "title",
+    "generation_prompt",
+    "model_id",
+    "parameters",
+    "variation_revision",
+    "created_at",
+    "updated_at",
+  ], path);
+  return {
+    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
+    source_node_revision: expectPositiveInteger(record.source_node_revision, `${path}.source_node_revision`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
+    model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+    parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
+    variation_revision: expectPositiveInteger(record.variation_revision, `${path}.variation_revision`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
 export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): CanvasNodeErrorV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["code", "message", "retryable"], path);
@@ -334,6 +416,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "position",
       "revision",
       "error",
+      "variation_draft",
       "created_at",
       "updated_at",
     ],
@@ -372,6 +455,9 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    variation_draft: record.variation_draft === null || record.variation_draft === undefined
+      ? null
+      : normalizeCanvasVariationDraftV2(record.variation_draft, `${path}.variation_draft`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -456,7 +542,7 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
 
 export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"): AgentCanvasWorkflowV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["workflow_id", "project_id", "workflow_schema_version", "canvas_model", "revision", "nodes", "bindings", "assets"], path);
+  forbidUnknownFields(record, ["workflow_id", "project_id", "workflow_schema_version", "canvas_model", "revision", "layout_revision", "nodes", "bindings", "assets"], path);
   const schemaVersion = expectInteger(record.workflow_schema_version, `${path}.workflow_schema_version`);
   if (schemaVersion !== 2) fail(`${path}.workflow_schema_version`, "expected 2");
   const canvasModel = expectString(record.canvas_model, `${path}.canvas_model`);
@@ -467,6 +553,9 @@ export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"
     workflow_schema_version: 2,
     canvas_model: "agent_canvas_v1",
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    layout_revision: record.layout_revision === undefined
+      ? 1
+      : expectPositiveInteger(record.layout_revision, `${path}.layout_revision`),
     nodes: expectArray(record.nodes, `${path}.nodes`).map((item, index) => normalizeCanvasNodeV2(item, `${path}.nodes[${index}]`)),
     bindings: expectArray(record.bindings, `${path}.bindings`).map((item, index) => normalizeCanvasBindingV2(item, `${path}.bindings[${index}]`)),
     assets: expectArray(record.assets, `${path}.assets`).map((item, index) => normalizeProjectAssetSummaryV2(item, `${path}.assets[${index}]`)),
@@ -809,6 +898,363 @@ function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpert
   };
 }
 
+function normalizeAgentNodeRefV2(value: unknown, path: string): AgentNodeRefV2 {
+  const record = expectRecord(value, path);
+  const kind = expectString(record.kind, `${path}.kind`);
+  if (kind === "node_id") {
+    forbidUnknownFields(record, ["kind", "node_id"], path);
+    return {
+      kind,
+      node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    };
+  }
+  if (kind === "operation_result") {
+    forbidUnknownFields(record, ["kind", "operation_id"], path);
+    return {
+      kind,
+      operation_id: expectNonEmptyString(record.operation_id, `${path}.operation_id`),
+    };
+  }
+  fail(`${path}.kind`, "unsupported node reference");
+}
+
+function normalizeAgentCommandOperationV2(
+  value: unknown,
+  path: string,
+): AgentCommandOperationV2 {
+  const record = expectRecord(value, path);
+  const operationType = expectString(record.operation_type, `${path}.operation_type`);
+  const operationId = expectNonEmptyString(record.operation_id, `${path}.operation_id`);
+  if (operationType === "create_node") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "node_type",
+      "semantic_role",
+      "title",
+      "summary_prompt",
+      "generation_prompt",
+      "structured_content",
+      "model_id",
+      "parameters",
+      "source_asset_id",
+      "video_skill_run_id",
+      "placement_hint",
+    ], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      node_type: expectLiteral(record.node_type, COMMAND_NODE_TYPES, `${path}.node_type`),
+      semantic_role: expectNonEmptyString(record.semantic_role, `${path}.semantic_role`),
+      title: expectNonEmptyString(record.title, `${path}.title`),
+      summary_prompt: nullableStringWithDefault(record.summary_prompt, `${path}.summary_prompt`),
+      generation_prompt: nullableStringWithDefault(record.generation_prompt, `${path}.generation_prompt`),
+      structured_content: optionalUnknownRecord(record.structured_content, `${path}.structured_content`, {}),
+      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
+      source_asset_id: nullableStringWithDefault(record.source_asset_id, `${path}.source_asset_id`),
+      video_skill_run_id: nullableStringWithDefault(record.video_skill_run_id, `${path}.video_skill_run_id`),
+      placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
+    };
+  }
+  if (operationType === "patch_editable_node") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "node",
+      "title",
+      "summary_prompt",
+      "generation_prompt",
+      "structured_content",
+      "model_id",
+      "parameters",
+    ], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      node: normalizeAgentNodeRefV2(record.node, `${path}.node`),
+      title: nullableStringWithDefault(record.title, `${path}.title`),
+      summary_prompt: nullableStringWithDefault(record.summary_prompt, `${path}.summary_prompt`),
+      generation_prompt: nullableStringWithDefault(record.generation_prompt, `${path}.generation_prompt`),
+      structured_content: record.structured_content === undefined
+        ? null
+        : expectNullableRecord(record.structured_content, `${path}.structured_content`),
+      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      parameters: record.parameters === undefined
+        ? null
+        : expectNullableRecord(record.parameters, `${path}.parameters`),
+    };
+  }
+  if (operationType === "create_binding") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "source",
+      "target",
+      "binding_kind",
+      "required",
+      "display_order",
+    ], path);
+    const source = expectRecord(record.source, `${path}.source`);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      source: source.kind === "image_asset"
+        ? {
+            kind: "image_asset",
+            asset_id: expectNonEmptyString(source.asset_id, `${path}.source.asset_id`),
+          }
+        : normalizeAgentNodeRefV2(source, `${path}.source`),
+      target: normalizeAgentNodeRefV2(record.target, `${path}.target`),
+      binding_kind: expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`),
+      required: record.required === undefined
+        ? true
+        : expectBoolean(record.required, `${path}.required`),
+      display_order: record.display_order === undefined
+        ? 0
+        : expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    };
+  }
+  if (operationType === "delete_binding") {
+    forbidUnknownFields(record, ["operation_type", "operation_id", "binding_id"], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
+    };
+  }
+  if (operationType === "delete_node") {
+    forbidUnknownFields(record, ["operation_type", "operation_id", "node"], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      node: normalizeAgentNodeRefV2(record.node, `${path}.node`),
+    };
+  }
+  if (operationType === "materialize_proposal") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "proposal_id",
+      "option_id",
+      "placement_hint",
+    ], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
+      option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
+      placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
+    };
+  }
+  if (operationType === "fork_ready_media") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "source_node",
+      "title",
+      "generation_prompt",
+      "model_id",
+      "parameters",
+      "placement_hint",
+    ], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      source_node: normalizeAgentNodeRefV2(record.source_node, `${path}.source_node`),
+      title: expectNonEmptyString(record.title, `${path}.title`),
+      generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
+      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
+      placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
+    };
+  }
+  if (operationType === "request_node_run") {
+    forbidUnknownFields(record, ["operation_type", "operation_id", "node"], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      node: normalizeAgentNodeRefV2(record.node, `${path}.node`),
+    };
+  }
+  if (operationType === "update_planning_topic") {
+    forbidUnknownFields(record, [
+      "operation_type",
+      "operation_id",
+      "skill_run_id",
+      "topic_id",
+      "status",
+      "related_nodes",
+    ], path);
+    return {
+      operation_type: operationType,
+      operation_id: operationId,
+      skill_run_id: expectNonEmptyString(record.skill_run_id, `${path}.skill_run_id`),
+      topic_id: expectNonEmptyString(record.topic_id, `${path}.topic_id`),
+      status: expectLiteral(
+        record.status,
+        new Set(["resolved", "skipped", "not_required"] as const),
+        `${path}.status`,
+      ),
+      related_nodes: expectArray(record.related_nodes ?? [], `${path}.related_nodes`)
+        .map((item, index) => normalizeAgentNodeRefV2(item, `${path}.related_nodes[${index}]`)),
+    };
+  }
+  fail(`${path}.operation_type`, "unsupported command operation");
+}
+
+export function normalizeAgentCommandPlanV2(
+  value: unknown,
+  path = "commandPlan",
+): AgentCommandPlanV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "plan_id",
+    "workflow_id",
+    "conversation_id",
+    "source_turn_id",
+    "base_workflow_revision",
+    "operations",
+    "continuation_requested",
+    "risk",
+    "confirmation_required",
+    "target_summary",
+    "operation_fingerprint",
+    "status",
+    "supersedes_plan_id",
+    "replacement_plan_id",
+    "actor",
+    "created_at",
+    "updated_at",
+  ], path);
+  const operations = expectArray(record.operations, `${path}.operations`)
+    .map((item, index) => normalizeAgentCommandOperationV2(item, `${path}.operations[${index}]`));
+  if (operations.length < 1 || operations.length > 8) {
+    fail(`${path}.operations`, "expected between 1 and 8 operations");
+  }
+  return {
+    plan_id: expectNonEmptyString(record.plan_id, `${path}.plan_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    source_turn_id: expectNonEmptyString(record.source_turn_id, `${path}.source_turn_id`),
+    base_workflow_revision: expectPositiveInteger(record.base_workflow_revision, `${path}.base_workflow_revision`),
+    operations,
+    continuation_requested: record.continuation_requested === undefined
+      ? false
+      : expectBoolean(record.continuation_requested, `${path}.continuation_requested`),
+    risk: expectLiteral(record.risk, COMMAND_RISKS, `${path}.risk`),
+    confirmation_required: expectBoolean(record.confirmation_required, `${path}.confirmation_required`),
+    target_summary: record.target_summary === undefined
+      ? ""
+      : expectString(record.target_summary, `${path}.target_summary`),
+    operation_fingerprint: expectNonEmptyString(record.operation_fingerprint, `${path}.operation_fingerprint`),
+    status: expectLiteral(record.status, COMMAND_PLAN_STATUSES, `${path}.status`),
+    supersedes_plan_id: nullableStringWithDefault(record.supersedes_plan_id, `${path}.supersedes_plan_id`),
+    replacement_plan_id: nullableStringWithDefault(record.replacement_plan_id, `${path}.replacement_plan_id`),
+    actor: record.actor === undefined
+      ? "agent"
+      : expectLiteral(record.actor, new Set(["agent", "user", "system"] as const), `${path}.actor`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeAgentOperationResultV2(
+  value: unknown,
+  path: string,
+): AgentOperationResultV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "operation_id",
+    "node_id",
+    "binding_id",
+    "execution_id",
+    "status",
+    "error_code",
+  ], path);
+  return {
+    operation_id: expectNonEmptyString(record.operation_id, `${path}.operation_id`),
+    node_id: nullableStringWithDefault(record.node_id, `${path}.node_id`),
+    binding_id: nullableStringWithDefault(record.binding_id, `${path}.binding_id`),
+    execution_id: nullableStringWithDefault(record.execution_id, `${path}.execution_id`),
+    status: expectLiteral(record.status, new Set(["applied", "queued", "failed"] as const), `${path}.status`),
+    error_code: nullableStringWithDefault(record.error_code, `${path}.error_code`),
+  };
+}
+
+export function normalizeAgentActionReceiptV2(
+  value: unknown,
+  path = "actionReceipt",
+): AgentActionReceiptV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "receipt_id",
+    "workflow_id",
+    "plan_id",
+    "action_id",
+    "status",
+    "summary",
+    "created_node_ids",
+    "updated_node_ids",
+    "deleted_node_ids",
+    "created_binding_ids",
+    "deleted_binding_ids",
+    "queued_execution_ids",
+    "run_queue_errors",
+    "operation_results",
+    "workflow_revision",
+    "placement_hints",
+    "continuation_turn_id",
+    "error_code",
+    "error_message",
+  ], path);
+  return {
+    receipt_id: expectNonEmptyString(record.receipt_id, `${path}.receipt_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    plan_id: nullableStringWithDefault(record.plan_id, `${path}.plan_id`),
+    action_id: nullableStringWithDefault(record.action_id, `${path}.action_id`),
+    status: expectLiteral(record.status, RECEIPT_STATUSES, `${path}.status`),
+    summary: expectNonEmptyString(record.summary, `${path}.summary`),
+    created_node_ids: optionalStringArray(record.created_node_ids, `${path}.created_node_ids`, []),
+    updated_node_ids: optionalStringArray(record.updated_node_ids, `${path}.updated_node_ids`, []),
+    deleted_node_ids: optionalStringArray(record.deleted_node_ids, `${path}.deleted_node_ids`, []),
+    created_binding_ids: optionalStringArray(record.created_binding_ids, `${path}.created_binding_ids`, []),
+    deleted_binding_ids: optionalStringArray(record.deleted_binding_ids, `${path}.deleted_binding_ids`, []),
+    queued_execution_ids: optionalStringArray(record.queued_execution_ids, `${path}.queued_execution_ids`, []),
+    run_queue_errors: optionalStringArray(record.run_queue_errors, `${path}.run_queue_errors`, []),
+    operation_results: expectArray(record.operation_results ?? [], `${path}.operation_results`)
+      .map((item, index) => normalizeAgentOperationResultV2(item, `${path}.operation_results[${index}]`)),
+    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
+    placement_hints: expectArray(record.placement_hints ?? [], `${path}.placement_hints`)
+      .map((item, index) => normalizeAgentPlacementHintV2(item, `${path}.placement_hints[${index}]`)),
+    continuation_turn_id: nullableStringWithDefault(record.continuation_turn_id, `${path}.continuation_turn_id`),
+    error_code: nullableStringWithDefault(record.error_code, `${path}.error_code`),
+    error_message: nullableStringWithDefault(record.error_message, `${path}.error_message`),
+  };
+}
+
+function normalizeChatCommandPlanCardV2(value: unknown, path: string): ChatTimelineItemV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "command_plan", "sequence", "created_at"], path);
+  return {
+    item_type: "command_plan",
+    command_plan: normalizeAgentCommandPlanV2(record.command_plan, `${path}.command_plan`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
+function normalizeChatActionReceiptCardV2(value: unknown, path: string): ChatTimelineItemV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["item_type", "action_receipt", "sequence", "created_at"], path);
+  return {
+    item_type: "action_receipt",
+    action_receipt: normalizeAgentActionReceiptV2(record.action_receipt, `${path}.action_receipt`),
+    sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+  };
+}
+
 export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): ChatTimelineItemV2 {
   const record = expectRecord(value, path);
   const itemType = expectString(record.item_type, `${path}.item_type`);
@@ -816,6 +1262,8 @@ export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): 
   if (itemType === "artifact") return normalizeChatArtifactCardV2(record, path);
   if (itemType === "proposal") return normalizeChatProposalCardV2(record, path);
   if (itemType === "expert_activity") return normalizeChatExpertActivityV2(record, path);
+  if (itemType === "command_plan") return normalizeChatCommandPlanCardV2(record, path);
+  if (itemType === "action_receipt") return normalizeChatActionReceiptCardV2(record, path);
   fail(`${path}.item_type`, "unsupported discriminator");
 }
 
@@ -865,6 +1313,24 @@ export function normalizeAgentCanvasChatTimelineCompatV2(
           proposal_id: typeof entry.metadata.proposal_id === "string"
             ? entry.metadata.proposal_id
             : null,
+          sequence: entry.sequence_no,
+          created_at: entry.created_at,
+        };
+      }
+      if (entry.entry_type === "command_plan") {
+        if (!entry.command_plan) fail(`${path}.items.command_plan`, "command plan entry requires a plan");
+        return {
+          item_type: "command_plan" as const,
+          command_plan: entry.command_plan,
+          sequence: entry.sequence_no,
+          created_at: entry.created_at,
+        };
+      }
+      if (entry.entry_type === "action_receipt") {
+        if (!entry.action_receipt) fail(`${path}.items.action_receipt`, "receipt entry requires a receipt");
+        return {
+          item_type: "action_receipt" as const,
+          action_receipt: entry.action_receipt,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
         };
@@ -1021,6 +1487,84 @@ export function normalizeCanvasMutationResponseV2(
   };
 }
 
+export function normalizeCanvasVariationDraftResponseV2(
+  value: unknown,
+  path = "variationDraftResponse",
+): CanvasVariationDraftResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "workflow_id",
+    "workflow_revision",
+    "node_id",
+    "variation_draft",
+  ], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    variation_draft: normalizeCanvasVariationDraftV2(record.variation_draft, `${path}.variation_draft`),
+  };
+}
+
+export function normalizeCanvasVariationMaterializeResponseV2(
+  value: unknown,
+  path = "variationMaterialize",
+): CanvasVariationMaterializeResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "workflow_id",
+    "workflow_revision",
+    "source_node_id",
+    "sibling_node",
+    "copied_binding_ids",
+    "run",
+    "run_error",
+    "placement_hint",
+  ], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
+    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
+    sibling_node: normalizeCanvasNodeV2(record.sibling_node, `${path}.sibling_node`),
+    copied_binding_ids: optionalStringArray(record.copied_binding_ids, `${path}.copied_binding_ids`, []),
+    run: record.run === null || record.run === undefined
+      ? null
+      : expectUnknownRecord(record.run, `${path}.run`),
+    run_error: record.run_error === null || record.run_error === undefined
+      ? null
+      : normalizeCanvasNodeErrorV2(record.run_error, `${path}.run_error`),
+    placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
+  };
+}
+
+export function normalizeCanvasLayoutPatchResponseV2(
+  value: unknown,
+  path = "layoutPatch",
+): CanvasLayoutPatchResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "workflow_id",
+    "revision",
+    "layout_revision",
+    "positions",
+  ], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    layout_revision: expectPositiveInteger(record.layout_revision, `${path}.layout_revision`),
+    positions: expectArray(record.positions, `${path}.positions`).map((item, index) => {
+      const positionPath = `${path}.positions[${index}]`;
+      const position = expectRecord(item, positionPath);
+      forbidUnknownFields(position, ["node_id", "x", "y"], positionPath);
+      return {
+        node_id: expectNonEmptyString(position.node_id, `${positionPath}.node_id`),
+        x: expectFiniteNumber(position.x, `${positionPath}.x`),
+        y: expectFiniteNumber(position.y, `${positionPath}.y`),
+      };
+    }),
+  };
+}
+
 export function normalizeProjectAssetUploadResponseV2(
   value: unknown,
   path = "assetUpload",
@@ -1085,12 +1629,19 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
           "speaker",
           "content",
           "metadata",
+          "command_plan",
+          "action_receipt",
           "created_at",
         ],
         itemPath,
       );
       const entryType = expectString(entry.entry_type, `${itemPath}.entry_type`);
-      if (entryType !== "message" && entryType !== "script_artifact") {
+      if (
+        entryType !== "message"
+        && entryType !== "script_artifact"
+        && entryType !== "command_plan"
+        && entryType !== "action_receipt"
+      ) {
         fail(`${itemPath}.entry_type`, "invalid timeline entry type");
       }
       const speaker = entry.speaker === null
@@ -1108,6 +1659,12 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
         speaker,
         content: expectString(entry.content, `${itemPath}.content`),
         metadata: optionalUnknownRecord(entry.metadata, `${itemPath}.metadata`, {}),
+        command_plan: entry.command_plan === null || entry.command_plan === undefined
+          ? null
+          : normalizeAgentCommandPlanV2(entry.command_plan, `${itemPath}.command_plan`),
+        action_receipt: entry.action_receipt === null || entry.action_receipt === undefined
+          ? null
+          : normalizeAgentActionReceiptV2(entry.action_receipt, `${itemPath}.action_receipt`),
         created_at: expectIsoDateTimeString(entry.created_at, `${itemPath}.created_at`),
       };
     }),
@@ -1164,7 +1721,7 @@ export function normalizeAgentCanvasChatTurnV2(
     fail(`${path}.status`, "invalid chat turn status");
   }
   const turnKind = expectString(record.turn_kind, `${path}.turn_kind`);
-  if (turnKind !== "message" && turnKind !== "proposal_action") {
+  if (turnKind !== "message" && turnKind !== "proposal_action" && turnKind !== "command_action") {
     fail(`${path}.turn_kind`, "invalid chat turn kind");
   }
   return {

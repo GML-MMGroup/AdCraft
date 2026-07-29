@@ -9,6 +9,7 @@ const emptyWorkflow = {
   workflow_schema_version: 2,
   canvas_model: "agent_canvas_v1",
   revision: 1,
+  layout_revision: 1,
   nodes: [],
   bindings: [],
   assets: [],
@@ -33,6 +34,7 @@ const draftNode = {
   position: { x: 120, y: 80 },
   revision: 1,
   error: null,
+  variation_draft: null,
   created_at: "2026-07-28T00:00:00Z",
   updated_at: "2026-07-28T00:00:00Z",
 };
@@ -215,6 +217,138 @@ describe("Agent Canvas client", () => {
     }, "export-key");
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("uses semantic ETags for command actions and Ready variation authoring", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    const readyNode = {
+      ...draftNode,
+      status: "ready",
+      output_asset_id: "asset-1",
+    };
+    const variationDraft = {
+      source_node_id: readyNode.node_id,
+      source_node_revision: readyNode.revision,
+      title: "Product image variation",
+      generation_prompt: "A warmer studio portrait.",
+      model_id: null,
+      parameters: {},
+      variation_revision: 1,
+      created_at: "2026-07-29T01:00:00Z",
+      updated_at: "2026-07-29T01:00:00Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      expect(headers.get("If-Match")).toMatch(/^"workflow:workflow-1:revision:/);
+      if (url.endsWith("/command-plans/plan-1/actions")) {
+        expect(headers.get("Idempotency-Key")).toBe("command-key");
+        expect(JSON.parse(String(init?.body))).toEqual({ action: "confirm" });
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          message_id: null,
+          turn_id: "turn-command-1",
+          status: "queued",
+          events_cursor: 20,
+        }, { status: 202 });
+      }
+      if (url.endsWith("/variation-draft") && init?.method === "PUT") {
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          workflow_revision: 8,
+          node_id: readyNode.node_id,
+          variation_draft: variationDraft,
+        }, { etag: '"workflow:workflow-1:revision:8"' });
+      }
+      if (url.endsWith("/variation-draft/materialize")) {
+        expect(headers.get("Idempotency-Key")).toBe("materialize-key");
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          workflow_revision: 9,
+          source_node_id: readyNode.node_id,
+          sibling_node: {
+            ...draftNode,
+            node_id: "node-image-sibling",
+            revision: 1,
+          },
+          copied_binding_ids: [],
+          run: null,
+          run_error: null,
+          placement_hint: {
+            intent: "right_sibling",
+            anchor_node_id: readyNode.node_id,
+            group_key: null,
+          },
+        }, { status: 202, etag: '"workflow:workflow-1:revision:9"' });
+      }
+      if (url.endsWith("/variation-draft") && init?.method === "DELETE") {
+        return new Response(null, {
+          status: 204,
+          headers: { ETag: '"workflow:workflow-1:revision:10"' },
+        });
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await v2Api.actOnAgentCanvasCommandPlan(
+      "workflow-1",
+      "plan-1",
+      { action: "confirm" },
+      "command-key",
+    );
+    await v2Api.saveAgentCanvasVariationDraft("workflow-1", readyNode.node_id, {
+      title: variationDraft.title,
+      generation_prompt: variationDraft.generation_prompt,
+      model_id: null,
+      parameters: {},
+    });
+    await v2Api.materializeAgentCanvasVariationDraft(
+      "workflow-1",
+      readyNode.node_id,
+      { action: "create_draft" },
+      "materialize-key",
+    );
+    await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:10"');
+  });
+
+  it("persists layout batches against layout_revision without semantic If-Match", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:12"');
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get("If-Match")).toBeNull();
+      expect(JSON.parse(String(init?.body))).toEqual({
+        expected_layout_revision: 4,
+        positions: [
+          { node_id: "node-image-1", x: 500, y: 260 },
+          { node_id: "node-image-2", x: 860, y: 260 },
+        ],
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        revision: 12,
+        layout_revision: 5,
+        positions: [
+          { node_id: "node-image-1", x: 500, y: 260 },
+          { node_id: "node-image-2", x: 860, y: 260 },
+        ],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await v2Api.patchAgentCanvasLayout("workflow-1", {
+      expected_layout_revision: 4,
+      positions: [
+        { node_id: "node-image-1", x: 500, y: 260 },
+        { node_id: "node-image-2", x: 860, y: 260 },
+      ],
+    });
+
+    expect(result.layout_revision).toBe(5);
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:12"');
   });
 });
 
