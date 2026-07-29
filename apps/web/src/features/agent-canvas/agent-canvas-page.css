@@ -1,4 +1,6 @@
 .agent-canvas-page {
+  --agent-canvas-pointer-dot-color: rgb(104 77 202 / 94%);
+
   position: relative;
   display: grid;
   width: auto;
@@ -33,6 +35,40 @@
 
 .agent-canvas-board .react-flow__pane.dragging {
   cursor: grabbing;
+}
+
+.agent-canvas-pointer-background {
+  pointer-events: none;
+  opacity: 0;
+  mask-image: radial-gradient(
+    circle 210px at var(--canvas-pointer-x, -420px) var(--canvas-pointer-y, -420px),
+    rgb(0 0 0 / 100%) 0%,
+    rgb(0 0 0 / 92%) 18%,
+    rgb(0 0 0 / 62%) 42%,
+    rgb(0 0 0 / 26%) 68%,
+    transparent 100%
+  );
+  mask-repeat: no-repeat;
+  transition: opacity 180ms ease-out;
+  -webkit-mask-image: radial-gradient(
+    circle 210px at var(--canvas-pointer-x, -420px) var(--canvas-pointer-y, -420px),
+    rgb(0 0 0 / 100%) 0%,
+    rgb(0 0 0 / 92%) 18%,
+    rgb(0 0 0 / 62%) 42%,
+    rgb(0 0 0 / 26%) 68%,
+    transparent 100%
+  );
+  -webkit-mask-repeat: no-repeat;
+}
+
+.agent-canvas-board[data-pointer-spotlight="active"] .agent-canvas-pointer-background {
+  opacity: 1;
+}
+
+.agent-canvas-pointer-dot {
+  filter:
+    drop-shadow(0 0 1.5px rgb(121 91 226 / 88%))
+    drop-shadow(0 0 4px rgb(121 91 226 / 44%));
 }
 
 .agent-canvas-board .react-flow__controls {
@@ -553,6 +589,8 @@
 }
 
 html[data-theme="dark"] .agent-canvas-page {
+  --agent-canvas-pointer-dot-color: rgb(201 187 255 / 100%);
+
   color: #ecedf5;
   background:
     radial-gradient(circle at 18% 14%, rgb(115 90 174 / 18%), transparent 34%),
@@ -561,6 +599,12 @@ html[data-theme="dark"] .agent-canvas-page {
 
 html[data-theme="dark"] .agent-canvas-board {
   border-right-color: rgb(255 255 255 / 10%);
+}
+
+html[data-theme="dark"] .agent-canvas-pointer-dot {
+  filter:
+    drop-shadow(0 0 1.5px rgb(198 181 255 / 92%))
+    drop-shadow(0 0 5px rgb(130 96 236 / 58%));
 }
 
 html[data-theme="dark"] :is(
@@ -595,5 +639,11 @@ html[data-theme="dark"] .agent-canvas-board .react-flow__minimap {
 @media (max-width: 1180px) {
   .agent-canvas-page {
     grid-template-columns: minmax(0, 1fr) 330px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-canvas-pointer-background {
+    transition: none;
   }
 }

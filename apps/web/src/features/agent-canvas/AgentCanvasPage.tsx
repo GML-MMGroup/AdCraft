@@ -1,6 +1,4 @@
 import {
-  Background,
-  BackgroundVariant,
   Controls,
   MiniMap,
   ReactFlow,
@@ -43,6 +41,8 @@ import {
   type AgentCanvasFlowNode,
   type AgentCanvasNodeCallbacks,
 } from "./canvas/index.ts";
+import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgrounds.tsx";
+import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import {
   bindingKindForSourceNode,
   findAvailableCanvasPosition,
@@ -162,6 +162,7 @@ function MediaViewer({
 
 export function AgentCanvasPage() {
   const session = useAgentCanvasSession();
+  const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
   const workflow = session.state.workflow;
   const {
     applyWorkflow,
@@ -442,7 +443,13 @@ export function AgentCanvasPage() {
 
   return (
     <div className="agent-canvas-page">
-      <div className="agent-canvas-board">
+      <div
+        ref={pointerSpotlight.hostRef}
+        className="agent-canvas-board"
+        onPointerMove={pointerSpotlight.onPointerMove}
+        onPointerLeave={pointerSpotlight.onPointerLeave}
+        onPointerCancel={pointerSpotlight.onPointerCancel}
+      >
         <ReactFlow<AgentCanvasFlowNode, Edge>
           nodes={nodes}
           edges={edges}
@@ -469,7 +476,7 @@ export function AgentCanvasPage() {
           fitView={false}
           colorMode="system"
         >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1.2} />
+          <AgentCanvasPointerBackgrounds />
           <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
             position="bottom-right"
