@@ -23,14 +23,13 @@ _FORBIDDEN_KEY_PARTS = (
     "workflow_json",
 )
 _FORBIDDEN_TEXT_MARKERS = (
-    ";base64,",
     "api_key=",
     "authorization:",
     "bearer ",
     "credential=",
-    "data:",
     "secret=",
     "token=",
+    "data:",
 )
 
 
@@ -253,6 +252,54 @@ class ConversationSummaryAgentContext(_PlanningContextModel):
     )
 
 
+AgentCanvasSpecialistName = Literal[
+    "script_writer",
+    "product_designer",
+    "prop_designer",
+    "character_designer",
+    "scene_designer",
+    "storyboard_artist",
+    "video_director",
+    "bgm_director",
+]
+
+
+class DirectorTurnContextV2(_PlanningContextModel):
+    context_kind: Literal["director_turn"]
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    conversation_id: str = Field(min_length=1, max_length=160)
+    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    mentioned_image_asset_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    recent_messages: tuple[InteractionMessageSummary, ...] = Field(
+        default=(),
+        max_length=16,
+    )
+    script_summary: str = Field(default="", max_length=8_192)
+    video_skill_excerpt: str = Field(default="", max_length=8_192)
+    explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
+
+
+class SpecialistContextV2(_PlanningContextModel):
+    context_kind: Literal["specialist_handoff"]
+    specialist_name: AgentCanvasSpecialistName
+    operation: Literal[
+        "propose_concepts",
+        "revise_concepts",
+        "materialize_draft",
+        "direct_response",
+    ]
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    target_node_id: str | None = Field(default=None, max_length=160)
+    selected_option_summary: str = Field(default="", max_length=8_192)
+    script_summary: str = Field(default="", max_length=8_192)
+    video_skill_excerpt: str = Field(default="", max_length=8_192)
+    explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
+
+
 PlanningAgentContext = Annotated[
     Union[
         FrontDeskIntentAgentContext,
@@ -266,6 +313,8 @@ PlanningAgentContext = Annotated[
         QuickMediaAgentContext,
         WorkflowConversationAgentContext,
         ConversationSummaryAgentContext,
+        DirectorTurnContextV2,
+        SpecialistContextV2,
     ],
     Field(discriminator="context_kind"),
 ]
