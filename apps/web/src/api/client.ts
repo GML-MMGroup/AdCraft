@@ -95,6 +95,11 @@ import type {
   VolcengineCredentialUpdateRequest,
   VolcengineCredentialUpdateResponse,
 } from "../apiSpace/volcengineCredentials";
+import type {
+  TianpuyueCredentialStatusResponse,
+  TianpuyueCredentialUpdateRequest,
+  TianpuyueCredentialUpdateResponse,
+} from "../apiSpace/tianpuyueCredentials";
 
 export class ApiError extends Error {
   status: number;
@@ -353,6 +358,17 @@ export const api = {
   testVolcengineCredential(requestBody: VolcengineCredentialTestRequest) {
     return request<VolcengineCredentialTestResponse>("/settings/providers/volcengine/test", {
       method: "POST",
+      body: JSON.stringify(requestBody),
+    });
+  },
+
+  getTianpuyueCredentialStatus() {
+    return request<TianpuyueCredentialStatusResponse>("/settings/providers/tianpuyue");
+  },
+
+  updateTianpuyueCredentials(requestBody: TianpuyueCredentialUpdateRequest) {
+    return request<TianpuyueCredentialUpdateResponse>("/settings/providers/tianpuyue", {
+      method: "PUT",
       body: JSON.stringify(requestBody),
     });
   },
