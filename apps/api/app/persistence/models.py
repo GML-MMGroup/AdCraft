@@ -494,3 +494,490 @@ class V2AgentActionRow(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasWorkflowRow(Base):
+    """One canonical Agent Canvas workflow owned by a Project."""
+
+    __tablename__ = "agent_canvas_workflows"
+    __table_args__ = (
+        CheckConstraint(
+            "canvas_model = 'agent_canvas_v1'",
+            name="ck_agent_canvas_workflows_model",
+        ),
+        CheckConstraint(
+            "workflow_schema_version = 2",
+            name="ck_agent_canvas_workflows_schema_version",
+        ),
+        CheckConstraint("revision > 0", name="ck_agent_canvas_workflows_revision"),
+        UniqueConstraint("project_id", name="uq_agent_canvas_workflows_project"),
+    )
+
+    workflow_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.project_id"), nullable=False)
+    workflow_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    canvas_model: Mapped[str] = mapped_column(Text, nullable=False, default="agent_canvas_v1")
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasNodeRow(Base):
+    """One generic persisted canvas node."""
+
+    __tablename__ = "agent_canvas_nodes"
+    __table_args__ = (
+        CheckConstraint(
+            "node_type IN ('text', 'script', 'image', 'video', 'audio', 'editing')",
+            name="ck_agent_canvas_nodes_type",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'working', 'ready', 'failed')",
+            name="ck_agent_canvas_nodes_status",
+        ),
+        CheckConstraint("revision > 0", name="ck_agent_canvas_nodes_revision"),
+        Index(
+            "ix_agent_canvas_nodes_workflow_created",
+            "workflow_id",
+            "created_at",
+            "node_id",
+        ),
+    )
+
+    node_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    node_type: Mapped[str] = mapped_column(Text, nullable=False)
+    semantic_role: Mapped[str] = mapped_column(Text, nullable=False)
+    role_contract_version: Mapped[str] = mapped_column(
+        Text, nullable=False, default="ad-media-role-v1"
+    )
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    summary_prompt: Mapped[str | None] = mapped_column(Text)
+    generation_prompt: Mapped[str | None] = mapped_column(Text)
+    structured_content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[str | None] = mapped_column(Text)
+    parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
+    prompt_context_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    output_asset_id: Mapped[str | None] = mapped_column(Text)
+    video_skill_run_id: Mapped[str | None] = mapped_column(Text)
+    position_x: Mapped[float] = mapped_column(Float, nullable=False)
+    position_y: Mapped[float] = mapped_column(Float, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    error_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasDocumentRow(Base):
+    """Typed Text or Script document attached to one canvas node."""
+
+    __tablename__ = "agent_canvas_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "document_kind IN ('text', 'script', 'editing_manifest')",
+            name="ck_agent_canvas_documents_kind",
+        ),
+        CheckConstraint("node_revision > 0", name="ck_agent_canvas_documents_revision"),
+        UniqueConstraint("workflow_id", "node_id", name="uq_agent_canvas_documents_workflow_node"),
+    )
+
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    document_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasBindingRow(Base):
+    """One real typed input binding on the Agent Canvas."""
+
+    __tablename__ = "agent_canvas_bindings"
+    __table_args__ = (
+        CheckConstraint(
+            "source_kind IN ('node', 'image_asset')",
+            name="ck_agent_canvas_bindings_source_kind",
+        ),
+        CheckConstraint(
+            "binding_kind IN "
+            "('brief_context', 'script_context', 'image_reference', "
+            "'video_reference', 'audio_reference')",
+            name="ck_agent_canvas_bindings_kind",
+        ),
+        CheckConstraint("display_order >= 0", name="ck_agent_canvas_bindings_order"),
+        Index(
+            "ix_agent_canvas_bindings_target_order",
+            "workflow_id",
+            "target_node_id",
+            "display_order",
+            "binding_id",
+        ),
+    )
+
+    binding_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    source_node_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"))
+    source_asset_id: Mapped[str | None] = mapped_column(Text)
+    target_node_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
+    )
+    binding_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasPromptContextSnapshotRow(Base):
+    """One immutable materialized Text/Script context bundle."""
+
+    __tablename__ = "agent_canvas_prompt_context_snapshots"
+    __table_args__ = (
+        Index(
+            "ix_agent_canvas_prompt_snapshots_target",
+            "workflow_id",
+            "target_node_id",
+            "created_at",
+        ),
+    )
+
+    snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    target_node_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
+    )
+    inputs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasIdempotencyRow(Base):
+    """Request fingerprint and replay payload for one Agent Canvas operation."""
+
+    __tablename__ = "agent_canvas_idempotency"
+    __table_args__ = (
+        UniqueConstraint("operation", "idempotency_key", name="uq_agent_canvas_idempotency_key"),
+    )
+
+    record_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    response_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasConversationRow(Base):
+    __tablename__ = "agent_canvas_conversations"
+
+    conversation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False, unique=True
+    )
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasSkillRunRow(Base):
+    __tablename__ = "agent_canvas_skill_runs"
+
+    skill_run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    skill_id: Mapped[str] = mapped_column(Text, nullable=False)
+    skill_version: Mapped[str] = mapped_column(Text, nullable=False)
+    source_skill_run_id: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasPlanningTopicRow(Base):
+    __tablename__ = "agent_canvas_planning_topics"
+
+    skill_run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_skill_runs.skill_run_id"), primary_key=True
+    )
+    topic_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    related_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasChatEntryRow(Base):
+    __tablename__ = "agent_canvas_chat_entries"
+    __table_args__ = (
+        UniqueConstraint(
+            "conversation_id",
+            "sequence_no",
+            name="uq_agent_canvas_chat_sequence",
+        ),
+    )
+
+    entry_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_conversations.conversation_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_type: Mapped[str] = mapped_column(Text, nullable=False)
+    speaker: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasChatTurnRow(Base):
+    __tablename__ = "agent_canvas_chat_turns"
+
+    turn_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_conversations.conversation_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    turn_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    request_json: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    error_code: Mapped[str | None] = mapped_column(Text)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasConceptProposalRow(Base):
+    __tablename__ = "agent_canvas_concept_proposals"
+
+    proposal_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    proposal_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_option_id: Mapped[str | None] = mapped_column(Text)
+    selection_actor: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasConceptOptionRow(Base):
+    __tablename__ = "agent_canvas_concept_options"
+
+    option_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_concept_proposals.proposal_id"), nullable=False
+    )
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasExpertActivityRow(Base):
+    __tablename__ = "agent_canvas_expert_activities"
+
+    activity_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasOperationEnvelopeRow(Base):
+    __tablename__ = "agent_canvas_operation_envelopes"
+
+    envelope_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    envelope_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasExecutionRow(Base):
+    """One durable scheduler execution for an Agent Canvas workflow."""
+
+    __tablename__ = "agent_canvas_executions"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN "
+            "('queued','running','waiting','completed','partial_completed',"
+            "'failed','cancelled')",
+            name="ck_agent_canvas_executions_status",
+        ),
+        Index(
+            "ix_agent_canvas_executions_workflow_status",
+            "workflow_id",
+            "status",
+            "created_at",
+        ),
+    )
+
+    execution_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    request_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasExecutionMemberRow(Base):
+    """One snapshotted node membership in a canvas execution."""
+
+    __tablename__ = "agent_canvas_execution_members"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('queued','waiting','running','succeeded','failed','cancelled')",
+            name="ck_agent_canvas_execution_members_state",
+        ),
+        UniqueConstraint(
+            "execution_id",
+            "node_id",
+            name="uq_agent_canvas_execution_member",
+        ),
+        Index(
+            "ix_agent_canvas_execution_members_execution_state",
+            "execution_id",
+            "state",
+        ),
+    )
+
+    member_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    member_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    phase: Mapped[str | None] = mapped_column(Text)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    waiting_for_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    provider_task_id: Mapped[str | None] = mapped_column(Text)
+    prompt_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_json: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasNodeLeaseRow(Base):
+    """Compare-and-set lease for one execution member."""
+
+    __tablename__ = "agent_canvas_node_leases"
+    __table_args__ = (
+        UniqueConstraint("execution_id", "node_id", name="uq_agent_canvas_node_lease"),
+        CheckConstraint("generation > 0", name="ck_agent_canvas_node_leases_generation"),
+    )
+
+    lease_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    owner_id: Mapped[str] = mapped_column(Text, nullable=False)
+    generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    heartbeat_at: Mapped[str] = mapped_column(Text, nullable=False)
+    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasProviderTaskRow(Base):
+    """Durable provider task kept inside one node execution attempt."""
+
+    __tablename__ = "agent_canvas_provider_tasks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('submitted','waiting','recovering','succeeded','failed','cancelled')",
+            name="ck_agent_canvas_provider_tasks_status",
+        ),
+        Index(
+            "ix_agent_canvas_provider_tasks_due",
+            "status",
+            "next_poll_at",
+        ),
+    )
+
+    task_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    remote_task_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    next_poll_at: Mapped[str | None] = mapped_column(Text)
+    recovery_deadline: Mapped[str] = mapped_column(Text, nullable=False)
+    result_descriptor_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasEditingExportRow(Base):
+    """One durable explicit Editing export attempt."""
+
+    __tablename__ = "agent_canvas_editing_exports"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','exporting','completed','failed','cancelled')",
+            name="ck_agent_canvas_editing_exports_status",
+        ),
+        Index(
+            "ix_agent_canvas_editing_exports_node_status",
+            "workflow_id",
+            "node_id",
+            "status",
+            "created_at",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "node_id",
+            "idempotency_key",
+            name="uq_agent_canvas_editing_export_idempotency",
+        ),
+    )
+
+    export_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    manifest_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    ready_video_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    skipped_inputs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    bgm_node_id: Mapped[str | None] = mapped_column(Text)
+    output_asset_id: Mapped[str | None] = mapped_column(Text)
+    error_json: Mapped[str | None] = mapped_column(Text)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)

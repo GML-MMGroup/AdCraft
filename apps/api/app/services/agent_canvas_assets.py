@@ -1,0 +1,489 @@
+"""Canonical project-media and image-library operations for Agent Canvas."""
+
+from __future__ import annotations
+
+import hashlib
+import mimetypes
+from dataclasses import dataclass
+from pathlib import Path
+from uuid import uuid4
+
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import ProjectAssetSummaryV2
+from app.schemas.v2_asset_library import (
+    AssetEntityCreate,
+    AssetEntityMemberCreate,
+    AssetLibraryCategoryV2,
+    AssetLibraryEntityDetailV2,
+    AssetLibraryEntitySummaryV2,
+    AssetRecordCreate,
+    AssetVersionCreate,
+    AssetVersionMetadataV2,
+)
+from app.services.v2_storage_adapter import StorageAdapter
+
+
+@dataclass(frozen=True)
+class AssetContentResponse:
+    body: bytes
+    status_code: int
+    media_type: str
+    headers: dict[str, str]
+
+
+class AgentCanvasAssetService:
+    """Reuse V2 SQLite metadata and content-addressed storage for canvas media."""
+
+    def __init__(
+        self,
+        data_dir: Path,
+        assets: V2AssetLibraryRepository,
+        workflows: AgentCanvasWorkflowRepository,
+    ) -> None:
+        self._data_dir = data_dir
+        self._assets = assets
+        self._workflows = workflows
+        self._storage = StorageAdapter(data_dir)
+
+    def upload_bytes(
+        self,
+        workflow_id: str,
+        *,
+        filename: str,
+        mime_type: str,
+        content: bytes,
+        title: str,
+        media_type: str,
+        idempotency_key: str,
+    ) -> ProjectAssetSummaryV2:
+        _validate_upload(media_type, mime_type, content, idempotency_key)
+        asset_id = _stable_identifier("asset", workflow_id, idempotency_key)
+        version_id = f"version_{asset_id}"
+        checksum = hashlib.sha256(content).hexdigest()
+        existing = self._assets.find_version(asset_id=asset_id)
+        if existing is not None:
+            if (
+                existing.sha256 != checksum
+                or existing.mime_type != mime_type
+                or existing.metadata.get("display_name") != title
+            ):
+                raise V2PersistenceError(
+                    "idempotency_conflict",
+                    "Idempotency key was reused with different upload content.",
+                    stage="agent_canvas_asset_service",
+                )
+            return _asset_summary(existing)
+
+        extension = _extension(filename, mime_type)
+        staging = self._data_dir / "v2" / "staging" / f"{uuid4().hex}.{extension}.upload"
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(content)
+        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        version = self._assets.create_asset_version(
+            AssetRecordCreate(
+                asset_id=asset_id,
+                media_type=media_type,
+                source_type="upload",
+                display_name=title,
+            ),
+            AssetVersionCreate(
+                version_id=version_id,
+                asset_id=asset_id,
+                storage_key=storage_key,
+                sha256=checksum,
+                size_bytes=len(content),
+                mime_type=mime_type,
+                source_workflow_id=workflow_id,
+                metadata={
+                    "display_name": title,
+                    "original_filename": Path(filename).name,
+                    "source_type": "upload",
+                },
+            ),
+        )
+        return _asset_summary(version)
+
+    def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
+        version = self._assets.find_version(asset_id=asset_id)
+        if version is None:
+            raise V2PersistenceError(
+                "asset_not_found",
+                "Asset was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        return _asset_summary(version)
+
+    def resolve_asset_path(self, asset_id: str) -> Path:
+        """Resolve a registered asset to its canonical local object path."""
+
+        version = self._assets.find_version(asset_id=asset_id)
+        if version is None:
+            raise V2PersistenceError(
+                "asset_not_found",
+                "Asset was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        path = self._storage.resolve_local_path(version.storage_key)
+        if not path.is_file():
+            raise V2PersistenceError(
+                "asset_not_ready",
+                "Asset content is unavailable.",
+                stage="agent_canvas_asset_service",
+            )
+        return path
+
+    def publish_generated_bytes(
+        self,
+        workflow_id: str,
+        *,
+        node_id: str,
+        execution_id: str,
+        filename: str,
+        mime_type: str,
+        content: bytes,
+        fingerprint: str,
+        source_type: str = "generated",
+    ) -> ProjectAssetSummaryV2:
+        """Idempotently publish validated executor bytes to unified storage."""
+
+        if not _valid_generated_media(content, mime_type):
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Provider output is empty or has an unsupported media type.",
+                stage="agent_canvas_asset_service",
+            )
+        asset_id = _stable_identifier("asset", workflow_id, node_id, fingerprint)
+        version_id = f"version_{asset_id}"
+        checksum = hashlib.sha256(content).hexdigest()
+        existing = self._assets.find_version(asset_id=asset_id)
+        if existing is not None:
+            if existing.sha256 != checksum or existing.mime_type != mime_type:
+                raise V2PersistenceError(
+                    "provider_publication_conflict",
+                    "The node-run fingerprint resolved to different output bytes.",
+                    stage="agent_canvas_asset_service",
+                )
+            return _asset_summary(existing)
+        extension = _extension(filename, mime_type)
+        staging = (
+            self._data_dir
+            / "v2"
+            / "runs"
+            / workflow_id
+            / "staging"
+            / f"{asset_id}.{extension}.part"
+        )
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(content)
+        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        version = self._assets.create_asset_version(
+            AssetRecordCreate(
+                asset_id=asset_id,
+                media_type=mime_type.split("/", 1)[0],
+                source_type=("generated" if source_type == "editing_export" else source_type),
+                display_name=Path(filename).stem,
+            ),
+            AssetVersionCreate(
+                version_id=version_id,
+                asset_id=asset_id,
+                storage_key=storage_key,
+                sha256=checksum,
+                size_bytes=len(content),
+                mime_type=mime_type,
+                source_workflow_id=workflow_id,
+                metadata={
+                    "display_name": Path(filename).stem,
+                    "source_type": source_type,
+                    "source_node_id": node_id,
+                    "source_execution_id": execution_id,
+                    "fingerprint": fingerprint,
+                },
+            ),
+        )
+        return _asset_summary(version)
+
+    def list_project_assets(self, workflow_id: str) -> tuple[ProjectAssetSummaryV2, ...]:
+        return tuple(
+            _asset_summary(version)
+            for version in self._assets.list_versions_for_workflow(workflow_id)
+        )
+
+    def validate_asset_backed_node(self, asset_id: str, node_type: str) -> None:
+        asset = self.resolve_asset(asset_id)
+        if node_type not in {"image", "video", "audio"} or asset.media_type != node_type:
+            raise V2PersistenceError(
+                "asset_media_incompatible",
+                "Asset media type is incompatible with the node type.",
+                stage="agent_canvas_asset_service",
+            )
+
+    def open_content(
+        self,
+        asset_id: str,
+        *,
+        range_header: str | None = None,
+    ) -> AssetContentResponse:
+        version = self._require_ready_version(asset_id)
+        path = self._storage.resolve_local_path(version.storage_key)
+        size = path.stat().st_size
+        start, end, partial = _parse_range(range_header, size)
+        with path.open("rb") as source:
+            source.seek(start)
+            body = source.read(end - start + 1)
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(len(body)),
+        }
+        if partial:
+            headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+        return AssetContentResponse(
+            body=body,
+            status_code=206 if partial else 200,
+            media_type=version.mime_type,
+            headers=headers,
+        )
+
+    def list_images(
+        self,
+        *,
+        scope: str,
+        category: str | None = None,
+    ) -> tuple[AssetLibraryEntitySummaryV2, ...]:
+        library_category = _library_category(category) if category else None
+        page = self._assets.list_entities(
+            scope="recommended" if scope == "recommended" else "user",
+            category=library_category,
+            status="active",
+            limit=100,
+        )
+        return page.items
+
+    def save_image_to_library(
+        self,
+        asset_id: str,
+        *,
+        category: str,
+        display_name: str,
+        idempotency_key: str,
+    ) -> AssetLibraryEntityDetailV2:
+        version = self._require_ready_version(asset_id)
+        if not version.mime_type.startswith("image/"):
+            raise V2PersistenceError(
+                "asset_library_media_incompatible",
+                "Only images can be saved to the image library.",
+                stage="agent_canvas_asset_service",
+            )
+        entity_id = _stable_identifier("entity", asset_id, idempotency_key)
+        try:
+            existing = self._assets.get_entity(entity_id)
+        except V2PersistenceError as error:
+            if error.code != "asset_library_entity_not_found":
+                raise
+        else:
+            if existing.members[0].asset_id != asset_id:
+                raise V2PersistenceError(
+                    "idempotency_conflict",
+                    "Idempotency key was reused for another asset.",
+                    stage="agent_canvas_asset_service",
+                )
+            return existing
+        entity_type = "prop" if category == "prop" else category
+        return self._assets.create_entity(
+            AssetEntityCreate(
+                entity_id=entity_id,
+                scope="user",
+                entity_type=entity_type,
+                library_category=_library_category(category),
+                display_name=display_name,
+            ),
+            members=(
+                AssetEntityMemberCreate(
+                    member_id=f"member_{uuid4().hex}",
+                    asset_id=asset_id,
+                    version_id=version.version_id,
+                    semantic_type=f"{category}_main",
+                    is_primary=True,
+                    is_default_reference=True,
+                    sort_order=0,
+                ),
+            ),
+        )
+
+    @staticmethod
+    def library_category_for_entity_type(entity_type: str) -> str:
+        return "props" if entity_type == "product" else _library_category(entity_type)
+
+    def delete_asset(self, asset_id: str) -> None:
+        if self._workflows.asset_is_referenced(asset_id):
+            raise V2PersistenceError(
+                "asset_is_referenced",
+                "Referenced assets cannot be permanently deleted.",
+                stage="agent_canvas_asset_service",
+            )
+        storage_keys = self._assets.delete_asset(asset_id)
+        for storage_key in storage_keys:
+            if self._storage_key_is_shared(storage_key):
+                continue
+            self._storage.resolve_local_path(storage_key).unlink(missing_ok=True)
+
+    def _require_ready_version(self, asset_id: str) -> AssetVersionMetadataV2:
+        version = self._assets.find_version(asset_id=asset_id)
+        if (
+            version is None
+            or version.status != "ready"
+            or not self._storage.file_exists(version.storage_key)
+        ):
+            raise V2PersistenceError(
+                "asset_not_ready",
+                "Asset content is not ready.",
+                stage="agent_canvas_asset_service",
+            )
+        return version
+
+    def _storage_key_is_shared(self, storage_key: str) -> bool:
+        return self._assets.count_versions_with_storage_key(storage_key) > 0
+
+
+def _valid_generated_media(content: bytes, mime_type: str) -> bool:
+    signatures = {
+        "image/png": (b"\x89PNG\r\n\x1a\n",),
+        "image/jpeg": (b"\xff\xd8\xff",),
+        "video/mp4": (b"ftyp",),
+        "audio/mpeg": (b"ID3", b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"),
+        "audio/wav": (b"RIFF",),
+    }
+    expected = signatures.get(mime_type)
+    if expected is None or not content:
+        return False
+    if mime_type == "video/mp4":
+        return b"ftyp" in content[:32]
+    return any(content.startswith(signature) for signature in expected)
+
+
+def _asset_summary(version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
+    media_type = _media_type_from_mime(version.mime_type)
+    source_type = str(version.metadata.get("source_type") or "generated")
+    if source_type not in {
+        "upload",
+        "generated",
+        "recommended",
+        "library",
+        "editing_export",
+    }:
+        source_type = "generated"
+    return ProjectAssetSummaryV2(
+        asset_id=version.asset_id,
+        media_type=media_type,
+        source_type=source_type,
+        display_name=str(version.metadata.get("display_name") or version.asset_id),
+        mime_type=version.mime_type,
+        status=version.status,
+        preview_url=(
+            f"/api/v2/assets/{version.asset_id}/content" if media_type == "image" else None
+        ),
+        media_url=f"/api/v2/assets/{version.asset_id}/content",
+        width=version.width,
+        height=version.height,
+        duration_seconds=version.duration_seconds,
+        checksum=version.sha256,
+    )
+
+
+def _validate_upload(
+    media_type: str,
+    mime_type: str,
+    content: bytes,
+    idempotency_key: str,
+) -> None:
+    if not content or not idempotency_key:
+        raise V2PersistenceError(
+            "asset_upload_invalid",
+            "Upload content and idempotency key are required.",
+            stage="agent_canvas_asset_service",
+        )
+    if _media_type_from_mime(mime_type) != media_type:
+        raise V2PersistenceError(
+            "asset_media_incompatible",
+            "Declared media type does not match the upload content type.",
+            stage="agent_canvas_asset_service",
+        )
+
+
+def _media_type_from_mime(mime_type: str) -> str:
+    prefix = mime_type.split("/", 1)[0].lower()
+    if prefix not in {"image", "video", "audio"}:
+        raise V2PersistenceError(
+            "asset_media_type_unsupported",
+            "Asset media type is unsupported.",
+            stage="agent_canvas_asset_service",
+        )
+    return prefix
+
+
+def _extension(filename: str, mime_type: str) -> str:
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    if suffix and suffix.isalnum() and len(suffix) <= 16:
+        return suffix
+    guessed = mimetypes.guess_extension(mime_type) or ""
+    normalized = guessed.lstrip(".")
+    if not normalized:
+        raise V2PersistenceError(
+            "asset_extension_unsupported",
+            "Asset file extension is unsupported.",
+            stage="agent_canvas_asset_service",
+        )
+    return normalized
+
+
+def _stable_identifier(prefix: str, *parts: str) -> str:
+    digest = hashlib.sha256("\0".join(parts).encode()).hexdigest()[:24]
+    return f"{prefix}_{digest}"
+
+
+def _library_category(value: str) -> AssetLibraryCategoryV2:
+    categories = {
+        "character": "characters",
+        "characters": "characters",
+        "scene": "scenes",
+        "scenes": "scenes",
+        "product": "props",
+        "prop": "props",
+        "props": "props",
+    }
+    try:
+        return categories[value]
+    except KeyError as error:
+        raise V2PersistenceError(
+            "asset_library_category_invalid",
+            "Image library category is invalid.",
+            stage="agent_canvas_asset_service",
+        ) from error
+
+
+def _parse_range(value: str | None, size: int) -> tuple[int, int, bool]:
+    if value is None:
+        return 0, max(0, size - 1), False
+    if not value.startswith("bytes=") or "," in value:
+        raise V2PersistenceError(
+            "asset_range_invalid",
+            "Asset byte range is invalid.",
+            stage="agent_canvas_asset_service",
+        )
+    start_text, separator, end_text = value[6:].partition("-")
+    if not separator or not start_text.isdigit():
+        raise V2PersistenceError(
+            "asset_range_invalid",
+            "Asset byte range is invalid.",
+            stage="agent_canvas_asset_service",
+        )
+    start = int(start_text)
+    end = int(end_text) if end_text.isdigit() else size - 1
+    if start >= size or end < start:
+        raise V2PersistenceError(
+            "asset_range_unsatisfiable",
+            "Asset byte range is unsatisfiable.",
+            stage="agent_canvas_asset_service",
+        )
+    return start, min(end, size - 1), True
