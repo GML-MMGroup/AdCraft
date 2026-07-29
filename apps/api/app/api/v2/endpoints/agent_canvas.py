@@ -1,0 +1,1360 @@
+"""Public V2 Agent Canvas authoring and project-media endpoints."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Annotated, Literal
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import StreamingResponse
+
+from app.api.v2.etag import (
+    V2PreconditionError,
+    parse_project_if_match,
+    parse_workflow_if_match,
+    project_etag,
+    workflow_etag,
+)
+from app.core.config import Settings, get_settings
+from app.persistence.agent_canvas_repository import (
+    AgentCanvasDocumentRepository,
+    AgentCanvasWorkflowRepository,
+)
+from app.persistence.agent_canvas_editing_repository import (
+    AgentCanvasEditingExportRepository,
+)
+from app.persistence.agent_canvas_runtime_repository import (
+    AgentCanvasRuntimeRepository,
+)
+from app.persistence.agent_canvas_conversation_repository import (
+    AgentCanvasConversationRepository,
+)
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
+from app.persistence.database import V2Database, create_v2_database
+from app.persistence.errors import V2PersistenceError
+from app.persistence.event_repository import EventRepository
+from app.persistence.project_repository import ProjectRepository
+from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
+    CanvasBindingCreateRequestV2,
+    CanvasMutationResponseV2,
+    CanvasNodeCreateRequestV2,
+    CanvasNodePatchRequestV2,
+    CanvasNodeV2,
+    ImageLibraryListResponseV2,
+    ProjectAssetListResponseV2,
+    ProjectAssetUploadMetadataV2,
+    ProjectAssetUploadResponseV2,
+    ProjectCreateRequestV2,
+    ProjectCreateResponseV2,
+    SaveImageToLibraryRequestV2,
+)
+from app.schemas.agent_canvas_conversation import (
+    ChatMessageRequestV2,
+    ChatTimelineListResponseV2,
+    ChatTurnAcceptedV2,
+    ChatTurnV2,
+    ProposalActionRequestV2,
+    VideoSkillRunCreateRequestV2,
+    VideoSkillRunV2,
+)
+from app.schemas.agent_canvas_runtime import (
+    CanvasProviderModelCapabilityListV2,
+    CanvasRunAcceptedV2,
+    CanvasRunCancelRequestV2,
+    CanvasRunCancelResponseV2,
+    CanvasRunRequestV2,
+    CanvasRuntimeEventListV2,
+    CanvasRuntimeEventV2,
+    CanvasRuntimeSnapshotV2,
+)
+from app.schemas.agent_canvas_editing import (
+    EditingExportAcceptedV2,
+    EditingExportCancelResponseV2,
+    EditingExportRequestV2,
+    EditingManifestV2,
+)
+from app.schemas.v2_asset_library import AssetLibraryEntityDetailV2
+from app.schemas.workflow_v2_projects import (
+    ProjectV2,
+    ProjectV2ListResponse,
+    ProjectV2UpdateRequest,
+)
+from app.services.agent_canvas_assets import AgentCanvasAssetService
+from app.services.agent_canvas_composition_renderer import (
+    AgentCanvasCompositionRenderer,
+)
+from app.services.agent_canvas_editing import EditingInputResolver, EditingNodeService
+from app.services.agent_canvas_editing_export import EditingExportService
+from app.services.agent_canvas_ad_media import (
+    AdMediaDraftValidationService,
+    AdMediaRoleRegistry,
+)
+from app.services.agent_canvas_bindings import AgentCanvasBindingService
+from app.services.agent_canvas_nodes import AgentCanvasNodeService
+from app.services.agent_canvas_node_execution import (
+    GeneratedMediaPayload,
+    build_default_node_dispatcher,
+)
+from app.services.agent_canvas_provider_recovery import (
+    ProviderPollResult,
+    ProviderTaskRecoveryService,
+)
+from app.services.agent_canvas_provider_capabilities import (
+    ProviderCapabilityService,
+)
+from app.services.agent_canvas_provider_prompts import (
+    AgentCanvasProviderPromptCompiler,
+    list_agent_canvas_prompt_registrations,
+)
+from app.services.agent_canvas_references import AdReferenceBundleResolver
+from app.services.agent_canvas_projects import AgentCanvasProjectService
+from app.services.agent_canvas_runtime import (
+    AgentCanvasRunService,
+    CanvasRuntimeSnapshotService,
+    DynamicCanvasScheduler,
+)
+from app.services.agent_canvas_context import AgentLocalContextAssembler
+from app.services.agent_canvas_conversation import (
+    AgentConversationService,
+    DeterministicDirectorGateway,
+    PiDirectorGateway,
+)
+from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
+from app.services.v2_provider_executor import V2ProviderExecutor
+
+
+router = APIRouter(tags=["v2-agent-canvas"])
+
+
+@dataclass(frozen=True)
+class AgentCanvasRuntime:
+    database: V2Database
+    projects: AgentCanvasProjectService
+    workflows: AgentCanvasWorkflowRepository
+    nodes: AgentCanvasNodeService
+    bindings: AgentCanvasBindingService
+    assets: AgentCanvasAssetService
+    conversations: AgentConversationService
+    conversation_repository: AgentCanvasConversationRepository
+    video_skills: VideoSkillRegistry
+    ad_media_validation: AdMediaDraftValidationService
+    event_repository: EventRepository
+    runtime_repository: AgentCanvasRuntimeRepository
+    run_service: AgentCanvasRunService
+    scheduler: DynamicCanvasScheduler
+    runtime_snapshots: CanvasRuntimeSnapshotService
+    provider_capabilities: ProviderCapabilityService
+    provider_recovery: ProviderTaskRecoveryService
+    editing_nodes: EditingNodeService
+    editing_exports: EditingExportService
+    editing_export_repository: AgentCanvasEditingExportRepository
+
+
+def get_agent_canvas_runtime(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Iterator[AgentCanvasRuntime]:
+    runtime = create_agent_canvas_runtime(settings)
+    try:
+        yield runtime
+    finally:
+        runtime.database.dispose()
+
+
+def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
+    """Build one request/startup-scoped Agent Canvas runtime."""
+
+    database = create_v2_database(settings.media_data_dir)
+    project_repository = ProjectRepository(database)
+    event_repository = EventRepository(database)
+    workflow_repository = AgentCanvasWorkflowRepository(
+        database,
+        project_repository,
+        event_repository,
+    )
+    asset_repository = V2AssetLibraryRepository(database)
+    asset_service = AgentCanvasAssetService(
+        settings.media_data_dir,
+        asset_repository,
+        workflow_repository,
+    )
+    conversation_repository = AgentCanvasConversationRepository(
+        database,
+        event_repository,
+    )
+    video_skills = VideoSkillRegistry()
+    provider_capabilities = ProviderCapabilityService(settings)
+    binding_service = AgentCanvasBindingService(
+        workflow_repository,
+        AgentCanvasDocumentRepository(database),
+        asset_resolver=asset_service.resolve_asset,
+        binding_capability_validator=lambda target, input_types: (
+            provider_capabilities.validate_binding(
+                target,
+                required_input_types=input_types,
+            )
+        ),
+    )
+    runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
+    editing_export_repository = AgentCanvasEditingExportRepository(database)
+    provider_executor = V2ProviderExecutor(
+        settings=settings,
+        data_dir=settings.media_data_dir,
+    )
+    dispatcher = build_default_node_dispatcher(
+        settings,
+        provider_executor=provider_executor,
+    )
+    role_registry = AdMediaRoleRegistry()
+    reference_resolver = AdReferenceBundleResolver(
+        workflow_repository,
+        asset_resolver=asset_service.resolve_asset,
+    )
+    prompt_compiler = AgentCanvasProviderPromptCompiler(role_registry)
+    compiled_roles = {
+        registration.semantic_role for registration in list_agent_canvas_prompt_registrations()
+    }
+
+    def prepare_media_context(node: CanvasNodeV2):
+        contract = role_registry.get(node.semantic_role)
+        bundle = reference_resolver.resolve(
+            node.workflow_id,
+            node.node_id,
+            contract,
+        )
+        compiled = (
+            prompt_compiler.compile(node, contract, bundle)
+            if node.semantic_role in compiled_roles
+            else None
+        )
+        return compiled, bundle
+
+    scheduler = DynamicCanvasScheduler(
+        workflow_repository,
+        runtime_repository,
+        binding_service,
+        provider_capabilities,
+        dispatcher,
+        media_publisher=lambda context, payload, fingerprint: (
+            asset_service.publish_generated_bytes(
+                context.node.workflow_id,
+                node_id=context.node.node_id,
+                execution_id=context.execution_id,
+                filename=payload.filename,
+                mime_type=payload.mime_type,
+                content=payload.content,
+                fingerprint=fingerprint,
+            ).asset_id
+        ),
+        script_ready_publisher=lambda workflow_id, node_id: (
+            conversation_repository.publish_script_artifact(
+                workflow_id,
+                script_node_id=node_id,
+                source_turn_id=None,
+            )
+        ),
+        media_context_preparer=prepare_media_context,
+        image_limit=settings.v2_max_parallel_image_jobs,
+        video_limit=settings.v2_max_parallel_video_jobs,
+        audio_limit=settings.v2_max_parallel_audio_jobs,
+        total_limit=settings.v2_max_parallel_generation_jobs,
+    )
+
+    def poll_provider_task(task) -> ProviderPollResult:
+        descriptor = dict(task.result_descriptor)
+        media_type = str(descriptor.get("media_type") or "")
+        if media_type not in {"image", "video", "audio"} or not task.remote_task_id:
+            return ProviderPollResult(
+                status="failed",
+                remote_task_id=task.remote_task_id,
+                error_code="provider_task_invalid",
+                error_message="Provider task descriptor is invalid.",
+            )
+        result = provider_executor.poll_minimal(
+            workflow_id=task.workflow_id,
+            media_type=media_type,
+            remote_task_id=task.remote_task_id,
+            provider_payload=dict(descriptor.get("provider_payload") or {}),
+            result_descriptor=descriptor,
+            download_media=False,
+        )
+        if result.status == "completed":
+            return ProviderPollResult(
+                status="succeeded",
+                remote_task_id=task.remote_task_id,
+                result_descriptor={**descriptor, **result.metadata},
+            )
+        if result.status == "waiting":
+            return ProviderPollResult(
+                status="waiting",
+                remote_task_id=task.remote_task_id,
+                result_descriptor=descriptor,
+            )
+        if bool(result.metadata.get("retryable")):
+            raise RuntimeError(result.error_message or "Provider polling failed.")
+        return ProviderPollResult(
+            status="failed",
+            remote_task_id=task.remote_task_id,
+            error_code=result.error_code,
+            error_message=result.error_message,
+        )
+
+    def download_provider_task(task) -> GeneratedMediaPayload:
+        descriptor = dict(task.result_descriptor)
+        media_type = str(descriptor.get("media_type") or "")
+        extension = {"video": "mp4", "audio": "mp3"}.get(media_type)
+        if extension is None or not task.remote_task_id:
+            raise V2PersistenceError(
+                "provider_result_unavailable",
+                "Provider result cannot be downloaded.",
+                stage="agent_canvas_provider_recovery",
+            )
+        relative_path = (
+            Path("v2")
+            / "runs"
+            / task.workflow_id
+            / "provider-results"
+            / f"{task.task_id}.{extension}"
+        )
+        result = provider_executor.poll_minimal(
+            workflow_id=task.workflow_id,
+            media_type=media_type,
+            remote_task_id=task.remote_task_id,
+            provider_payload=dict(descriptor.get("provider_payload") or {}),
+            result_descriptor=descriptor,
+            download_media=True,
+            output_relative_path=relative_path,
+        )
+        if result.status != "completed" or not result.local_file_path:
+            raise V2PersistenceError(
+                result.error_code or "provider_result_unavailable",
+                result.error_message or "Provider result is unavailable.",
+                stage="agent_canvas_provider_recovery",
+            )
+        path = (settings.media_data_dir / result.local_file_path).resolve()
+        data_root = settings.media_data_dir.resolve()
+        if not path.is_relative_to(data_root) or not path.is_file():
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Provider output path is outside managed storage.",
+                stage="agent_canvas_provider_recovery",
+            )
+        return GeneratedMediaPayload(
+            content=path.read_bytes(),
+            mime_type={"video": "video/mp4", "audio": "audio/mpeg"}[media_type],
+            filename=f"{task.node_id}.{extension}",
+        )
+
+    provider_recovery = ProviderTaskRecoveryService(
+        workflow_repository,
+        runtime_repository,
+        poller=poll_provider_task,
+        downloader=download_provider_task,
+        media_publisher=lambda context, payload, fingerprint: (
+            asset_service.publish_generated_bytes(
+                context.node.workflow_id,
+                node_id=context.node.node_id,
+                execution_id=context.execution_id,
+                filename=payload.filename,
+                mime_type=payload.mime_type,
+                content=payload.content,
+                fingerprint=fingerprint,
+            ).asset_id
+        ),
+        on_batch_reconciled=lambda execution_ids: [
+            scheduler.resume(execution_id) for execution_id in execution_ids
+        ],
+    )
+    editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
+    editing_exports = EditingExportService(
+        data_dir=settings.media_data_dir,
+        workflows=workflow_repository,
+        nodes=editing_nodes,
+        inputs=EditingInputResolver(
+            workflow_repository,
+            asset_service.resolve_asset,
+            asset_service.resolve_asset_path,
+        ),
+        assets=asset_service,
+        exports=editing_export_repository,
+        events=event_repository,
+        renderer=AgentCanvasCompositionRenderer(settings),
+    )
+    return AgentCanvasRuntime(
+        database=database,
+        projects=AgentCanvasProjectService(
+            project_repository,
+            workflow_repository,
+            asset_service,
+        ),
+        workflows=workflow_repository,
+        nodes=AgentCanvasNodeService(workflow_repository),
+        bindings=binding_service,
+        assets=asset_service,
+        conversations=AgentConversationService(
+            workflows=workflow_repository,
+            conversations=conversation_repository,
+            nodes=AgentCanvasNodeService(workflow_repository),
+            gateway=(
+                DeterministicDirectorGateway()
+                if settings.agent_runtime_mode == "fake"
+                else PiDirectorGateway(
+                    PiAgentRuntimeClient(
+                        base_url=settings.agent_runtime_base_url,
+                        internal_token=settings.agent_runtime_internal_token or "",
+                        protocol_version=settings.agent_runtime_protocol_version,
+                        connect_timeout_seconds=(settings.agent_runtime_connect_timeout_seconds),
+                        read_timeout_seconds=settings.agent_runtime_read_timeout_seconds,
+                        run_timeout_seconds=settings.agent_runtime_run_timeout_seconds,
+                        max_event_bytes=settings.agent_runtime_max_event_bytes,
+                        max_stream_bytes=settings.agent_runtime_max_stream_bytes,
+                    ),
+                    timeout_seconds=settings.agent_runtime_run_timeout_seconds,
+                )
+            ),
+            video_skills=video_skills,
+            context_assembler=AgentLocalContextAssembler(
+                workflow_repository,
+                asset_resolver=asset_service.resolve_asset,
+            ),
+        ),
+        conversation_repository=conversation_repository,
+        video_skills=video_skills,
+        ad_media_validation=AdMediaDraftValidationService(role_registry),
+        event_repository=event_repository,
+        runtime_repository=runtime_repository,
+        run_service=AgentCanvasRunService(
+            workflow_repository,
+            runtime_repository,
+            event_repository,
+            eligibility_validator=lambda node: (
+                provider_capabilities.resolve(node, ())
+                if node.node_type in {"image", "video", "audio"}
+                else None
+            ),
+        ),
+        scheduler=scheduler,
+        runtime_snapshots=CanvasRuntimeSnapshotService(
+            workflow_repository,
+            runtime_repository,
+            event_repository,
+        ),
+        provider_capabilities=provider_capabilities,
+        provider_recovery=provider_recovery,
+        editing_nodes=editing_nodes,
+        editing_exports=editing_exports,
+        editing_export_repository=editing_export_repository,
+    )
+
+
+@router.post(
+    "/projects",
+    response_model=ProjectCreateResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project(
+    request: ProjectCreateRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ProjectCreateResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        created = runtime.projects.create(request, idempotency_key=idempotency_key)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(created.workflow_id, created.revision)
+    return created
+
+
+@router.get("/projects", response_model=ProjectV2ListResponse)
+def list_projects(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    project_status: Annotated[
+        Literal["active", "archived", "trashed"], Query(alias="status")
+    ] = "active",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: str | None = None,
+) -> ProjectV2ListResponse:
+    try:
+        return runtime.projects.list_projects(
+            status=project_status,
+            limit=limit,
+            cursor=cursor,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get("/projects/{project_id}", response_model=ProjectV2)
+def get_project(
+    project_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> ProjectV2:
+    try:
+        project = runtime.projects.get_project(project_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = project_etag(project_id, project.project_version)
+    return project
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectV2)
+def update_project(
+    project_id: str,
+    request: ProjectV2UpdateRequest,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> ProjectV2:
+    changes = request.model_dump(exclude_unset=True)
+    if not changes:
+        raise _http_error("project_update_empty", 422, "Project update is empty.")
+    try:
+        project = runtime.projects.update_project(
+            project_id,
+            expected_version=_expected_project_version(if_match, project_id),
+            changes=changes,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = project_etag(project_id, project.project_version)
+    return project
+
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def trash_project(
+    project_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> None:
+    try:
+        project = runtime.projects.trash_project(
+            project_id,
+            expected_version=_expected_project_version(if_match, project_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = project_etag(project_id, project.project_version)
+
+
+@router.post("/projects/{project_id}/restore", response_model=ProjectV2)
+def restore_project(
+    project_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> ProjectV2:
+    try:
+        project = runtime.projects.restore_project(
+            project_id,
+            expected_version=_expected_project_version(if_match, project_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = project_etag(project_id, project.project_version)
+    return project
+
+
+@router.get("/workflows/{workflow_id}", response_model=AgentCanvasWorkflowV2)
+def get_workflow(
+    workflow_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> AgentCanvasWorkflowV2:
+    try:
+        workflow = runtime.projects.get_workflow(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return workflow
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes",
+    response_model=CanvasMutationResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_node(
+    workflow_id: str,
+    request: CanvasNodeCreateRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> CanvasMutationResponseV2:
+    expected = _expected_revision(if_match, workflow_id)
+    try:
+        runtime.ad_media_validation.validate(
+            node_type=request.node_type,
+            semantic_role=request.semantic_role,
+            structured_content=request.structured_content,
+        )
+        if request.source_asset_id is not None:
+            runtime.assets.validate_asset_backed_node(
+                request.source_asset_id,
+                request.node_type,
+            )
+        node = runtime.nodes.create(
+            workflow_id,
+            request,
+            expected_revision=expected,
+        )
+        workflow = runtime.projects.get_workflow(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow, node=node)
+
+
+@router.get(
+    "/workflows/{workflow_id}/nodes/{node_id}",
+    response_model=CanvasNodeV2,
+)
+def get_node(
+    workflow_id: str,
+    node_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CanvasNodeV2:
+    try:
+        node = runtime.workflows.get_node(workflow_id, node_id)
+        if node.node_type == "editing":
+            return node.model_copy(
+                update={
+                    "structured_content": runtime.editing_nodes.content(
+                        workflow_id, node_id
+                    ).model_dump(mode="json")
+                }
+            )
+        return node
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.patch(
+    "/workflows/{workflow_id}/nodes/{node_id}",
+    response_model=CanvasMutationResponseV2,
+)
+def patch_node(
+    workflow_id: str,
+    node_id: str,
+    request: CanvasNodePatchRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> CanvasMutationResponseV2:
+    try:
+        current = runtime.workflows.get_node(workflow_id, node_id)
+        expected_revision = _expected_revision(if_match, workflow_id)
+        if current.node_type == "editing" and request.structured_content is not None:
+            raw_manifest = request.structured_content.get("manifest", request.structured_content)
+            manifest = EditingManifestV2.model_validate(raw_manifest)
+            node = runtime.editing_nodes.update_manifest(
+                workflow_id,
+                node_id,
+                manifest,
+                expected_revision=expected_revision,
+            )
+        else:
+            runtime.ad_media_validation.validate(
+                node_type=current.node_type,
+                semantic_role=current.semantic_role,
+                structured_content=(
+                    request.structured_content
+                    if request.structured_content is not None
+                    else current.structured_content
+                ),
+            )
+            node = runtime.nodes.patch(
+                workflow_id,
+                node_id,
+                request,
+                expected_revision=expected_revision,
+            )
+        workflow = runtime.projects.get_workflow(workflow_id)
+    except ValueError as error:
+        raise _http_error(
+            "editing_manifest_invalid",
+            422,
+            "Editing manifest is invalid.",
+        ) from error
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow, node=node)
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/export",
+    response_model=EditingExportAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def export_editing_node(
+    workflow_id: str,
+    node_id: str,
+    request: EditingExportRequestV2,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> EditingExportAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.editing_exports.start(
+            workflow_id,
+            node_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+        if accepted.status == "queued":
+            background_tasks.add_task(
+                runtime.editing_exports.resume,
+                accepted.export_id,
+            )
+        return accepted
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/exports/{export_id}/cancel",
+    response_model=EditingExportCancelResponseV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def cancel_editing_export(
+    workflow_id: str,
+    node_id: str,
+    export_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> EditingExportCancelResponseV2:
+    try:
+        return runtime.editing_exports.cancel(workflow_id, node_id, export_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.delete(
+    "/workflows/{workflow_id}/nodes/{node_id}",
+    response_model=CanvasMutationResponseV2,
+)
+def delete_node(
+    workflow_id: str,
+    node_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> CanvasMutationResponseV2:
+    try:
+        workflow = runtime.nodes.delete(
+            workflow_id,
+            node_id,
+            expected_revision=_expected_revision(if_match, workflow_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow)
+
+
+@router.post(
+    "/workflows/{workflow_id}/bindings",
+    response_model=CanvasMutationResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_binding(
+    workflow_id: str,
+    request: CanvasBindingCreateRequestV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> CanvasMutationResponseV2:
+    try:
+        binding = runtime.bindings.create(
+            workflow_id,
+            request,
+            expected_revision=_expected_revision(if_match, workflow_id),
+        )
+        workflow = runtime.projects.get_workflow(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow, binding=binding)
+
+
+@router.delete(
+    "/workflows/{workflow_id}/bindings/{binding_id}",
+    response_model=CanvasMutationResponseV2,
+)
+def delete_binding(
+    workflow_id: str,
+    binding_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> CanvasMutationResponseV2:
+    try:
+        workflow = runtime.bindings.delete(
+            workflow_id,
+            binding_id,
+            expected_revision=_expected_revision(if_match, workflow_id),
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
+    return CanvasMutationResponseV2(workflow=workflow)
+
+
+@router.post(
+    "/workflows/{workflow_id}/assets/upload",
+    response_model=ProjectAssetUploadResponseV2,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_asset(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    file: Annotated[UploadFile, File()],
+    metadata: Annotated[str, Form()],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ProjectAssetUploadResponseV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        parsed = ProjectAssetUploadMetadataV2.model_validate_json(metadata)
+        runtime.projects.get_workflow(workflow_id)
+        asset = runtime.assets.upload_bytes(
+            workflow_id,
+            filename=file.filename or "upload",
+            mime_type=file.content_type or "",
+            content=await file.read(),
+            title=parsed.title,
+            media_type=parsed.media_type,
+            idempotency_key=idempotency_key,
+        )
+    except (ValueError, json.JSONDecodeError) as error:
+        raise _http_error("asset_upload_invalid", 422, "Asset metadata is invalid.") from error
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return ProjectAssetUploadResponseV2(workflow_id=workflow_id, asset=asset)
+
+
+@router.get(
+    "/workflows/{workflow_id}/assets",
+    response_model=ProjectAssetListResponseV2,
+)
+def list_project_assets(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> ProjectAssetListResponseV2:
+    try:
+        runtime.projects.get_workflow(workflow_id)
+        assets = runtime.assets.list_project_assets(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return ProjectAssetListResponseV2(workflow_id=workflow_id, assets=assets)
+
+
+@router.get("/assets/recommended", response_model=ImageLibraryListResponseV2)
+def list_recommended_assets(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    category: Annotated[str | None, Query()] = None,
+) -> ImageLibraryListResponseV2:
+    return _image_library_response(
+        runtime.assets.list_images(scope="recommended", category=category)
+    )
+
+
+@router.get("/assets/mine", response_model=ImageLibraryListResponseV2)
+def list_my_assets(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    category: Annotated[str | None, Query()] = None,
+) -> ImageLibraryListResponseV2:
+    return _image_library_response(runtime.assets.list_images(scope="my", category=category))
+
+
+@router.get("/assets/{asset_id}/content")
+def get_asset_content(
+    asset_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    range_header: Annotated[str | None, Header(alias="Range")] = None,
+) -> Response:
+    try:
+        content = runtime.assets.open_content(asset_id, range_header=range_header)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    return Response(
+        content=content.body,
+        status_code=content.status_code,
+        media_type=content.media_type,
+        headers=content.headers,
+    )
+
+
+@router.post(
+    "/assets/{asset_id}/save-to-library",
+    response_model=AssetLibraryEntityDetailV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def save_asset_to_library(
+    asset_id: str,
+    request: SaveImageToLibraryRequestV2,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> AssetLibraryEntityDetailV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        return runtime.assets.save_image_to_library(
+            asset_id,
+            category=request.category,
+            display_name=request.display_name,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.delete("/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_asset(
+    asset_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> None:
+    try:
+        runtime.assets.delete_asset(asset_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
+    "/workflows/{workflow_id}/chat/timeline",
+    response_model=ChatTimelineListResponseV2,
+)
+def get_chat_timeline(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    after_seq: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+) -> ChatTimelineListResponseV2:
+    try:
+        return runtime.conversations.get_timeline(
+            workflow_id,
+            after_seq=after_seq,
+            limit=limit,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.post(
+    "/workflows/{workflow_id}/chat/messages",
+    response_model=ChatTurnAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_chat_message(
+    workflow_id: str,
+    request: ChatMessageRequestV2,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ChatTurnAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.conversations.submit_message(
+            workflow_id,
+            text=request.text,
+            mentioned_node_ids=request.mentioned_node_ids,
+            mentioned_image_asset_ids=request.mentioned_image_asset_ids,
+            video_skill_run_id=request.video_skill_run_id,
+            auto_continue=request.auto_continue,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    background_tasks.add_task(runtime.conversations.process_turn, accepted.turn_id)
+    return accepted
+
+
+@router.get(
+    "/workflows/{workflow_id}/chat/turns/{turn_id}",
+    response_model=ChatTurnV2,
+)
+def get_chat_turn(
+    workflow_id: str,
+    turn_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> ChatTurnV2:
+    try:
+        turn = runtime.conversations.get_turn(turn_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    if turn.workflow_id != workflow_id:
+        raise _http_error("chat_turn_not_found", 404, "Chat turn was not found.")
+    return turn
+
+
+@router.post(
+    "/workflows/{workflow_id}/chat/proposals/{proposal_id}/actions",
+    response_model=ChatTurnAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def act_on_chat_proposal(
+    workflow_id: str,
+    proposal_id: str,
+    request: ProposalActionRequestV2,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ChatTurnAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.conversations.act_on_proposal(
+            workflow_id,
+            proposal_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    background_tasks.add_task(runtime.conversations.process_turn, accepted.turn_id)
+    return accepted
+
+
+@router.post(
+    "/workflows/{workflow_id}/skill-runs",
+    response_model=VideoSkillRunV2,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_video_skill_run(
+    workflow_id: str,
+    request: VideoSkillRunCreateRequestV2,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> VideoSkillRunV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        runtime.workflows.get_workflow(workflow_id)
+        loaded = runtime.video_skills.load(request.skill_id, request.skill_version)
+        return runtime.conversation_repository.create_skill_run(
+            workflow_id,
+            skill_id=loaded.manifest.skill_id,
+            skill_version=loaded.manifest.version,
+            recipe_topics=tuple(
+                str(topic["topic_id"]) for topic in loaded.recipe["planning_topics"]
+            ),
+            source_skill_run_id=request.source_skill_run_id,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.post(
+    "/workflows/{workflow_id}/runs",
+    response_model=CanvasRunAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def start_canvas_run(
+    workflow_id: str,
+    request: CanvasRunRequestV2,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> CanvasRunAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.run_service.start_or_extend(
+            workflow_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+        background_tasks.add_task(runtime.scheduler.resume, accepted.execution_id)
+        return accepted
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.post(
+    "/workflows/{workflow_id}/runs/{execution_id}/cancel",
+    response_model=CanvasRunCancelResponseV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def cancel_canvas_run(
+    workflow_id: str,
+    execution_id: str,
+    request: CanvasRunCancelRequestV2,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CanvasRunCancelResponseV2:
+    try:
+        execution = runtime.runtime_repository.get_execution(execution_id)
+        if execution.workflow_id != workflow_id:
+            raise V2PersistenceError(
+                "execution_not_found",
+                "Execution was not found.",
+                stage="agent_canvas_run_api",
+            )
+        return runtime.scheduler.cancel(execution_id, reason=request.reason)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
+    "/workflows/{workflow_id}/runtime",
+    response_model=CanvasRuntimeSnapshotV2,
+)
+def get_canvas_runtime_snapshot(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CanvasRuntimeSnapshotV2:
+    try:
+        return runtime.runtime_snapshots.get(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
+    "/workflows/{workflow_id}/events",
+    response_model=CanvasRuntimeEventListV2,
+)
+def list_canvas_runtime_events(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    after_seq: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> CanvasRuntimeEventListV2:
+    try:
+        runtime.workflows.get_workflow(workflow_id)
+        _validate_event_cursor(runtime.event_repository, workflow_id, after_seq)
+        events = runtime.event_repository.list_after(workflow_id, after_seq)[:limit]
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    items = tuple(
+        CanvasRuntimeEventV2(
+            sequence_no=event.seq,
+            workflow_id=event.workflow_id,
+            event_type=event.event_type,
+            execution_id=event.execution_id,
+            node_id=event.node_id,
+            asset_id=event.asset_id,
+            payload=event.payload,
+            created_at=event.created_at,
+        )
+        for event in events
+    )
+    return CanvasRuntimeEventListV2(
+        items=items,
+        next_cursor=items[-1].sequence_no if items else after_seq,
+    )
+
+
+@router.get("/workflows/{workflow_id}/events/stream")
+def stream_canvas_runtime_events(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    after_seq: Annotated[int, Query(ge=0)] = 0,
+) -> StreamingResponse:
+    runtime.workflows.get_workflow(workflow_id)
+    _validate_event_cursor(runtime.event_repository, workflow_id, after_seq)
+
+    async def body():
+        cursor = after_seq
+        while True:
+            events = runtime.event_repository.list_after(workflow_id, cursor)
+            if not events:
+                yield ": keepalive\n\n"
+                await asyncio.sleep(1)
+                continue
+            for event in events:
+                item = CanvasRuntimeEventV2(
+                    sequence_no=event.seq,
+                    workflow_id=event.workflow_id,
+                    event_type=event.event_type,
+                    execution_id=event.execution_id,
+                    node_id=event.node_id,
+                    asset_id=event.asset_id,
+                    payload=event.payload,
+                    created_at=event.created_at,
+                )
+                cursor = event.seq
+                yield (
+                    f"id: {item.sequence_no}\n"
+                    f"event: {item.event_type}\n"
+                    f"data: {item.model_dump_json()}\n\n"
+                )
+
+    return StreamingResponse(body(), media_type="text/event-stream")
+
+
+def _validate_event_cursor(
+    events: EventRepository,
+    workflow_id: str,
+    after_seq: int,
+) -> None:
+    if after_seq == 0:
+        return
+    oldest = events.min_seq(workflow_id)
+    if oldest and oldest > after_seq + 1:
+        raise _http_error(
+            "event_cursor_expired",
+            409,
+            "Event cursor is older than the retained event window.",
+            details={"runtime_refresh_required": True},
+        )
+
+
+@router.get(
+    "/provider-models/capabilities",
+    response_model=CanvasProviderModelCapabilityListV2,
+)
+def list_canvas_provider_capabilities(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    output_type: Annotated[str | None, Query()] = None,
+    input_types: Annotated[str, Query()] = "",
+    include_unavailable: Annotated[bool, Query()] = False,
+) -> CanvasProviderModelCapabilityListV2:
+    requested_inputs = frozenset(item.strip() for item in input_types.split(",") if item.strip())
+    if output_type is not None and output_type not in {"image", "video", "audio"}:
+        raise _http_error(
+            "invalid_capability_filter",
+            422,
+            "Provider capability filter is invalid.",
+        )
+    if not requested_inputs.issubset({"text", "image", "video", "audio"}):
+        raise _http_error(
+            "invalid_capability_filter",
+            422,
+            "Provider capability filter is invalid.",
+        )
+    return runtime.provider_capabilities.list(
+        output_type=output_type,
+        input_types=requested_inputs,
+        include_unavailable=include_unavailable,
+    )
+
+
+def _expected_revision(value: str | None, workflow_id: str) -> int:
+    try:
+        parsed = parse_workflow_if_match(value, workflow_id, required=True)
+    except V2PreconditionError as error:
+        raise _http_error(error.code, error.status_code, str(error)) from error
+    assert parsed is not None
+    return parsed
+
+
+def _expected_project_version(value: str | None, project_id: str) -> int:
+    try:
+        return parse_project_if_match(value, project_id)
+    except V2PreconditionError as error:
+        raise _http_error(error.code, error.status_code, str(error)) from error
+
+
+def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
+    status_code = {
+        "project_not_found": 404,
+        "project_not_trashed": 409,
+        "project_state_conflict": 412,
+        "project_cursor_invalid": 422,
+        "project_page_invalid": 422,
+        "project_update_invalid": 422,
+        "workflow_not_found": 404,
+        "node_not_found": 404,
+        "binding_not_found": 404,
+        "asset_not_found": 404,
+        "asset_not_ready": 409,
+        "unsupported_canvas_model": 422,
+        "workflow_revision_conflict": 412,
+        "idempotency_conflict": 409,
+        "node_output_immutable": 409,
+        "binding_cycle_detected": 409,
+        "binding_media_incompatible": 422,
+        "binding_model_incompatible": 409,
+        "asset_media_incompatible": 422,
+        "asset_library_media_incompatible": 422,
+        "invalid_semantic_role": 422,
+        "semantic_role_node_type_mismatch": 422,
+        "invalid_role_content": 422,
+        "scene_design_board_contract_invalid": 422,
+        "storyboard_grid_contract_invalid": 422,
+        "reference_cardinality_exceeded": 422,
+        "asset_is_referenced": 409,
+        "node_type_mismatch": 422,
+        "editing_manifest_invalid": 422,
+        "editing_duplicate_bgm": 409,
+        "editing_audio_role_invalid": 422,
+        "editing_manifest_revision_conflict": 409,
+        "editing_no_ready_video": 409,
+        "editing_export_already_active": 409,
+        "editing_export_not_found": 404,
+        "editing_export_already_terminal": 409,
+        "editing_export_cancel_failed": 409,
+        "asset_range_invalid": 416,
+        "asset_range_unsatisfiable": 416,
+        "mentioned_node_not_found": 422,
+        "mentioned_asset_not_found": 422,
+        "mentioned_asset_media_type_unsupported": 422,
+        "chat_turn_not_found": 404,
+        "proposal_not_found": 404,
+        "proposal_not_pending": 409,
+        "proposal_option_not_found": 422,
+        "proposal_revision_conflict": 409,
+        "video_skill_not_found": 404,
+        "agent_skill_manifest_invalid": 503,
+        "agent_skill_file_missing": 503,
+        "agent_skill_digest_mismatch": 503,
+        "execution_not_found": 404,
+        "execution_already_terminal": 409,
+        "execution_cancel_failed": 503,
+        "execution_persistence_failed": 503,
+        "node_not_runnable": 422,
+        "node_already_ready": 409,
+        "node_already_working": 409,
+        "failed_node_retry_required": 409,
+        "node_model_incompatible": 409,
+        "node_executor_unavailable": 503,
+    }.get(error.code, 503)
+    details = getattr(error, "details", None)
+    return _http_error(
+        error.code,
+        status_code,
+        str(error),
+        details=details if isinstance(details, dict) else None,
+    )
+
+
+def _http_error(
+    code: str,
+    status_code: int,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> HTTPException:
+    return HTTPException(
+        status_code=status_code,
+        detail={"code": code, "message": message, **(details or {})},
+    )
+
+
+def _image_library_response(items) -> ImageLibraryListResponseV2:
+    return ImageLibraryListResponseV2(items=tuple(item.model_dump(mode="json") for item in items))
