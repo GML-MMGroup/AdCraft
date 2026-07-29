@@ -10,8 +10,8 @@ import "./home.css";
 const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
-  "One Sentence",
-  "Becomes an",
+  "ONE SENTENCE",
+  "BECOMES AN",
   "Ad film.",
 ] as const;
 const HERO_CHARACTER_START_DELAY_MS = 80;

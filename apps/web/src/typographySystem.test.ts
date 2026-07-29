@@ -20,6 +20,9 @@ const fontFiles = [
   "instrument-serif-latin.woff2",
   "instrument-serif-latin-italic.woff2",
   "jetbrains-mono-latin-variable.woff2",
+  "space-grotesk-latin-variable.woff2",
+  "inter-latin-variable.woff2",
+  "clash-display-bold.woff2",
 ];
 const approvedWeights = new Set([400, 500, 600, 700, 800]);
 const invalidWeights = [...styles.matchAll(/font-weight:\s*(\d+)/g)]
@@ -37,6 +40,9 @@ describe("typography system", () => {
     expect(styles).toContain('url("/fonts/instrument-serif-latin.woff2")');
     expect(styles).toContain('url("/fonts/instrument-serif-latin-italic.woff2")');
     expect(styles).toContain('url("/fonts/jetbrains-mono-latin-variable.woff2")');
+    expect(homeStyles).toContain('url("/fonts/space-grotesk-latin-variable.woff2")');
+    expect(homeStyles).toContain('url("/fonts/inter-latin-variable.woff2")');
+    expect(homeStyles).toContain('url("/fonts/clash-display-bold.woff2")');
 
     for (const fontFile of fontFiles) {
       const path = resolve(appRoot, "public/fonts", fontFile);
@@ -53,11 +59,12 @@ describe("typography system", () => {
     expect(styles).toContain("font-family: var(--font-mono)");
   });
 
-  it("keeps operational headings compact and weights on the approved scale", () => {
+  it("keeps operational headings compact and gives the homepage its approved display scale", () => {
     expect(styles).toMatch(/\.page-title\s*\{[^}]*font-size:\s*clamp\(40px, 3\.4vw, 48px\)/s);
     expect(styles).toMatch(/\.section-title h2\s*\{[^}]*font-size:\s*clamp\(32px, 3vw, 40px\)/s);
-    expect(styles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*clamp\(46px, 4\.6vw, 64px\)/s);
-    expect(mobileHeroStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*clamp\(40px, 11vw, 52px\)/s);
+    expect(homeStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*54px/s);
+    expect(homeStyles).toMatch(/\.home-product-hero__accent\s*\{[^}]*font-size:\s*108px/s);
+    expect(mobileHeroStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*40px/s);
     expect(invalidWeights).toEqual([]);
   });
 });

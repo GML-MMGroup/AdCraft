@@ -35,8 +35,8 @@ describe("HomePage hero title", () => {
 
     expect(lines).toHaveLength(3);
     expect(lines.map((line) => line.textContent)).toEqual([
-      "One Sentence",
-      "Becomes an",
+      "ONE SENTENCE",
+      "BECOMES AN",
       "Ad film.",
     ]);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
@@ -45,18 +45,33 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(0);
   });
 
-  it("uses a lower, more open title lockup and a phrase-level gold sweep clipped to text", () => {
+  it("uses the approved Space Grotesk, Clash Display, and Inter homepage system", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title\s*\{[^}]*font-size:\s*clamp\(46px, 4\.6vw, 64px\);[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.15;[^}]*letter-spacing:\s*0\.012em;[^}]*-webkit-text-stroke:\s*0\.18px currentColor;/s,
+      /@font-face\s*\{[^}]*font-family:\s*"Space Grotesk";[^}]*space-grotesk-latin-variable\.woff2/s,
+    );
+    expect(styles).toMatch(
+      /@font-face\s*\{[^}]*font-family:\s*"Clash Display";[^}]*clash-display-bold\.woff2/s,
+    );
+    expect(styles).toMatch(
+      /@font-face\s*\{[^}]*font-family:\s*"Inter";[^}]*inter-latin-variable\.woff2/s,
+    );
+    expect(styles).toMatch(
+      /\.home-page\s*\{[^}]*--home-font-display:\s*"Space Grotesk"[^;]*;[^}]*--home-font-accent:\s*"Clash Display"[^;]*;[^}]*--home-font-ui:\s*"Inter"[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__title\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-size:\s*54px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.02;[^}]*letter-spacing:\s*0;/s,
     );
     expect(mobileHeroTitleStyles).toMatch(
-      /font-size:\s*clamp\(40px, 11vw, 52px\);[^}]*line-height:\s*1\.15;/s,
+      /font-size:\s*40px;[^}]*line-height:\s*1\.02;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__accent\s*\{[^}]*position:\s*relative;[^}]*width:\s*fit-content;[^}]*color:\s*#8f6722;[^}]*font-style:\s*italic;[^}]*font-weight:\s*400;/s,
+      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*108px;[^}]*font-weight:\s*700;[^}]*line-height:\s*0\.9;[^}]*transform:\s*skewX\(-8deg\);/s,
+    );
+    expect(styles).toMatch(
+      /\.section-title h2\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-weight:\s*700;[^}]*text-transform:\s*uppercase;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__accent::after\s*\{[^}]*content:\s*attr\(data-accent-text\);[^}]*background-size:\s*240% 100%;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*-webkit-text-fill-color:\s*transparent;[^}]*pointer-events:\s*none;/s,

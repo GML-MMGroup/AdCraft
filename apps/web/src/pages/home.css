@@ -1,3 +1,34 @@
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-latin-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Clash Display";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/clash-display-bold.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/inter-latin-variable.woff2") format("woff2");
+}
+
+.home-page {
+  --home-font-display: "Space Grotesk", "Smiley Sans", "Noto Sans SC", "PingFang SC", sans-serif;
+  --home-font-accent: "Clash Display", "Space Grotesk", "Smiley Sans", sans-serif;
+  --home-font-ui: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--home-font-ui);
+}
+
 .home-product-hero {
   --home-product-hero-height: 570px;
   --home-product-media-height: 360px;
@@ -23,12 +54,11 @@
 .home-product-hero__title {
   max-width: 640px;
   color: #202235;
-  font-size: clamp(46px, 4.6vw, 64px);
-  font-family: var(--font-editorial);
-  font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: 0.012em;
-  -webkit-text-stroke: 0.18px currentColor;
+  font-family: var(--home-font-display);
+  font-size: 54px;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: 0;
 }
 
 .home-product-hero__title-line {
@@ -87,10 +117,17 @@
 .home-product-hero__accent {
   position: relative;
   width: fit-content;
+  margin-top: 14px;
+  padding-right: 0.08em;
   white-space: nowrap;
   color: #8f6722;
-  font-style: italic;
-  font-weight: 400;
+  font-family: var(--home-font-accent);
+  font-size: 108px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 0.9;
+  transform: skewX(-8deg);
+  transform-origin: left center;
 }
 
 .home-product-hero__accent .home-product-hero__character {
@@ -312,7 +349,11 @@
   }
 
   .home-product-hero__title {
-    font-size: clamp(42px, 5.4vw, 54px);
+    font-size: 48px;
+  }
+
+  .home-product-hero__accent {
+    font-size: 92px;
   }
 }
 
@@ -343,8 +384,13 @@
   }
 
   .home-product-hero__title {
-    font-size: clamp(40px, 11vw, 52px);
-    line-height: 1.15;
+    font-size: 40px;
+    line-height: 1.02;
+  }
+
+  .home-product-hero__accent {
+    margin-top: 10px;
+    font-size: 70px;
   }
 
   .home-product-hero__description {
@@ -400,11 +446,12 @@
 
 .section-title h2 {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--home-font-display);
   font-size: clamp(32px, 3vw, 40px);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .section-title p {
