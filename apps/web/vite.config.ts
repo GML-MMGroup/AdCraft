@@ -45,9 +45,6 @@ export default defineConfig({
           if (id.includes("node_modules/@xzdarcy/react-timeline-editor")) {
             return "timeline-editor";
           }
-          if (id.includes("node_modules/three")) {
-            return "vendor-three";
-          }
           return undefined;
         },
       },

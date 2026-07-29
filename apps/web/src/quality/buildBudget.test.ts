@@ -50,23 +50,17 @@ describe("build budget", () => {
     expect(budgetSource).toContain('asset.name.startsWith("vendor-react-flow-")');
   });
 
-  test("budgets the dark Home cosmic renderer as a lazy feature", () => {
+  test("does not retain the removed Home WebGL renderer budget", () => {
     const viteSource = readFileSync(
       join(process.cwd(), "vite.config.ts"),
       "utf8",
     );
     const budgetSource = readFileSync(budgetScriptPath, "utf8");
 
-    expect(viteSource).toContain('return "vendor-three"');
-    expect(budgetSource).toContain(
-      "MAX_HOME_COSMIC_RENDERER_JS_BYTES",
-    );
-    expect(budgetSource).toContain(
-      'asset.name.startsWith("homeCosmicRenderer-")',
-    );
-    expect(budgetSource).toContain(
-      'asset.name.startsWith("vendor-three-")',
-    );
+    expect(viteSource).not.toContain('return "vendor-three"');
+    expect(budgetSource).not.toContain("MAX_HOME_COSMIC_RENDERER_JS_BYTES");
+    expect(budgetSource).not.toContain('asset.name.startsWith("homeCosmicRenderer-")');
+    expect(budgetSource).not.toContain('asset.name.startsWith("vendor-three-")');
   });
 
   test("counts deduplicated CSS across Home's full static import graph", () => {
@@ -154,8 +148,6 @@ describe("build budget", () => {
       "WorkflowPage-fixture.js",
       "vendor-react-flow-fixture.js",
       "AssetEntityViewer-fixture.js",
-      "homeCosmicRenderer-fixture.js",
-      "vendor-three-fixture.js",
       "global-fixture.css",
       "home-fixture.css",
       "WorkflowPage-fixture.css",

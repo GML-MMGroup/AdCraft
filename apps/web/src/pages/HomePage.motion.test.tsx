@@ -6,22 +6,8 @@ import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
-const cosmicStyles = readFileSync(
-  resolve(
-    process.cwd(),
-    "src/pages/home-cosmic/home-cosmic.css",
-  ),
-  "utf8",
-);
 const homeSource = readFileSync(
   resolve(process.cwd(), "src/pages/HomePage.tsx"),
-  "utf8",
-);
-const cosmicSceneSource = readFileSync(
-  resolve(
-    process.cwd(),
-    "src/pages/home-cosmic/HomeCosmicScene.tsx",
-  ),
   "utf8",
 );
 const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
@@ -283,32 +269,19 @@ describe("HomePage motion", () => {
     );
   });
 
-  it("mounts one decorative cosmic scene beneath Home content", () => {
+  it("does not mount an animated cosmic layer over the shared static background", () => {
     document.documentElement.dataset.theme = "dark";
     const view = render(<HomePage navigate={vi.fn()} />);
 
     expect(
       view.container.querySelectorAll(".home-cosmic-scene"),
-    ).toHaveLength(1);
-    expect(styles).toMatch(
-      /\.home-page\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate;/s,
-    );
-    expect(styles).toMatch(
-      /\.home-product-hero,[\s\S]*?\.home-page\s*>\s*\.content-wrap\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;/,
-    );
-    expect(cosmicStyles).toMatch(
-      /\.home-cosmic-scene\s*\{[^}]*position:\s*fixed;[^}]*pointer-events:\s*none;/s,
-    );
+    ).toHaveLength(0);
+    expect(homeSource).not.toContain("HomeCosmicScene");
+    expect(homeSource).not.toContain("home-cosmic");
   });
 
-  it("keeps Three.js behind a dark-theme dynamic import", () => {
-    expect(homeSource).toContain(
-      'import { HomeCosmicScene } from "./home-cosmic/HomeCosmicScene"',
-    );
+  it("does not load a WebGL renderer for the static Home background", () => {
     expect(homeSource).not.toMatch(/from\s+["']three["']/);
-    expect(cosmicSceneSource).toContain(
-      'import("./homeCosmicRenderer")',
-    );
-    expect(cosmicSceneSource).not.toMatch(/from\s+["']three["']/);
+    expect(homeSource).not.toContain("homeCosmicRenderer");
   });
 });

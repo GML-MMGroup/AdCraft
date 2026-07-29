@@ -11,8 +11,6 @@ const MAX_AGENT_CANVAS_ROUTE_CSS_BYTES = 48 * 1024;
 const MAX_VENDOR_REACT_FLOW_JS_BYTES = 220 * 1024;
 const MAX_VENDOR_REACT_FLOW_CSS_BYTES = 20 * 1024;
 const MAX_ASSET_ENTITY_VIEWER_JS_BYTES = 8 * 1024;
-const MAX_HOME_COSMIC_RENDERER_JS_BYTES = 24 * 1024;
-const MAX_VENDOR_THREE_JS_BYTES = 700 * 1024;
 const MAX_CSS_BYTES = 16 * 1024;
 const MAX_HOME_ROUTE_CSS_BYTES = 16 * 1024;
 
@@ -110,15 +108,11 @@ const agentCanvasRouteCss = cssAssets.find((asset) => asset.name.startsWith("Wor
 const vendorReactFlowJs = jsAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
 const vendorReactFlowCss = cssAssets.find((asset) => asset.name.startsWith("vendor-react-flow-"));
 const assetEntityViewerJs = jsAssets.find((asset) => asset.name.startsWith("AssetEntityViewer-"));
-const homeCosmicRendererJs = jsAssets.find((asset) => asset.name.startsWith("homeCosmicRenderer-"));
-const vendorThreeJs = jsAssets.find((asset) => asset.name.startsWith("vendor-three-"));
 // The asset viewer is loaded only after a user opens an asset card.
 const featureJsAssets = [
   agentCanvasRouteJs,
   vendorReactFlowJs,
   assetEntityViewerJs,
-  homeCosmicRendererJs,
-  vendorThreeJs,
 ].filter(Boolean);
 const featureJsNames = new Set(featureJsAssets.map((asset) => asset.name));
 const initialNames = new Set(initialEntries.map((entry) => assetName(entry.file)));
@@ -196,16 +190,6 @@ if (!assetEntityViewerJs) {
   failures.push("asset entity viewer lazy chunk is missing");
 } else if (assetEntityViewerJs.size > MAX_ASSET_ENTITY_VIEWER_JS_BYTES) {
   failures.push(`asset entity viewer JS ${assetEntityViewerJs.name} is ${bytes(assetEntityViewerJs.size)}, expected <= ${bytes(MAX_ASSET_ENTITY_VIEWER_JS_BYTES)}`);
-}
-if (!homeCosmicRendererJs) {
-  failures.push("Home cosmic renderer lazy chunk is missing");
-} else if (homeCosmicRendererJs.size > MAX_HOME_COSMIC_RENDERER_JS_BYTES) {
-  failures.push(`Home cosmic renderer JS ${homeCosmicRendererJs.name} is ${bytes(homeCosmicRendererJs.size)}, expected <= ${bytes(MAX_HOME_COSMIC_RENDERER_JS_BYTES)}`);
-}
-if (!vendorThreeJs) {
-  failures.push("Three.js lazy vendor chunk is missing");
-} else if (vendorThreeJs.size > MAX_VENDOR_THREE_JS_BYTES) {
-  failures.push(`Three.js vendor JS ${vendorThreeJs.name} is ${bytes(vendorThreeJs.size)}, expected <= ${bytes(MAX_VENDOR_THREE_JS_BYTES)}`);
 }
 if (coreCssBytes > MAX_CSS_BYTES) {
   failures.push(`core CSS is ${bytes(coreCssBytes)}, expected <= ${bytes(MAX_CSS_BYTES)}`);
