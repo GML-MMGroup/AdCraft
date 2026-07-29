@@ -1,0 +1,297 @@
+"""Lease-safe provider polling, download recovery, and output publication."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_runtime_repository import (
+    AgentCanvasRuntimeRepository,
+)
+from app.persistence.event_repository import EventRepository
+from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas_runtime import CanvasProviderTaskV2, NodeExecutionLeaseV2
+from app.services.agent_canvas_node_execution import (
+    GeneratedMediaPayload,
+    NodeExecutionContext,
+)
+from app.schemas.v2_persistence import V2EventInsert
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderPollResult:
+    status: str
+    remote_task_id: str | None = None
+    result_descriptor: dict[str, object] | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+Poller = Callable[[CanvasProviderTaskV2], ProviderPollResult]
+Downloader = Callable[[CanvasProviderTaskV2], GeneratedMediaPayload]
+Publisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], str]
+BatchCallback = Callable[[tuple[str, ...]], None]
+
+
+class ProviderTaskRecoveryService:
+    """Reconcile recoverable tasks independently, then advance schedulers once."""
+
+    def __init__(
+        self,
+        workflows: AgentCanvasWorkflowRepository,
+        runtime: AgentCanvasRuntimeRepository,
+        *,
+        poller: Poller,
+        downloader: Downloader,
+        media_publisher: Publisher,
+        on_batch_reconciled: BatchCallback | None = None,
+        owner_id: str = "provider-recovery",
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
+        self._workflows = workflows
+        self._runtime = runtime
+        self._poller = poller
+        self._downloader = downloader
+        self._media_publisher = media_publisher
+        self._on_batch_reconciled = on_batch_reconciled
+        self._owner_id = owner_id
+        self._clock = clock
+
+    def recover_due_tasks(self) -> tuple[str, ...]:
+        reconciled: list[str] = []
+        execution_ids: set[str] = set()
+        for task in self._runtime.list_recoverable_tasks():
+            now = self._clock()
+            if task.next_poll_at is not None and task.next_poll_at > now:
+                continue
+            try:
+                if self._recover_one(task):
+                    reconciled.append(task.task_id)
+                    execution_ids.add(task.execution_id)
+            except Exception as error:
+                self._record_retryable_error(task, error)
+                execution_ids.add(task.execution_id)
+        if execution_ids and self._on_batch_reconciled is not None:
+            self._on_batch_reconciled(tuple(sorted(execution_ids)))
+        return tuple(reconciled)
+
+    def _recover_one(self, task: CanvasProviderTaskV2) -> bool:
+        now = self._clock()
+        lease = self._runtime.claim_lease(
+            task.execution_id,
+            task.node_id,
+            owner_id=self._owner_id,
+            now=now,
+            ttl=timedelta(seconds=60),
+        )
+        if lease is None:
+            return False
+        poll = self._poller(task)
+        remote_task_id = poll.remote_task_id or task.remote_task_id
+        if poll.status in {"submitted", "waiting", "running"}:
+            if task.recovery_deadline <= now:
+                self._fail_task(
+                    task,
+                    lease,
+                    status="failed",
+                    remote_task_id=remote_task_id,
+                    code="provider_recovery_exhausted",
+                    message="Provider task recovery deadline was exhausted.",
+                )
+                return True
+            waiting = task.model_copy(
+                update={
+                    "remote_task_id": remote_task_id,
+                    "status": "waiting",
+                    "lease_generation": lease.generation,
+                    "next_poll_at": now + timedelta(seconds=8),
+                    "result_descriptor": poll.result_descriptor or task.result_descriptor,
+                    "error": None,
+                }
+            )
+            self._runtime.put_provider_task(waiting, now=now)
+            self._runtime.update_member(
+                task.execution_id,
+                task.node_id,
+                state="running",
+                phase="waiting_provider",
+                provider_task_id=task.task_id,
+                now=now,
+                event_type="provider_task_waiting",
+            )
+            self._runtime.complete_lease(lease, now=now)
+            return True
+        if poll.status in {"failed", "cancelled"}:
+            self._fail_task(
+                task,
+                lease,
+                status=poll.status,
+                remote_task_id=remote_task_id,
+                code=poll.error_code or "provider_task_failed",
+                message=poll.error_message or "Provider task failed.",
+            )
+            return True
+        if poll.status != "succeeded":
+            raise RuntimeError("provider_poll_status_invalid")
+        current = task.model_copy(
+            update={
+                "remote_task_id": remote_task_id,
+                "status": "recovering",
+                "lease_generation": lease.generation,
+                "result_descriptor": poll.result_descriptor or task.result_descriptor,
+                "error": None,
+            }
+        )
+        self._runtime.put_provider_task(current, now=now)
+        payload = self._downloader(current)
+        node = self._workflows.get_node(task.workflow_id, task.node_id)
+        context = NodeExecutionContext(
+            execution_id=task.execution_id,
+            node=node,
+            inputs=(),
+            model_id=node.model_id,
+        )
+        fingerprint = f"provider-task:{task.task_id}"
+        asset_id = self._media_publisher(context, payload, fingerprint)
+        self._workflows.publish_node_output(
+            task.workflow_id,
+            task.node_id,
+            execution_id=task.execution_id,
+            updated_at=now,
+            output_asset_id=asset_id,
+        )
+        completed = current.model_copy(
+            update={
+                "status": "succeeded",
+                "next_poll_at": None,
+                "error": None,
+            }
+        )
+        self._runtime.put_provider_task(completed, now=now)
+        self._runtime.update_member(
+            task.execution_id,
+            task.node_id,
+            state="succeeded",
+            phase=None,
+            provider_task_id=task.task_id,
+            now=now,
+        )
+        self._runtime.complete_lease(lease, now=now)
+        return True
+
+    def _fail_task(
+        self,
+        task: CanvasProviderTaskV2,
+        lease: NodeExecutionLeaseV2,
+        *,
+        status: str,
+        remote_task_id: str | None,
+        code: str,
+        message: str,
+    ) -> None:
+        now = self._clock()
+        error = CanvasNodeErrorV2(
+            code=code,
+            message=message,
+            retryable=False,
+        )
+        failed = task.model_copy(
+            update={
+                "remote_task_id": remote_task_id,
+                "status": status,
+                "lease_generation": lease.generation,
+                "next_poll_at": None,
+                "error": error,
+            }
+        )
+        self._runtime.put_provider_task(failed, now=now)
+        self._workflows.set_node_runtime_state(
+            task.workflow_id,
+            task.node_id,
+            status="failed",
+            updated_at=now,
+            error=error,
+            execution_id=task.execution_id,
+            event_type="node_failed",
+            event_payload={"code": error.code},
+        )
+        self._runtime.update_member(
+            task.execution_id,
+            task.node_id,
+            state="failed",
+            phase=None,
+            now=now,
+            error=error,
+        )
+        self._runtime.complete_lease(lease, now=now)
+
+    def _record_retryable_error(
+        self,
+        task: CanvasProviderTaskV2,
+        error: Exception,
+    ) -> None:
+        now = self._clock()
+        detail = CanvasNodeErrorV2(
+            code=getattr(error, "code", "provider_recovery_failed"),
+            message=str(error),
+            retryable=True,
+        )
+        recovering = task.model_copy(
+            update={
+                "status": "recovering",
+                "next_poll_at": now + timedelta(seconds=8),
+                "error": detail,
+            }
+        )
+        self._runtime.put_provider_task(recovering, now=now)
+        self._runtime.update_member(
+            task.execution_id,
+            task.node_id,
+            state="running",
+            phase="recovering",
+            provider_task_id=task.task_id,
+            now=now,
+            error=detail,
+            event_type="provider_task_recovering",
+            event_payload={"code": detail.code},
+        )
+
+
+class AgentCanvasProviderPollLoop:
+    """Keep later poll cycles available after one unexpected batch failure."""
+
+    def __init__(
+        self,
+        runtime: AgentCanvasRuntimeRepository,
+        events: EventRepository,
+        recover: Callable[[], tuple[str, ...]],
+        *,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    ) -> None:
+        self._runtime = runtime
+        self._events = events
+        self._recover = recover
+        self._clock = clock
+
+    def run_cycle(self) -> bool:
+        try:
+            self._recover()
+            return True
+        except Exception as error:
+            now = self._clock()
+            for execution in self._runtime.list_active_executions():
+                self._events.append(
+                    V2EventInsert(
+                        workflow_id=execution.workflow_id,
+                        execution_id=execution.execution_id,
+                        event_type="provider_poll_loop_error",
+                        created_at=now.isoformat(),
+                        payload={
+                            "code": getattr(error, "code", "provider_poll_loop_failed"),
+                            "retryable": True,
+                        },
+                    )
+                )
+            return False

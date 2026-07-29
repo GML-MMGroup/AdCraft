@@ -160,6 +160,20 @@ class EventRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
 
+    def min_seq(self, workflow_id: str) -> int:
+        """Return the oldest retained workflow sequence, or zero when empty."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                value = connection.execute(
+                    select(func.coalesce(func.min(WorkflowEventRow.seq), 0)).where(
+                        WorkflowEventRow.workflow_id == workflow_id
+                    )
+                ).scalar_one()
+                return int(value)
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
     def count(self, workflow_id: str) -> int:
         """Return the number of committed events for one workflow."""
 
