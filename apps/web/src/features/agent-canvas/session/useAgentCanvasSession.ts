@@ -17,6 +17,10 @@ import {
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
 } from "./workflowMerge.ts";
+import {
+  readyMediaSiblingRequest,
+  type ReadyMediaVariationDraft,
+} from "./readyMediaVariation.ts";
 
 function withNodePatch(
   workflow: AgentCanvasWorkflowV2,
@@ -104,26 +108,11 @@ export function useAgentCanvasSession() {
     });
   }, [agentCanvasWorkflow, applyWorkflow]);
 
-  const createSiblingDraft = useCallback(async (source: CanvasNodeV2) => {
-    if (!["image", "video", "audio"].includes(source.node_type) || source.status !== "ready") {
-      throw new Error("Only Ready media nodes can create an editable sibling Draft.");
-    }
-    return createNode({
-      node_type: source.node_type,
-      semantic_role: source.semantic_role,
-      title: source.title,
-      summary_prompt: source.summary_prompt,
-      generation_prompt: source.generation_prompt,
-      structured_content: { ...source.structured_content },
-      model_id: source.model_id,
-      parameters: { ...source.parameters },
-      position: {
-        x: source.position.x + 64,
-        y: source.position.y + 56,
-      },
-      clone_inputs_from_node_id: source.node_id,
-      video_skill_run_id: source.video_skill_run_id,
-    });
+  const createSiblingDraft = useCallback(async (
+    source: CanvasNodeV2,
+    draft: ReadyMediaVariationDraft,
+  ) => {
+    return createNode(readyMediaSiblingRequest(source, draft));
   }, [createNode]);
 
   const deleteNode = useCallback(async (nodeId: string) => {
