@@ -70,7 +70,7 @@ describe("AgentCanvasInspector", () => {
     const props = {
       patchNode: vi.fn(),
       onRun: vi.fn(),
-      onCreateSibling: vi.fn(),
+      onGenerateVariation: vi.fn(),
       onSaveImageToLibrary: vi.fn(),
       onDelete: vi.fn(),
       onOpenEditing: vi.fn(),
@@ -101,7 +101,7 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={patchNode}
         onRun={onRun}
-        onCreateSibling={vi.fn()}
+        onGenerateVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -137,7 +137,7 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={patchNode}
         onRun={onRun}
-        onCreateSibling={vi.fn()}
+        onGenerateVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -170,7 +170,7 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={vi.fn()}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onGenerateVariation={vi.fn()}
         onSaveImageToLibrary={onSaveImageToLibrary}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -216,7 +216,7 @@ describe("AgentCanvasInspector", () => {
           supports_native_audio: false,
         }]}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onGenerateVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -251,7 +251,7 @@ describe("AgentCanvasInspector", () => {
         node={current}
         patchNode={vi.fn()}
         onRun={vi.fn()}
-        onCreateSibling={vi.fn()}
+        onGenerateVariation={vi.fn()}
         onSaveImageToLibrary={vi.fn()}
         onDelete={vi.fn()}
         onOpenEditing={vi.fn()}
@@ -260,5 +260,196 @@ describe("AgentCanvasInspector", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Run node" })).toBeNull();
+  });
+
+  it("edits a Ready image variation and generates without patching the source", async () => {
+    const source: CanvasNodeV2 = {
+      ...imageNode("Original prompt", 3),
+      status: "ready",
+      output_asset_id: "asset-image-1",
+      model_id: "image-model-v1",
+      parameters: { aspect_ratio: "1:1" },
+    };
+    const patchNode = vi.fn();
+    const onGenerateVariation = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(source)}
+        node={source}
+        patchNode={patchNode}
+        providerCapabilities={[{
+          provider: "volcengine",
+          model_id: "image-model-v2",
+          output_type: "image",
+          accepted_input_types: ["text", "image"],
+          max_references: 8,
+          supported_parameters: ["aspect_ratio"],
+          supported_aspect_ratios: ["1:1", "3:4"],
+          duration_range_seconds: null,
+          pixel_bounds: [512, 4096],
+          available: true,
+          unavailable_reason: null,
+          supports_native_audio: false,
+        }]}
+        onRun={vi.fn()}
+        onGenerateVariation={onGenerateVariation}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("Create editable draft")).toBeNull();
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).disabled).toBe(false);
+    expect((screen.getByLabelText("Provider model") as HTMLSelectElement).disabled).toBe(false);
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Alternative hero" },
+    });
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "A cleaner premium alternative." },
+    });
+    fireEvent.change(screen.getByLabelText("Provider model"), {
+      target: { value: "image-model-v2" },
+    });
+    fireEvent.change(screen.getByLabelText("Aspect ratio"), {
+      target: { value: "3:4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate variation" }));
+
+    await waitFor(() => expect(onGenerateVariation).toHaveBeenCalledWith(source, {
+      title: "Alternative hero",
+      generationPrompt: "A cleaner premium alternative.",
+      modelId: "image-model-v2",
+      parameters: { aspect_ratio: "3:4" },
+    }));
+    expect(patchNode).not.toHaveBeenCalled();
+  });
+
+  it.each(["video", "audio"] as const)(
+    "keeps Ready %s provider and duration controls editable",
+    (nodeType) => {
+      const source: CanvasNodeV2 = {
+        ...imageNode(`Generate ${nodeType}`, 2),
+        node_id: `${nodeType}-1`,
+        node_type: nodeType,
+        semantic_role: `${nodeType}_hero`,
+        status: "ready",
+        output_asset_id: `${nodeType}-asset`,
+        model_id: `${nodeType}-model`,
+        parameters: { duration_seconds: 8 },
+      };
+      render(
+        <AgentCanvasInspector
+          workflow={workflow(source)}
+          node={source}
+          patchNode={vi.fn()}
+          providerCapabilities={[{
+            provider: nodeType === "audio" ? "tianpuyue" : "volcengine",
+            model_id: `${nodeType}-model`,
+            output_type: nodeType,
+            accepted_input_types: ["text"],
+            max_references: 0,
+            supported_parameters: ["duration_seconds"],
+            supported_aspect_ratios: [],
+            duration_range_seconds: [1, 12],
+            pixel_bounds: null,
+            available: true,
+            unavailable_reason: null,
+            supports_native_audio: false,
+          }]}
+          onRun={vi.fn()}
+          onGenerateVariation={vi.fn()}
+          onSaveImageToLibrary={vi.fn()}
+          onDelete={vi.fn()}
+          onOpenEditing={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).disabled).toBe(false);
+      expect((screen.getByLabelText("Provider model") as HTMLSelectElement).disabled).toBe(false);
+      expect((screen.getByLabelText("Duration (seconds)") as HTMLInputElement).disabled).toBe(false);
+    },
+  );
+
+  it("preserves a dirty Ready variation during refresh and resets for a new source", () => {
+    const source: CanvasNodeV2 = {
+      ...imageNode("Original source prompt", 2),
+      status: "ready",
+      output_asset_id: "asset-image-1",
+    };
+    const props = {
+      patchNode: vi.fn(),
+      onRun: vi.fn(),
+      onGenerateVariation: vi.fn(),
+      onSaveImageToLibrary: vi.fn(),
+      onDelete: vi.fn(),
+      onOpenEditing: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const view = render(
+      <AgentCanvasInspector workflow={workflow(source)} node={source} {...props} />,
+    );
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "Dirty variation prompt" },
+    });
+
+    const refreshed = {
+      ...source,
+      generation_prompt: "Canonical refresh prompt",
+      revision: 3,
+    };
+    view.rerender(
+      <AgentCanvasInspector workflow={workflow(refreshed)} node={refreshed} {...props} />,
+    );
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value)
+      .toBe("Dirty variation prompt");
+
+    const anotherSource = {
+      ...source,
+      node_id: "image-2",
+      generation_prompt: "Another source prompt",
+    };
+    view.rerender(
+      <AgentCanvasInspector workflow={workflow(anotherSource)} node={anotherSource} {...props} />,
+    );
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value)
+      .toBe("Another source prompt");
+  });
+
+  it("prevents duplicate variation generation while the first action is pending", async () => {
+    const source: CanvasNodeV2 = {
+      ...imageNode("Original prompt", 2),
+      status: "ready",
+      output_asset_id: "asset-image-1",
+    };
+    let resolveGenerate!: () => void;
+    const onGenerateVariation = vi.fn(() => new Promise<void>((resolve) => {
+      resolveGenerate = resolve;
+    }));
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(source)}
+        node={source}
+        patchNode={vi.fn()}
+        onRun={vi.fn()}
+        onGenerateVariation={onGenerateVariation}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const generate = screen.getByRole("button", { name: "Generate variation" });
+    fireEvent.click(generate);
+    fireEvent.click(generate);
+
+    expect(onGenerateVariation).toHaveBeenCalledTimes(1);
+    expect((generate as HTMLButtonElement).disabled).toBe(true);
+    resolveGenerate();
+    await waitFor(() => expect((generate as HTMLButtonElement).disabled).toBe(false));
   });
 });

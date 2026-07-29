@@ -326,6 +326,29 @@
   resize: vertical;
 }
 
+.agent-canvas-inspector__parameters {
+  display: grid;
+  gap: 10px;
+  padding: 12px 0;
+  border-block: 1px solid rgb(98 101 129 / 12%);
+}
+
+.agent-canvas-inspector__body .agent-canvas-inspector__toggle {
+  display: flex;
+  min-height: 32px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-canvas-inspector__body .agent-canvas-inspector__toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #705cb1;
+}
+
 .agent-canvas-inspector__references {
   display: flex;
   flex-direction: column;

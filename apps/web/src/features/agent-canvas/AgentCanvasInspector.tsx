@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   CloseIcon,
-  EditIcon,
   PlayIcon,
   SaveIcon,
   TrashIcon,
@@ -16,6 +15,8 @@ import type {
   ProviderModelCapabilityV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
+import { AgentCanvasGenerationParameters } from "./AgentCanvasGenerationParameters.tsx";
+import type { ReadyMediaVariationDraft } from "./session/readyMediaVariation.ts";
 
 type PatchNode = (
   nodeId: string,
@@ -38,7 +39,7 @@ export function AgentCanvasInspector({
   providerCapabilitiesLoading = false,
   providerCapabilitiesError = null,
   onRun,
-  onCreateSibling,
+  onGenerateVariation,
   onSaveImageToLibrary,
   onDelete,
   onOpenEditing,
@@ -51,7 +52,10 @@ export function AgentCanvasInspector({
   providerCapabilitiesLoading?: boolean;
   providerCapabilitiesError?: string | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
-  onCreateSibling: (node: CanvasNodeV2) => Promise<CanvasNodeV2 | null>;
+  onGenerateVariation: (
+    source: CanvasNodeV2,
+    draft: ReadyMediaVariationDraft,
+  ) => Promise<void>;
   onSaveImageToLibrary: (
     assetId: string,
     request: SaveAgentCanvasImageToLibraryRequestV2,
@@ -78,7 +82,11 @@ export function AgentCanvasInspector({
   const [libraryName, setLibraryName] = useState(node.title);
   const [librarySaved, setLibrarySaved] = useState(false);
   const [modelId, setModelId] = useState(node.model_id ?? "");
+  const [parameters, setParameters] = useState<Record<string, unknown>>(
+    () => structuredClone(node.parameters),
+  );
   const draftNodeIdRef = useRef(node.node_id);
+  const pendingRef = useRef(false);
 
   useEffect(() => {
     const changedNode = draftNodeIdRef.current !== node.node_id;
@@ -97,6 +105,7 @@ export function AgentCanvasInspector({
     setLibraryName(node.title);
     setLibrarySaved(false);
     setModelId(node.model_id ?? "");
+    setParameters(structuredClone(node.parameters));
     setError(null);
     if (changedNode) setDirty(false);
   }, [dirty, node]);
@@ -119,12 +128,18 @@ export function AgentCanvasInspector({
     !modelId
     || providerCapabilities.some((capability) => capability.model_id === modelId)
   );
+  const selectedCapability = (
+    providerCapabilities.find((capability) => capability.model_id === modelId)
+    ?? (!modelId ? providerCapabilities[0] : null)
+  );
   const inboundReferences = workflow.bindings.filter((binding) =>
     binding.target_node_id === node.node_id
     && binding.source.kind === "image_asset",
   );
 
   async function perform(action: () => Promise<unknown>): Promise<boolean> {
+    if (pendingRef.current) return false;
+    pendingRef.current = true;
     setPending(true);
     setError(null);
     try {
@@ -134,6 +149,7 @@ export function AgentCanvasInspector({
       setError(actionError instanceof Error ? actionError.message : "The node could not be updated.");
       return false;
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   }
@@ -149,6 +165,7 @@ export function AgentCanvasInspector({
       title: title.trim() || node.title,
       generation_prompt: editsGenerationPrompt ? prompt : node.generation_prompt,
       ...(usesProvider ? { model_id: modelId || null } : {}),
+      ...(usesProvider ? { parameters: structuredClone(parameters) } : {}),
       ...(structuredContent ? { structured_content: structuredContent } : {}),
     }));
     if (saved) setDirty(false);
@@ -158,6 +175,16 @@ export function AgentCanvasInspector({
   async function run() {
     if (dirty && !(await save())) return;
     await perform(() => onRun(node));
+  }
+
+  async function generateVariation() {
+    const generated = await perform(() => onGenerateVariation(node, {
+      title: title.trim() || node.title,
+      generationPrompt: prompt,
+      modelId: modelId || null,
+      parameters: structuredClone(parameters),
+    }));
+    if (generated) setDirty(false);
   }
 
   async function saveImageToLibrary() {
@@ -216,7 +243,7 @@ export function AgentCanvasInspector({
             <span>Generation prompt</span>
             <textarea
               value={prompt}
-              disabled={pending || isReadyMedia}
+              disabled={pending}
               onChange={(event) => {
                 setPrompt(event.currentTarget.value);
                 setDirty(true);
@@ -230,7 +257,7 @@ export function AgentCanvasInspector({
             <span>Provider model</span>
             <select
               value={modelId}
-              disabled={pending || providerCapabilitiesLoading || isReadyMedia}
+              disabled={pending || providerCapabilitiesLoading}
               onChange={(event) => {
                 setModelId(event.currentTarget.value);
                 setDirty(true);
@@ -256,6 +283,18 @@ export function AgentCanvasInspector({
           </label>
         ) : null}
 
+        {usesProvider ? (
+          <AgentCanvasGenerationParameters
+            capability={selectedCapability}
+            parameters={parameters}
+            disabled={pending || providerCapabilitiesLoading}
+            onChange={(nextParameters) => {
+              setParameters(nextParameters);
+              setDirty(true);
+            }}
+          />
+        ) : null}
+
         {inboundReferences.length ? (
           <div className="agent-canvas-inspector__references">
             <span>Image references</span>
@@ -271,11 +310,12 @@ export function AgentCanvasInspector({
           <button
             type="button"
             className="agent-canvas-inspector__primary"
+            aria-label="Generate variation"
             disabled={pending}
-            onClick={() => void perform(() => onCreateSibling(node))}
+            onClick={() => void generateVariation()}
           >
-            <EditIcon />
-            <span>Create editable draft</span>
+            <PlayIcon />
+            <span>{pending ? "Generating..." : "Generate variation"}</span>
           </button>
         ) : null}
 
