@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
+from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_operation_contexts
 from app.schemas import workflow_v2_expert_brief_contracts
 from app.schemas import workflow_v2_planning
@@ -18,6 +19,14 @@ from app.schemas import v2_agent_conversations
 
 
 CONTRACT_MODELS = (
+    agent_canvas_ad_media.VisualStyleContractV2,
+    agent_canvas_ad_media.DesignAssetContentV2,
+    agent_canvas_ad_media.SceneBoardPanelV2,
+    agent_canvas_ad_media.SceneDesignBoardContentV2,
+    agent_canvas_ad_media.StoryboardPanelV2,
+    agent_canvas_ad_media.StoryboardGridContentV2,
+    agent_canvas_ad_media.VideoSegmentContentV2,
+    agent_canvas_ad_media.BgmContentV2,
     agent_operation_contexts.FrozenPlanningFacts,
     agent_operation_contexts.PlanningReferenceSummary,
     agent_operation_contexts.PlanningItemSummary,
@@ -35,6 +44,8 @@ CONTRACT_MODELS = (
     agent_operation_contexts.QuickMediaAgentContext,
     agent_operation_contexts.WorkflowConversationAgentContext,
     agent_operation_contexts.ConversationSummaryAgentContext,
+    agent_operation_contexts.DirectorTurnContextV2,
+    agent_operation_contexts.SpecialistContextV2,
     v2_agent_conversations.WorkflowConversationReply,
     v2_agent_conversations.ConversationSummaryResult,
     workflow_v2_planning.V2ProductBrief,
@@ -60,6 +71,12 @@ CONTRACT_MODELS = (
     agent_runtime.AgentRuntimeHealth,
     agent_runtime.AgentRuntimeError,
     agent_runtime.SpecialistDraft,
+    agent_runtime.ConceptOptionV2,
+    agent_runtime.ConceptProposalDraftV2,
+    agent_runtime.AgentCanvasOperationV2,
+    agent_runtime.AgentActionEnvelopeV2,
+    agent_runtime.AdMediaSpecialistDraftV2,
+    agent_runtime.SpecialistDirectResponseV2,
 )
 
 
