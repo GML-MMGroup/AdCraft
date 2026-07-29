@@ -1,17 +1,9 @@
 import type { AgentRunRequest } from "./generated/agent-runtime.js";
+import { AGENT_CAPABILITY_CONTRACT } from "./generated/agent-capabilities.js";
 import { agentSystemPrompts } from "./prompts/agents.js";
 
 type AgentName = AgentRunRequest["agent_name"];
-export type AgentToolName =
-  | "list_canvas_targets"
-  | "resolve_canvas_target"
-  | "read_target_context"
-  | "submit_structured_result"
-  | "save_prompt_revision"
-  | "start_slot_generation"
-  | "start_free_media_generation"
-  | "select_asset_version"
-  | "discard_working_version";
+export type AgentToolName = "submit_structured_result";
 
 export interface AgentDefinition {
   readonly name: AgentName;
@@ -36,24 +28,13 @@ export interface OperationDescriptor {
 }
 
 const definitions: ReadonlyArray<AgentDefinition> = [
-  definition(
-    "front_desk",
-    [
-      "workflow_creation",
-      "intent_contract_planner",
-      "workflow_conversation",
-      "conversation_summary",
-    ],
-    8,
+  ...AGENT_CAPABILITY_CONTRACT.agents.map((capability) =>
+    definition(
+      capability.name,
+      capability.operations,
+      capability.name === "director" ? 1 : 0,
+    ),
   ),
-  definition("script_writer", ["script_writer", "script_edit_normalization", "targeted_revision"], 0),
-  definition("product_designer", ["product_expert_brief", "product_prompt", "product_revision", "targeted_revision"], 0),
-  definition("character_designer", ["character_expert_brief", "character_prompt", "character_revision", "targeted_revision"], 0),
-  definition("scene_designer", ["scene_expert_brief", "scene_prompt", "scene_revision", "visual_style_scope_repair", "targeted_revision"], 0),
-  definition("storyboard_artist", ["storyboard_detail", "storyboard_prompt", "targeted_revision"], 0),
-  definition("video_director", ["shot_video_prompt", "targeted_revision"], 0),
-  definition("bgm_director", ["bgm_expert_brief", "bgm_prompt", "targeted_revision"], 0),
-  definition("quick_media_agent", ["free_image", "free_video", "free_audio"], 0),
 ];
 
 const byName = new Map(definitions.map((item) => [item.name, item]));
@@ -70,14 +51,12 @@ export function getAgentDefinition(name: AgentName): AgentDefinition {
 
 export function agentForSemanticFamily(family: string): AgentName {
   if (family.startsWith("product_")) return "product_designer";
+  if (family.startsWith("prop_")) return "prop_designer";
   if (family.startsWith("character_")) return "character_designer";
   if (family.startsWith("scene_")) return "scene_designer";
   if (operationClass(family) === "shot_cell") return "storyboard_artist";
   if (family === "shot_video_segment") return "video_director";
   if (family === "bgm_track") return "bgm_director";
-  if (family === "free_image" || family === "free_video" || family === "free_audio") {
-    return "quick_media_agent";
-  }
   throw new Error("agent_semantic_family_not_allowed");
 }
 
@@ -123,41 +102,20 @@ export function toolsForOperation(
 }
 
 function allowedTools(
-  agentName: AgentName,
-  operation: string,
+  _agentName: AgentName,
+  _operation: string,
 ): ReadonlyArray<AgentToolName> {
-  if (agentName === "front_desk" || operation !== "targeted_revision") {
-    if (
-      agentName === "quick_media_agent" &&
-      ["free_image", "free_video", "free_audio"].includes(operation)
-    ) {
-      return Object.freeze([
-        "submit_structured_result",
-        "start_free_media_generation",
-      ]);
-    }
-    return Object.freeze(["submit_structured_result"]);
-  }
-  return Object.freeze([
-    "list_canvas_targets",
-    "resolve_canvas_target",
-    "read_target_context",
-    "submit_structured_result",
-    "save_prompt_revision",
-    "start_slot_generation",
-    "select_asset_version",
-    "discard_working_version",
-  ]);
+  return Object.freeze(["submit_structured_result"]);
 }
 
 function skillsForOperation(
   agentName: AgentName,
   operation: string,
 ): { required: string[]; optional: string[] } {
-  if (agentName === "front_desk") {
+  if (agentName === "director") {
     return {
       required: ["audience_analysis", "campaign_appeal_generation"],
-      optional: operation === "workflow_creation" ? ["product_info_extraction"] : [],
+      optional: [],
     };
   }
   if (agentName === "script_writer") {
@@ -172,6 +130,12 @@ function skillsForOperation(
         operation === "product_expert_brief"
           ? ["product_info_extraction", "selling_point_extraction"]
           : ["selling_point_extraction"],
+      optional: ["reference_asset_selection"],
+    };
+  }
+  if (agentName === "prop_designer") {
+    return {
+      required: ["creative_idea_generation"],
       optional: ["reference_asset_selection"],
     };
   }
@@ -217,10 +181,7 @@ function skillsForOperation(
       optional: [],
     };
   }
-  return {
-    required: ["creative_idea_generation"],
-    optional: ["reference_asset_selection"],
-  };
+  throw new Error("agent_skill_policy_not_found");
 }
 
 function definition(

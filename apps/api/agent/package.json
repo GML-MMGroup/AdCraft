@@ -9,7 +9,8 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "build": "tsc",
-    "generate:manifest": "tsx scripts/generate-runtime-manifest.ts",
+    "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
+    "generate:manifest": "npm run generate:capabilities && tsx scripts/generate-runtime-manifest.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "verify:skills": "tsx scripts/verify-skills.ts",
