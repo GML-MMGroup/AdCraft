@@ -45,18 +45,18 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(0);
   });
 
-  it("uses the approved Space Grotesk, Clash Display, and Inter homepage system", () => {
+  it("uses the approved Space Grotesk, Barlow Condensed, and Inter homepage system", () => {
     expect(styles).toMatch(
       /@font-face\s*\{[^}]*font-family:\s*"Space Grotesk";[^}]*space-grotesk-latin-variable\.woff2/s,
     );
     expect(styles).toMatch(
-      /@font-face\s*\{[^}]*font-family:\s*"Clash Display";[^}]*clash-display-bold\.woff2/s,
+      /@font-face\s*\{[^}]*font-family:\s*"Barlow Condensed";[^}]*font-style:\s*italic;[^}]*font-weight:\s*900;[^}]*barlow-condensed-black-italic\.woff2/s,
     );
     expect(styles).toMatch(
       /@font-face\s*\{[^}]*font-family:\s*"Inter";[^}]*inter-latin-variable\.woff2/s,
     );
     expect(styles).toMatch(
-      /\.home-page\s*\{[^}]*--home-font-display:\s*"Space Grotesk"[^;]*;[^}]*--home-font-accent:\s*"Clash Display"[^;]*;[^}]*--home-font-ui:\s*"Inter"[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
+      /\.home-page\s*\{[^}]*--home-font-display:\s*"Space Grotesk"[^;]*;[^}]*--home-font-accent:\s*"Barlow Condensed"[^;]*;[^}]*--home-font-ui:\s*"Inter"[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__title\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-size:\s*62px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.02;[^}]*letter-spacing:\s*0;/s,
@@ -68,7 +68,7 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*150px;[^}]*font-weight:\s*700;[^}]*line-height:\s*0\.9;[^}]*transform:\s*skewX\(-8deg\) scaleX\(0\.76\) scaleY\(1\.16\);/s,
+      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*150px;[^}]*font-style:\s*italic;[^}]*font-weight:\s*900;[^}]*line-height:\s*0\.9;[^}]*transform:\s*none;/s,
     );
     expect(styles).toMatch(
       /\.section-title h2\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-weight:\s*700;[^}]*text-transform:\s*uppercase;/s,
@@ -97,6 +97,7 @@ describe("HomePage hero title", () => {
     expect(styles).not.toContain("home-product-hero__accent-glyph");
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*text-shadow:/s);
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*filter:/s);
+    expect(styles).not.toContain("Clash Display");
   });
 
   it("matches the approved wide desktop hero proportions", () => {

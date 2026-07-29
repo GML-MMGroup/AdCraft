@@ -7,11 +7,11 @@
 }
 
 @font-face {
-  font-family: "Clash Display";
-  font-style: normal;
-  font-weight: 700;
+  font-family: "Barlow Condensed";
+  font-style: italic;
+  font-weight: 900;
   font-display: swap;
-  src: url("/fonts/clash-display-bold.woff2") format("woff2");
+  src: url("/fonts/barlow-condensed-black-italic.woff2") format("woff2");
 }
 
 @font-face {
@@ -24,7 +24,7 @@
 
 .home-page {
   --home-font-display: "Space Grotesk", "Smiley Sans", "Noto Sans SC", "PingFang SC", sans-serif;
-  --home-font-accent: "Clash Display", "Space Grotesk", "Smiley Sans", sans-serif;
+  --home-font-accent: "Barlow Condensed", "Space Grotesk", "Smiley Sans", sans-serif;
   --home-font-ui: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--home-font-ui);
 }
@@ -127,11 +127,10 @@
   color: #8f6722;
   font-family: var(--home-font-accent);
   font-size: 150px;
-  font-style: normal;
-  font-weight: 700;
+  font-style: italic;
+  font-weight: 900;
   line-height: 0.9;
-  transform: skewX(-8deg) scaleX(0.76) scaleY(1.16);
-  transform-origin: left center;
+  transform: none;
 }
 
 .home-product-hero__accent .home-product-hero__character {

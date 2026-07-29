@@ -22,9 +22,9 @@ const fontFiles = [
   "jetbrains-mono-latin-variable.woff2",
   "space-grotesk-latin-variable.woff2",
   "inter-latin-variable.woff2",
-  "clash-display-bold.woff2",
+  "barlow-condensed-black-italic.woff2",
 ];
-const approvedWeights = new Set([400, 500, 600, 700, 800]);
+const approvedWeights = new Set([400, 500, 600, 700, 800, 900]);
 const invalidWeights = [...styles.matchAll(/font-weight:\s*(\d+)/g)]
   .map((match) => Number(match[1]))
   .filter((weight) => !approvedWeights.has(weight));
@@ -42,7 +42,7 @@ describe("typography system", () => {
     expect(styles).toContain('url("/fonts/jetbrains-mono-latin-variable.woff2")');
     expect(homeStyles).toContain('url("/fonts/space-grotesk-latin-variable.woff2")');
     expect(homeStyles).toContain('url("/fonts/inter-latin-variable.woff2")');
-    expect(homeStyles).toContain('url("/fonts/clash-display-bold.woff2")');
+    expect(homeStyles).toContain('url("/fonts/barlow-condensed-black-italic.woff2")');
 
     for (const fontFile of fontFiles) {
       const path = resolve(appRoot, "public/fonts", fontFile);
