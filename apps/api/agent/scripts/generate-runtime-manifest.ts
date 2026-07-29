@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { listPromptDescriptors } from "../src/prompts/registry.js";
+import { canonicalizeAgentCapabilities } from "./generate-agent-capabilities.js";
 
 interface PromptIdentity {
   readonly prompt_id: string;
@@ -22,6 +23,7 @@ interface RuntimeManifestInputs {
   readonly runtimeVersion: string;
   readonly protocolVersion: "1";
   readonly contract: unknown;
+  readonly capabilities: unknown;
   readonly prompts: ReadonlyArray<PromptIdentity>;
   readonly skills: ReadonlyArray<SkillIdentity>;
 }
@@ -29,6 +31,7 @@ interface RuntimeManifestInputs {
 interface GenerateRuntimeManifestOptions {
   readonly outputPath: string;
   readonly schemaPath: string;
+  readonly capabilityPath: string;
   readonly skillManifestPath: string;
   readonly runtimeVersion: string;
   readonly prompts?: ReadonlyArray<PromptIdentity>;
@@ -38,6 +41,7 @@ export interface PiRuntimeManifest {
   readonly runtime_version: string;
   readonly protocol_version: "1";
   readonly contract_digest: string;
+  readonly capability_digest: string;
   readonly prompt_digest: string;
   readonly skill_digest: string;
 }
@@ -47,6 +51,7 @@ export function buildRuntimeManifest(inputs: RuntimeManifestInputs): PiRuntimeMa
     runtime_version: inputs.runtimeVersion,
     protocol_version: inputs.protocolVersion,
     contract_digest: digest(inputs.contract),
+    capability_digest: digest(canonicalizeAgentCapabilities(inputs.capabilities)),
     prompt_digest: digest(
       [...inputs.prompts].sort((left, right) => left.prompt_id.localeCompare(right.prompt_id)),
     ),
@@ -60,6 +65,9 @@ export async function generateRuntimeManifest(
   options: GenerateRuntimeManifestOptions,
 ): Promise<PiRuntimeManifest> {
   const contract: unknown = JSON.parse(await readFile(options.schemaPath, "utf8"));
+  const capabilities: unknown = JSON.parse(
+    await readFile(options.capabilityPath, "utf8"),
+  );
   const skillManifest = JSON.parse(
     await readFile(options.skillManifestPath, "utf8"),
   ) as {
@@ -73,6 +81,7 @@ export async function generateRuntimeManifest(
     runtimeVersion: options.runtimeVersion,
     protocolVersion: "1",
     contract,
+    capabilities,
     prompts: options.prompts ?? listPromptDescriptors(),
     skills: skillManifest.skills.map((skill) => ({
       ...skill,
@@ -111,6 +120,7 @@ async function main(): Promise<void> {
   await generateRuntimeManifest({
     outputPath: resolve(agentRoot, "src/generated/runtime-manifest.json"),
     schemaPath: resolve(agentRoot, "src/generated/agent-runtime.schema.json"),
+    capabilityPath: resolve(agentRoot, "contracts/agent-capabilities.json"),
     skillManifestPath: resolve(agentRoot, "skills/manifest.json"),
     runtimeVersion: packageJson.version,
   });

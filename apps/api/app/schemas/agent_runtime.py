@@ -7,19 +7,29 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.agent_operation_contexts import PlanningAgentContext
+from app.schemas.agent_operation_contexts import (
+    AgentCanvasSpecialistName,
+    PlanningAgentContext,
+)
+from app.schemas.agent_canvas_ad_media import (
+    BgmContentV2,
+    DesignAssetContentV2,
+    SceneDesignBoardContentV2,
+    StoryboardGridContentV2,
+    VideoSegmentContentV2,
+)
 
 
 AgentName = Literal[
-    "front_desk",
+    "director",
     "script_writer",
     "product_designer",
+    "prop_designer",
     "character_designer",
     "scene_designer",
     "storyboard_artist",
     "video_director",
     "bgm_director",
-    "quick_media_agent",
 ]
 AgentRunStatus = Literal[
     "queued",
@@ -277,6 +287,7 @@ class AgentRuntimeHealth(_StrictModel):
     status: Literal["ready", "degraded", "unavailable"]
     mode: Literal["real", "fake"]
     contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    capability_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     prompt_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     skill_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     pi_version: str = Field(min_length=1, max_length=80)
@@ -287,6 +298,7 @@ class AgentRuntimeManifest(_StrictModel):
     runtime_version: str = Field(min_length=1, max_length=80)
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    capability_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     prompt_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     skill_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
@@ -318,3 +330,78 @@ class SpecialistDraft(_StrictModel):
     constraints: tuple[str, ...] = Field(default=(), max_length=128)
     reference_roles: tuple[str, ...] = Field(default=(), max_length=128)
     warnings: tuple[str, ...] = Field(default=(), max_length=128)
+
+
+class ConceptOptionV2(_StrictModel):
+    option_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=256)
+    description: str = Field(min_length=1, max_length=4_096)
+
+
+class ConceptProposalDraftV2(_StrictModel):
+    proposal_kind: Literal[
+        "script",
+        "product",
+        "prop",
+        "character",
+        "scene",
+        "storyboard",
+        "video",
+        "bgm",
+    ]
+    specialist_name: AgentCanvasSpecialistName
+    options: tuple[ConceptOptionV2, ...] = Field(min_length=1, max_length=4)
+
+
+class AgentCanvasOperationV2(_StrictModel):
+    operation_type: Literal[
+        "create_node",
+        "patch_node",
+        "create_binding",
+        "materialize_draft",
+        "request_node_run",
+        "update_planning_topic",
+    ]
+    operation_id: str = Field(min_length=1, max_length=160)
+    expected_workflow_revision: int = Field(ge=1)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> "AgentCanvasOperationV2":
+        _validate_safe_payload(self.payload, field_name="operation payload")
+        return self
+
+
+class AgentActionEnvelopeV2(_StrictModel):
+    assistant_message: str = Field(min_length=1, max_length=4_000)
+    specialist_handoff: AgentCanvasSpecialistName | None = None
+    proposal: ConceptProposalDraftV2 | None = None
+    operations: tuple[AgentCanvasOperationV2, ...] = Field(default=(), max_length=8)
+    auto_continue_requested: bool = False
+
+
+class AdMediaSpecialistDraftV2(_StrictModel):
+    semantic_role: Literal[
+        "product_main",
+        "product_view_board",
+        "prop_main",
+        "character_main",
+        "character_turnaround",
+        "scene_design_board",
+        "storyboard_grid",
+        "storyboard_video_segment",
+        "bgm",
+    ]
+    title: str = Field(min_length=1, max_length=256)
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: (
+        DesignAssetContentV2
+        | SceneDesignBoardContentV2
+        | StoryboardGridContentV2
+        | VideoSegmentContentV2
+        | BgmContentV2
+    )
+
+
+class SpecialistDirectResponseV2(_StrictModel):
+    summary: str = Field(min_length=1, max_length=4_000)

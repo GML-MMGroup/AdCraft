@@ -1,5 +1,168 @@
 {
   "$defs": {
+    "AdMediaSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "semantic_role": {
+          "enum": [
+            "product_main",
+            "product_view_board",
+            "prop_main",
+            "character_main",
+            "character_turnaround",
+            "scene_design_board",
+            "storyboard_grid",
+            "storyboard_video_segment",
+            "bgm"
+          ],
+          "title": "Semantic Role",
+          "type": "string"
+        },
+        "structured_content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DesignAssetContentV2"
+            },
+            {
+              "$ref": "#/$defs/SceneDesignBoardContentV2"
+            },
+            {
+              "$ref": "#/$defs/StoryboardGridContentV2"
+            },
+            {
+              "$ref": "#/$defs/VideoSegmentContentV2"
+            },
+            {
+              "$ref": "#/$defs/BgmContentV2"
+            }
+          ],
+          "title": "Structured Content"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "semantic_role",
+        "title",
+        "generation_prompt",
+        "structured_content"
+      ],
+      "title": "AdMediaSpecialistDraftV2",
+      "type": "object"
+    },
+    "AgentActionEnvelopeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "assistant_message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Assistant Message",
+          "type": "string"
+        },
+        "auto_continue_requested": {
+          "default": false,
+          "title": "Auto Continue Requested",
+          "type": "boolean"
+        },
+        "operations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentCanvasOperationV2"
+          },
+          "maxItems": 8,
+          "title": "Operations",
+          "type": "array"
+        },
+        "proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConceptProposalDraftV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "specialist_handoff": {
+          "anyOf": [
+            {
+              "enum": [
+                "script_writer",
+                "product_designer",
+                "prop_designer",
+                "character_designer",
+                "scene_designer",
+                "storyboard_artist",
+                "video_director",
+                "bgm_director"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specialist Handoff"
+        }
+      },
+      "required": [
+        "assistant_message"
+      ],
+      "title": "AgentActionEnvelopeV2",
+      "type": "object"
+    },
+    "AgentCanvasOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_workflow_revision": {
+          "minimum": 1,
+          "title": "Expected Workflow Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "enum": [
+            "create_node",
+            "patch_node",
+            "create_binding",
+            "materialize_draft",
+            "request_node_run",
+            "update_planning_topic"
+          ],
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_type",
+        "operation_id",
+        "expected_workflow_revision"
+      ],
+      "title": "AgentCanvasOperationV2",
+      "type": "object"
+    },
     "AgentReferenceSummary": {
       "additionalProperties": false,
       "properties": {
@@ -267,15 +430,15 @@
       "properties": {
         "agent_name": {
           "enum": [
-            "front_desk",
+            "director",
             "script_writer",
             "product_designer",
+            "prop_designer",
             "character_designer",
             "scene_designer",
             "storyboard_artist",
             "video_director",
-            "bgm_director",
-            "quick_media_agent"
+            "bgm_director"
           ],
           "title": "Agent Name",
           "type": "string"
@@ -293,12 +456,14 @@
                   "bgm_expert": "#/$defs/BgmExpertAgentContext",
                   "character_expert": "#/$defs/CharacterExpertAgentContext",
                   "conversation_summary": "#/$defs/ConversationSummaryAgentContext",
+                  "director_turn": "#/$defs/DirectorTurnContextV2",
                   "front_desk_intent": "#/$defs/FrontDeskIntentAgentContext",
                   "intent_contract": "#/$defs/IntentContractAgentContext",
                   "product_expert": "#/$defs/ProductExpertAgentContext",
                   "quick_media": "#/$defs/QuickMediaAgentContext",
                   "scene_expert": "#/$defs/SceneExpertAgentContext",
                   "script_writer": "#/$defs/ScriptWriterAgentContext",
+                  "specialist_handoff": "#/$defs/SpecialistContextV2",
                   "targeted_revision": "#/$defs/TargetedRevisionAgentContext",
                   "workflow_conversation": "#/$defs/WorkflowConversationAgentContext"
                 },
@@ -337,6 +502,12 @@
                 },
                 {
                   "$ref": "#/$defs/ConversationSummaryAgentContext"
+                },
+                {
+                  "$ref": "#/$defs/DirectorTurnContextV2"
+                },
+                {
+                  "$ref": "#/$defs/SpecialistContextV2"
                 }
               ]
             },
@@ -503,15 +674,15 @@
       "properties": {
         "agent_name": {
           "enum": [
-            "front_desk",
+            "director",
             "script_writer",
             "product_designer",
+            "prop_designer",
             "character_designer",
             "scene_designer",
             "storyboard_artist",
             "video_director",
-            "bgm_director",
-            "quick_media_agent"
+            "bgm_director"
           ],
           "title": "Agent Name",
           "type": "string"
@@ -577,6 +748,11 @@
           "title": "Active Runs",
           "type": "integer"
         },
+        "capability_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Capability Digest",
+          "type": "string"
+        },
         "contract_digest": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Contract Digest",
@@ -633,6 +809,7 @@
         "status",
         "mode",
         "contract_digest",
+        "capability_digest",
         "prompt_digest",
         "skill_digest",
         "pi_version"
@@ -1060,6 +1237,69 @@
       "title": "AgentToolResult",
       "type": "object"
     },
+    "BgmContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "energy_curve": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Energy Curve",
+          "type": "string"
+        },
+        "instrumental_only": {
+          "const": true,
+          "default": true,
+          "title": "Instrumental Only",
+          "type": "boolean"
+        },
+        "instrumentation": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Instrumentation",
+          "type": "string"
+        },
+        "mood": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Mood",
+          "type": "string"
+        },
+        "music_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Music Summary",
+          "type": "string"
+        },
+        "no_vocals": {
+          "const": true,
+          "default": true,
+          "title": "No Vocals",
+          "type": "boolean"
+        },
+        "pace": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Pace",
+          "type": "string"
+        }
+      },
+      "required": [
+        "music_summary",
+        "duration_seconds",
+        "pace",
+        "energy_curve",
+        "instrumentation",
+        "mood"
+      ],
+      "title": "BgmContentV2",
+      "type": "object"
+    },
     "BgmExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -1251,6 +1491,85 @@
       "title": "CharacterExpertAgentContext",
       "type": "object"
     },
+    "ConceptOptionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "title",
+        "description"
+      ],
+      "title": "ConceptOptionV2",
+      "type": "object"
+    },
+    "ConceptProposalDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "options": {
+          "items": {
+            "$ref": "#/$defs/ConceptOptionV2"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Options",
+          "type": "array"
+        },
+        "proposal_kind": {
+          "enum": [
+            "script",
+            "product",
+            "prop",
+            "character",
+            "scene",
+            "storyboard",
+            "video",
+            "bgm"
+          ],
+          "title": "Proposal Kind",
+          "type": "string"
+        },
+        "specialist_name": {
+          "enum": [
+            "script_writer",
+            "product_designer",
+            "prop_designer",
+            "character_designer",
+            "scene_designer",
+            "storyboard_artist",
+            "video_director",
+            "bgm_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_kind",
+        "specialist_name",
+        "options"
+      ],
+      "title": "ConceptProposalDraftV2",
+      "type": "object"
+    },
     "ConversationSummaryAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -1316,6 +1635,141 @@
         "summary"
       ],
       "title": "ConversationSummaryResult",
+      "type": "object"
+    },
+    "DesignAssetContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "design_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Design Summary",
+          "type": "string"
+        },
+        "explicit_inclusions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Explicit Inclusions",
+          "type": "array"
+        },
+        "negative_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Negative Constraints",
+          "type": "array"
+        },
+        "style": {
+          "$ref": "#/$defs/VisualStyleContractV2"
+        },
+        "subject_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Subject Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "subject_identity",
+        "design_summary",
+        "style"
+      ],
+      "title": "DesignAssetContentV2",
+      "type": "object"
+    },
+    "DirectorTurnContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "director_turn",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "explicit_input_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Explicit Input Summaries",
+          "type": "array"
+        },
+        "mentioned_image_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Mentioned Image Asset Ids",
+          "type": "array"
+        },
+        "mentioned_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Mentioned Node Ids",
+          "type": "array"
+        },
+        "recent_messages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/InteractionMessageSummary"
+          },
+          "maxItems": 16,
+          "title": "Recent Messages",
+          "type": "array"
+        },
+        "script_summary": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Script Summary",
+          "type": "string"
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "video_skill_excerpt": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Video Skill Excerpt",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "context_kind",
+        "workflow_id",
+        "workflow_revision",
+        "conversation_id",
+        "user_input"
+      ],
+      "title": "DirectorTurnContextV2",
       "type": "object"
     },
     "FrontDeskIntentAgentContext": {
@@ -2027,6 +2481,129 @@
       "title": "QuickMediaAgentContext",
       "type": "object"
     },
+    "SceneBoardPanelV2": {
+      "additionalProperties": false,
+      "properties": {
+        "lighting_material_detail": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Lighting Material Detail",
+          "type": "string"
+        },
+        "panel_index": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Panel Index",
+          "type": "integer"
+        },
+        "spatial_description": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Description",
+          "type": "string"
+        },
+        "view_or_zone": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "View Or Zone",
+          "type": "string"
+        }
+      },
+      "required": [
+        "panel_index",
+        "view_or_zone",
+        "spatial_description",
+        "lighting_material_detail"
+      ],
+      "title": "SceneBoardPanelV2",
+      "type": "object"
+    },
+    "SceneDesignBoardContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "environment_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Environment Summary",
+          "type": "string"
+        },
+        "exclude_unreferenced_entities": {
+          "const": true,
+          "default": true,
+          "title": "Exclude Unreferenced Entities",
+          "type": "boolean"
+        },
+        "explicit_entity_reference_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Explicit Entity Reference Ids",
+          "type": "array"
+        },
+        "layout": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Layout",
+          "type": "string"
+        },
+        "lighting": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "no_narrative_progression": {
+          "const": true,
+          "default": true,
+          "title": "No Narrative Progression",
+          "type": "boolean"
+        },
+        "panels": {
+          "items": {
+            "$ref": "#/$defs/SceneBoardPanelV2"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Panels",
+          "type": "array"
+        },
+        "scene_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Scene Identity",
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/VisualStyleContractV2"
+        },
+        "time_of_day": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Time Of Day",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scene_identity",
+        "environment_summary",
+        "layout",
+        "lighting",
+        "materials",
+        "time_of_day",
+        "style",
+        "panels"
+      ],
+      "title": "SceneDesignBoardContentV2",
+      "type": "object"
+    },
     "SceneExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -2195,6 +2772,123 @@
       "title": "ScriptWriterAgentContext",
       "type": "object"
     },
+    "SpecialistContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "specialist_handoff",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "explicit_input_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Explicit Input Summaries",
+          "type": "array"
+        },
+        "operation": {
+          "enum": [
+            "propose_concepts",
+            "revise_concepts",
+            "materialize_draft",
+            "direct_response"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "script_summary": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Script Summary",
+          "type": "string"
+        },
+        "selected_option_summary": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Selected Option Summary",
+          "type": "string"
+        },
+        "specialist_name": {
+          "enum": [
+            "script_writer",
+            "product_designer",
+            "prop_designer",
+            "character_designer",
+            "scene_designer",
+            "storyboard_artist",
+            "video_director",
+            "bgm_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "target_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Id"
+        },
+        "user_instruction": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Instruction",
+          "type": "string"
+        },
+        "video_skill_excerpt": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Video Skill Excerpt",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "context_kind",
+        "specialist_name",
+        "operation",
+        "workflow_id",
+        "workflow_revision",
+        "user_instruction"
+      ],
+      "title": "SpecialistContextV2",
+      "type": "object"
+    },
+    "SpecialistDirectResponseV2": {
+      "additionalProperties": false,
+      "properties": {
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "title": "SpecialistDirectResponseV2",
+      "type": "object"
+    },
     "SpecialistDraft": {
       "additionalProperties": false,
       "properties": {
@@ -2269,6 +2963,100 @@
         "summary"
       ],
       "title": "SpecialistDraft",
+      "type": "object"
+    },
+    "StoryboardGridContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "narrative_goal": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Narrative Goal",
+          "type": "string"
+        },
+        "no_generated_text": {
+          "const": true,
+          "default": true,
+          "title": "No Generated Text",
+          "type": "boolean"
+        },
+        "panels": {
+          "items": {
+            "$ref": "#/$defs/StoryboardPanelV2"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Panels",
+          "type": "array"
+        },
+        "sequence_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Sequence Summary",
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/VisualStyleContractV2"
+        }
+      },
+      "required": [
+        "sequence_summary",
+        "narrative_goal",
+        "style",
+        "panels"
+      ],
+      "title": "StoryboardGridContentV2",
+      "type": "object"
+    },
+    "StoryboardPanelV2": {
+      "additionalProperties": false,
+      "properties": {
+        "beat": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Beat",
+          "type": "string"
+        },
+        "camera": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Camera",
+          "type": "string"
+        },
+        "composition": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Composition",
+          "type": "string"
+        },
+        "continuity_from_previous": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Continuity From Previous",
+          "type": "string"
+        },
+        "panel_index": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Panel Index",
+          "type": "integer"
+        },
+        "subject_action": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Subject Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "panel_index",
+        "beat",
+        "composition",
+        "camera",
+        "subject_action",
+        "continuity_from_previous"
+      ],
+      "title": "StoryboardPanelV2",
       "type": "object"
     },
     "StructuredViolation": {
@@ -3079,6 +3867,108 @@
         }
       },
       "title": "V2SceneExpertPlan",
+      "type": "object"
+    },
+    "VideoSegmentContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action_effects": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Action Effects",
+          "type": "string"
+        },
+        "background_music": {
+          "const": false,
+          "default": false,
+          "title": "Background Music",
+          "type": "boolean"
+        },
+        "dialogue": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Dialogue",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "environment_sound": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Environment Sound",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Negative Constraints",
+          "type": "string"
+        },
+        "segment_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Segment Summary",
+          "type": "string"
+        },
+        "storyboard_content": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Storyboard Content",
+          "type": "string"
+        },
+        "voice_style": {
+          "default": "",
+          "maxLength": 2048,
+          "title": "Voice Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "segment_summary",
+        "duration_seconds",
+        "storyboard_content"
+      ],
+      "title": "VideoSegmentContentV2",
+      "type": "object"
+    },
+    "VisualStyleContractV2": {
+      "additionalProperties": false,
+      "properties": {
+        "negative_style_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Negative Style Constraints",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "user",
+            "video_skill",
+            "references",
+            "platform_default"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "style_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Style Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "style_prompt",
+        "source"
+      ],
+      "title": "VisualStyleContractV2",
       "type": "object"
     },
     "WorkflowConversationAgentContext": {

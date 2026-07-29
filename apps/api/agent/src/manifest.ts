@@ -25,6 +25,7 @@ function validManifest(value: unknown): value is PiRuntimeManifest {
     manifest.protocol_version === "1" &&
     typeof manifest.runtime_version === "string" &&
     validDigest(manifest.contract_digest) &&
+    validDigest(manifest.capability_digest) &&
     validDigest(manifest.prompt_digest) &&
     validDigest(manifest.skill_digest)
   );

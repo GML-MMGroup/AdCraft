@@ -2,6 +2,22 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type VisualStyleContractV2 = { readonly "style_prompt": string; readonly "source": "user" | "video_skill" | "references" | "platform_default"; readonly "negative_style_constraints"?: ReadonlyArray<string> };
+
+export type DesignAssetContentV2 = { readonly "subject_identity": string; readonly "design_summary": string; readonly "style": VisualStyleContractV2; readonly "explicit_inclusions"?: ReadonlyArray<string>; readonly "negative_constraints"?: ReadonlyArray<string> };
+
+export type SceneBoardPanelV2 = { readonly "panel_index": number; readonly "view_or_zone": string; readonly "spatial_description": string; readonly "lighting_material_detail": string };
+
+export type SceneDesignBoardContentV2 = { readonly "scene_identity": string; readonly "environment_summary": string; readonly "layout": string; readonly "lighting": string; readonly "materials": string; readonly "time_of_day": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<SceneBoardPanelV2>; readonly "explicit_entity_reference_ids"?: ReadonlyArray<string>; readonly "exclude_unreferenced_entities"?: true; readonly "no_narrative_progression"?: true };
+
+export type StoryboardPanelV2 = { readonly "panel_index": number; readonly "beat": string; readonly "composition": string; readonly "camera": string; readonly "subject_action": string; readonly "continuity_from_previous": string };
+
+export type StoryboardGridContentV2 = { readonly "sequence_summary": string; readonly "narrative_goal": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<StoryboardPanelV2>; readonly "no_generated_text"?: true };
+
+export type VideoSegmentContentV2 = { readonly "segment_summary": string; readonly "duration_seconds": number; readonly "storyboard_content": string; readonly "dialogue"?: string; readonly "voice_style"?: string; readonly "environment_sound"?: string; readonly "action_effects"?: string; readonly "negative_constraints"?: string; readonly "background_music"?: false };
+
+export type BgmContentV2 = { readonly "music_summary": string; readonly "duration_seconds": number; readonly "pace": string; readonly "energy_curve": string; readonly "instrumentation": string; readonly "mood": string; readonly "instrumental_only"?: true; readonly "no_vocals"?: true };
+
 export type FrozenPlanningFacts = { readonly "product_name"?: string | null; readonly "user_language"?: string | null; readonly "duration_seconds"?: number | null; readonly "aspect_ratio"?: string | null; readonly "character_count"?: number | null; readonly "scene_count"?: number | null; readonly "shot_count"?: number | null; readonly "explicit_requirements"?: ReadonlyArray<string> };
 
 export type PlanningReferenceSummary = { readonly "asset_id": string; readonly "version_id"?: string | null; readonly "semantic_type": string; readonly "display_name"?: string; readonly "media_type"?: "image" | "video" | "audio" | "text" | null; readonly "description"?: string };
@@ -36,6 +52,10 @@ export type WorkflowConversationAgentContext = { readonly "context_kind": "workf
 
 export type ConversationSummaryAgentContext = { readonly "context_kind": "conversation_summary"; readonly "user_input": string; readonly "workflow_id": string; readonly "conversation_id": string; readonly "previous_summary"?: string; readonly "recent_messages"?: ReadonlyArray<InteractionMessageSummary> };
 
+export type DirectorTurnContextV2 = { readonly "context_kind": "director_turn"; readonly "workflow_id": string; readonly "workflow_revision": number; readonly "conversation_id": string; readonly "user_input": string; readonly "mentioned_node_ids"?: ReadonlyArray<string>; readonly "mentioned_image_asset_ids"?: ReadonlyArray<string>; readonly "recent_messages"?: ReadonlyArray<InteractionMessageSummary>; readonly "script_summary"?: string; readonly "video_skill_excerpt"?: string; readonly "explicit_input_summaries"?: ReadonlyArray<string> };
+
+export type SpecialistContextV2 = { readonly "context_kind": "specialist_handoff"; readonly "specialist_name": "script_writer" | "product_designer" | "prop_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director"; readonly "operation": "propose_concepts" | "revise_concepts" | "materialize_draft" | "direct_response"; readonly "workflow_id": string; readonly "workflow_revision": number; readonly "user_instruction": string; readonly "target_node_id"?: string | null; readonly "selected_option_summary"?: string; readonly "script_summary"?: string; readonly "video_skill_excerpt"?: string; readonly "explicit_input_summaries"?: ReadonlyArray<string> };
+
 export type WorkflowConversationReply = { readonly "message": string; readonly "clarification_required"?: boolean };
 
 export type ConversationSummaryResult = { readonly "summary": string };
@@ -66,9 +86,9 @@ export type AgentRunContext = { readonly "operation": string; readonly "user_inp
 
 export type AgentRunPolicy = { readonly "max_turns"?: number; readonly "max_tool_calls"?: number; readonly "max_handoffs"?: number; readonly "timeout_seconds"?: number; readonly "max_input_bytes"?: number; readonly "max_output_bytes"?: number; readonly "max_event_bytes"?: number };
 
-export type AgentRunRequest = { readonly "protocol_version"?: "1"; readonly "run_id": string; readonly "request_id": string; readonly "parent_run_id"?: string | null; readonly "agent_name": "front_desk" | "script_writer" | "product_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director" | "quick_media_agent"; readonly "operation": string; readonly "deadline_at": string; readonly "model_policy_id": string; readonly "context": FrontDeskIntentAgentContext | IntentContractAgentContext | ScriptWriterAgentContext | ProductExpertAgentContext | CharacterExpertAgentContext | SceneExpertAgentContext | BgmExpertAgentContext | TargetedRevisionAgentContext | QuickMediaAgentContext | WorkflowConversationAgentContext | ConversationSummaryAgentContext | AgentRunContext; readonly "policy"?: AgentRunPolicy; readonly "credential_ref"?: string; readonly "contract_name"?: string | null; readonly "contract_schema"?: Readonly<Record<string, unknown>>; readonly "validation_profile"?: string | null; readonly "validation_context"?: Readonly<Record<string, unknown>>; readonly "audit_metadata"?: Readonly<Record<string, unknown>> };
+export type AgentRunRequest = { readonly "protocol_version"?: "1"; readonly "run_id": string; readonly "request_id": string; readonly "parent_run_id"?: string | null; readonly "agent_name": "director" | "script_writer" | "product_designer" | "prop_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director"; readonly "operation": string; readonly "deadline_at": string; readonly "model_policy_id": string; readonly "context": FrontDeskIntentAgentContext | IntentContractAgentContext | ScriptWriterAgentContext | ProductExpertAgentContext | CharacterExpertAgentContext | SceneExpertAgentContext | BgmExpertAgentContext | TargetedRevisionAgentContext | QuickMediaAgentContext | WorkflowConversationAgentContext | ConversationSummaryAgentContext | DirectorTurnContextV2 | SpecialistContextV2 | AgentRunContext; readonly "policy"?: AgentRunPolicy; readonly "credential_ref"?: string; readonly "contract_name"?: string | null; readonly "contract_schema"?: Readonly<Record<string, unknown>>; readonly "validation_profile"?: string | null; readonly "validation_context"?: Readonly<Record<string, unknown>>; readonly "audit_metadata"?: Readonly<Record<string, unknown>> };
 
-export type AgentRuntimeEvent = { readonly "protocol_version"?: "1"; readonly "seq": number; readonly "run_id": string; readonly "agent_name": "front_desk" | "script_writer" | "product_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director" | "quick_media_agent"; readonly "event_type": "run_started" | "output_delta" | "tool_call" | "tool_result" | "heartbeat" | "run_completed" | "run_failed" | "run_cancelled"; readonly "created_at": string; readonly "payload"?: Readonly<Record<string, unknown>> };
+export type AgentRuntimeEvent = { readonly "protocol_version"?: "1"; readonly "seq": number; readonly "run_id": string; readonly "agent_name": "director" | "script_writer" | "product_designer" | "prop_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director"; readonly "event_type": "run_started" | "output_delta" | "tool_call" | "tool_result" | "heartbeat" | "run_completed" | "run_failed" | "run_cancelled"; readonly "created_at": string; readonly "payload"?: Readonly<Record<string, unknown>> };
 
 export type AgentToolCall = { readonly "protocol_version"?: "1"; readonly "run_id": string; readonly "tool_call_id": string; readonly "idempotency_key": string; readonly "tool_name": string; readonly "arguments"?: Readonly<Record<string, unknown>>; readonly "expected_revision"?: number | null };
 
@@ -80,8 +100,20 @@ export type StructuredViolation = { readonly "code": string; readonly "message":
 
 export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean };
 
-export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "runtime_version": string; readonly "status": "ready" | "degraded" | "unavailable"; readonly "mode": "real" | "fake"; readonly "contract_digest": string; readonly "prompt_digest": string; readonly "skill_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
+export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "runtime_version": string; readonly "status": "ready" | "degraded" | "unavailable"; readonly "mode": "real" | "fake"; readonly "contract_digest": string; readonly "capability_digest": string; readonly "prompt_digest": string; readonly "skill_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
 
 export type AgentRuntimeError = { readonly "protocol_version"?: "1"; readonly "code": "agent_runtime_unavailable" | "agent_protocol_mismatch" | "agent_model_unavailable" | "agent_structured_output_invalid" | "agent_run_budget_exceeded" | "agent_deadline_exceeded" | "agent_stream_backpressure_exceeded" | "agent_tool_not_allowed" | "agent_target_revision_conflict" | "agent_run_cancelled" | "agent_runtime_fake_forbidden"; readonly "message": string; readonly "retryable"?: boolean };
 
 export type SpecialistDraft = { readonly "contract_name": string; readonly "summary": string; readonly "generation_prompt"?: string | null; readonly "negative_prompt"?: string | null; readonly "constraints"?: ReadonlyArray<string>; readonly "reference_roles"?: ReadonlyArray<string>; readonly "warnings"?: ReadonlyArray<string> };
+
+export type ConceptOptionV2 = { readonly "option_id": string; readonly "title": string; readonly "description": string };
+
+export type ConceptProposalDraftV2 = { readonly "proposal_kind": "script" | "product" | "prop" | "character" | "scene" | "storyboard" | "video" | "bgm"; readonly "specialist_name": "script_writer" | "product_designer" | "prop_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director"; readonly "options": ReadonlyArray<ConceptOptionV2> };
+
+export type AgentCanvasOperationV2 = { readonly "operation_type": "create_node" | "patch_node" | "create_binding" | "materialize_draft" | "request_node_run" | "update_planning_topic"; readonly "operation_id": string; readonly "expected_workflow_revision": number; readonly "payload"?: Readonly<Record<string, unknown>> };
+
+export type AgentActionEnvelopeV2 = { readonly "assistant_message": string; readonly "specialist_handoff"?: "script_writer" | "product_designer" | "prop_designer" | "character_designer" | "scene_designer" | "storyboard_artist" | "video_director" | "bgm_director" | null; readonly "proposal"?: ConceptProposalDraftV2 | null; readonly "operations"?: ReadonlyArray<AgentCanvasOperationV2>; readonly "auto_continue_requested"?: boolean };
+
+export type AdMediaSpecialistDraftV2 = { readonly "semantic_role": "product_main" | "product_view_board" | "prop_main" | "character_main" | "character_turnaround" | "scene_design_board" | "storyboard_grid" | "storyboard_video_segment" | "bgm"; readonly "title": string; readonly "generation_prompt": string; readonly "structured_content": DesignAssetContentV2 | SceneDesignBoardContentV2 | StoryboardGridContentV2 | VideoSegmentContentV2 | BgmContentV2 };
+
+export type SpecialistDirectResponseV2 = { readonly "summary": string };
