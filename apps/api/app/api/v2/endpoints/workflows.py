@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Iterator
 import json
 from typing import Annotated, Any, Literal
 
@@ -10,6 +11,7 @@ from fastapi import (
     Form,
     Header,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -19,7 +21,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
 from app.api.dependencies import get_front_desk_service
+from app.api.v2.etag import (
+    V2PreconditionError,
+    parse_workflow_if_match,
+    workflow_etag,
+)
+from app.api.v2.workflow_preconditions import validate_workflow_if_match
 from app.core.config import Settings, get_settings
+from app.persistence.errors import V2PersistenceError
 from app.schemas.front_desk import FrontDeskChatRequest
 from app.schemas.v2_asset_library import (
     AttachReferenceSelectionsRequestV2,
@@ -93,6 +102,11 @@ from app.schemas.workflow_v2 import (
     WorkflowV2TimelineUpdateRequest,
     WorkflowV2TimelineUpdateResponse,
 )
+from app.schemas.workflow_v2_authoring import (
+    WorkflowRevisionPage,
+    WorkflowRevisionRestoreResponse,
+    WorkflowRevisionV2Detail,
+)
 from app.services.front_desk import FrontDeskService
 from app.services.v2_asset_locator import V2AssetLocatorError, V2AssetLocatorResolver
 from app.services.v2_final_composition_timeline import (
@@ -110,10 +124,18 @@ from app.services.v2_reference_selection import (
     V2ReferenceSelectionService,
 )
 from app.services.v2_workflow_assets import V2WorkflowAssetError, V2WorkflowAssetService
+from app.services.v2_workflow_authoring import (
+    WorkflowAuthoringRuntime,
+    create_workflow_authoring_runtime,
+)
 from app.services.workflow_v2 import WorkflowV2Error, WorkflowV2Service
 
 
-router = APIRouter(prefix="/workflows", tags=["v2-workflows"])
+router = APIRouter(
+    prefix="/workflows",
+    tags=["v2-workflows"],
+    dependencies=[Depends(validate_workflow_if_match)],
+)
 
 
 def get_workflow_v2_service(
@@ -156,6 +178,16 @@ def get_v2_script_version_service(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> V2ScriptVersionService:
     return V2ScriptVersionService(settings.media_data_dir)
+
+
+def get_workflow_authoring_runtime(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> Iterator[WorkflowAuthoringRuntime]:
+    runtime = create_workflow_authoring_runtime(settings.media_data_dir)
+    try:
+        yield runtime
+    finally:
+        runtime.database.dispose()
 
 
 def _sse_event(event: WorkflowV2Event) -> str:
@@ -268,6 +300,68 @@ def get_workflow(
         ) from exc
 
 
+@router.get("/{workflow_id}/revisions", response_model=WorkflowRevisionPage)
+def list_workflow_revisions(
+    workflow_id: str,
+    runtime: Annotated[WorkflowAuthoringRuntime, Depends(get_workflow_authoring_runtime)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    cursor: str | None = None,
+) -> WorkflowRevisionPage:
+    try:
+        return runtime.repository.list_revisions(workflow_id, limit=limit, cursor=cursor)
+    except V2PersistenceError as error:
+        raise _workflow_authoring_http_error(error) from error
+
+
+@router.get(
+    "/{workflow_id}/revisions/{revision_no}",
+    response_model=WorkflowRevisionV2Detail,
+)
+def get_workflow_revision(
+    workflow_id: str,
+    revision_no: int,
+    runtime: Annotated[WorkflowAuthoringRuntime, Depends(get_workflow_authoring_runtime)],
+) -> WorkflowRevisionV2Detail:
+    try:
+        return runtime.repository.get_revision(workflow_id, revision_no)
+    except V2PersistenceError as error:
+        raise _workflow_authoring_http_error(error) from error
+
+
+@router.post(
+    "/{workflow_id}/revisions/{revision_no}/restore",
+    response_model=WorkflowRevisionRestoreResponse,
+)
+def restore_workflow_revision(
+    workflow_id: str,
+    revision_no: int,
+    response: Response,
+    runtime: Annotated[WorkflowAuthoringRuntime, Depends(get_workflow_authoring_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> WorkflowRevisionRestoreResponse:
+    expected_version = _parse_workflow_precondition(
+        if_match,
+        workflow_id,
+        required=True,
+    )
+    assert expected_version is not None
+    try:
+        workflow = runtime.service.restore_revision(
+            workflow_id,
+            revision_no,
+            expected_version=expected_version,
+        )
+        revision = runtime.repository.load_current(workflow_id).revision
+    except V2PersistenceError as error:
+        raise _workflow_authoring_http_error(error) from error
+    response.headers["ETag"] = _workflow_etag(workflow)
+    return WorkflowRevisionRestoreResponse(
+        workflow=workflow,
+        revision=revision,
+        restored_from_revision_no=revision_no,
+    )
+
+
 @router.post(
     "/{workflow_id}/slots/{slot_id}/reference-selections",
     response_model=ReferenceSelectionMutationResponseV2,
@@ -278,6 +372,8 @@ def attach_reference_selections(
     request: AttachReferenceSelectionsRequestV2,
     response: Response,
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,
+    authoring: Annotated[WorkflowAuthoringRuntime, Depends(get_workflow_authoring_runtime)] = None,
     service: Annotated[
         V2ReferenceSelectionService, Depends(get_v2_reference_selection_service)
     ] = None,
@@ -287,7 +383,12 @@ def attach_reference_selections(
             workflow_id,
             slot_id,
             request,
-            expected_state_version=_expected_workflow_state_version(workflow_id, if_match),
+            expected_state_version=_expected_workflow_state_version(
+                workflow_id,
+                if_match,
+                required=settings.v2_require_authoring_if_match,
+                runtime=authoring,
+            ),
         )
     except V2ReferenceSelectionError as exc:
         raise _reference_selection_http_error(exc) from exc
@@ -708,13 +809,20 @@ def remove_reference(
         V2ReferenceSelectionService, Depends(get_v2_reference_selection_service)
     ],
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    settings: Annotated[Settings, Depends(get_settings)] = None,
+    authoring: Annotated[WorkflowAuthoringRuntime, Depends(get_workflow_authoring_runtime)] = None,
 ) -> WorkflowV2ReferenceMutationResponse | ReferenceSelectionMutationResponseV2:
     if reference_selection_service.is_binding(workflow_id, relation_id):
         try:
             result = reference_selection_service.remove(
                 workflow_id,
                 relation_id,
-                expected_state_version=_expected_workflow_state_version(workflow_id, if_match),
+                expected_state_version=_expected_workflow_state_version(
+                    workflow_id,
+                    if_match,
+                    required=settings.v2_require_authoring_if_match,
+                    runtime=authoring,
+                ),
             )
         except V2ReferenceSelectionError as exc:
             raise _reference_selection_http_error(exc) from exc
@@ -1262,32 +1370,56 @@ def _workflow_v2_error_detail(exc: WorkflowV2Error) -> dict[str, Any]:
 def _workflow_etag(workflow: WorkflowV2) -> str:
     if workflow.state_version is None:
         raise RuntimeError("V2 workflow state version is required for ETag generation.")
-    return f'"wf-{workflow.workflow_id}-v{workflow.state_version}"'
+    return workflow_etag(workflow.workflow_id, workflow.state_version)
 
 
-def _expected_workflow_state_version(workflow_id: str, if_match: str | None) -> int:
-    if not if_match:
-        raise V2ReferenceSelectionError(
-            "workflow_precondition_required",
-            "If-Match is required for reference selection mutations.",
-            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
-        )
-    prefix = f'"wf-{workflow_id}-v'
-    if not if_match.startswith(prefix) or not if_match.endswith('"'):
-        raise V2ReferenceSelectionError(
-            "workflow_etag_invalid",
-            "If-Match must contain the current workflow ETag.",
-            status_code=status.HTTP_412_PRECONDITION_FAILED,
-        )
-    value = if_match[len(prefix) : -1]
+def _expected_workflow_state_version(
+    workflow_id: str,
+    if_match: str | None,
+    *,
+    required: bool,
+    runtime: WorkflowAuthoringRuntime,
+) -> int:
     try:
-        return int(value)
-    except ValueError as exc:
+        parsed = parse_workflow_if_match(if_match, workflow_id, required=required)
+    except V2PreconditionError as exc:
         raise V2ReferenceSelectionError(
-            "workflow_etag_invalid",
-            "If-Match must contain the current workflow ETag.",
-            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            exc.code,
+            str(exc),
+            status_code=exc.status_code,
         ) from exc
+    if parsed is not None:
+        return parsed
+    return runtime.repository.load_current(workflow_id).state_version
+
+
+def _parse_workflow_precondition(
+    value: str | None,
+    workflow_id: str,
+    *,
+    required: bool,
+) -> int | None:
+    try:
+        return parse_workflow_if_match(value, workflow_id, required=required)
+    except V2PreconditionError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail={"code": error.code, "message": str(error)},
+        ) from error
+
+
+def _workflow_authoring_http_error(error: V2PersistenceError) -> HTTPException:
+    response_status = {
+        "workflow_not_found": status.HTTP_404_NOT_FOUND,
+        "workflow_revision_not_found": status.HTTP_404_NOT_FOUND,
+        "workflow_state_conflict": status.HTTP_412_PRECONDITION_FAILED,
+        "workflow_revision_cursor_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+        "workflow_revision_page_invalid": status.HTTP_422_UNPROCESSABLE_ENTITY,
+    }.get(error.code, status.HTTP_503_SERVICE_UNAVAILABLE)
+    return HTTPException(
+        status_code=response_status,
+        detail={"code": error.code, "message": str(error)},
+    )
 
 
 def _reference_selection_http_error(exc: V2ReferenceSelectionError) -> HTTPException:

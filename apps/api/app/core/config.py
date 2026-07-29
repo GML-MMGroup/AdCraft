@@ -161,6 +161,7 @@ class Settings:
     provider_failure_cooldown_threshold: int = 3
     provider_cooldown_seconds: int = 300
     v2_stale_running_timeout_seconds: int = 900
+    v2_require_authoring_if_match: bool = False
     v2_max_parallel_image_jobs: int = 4
     v2_max_parallel_video_jobs: int = 1
     v2_max_parallel_audio_jobs: int = 1
@@ -407,6 +408,10 @@ class Settings:
             v2_provider_task_poll_interval_seconds=_read_int(
                 "V2_PROVIDER_TASK_POLL_INTERVAL_SECONDS",
                 cls.v2_provider_task_poll_interval_seconds,
+            ),
+            v2_require_authoring_if_match=_read_bool(
+                "V2_REQUIRE_AUTHORING_IF_MATCH",
+                cls.v2_require_authoring_if_match,
             ),
             v2_provider_task_max_concurrent_polls=_read_int(
                 "V2_PROVIDER_TASK_MAX_CONCURRENT_POLLS",

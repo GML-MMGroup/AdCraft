@@ -64,6 +64,7 @@ class ProjectV2(BaseModel):
     is_favorite: bool = False
     cover_asset_id: str | None = None
     project_version: int = Field(ge=1)
+    semantic_revision_no: int = Field(ge=1)
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
     deleted_at: str | None = None

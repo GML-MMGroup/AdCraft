@@ -67,50 +67,6 @@ class DatabaseBackupReport(BaseModel):
     backup_sha256: str | None = None
 
 
-class WorkflowAuthoringImportItemResult(BaseModel):
-    """Bounded result for one legacy Workflow import attempt."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    workflow_id: str
-    status: Literal["imported", "skipped", "quarantined"]
-    project_id: str | None = None
-    revision_id: str | None = None
-    source_sha256: str | None = None
-    backup_relative_path: str | None = None
-    error_code: str | None = None
-    error_summary: str | None = None
-    validation_paths: tuple[str, ...] = ()
-
-
-class WorkflowAuthoringImportReport(BaseModel):
-    """Deterministic aggregate of independent legacy Workflow imports."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    items: tuple[WorkflowAuthoringImportItemResult, ...] = ()
-
-    @property
-    def imported_count(self) -> int:
-        return sum(item.status == "imported" for item in self.items)
-
-    @property
-    def quarantined_count(self) -> int:
-        return sum(item.status == "quarantined" for item in self.items)
-
-    @property
-    def skipped_count(self) -> int:
-        return sum(item.status == "skipped" for item in self.items)
-
-    @property
-    def imported_workflow_ids(self) -> tuple[str, ...]:
-        return tuple(item.workflow_id for item in self.items if item.status == "imported")
-
-    @property
-    def quarantined_workflow_ids(self) -> tuple[str, ...]:
-        return tuple(item.workflow_id for item in self.items if item.status == "quarantined")
-
-
 class PersistenceBootstrapState(BaseModel):
     """Immutable state returned after successful V2 persistence bootstrap."""
 
@@ -121,8 +77,6 @@ class PersistenceBootstrapState(BaseModel):
     schema_revision: str
     database_backup_status: Literal["not_required", "created", "existing"] = "not_required"
     data_migration_name: str
-    workflow_imported_count: int = Field(default=0, ge=0)
-    workflow_quarantined_count: int = Field(default=0, ge=0)
 
 
 class PersistenceBootstrapFailure(BaseModel):

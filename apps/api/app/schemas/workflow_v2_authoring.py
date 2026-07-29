@@ -11,6 +11,8 @@ from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
+from app.schemas.workflow_v2 import WorkflowV2
+
 
 WorkflowRevisionChangeSource = Literal[
     "create",
@@ -262,6 +264,14 @@ class WorkflowRevisionPage(_AuthoringModel):
 
     items: tuple[WorkflowRevisionV2Summary, ...] = ()
     next_cursor: str | None = None
+
+
+class WorkflowRevisionRestoreResponse(_AuthoringModel):
+    """A restored Workflow and the newly committed immutable revision."""
+
+    workflow: WorkflowV2
+    revision: WorkflowRevisionV2Summary
+    restored_from_revision_no: int = Field(ge=1)
 
 
 class CurrentWorkflowAuthoringState(_AuthoringModel):

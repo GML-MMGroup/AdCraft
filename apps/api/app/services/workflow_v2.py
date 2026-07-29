@@ -4792,6 +4792,7 @@ class WorkflowV2Service:
 
         current = self.get_workflow(workflow.workflow_id)
         changed = self._merge_uncommitted_scheduler_slot_results(workflow, current)
+        changed = self._merge_default_final_timeline(workflow, current) or changed
         for slot_id in dict.fromkeys(slot_ids):
             generated_slot = self._find_slot(workflow, slot_id)
             current_slot = self._find_slot(current, slot_id)
@@ -4818,6 +4819,35 @@ class WorkflowV2Service:
         self._refresh_workflow_state(current)
         self._commit_semantic_workflow(current, source=source)
         return self._persist_operational_workflow(current)
+
+    def _merge_default_final_timeline(
+        self,
+        generated_workflow: WorkflowV2,
+        current_workflow: WorkflowV2,
+    ) -> bool:
+        """Retain a newly built default timeline without replacing user authoring."""
+
+        generated_item = self._find_item(
+            generated_workflow,
+            "final-composition",
+            "final-composition-1",
+        )
+        current_item = self._find_item(
+            current_workflow,
+            "final-composition",
+            "final-composition-1",
+        )
+        if (
+            generated_item is None
+            or current_item is None
+            or not generated_item.timeline_clips
+            or current_item.timeline_clips
+        ):
+            return False
+        generated_copy = generated_item.model_copy(deep=True)
+        current_item.timeline_plan = generated_copy.timeline_plan
+        current_item.timeline_clips = generated_copy.timeline_clips
+        return True
 
     def _preflight_visual_style_scope(
         self,
@@ -5629,10 +5659,9 @@ class WorkflowV2Service:
                     current_workflow.workflow_id,
                     manifest.execution_id,
                 ):
-                    recovered_slot_ids_by_execution.setdefault(
-                        manifest.execution_id,
-                        [],
-                    ).append(slot.slot_id)
+                    recovered_slot_ids_by_execution.setdefault(manifest.execution_id, []).append(
+                        slot.slot_id
+                    )
                 committed_manifest = self._provider_result_store.load_manifest(
                     workflow_id=manifest.workflow_id,
                     execution_id=manifest.execution_id,

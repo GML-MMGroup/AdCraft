@@ -16,7 +16,7 @@ from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import WorkflowRevisionRow, WorkflowRow
 from app.persistence.project_repository import ProjectRepository
-from app.schemas.v2_persistence import DataMigrationCompletion, V2EventInsert
+from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.workflow_v2_authoring import (
     CurrentWorkflowAuthoringState,
     WorkflowAuthoringDocumentV2,
@@ -54,12 +54,6 @@ class WorkflowAuthoringRepository:
 
         return self._database
 
-    @property
-    def event_repository(self) -> EventRepository:
-        """Expose the shared event repository for import marker checks only."""
-
-        return self._events
-
     def create_initial(
         self,
         *,
@@ -69,7 +63,6 @@ class WorkflowAuthoringRepository:
         content_hash: str,
         change_source: WorkflowRevisionChangeSource,
         source_execution_id: str | None = None,
-        migration_completion: DataMigrationCompletion | None = None,
     ) -> WorkflowRevisionCommitResult:
         """Atomically create Project, Workflow, Revision 1, and its event."""
 
@@ -131,18 +124,6 @@ class WorkflowAuthoringRepository:
                         source_execution_id=source_execution_id,
                         created_at=now,
                     )
-                    if migration_completion is not None:
-                        self._events.complete_migration_in_transaction(
-                            connection,
-                            migration_completion.model_copy(
-                                update={
-                                    "details": {
-                                        **migration_completion.details,
-                                        "revision_id": revision_id,
-                                    }
-                                }
-                            ),
-                        )
                     connection.commit()
                 except BaseException:
                     connection.rollback()
@@ -247,7 +228,7 @@ class WorkflowAuthoringRepository:
         workflow_id: str,
         source_execution_id: str,
     ) -> WorkflowRevisionV2Summary | None:
-        """Return an execution-owned revision for idempotent terminal publication."""
+        """Return an existing execution-result revision for idempotent recovery."""
 
         try:
             with self._database.engine.connect() as connection:
@@ -355,8 +336,6 @@ class WorkflowAuthoringRepository:
                     current = _workflow_row_for_update(connection, workflow_id)
                     if str(current["project_id"]) != project_id:
                         raise _workflow_not_found_error()
-                    _require_state_version(current, expected_state_version)
-                    current_revision = _current_revision_for_workflow(connection, current)
                     if source_execution_id is not None:
                         existing = _revision_by_execution(
                             connection, workflow_id, source_execution_id
@@ -369,6 +348,8 @@ class WorkflowAuthoringRepository:
                                 status="already_committed",
                                 projection_state=str(current["projection_state"]),
                             )
+                    _require_state_version(current, expected_state_version)
+                    current_revision = _current_revision_for_workflow(connection, current)
                     if allow_no_change and str(current_revision["content_hash"]) == content_hash:
                         connection.commit()
                         return _commit_result_from_row(

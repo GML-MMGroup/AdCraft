@@ -2701,7 +2701,10 @@ class V2GenerationPipeline:
         if slot.slot_type != "final_video":
             return
         _stored_workflow, _item, _final_slot, timeline, _source = (
-            self._final_timeline_service.load_or_create_and_reconcile(workflow.workflow_id)
+            self._final_timeline_service.load_or_create_and_reconcile(
+                workflow.workflow_id,
+                workflow_override=workflow,
+            )
         )
         self._final_timeline_service.project_compatibility_timeline(item, timeline)
         context["canonical_timeline"] = timeline.model_dump(mode="json")

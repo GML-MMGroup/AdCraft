@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import ProjectRow
+from app.persistence.models import ProjectRow, WorkflowRow
 from app.schemas.workflow_v2_projects import (
     ProjectCreate,
     ProjectRecord,
@@ -125,6 +125,22 @@ class ProjectRepository:
             last = items[-1]
             next_cursor = _encode_cursor(last.updated_at, last.project_id)
         return ProjectRecordPage(items=items, next_cursor=next_cursor)
+
+    def workflow_identity(self, project_id: str) -> tuple[str, int]:
+        """Return the owned Workflow ID and current semantic revision number."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = connection.execute(
+                    select(WorkflowRow.workflow_id, WorkflowRow.semantic_revision_no).where(
+                        WorkflowRow.project_id == project_id
+                    )
+                ).one_or_none()
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        if row is None:
+            raise _not_found_error()
+        return str(row.workflow_id), int(row.semantic_revision_no)
 
     def update(
         self,

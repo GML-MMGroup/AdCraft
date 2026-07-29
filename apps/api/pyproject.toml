@@ -20,13 +20,13 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.15.15",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
-pythonpath = ["."]
 markers = [
     "slow: tests taking more than about 1 second or known to dominate full-suite runtime",
     "integration: tests crossing API/service/storage/runtime boundaries",
