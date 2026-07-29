@@ -59,7 +59,7 @@ describe("HomePage hero title", () => {
       /\.home-page\s*\{[^}]*--home-font-display:\s*"Space Grotesk"[^;]*;[^}]*--home-font-accent:\s*"Clash Display"[^;]*;[^}]*--home-font-ui:\s*"Inter"[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__title\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-size:\s*54px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.02;[^}]*letter-spacing:\s*0;/s,
+      /\.home-product-hero__title\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-size:\s*62px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.02;[^}]*letter-spacing:\s*0;/s,
     );
     expect(mobileHeroTitleStyles).toMatch(
       /font-size:\s*40px;[^}]*line-height:\s*1\.02;/s,
@@ -68,7 +68,7 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*108px;[^}]*font-weight:\s*700;[^}]*line-height:\s*0\.9;[^}]*transform:\s*skewX\(-8deg\);/s,
+      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*150px;[^}]*font-weight:\s*700;[^}]*line-height:\s*0\.9;[^}]*transform:\s*skewX\(-8deg\) scaleX\(0\.76\) scaleY\(1\.16\);/s,
     );
     expect(styles).toMatch(
       /\.section-title h2\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-weight:\s*700;[^}]*text-transform:\s*uppercase;/s,
@@ -97,6 +97,21 @@ describe("HomePage hero title", () => {
     expect(styles).not.toContain("home-product-hero__accent-glyph");
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*text-shadow:/s);
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*filter:/s);
+  });
+
+  it("matches the approved wide desktop hero proportions", () => {
+    expect(styles).toMatch(
+      /\.home-product-hero\s*\{[^}]*--home-product-hero-height:\s*607px;[^}]*--home-product-media-height:\s*458px;[^}]*width:\s*min\(1230px, calc\(100vw - 180px\)\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-page > \.content-wrap\s*\{[^}]*width:\s*min\(1230px, calc\(100vw - 180px\)\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-film\s*\{[^}]*margin-bottom:\s*22px;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__create\s*\{[^}]*min-height:\s*56px;[^}]*font-size:\s*16px;/s,
+    );
   });
 
   it("keeps the dark-theme gold override from resetting text clipping", () => {

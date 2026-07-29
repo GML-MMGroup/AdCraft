@@ -29,13 +29,17 @@
   font-family: var(--home-font-ui);
 }
 
+.home-page > .content-wrap {
+  width: min(1230px, calc(100vw - 180px));
+}
+
 .home-product-hero {
-  --home-product-hero-height: 570px;
-  --home-product-media-height: 360px;
+  --home-product-hero-height: 607px;
+  --home-product-media-height: 458px;
   display: grid;
-  grid-template-columns: minmax(0, 0.94fr) minmax(400px, 1.06fr);
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  width: min(var(--content-width), calc(100vw - 180px));
+  width: min(1230px, calc(100vw - 180px));
   height: var(--home-product-hero-height);
   min-height: 0;
   gap: 58px;
@@ -55,7 +59,7 @@
   max-width: 640px;
   color: #202235;
   font-family: var(--home-font-display);
-  font-size: 54px;
+  font-size: 62px;
   font-weight: 700;
   line-height: 1.02;
   letter-spacing: 0;
@@ -122,11 +126,11 @@
   white-space: nowrap;
   color: #8f6722;
   font-family: var(--home-font-accent);
-  font-size: 108px;
+  font-size: 150px;
   font-style: normal;
   font-weight: 700;
   line-height: 0.9;
-  transform: skewX(-8deg);
+  transform: skewX(-8deg) scaleX(0.76) scaleY(1.16);
   transform-origin: left center;
 }
 
@@ -221,18 +225,18 @@
 
 .home-product-hero__create {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 56px;
   align-items: center;
   gap: 9px;
-  margin-top: 32px;
-  padding: 0 19px 0 16px;
+  margin-top: 48px;
+  padding: 0 26px 0 22px;
   border: 1px solid rgba(239, 233, 255, 0.74);
   border-radius: 8px;
   background: rgba(128, 107, 196, 0.3);
   box-shadow: 0 12px 28px rgba(82, 65, 147, 0.18), inset 0 1px rgba(255, 255, 255, 0.44);
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   will-change: transform, box-shadow;
@@ -271,6 +275,7 @@
   max-height: 100%;
   aspect-ratio: 16 / 9;
   align-self: end;
+  margin-bottom: 22px;
   isolation: isolate;
   opacity: 1;
 }

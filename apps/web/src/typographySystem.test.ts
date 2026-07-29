@@ -62,8 +62,8 @@ describe("typography system", () => {
   it("keeps operational headings compact and gives the homepage its approved display scale", () => {
     expect(styles).toMatch(/\.page-title\s*\{[^}]*font-size:\s*clamp\(40px, 3\.4vw, 48px\)/s);
     expect(styles).toMatch(/\.section-title h2\s*\{[^}]*font-size:\s*clamp\(32px, 3vw, 40px\)/s);
-    expect(homeStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*54px/s);
-    expect(homeStyles).toMatch(/\.home-product-hero__accent\s*\{[^}]*font-size:\s*108px/s);
+    expect(homeStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*62px/s);
+    expect(homeStyles).toMatch(/\.home-product-hero__accent\s*\{[^}]*font-size:\s*150px/s);
     expect(mobileHeroStyles).toMatch(/\.home-product-hero__title\s*\{[^}]*font-size:\s*40px/s);
     expect(invalidWeights).toEqual([]);
   });
