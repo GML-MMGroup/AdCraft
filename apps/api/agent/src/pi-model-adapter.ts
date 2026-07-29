@@ -137,12 +137,7 @@ export class PiModelAdapter implements AgentModelAdapter {
         };
       },
     };
-    const tools: Array<AgentTool<typeof structuredValueSchema>> = [
-      structuredTool,
-      ...toolsForRequest(request)
-        .filter((toolName) => toolName !== "submit_structured_result")
-        .map((toolName) => this.#pythonTool(request, toolName, emit, budget)),
-    ];
+    const tools: Array<AgentTool<typeof structuredValueSchema>> = [structuredTool];
     const toolChoice = toolChoiceForRequest(request);
     const agent = new Agent({
       initialState: {
@@ -182,7 +177,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     try {
       let promptError: unknown;
       try {
-        await agent.prompt(request.context.user_input);
+        await agent.prompt(promptInput(request));
       } catch (error) {
         promptError = error;
       }
@@ -204,52 +199,6 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
   }
 
-  #pythonTool(
-    request: AgentRunRequest,
-    toolName: Exclude<AgentToolName, "submit_structured_result">,
-    emit: EventSink,
-    budget?: RunBudget,
-  ): AgentTool<typeof structuredValueSchema> {
-    return {
-      name: toolName,
-      label: toolName.replaceAll("_", " "),
-      description: `Execute the bounded Python ${toolName} capability.`,
-      parameters: structuredValueSchema,
-      execute: async (toolCallId, params) => {
-        budget?.consumeToolCall();
-        const argumentsPayload = { ...params };
-        const expectedRevision =
-          typeof argumentsPayload.expected_revision === "number"
-            ? argumentsPayload.expected_revision
-            : undefined;
-        delete argumentsPayload.expected_revision;
-        const result = await this.python.executeTool({
-          protocol_version: "1",
-          run_id: request.run_id,
-          tool_call_id: toolCallId,
-          idempotency_key: `${request.run_id}:${toolCallId}:${toolName}`,
-          tool_name: toolName,
-          arguments: argumentsPayload,
-          ...(expectedRevision === undefined
-            ? {}
-            : { expected_revision: expectedRevision }),
-        });
-        await emit(
-          event(request, 0, "tool_result", {
-            tool_call_id: toolCallId,
-            tool_name: toolName,
-            status: result.status,
-            error_code: result.error_code,
-          }),
-        );
-        return {
-          content: [{ type: "text", text: JSON.stringify(result) }],
-          details: result,
-          terminate: false,
-        };
-      },
-    };
-  }
 }
 
 export function toolsForRequest(
@@ -378,6 +327,14 @@ function contractSchema(request: AgentRunRequest): Readonly<Record<string, unkno
     !Array.isArray(request.context.contract_schema)
     ? request.context.contract_schema
     : {};
+}
+
+function promptInput(request: AgentRunRequest): string {
+  if ("user_input" in request.context) return request.context.user_input;
+  if ("user_instruction" in request.context) {
+    return request.context.user_instruction;
+  }
+  throw new Error("agent_context_input_missing");
 }
 
 async function projectOutputDelta(
