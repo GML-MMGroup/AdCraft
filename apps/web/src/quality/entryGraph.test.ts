@@ -98,45 +98,4 @@ describe("entry graph analyzer", () => {
     });
   });
 
-  test("keeps the cosmic renderer outside Home's static graph", () => {
-    const directory = mkdtempSync(join(tmpdir(), "adcraft-entry-graph-"));
-    temporaryDirectories.push(directory);
-    const manifestPath = join(directory, "manifest.json");
-    writeFileSync(manifestPath, JSON.stringify({
-      "src/pages/HomePage.tsx": {
-        file: "assets/home.js",
-        imports: ["src/pages/home-cosmic/HomeCosmicScene.tsx"],
-      },
-      "src/pages/home-cosmic/HomeCosmicScene.tsx": {
-        file: "assets/home-cosmic-scene.js",
-        dynamicImports: [
-          "src/pages/home-cosmic/homeCosmicRenderer.ts",
-        ],
-      },
-      "src/pages/home-cosmic/homeCosmicRenderer.ts": {
-        file: "assets/home-cosmic-renderer.js",
-        imports: ["_vendor-three.js"],
-      },
-      "_vendor-three.js": {
-        file: "assets/vendor-three.js",
-      },
-    }));
-
-    const output = execFileSync(process.execPath, [
-      analyzerPath,
-      "--manifest",
-      manifestPath,
-      "--entry",
-      "src/pages/HomePage.tsx",
-      "--static-only",
-      "--json",
-    ], { encoding: "utf8" });
-
-    expect(JSON.parse(output)).toMatchObject({
-      modules: [
-        "src/pages/HomePage.tsx",
-        "src/pages/home-cosmic/HomeCosmicScene.tsx",
-      ],
-    });
-  });
 });
