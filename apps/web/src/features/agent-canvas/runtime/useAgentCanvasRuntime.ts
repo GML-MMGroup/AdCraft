@@ -316,13 +316,20 @@ export function useAgentCanvasRuntime(
 
   const runNode = useCallback(async (
     node: CanvasNodeV2,
-    options: { retryFailed?: boolean } = {},
+    options: {
+      retryFailed?: boolean;
+      sourceAction?: "node_run" | "ready_media_variation_generate";
+    } = {},
   ) => {
     if (!workflowId) return;
     if (!["script", "image", "video", "audio"].includes(node.node_type)) return;
     setRunPending(true);
     try {
-      const request = nodeRunRequest(node, options.retryFailed);
+      const request = nodeRunRequest(
+        node,
+        options.retryFailed,
+        options.sourceAction,
+      );
       await v2Api.runAgentCanvas(
         workflowId,
         request,

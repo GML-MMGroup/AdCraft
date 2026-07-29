@@ -60,6 +60,8 @@ import {
 } from "./model/nodeDefaults.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
+import type { ReadyMediaVariationDraft } from "./session/readyMediaVariation.ts";
+import { createAndRunReadyMediaVariation } from "./session/readyMediaVariationOrchestration.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
 import { AgentCanvasInspector } from "./AgentCanvasInspector.tsx";
 import "@xyflow/react/dist/style.css";
@@ -208,6 +210,25 @@ export function AgentCanvasPage() {
       setSurfaceError(error instanceof Error ? error.message : "Node run failed.");
     });
   }, [runNode, workflow?.nodes]);
+
+  const generateReadyMediaVariation = useCallback((
+    source: CanvasNodeV2,
+    draft: ReadyMediaVariationDraft,
+  ) => {
+    return createAndRunReadyMediaVariation({
+      source,
+      draft,
+      createSibling: createSiblingDraft,
+      runSibling: runNode,
+      onRunSubmissionError(error) {
+        setSurfaceError(
+          error instanceof Error
+            ? error.message
+            : "The variation was created but its run could not start.",
+        );
+      },
+    }).then(() => undefined);
+  }, [createSiblingDraft, runNode]);
 
   const openEditing = useCallback((nodeId: string) => {
     setEditingNodeId(nodeId);
@@ -560,7 +581,7 @@ export function AgentCanvasPage() {
             providerCapabilitiesLoading={providerModels.loading}
             providerCapabilitiesError={providerModels.error}
             onRun={runNode}
-            onCreateSibling={createSiblingDraft}
+            onGenerateVariation={generateReadyMediaVariation}
             onSaveImageToLibrary={saveImageToLibrary}
             onDelete={deleteNode}
             onOpenEditing={() => openEditing(session.state.selectedNode!.node_id)}

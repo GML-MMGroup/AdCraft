@@ -46,4 +46,17 @@ describe("nodeRunRequest", () => {
       source_action: "node_run",
     });
   });
+
+  it("labels a Ready media sibling run without changing selected-node scope", () => {
+    expect(nodeRunRequest(
+      { ...draftNode(), node_id: "node-variation-1" },
+      false,
+      "ready_media_variation_generate",
+    )).toEqual({
+      scope: "selected_nodes",
+      node_ids: ["node-variation-1"],
+      retry_failed: false,
+      source_action: "ready_media_variation_generate",
+    });
+  });
 });

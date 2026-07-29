@@ -1996,7 +1996,11 @@ export interface CanvasRunRequestV2 {
   scope: "all_drafts" | "selected_nodes";
   node_ids: string[];
   retry_failed: boolean;
-  source_action: "global_run" | "node_run" | "retry_failed";
+  source_action:
+    | "global_run"
+    | "node_run"
+    | "retry_failed"
+    | "ready_media_variation_generate";
 }
 
 export interface CanvasRunSkippedNodeV2 {
