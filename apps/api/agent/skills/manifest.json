@@ -2,107 +2,107 @@
   "skills": [
     {
       "path": "audience_analysis/SKILL.md",
-      "sha256": "54ecd53d00a54819c2943cdaa8479af9349ee6880789e1c644f12975b022d2cb",
+      "sha256": "8134f3763c45b1a73627daecc6cd467f646cc4a2ba2fe9cb5763c1058779c8ed",
       "skill_id": "audience_analysis"
     },
     {
       "path": "bgm_prompt_generation/SKILL.md",
-      "sha256": "71b51b6f9749a384ec1cbab1df713a1fae16a4d1c2c20249ae8387518f6428f0",
+      "sha256": "d39ca2242efeccfd86bb32749ac0337518a5e94abecc34ca2d88ce2d92f54219",
       "skill_id": "bgm_prompt_generation"
     },
     {
       "path": "campaign_appeal_generation/SKILL.md",
-      "sha256": "997b7593040076df7e151375f64b40eedfa4489bb73393c4e92ff8fc818e07b2",
+      "sha256": "f26891ecfc3eb2a2a5ce3f288dc848cb3259ee76f066a1e4ed5cd4a7449d57e8",
       "skill_id": "campaign_appeal_generation"
     },
     {
       "path": "character_prompt_expansion/SKILL.md",
-      "sha256": "e8e9a0a6c22889b0cf089fe872d6f3e71d16d2f56d8ad663aa7fbb60e9f7ab5b",
+      "sha256": "10ca0316a0685f4c8d8ba605cb3593539a6837fa2162bc9bdd05064f22462292",
       "skill_id": "character_prompt_expansion"
     },
     {
       "path": "character_spec_extraction/SKILL.md",
-      "sha256": "5ab84d621e656ff5dd198d5f17d67dd6b20d2189c5cbeb7cb68f3225a84d6cbc",
+      "sha256": "8b61b95a08f041342c3df37c272b6aca2a0280acaad0e816d6126025d52612dd",
       "skill_id": "character_spec_extraction"
     },
     {
       "path": "character_turnaround_prompt/SKILL.md",
-      "sha256": "685b8521e22b19b6bc9386a85f8e4523f381efb803820c0203f426e276cb9956",
+      "sha256": "4c210937793dc610616af90e1b658ad6894305b99c6deda5c356872d9ccb83f9",
       "skill_id": "character_turnaround_prompt"
     },
     {
       "path": "creative_idea_generation/SKILL.md",
-      "sha256": "1904a9493944cf543ccc832f7ce2175e788a4645a3002a173458fcfce2b61c00",
+      "sha256": "6dc8acae0c8effb339b8008e73b7c0b9281cad7203d1ccc0fad2e9b232df9008",
       "skill_id": "creative_idea_generation"
     },
     {
       "path": "dialogue_copy_generation/SKILL.md",
-      "sha256": "0d83f80f5021c347f408063caba0d9ed866f84dc952e56e112ea33c3bd963084",
+      "sha256": "8ea87d50eb4cbd6af225047cd7c50796e26e531f773ab15f3d8f032ee18a634a",
       "skill_id": "dialogue_copy_generation"
     },
     {
       "path": "mood_and_duration_matching/SKILL.md",
-      "sha256": "fe8d1c16880bb63d872c658b6ab3e6844148089291b5bc54dcb3bd3cf1144393",
+      "sha256": "39eb8bf81a042b43d348429142d2be17ee02b2cf9e41a9f53f222703f33473df",
       "skill_id": "mood_and_duration_matching"
     },
     {
       "path": "multi_view_scene_prompt/SKILL.md",
-      "sha256": "915b4aaaccb8b74457e703a52ccf329cdc54404df5eb34ee6e94952640e643a8",
+      "sha256": "ce90f3f2a39eb02ce9a8c24e7f45af403761d8332251124d6f97e1ab4a32ce2b",
       "skill_id": "multi_view_scene_prompt"
     },
     {
       "path": "product_info_extraction/SKILL.md",
-      "sha256": "48900f04bff240b2573235bfc03f44252f8bc28f93a6d25d9ae5853c1a6e3495",
+      "sha256": "5c36adbfa98c562865df9f3c06af55f622a289205ad7c40320496f8012440c4d",
       "skill_id": "product_info_extraction"
     },
     {
       "path": "pure_scene_prompt_expansion/SKILL.md",
-      "sha256": "5447b99b50580383d11b858353e097b2749060d666a20b87c35473b1f738dd87",
+      "sha256": "6b7af6df11e3c355f70be05e9927c0e35c71224596502f647c43d65a8aeecb3f",
       "skill_id": "pure_scene_prompt_expansion"
     },
     {
       "path": "reference_asset_selection/SKILL.md",
-      "sha256": "e42a328ee817908b7b65378af17585b3ab719d0c905dd66c28af71f81d7e728d",
+      "sha256": "d51bfcd900c1b7aeae105b69376b0f0d10a732717701b40c3d516f6c9e127785",
       "skill_id": "reference_asset_selection"
     },
     {
       "path": "scene_spec_extraction/SKILL.md",
-      "sha256": "1c135b454d9f7d3cc2831b8c8d91e4d0f3ddff17639a1816c92e6f559e434906",
+      "sha256": "128c1fc6cdea00713c315906c437b619e6dc641763eb995fc287639ca2adf372",
       "skill_id": "scene_spec_extraction"
     },
     {
       "path": "segment_generation_planning/SKILL.md",
-      "sha256": "acba3c4faeee5e9ad836124bb28f490e5218b6f4b484585dc1d12a9093b27e88",
+      "sha256": "577262f50a2816901c0f8c2141366ce15c0c42b2ebf85f6ba178b27746d01588",
       "skill_id": "segment_generation_planning"
     },
     {
       "path": "selling_point_extraction/SKILL.md",
-      "sha256": "583da44d39a05ff1a8eced0f37a7e7f59a9ce28047ff71a33d79dc1bb7e23362",
+      "sha256": "f3826552fbe2462e0489816a49958b7da07f9b4cddbcb16c7ef75c7d780d9cbe",
       "skill_id": "selling_point_extraction"
     },
     {
       "path": "short_ad_script_structure/SKILL.md",
-      "sha256": "f291e1500924eefa5d62efa6d3b00a49b0962a91664ad9aabe4e7837b082e9be",
+      "sha256": "caa7b3dbe9d4c0da60de07d2f8555dce2846c702bab6ca617c7958c615bb1c6e",
       "skill_id": "short_ad_script_structure"
     },
     {
       "path": "storyboard_beat_extraction/SKILL.md",
-      "sha256": "23f9725136a47c005d0664f95ae09e0745ec128db2559822d8b2558e60c72b39",
+      "sha256": "fbb1a33f0648909c779e6678258ae841a4a3e2e1f605f28c2ce2f6a141fc44dd",
       "skill_id": "storyboard_beat_extraction"
     },
     {
       "path": "storyboard_image_prompt_generation/SKILL.md",
-      "sha256": "f4ec93bd0efc2a86c77410cb56ec7393b3f7913821e7c1358b8621b8700b3e77",
+      "sha256": "295dce72f9a7959a77a623428a75a52f0147224001b58a75e8c36cc8231aea60",
       "skill_id": "storyboard_image_prompt_generation"
     },
     {
       "path": "storyboard_video_prompt_generation/SKILL.md",
-      "sha256": "f6edb645c4d48bc57c1259166ee562ed5ce5ed65f922ea5ab099d494ec3fa395",
+      "sha256": "4556237c056904a77f7243c3971e99801d13fe2b8984fd7103c8089ada946d11",
       "skill_id": "storyboard_video_prompt_generation"
     },
     {
       "path": "visual_continuity_check/SKILL.md",
-      "sha256": "c047bdab4038120f2c749546cf54be2c11f809277e66f11df78ad8117db79f81",
+      "sha256": "de1a64e386e46c4c36a43959f719dcf6dfc2eacb12126d465a04ca6686e03859",
       "skill_id": "visual_continuity_check"
     }
   ],

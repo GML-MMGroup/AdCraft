@@ -93,7 +93,8 @@ async function verifyBundleAt(root: string): Promise<VerifiedSkillBundle> {
     } catch {
       throw new SkillBundleError("agent_skill_file_missing");
     }
-    const digest = createHash("sha256").update(bytes).digest("hex");
+    const content = canonicalSkillContent(bytes);
+    const digest = createHash("sha256").update(content, "utf8").digest("hex");
     if (digest !== entry.sha256) {
       throw new SkillBundleError("agent_skill_digest_mismatch");
     }
@@ -101,10 +102,18 @@ async function verifyBundleAt(root: string): Promise<VerifiedSkillBundle> {
       skill_id: entry.skill_id,
       version: manifest.version,
       sha256: digest,
-      content: bytes.toString("utf-8"),
+      content,
     });
   }
   return { version: manifest.version, skills };
+}
+
+export function canonicalSkillContent(bytes: Uint8Array): string {
+  return Buffer.from(bytes)
+    .toString("utf-8")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n+$/g, "")
+    .concat("\n");
 }
 
 function resolveSkillPath(root: string, declaredPath: string): string {

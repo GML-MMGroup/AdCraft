@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from app.persistence.errors import V2PersistenceError
@@ -21,6 +22,7 @@ from app.schemas.agent_canvas_ad_media import (
     resolve_visual_style,
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,35 +35,27 @@ class AgentCanvasPromptRegistration:
 
 
 _ROLE_BOUNDARIES = {
-    "product_main": (
+    "product": (
         "Render one product identity with exact geometry, materials, marks, and proportions.",
         "Do not add people or a narrative environment unless explicitly declared.",
     ),
-    "product_view_board": (
-        "Render one view board of the exact bound product design without redesign.",
-        "Do not alter geometry, materials, marks, proportions, palette, or style.",
-    ),
-    "prop_main": (
+    "prop": (
         "Render one isolated prop identity and material design.",
         "Do not add unrelated products, people, or narrative action.",
     ),
-    "character_main": (
+    "character": (
         "Render one character identity, wardrobe, silhouette, and neutral presentation.",
         "Do not add product placement or a narrative scene unless explicitly declared.",
     ),
-    "character_turnaround": (
-        "Render the exact bound individual as one consistent turnaround without redesign.",
-        "Do not change face, hairstyle, wardrobe, silhouette, proportions, palette, or style.",
-    ),
-    "scene_design_board": (
+    "scene": (
         "Render one consistent environment as a complete 3x3 spatial design board.",
         "Do not progress narrative action across panels.",
     ),
-    "storyboard_grid": (
+    "storyboard_sequence": (
         "Render one complete 3x3 storyboard grid for one coherent sequence.",
         "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
     ),
-    "storyboard_video_segment": (
+    "storyboard_video": (
         "Render one video segment from the complete bound storyboard grid.",
         "Do not generate background music; preserve declared dialogue, ambience, and effects.",
     ),
@@ -69,6 +63,30 @@ _ROLE_BOUNDARIES = {
         "Render one instrumental background music track.",
         "No vocals, lyrics, speech, or spoken words.",
     ),
+    "general_image": (
+        "Render one image from the saved Node prompt.",
+        "Do not add undeclared identities or text.",
+    ),
+    "general_video": (
+        "Render one video from the saved Node prompt and explicit Bindings.",
+        "Do not add background music unless the prompt explicitly requests it.",
+    ),
+    "general_audio": (
+        "Render one audio asset from the saved Node prompt.",
+        "Do not add undeclared speech or lyrics.",
+    ),
+}
+_CREATIVE_DIRECTION_ROLE = {
+    "product": "product_designer",
+    "prop": "prop_designer",
+    "character": "character_designer",
+    "scene": "scene_designer",
+    "storyboard_sequence": "storyboard_artist",
+    "storyboard_video": "video_director",
+    "bgm": "bgm_director",
+    "general_image": "quick_media_agent",
+    "general_video": "quick_media_agent",
+    "general_audio": "quick_media_agent",
 }
 
 
@@ -93,6 +111,8 @@ class AgentCanvasProviderPromptCompiler:
         node: CanvasNodeV2,
         role_contract: AdMediaRoleContractV2,
         reference_bundle: AdReferenceBundleV2,
+        *,
+        creative_direction_projection: Mapping[str, object] | None = None,
     ) -> CompiledProviderPromptV2:
         if role_contract.semantic_role != node.semantic_role:
             raise _error(
@@ -104,6 +124,11 @@ class AgentCanvasProviderPromptCompiler:
             raise _error(
                 "provider_prompt_contract_failed",
                 "Provider prompt registration is missing.",
+            )
+        if creative_direction_projection is not None:
+            CreativeDirectionService().validate_role_projection(
+                _CREATIVE_DIRECTION_ROLE[node.semantic_role],
+                creative_direction_projection,
             )
         structured = self._roles.validate_structured_content(
             node.semantic_role,

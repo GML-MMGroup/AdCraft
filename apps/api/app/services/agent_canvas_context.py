@@ -140,7 +140,7 @@ class AgentLocalContextAssembler:
                 raise _context_error("mentioned_node_not_found", "Mentioned node was not found.")
             summaries.append(_node_summary(node))
             for binding in workflow.bindings:
-                if binding.target_node_id != node_id or binding.source.kind != "node":
+                if binding.target_node_id != node_id or binding.source.kind != "node_output":
                     continue
                 source = nodes.get(binding.source.node_id)
                 if source is None:
@@ -203,10 +203,10 @@ def _context_error(code: str, message: str) -> V2PersistenceError:
 def _specialist_for_image_target(node) -> str:
     if node is None:
         return "quick_media_agent"
-    if node.semantic_role == "character_main":
-        return "character_designer"
-    if node.semantic_role == "scene_design_board":
-        return "scene_designer"
-    if node.semantic_role == "storyboard_grid":
-        return "storyboard_artist"
-    return "product_designer"
+    return {
+        "character": "character_designer",
+        "scene": "scene_designer",
+        "storyboard_sequence": "storyboard_artist",
+        "prop": "prop_designer",
+        "product": "product_designer",
+    }.get(node.semantic_role, "quick_media_agent")

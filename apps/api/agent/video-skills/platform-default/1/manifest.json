@@ -3,6 +3,13 @@
   "version": "1",
   "display_name": "Platform Default",
   "description": "Neutral AdCraft planning and production recipe.",
+  "category": "commercial",
+  "tags": ["neutral", "commercial"],
+  "supported_use_cases": ["planning", "storyboard", "video"],
+  "preview": {
+    "kind": "none",
+    "summary": "Neutral style without a required preview image."
+  },
   "files": {
     "SKILL.md": "d8685873bc323072ed2779f6dd87d0a38136f79e81d739b15d53de637fb43e0f",
     "recipe.json": "a47744ced95973f7e0ef52c64341eecabd81ac91340a49991473e3ccec8f9e95",
