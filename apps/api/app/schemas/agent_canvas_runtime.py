@@ -84,6 +84,7 @@ class CanvasExecutionMembershipV2(_RuntimeModel):
     state: Literal[
         "queued",
         "waiting",
+        "blocked",
         "running",
         "succeeded",
         "failed",
@@ -117,6 +118,7 @@ class NodeRuntimeV2(_RuntimeModel):
     execution_id: str | None = None
     provider_task_id: str | None = None
     waiting_for_node_ids: tuple[str, ...] = ()
+    blocked_by_node_ids: tuple[str, ...] = ()
     attempt_no: int = Field(default=0, ge=0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     error: CanvasNodeErrorV2 | None = None
@@ -142,6 +144,7 @@ class CanvasProviderModelCapabilityV2(_RuntimeModel):
     output_type: Literal["image", "video", "audio"]
     accepted_input_types: frozenset[Literal["text", "image", "video", "audio"]]
     max_references: int = Field(ge=0)
+    reference_limits: dict[Literal["image", "video", "audio"], int] = Field(default_factory=dict)
     supported_parameters: frozenset[str] = frozenset()
     supported_aspect_ratios: tuple[str, ...] = ()
     duration_range_seconds: tuple[float, float] | None = None

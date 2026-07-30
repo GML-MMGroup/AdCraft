@@ -90,6 +90,14 @@ class AgentCanvasRunService:
         for node in requested:
             reason = _skip_reason(node, request)
             if reason is None:
+                if request.scope == "selected_nodes":
+                    missing_node_ids = _required_sources_not_ready(workflow, node.node_id, nodes)
+                    if missing_node_ids:
+                        raise _run_error(
+                            "upstream_inputs_not_ready",
+                            "Required upstream inputs are not ready.",
+                            details={"missing_node_ids": list(missing_node_ids)},
+                        )
                 try:
                     if self._eligibility_validator is not None:
                         self._eligibility_validator(node)
@@ -227,24 +235,8 @@ class DynamicCanvasScheduler:
                 if lease is None:
                     continue
                 leases.append(lease)
-                self._runtime.update_member(
-                    execution_id,
-                    node_id,
-                    state="running",
-                    phase="running",
-                    now=now,
-                    event_type="node_run_started",
-                )
-                self._workflows.set_node_runtime_state(
-                    current.workflow_id,
-                    node_id,
-                    status="working",
-                    updated_at=now,
-                    execution_id=execution_id,
-                    event_type="provider_execution_started",
-                )
             with ThreadPoolExecutor(max_workers=max(len(leases), 1)) as executor:
-                prepared = []
+                prepared_contexts: list[tuple[NodeExecutionLeaseV2, NodeExecutionContext]] = []
                 for lease in leases:
                     try:
                         context = self._prepare_member(
@@ -255,6 +247,26 @@ class DynamicCanvasScheduler:
                     except Exception as error:
                         self._fail_member(current.workflow_id, lease, error)
                         continue
+                    prepared_contexts.append((lease, context))
+                prepared = []
+                for lease, context in prepared_contexts:
+                    self._runtime.update_member(
+                        lease.execution_id,
+                        lease.node_id,
+                        state="running",
+                        phase="running",
+                        now=self._clock(),
+                        event_type="node_run_started",
+                    )
+                    self._workflows.set_node_runtime_state(
+                        current.workflow_id,
+                        lease.node_id,
+                        status="working",
+                        updated_at=self._clock(),
+                        execution_id=lease.execution_id,
+                        event_type="provider_execution_started",
+                    )
+                for lease, context in prepared_contexts:
                     prepared.append(
                         (
                             lease,
@@ -283,15 +295,23 @@ class DynamicCanvasScheduler:
                 continue
             waiting = _required_sources_not_ready(workflow, member.node_id, nodes)
             if waiting:
+                blocked = tuple(
+                    source_node_id
+                    for source_node_id in waiting
+                    if (source := nodes.get(source_node_id)) is None or source.status == "failed"
+                )
                 self._runtime.update_member(
                     execution_id,
                     member.node_id,
-                    state="waiting",
+                    state="blocked" if blocked else "waiting",
                     phase="waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
-                    event_type="node_waiting_for_input",
-                    event_payload={"waiting_for_node_ids": list(waiting)},
+                    event_type="node_blocked" if blocked else "node_waiting_for_input",
+                    event_payload={
+                        "waiting_for_node_ids": list(waiting),
+                        "blocked_by_node_ids": list(blocked),
+                    },
                 )
                 continue
             candidates.append(member)
@@ -326,37 +346,73 @@ class DynamicCanvasScheduler:
     ) -> NodeExecutionContext:
         now = self._clock()
         node = self._workflows.get_node(workflow_id, node_id)
-        inputs = self._bindings.resolve_run_inputs(workflow_id, node_id)
+        input_resolution = self._bindings.resolve_run_input_resolution(workflow_id, node_id)
+        inputs = input_resolution.inputs
         model_id = None
+        provider_id = None
         compiled_prompt = None
         reference_bundle = None
+        prompt_metadata: dict[str, object] = {}
         if node.node_type in {"image", "video", "audio"}:
-            model_id = self._capabilities.resolve(node, inputs).model_id
+            capability = self._capabilities.resolve(node, inputs)
+            model_id = capability.model_id
+            provider_id = capability.provider
             if self._media_context_preparer is not None:
                 compiled_prompt, reference_bundle = self._media_context_preparer(node)
                 if compiled_prompt is not None:
-                    self._runtime.update_member(
-                        execution_id,
-                        node_id,
-                        state="running",
-                        phase="running",
-                        now=now,
-                        prompt_metadata={
+                    prompt_metadata.update(
+                        {
                             "prompt_registry_ref": compiled_prompt.prompt_registry_ref,
                             "prompt_registry_digest": compiled_prompt.prompt_registry_digest,
                             "render_context_digest": compiled_prompt.render_context_digest,
                             "prompt_digest": compiled_prompt.prompt_digest,
                             "reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
-                        },
+                        }
                     )
-        return NodeExecutionContext(
+        context = NodeExecutionContext(
             execution_id=execution_id,
             node=node,
             inputs=inputs,
             model_id=model_id,
+            provider_id=provider_id,
             compiled_prompt=compiled_prompt,
             reference_bundle=reference_bundle,
+            optional_input_omissions=input_resolution.optional_omissions,
         )
+        prepared = self._dispatcher.prepare(context)
+        if prepared.seedance_input_audit is not None:
+            prompt_metadata["seedance_input_manifest"] = prepared.seedance_input_audit.model_dump(
+                mode="json"
+            )
+            if prepared.optional_input_omissions:
+                prompt_metadata["optional_input_omissions"] = list(
+                    prepared.optional_input_omissions
+                )
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="preparing_provider",
+                now=now,
+                prompt_metadata=prompt_metadata,
+                event_type="provider_inputs_resolved",
+                event_payload={
+                    "seedance_input_manifest": prepared.seedance_input_audit.model_dump(
+                        mode="json"
+                    ),
+                    "optional_input_omissions": list(prepared.optional_input_omissions),
+                },
+            )
+        elif prompt_metadata:
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="preparing_provider",
+                now=now,
+                prompt_metadata=prompt_metadata,
+            )
+        return prepared
 
     def _complete_member(
         self,
@@ -470,7 +526,7 @@ class DynamicCanvasScheduler:
             return
         succeeded = sum(member.state == "succeeded" for member in members)
         failed_or_waiting = sum(
-            member.state in {"failed", "waiting", "queued"} for member in members
+            member.state in {"failed", "waiting", "blocked", "queued"} for member in members
         )
         if not failed_or_waiting:
             status = "completed"
@@ -516,7 +572,7 @@ class DynamicCanvasScheduler:
                 now=now,
             )
         for member in self._runtime.list_members(execution_id):
-            if member.state in {"succeeded", "failed", "cancelled"}:
+            if member.state in {"succeeded", "failed", "blocked", "cancelled"}:
                 continue
             cancelled.append(member.node_id)
             self._runtime.update_member(
@@ -582,6 +638,11 @@ class CanvasRuntimeSnapshotService:
                 ),
                 waiting_for_node_ids=(
                     members[node.node_id].waiting_for_node_ids if node.node_id in members else ()
+                ),
+                blocked_by_node_ids=(
+                    members[node.node_id].waiting_for_node_ids
+                    if node.node_id in members and members[node.node_id].state == "blocked"
+                    else ()
                 ),
                 attempt_no=members[node.node_id].attempt_no if node.node_id in members else 0,
                 updated_at=node.updated_at,
@@ -682,5 +743,15 @@ def _ids(
     return tuple(node_id for node_id, item in runtime.items() if item.phase == phase)
 
 
-def _run_error(code: str, message: str) -> V2PersistenceError:
-    return V2PersistenceError(code, message, stage="agent_canvas_runtime")
+def _run_error(
+    code: str,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> V2PersistenceError:
+    return V2PersistenceError(
+        code,
+        message,
+        stage="agent_canvas_runtime",
+        details=details,
+    )
