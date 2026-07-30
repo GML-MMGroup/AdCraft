@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from collections.abc import Callable, Sequence
@@ -48,7 +49,8 @@ class EventRepository:
     def append(self, event: V2EventInsert) -> WorkflowV2Event:
         """Persist one validated event with a workflow-scoped contiguous sequence."""
 
-        payload_json = serialize_event_payload(event.payload)
+        event = _canonical_event(event)
+        payload_json = serialize_event_payload(_event_payload_for_storage(event))
         for attempt in range(len(self._retry_delays) + 1):
             try:
                 return self._append_once(event, payload_json)
@@ -74,8 +76,11 @@ class EventRepository:
     ) -> WorkflowV2Event:
         """Append an event through a caller-owned transaction without committing it."""
 
+        event = _canonical_event(event)
         return self._insert_with_next_sequence(
-            connection, event, serialize_event_payload(event.payload)
+            connection,
+            event,
+            serialize_event_payload(_event_payload_for_storage(event)),
         )
 
     def complete_migration_in_transaction(
@@ -320,7 +325,7 @@ class EventRepository:
         if completed_report is not None:
             return completed_report
 
-        serialized_events = [(event, serialize_event_payload(event.payload)) for event in events]
+        serialized_events = [_canonical_import_event(event) for event in events]
         self._record_running_migration(migration_name, source_count=len(events))
         try:
             with self._database.engine.connect() as connection:
@@ -487,31 +492,213 @@ class EventRepository:
             seq=next_seq,
             event_type=event.event_type,
             workflow_id=event.workflow_id,
+            project_id=event.project_id,
             execution_id=event.execution_id,
             node_id=event.node_id,
+            binding_id=event.binding_id,
             item_id=event.item_id,
             slot_id=event.slot_id,
             asset_id=event.asset_id,
             version_id=event.version_id,
+            conversation_id=event.conversation_id,
+            turn_id=event.turn_id,
+            action_id=event.action_id,
+            trace_id=event.trace_id,
+            span_id=event.span_id,
             created_at=event.created_at,
-            payload=json.loads(payload_json),
+            payload=_public_event_payload(json.loads(payload_json)),
         )
 
 
 def _workflow_event_from_row(row: RowMapping) -> WorkflowV2Event:
+    stored_payload = json.loads(str(row["payload_json"]))
+    envelope = _stored_event_envelope(stored_payload)
+    payload = _public_event_payload(stored_payload)
     return WorkflowV2Event(
         seq=int(row["seq"]),
         event_type=str(row["event_type"]),
         workflow_id=str(row["workflow_id"]),
+        project_id=_payload_id(envelope, "project_id"),
         execution_id=_optional_string(row["execution_id"]),
         node_id=_optional_string(row["node_id"]),
+        binding_id=_payload_id(envelope, "binding_id"),
         item_id=_optional_string(row["item_id"]),
         slot_id=_optional_string(row["slot_id"]),
         asset_id=_optional_string(row["asset_id"]),
         version_id=_optional_string(row["version_id"]),
+        conversation_id=_payload_id(envelope, "conversation_id"),
+        turn_id=_payload_id(envelope, "turn_id"),
+        action_id=_payload_id(envelope, "action_id"),
+        trace_id=_payload_id(envelope, "trace_id"),
+        span_id=_payload_id(envelope, "span_id"),
         created_at=str(row["created_at"]),
-        payload=json.loads(str(row["payload_json"])),
+        payload=payload,
     )
+
+
+def _canonical_import_event(event: WorkflowV2Event) -> tuple[WorkflowV2Event, str]:
+    canonical = _canonical_event(
+        V2EventInsert(
+            workflow_id=event.workflow_id,
+            event_type=event.event_type,
+            project_id=event.project_id,
+            execution_id=event.execution_id,
+            node_id=event.node_id,
+            binding_id=event.binding_id,
+            item_id=event.item_id,
+            slot_id=event.slot_id,
+            asset_id=event.asset_id,
+            version_id=event.version_id,
+            conversation_id=event.conversation_id,
+            turn_id=event.turn_id,
+            action_id=event.action_id,
+            trace_id=event.trace_id,
+            span_id=event.span_id,
+            created_at=event.created_at,
+            payload=event.payload,
+        )
+    )
+    public_event = WorkflowV2Event(
+        seq=event.seq,
+        **canonical.model_dump(mode="python"),
+    )
+    return public_event, serialize_event_payload(_event_payload_for_storage(canonical))
+
+
+_CANONICAL_EVENT_TYPES = {
+    "canvas_node_created": "node_created",
+    "canvas_node_updated": "node_updated",
+    "canvas_node_deleted": "node_deleted",
+    "canvas_binding_created": "binding_created",
+    "canvas_binding_updated": "binding_updated",
+    "binding_removed": "binding_deleted",
+    "canvas_layout_updated": "layout_updated",
+    "canvas_variation_draft_saved": "node_updated",
+    "canvas_variation_draft_discarded": "node_updated",
+    "canvas_variation_materialized": "node_created",
+    "asset_published": "project_asset_published",
+    "chat_turn_queued": "agent_turn_queued",
+    "chat_turn_started": "agent_turn_started",
+    "chat_turn_completed": "agent_turn_completed",
+    "chat_turn_failed": "agent_turn_failed",
+    "concept_proposal_created": "creative_proposal_created",
+    "proposal_selected": "creative_proposal_resolved",
+    "proposal_revised": "creative_proposal_resolved",
+    "proposal_skipped": "creative_proposal_resolved",
+    "planning_topic_updated": "creative_topic_updated",
+    "expert_activity_started": "specialist_activity_started",
+    "expert_activity_completed": "specialist_activity_completed",
+    "expert_activity_failed": "specialist_activity_failed",
+    "video_skill_run_created": "creative_direction_updated",
+    "agent_command_plan_created": "command_plan_created",
+    "agent_command_plan_applied": "command_plan_committed",
+    "agent_command_plan_rejected": "command_plan_rejected",
+    "agent_command_plan_failed": "command_plan_rejected",
+    "agent_action_receipt_created": "action_receipt_created",
+    "node_run_queued": "node_queued",
+    "node_run_started": "node_generation_started",
+    "provider_execution_started": "node_generation_started",
+    "provider_inputs_resolved": "node_generation_started",
+    "node_run_cancelled": "node_cancelled",
+    "node_waiting_for_input": "node_blocked",
+    "provider_task_recovering": "provider_task_waiting",
+    "execution_partial_completed": "execution_partial_failed",
+    "script_artifact_created": "node_output_published",
+    "workflow_revision_created": "workflow_projection_updated",
+}
+
+
+def _canonical_event(event: V2EventInsert) -> V2EventInsert:
+    event_type = _CANONICAL_EVENT_TYPES.get(event.event_type, event.event_type)
+    promoted = {
+        field: getattr(event, field) or _payload_id(event.payload, field)
+        for field in (
+            "project_id",
+            "binding_id",
+            "conversation_id",
+            "turn_id",
+            "action_id",
+        )
+    }
+    correlation_id = next(
+        (
+            value
+            for value in (
+                promoted["turn_id"],
+                promoted["action_id"],
+                event.execution_id,
+                promoted["conversation_id"],
+                event.node_id,
+                event.workflow_id,
+            )
+            if value
+        ),
+        event.workflow_id,
+    )
+    trace_id = (
+        event.trace_id
+        or _payload_id(event.payload, "trace_id")
+        or hashlib.sha256(
+            f"agent-canvas-trace:{event.workflow_id}:{correlation_id}".encode()
+        ).hexdigest()[:32]
+    )
+    span_id = (
+        event.span_id
+        or _payload_id(event.payload, "span_id")
+        or hashlib.sha256(
+            (
+                f"agent-canvas-span:{event_type}:{event.created_at}:"
+                f"{event.node_id or ''}:{promoted['action_id'] or ''}"
+            ).encode()
+        ).hexdigest()[:16]
+    )
+    return event.model_copy(
+        update={
+            "event_type": event_type,
+            **promoted,
+            "trace_id": trace_id,
+            "span_id": span_id,
+        }
+    )
+
+
+def _payload_id(payload: object, key: str) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(key)
+    return value if isinstance(value, str) and value else None
+
+
+_EVENT_ENVELOPE_KEY = "_agent_canvas_event_envelope"
+
+
+def _event_payload_for_storage(event: V2EventInsert) -> dict[str, Any]:
+    payload = dict(event.payload)
+    envelope = {
+        field: getattr(event, field)
+        for field in (
+            "project_id",
+            "binding_id",
+            "conversation_id",
+            "turn_id",
+            "action_id",
+            "trace_id",
+            "span_id",
+        )
+        if getattr(event, field) is not None
+    }
+    if envelope:
+        payload[_EVENT_ENVELOPE_KEY] = envelope
+    return payload
+
+
+def _stored_event_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    envelope = payload.get(_EVENT_ENVELOPE_KEY)
+    return envelope if isinstance(envelope, dict) else payload
+
+
+def _public_event_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in payload.items() if key != _EVENT_ENVELOPE_KEY}
 
 
 def _event_row_select() -> Any:

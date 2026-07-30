@@ -7,6 +7,9 @@ import json
 from datetime import datetime, timezone
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_conversation_repository import (
+    AgentCanvasConversationRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.project_repository import ProjectRepository
 from app.schemas.agent_canvas import (
@@ -23,6 +26,8 @@ from app.schemas.workflow_v2_projects import (
     ProjectV2Summary,
 )
 from app.services.agent_canvas_assets import AgentCanvasAssetService
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_video_skills import VideoSkillRegistry
 
 
 class AgentCanvasProjectService:
@@ -33,10 +38,14 @@ class AgentCanvasProjectService:
         projects: ProjectRepository,
         workflows: AgentCanvasWorkflowRepository,
         assets: AgentCanvasAssetService,
+        conversations: AgentCanvasConversationRepository,
+        video_skills: VideoSkillRegistry,
     ) -> None:
         self._projects = projects
         self._workflows = workflows
         self._assets = assets
+        self._conversations = conversations
+        self._video_skills = video_skills
 
     def create(
         self,
@@ -53,6 +62,7 @@ class AgentCanvasProjectService:
         ).hexdigest()
         identity = hashlib.sha256(idempotency_key.encode()).hexdigest()[:16]
         now = datetime.now(timezone.utc).isoformat()
+        initial_skill = self._video_skills.load("platform-default", "1")
         workflow = self._workflows.create_empty(
             project=ProjectCreate(
                 project_id=f"proj_{identity}",
@@ -64,8 +74,21 @@ class AgentCanvasProjectService:
             workflow_id=f"adwf_v2_{identity}",
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
+            initial_recipe_topics=tuple(initial_skill.recipe["planning_topics"]),
         )
-        return ProjectCreateResponseV2.model_validate(workflow.model_dump())
+        creative_session = self._conversations.get_creative_session(workflow.workflow_id)
+        skill_run = self._conversations.get_skill_run(creative_session.skill_run_id)
+        CreativeDirectionService().ensure_snapshot(
+            self._conversations,
+            skill_run,
+            initial_skill,
+        )
+        return ProjectCreateResponseV2.model_validate(
+            {
+                **workflow.model_dump(),
+                "creative_session_id": creative_session.skill_run_id,
+            }
+        )
 
     def get_project(self, project_id: str) -> ProjectV2:
         return self._detail(self._projects.get(project_id))
@@ -133,18 +156,7 @@ class AgentCanvasProjectService:
         )
 
     def get_workflow(self, workflow_id: str) -> AgentCanvasWorkflowV2:
-        try:
-            workflow = self._workflows.get_workflow(workflow_id)
-        except V2PersistenceError as error:
-            if error.code == "workflow_not_found" and self._workflows.legacy_workflow_exists(
-                workflow_id
-            ):
-                raise V2PersistenceError(
-                    "unsupported_canvas_model",
-                    "Workflow does not use the Agent Canvas model.",
-                    stage="agent_canvas_project_service",
-                ) from error
-            raise
+        workflow = self._workflows.get_workflow(workflow_id)
         asset_ids = {
             node.output_asset_id for node in workflow.nodes if node.output_asset_id is not None
         }

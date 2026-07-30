@@ -15,9 +15,11 @@ from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.v2_asset_library import (
     AssetEntityCreate,
     AssetEntityMemberCreate,
+    AssetEntityMemberV2,
     AssetLibraryCategoryV2,
     AssetLibraryEntityDetailV2,
-    AssetLibraryEntitySummaryV2,
+    AssetLibraryEntityResponseV2,
+    AssetLibraryMemberResponseV2,
     AssetRecordCreate,
     AssetVersionCreate,
     AssetVersionMetadataV2,
@@ -74,7 +76,7 @@ class AgentCanvasAssetService:
                     "Idempotency key was reused with different upload content.",
                     stage="agent_canvas_asset_service",
                 )
-            return _asset_summary(existing)
+            return self._asset_summary(existing)
 
         extension = _extension(filename, mime_type)
         staging = self._data_dir / "v2" / "staging" / f"{uuid4().hex}.{extension}.upload"
@@ -103,7 +105,7 @@ class AgentCanvasAssetService:
                 },
             ),
         )
-        return _asset_summary(version)
+        return self._asset_summary(version)
 
     def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
         version = self._assets.find_version(asset_id=asset_id)
@@ -113,7 +115,23 @@ class AgentCanvasAssetService:
                 "Asset was not found.",
                 stage="agent_canvas_asset_service",
             )
-        return _asset_summary(version)
+        return self._asset_summary(version)
+
+    def resolve_target_asset(
+        self,
+        workflow_id: str,
+        asset_id: str,
+    ) -> ProjectAssetSummaryV2:
+        version = self._assets.find_version(asset_id=asset_id)
+        if version is None or (
+            version.source_workflow_id is not None and version.source_workflow_id != workflow_id
+        ):
+            raise V2PersistenceError(
+                "target_not_found",
+                "Target was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        return self._asset_summary(version)
 
     def resolve_asset_path(self, asset_id: str) -> Path:
         """Resolve a registered asset to its canonical local object path."""
@@ -166,7 +184,7 @@ class AgentCanvasAssetService:
                     "The node-run fingerprint resolved to different output bytes.",
                     stage="agent_canvas_asset_service",
                 )
-            return _asset_summary(existing)
+            return self._asset_summary(existing)
         extension = _extension(filename, mime_type)
         staging = (
             self._data_dir
@@ -204,11 +222,11 @@ class AgentCanvasAssetService:
                 },
             ),
         )
-        return _asset_summary(version)
+        return self._asset_summary(version)
 
     def list_project_assets(self, workflow_id: str) -> tuple[ProjectAssetSummaryV2, ...]:
         return tuple(
-            _asset_summary(version)
+            self._asset_summary(version)
             for version in self._assets.list_versions_for_workflow(workflow_id)
         )
 
@@ -252,7 +270,7 @@ class AgentCanvasAssetService:
         *,
         scope: str,
         category: str | None = None,
-    ) -> tuple[AssetLibraryEntitySummaryV2, ...]:
+    ) -> tuple[AssetLibraryEntityResponseV2, ...]:
         library_category = _library_category(category) if category else None
         page = self._assets.list_entities(
             scope="recommended" if scope == "recommended" else "user",
@@ -260,7 +278,10 @@ class AgentCanvasAssetService:
             status="active",
             limit=100,
         )
-        return page.items
+        return tuple(
+            _image_library_entity(self._assets.get_entity(item.entity_id), self._storage)
+            for item in page.items
+        )
 
     def save_image_to_library(
         self,
@@ -347,6 +368,17 @@ class AgentCanvasAssetService:
     def _storage_key_is_shared(self, storage_key: str) -> bool:
         return self._assets.count_versions_with_storage_key(storage_key) > 0
 
+    def _asset_summary(self, version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
+        workflow_id = version.source_workflow_id
+        project_id = None
+        if workflow_id is not None:
+            project_id = self._workflows.get_workflow(workflow_id).project_id
+        return _asset_summary(
+            version,
+            project_id=project_id,
+            workflow_id=workflow_id,
+        )
+
 
 def _valid_generated_media(content: bytes, mime_type: str) -> bool:
     signatures = {
@@ -364,7 +396,12 @@ def _valid_generated_media(content: bytes, mime_type: str) -> bool:
     return any(content.startswith(signature) for signature in expected)
 
 
-def _asset_summary(version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
+def _asset_summary(
+    version: AssetVersionMetadataV2,
+    *,
+    project_id: str | None,
+    workflow_id: str | None,
+) -> ProjectAssetSummaryV2:
     media_type = _media_type_from_mime(version.mime_type)
     source_type = str(version.metadata.get("source_type") or "generated")
     if source_type not in {
@@ -377,11 +414,15 @@ def _asset_summary(version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
         source_type = "generated"
     return ProjectAssetSummaryV2(
         asset_id=version.asset_id,
+        project_id=project_id,
+        workflow_id=workflow_id,
         media_type=media_type,
         source_type=source_type,
         display_name=str(version.metadata.get("display_name") or version.asset_id),
         mime_type=version.mime_type,
         status=version.status,
+        size_bytes=version.size_bytes,
+        storage_key=version.storage_key,
         preview_url=(
             f"/api/v2/assets/{version.asset_id}/content" if media_type == "image" else None
         ),
@@ -390,7 +431,95 @@ def _asset_summary(version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
         height=version.height,
         duration_seconds=version.duration_seconds,
         checksum=version.sha256,
+        semantic_type=_source_semantic_role(version.metadata),
         source_semantic_role=_source_semantic_role(version.metadata),
+        source_node_id=version.source_node_id
+        or _optional_string(version.metadata.get("source_node_id")),
+        source_execution_id=_optional_string(version.metadata.get("source_execution_id")),
+        provider=version.provider,
+        model_id=version.model_id,
+        prompt_provenance={"prompt": version.prompt} if version.prompt else {},
+        quality_metadata=version.quality or {},
+        created_at=version.created_at,
+    )
+
+
+def _image_library_entity(
+    detail: AssetLibraryEntityDetailV2,
+    storage: StorageAdapter,
+) -> AssetLibraryEntityResponseV2:
+    members = tuple(
+        _image_library_member(member, storage)
+        for member in detail.members
+        if member.version is not None
+    )
+    preview = next(
+        (member for member in members if member.is_primary),
+        members[0] if members else None,
+    )
+    preview_version = next(
+        (
+            member.version
+            for member in detail.members
+            if member.member_id == (preview.member_id if preview is not None else None)
+        ),
+        None,
+    )
+    preview_key = (
+        _optional_string(preview_version.metadata.get("preview_storage_key"))
+        if preview_version is not None
+        else None
+    )
+    return AssetLibraryEntityResponseV2(
+        entity_id=detail.entity_id,
+        scope=detail.scope,
+        entity_type=detail.entity_type,
+        library_category=detail.library_category,
+        display_name=detail.display_name,
+        description=detail.description,
+        tags=detail.tags,
+        is_favorite=detail.is_favorite,
+        status=detail.status,
+        preview_member=preview,
+        preview_url=(
+            f"/media/{preview_key}"
+            if preview_key is not None and storage.file_exists(preview_key)
+            else preview.public_url
+            if preview is not None
+            else None
+        ),
+        member_count=len(members),
+    )
+
+
+def _image_library_member(
+    member: AssetEntityMemberV2,
+    storage: StorageAdapter,
+) -> AssetLibraryMemberResponseV2:
+    version = member.version
+    if version is None:
+        raise V2PersistenceError(
+            "asset_library_member_version_missing",
+            "Asset library member version is missing.",
+            stage="agent_canvas_asset_service",
+        )
+    return AssetLibraryMemberResponseV2(
+        member_id=member.member_id,
+        semantic_type=member.semantic_type,
+        asset_id=member.asset_id,
+        version_id=member.version_id,
+        mime_type=version.mime_type,
+        width=version.width,
+        height=version.height,
+        duration_seconds=version.duration_seconds,
+        public_url=(
+            f"/api/v2/assets/{member.asset_id}/content"
+            if version.status == "ready" and storage.file_exists(version.storage_key)
+            else None
+        ),
+        is_primary=member.is_primary,
+        is_default_reference=member.is_default_reference,
+        sort_order=member.sort_order,
     )
 
 
@@ -400,6 +529,10 @@ def _source_semantic_role(metadata: dict[str, object]) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+def _optional_string(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
 
 
 def _validate_upload(
