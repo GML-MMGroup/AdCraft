@@ -131,6 +131,7 @@ def _recover_agent_canvas_chat_turns(settings: Settings) -> None:
 
     runtime = create_agent_canvas_runtime(settings)
     try:
+        runtime.commands.recover_applying_plans()
         runtime.conversations.recover_pending_turns()
     finally:
         runtime.database.dispose()
