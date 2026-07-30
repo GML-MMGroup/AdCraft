@@ -269,7 +269,7 @@ export function useAgentCanvasSession() {
 
   const materializeVariationDraft = useCallback(async (
     source: CanvasNodeV2,
-    action: "create_draft" | "generate",
+    generationAction: "draft_only" | "generate_now",
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     if (!["image", "video", "audio"].includes(source.node_type) || source.status !== "ready") {
@@ -277,14 +277,14 @@ export function useAgentCanvasSession() {
     }
     const workflowId = agentCanvasWorkflow.workflow_id;
     return queueRef.current!.enqueue(
-      createOperationKey(`variation-materialize:${source.node_id}:${action}`),
+      createOperationKey(`variation-materialize:${source.node_id}:${generationAction}`),
       async () => {
         if (workflowRef.current?.workflow_id !== workflowId) return null;
         const canonicalSource = workflowRef.current?.workflow_id === workflowId
           ? workflowRef.current.nodes.find((node) => node.node_id === source.node_id)
           : null;
         const variationRevision = canonicalSource?.variation_draft?.variation_revision ?? 0;
-        const materializationScope = `${workflowId}:${source.node_id}:${action}:${variationRevision}`;
+        const materializationScope = `${workflowId}:${source.node_id}:${generationAction}:${variationRevision}`;
         let idempotencyKey = materializationKeysRef.current.get(materializationScope);
         if (!idempotencyKey) {
           idempotencyKey = createOperationKey("variation-materialize");
@@ -293,7 +293,7 @@ export function useAgentCanvasSession() {
         const response = await v2Api.materializeAgentCanvasVariationDraft(
           workflowId,
           source.node_id,
-          { action },
+          { generation_action: generationAction },
           idempotencyKey,
         );
         if (workflowRef.current?.workflow_id !== workflowId) return null;

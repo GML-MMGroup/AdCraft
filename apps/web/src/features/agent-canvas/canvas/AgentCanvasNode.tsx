@@ -37,6 +37,13 @@ const NODE_STATUS_LABELS: Record<CanvasNodeStatusV2, string> = {
 };
 
 const RUNNABLE_NODE_TYPES = new Set<CanvasNodeTypeV2>(["script", "image", "video", "audio"]);
+const IMAGE_ROLE_LABELS: Partial<Record<CanvasNodeV2["creative_role"], string>> = {
+  product: "Product",
+  prop: "Prop",
+  character: "Character",
+  scene: "Scene",
+  storyboard_sequence: "Storyboard Sequence",
+};
 
 export interface AgentCanvasNodeCallbacks {
   onRun?: (nodeId: string) => void;
@@ -84,6 +91,17 @@ function nodeCopy(node: CanvasNodeV2) {
     ?? node.summary_prompt
     ?? node.generation_prompt
     ?? "Text draft";
+}
+
+function semanticNodeLabel(node: CanvasNodeV2): string {
+  if (node.node_type !== "image") return NODE_TYPE_LABELS[node.node_type];
+  return IMAGE_ROLE_LABELS[node.creative_role] ?? NODE_TYPE_LABELS.image;
+}
+
+function typeMarkerLabel(node: CanvasNodeV2, label: string): string {
+  return node.node_type === "image" && IMAGE_ROLE_LABELS[node.creative_role]
+    ? `${label} image node`
+    : `${node.node_type} node`;
 }
 
 function typeIcon(nodeType: CanvasNodeTypeV2): ReactNode {
@@ -207,7 +225,7 @@ export function AgentCanvasNodeCard({
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const action = nodeAction(node.node_type, status);
-  const label = NODE_TYPE_LABELS[node.node_type];
+  const label = semanticNodeLabel(node);
   const actionCallback = action === "run" ? onRun : action === "retry" ? onRetry : onExport;
   const actionDisabled = disabled || status === "working" || !actionCallback;
 
@@ -227,7 +245,7 @@ export function AgentCanvasNodeCard({
       <span
         className="agent-canvas-node__type-marker"
         role="img"
-        aria-label={`${node.node_type} node`}
+        aria-label={typeMarkerLabel(node, label)}
         title={`${label} node`}
       >
         {typeIcon(node.node_type)}
@@ -279,7 +297,7 @@ export function AgentCanvasNodeRenderer({
   selected,
   isConnectable,
 }: NodeProps<AgentCanvasFlowNode>) {
-  const label = NODE_TYPE_LABELS[data.node.node_type];
+  const label = semanticNodeLabel(data.node);
   return (
     <div className="agent-canvas-node-shell">
       {data.showInputHandle !== false ? (

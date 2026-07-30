@@ -33,7 +33,7 @@ function validWorkflowPayload() {
         node_id: "node-text-1",
         workflow_id: "workflow-1",
         node_type: "text",
-        semantic_role: "brief",
+        creative_role: "creative_brief",
         role_contract_version: "ad-media-role-v1",
         title: "Creative Brief",
         status: "ready",
@@ -44,7 +44,6 @@ function validWorkflowPayload() {
         parameters: {},
         prompt_context_snapshot_id: null,
         output_asset_id: null,
-        video_skill_run_id: "skill-run-1",
         position: { x: 120, y: 80 },
         revision: 3,
         error: null,
@@ -56,7 +55,7 @@ function validWorkflowPayload() {
         node_id: "node-image-1",
         workflow_id: "workflow-1",
         node_type: "image",
-        semantic_role: "character_main",
+        creative_role: "character",
         role_contract_version: "ad-media-role-v1",
         title: "Lead Character",
         status: "draft",
@@ -67,7 +66,6 @@ function validWorkflowPayload() {
         parameters: { stylization: 100 },
         prompt_context_snapshot_id: "snapshot-1",
         output_asset_id: "asset-output-1",
-        video_skill_run_id: "skill-run-1",
         position: { x: 480, y: 220 },
         revision: 5,
         error: {
@@ -84,22 +82,30 @@ function validWorkflowPayload() {
       {
         binding_id: "binding-1",
         workflow_id: "workflow-1",
-        source: { kind: "node", node_id: "node-text-1" },
+        source: { kind: "node_output", source_node_id: "node-text-1" },
         target_node_id: "node-image-1",
-        binding_kind: "brief_context",
+        input_role: "text_context",
         required: true,
-        display_order: 0,
+        enabled: true,
+        order: 0,
+        label: null,
+        metadata: {},
         created_at: "2026-07-28T10:06:30Z",
+        updated_at: "2026-07-28T10:06:30Z",
       },
       {
         binding_id: "binding-2",
         workflow_id: "workflow-1",
-        source: { kind: "image_asset", asset_id: "asset-library-1" },
+        source: { kind: "image_asset", source_asset_id: "asset-library-1" },
         target_node_id: "node-image-1",
-        binding_kind: "image_reference",
+        input_role: "image_reference",
         required: false,
-        display_order: 1,
+        enabled: true,
+        order: 1,
+        label: null,
+        metadata: {},
         created_at: "2026-07-28T10:06:31Z",
+        updated_at: "2026-07-28T10:06:31Z",
       },
     ],
     assets: [
@@ -145,6 +151,52 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.nodes).toHaveLength(2);
     expect(workflow.bindings[1]?.source.kind).toBe("image_asset");
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
+  });
+
+  it("accepts final Project Asset provenance without exposing storage implementation details to callers", () => {
+    const asset = normalizeProjectAssetSummaryV2({
+      ...validWorkflowPayload().assets[0],
+      project_id: "project-1",
+      workflow_id: "workflow-1",
+      semantic_type: "character",
+      size_bytes: 2048,
+      storage_key: "project-assets/project-1/asset-output-1.png",
+      source_semantic_role: "character",
+      source_node_id: "node-image-1",
+      source_execution_id: "execution-1",
+      provider: "volcengine",
+      model_id: "seedream-4-0-250828",
+      prompt_provenance: { compiler: "agent_canvas_v2" },
+      quality_metadata: { score: 0.94 },
+      created_at: "2026-07-28T10:08:00Z",
+    });
+
+    expect(asset).toMatchObject({
+      asset_id: "asset-output-1",
+      source_node_id: "node-image-1",
+      provider: "volcengine",
+    });
+  });
+
+  it("normalizes final generic-node and explicit-binding contracts", () => {
+    const canonical = validWorkflowPayload();
+    const payload = {
+      ...canonical,
+      nodes: canonical.nodes.map((node, index) => ({
+        ...node,
+        creative_role: index === 0 ? "creative_brief" : "storyboard_sequence",
+      })),
+    };
+
+    const workflow = normalizeAgentCanvasWorkflowV2(payload);
+
+    expect(workflow.nodes[1]?.creative_role).toBe("storyboard_sequence");
+    expect(workflow.bindings[0]).toMatchObject({
+      source: { kind: "node_output", source_node_id: "node-text-1" },
+      input_role: "text_context",
+      enabled: true,
+      order: 0,
+    });
   });
 
   it("normalizes canonical Ready variations, command plans, receipts, and layout responses", () => {
@@ -544,7 +596,7 @@ describe("Agent Canvas normalizers", () => {
 
     expect(response).toMatchObject({
       workflow_id: null,
-      next_after_seq: 52,
+      next_cursor: 52,
       events: [{
         seq: 52,
         execution_id: "execution-1",

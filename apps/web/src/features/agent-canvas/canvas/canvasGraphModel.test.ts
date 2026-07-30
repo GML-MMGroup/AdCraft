@@ -6,8 +6,8 @@ import type {
   CanvasRuntimeSnapshotV2,
 } from "../../../types-v2.ts";
 import {
-  bindingKindForSourceNode,
   findAvailableCanvasPosition,
+  inputRoleForSourceNode,
   incrementalPlacementForNodes,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -18,7 +18,8 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     node_id: nodeId,
     workflow_id: "workflow-1",
     node_type: nodeType,
-    semantic_role: nodeType,
+    creative_role: creativeRoleForNodeType(nodeType),
+    role_contract_version: "ad-media-role-v1",
     title: nodeId,
     status: "draft",
     summary_prompt: null,
@@ -28,7 +29,6 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     parameters: {},
     prompt_context_snapshot_id: null,
     output_asset_id: nodeType === "image" ? "asset-1" : null,
-    video_skill_run_id: null,
     position: { x: 40, y: 60 },
     revision: 1,
     error: null,
@@ -36,6 +36,23 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
+}
+
+function creativeRoleForNodeType(nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2["creative_role"] {
+  switch (nodeType) {
+    case "text":
+      return "general_text";
+    case "script":
+      return "script";
+    case "image":
+      return "general_image";
+    case "video":
+      return "general_video";
+    case "audio":
+      return "general_audio";
+    case "editing":
+      return "editing";
+  }
 }
 
 const workflow: AgentCanvasWorkflowV2 = {
@@ -49,12 +66,16 @@ const workflow: AgentCanvasWorkflowV2 = {
   bindings: [{
     binding_id: "binding-1",
     workflow_id: "workflow-1",
-    source: { kind: "node", node_id: "image-1" },
+    source: { kind: "node_output", source_node_id: "image-1" },
     target_node_id: "video-1",
-    binding_kind: "image_reference",
+    input_role: "image_reference",
     required: true,
-    display_order: 0,
+    enabled: true,
+    order: 0,
+    label: null,
+    metadata: {},
     created_at: "2026-07-28T00:00:00Z",
+    updated_at: "2026-07-28T00:00:00Z",
   }],
   assets: [{
     asset_id: "asset-1",
@@ -84,6 +105,7 @@ const runtime: CanvasRuntimeSnapshotV2 = {
       execution_id: "execution-1",
       provider_task_id: null,
       waiting_for_node_ids: [],
+      blocked_by_node_ids: [],
       attempt_no: 1,
       updated_at: "2026-07-28T00:00:01Z",
       error: null,
@@ -128,13 +150,13 @@ describe("canvasGraphModel", () => {
     })]);
   });
 
-  it("selects binding kind from the canonical source node type", () => {
-    expect(bindingKindForSourceNode(node("brief", "text"))).toBe("brief_context");
-    expect(bindingKindForSourceNode(node("script", "script"))).toBe("script_context");
-    expect(bindingKindForSourceNode(node("image", "image"))).toBe("image_reference");
-    expect(bindingKindForSourceNode(node("video", "video"))).toBe("video_reference");
-    expect(bindingKindForSourceNode(node("audio", "audio"))).toBe("audio_reference");
-    expect(bindingKindForSourceNode(node("editing", "editing"))).toBe("video_reference");
+  it("selects explicit input roles from canonical source node media types", () => {
+    expect(inputRoleForSourceNode(node("brief", "text"))).toBe("text_context");
+    expect(inputRoleForSourceNode(node("script", "script"))).toBe("text_context");
+    expect(inputRoleForSourceNode(node("image", "image"))).toBe("image_reference");
+    expect(inputRoleForSourceNode(node("video", "video"))).toBe("video_reference");
+    expect(inputRoleForSourceNode(node("audio", "audio"))).toBe("audio_reference");
+    expect(inputRoleForSourceNode(node("editing", "editing"))).toBe("video_reference");
   });
 
   it("places a new node near the preferred point without overlapping existing cards", () => {

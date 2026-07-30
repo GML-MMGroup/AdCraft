@@ -20,7 +20,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     node_id: `${nodeType}-node`,
     workflow_id: "workflow-1",
     node_type: nodeType,
-    semantic_role: nodeType,
+    creative_role: nodeType === "text" ? "general_text" : nodeType === "script" ? "script" : nodeType === "image" ? "general_image" : nodeType === "video" ? "general_video" : nodeType === "audio" ? "general_audio" : "editing",
     role_contract_version: "ad-media-role-v1",
     title: `Hidden ${nodeType} title`,
     status,
@@ -35,7 +35,6 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     output_asset_id: ["image", "video", "audio", "editing"].includes(nodeType)
       ? `${nodeType}-asset`
       : null,
-    video_skill_run_id: null,
     position: { x: 80, y: 120 },
     revision: 1,
     error: status === "failed"
@@ -72,6 +71,7 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
     execution_id: status === "working" ? "execution-1" : null,
     provider_task_id: null,
     waiting_for_node_ids: [],
+    blocked_by_node_ids: [],
     attempt_no: status === "working" ? 1 : 0,
     updated_at: "2026-07-28T09:00:00Z",
     error: null,
@@ -138,6 +138,14 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
+  it("labels a storyboard as one semantic Image output rather than nine shot nodes", () => {
+    const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
+    render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
+
+    expect(screen.getByLabelText("Storyboard Sequence image node")).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
   it("exports an editing node through its callback", () => {

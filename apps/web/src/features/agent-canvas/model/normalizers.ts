@@ -12,6 +12,7 @@ import type {
   AgentPlacementHintV2,
   BindingCapabilityDecisionV2,
   CanvasBindingKindV2,
+  CanvasBindingInputRoleV2,
   CanvasBindingSourceImageAssetV2,
   CanvasBindingSourceNodeV2,
   CanvasBindingSourceV2,
@@ -72,7 +73,29 @@ type JsonRecord = Record<string, unknown>;
 const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
 const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
-const CANVAS_BINDING_KINDS = new Set<CanvasBindingKindV2>([
+const CANVAS_CREATIVE_ROLES = new Set<CanvasNodeV2["creative_role"]>([
+  "creative_brief",
+  "script",
+  "product",
+  "prop",
+  "character",
+  "scene",
+  "storyboard_sequence",
+  "storyboard_video",
+  "bgm",
+  "general_text",
+  "general_image",
+  "general_video",
+  "general_audio",
+  "editing",
+]);
+const CANVAS_INPUT_ROLES = new Set<CanvasBindingInputRoleV2>([
+  "text_context",
+  "image_reference",
+  "video_reference",
+  "audio_reference",
+]);
+const LEGACY_COMMAND_BINDING_KINDS = new Set<CanvasBindingKindV2>([
   "brief_context",
   "script_context",
   "image_reference",
@@ -84,7 +107,7 @@ const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
   "running",
   "waiting",
   "completed",
-  "partial_completed",
+  "partial_failed",
   "failed",
   "cancelled",
 ]);
@@ -97,6 +120,12 @@ const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
   "publishing",
 ]);
 const ASSET_MEDIA_TYPES = new Set<ProjectAssetSummaryV2["media_type"]>(["image", "video", "audio"]);
+const PROVIDER_OUTPUT_TYPES = new Set<ProviderModelCapabilityV2["output_type"]>([
+  "script",
+  "image",
+  "video",
+  "audio",
+]);
 const ASSET_SOURCE_TYPES = new Set<ProjectAssetSummaryV2["source_type"]>([
   "upload",
   "generated",
@@ -401,7 +430,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "node_id",
       "workflow_id",
       "node_type",
-      "semantic_role",
+      "creative_role",
       "role_contract_version",
       "title",
       "status",
@@ -412,7 +441,6 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "parameters",
       "prompt_context_snapshot_id",
       "output_asset_id",
-      "video_skill_run_id",
       "position",
       "revision",
       "error",
@@ -436,7 +464,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     node_type: nodeType,
-    semantic_role: expectNonEmptyString(record.semantic_role, `${path}.semantic_role`),
+    creative_role: expectLiteral(record.creative_role, CANVAS_CREATIVE_ROLES, `${path}.creative_role`),
     role_contract_version: expectLiteral(
       record.role_contract_version,
       new Set<CanvasNodeV2["role_contract_version"]>(["ad-media-role-v1"]),
@@ -451,7 +479,6 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     parameters: expectRecordValue(record.parameters, `${path}.parameters`),
     prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
     output_asset_id: outputAssetId,
-    video_skill_run_id: nullableString(record.video_skill_run_id, `${path}.video_skill_run_id`),
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
@@ -465,42 +492,59 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
 
 function normalizeCanvasBindingSourceNodeV2(value: unknown, path: string): CanvasBindingSourceNodeV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["kind", "node_id"], path);
+  forbidUnknownFields(record, ["kind", "source_node_id"], path);
   return {
-    kind: expectLiteral(record.kind, new Set<CanvasBindingSourceNodeV2["kind"]>(["node"]), `${path}.kind`),
-    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    kind: expectLiteral(record.kind, new Set<CanvasBindingSourceNodeV2["kind"]>(["node_output"]), `${path}.kind`),
+    source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
   };
 }
 
 function normalizeCanvasBindingSourceImageAssetV2(value: unknown, path: string): CanvasBindingSourceImageAssetV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["kind", "asset_id"], path);
+  forbidUnknownFields(record, ["kind", "source_asset_id"], path);
   return {
     kind: expectLiteral(record.kind, new Set<CanvasBindingSourceImageAssetV2["kind"]>(["image_asset"]), `${path}.kind`),
-    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    source_asset_id: expectNonEmptyString(record.source_asset_id, `${path}.source_asset_id`),
   };
 }
 
 export function normalizeCanvasBindingSourceV2(value: unknown, path = "binding.source"): CanvasBindingSourceV2 {
   const record = expectRecord(value, path);
   const kind = expectString(record.kind, `${path}.kind`);
-  if (kind === "node") return normalizeCanvasBindingSourceNodeV2(record, path);
+  if (kind === "node_output") return normalizeCanvasBindingSourceNodeV2(record, path);
   if (kind === "image_asset") return normalizeCanvasBindingSourceImageAssetV2(record, path);
   fail(`${path}.kind`, "unsupported discriminator");
 }
 
 export function normalizeCanvasBindingV2(value: unknown, path = "binding"): CanvasBindingV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["binding_id", "workflow_id", "source", "target_node_id", "binding_kind", "required", "display_order", "created_at"], path);
+  forbidUnknownFields(record, [
+    "binding_id",
+    "workflow_id",
+    "source",
+    "target_node_id",
+    "input_role",
+    "required",
+    "enabled",
+    "order",
+    "label",
+    "metadata",
+    "created_at",
+    "updated_at",
+  ], path);
   return {
     binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     source: normalizeCanvasBindingSourceV2(record.source, `${path}.source`),
     target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
-    binding_kind: expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`),
+    input_role: expectLiteral(record.input_role, CANVAS_INPUT_ROLES, `${path}.input_role`),
     required: expectBoolean(record.required, `${path}.required`),
-    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    enabled: expectBoolean(record.enabled, `${path}.enabled`),
+    order: expectNonNegativeInteger(record.order, `${path}.order`),
+    label: nullableString(record.label, `${path}.label`),
+    metadata: expectRecordValue(record.metadata, `${path}.metadata`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
 
@@ -510,33 +554,67 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
     record,
     [
       "asset_id",
+      "project_id",
+      "workflow_id",
       "media_type",
       "source_type",
+      "semantic_type",
       "display_name",
       "mime_type",
       "status",
+      "size_bytes",
+      "storage_key",
       "preview_url",
       "media_url",
       "width",
       "height",
       "duration_seconds",
       "checksum",
+      "source_semantic_role",
+      "source_node_id",
+      "source_execution_id",
+      "provider",
+      "model_id",
+      "prompt_provenance",
+      "quality_metadata",
+      "created_at",
     ],
     path,
   );
   return {
     asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    project_id: optionalNullableString(record.project_id, `${path}.project_id`),
+    workflow_id: optionalNullableString(record.workflow_id, `${path}.workflow_id`),
     media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
     source_type: expectLiteral(record.source_type, ASSET_SOURCE_TYPES, `${path}.source_type`),
+    semantic_type: optionalNullableString(record.semantic_type, `${path}.semantic_type`),
     display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
     mime_type: expectNonEmptyString(record.mime_type, `${path}.mime_type`),
     status: expectLiteral(record.status, PROJECT_ASSET_STATUSES, `${path}.status`),
+    size_bytes: record.size_bytes === undefined
+      ? undefined
+      : expectNonNegativeInteger(record.size_bytes, `${path}.size_bytes`),
+    storage_key: optionalNullableString(record.storage_key, `${path}.storage_key`),
     preview_url: nullableBrowserSafeUrl(record.preview_url, `${path}.preview_url`),
     media_url: nullableBrowserSafeUrl(record.media_url, `${path}.media_url`),
     width: nullablePositiveInteger(record.width, `${path}.width`),
     height: nullablePositiveInteger(record.height, `${path}.height`),
     duration_seconds: nullableNonNegativeNumber(record.duration_seconds, `${path}.duration_seconds`),
     checksum: expectNonEmptyString(record.checksum, `${path}.checksum`),
+    source_semantic_role: optionalNullableString(record.source_semantic_role, `${path}.source_semantic_role`),
+    source_node_id: optionalNullableString(record.source_node_id, `${path}.source_node_id`),
+    source_execution_id: optionalNullableString(record.source_execution_id, `${path}.source_execution_id`),
+    provider: optionalNullableString(record.provider, `${path}.provider`),
+    model_id: optionalNullableString(record.model_id, `${path}.model_id`),
+    prompt_provenance: record.prompt_provenance === undefined
+      ? undefined
+      : expectUnknownRecord(record.prompt_provenance, `${path}.prompt_provenance`),
+    quality_metadata: record.quality_metadata === undefined
+      ? undefined
+      : expectUnknownRecord(record.quality_metadata, `${path}.quality_metadata`),
+    created_at: record.created_at === undefined || record.created_at === null
+      ? record.created_at
+      : expectIsoDateTimeString(record.created_at, `${path}.created_at`),
   };
 }
 
@@ -636,7 +714,18 @@ export function normalizeResolvedInputSnapshotV2(value: unknown, path = "resolve
 
 export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runtime"): NodeRuntimeV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["node_id", "visible_status", "phase", "execution_id", "provider_task_id", "waiting_for_node_ids", "attempt_no", "updated_at", "error"], path);
+  forbidUnknownFields(record, [
+    "node_id",
+    "visible_status",
+    "phase",
+    "execution_id",
+    "provider_task_id",
+    "waiting_for_node_ids",
+    "blocked_by_node_ids",
+    "attempt_no",
+    "updated_at",
+    "error",
+  ], path);
   const phase = optionalNullableLiteral(record.phase, NODE_RUNTIME_PHASES, `${path}.phase`);
   return {
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
@@ -645,6 +734,7 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     execution_id: nullableString(record.execution_id, `${path}.execution_id`),
     provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
     waiting_for_node_ids: optionalStringArray(record.waiting_for_node_ids, `${path}.waiting_for_node_ids`, []),
+    blocked_by_node_ids: optionalStringArray(record.blocked_by_node_ids, `${path}.blocked_by_node_ids`, []),
     attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
@@ -697,10 +787,14 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
       "sequence_no",
       "workflow_id",
       "event_type",
+      "project_id",
       "execution_id",
       "node_id",
       "asset_id",
       "binding_id",
+      "conversation_id",
+      "turn_id",
+      "action_id",
       "created_at",
       "payload",
     ],
@@ -710,10 +804,14 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
     seq: expectNonNegativeInteger(record.seq ?? record.sequence_no, `${path}.seq`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     event_type: expectNonEmptyString(record.event_type, `${path}.event_type`),
+    project_id: record.project_id === undefined ? null : nullableString(record.project_id, `${path}.project_id`),
     execution_id: record.execution_id === undefined ? null : nullableString(record.execution_id, `${path}.execution_id`),
     node_id: record.node_id === undefined ? null : nullableString(record.node_id, `${path}.node_id`),
     asset_id: record.asset_id === undefined ? null : nullableString(record.asset_id, `${path}.asset_id`),
     binding_id: record.binding_id === undefined ? null : nullableString(record.binding_id, `${path}.binding_id`),
+    conversation_id: record.conversation_id === undefined ? null : nullableString(record.conversation_id, `${path}.conversation_id`),
+    turn_id: record.turn_id === undefined ? null : nullableString(record.turn_id, `${path}.turn_id`),
+    action_id: record.action_id === undefined ? null : nullableString(record.action_id, `${path}.action_id`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     payload: record.payload === null || record.payload === undefined
       ? null
@@ -731,6 +829,7 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
       "output_type",
       "accepted_input_types",
       "max_references",
+      "reference_limits",
       "supported_parameters",
       "supported_aspect_ratios",
       "duration_range_seconds",
@@ -744,11 +843,17 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
   return {
     provider: expectNonEmptyString(record.provider, `${path}.provider`),
     model_id: expectNonEmptyString(record.model_id, `${path}.model_id`),
-    output_type: expectLiteral(record.output_type, ASSET_MEDIA_TYPES, `${path}.output_type`),
+    output_type: expectLiteral(record.output_type, PROVIDER_OUTPUT_TYPES, `${path}.output_type`),
     accepted_input_types: expectArray(record.accepted_input_types, `${path}.accepted_input_types`).map((item, index) =>
       expectLiteral(item, PROVIDER_INPUT_TYPES, `${path}.accepted_input_types[${index}]`),
     ),
     max_references: expectNonNegativeInteger(record.max_references, `${path}.max_references`),
+    reference_limits: record.reference_limits === undefined
+      ? {}
+      : Object.fromEntries(Object.entries(expectRecord(record.reference_limits, `${path}.reference_limits`)).map(([mediaType, limit]) => [
+          expectLiteral(mediaType, ASSET_MEDIA_TYPES, `${path}.reference_limits key`),
+          expectNonNegativeInteger(limit, `${path}.reference_limits.${mediaType}`),
+        ])),
     supported_parameters: expectStringArray(record.supported_parameters, `${path}.supported_parameters`),
     supported_aspect_ratios: expectStringArray(record.supported_aspect_ratios, `${path}.supported_aspect_ratios`),
     duration_range_seconds: record.duration_range_seconds === null ? null : expectTuple2Number(record.duration_range_seconds, `${path}.duration_range_seconds`),
@@ -1006,7 +1111,7 @@ function normalizeAgentCommandOperationV2(
           }
         : normalizeAgentNodeRefV2(source, `${path}.source`),
       target: normalizeAgentNodeRefV2(record.target, `${path}.target`),
-      binding_kind: expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`),
+      binding_kind: expectLiteral(record.binding_kind, LEGACY_COMMAND_BINDING_KINDS, `${path}.binding_kind`),
       required: record.required === undefined
         ? true
         : expectBoolean(record.required, `${path}.required`),
@@ -1829,16 +1934,16 @@ export function normalizeCanvasRuntimeEventsResponseV2(
       events: expectArray(record.items, `${path}.items`).map((item, index) =>
         normalizeCanvasRuntimeEventV2(item, `${path}.items[${index}]`),
       ),
-      next_after_seq: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
+      next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
     };
   }
-  forbidUnknownFields(record, ["workflow_id", "events", "next_after_seq"], path);
+  forbidUnknownFields(record, ["workflow_id", "events", "next_cursor"], path);
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     events: expectArray(record.events, `${path}.events`).map((item, index) =>
       normalizeCanvasRuntimeEventV2(item, `${path}.events[${index}]`),
     ),
-    next_after_seq: expectNonNegativeInteger(record.next_after_seq, `${path}.next_after_seq`),
+    next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
   };
 }
 

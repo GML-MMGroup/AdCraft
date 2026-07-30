@@ -234,7 +234,7 @@ export function useAgentCanvasRuntime(
           const replay = await v2Api.agentCanvasEvents(workflowId, before, 200);
           if (cancelled) return;
           replay.events.forEach(processEvent);
-          cursorRef.current = Math.max(cursorRef.current, replay.next_after_seq);
+          cursorRef.current = Math.max(cursorRef.current, replay.next_cursor);
           if (replay.events.length < 200 || cursorRef.current <= before) break;
         }
         await refreshRuntime();
@@ -328,6 +328,7 @@ export function useAgentCanvasRuntime(
   ) => {
     if (!workflowId) return;
     if (!["script", "image", "video", "audio"].includes(node.node_type)) return;
+    if (node.status !== "draft" && node.status !== "failed") return;
     setRunPending(true);
     try {
       const request = nodeRunRequest(node, options.retryFailed);

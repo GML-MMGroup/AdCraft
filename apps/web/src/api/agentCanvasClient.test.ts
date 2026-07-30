@@ -19,7 +19,7 @@ const draftNode = {
   node_id: "node-image-1",
   workflow_id: "workflow-1",
   node_type: "image",
-  semantic_role: "product",
+  creative_role: "product",
   role_contract_version: "ad-media-role-v1",
   title: "Product image",
   status: "draft",
@@ -30,7 +30,6 @@ const draftNode = {
   parameters: {},
   prompt_context_snapshot_id: null,
   output_asset_id: null,
-  video_skill_run_id: null,
   position: { x: 120, y: 80 },
   revision: 1,
   error: null,
@@ -93,12 +92,16 @@ describe("Agent Canvas client", () => {
     const binding = {
       binding_id: "binding-1",
       workflow_id: "workflow-1",
-      source: { kind: "node", node_id: "node-script-1" },
+      source: { kind: "node_output", source_node_id: "node-script-1" },
       target_node_id: "node-image-1",
-      binding_kind: "script_context",
+      input_role: "text_context",
       required: true,
-      display_order: 0,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
       created_at: "2026-07-28T00:00:00Z",
+      updated_at: "2026-07-28T00:00:00Z",
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -125,7 +128,7 @@ describe("Agent Canvas client", () => {
     await Promise.all([
       v2Api.createAgentCanvasNode("workflow-1", {
         node_type: "image",
-        semantic_role: "product",
+        creative_role: "product",
         title: "Product image",
         summary_prompt: "A product portrait",
         generation_prompt: "Studio product portrait",
@@ -135,11 +138,14 @@ describe("Agent Canvas client", () => {
         position: { x: 120, y: 80 },
       }),
       v2Api.createAgentCanvasBinding("workflow-1", {
-        source: { kind: "node", node_id: "node-script-1" },
+        source: { kind: "node_output", source_node_id: "node-script-1" },
         target_node_id: "node-image-1",
-        binding_kind: "script_context",
+        input_role: "text_context",
         required: true,
-        display_order: 0,
+        enabled: true,
+        order: 0,
+        label: null,
+        metadata: {},
       }),
     ]);
 
@@ -263,6 +269,7 @@ describe("Agent Canvas client", () => {
       }
       if (url.endsWith("/variation-draft/materialize")) {
         expect(headers.get("Idempotency-Key")).toBe("materialize-key");
+        expect(JSON.parse(String(init?.body))).toEqual({ generation_action: "draft_only" });
         return jsonResponse({
           workflow_id: "workflow-1",
           workflow_revision: 9,
@@ -307,7 +314,7 @@ describe("Agent Canvas client", () => {
     await v2Api.materializeAgentCanvasVariationDraft(
       "workflow-1",
       readyNode.node_id,
-      { action: "create_draft" },
+      { generation_action: "draft_only" },
       "materialize-key",
     );
     await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);

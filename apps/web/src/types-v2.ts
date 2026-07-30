@@ -1481,6 +1481,28 @@ export type CanvasBindingKindV2 =
 
 export type AgentCanvasAssetMediaTypeV2 = "image" | "video" | "audio";
 
+export type CanvasCreativeRoleV2 =
+  | "creative_brief"
+  | "script"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "storyboard_sequence"
+  | "storyboard_video"
+  | "bgm"
+  | "general_text"
+  | "general_image"
+  | "general_video"
+  | "general_audio"
+  | "editing";
+
+export type CanvasBindingInputRoleV2 =
+  | "text_context"
+  | "image_reference"
+  | "video_reference"
+  | "audio_reference";
+
 export type AgentCanvasAssetSourceTypeV2 = "upload" | "generated" | "recommended" | "library" | "editing_export";
 
 export type ProjectAssetStatusV2 = "ready" | "unavailable";
@@ -1524,7 +1546,7 @@ export interface CanvasNodeV2 {
   node_id: string;
   workflow_id: string;
   node_type: CanvasNodeTypeV2;
-  semantic_role: string;
+  creative_role: CanvasCreativeRoleV2;
   role_contract_version: "ad-media-role-v1";
   title: string;
   status: CanvasNodeStatusV2;
@@ -1535,7 +1557,6 @@ export interface CanvasNodeV2 {
   parameters: Record<string, unknown>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
-  video_skill_run_id: string | null;
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
@@ -1545,13 +1566,13 @@ export interface CanvasNodeV2 {
 }
 
 export interface CanvasBindingSourceNodeV2 {
-  kind: "node";
-  node_id: string;
+  kind: "node_output";
+  source_node_id: string;
 }
 
 export interface CanvasBindingSourceImageAssetV2 {
   kind: "image_asset";
-  asset_id: string;
+  source_asset_id: string;
 }
 
 export type CanvasBindingSourceV2 = CanvasBindingSourceNodeV2 | CanvasBindingSourceImageAssetV2;
@@ -1561,25 +1582,42 @@ export interface CanvasBindingV2 {
   workflow_id: string;
   source: CanvasBindingSourceV2;
   target_node_id: string;
-  binding_kind: CanvasBindingKindV2;
+  input_role: CanvasBindingInputRoleV2;
   required: boolean;
-  display_order: number;
+  enabled: boolean;
+  order: number;
+  label: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectAssetSummaryV2 {
   asset_id: string;
+  project_id?: string | null;
+  workflow_id?: string | null;
   media_type: AgentCanvasAssetMediaTypeV2;
   source_type: AgentCanvasAssetSourceTypeV2;
+  semantic_type?: string | null;
   display_name: string;
   mime_type: string;
   status: ProjectAssetStatusV2;
+  size_bytes?: number;
+  storage_key?: string | null;
   preview_url: string | null;
   media_url: string | null;
   width: number | null;
   height: number | null;
   duration_seconds: number | null;
   checksum: string;
+  source_semantic_role?: string | null;
+  source_node_id?: string | null;
+  source_execution_id?: string | null;
+  provider?: string | null;
+  model_id?: string | null;
+  prompt_provenance?: Record<string, unknown>;
+  quality_metadata?: Record<string, unknown>;
+  created_at?: string | null;
 }
 
 export interface AgentCanvasWorkflowV2 {
@@ -1626,7 +1664,7 @@ export interface StorageAccessDescriptorV2 {
   checksum: string;
 }
 
-export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
+export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_failed" | "failed" | "cancelled";
 
 export type NodeRuntimePhaseV2 = "waiting_for_input" | "queued" | "running" | "waiting_provider" | "recovering" | "publishing";
 
@@ -1637,6 +1675,7 @@ export interface NodeRuntimeV2 {
   execution_id: string | null;
   provider_task_id: string | null;
   waiting_for_node_ids: string[];
+  blocked_by_node_ids: string[];
   attempt_no: number;
   updated_at: string;
   error: CanvasNodeErrorV2 | null;
@@ -1660,10 +1699,14 @@ export interface CanvasRuntimeEventV2 {
   seq: number;
   workflow_id: string;
   event_type: string;
+  project_id: string | null;
   execution_id: string | null;
   node_id: string | null;
   asset_id: string | null;
   binding_id: string | null;
+  conversation_id: string | null;
+  turn_id: string | null;
+  action_id: string | null;
   created_at: string;
   payload: Record<string, unknown> | null;
 }
@@ -1671,9 +1714,10 @@ export interface CanvasRuntimeEventV2 {
 export interface ProviderModelCapabilityV2 {
   provider: string;
   model_id: string;
-  output_type: AgentCanvasAssetMediaTypeV2;
+  output_type: "script" | AgentCanvasAssetMediaTypeV2;
   accepted_input_types: Array<"text" | "image" | "video" | "audio">;
   max_references: number;
+  reference_limits: Partial<Record<AgentCanvasAssetMediaTypeV2, number>>;
   supported_parameters: string[];
   supported_aspect_ratios: string[];
   duration_range_seconds: [number, number] | null;
@@ -2071,7 +2115,7 @@ export interface AgentCanvasProjectCreateRequestV2 {
 
 export interface CanvasNodeCreateRequestV2 {
   node_type: CanvasNodeTypeV2;
-  semantic_role: string;
+  creative_role: CanvasCreativeRoleV2;
   role_contract_version?: "ad-media-role-v1";
   title: string;
   summary_prompt?: string | null;
@@ -2082,7 +2126,6 @@ export interface CanvasNodeCreateRequestV2 {
   position: CanvasPositionV2;
   clone_inputs_from_node_id?: string | null;
   source_asset_id?: string | null;
-  video_skill_run_id?: string | null;
 }
 
 export interface CanvasNodePatchRequestV2 {
@@ -2110,7 +2153,7 @@ export interface CanvasVariationDraftResponseV2 {
 }
 
 export interface CanvasVariationMaterializeRequestV2 {
-  action: "create_draft" | "generate";
+  generation_action: "draft_only" | "generate_now";
   position?: CanvasPositionV2 | null;
 }
 
@@ -2144,9 +2187,12 @@ export interface CanvasLayoutPatchResponseV2 {
 export interface CanvasBindingCreateRequestV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
-  binding_kind: CanvasBindingKindV2;
+  input_role: CanvasBindingInputRoleV2;
   required?: boolean;
-  display_order?: number;
+  enabled?: boolean;
+  order?: number | null;
+  label?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CanvasMutationResponseV2 {
@@ -2271,7 +2317,7 @@ export interface CanvasRunRequestV2 {
   scope: "all_drafts" | "selected_nodes";
   node_ids: string[];
   retry_failed: boolean;
-  source_action: "global_run" | "node_run" | "retry_failed";
+  source_action: string;
 }
 
 export interface CanvasRunSkippedNodeV2 {
@@ -2305,7 +2351,7 @@ export interface CanvasRunCancelResponseV2 {
 export interface CanvasRuntimeEventsResponseV2 {
   workflow_id: string | null;
   events: CanvasRuntimeEventV2[];
-  next_after_seq: number;
+  next_cursor: number;
 }
 
 export interface EditingExportRequestV2 {

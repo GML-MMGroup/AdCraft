@@ -44,7 +44,7 @@ import {
 import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgrounds.tsx";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import {
-  bindingKindForSourceNode,
+  inputRoleForSourceNode,
   findAvailableCanvasPosition,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -272,14 +272,17 @@ export function AgentCanvasPage() {
     setSurfaceError(null);
     try {
       await createBinding({
-        source: { kind: "node", node_id: source.node_id },
+        source: { kind: "node_output", source_node_id: source.node_id },
         target_node_id: connection.target,
-        binding_kind: bindingKindForSourceNode(source),
+        input_role: inputRoleForSourceNode(source),
         required: false,
-        display_order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
+        enabled: true,
+        order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
+        label: null,
+        metadata: {},
       });
     } catch (error) {
-      if (isV2ApiError(error) && error.code === "binding_model_incompatible") {
+      if (isV2ApiError(error) && error.code === "provider_input_unsupported") {
         const compatible = Array.isArray(error.details.compatible_model_ids)
           ? error.details.compatible_model_ids.filter((value): value is string => typeof value === "string")
           : [];
@@ -353,11 +356,14 @@ export function AgentCanvasPage() {
     const startOrder = workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length;
     for (const [index, selection] of selections.entries()) {
       await createBinding({
-        source: { kind: "image_asset", asset_id: selection.assetId },
+        source: { kind: "image_asset", source_asset_id: selection.assetId },
         target_node_id: targetNodeId,
-        binding_kind: "image_reference",
+        input_role: "image_reference",
         required: false,
-        display_order: startOrder + index,
+        enabled: true,
+        order: startOrder + index,
+        label: null,
+        metadata: {},
       });
     }
   }, [createBinding, session.state.selectedNode, workflow]);
@@ -371,7 +377,7 @@ export function AgentCanvasPage() {
     const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition);
     await createCanvasNode({
       node_type: selection.mediaType,
-      semantic_role: sourceAssetSemanticRole(selection.mediaType),
+      creative_role: sourceAssetSemanticRole(selection.mediaType),
       role_contract_version: "ad-media-role-v1",
       title: selection.displayName,
       structured_content: sourceAssetStructuredContent(

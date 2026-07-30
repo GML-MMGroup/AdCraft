@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { V2ApiError } from "../../api/v2Client.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -13,7 +14,7 @@ function imageNode(prompt: string, revision: number): CanvasNodeV2 {
     node_id: "image-1",
     workflow_id: "workflow-1",
     node_type: "image",
-    semantic_role: "generic_image",
+    creative_role: "general_image",
     role_contract_version: "ad-media-role-v1",
     title: "Image",
     status: "draft",
@@ -24,7 +25,6 @@ function imageNode(prompt: string, revision: number): CanvasNodeV2 {
     parameters: {},
     prompt_context_snapshot_id: null,
     output_asset_id: null,
-    video_skill_run_id: null,
     position: { x: 0, y: 0 },
     revision,
     error: null,
@@ -131,7 +131,7 @@ describe("AgentCanvasInspector", () => {
       ...imageNode("Write a concise launch film", 1),
       node_id: "script-1",
       node_type: "script",
-      semantic_role: "advertising_script",
+      creative_role: "script",
       title: "Script",
       structured_content: {},
     };
@@ -168,7 +168,7 @@ describe("AgentCanvasInspector", () => {
     const current = {
       ...imageNode("Generated image", 2),
       status: "ready" as const,
-      semantic_role: "product",
+      creative_role: "product",
       output_asset_id: "asset-image-1",
     };
     const onSaveImageToLibrary = vi.fn().mockResolvedValue(undefined);
@@ -247,12 +247,158 @@ describe("AgentCanvasInspector", () => {
     ));
   });
 
+  it("shows provider_input_unsupported errors returned while saving a Draft", async () => {
+    const current = imageNode("Generate product", 1);
+    const patchNode = vi.fn().mockRejectedValue(new V2ApiError({
+      status: 422,
+      code: "provider_input_unsupported",
+      message: "The selected model does not accept video input.",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }));
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(current)}
+        node={current}
+        patchNode={patchNode}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save node" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Provider input unsupported: The selected model does not accept video input.",
+    );
+  });
+
+  it("saves a compatible provider model selected for a Draft Script node", async () => {
+    const current: CanvasNodeV2 = {
+      ...imageNode("Write the launch script", 1),
+      node_id: "script-1",
+      node_type: "script",
+      creative_role: "script",
+      title: "Script",
+    };
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(current)}
+        node={current}
+        patchNode={patchNode}
+        providerCapabilities={[{
+          provider: "openai",
+          model_id: "script-model-v2",
+          output_type: "script",
+          accepted_input_types: ["text"],
+          max_references: 0,
+          reference_limits: {},
+          supported_parameters: [],
+          supported_aspect_ratios: [],
+          duration_range_seconds: null,
+          pixel_bounds: null,
+          available: true,
+          unavailable_reason: null,
+          supports_native_audio: false,
+        }]}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Provider model"), {
+      target: { value: "script-model-v2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save node" }));
+
+    await waitFor(() => expect(patchNode).toHaveBeenCalledWith(
+      "script-1",
+      expect.objectContaining({ model_id: "script-model-v2" }),
+    ));
+  });
+
+  it("preserves a Video request above 15 seconds and shows the backend effective duration", async () => {
+    const current: CanvasNodeV2 = {
+      ...imageNode("A city night sequence", 1),
+      node_id: "video-1",
+      node_type: "video",
+      creative_role: "general_video",
+      title: "Video",
+      parameters: {
+        requested_duration_seconds: 20,
+        effective_duration_seconds: 15,
+        native_audio: true,
+      },
+    };
+    const patchNode = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasInspector
+        workflow={workflow(current)}
+        node={current}
+        patchNode={patchNode}
+        providerCapabilities={[{
+          provider: "volcengine",
+          model_id: "seedance-v1",
+          output_type: "video",
+          accepted_input_types: ["text", "image", "video", "audio"],
+          max_references: 8,
+          reference_limits: { image: 4, video: 1, audio: 1 },
+          supported_parameters: ["duration_seconds"],
+          supported_aspect_ratios: ["16:9"],
+          duration_range_seconds: [1, 15],
+          pixel_bounds: null,
+          available: true,
+          unavailable_reason: null,
+          supports_native_audio: true,
+        }]}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByLabelText("Requested duration (seconds)") as HTMLInputElement).value).toBe("20");
+    expect(screen.getByText("Effective duration: 15s")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Requested duration (seconds)"), {
+      target: { value: "24" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save node" }));
+
+    await waitFor(() => expect(patchNode).toHaveBeenCalledWith(
+      "video-1",
+      expect.objectContaining({
+        parameters: expect.objectContaining({ requested_duration_seconds: 24 }),
+      }),
+    ));
+    expect(screen.queryByText(/BGM/)).toBeNull();
+  });
+
   it("does not offer Run for a Ready Script document", () => {
     const current: CanvasNodeV2 = {
       ...imageNode("", 2),
       node_id: "script-ready",
       node_type: "script",
-      semantic_role: "advertising_script",
+      creative_role: "script",
       title: "Approved script",
       status: "ready",
       structured_content: { content: "Open on the product at sunrise." },
@@ -324,7 +470,7 @@ describe("AgentCanvasInspector", () => {
       model_id: "image-model-v2",
       parameters: { aspect_ratio: "1:1" },
     });
-    expect(onMaterializeVariation).toHaveBeenCalledWith(current, "generate");
+    expect(onMaterializeVariation).toHaveBeenCalledWith(current, "generate_now");
     expect(onSaveVariation.mock.invocationCallOrder[0])
       .toBeLessThan(onMaterializeVariation.mock.invocationCallOrder[0]!);
     expect(current.generation_prompt).toBe("Immutable source prompt");
