@@ -11,6 +11,7 @@ from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
 from app.schemas import agent_canvas
+from app.schemas import agent_canvas_conversation
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
@@ -30,6 +31,8 @@ CONTRACT_MODELS = (
     agent_canvas.CanvasNodeV2,
     agent_canvas.CanvasBindingV2,
     agent_canvas_editing.EditingOutputSettingsV2,
+    agent_canvas_editing.EditingVideoEntryV2,
+    agent_canvas_editing.EditingBgmEntryV2,
     agent_canvas_editing.EditingManifestV2,
     agent_canvas_ad_media.VisualStyleContractV2,
     agent_canvas_ad_media.DesignAssetContentV2,
@@ -52,13 +55,16 @@ CONTRACT_MODELS = (
     agent_operation_contexts.BgmExpertAgentContext,
     agent_canvas_creative_session.PlanningTopicProgressV2,
     agent_canvas_creative_session.CreativeSessionStateV2,
+    agent_canvas_creative_session.CreativeDirectionSnapshotV2,
     agent_canvas_creative_session.ProjectCreativeMemoryV2,
+    agent_canvas_creative_session.ConceptDraftSpecV2,
     agent_canvas_creative_session.DraftReferenceIntentV2,
     agent_canvas_creative_session.ProposedDraftReferenceV2,
     agent_canvas_creative_session.SpecialistDraftV2,
     agent_canvas_creative_session.ExpertActivityV2,
     agent_canvas_creative_session.ResolvedImageTargetV2,
     agent_canvas_creative_session.GuidedDeliveryActionV2,
+    agent_canvas_conversation.ProposalActionRequestV2,
     agent_operation_contexts.InteractionMessageSummary,
     agent_operation_contexts.InteractionTargetSummary,
     agent_operation_contexts.TargetedRevisionAgentContext,
@@ -95,28 +101,27 @@ CONTRACT_MODELS = (
     agent_runtime.SpecialistDraft,
     agent_runtime.ConceptOptionV2,
     agent_runtime.ConceptProposalDraftV2,
+    agent_runtime.SpecialistOperationV2,
+    agent_runtime.SpecialistResultV2,
     agent_runtime.AgentNodeIdRefV2,
     agent_runtime.AgentOperationResultRefV2,
     agent_runtime.AgentAssetRefV2,
     agent_runtime.AgentPlacementHintV2,
-    agent_runtime.AgentCreateNodeOperationV2,
+    agent_runtime.AgentCreateDraftNodeOperationV2,
     agent_runtime.AgentPatchEditableNodeOperationV2,
     agent_runtime.AgentCreateBindingOperationV2,
+    agent_runtime.AgentPatchBindingOperationV2,
     agent_runtime.AgentDeleteBindingOperationV2,
     agent_runtime.AgentDeleteNodeOperationV2,
-    agent_runtime.AgentMaterializeProposalOperationV2,
-    agent_runtime.AgentForkReadyMediaOperationV2,
+    agent_runtime.AgentMaterializeSiblingDraftOperationV2,
     agent_runtime.AgentRequestNodeRunOperationV2,
-    agent_runtime.AgentUpdatePlanningTopicOperationV2,
-    agent_runtime.AgentPrepareCompositionOperationV2,
-    agent_runtime.AgentPrepareCompositionResultV2,
+    agent_runtime.AgentUpdateTopicStatusOperationV2,
     agent_runtime.AgentCommandPlanDraftV2,
     agent_runtime.AgentCommandPlanCreateV2,
     agent_runtime.AgentCommandPlanV2,
     agent_runtime.AgentCommandReplanResultV2,
     agent_runtime.AgentOperationResultV2,
     agent_runtime.AgentActionEnvelopeV2,
-    agent_runtime.AdMediaSpecialistDraftV2,
     agent_runtime.SpecialistDirectResponseV2,
 )
 

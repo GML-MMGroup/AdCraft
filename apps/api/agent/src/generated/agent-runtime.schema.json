@@ -1,65 +1,5 @@
 {
   "$defs": {
-    "AdMediaSpecialistDraftV2": {
-      "additionalProperties": false,
-      "properties": {
-        "generation_prompt": {
-          "maxLength": 32768,
-          "minLength": 1,
-          "title": "Generation Prompt",
-          "type": "string"
-        },
-        "semantic_role": {
-          "enum": [
-            "bgm",
-            "character_main",
-            "character_turnaround",
-            "product_main",
-            "product_view_board",
-            "prop_main",
-            "scene_design_board",
-            "storyboard_grid",
-            "storyboard_video_segment"
-          ],
-          "title": "Semantic Role",
-          "type": "string"
-        },
-        "structured_content": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/DesignAssetContentV2"
-            },
-            {
-              "$ref": "#/$defs/SceneDesignBoardContentV2"
-            },
-            {
-              "$ref": "#/$defs/StoryboardGridContentV2"
-            },
-            {
-              "$ref": "#/$defs/VideoSegmentContentV2"
-            },
-            {
-              "$ref": "#/$defs/BgmContentV2"
-            }
-          ],
-          "title": "Structured Content"
-        },
-        "title": {
-          "maxLength": 256,
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        }
-      },
-      "required": [
-        "generation_prompt",
-        "semantic_role",
-        "structured_content",
-        "title"
-      ],
-      "title": "AdMediaSpecialistDraftV2",
-      "type": "object"
-    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -104,6 +44,7 @@
                 "character_designer",
                 "product_designer",
                 "prop_designer",
+                "quick_media_agent",
                 "scene_designer",
                 "script_writer",
                 "storyboard_artist",
@@ -159,6 +100,12 @@
           "title": "Confirmation Required",
           "type": "boolean"
         },
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
         "continuation_requested": {
           "default": false,
           "title": "Continuation Requested",
@@ -170,26 +117,30 @@
           "title": "Conversation Id",
           "type": "string"
         },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
         "operations": {
           "items": {
             "discriminator": {
               "mapping": {
                 "create_binding": "#/$defs/AgentCreateBindingOperationV2",
-                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
-                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
+                "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
               },
               "propertyName": "operation_type"
             },
             "oneOf": [
               {
-                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+                "$ref": "#/$defs/AgentCreateDraftNodeOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
@@ -198,25 +149,22 @@
                 "$ref": "#/$defs/AgentCreateBindingOperationV2"
               },
               {
+                "$ref": "#/$defs/AgentPatchBindingOperationV2"
+              },
+              {
                 "$ref": "#/$defs/AgentDeleteBindingOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -256,7 +204,9 @@
       "required": [
         "base_workflow_revision",
         "confirmation_required",
+        "context_snapshot_id",
         "conversation_id",
+        "expires_at",
         "operations",
         "risk",
         "source_turn_id",
@@ -278,21 +228,20 @@
             "discriminator": {
               "mapping": {
                 "create_binding": "#/$defs/AgentCreateBindingOperationV2",
-                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
-                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
+                "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
               },
               "propertyName": "operation_type"
             },
             "oneOf": [
               {
-                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+                "$ref": "#/$defs/AgentCreateDraftNodeOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
@@ -301,25 +250,22 @@
                 "$ref": "#/$defs/AgentCreateBindingOperationV2"
               },
               {
+                "$ref": "#/$defs/AgentPatchBindingOperationV2"
+              },
+              {
                 "$ref": "#/$defs/AgentDeleteBindingOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -357,6 +303,12 @@
           "title": "Confirmation Required",
           "type": "boolean"
         },
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
         "continuation_requested": {
           "default": false,
           "title": "Continuation Requested",
@@ -373,6 +325,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
         "operation_fingerprint": {
           "maxLength": 128,
           "minLength": 1,
@@ -384,21 +347,20 @@
             "discriminator": {
               "mapping": {
                 "create_binding": "#/$defs/AgentCreateBindingOperationV2",
-                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "create_draft_node": "#/$defs/AgentCreateDraftNodeOperationV2",
                 "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
                 "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
-                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
-                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
+                "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
                 "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
               },
               "propertyName": "operation_type"
             },
             "oneOf": [
               {
-                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+                "$ref": "#/$defs/AgentCreateDraftNodeOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
@@ -407,25 +369,22 @@
                 "$ref": "#/$defs/AgentCreateBindingOperationV2"
               },
               {
+                "$ref": "#/$defs/AgentPatchBindingOperationV2"
+              },
+              {
                 "$ref": "#/$defs/AgentDeleteBindingOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentDeleteNodeOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+                "$ref": "#/$defs/AgentMaterializeSiblingDraftOperationV2"
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               {
-                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -514,8 +473,11 @@
       "required": [
         "base_workflow_revision",
         "confirmation_required",
+        "context_snapshot_id",
         "conversation_id",
         "created_at",
+        "expires_at",
+        "idempotency_key",
         "operation_fingerprint",
         "operations",
         "plan_id",
@@ -713,9 +675,29 @@
       "title": "AgentCreateBindingOperationV2",
       "type": "object"
     },
-    "AgentCreateNodeOperationV2": {
+    "AgentCreateDraftNodeOperationV2": {
       "additionalProperties": false,
       "properties": {
+        "creative_role": {
+          "enum": [
+            "bgm",
+            "character",
+            "creative_brief",
+            "editing",
+            "general_audio",
+            "general_image",
+            "general_text",
+            "general_video",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard_sequence",
+            "storyboard_video"
+          ],
+          "title": "Creative Role",
+          "type": "string"
+        },
         "generation_prompt": {
           "anyOf": [
             {
@@ -760,8 +742,8 @@
           "type": "string"
         },
         "operation_type": {
-          "const": "create_node",
-          "default": "create_node",
+          "const": "create_draft_node",
+          "default": "create_draft_node",
           "title": "Operation Type",
           "type": "string"
         },
@@ -772,12 +754,6 @@
         },
         "placement_hint": {
           "$ref": "#/$defs/AgentPlacementHintV2"
-        },
-        "semantic_role": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Semantic Role",
-          "type": "string"
         },
         "source_asset_id": {
           "anyOf": [
@@ -831,13 +807,13 @@
         }
       },
       "required": [
+        "creative_role",
         "node_type",
         "operation_id",
         "placement_hint",
-        "semantic_role",
         "title"
       ],
-      "title": "AgentCreateNodeOperationV2",
+      "title": "AgentCreateDraftNodeOperationV2",
       "type": "object"
     },
     "AgentDeleteBindingOperationV2": {
@@ -910,7 +886,7 @@
       "title": "AgentDeleteNodeOperationV2",
       "type": "object"
     },
-    "AgentForkReadyMediaOperationV2": {
+    "AgentMaterializeSiblingDraftOperationV2": {
       "additionalProperties": false,
       "properties": {
         "generation_prompt": {
@@ -939,8 +915,8 @@
           "type": "string"
         },
         "operation_type": {
-          "const": "fork_ready_media",
-          "default": "fork_ready_media",
+          "const": "materialize_sibling_draft",
+          "default": "materialize_sibling_draft",
           "title": "Operation Type",
           "type": "string"
         },
@@ -984,47 +960,7 @@
         "source_node",
         "title"
       ],
-      "title": "AgentForkReadyMediaOperationV2",
-      "type": "object"
-    },
-    "AgentMaterializeProposalOperationV2": {
-      "additionalProperties": false,
-      "properties": {
-        "operation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Operation Id",
-          "type": "string"
-        },
-        "operation_type": {
-          "const": "materialize_proposal",
-          "default": "materialize_proposal",
-          "title": "Operation Type",
-          "type": "string"
-        },
-        "option_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Option Id",
-          "type": "string"
-        },
-        "placement_hint": {
-          "$ref": "#/$defs/AgentPlacementHintV2"
-        },
-        "proposal_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Proposal Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "operation_id",
-        "option_id",
-        "placement_hint",
-        "proposal_id"
-      ],
-      "title": "AgentMaterializeProposalOperationV2",
+      "title": "AgentMaterializeSiblingDraftOperationV2",
       "type": "object"
     },
     "AgentNodeIdRefV2": {
@@ -1147,6 +1083,72 @@
         "status"
       ],
       "title": "AgentOperationResultV2",
+      "type": "object"
+    },
+    "AgentPatchBindingOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "display_order": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Order"
+        },
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "patch_binding",
+          "default": "patch_binding",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Required"
+        }
+      },
+      "required": [
+        "binding_id",
+        "operation_id"
+      ],
+      "title": "AgentPatchBindingOperationV2",
       "type": "object"
     },
     "AgentPatchEditableNodeOperationV2": {
@@ -1313,187 +1315,6 @@
         "intent"
       ],
       "title": "AgentPlacementHintV2",
-      "type": "object"
-    },
-    "AgentPrepareCompositionOperationV2": {
-      "additionalProperties": false,
-      "properties": {
-        "bgm_audio_node": {
-          "anyOf": [
-            {
-              "discriminator": {
-                "mapping": {
-                  "node_id": "#/$defs/AgentNodeIdRefV2",
-                  "operation_result": "#/$defs/AgentOperationResultRefV2"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentNodeIdRefV2"
-                },
-                {
-                  "$ref": "#/$defs/AgentOperationResultRefV2"
-                }
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Bgm Audio Node"
-        },
-        "bgm_volume": {
-          "default": 0.2,
-          "maximum": 1.0,
-          "minimum": 0.0,
-          "title": "Bgm Volume",
-          "type": "number"
-        },
-        "editing_node": {
-          "anyOf": [
-            {
-              "discriminator": {
-                "mapping": {
-                  "node_id": "#/$defs/AgentNodeIdRefV2",
-                  "operation_result": "#/$defs/AgentOperationResultRefV2"
-                },
-                "propertyName": "kind"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentNodeIdRefV2"
-                },
-                {
-                  "$ref": "#/$defs/AgentOperationResultRefV2"
-                }
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Editing Node"
-        },
-        "operation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Operation Id",
-          "type": "string"
-        },
-        "operation_type": {
-          "const": "prepare_composition",
-          "default": "prepare_composition",
-          "title": "Operation Type",
-          "type": "string"
-        },
-        "ordered_video_nodes": {
-          "default": [],
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "node_id": "#/$defs/AgentNodeIdRefV2",
-                "operation_result": "#/$defs/AgentOperationResultRefV2"
-              },
-              "propertyName": "kind"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/AgentNodeIdRefV2"
-              },
-              {
-                "$ref": "#/$defs/AgentOperationResultRefV2"
-              }
-            ]
-          },
-          "maxItems": 32,
-          "title": "Ordered Video Nodes",
-          "type": "array"
-        },
-        "output": {
-          "$ref": "#/$defs/EditingOutputSettingsV2"
-        },
-        "placement_hint": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AgentPlacementHintV2"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "title": {
-          "anyOf": [
-            {
-              "maxLength": 256,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Title"
-        }
-      },
-      "required": [
-        "operation_id"
-      ],
-      "title": "AgentPrepareCompositionOperationV2",
-      "type": "object"
-    },
-    "AgentPrepareCompositionResultV2": {
-      "additionalProperties": false,
-      "properties": {
-        "bindings": {
-          "items": {
-            "$ref": "#/$defs/CanvasBindingV2"
-          },
-          "title": "Bindings",
-          "type": "array"
-        },
-        "editing_node": {
-          "$ref": "#/$defs/CanvasNodeV2"
-        },
-        "events_cursor": {
-          "minimum": 0,
-          "title": "Events Cursor",
-          "type": "integer"
-        },
-        "manifest": {
-          "$ref": "#/$defs/EditingManifestV2"
-        },
-        "replayed": {
-          "default": false,
-          "title": "Replayed",
-          "type": "boolean"
-        },
-        "semantic_revision": {
-          "minimum": 1,
-          "title": "Semantic Revision",
-          "type": "integer"
-        },
-        "workflow_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Workflow Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "bindings",
-        "editing_node",
-        "events_cursor",
-        "manifest",
-        "semantic_revision",
-        "workflow_id"
-      ],
-      "title": "AgentPrepareCompositionResultV2",
       "type": "object"
     },
     "AgentReferenceSummary": {
@@ -1809,6 +1630,7 @@
             "director",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -1894,6 +1716,17 @@
             }
           ],
           "title": "Context"
+        },
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
+        "contract_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Contract Digest",
+          "type": "string"
         },
         "contract_name": {
           "anyOf": [
@@ -1993,6 +1826,8 @@
       "required": [
         "agent_name",
         "context",
+        "context_snapshot_id",
+        "contract_digest",
         "deadline_at",
         "model_policy_id",
         "operation",
@@ -2057,6 +1892,7 @@
             "director",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -2615,7 +2451,7 @@
       "title": "AgentToolResult",
       "type": "object"
     },
-    "AgentUpdatePlanningTopicOperationV2": {
+    "AgentUpdateTopicStatusOperationV2": {
       "additionalProperties": false,
       "properties": {
         "operation_id": {
@@ -2625,8 +2461,8 @@
           "type": "string"
         },
         "operation_type": {
-          "const": "update_planning_topic",
-          "default": "update_planning_topic",
+          "const": "update_topic_status",
+          "default": "update_topic_status",
           "title": "Operation Type",
           "type": "string"
         },
@@ -2681,7 +2517,7 @@
         "status",
         "topic_id"
       ],
-      "title": "AgentUpdatePlanningTopicOperationV2",
+      "title": "AgentUpdateTopicStatusOperationV2",
       "type": "object"
     },
     "BgmContentV2": {
@@ -2850,20 +2686,20 @@
     "CanvasBindingSourceImageAssetV2": {
       "additionalProperties": false,
       "properties": {
-        "asset_id": {
-          "minLength": 1,
-          "title": "Asset Id",
-          "type": "string"
-        },
         "kind": {
           "const": "image_asset",
           "default": "image_asset",
           "title": "Kind",
           "type": "string"
+        },
+        "source_asset_id": {
+          "minLength": 1,
+          "title": "Source Asset Id",
+          "type": "string"
         }
       },
       "required": [
-        "asset_id"
+        "source_asset_id"
       ],
       "title": "CanvasBindingSourceImageAssetV2",
       "type": "object"
@@ -2872,19 +2708,19 @@
       "additionalProperties": false,
       "properties": {
         "kind": {
-          "const": "node",
-          "default": "node",
+          "const": "node_output",
+          "default": "node_output",
           "title": "Kind",
           "type": "string"
         },
-        "node_id": {
+        "source_node_id": {
           "minLength": 1,
-          "title": "Node Id",
+          "title": "Source Node Id",
           "type": "string"
         }
       },
       "required": [
-        "node_id"
+        "source_node_id"
       ],
       "title": "CanvasBindingSourceNodeV2",
       "type": "object"
@@ -2897,39 +2733,50 @@
           "title": "Binding Id",
           "type": "string"
         },
-        "binding_kind": {
-          "enum": [
-            "audio_reference",
-            "brief_context",
-            "image_reference",
-            "script_context",
-            "video_reference"
-          ],
-          "title": "Binding Kind",
-          "type": "string"
-        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
           "type": "string"
         },
-        "display_order": {
-          "minimum": 0,
-          "title": "Display Order",
-          "type": "integer"
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
         },
         "input_role": {
-          "default": "instruction",
           "enum": [
             "audio_reference",
-            "first_frame",
-            "instruction",
-            "motion_reference",
-            "source_video",
-            "visual_reference"
+            "image_reference",
+            "text_context",
+            "video_reference"
           ],
           "title": "Input Role",
           "type": "string"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Metadata",
+          "type": "object"
+        },
+        "order": {
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
         },
         "required": {
           "title": "Required",
@@ -2939,7 +2786,7 @@
           "discriminator": {
             "mapping": {
               "image_asset": "#/$defs/CanvasBindingSourceImageAssetV2",
-              "node": "#/$defs/CanvasBindingSourceNodeV2"
+              "node_output": "#/$defs/CanvasBindingSourceNodeV2"
             },
             "propertyName": "kind"
           },
@@ -2958,6 +2805,11 @@
           "title": "Target Node Id",
           "type": "string"
         },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
         "workflow_id": {
           "minLength": 1,
           "title": "Workflow Id",
@@ -2966,12 +2818,13 @@
       },
       "required": [
         "binding_id",
-        "binding_kind",
         "created_at",
-        "display_order",
+        "input_role",
+        "order",
         "required",
         "source",
         "target_node_id",
+        "updated_at",
         "workflow_id"
       ],
       "title": "CanvasBindingV2",
@@ -3011,17 +2864,25 @@
           "title": "Created At",
           "type": "string"
         },
-        "derived_from_node_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+        "creative_role": {
+          "enum": [
+            "bgm",
+            "character",
+            "creative_brief",
+            "editing",
+            "general_audio",
+            "general_image",
+            "general_text",
+            "general_video",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard_sequence",
+            "storyboard_video"
           ],
-          "default": null,
-          "title": "Derived From Node Id"
+          "title": "Creative Role",
+          "type": "string"
         },
         "error": {
           "anyOf": [
@@ -3120,11 +2981,6 @@
           "title": "Role Contract Version",
           "type": "string"
         },
-        "semantic_role": {
-          "minLength": 1,
-          "title": "Semantic Role",
-          "type": "string"
-        },
         "status": {
           "enum": [
             "draft",
@@ -3175,18 +3031,6 @@
           ],
           "default": null
         },
-        "video_skill_run_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Video Skill Run Id"
-        },
         "workflow_id": {
           "minLength": 1,
           "title": "Workflow Id",
@@ -3195,11 +3039,11 @@
       },
       "required": [
         "created_at",
+        "creative_role",
         "node_id",
         "node_type",
         "position",
         "revision",
-        "semantic_role",
         "status",
         "title",
         "updated_at",
@@ -3391,19 +3235,39 @@
       "title": "CharacterExpertAgentContext",
       "type": "object"
     },
+    "ConceptDraftSpecV2": {
+      "additionalProperties": false,
+      "description": "Private bounded prompt authored for one proposal option.",
+      "properties": {
+        "prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "title": "ConceptDraftSpecV2",
+      "type": "object"
+    },
     "ConceptOptionV2": {
       "additionalProperties": false,
       "properties": {
-        "description": {
-          "maxLength": 4096,
-          "minLength": 1,
-          "title": "Description",
-          "type": "string"
+        "draft_spec": {
+          "$ref": "#/$defs/ConceptDraftSpecV2"
         },
         "option_id": {
           "maxLength": 160,
           "minLength": 1,
           "title": "Option Id",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary Prompt",
           "type": "string"
         },
         "title": {
@@ -3414,8 +3278,9 @@
         }
       },
       "required": [
-        "description",
+        "draft_spec",
         "option_id",
+        "summary_prompt",
         "title"
       ],
       "title": "ConceptOptionV2",
@@ -3462,6 +3327,7 @@
             "character_designer",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -3546,9 +3412,153 @@
       "title": "ConversationSummaryResult",
       "type": "object"
     },
+    "CreativeDirectionSnapshotV2": {
+      "additionalProperties": false,
+      "properties": {
+        "content_digest": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "global_direction": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Global Direction",
+          "type": "object"
+        },
+        "role_projections": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Role Projections",
+          "type": "object"
+        },
+        "skill_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Run Id",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "source_message_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Message Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_skill_digest": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Skill Digest"
+        },
+        "source_skill_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Skill Id"
+        },
+        "source_skill_version": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Skill Version"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content_digest",
+        "created_at",
+        "skill_run_id",
+        "snapshot_id",
+        "version",
+        "workflow_id"
+      ],
+      "title": "CreativeDirectionSnapshotV2",
+      "type": "object"
+    },
     "CreativeSessionStateV2": {
       "additionalProperties": false,
       "properties": {
+        "creative_direction_snapshot_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Creative Direction Snapshot Id"
+        },
         "current_topic_id": {
           "anyOf": [
             {
@@ -3816,9 +3826,8 @@
         "binding_kind": {
           "enum": [
             "audio_reference",
-            "brief_context",
             "image_reference",
-            "script_context",
+            "text_context",
             "video_reference"
           ],
           "title": "Binding Kind",
@@ -3833,11 +3842,9 @@
         "input_role": {
           "enum": [
             "audio_reference",
-            "first_frame",
-            "instruction",
-            "motion_reference",
-            "source_video",
-            "visual_reference"
+            "image_reference",
+            "text_context",
+            "video_reference"
           ],
           "title": "Input Role",
           "type": "string"
@@ -3872,12 +3879,13 @@
       "title": "DraftReferenceIntentV2",
       "type": "object"
     },
-    "EditingManifestV2": {
+    "EditingBgmEntryV2": {
       "additionalProperties": false,
       "properties": {
-        "bgm_audio_binding_id": {
+        "asset_id": {
           "anyOf": [
             {
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -3885,14 +3893,83 @@
             }
           ],
           "default": null,
-          "title": "Bgm Audio Binding Id"
+          "title": "Asset Id"
         },
-        "bgm_volume": {
+        "binding_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fade_in_seconds": {
+          "default": 0.0,
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "title": "Fade In Seconds",
+          "type": "number"
+        },
+        "fade_out_seconds": {
+          "default": 0.0,
+          "maximum": 30.0,
+          "minimum": 0.0,
+          "title": "Fade Out Seconds",
+          "type": "number"
+        },
+        "trim_end_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trim End Seconds"
+        },
+        "trim_start_seconds": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Trim Start Seconds",
+          "type": "number"
+        },
+        "volume": {
           "default": 0.2,
           "maximum": 1.0,
           "minimum": 0.0,
-          "title": "Bgm Volume",
+          "title": "Volume",
           "type": "number"
+        }
+      },
+      "title": "EditingBgmEntryV2",
+      "type": "object"
+    },
+    "EditingManifestV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bgm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EditingBgmEntryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "manifest_revision": {
           "default": 1,
@@ -3900,16 +3977,16 @@
           "title": "Manifest Revision",
           "type": "integer"
         },
-        "ordered_video_binding_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "title": "Ordered Video Binding Ids",
-          "type": "array"
-        },
         "output": {
           "$ref": "#/$defs/EditingOutputSettingsV2"
+        },
+        "video_entries": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditingVideoEntryV2"
+          },
+          "title": "Video Entries",
+          "type": "array"
         }
       },
       "title": "EditingManifestV2",
@@ -3978,6 +4055,100 @@
       "title": "EditingOutputSettingsV2",
       "type": "object"
     },
+    "EditingVideoEntryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "binding_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fit_mode": {
+          "default": "fill",
+          "enum": [
+            "fill",
+            "fit"
+          ],
+          "title": "Fit Mode",
+          "type": "string"
+        },
+        "preserve_native_audio": {
+          "default": true,
+          "title": "Preserve Native Audio",
+          "type": "boolean"
+        },
+        "transition": {
+          "default": "cut",
+          "enum": [
+            "cut",
+            "fade"
+          ],
+          "title": "Transition",
+          "type": "string"
+        },
+        "transition_duration_seconds": {
+          "default": 0.0,
+          "maximum": 5.0,
+          "minimum": 0.0,
+          "title": "Transition Duration Seconds",
+          "type": "number"
+        },
+        "trim_end_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trim End Seconds"
+        },
+        "trim_start_seconds": {
+          "default": 0.0,
+          "minimum": 0.0,
+          "title": "Trim Start Seconds",
+          "type": "number"
+        },
+        "volume": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Volume",
+          "type": "number"
+        }
+      },
+      "title": "EditingVideoEntryV2",
+      "type": "object"
+    },
     "ExpertActivityV2": {
       "additionalProperties": false,
       "properties": {
@@ -4033,6 +4204,7 @@
             "character_designer",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -4045,8 +4217,7 @@
           "enum": [
             "completed",
             "failed",
-            "started",
-            "waiting"
+            "working"
           ],
           "title": "Status",
           "type": "string"
@@ -4279,20 +4450,34 @@
       "properties": {
         "action": {
           "enum": [
-            "add_another_node",
-            "continue_to_composition",
-            "edit_composition_sources",
-            "export_current_cut",
-            "generate_existing_drafts",
-            "prepare_composition",
+            "add_another_topic_node",
+            "generate_node",
+            "run_all_drafts",
             "skip_topic"
           ],
           "title": "Action",
           "type": "string"
         },
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
         "confirmation_required": {
           "title": "Confirmation Required",
           "type": "boolean"
+        },
+        "creating_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Creating Turn Id",
+          "type": "string"
+        },
+        "expected_semantic_revision": {
+          "minimum": 1,
+          "title": "Expected Semantic Revision",
+          "type": "integer"
         },
         "label": {
           "maxLength": 160,
@@ -4335,10 +4520,33 @@
           "title": "Ordered Node Ids",
           "type": "array"
         },
+        "proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Id"
+        },
         "reason": {
           "maxLength": 1024,
           "minLength": 1,
           "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "applied",
+            "applying",
+            "failed",
+            "pending"
+          ],
+          "title": "State",
           "type": "string"
         },
         "topic_id": {
@@ -4363,9 +4571,13 @@
       },
       "required": [
         "action",
+        "action_id",
         "confirmation_required",
+        "creating_turn_id",
+        "expected_semantic_revision",
         "label",
         "reason",
+        "state",
         "workflow_id"
       ],
       "title": "GuidedDeliveryActionV2",
@@ -4757,6 +4969,7 @@
             "character_designer",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -4767,12 +4980,12 @@
         },
         "status": {
           "enum": [
-            "completed",
             "deferred",
+            "in_review",
+            "not_required",
             "pending",
-            "reopened",
-            "skipped",
-            "working"
+            "resolved",
+            "skipped"
           ],
           "title": "Status",
           "type": "string"
@@ -4993,15 +5206,105 @@
       "title": "ProjectCreativeMemoryV2",
       "type": "object"
     },
+    "ProposalActionRequestV2": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_references": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ProposedDraftReferenceV2"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accepted References"
+        },
+        "action": {
+          "enum": [
+            "revise",
+            "select",
+            "skip"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "generation_action": {
+          "anyOf": [
+            {
+              "enum": [
+                "draft_only",
+                "generate_now"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Action"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "option_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Option Id"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Position"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "ProposalActionRequestV2",
+      "type": "object"
+    },
     "ProposedDraftReferenceV2": {
       "additionalProperties": false,
       "properties": {
         "binding_kind": {
           "enum": [
             "audio_reference",
-            "brief_context",
             "image_reference",
-            "script_context",
+            "text_context",
             "video_reference"
           ],
           "title": "Binding Kind",
@@ -5022,11 +5325,9 @@
         "input_role": {
           "enum": [
             "audio_reference",
-            "first_frame",
-            "instruction",
-            "motion_reference",
-            "source_video",
-            "visual_reference"
+            "image_reference",
+            "text_context",
+            "video_reference"
           ],
           "title": "Input Role",
           "type": "string"
@@ -5209,26 +5510,19 @@
           "title": "Owner Semantic Role"
         },
         "specialist_name": {
-          "anyOf": [
-            {
-              "enum": [
-                "bgm_director",
-                "character_designer",
-                "product_designer",
-                "prop_designer",
-                "scene_designer",
-                "script_writer",
-                "storyboard_artist",
-                "video_director"
-              ],
-              "type": "string"
-            },
-            {
-              "const": "quick_media_agent",
-              "type": "string"
-            }
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
           ],
-          "title": "Specialist Name"
+          "title": "Specialist Name",
+          "type": "string"
         }
       },
       "required": [
@@ -5629,6 +5923,7 @@
             "character_designer",
             "product_designer",
             "prop_designer",
+            "quick_media_agent",
             "scene_designer",
             "script_writer",
             "storyboard_artist",
@@ -5780,6 +6075,26 @@
     "SpecialistDraftV2": {
       "additionalProperties": false,
       "properties": {
+        "creative_role": {
+          "enum": [
+            "bgm",
+            "character",
+            "creative_brief",
+            "editing",
+            "general_audio",
+            "general_image",
+            "general_text",
+            "general_video",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard_sequence",
+            "storyboard_video"
+          ],
+          "title": "Creative Role",
+          "type": "string"
+        },
         "generation_prompt": {
           "anyOf": [
             {
@@ -5821,12 +6136,6 @@
           "title": "Reference Intents",
           "type": "array"
         },
-        "semantic_role": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Semantic Role",
-          "type": "string"
-        },
         "structured_content": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -5857,12 +6166,181 @@
         }
       },
       "required": [
+        "creative_role",
         "node_type",
-        "semantic_role",
         "summary_prompt",
         "title"
       ],
       "title": "SpecialistDraftV2",
+      "type": "object"
+    },
+    "SpecialistOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
+        "max_output_tokens": {
+          "maximum": 32768,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "operation": {
+          "enum": [
+            "direct_response",
+            "materialize_draft",
+            "propose_concepts",
+            "revise_concepts"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "result_schema_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Result Schema Id",
+          "type": "string"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "target_creative_role": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Creative Role"
+        },
+        "target_node_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "audio",
+                "image",
+                "script",
+                "text",
+                "video"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Type"
+        },
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 300,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "context_snapshot_id",
+        "max_output_tokens",
+        "operation",
+        "operation_id",
+        "result_schema_id",
+        "specialist_name",
+        "timeout_seconds"
+      ],
+      "title": "SpecialistOperationV2",
+      "type": "object"
+    },
+    "SpecialistResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "direct_response": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpecialistDirectResponseV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SpecialistDraftV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConceptProposalDraftV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "refusal_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Refusal Code"
+        },
+        "result_kind": {
+          "enum": [
+            "direct_response",
+            "draft",
+            "proposal",
+            "refusal"
+          ],
+          "title": "Result Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result_kind"
+      ],
+      "title": "SpecialistResultV2",
       "type": "object"
     },
     "StoryboardGridContentV2": {

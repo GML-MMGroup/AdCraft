@@ -12,15 +12,11 @@ from app.schemas.agent_operation_contexts import (
     PlanningAgentContext,
 )
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
-from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
-from app.schemas.agent_canvas_editing import EditingManifestV2, EditingOutputSettingsV2
-from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
-from app.schemas.agent_canvas_ad_media import (
-    BgmContentV2,
-    DesignAssetContentV2,
-    SceneDesignBoardContentV2,
-    StoryboardGridContentV2,
-    VideoSegmentContentV2,
+from app.schemas.agent_canvas import CanvasCreativeRoleV2
+from app.schemas.agent_canvas_creative_session import (
+    ConceptDraftSpecV2,
+    ProposedDraftReferenceV2,
+    SpecialistDraftV2,
 )
 
 
@@ -34,6 +30,7 @@ AgentName = Literal[
     "storyboard_artist",
     "video_director",
     "bgm_director",
+    "quick_media_agent",
 ]
 AgentRunStatus = Literal[
     "queued",
@@ -182,6 +179,8 @@ class AgentRunRequest(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     run_id: str = Field(min_length=1, max_length=160)
     request_id: str = Field(min_length=1, max_length=160)
+    contract_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    context_snapshot_id: str = Field(min_length=1, max_length=160)
     parent_run_id: str | None = Field(default=None, max_length=160)
     agent_name: AgentName
     operation: str = Field(min_length=1, max_length=120)
@@ -347,7 +346,8 @@ class SpecialistDraft(_StrictModel):
 class ConceptOptionV2(_StrictModel):
     option_id: str = Field(min_length=1, max_length=160)
     title: str = Field(min_length=1, max_length=256)
-    description: str = Field(min_length=1, max_length=4_096)
+    summary_prompt: str = Field(min_length=1, max_length=4_096)
+    draft_spec: ConceptDraftSpecV2
 
 
 class ConceptProposalDraftV2(_StrictModel):
@@ -367,6 +367,50 @@ class ConceptProposalDraftV2(_StrictModel):
         default=(),
         max_length=64,
     )
+
+
+class SpecialistOperationV2(_StrictModel):
+    operation_id: str = Field(min_length=1, max_length=160)
+    specialist_name: AgentCanvasSpecialistName
+    operation: Literal[
+        "direct_response",
+        "materialize_draft",
+        "propose_concepts",
+        "revise_concepts",
+    ]
+    target_node_type: Literal["text", "script", "image", "video", "audio"] | None = None
+    target_creative_role: str | None = Field(default=None, max_length=160)
+    context_snapshot_id: str = Field(min_length=1, max_length=160)
+    result_schema_id: str = Field(min_length=1, max_length=160)
+    max_output_tokens: int = Field(ge=1, le=32_768)
+    timeout_seconds: float = Field(gt=0, le=300)
+
+
+class SpecialistDirectResponseV2(_StrictModel):
+    summary: str = Field(min_length=1, max_length=4_000)
+
+
+class SpecialistResultV2(_StrictModel):
+    result_kind: Literal["proposal", "draft", "direct_response", "refusal"]
+    proposal: ConceptProposalDraftV2 | None = None
+    draft: SpecialistDraftV2 | None = None
+    direct_response: SpecialistDirectResponseV2 | None = None
+    refusal_code: str | None = Field(default=None, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_single_result(self) -> "SpecialistResultV2":
+        values = {
+            "proposal": self.proposal,
+            "draft": self.draft,
+            "direct_response": self.direct_response,
+            "refusal": self.refusal_code,
+        }
+        if (
+            values[self.result_kind] is None
+            or sum(value is not None for value in values.values()) != 1
+        ):
+            raise ValueError("Specialist result must contain exactly one typed result.")
+        return self
 
 
 class AgentNodeIdRefV2(_StrictModel):
@@ -394,10 +438,10 @@ class _AgentCommandOperationV2(_StrictModel):
     operation_id: str = Field(min_length=1, max_length=160)
 
 
-class AgentCreateNodeOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["create_node"] = "create_node"
+class AgentCreateDraftNodeOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["create_draft_node"] = "create_draft_node"
     node_type: Literal["text", "script", "image", "video", "audio"]
-    semantic_role: str = Field(min_length=1, max_length=160)
+    creative_role: CanvasCreativeRoleV2
     title: str = Field(min_length=1, max_length=256)
     summary_prompt: str | None = Field(default=None, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
@@ -435,6 +479,20 @@ class AgentCreateBindingOperationV2(_AgentCommandOperationV2):
     display_order: int = Field(default=0, ge=0)
 
 
+class AgentPatchBindingOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["patch_binding"] = "patch_binding"
+    binding_id: str = Field(min_length=1, max_length=160)
+    required: bool | None = None
+    enabled: bool | None = None
+    display_order: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_changes(self) -> "AgentPatchBindingOperationV2":
+        if self.required is None and self.enabled is None and self.display_order is None:
+            raise ValueError("Binding patch requires at least one change.")
+        return self
+
+
 class AgentDeleteBindingOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["delete_binding"] = "delete_binding"
     binding_id: str = Field(min_length=1, max_length=160)
@@ -445,15 +503,8 @@ class AgentDeleteNodeOperationV2(_AgentCommandOperationV2):
     node: AgentNodeRefV2
 
 
-class AgentMaterializeProposalOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["materialize_proposal"] = "materialize_proposal"
-    proposal_id: str = Field(min_length=1, max_length=160)
-    option_id: str = Field(min_length=1, max_length=160)
-    placement_hint: AgentPlacementHintV2
-
-
-class AgentForkReadyMediaOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["fork_ready_media"] = "fork_ready_media"
+class AgentMaterializeSiblingDraftOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["materialize_sibling_draft"] = "materialize_sibling_draft"
     source_node: AgentNodeRefV2
     title: str = Field(min_length=1, max_length=256)
     generation_prompt: str = Field(min_length=1, max_length=32_768)
@@ -467,68 +518,31 @@ class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):
     node: AgentNodeRefV2
 
 
-class AgentUpdatePlanningTopicOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["update_planning_topic"] = "update_planning_topic"
+class AgentUpdateTopicStatusOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["update_topic_status"] = "update_topic_status"
     skill_run_id: str = Field(min_length=1, max_length=160)
     topic_id: str = Field(min_length=1, max_length=160)
     status: Literal["resolved", "skipped", "not_required"]
     related_nodes: tuple[AgentNodeRefV2, ...] = Field(default=(), max_length=32)
 
 
-class AgentPrepareCompositionOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["prepare_composition"] = "prepare_composition"
-    editing_node: AgentNodeRefV2 | None = None
-    title: str | None = Field(default=None, min_length=1, max_length=256)
-    ordered_video_nodes: tuple[AgentNodeRefV2, ...] = Field(
-        default=(),
-        max_length=32,
-    )
-    bgm_audio_node: AgentNodeRefV2 | None = None
-    bgm_volume: float = Field(default=0.20, ge=0.0, le=1.0)
-    output: EditingOutputSettingsV2 = Field(default_factory=EditingOutputSettingsV2)
-    placement_hint: AgentPlacementHintV2 | None = None
-
-    @model_validator(mode="after")
-    def validate_composition_sources(self) -> "AgentPrepareCompositionOperationV2":
-        if self.editing_node is None and (self.title is None or self.placement_hint is None):
-            raise ValueError("A new composition requires title and placement_hint.")
-        if not self.ordered_video_nodes and self.bgm_audio_node is None:
-            raise ValueError("Composition requires at least one media source.")
-        video_refs = tuple(reference.model_dump_json() for reference in self.ordered_video_nodes)
-        if len(set(video_refs)) != len(video_refs):
-            raise ValueError("Composition video references must be unique.")
-        return self
-
-
 AgentCommandOperationDraftV2 = Annotated[
-    AgentCreateNodeOperationV2
+    AgentCreateDraftNodeOperationV2
     | AgentPatchEditableNodeOperationV2
     | AgentCreateBindingOperationV2
+    | AgentPatchBindingOperationV2
     | AgentDeleteBindingOperationV2
     | AgentDeleteNodeOperationV2
-    | AgentMaterializeProposalOperationV2
-    | AgentForkReadyMediaOperationV2
+    | AgentMaterializeSiblingDraftOperationV2
     | AgentRequestNodeRunOperationV2
-    | AgentUpdatePlanningTopicOperationV2
-    | AgentPrepareCompositionOperationV2,
+    | AgentUpdateTopicStatusOperationV2,
     Field(discriminator="operation_type"),
 ]
 
 
-class AgentPrepareCompositionResultV2(_StrictModel):
-    workflow_id: str = Field(min_length=1, max_length=160)
-    editing_node: CanvasNodeV2
-    manifest: EditingManifestV2
-    bindings: tuple[CanvasBindingV2, ...]
-    semantic_revision: int = Field(ge=1)
-    events_cursor: int = Field(ge=0)
-    replayed: bool = False
-
-
 _NODE_RESULT_OPERATIONS = {
-    "create_node",
-    "materialize_proposal",
-    "fork_ready_media",
+    "create_draft_node",
+    "materialize_sibling_draft",
 }
 
 
@@ -595,7 +609,9 @@ class AgentCommandPlanCreateV2(AgentCommandPlanDraftV2):
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
     source_turn_id: str = Field(min_length=1, max_length=160)
+    context_snapshot_id: str = Field(min_length=1, max_length=160)
     base_workflow_revision: int = Field(ge=1)
+    expires_at: datetime
     risk: AgentCommandRiskV2
     confirmation_required: bool
     target_summary: str = Field(default="", max_length=4_000)
@@ -604,6 +620,7 @@ class AgentCommandPlanCreateV2(AgentCommandPlanDraftV2):
 class AgentCommandPlanV2(AgentCommandPlanCreateV2):
     plan_id: str = Field(min_length=1, max_length=160)
     operation_fingerprint: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=1, max_length=256)
     status: AgentCommandPlanStatusV2
     supersedes_plan_id: str | None = Field(default=None, max_length=160)
     replacement_plan_id: str | None = Field(default=None, max_length=160)
@@ -645,30 +662,3 @@ class AgentActionEnvelopeV2(_StrictModel):
     proposal: ConceptProposalDraftV2 | None = None
     command_plan: AgentCommandPlanDraftV2 | None = None
     auto_continue_requested: bool = False
-
-
-class AdMediaSpecialistDraftV2(_StrictModel):
-    semantic_role: Literal[
-        "product_main",
-        "product_view_board",
-        "prop_main",
-        "character_main",
-        "character_turnaround",
-        "scene_design_board",
-        "storyboard_grid",
-        "storyboard_video_segment",
-        "bgm",
-    ]
-    title: str = Field(min_length=1, max_length=256)
-    generation_prompt: str = Field(min_length=1, max_length=32_768)
-    structured_content: (
-        DesignAssetContentV2
-        | SceneDesignBoardContentV2
-        | StoryboardGridContentV2
-        | VideoSegmentContentV2
-        | BgmContentV2
-    )
-
-
-class SpecialistDirectResponseV2(_StrictModel):
-    summary: str = Field(min_length=1, max_length=4_000)

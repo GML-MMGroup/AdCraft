@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_editing import (
     EditingExportRequestV2,
     EditingExportRuntimeV2,
 )
+from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
@@ -72,17 +73,29 @@ class EditingExportService:
                 "editing_manifest_revision_conflict",
                 "Editing manifest revision does not match.",
             )
-        if self._exports.find_active(workflow_id, node_id) is not None:
-            raise _error(
-                "editing_export_already_active",
-                "An Editing export is already active for this node.",
-            )
         resolved = self._inputs.resolve(workflow_id, node_id, manifest)
         fingerprint = _fingerprint(
             manifest.model_dump(mode="json"),
             resolved,
             _renderer_fingerprint_payload(self._renderer),
         )
+        existing = self._exports.find_by_idempotency(
+            workflow_id,
+            node_id,
+            idempotency_key,
+        )
+        if existing is not None:
+            if existing.fingerprint != fingerprint:
+                raise _error(
+                    "idempotency_conflict",
+                    "Idempotency key was reused with another Editing export.",
+                )
+            return self._accepted(workflow_id, node_id, existing)
+        if self._exports.find_active(workflow_id, node_id) is not None:
+            raise _error(
+                "editing_export_already_active",
+                "An Editing export is already active for this node.",
+            )
         reusable = self._exports.find_completed(workflow_id, node_id, fingerprint)
         if reusable is not None and reusable.output_asset_id is not None:
             self._assets.resolve_asset_path(reusable.output_asset_id)
@@ -93,7 +106,9 @@ class EditingExportService:
             manifest=manifest,
             fingerprint=fingerprint,
             idempotency_key=idempotency_key,
-            ready_video_node_ids=tuple(item.node_id for item in resolved.videos),
+            ready_video_node_ids=tuple(
+                item.node_id for item in resolved.videos if item.node_id is not None
+            ),
             skipped_inputs=resolved.skipped,
             bgm_node_id=resolved.bgm.node_id if resolved.bgm else None,
             now=self._clock(),
@@ -156,10 +171,25 @@ class EditingExportService:
                 result = self._renderer.render(
                     resolved,
                     manifest.output,
-                    bgm_volume=manifest.bgm_volume,
                     staging_path=staging,
                     cancelled=lambda: self._exports.is_cancel_requested(export_id),
                 )
+            progress_at = self._clock()
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=workflow_id,
+                    execution_id=export_id,
+                    node_id=node_id,
+                    event_type="editing_export_progress",
+                    created_at=progress_at.isoformat(),
+                    payload={
+                        "export_id": export_id,
+                        "stage": "rendered",
+                        "progress": 0.75,
+                        "refresh": ["events"],
+                    },
+                )
+            )
             try:
                 self._require_current_manifest(workflow_id, node_id, runtime)
             except V2PersistenceError:
@@ -254,6 +284,7 @@ class EditingExportService:
         node_id: str,
         runtime: EditingExportRuntimeV2,
     ) -> None:
+        self._cleanup_staging(workflow_id, runtime.export_id)
         cancelled = self._exports.update(
             runtime.export_id,
             status="cancelled",
@@ -280,6 +311,7 @@ class EditingExportService:
         runtime: EditingExportRuntimeV2,
         error: Exception,
     ) -> None:
+        self._cleanup_staging(workflow_id, runtime.export_id)
         detail = CanvasNodeErrorV2(
             code=getattr(error, "code", "editing_export_failed"),
             message=str(error),
@@ -306,6 +338,15 @@ class EditingExportService:
             error=None if has_success else detail,
         )
 
+    def _cleanup_staging(self, workflow_id: str, export_id: str) -> None:
+        work_dir = self._data_dir / "v2" / "runs" / workflow_id / "editing" / export_id
+        staging = work_dir / "final.mp4.part"
+        staging.unlink(missing_ok=True)
+        try:
+            work_dir.rmdir()
+        except OSError:
+            pass
+
     def _accepted(
         self,
         workflow_id: str,
@@ -331,7 +372,7 @@ def _fingerprint(
     renderer: dict[str, object],
 ) -> str:
     payload = {
-        "contract": "agent-canvas-editing-v1",
+        "contract": "agent-canvas-editing-v2",
         "manifest": manifest,
         "renderer": renderer,
         "videos": [
@@ -369,7 +410,7 @@ def _renderer_fingerprint_payload(renderer: object) -> dict[str, object]:
         if isinstance(payload, dict):
             return payload
     return {
-        "contract": "agent-canvas-composition-renderer-v1",
+        "contract": "agent-canvas-composition-renderer-v2",
         "implementation": f"{type(renderer).__module__}.{type(renderer).__qualname__}",
     }
 

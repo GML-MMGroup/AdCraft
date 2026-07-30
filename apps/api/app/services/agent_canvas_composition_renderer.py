@@ -9,8 +9,12 @@ import subprocess
 
 from app.core.config import Settings
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas_editing import EditingOutputSettingsV2
-from app.services.agent_canvas_editing import ResolvedEditingInputs
+from app.schemas.agent_canvas_editing import (
+    EditingBgmEntryV2,
+    EditingOutputSettingsV2,
+    EditingVideoEntryV2,
+)
+from app.services.agent_canvas_editing import ResolvedEditingInputs, ResolvedEditingMedia
 from app.services.v2_final_composition_renderer import (
     V2MediaProbe,
     V2MediaProbeResult,
@@ -53,7 +57,6 @@ class AgentCanvasCompositionRenderer:
         inputs: ResolvedEditingInputs,
         output: EditingOutputSettingsV2,
         *,
-        bgm_volume: float,
         staging_path: Path,
         cancelled: Callable[[], bool] = lambda: False,
     ) -> EditingRenderResult:
@@ -70,7 +73,6 @@ class AgentCanvasCompositionRenderer:
             height=height,
             fps=fps,
             encoder=encoder,
-            bgm_volume=bgm_volume,
             staging_path=staging_path,
         )
         staging_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,7 +154,7 @@ class AgentCanvasCompositionRenderer:
 
         snapshot = V2MediaToolchainCapabilityService(self._settings).snapshot()
         return {
-            "contract": "agent-canvas-composition-renderer-v1",
+            "contract": "agent-canvas-composition-renderer-v2",
             "ffmpeg_fingerprint": snapshot.ffmpeg_fingerprint,
             "ffprobe_fingerprint": snapshot.ffprobe_fingerprint,
             "video_encoder": self._encoder or snapshot.selected_video_encoder,
@@ -168,7 +170,6 @@ class AgentCanvasCompositionRenderer:
         height: int,
         fps: float,
         encoder: str,
-        bgm_volume: float,
         staging_path: Path,
     ) -> list[str]:
         command = [self._settings.ffmpeg_path, "-y"]
@@ -179,22 +180,50 @@ class AgentCanvasCompositionRenderer:
         filters: list[str] = []
         concat_inputs: list[str] = []
         for index, probe in enumerate(probes):
-            filters.append(
-                f"[{index}:v:0]"
-                f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
-                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
-                f"setsar=1,fps={fps:.6f},format=yuv420p,"
-                "setpts=PTS-STARTPTS"
-                f"[v{index}]"
+            entry = _video_entry(inputs.videos[index])
+            duration = _effective_duration(entry, probe)
+            trim = _trim_filter(
+                entry.trim_start_seconds,
+                entry.trim_end_seconds,
             )
-            if probe.has_audio:
-                filters.append(
-                    f"[{index}:a:0]aresample=48000,"
-                    f"aformat=sample_fmts=fltp:channel_layouts=stereo,"
-                    f"asetpts=PTS-STARTPTS[a{index}]"
+            geometry = _geometry_filter(entry.fit_mode, width=width, height=height)
+            video_filters = [
+                trim,
+                geometry,
+                "setsar=1",
+                f"fps={fps:.6f}",
+                "format=yuv420p",
+            ]
+            if entry.transition == "fade" and entry.transition_duration_seconds > 0:
+                fade_start = max(duration - entry.transition_duration_seconds, 0.0)
+                video_filters.append(
+                    f"fade=t=out:st={fade_start:.6f}:d={entry.transition_duration_seconds:.6f}"
                 )
+            video_filters.append("setpts=PTS-STARTPTS")
+            filters.append(f"[{index}:v:0]" + ",".join(video_filters) + f"[v{index}]")
+            if probe.has_audio and entry.preserve_native_audio:
+                audio_filters = [
+                    _trim_filter(
+                        entry.trim_start_seconds,
+                        entry.trim_end_seconds,
+                        audio=True,
+                    ),
+                    f"volume={entry.volume:.6f}",
+                ]
+                if entry.transition == "fade" and entry.transition_duration_seconds > 0:
+                    fade_start = max(duration - entry.transition_duration_seconds, 0.0)
+                    audio_filters.append(
+                        f"afade=t=out:st={fade_start:.6f}:d={entry.transition_duration_seconds:.6f}"
+                    )
+                audio_filters.extend(
+                    (
+                        "aresample=48000",
+                        "aformat=sample_fmts=fltp:channel_layouts=stereo",
+                        "asetpts=PTS-STARTPTS",
+                    )
+                )
+                filters.append(f"[{index}:a:0]" + ",".join(audio_filters) + f"[a{index}]")
             else:
-                duration = max(probe.duration_seconds or 0.001, 0.001)
                 filters.append(
                     "anullsrc=r=48000:cl=stereo,"
                     f"atrim=duration={duration:.6f},asetpts=PTS-STARTPTS[a{index}]"
@@ -204,11 +233,38 @@ class AgentCanvasCompositionRenderer:
         audio_label = "[acat]"
         if inputs.bgm is not None:
             bgm_index = len(probes)
-            filters.append(
-                f"[{bgm_index}:a:0]volume={bgm_volume:.6f},"
-                "aresample=48000,"
-                "aformat=sample_fmts=fltp:channel_layouts=stereo[bgm]"
+            bgm_entry = _bgm_entry(inputs.bgm)
+            total_duration = sum(
+                _effective_duration(_video_entry(item), probe)
+                for item, probe in zip(inputs.videos, probes, strict=True)
             )
+            bgm_duration = (
+                bgm_entry.trim_end_seconds - bgm_entry.trim_start_seconds
+                if bgm_entry.trim_end_seconds is not None
+                else total_duration
+            )
+            bgm_filters = [
+                _trim_filter(
+                    bgm_entry.trim_start_seconds,
+                    bgm_entry.trim_end_seconds,
+                    audio=True,
+                ),
+                f"volume={bgm_entry.volume:.6f}",
+            ]
+            if bgm_entry.fade_in_seconds > 0:
+                bgm_filters.append(f"afade=t=in:st=0:d={bgm_entry.fade_in_seconds:.6f}")
+            if bgm_entry.fade_out_seconds > 0:
+                fade_start = max(bgm_duration - bgm_entry.fade_out_seconds, 0.0)
+                bgm_filters.append(
+                    f"afade=t=out:st={fade_start:.6f}:d={bgm_entry.fade_out_seconds:.6f}"
+                )
+            bgm_filters.extend(
+                (
+                    "aresample=48000",
+                    "aformat=sample_fmts=fltp:channel_layouts=stereo",
+                )
+            )
+            filters.append(f"[{bgm_index}:a:0]" + ",".join(bgm_filters) + "[bgm]")
             filters.append(
                 "[acat][bgm]amix=inputs=2:duration=first:"
                 "dropout_transition=0:normalize=0,"
@@ -257,6 +313,57 @@ class AgentCanvasCompositionRenderer:
                 "Required Editing FFmpeg capabilities are unavailable.",
             )
         return capabilities.selected_video_encoder
+
+
+def _video_entry(media: ResolvedEditingMedia) -> EditingVideoEntryV2:
+    if media.video_entry is not None:
+        return media.video_entry
+    if media.binding_id is not None:
+        return EditingVideoEntryV2(binding_id=media.binding_id)
+    return EditingVideoEntryV2(asset_id=media.asset.asset_id)
+
+
+def _bgm_entry(media: ResolvedEditingMedia) -> EditingBgmEntryV2:
+    if media.bgm_entry is not None:
+        return media.bgm_entry
+    if media.binding_id is not None:
+        return EditingBgmEntryV2(binding_id=media.binding_id)
+    return EditingBgmEntryV2(asset_id=media.asset.asset_id)
+
+
+def _effective_duration(
+    entry: EditingVideoEntryV2,
+    probe: V2MediaProbeResult,
+) -> float:
+    end = entry.trim_end_seconds
+    if end is None:
+        end = probe.duration_seconds or entry.trim_start_seconds + 0.001
+    return max(end - entry.trim_start_seconds, 0.001)
+
+
+def _trim_filter(
+    start: float,
+    end: float | None,
+    *,
+    audio: bool = False,
+) -> str:
+    name = "atrim" if audio else "trim"
+    result = f"{name}=start={start:.6f}"
+    if end is not None:
+        result += f":end={end:.6f}"
+    return result
+
+
+def _geometry_filter(mode: str, *, width: int, height: int) -> str:
+    if mode == "fit":
+        return (
+            f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2"
+        )
+    return (
+        f"scale={width}:{height}:force_original_aspect_ratio=increase,"
+        f"crop={width}:{height}:(iw-ow)/2:(ih-oh)/2"
+    )
 
 
 def _output_geometry(

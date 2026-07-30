@@ -23,19 +23,73 @@ class EditingOutputSettingsV2(_EditingModel):
     container: Literal["mp4"] = "mp4"
 
 
+class EditingVideoEntryV2(_EditingModel):
+    binding_id: str | None = Field(default=None, min_length=1)
+    asset_id: str | None = Field(default=None, min_length=1)
+    enabled: bool = True
+    trim_start_seconds: float = Field(default=0.0, ge=0.0)
+    trim_end_seconds: float | None = Field(default=None, gt=0.0)
+    volume: float = Field(default=1.0, ge=0.0, le=1.0)
+    preserve_native_audio: bool = True
+    transition: Literal["cut", "fade"] = "cut"
+    transition_duration_seconds: float = Field(default=0.0, ge=0.0, le=5.0)
+    fit_mode: Literal["fit", "fill"] = "fill"
+
+    @model_validator(mode="after")
+    def validate_source_and_timing(self) -> "EditingVideoEntryV2":
+        if (self.binding_id is None) == (self.asset_id is None):
+            raise ValueError("Editing video entries require one Binding or Asset reference.")
+        if self.trim_end_seconds is not None and self.trim_end_seconds <= self.trim_start_seconds:
+            raise ValueError("Editing video trim end must be after trim start.")
+        if self.transition == "cut" and self.transition_duration_seconds != 0:
+            raise ValueError("Cut transitions cannot have a duration.")
+        return self
+
+    @property
+    def source_key(self) -> tuple[str, str]:
+        if self.binding_id is not None:
+            return ("binding", self.binding_id)
+        return ("asset", self.asset_id or "")
+
+
+class EditingBgmEntryV2(_EditingModel):
+    binding_id: str | None = Field(default=None, min_length=1)
+    asset_id: str | None = Field(default=None, min_length=1)
+    enabled: bool = True
+    trim_start_seconds: float = Field(default=0.0, ge=0.0)
+    trim_end_seconds: float | None = Field(default=None, gt=0.0)
+    volume: float = Field(default=0.20, ge=0.0, le=1.0)
+    fade_in_seconds: float = Field(default=0.0, ge=0.0, le=30.0)
+    fade_out_seconds: float = Field(default=0.0, ge=0.0, le=30.0)
+
+    @model_validator(mode="after")
+    def validate_source_and_timing(self) -> "EditingBgmEntryV2":
+        if (self.binding_id is None) == (self.asset_id is None):
+            raise ValueError("Editing BGM requires one Binding or Asset reference.")
+        if self.trim_end_seconds is not None and self.trim_end_seconds <= self.trim_start_seconds:
+            raise ValueError("Editing BGM trim end must be after trim start.")
+        return self
+
+    @property
+    def source_key(self) -> tuple[str, str]:
+        if self.binding_id is not None:
+            return ("binding", self.binding_id)
+        return ("asset", self.asset_id or "")
+
+
 class EditingManifestV2(_EditingModel):
-    ordered_video_binding_ids: tuple[str, ...] = ()
-    bgm_audio_binding_id: str | None = None
-    bgm_volume: float = Field(default=0.20, ge=0.0, le=1.0)
+    video_entries: tuple[EditingVideoEntryV2, ...] = ()
+    bgm: EditingBgmEntryV2 | None = None
     output: EditingOutputSettingsV2 = Field(default_factory=EditingOutputSettingsV2)
     manifest_revision: int = Field(default=1, ge=1)
 
     @model_validator(mode="after")
-    def validate_unique_video_bindings(self) -> "EditingManifestV2":
-        if len(set(self.ordered_video_binding_ids)) != len(self.ordered_video_binding_ids):
-            raise ValueError("Editing video binding IDs must be unique.")
-        if self.bgm_audio_binding_id in self.ordered_video_binding_ids:
-            raise ValueError("The BGM binding cannot also be a video binding.")
+    def validate_unique_sources(self) -> "EditingManifestV2":
+        source_keys = [entry.source_key for entry in self.video_entries]
+        if len(set(source_keys)) != len(source_keys):
+            raise ValueError("Editing video input references must be unique.")
+        if self.bgm is not None and self.bgm.source_key in source_keys:
+            raise ValueError("The BGM input cannot also be a video input.")
         return self
 
 
@@ -48,13 +102,16 @@ EditingSkippedReasonV2 = Literal[
 
 
 class EditingSkippedInputV2(_EditingModel):
-    node_id: str
+    reference_id: str = Field(min_length=1)
+    node_id: str | None = None
+    asset_id: str | None = None
     reason: EditingSkippedReasonV2
 
 
 class EditingPreviewClipV2(_EditingModel):
-    binding_id: str
-    node_id: str
+    reference_id: str = Field(min_length=1)
+    binding_id: str | None = None
+    node_id: str | None = None
     asset_id: str | None = None
     status: CanvasNodeStatusV2
     display_order: int = Field(ge=0)
