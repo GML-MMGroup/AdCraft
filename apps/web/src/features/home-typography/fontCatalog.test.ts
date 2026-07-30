@@ -49,6 +49,36 @@ describe("home typography font catalog", () => {
     ]));
   });
 
+  it("adds the additional curated faces without duplicating locally served fonts", () => {
+    const webFontIds = new Set(
+      FONT_CATALOG
+        .filter((font) => font.source === "web")
+        .map((font) => font.id),
+    );
+
+    expect([...webFontIds]).toEqual(expect.arrayContaining([
+      "archivo",
+      "cabin",
+      "noto-sans",
+      "red-hat-display",
+      "rubik",
+      "merriweather",
+      "eb-garamond",
+      "literata",
+      "alegreya",
+      "archivo-black",
+      "anton",
+      "bebas-neue",
+      "righteous",
+      "yeseva-one",
+      "roboto-mono",
+      "inconsolata",
+      "source-code-pro",
+    ]));
+    expect(webFontIds.has("manrope")).toBe(false);
+    expect(webFontIds.has("jetbrains-mono")).toBe(false);
+  });
+
   it("restores every region to the production defaults", () => {
     const changed = {
       ...DEFAULT_REGION_SETTINGS,

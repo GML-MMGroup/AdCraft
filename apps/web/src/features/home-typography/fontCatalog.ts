@@ -77,6 +77,23 @@ export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   { id: "space-mono", label: "Space Mono", family: "Space Mono", fallback: "monospace", source: "web", weights: [400, 700], supportsItalic: true, googleFamily: "Space Mono" },
   { id: "fira-code", label: "Fira Code", family: "Fira Code", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: false, googleFamily: "Fira Code" },
   { id: "dm-mono", label: "DM Mono", family: "DM Mono", fallback: "monospace", source: "web", weights: [400, 500], supportsItalic: true, googleFamily: "DM Mono" },
+  { id: "archivo", label: "Archivo", family: "Archivo", fallback: "sans-serif", source: "web", weights: [400, 500, 600, 700, 800], supportsItalic: true, googleFamily: "Archivo" },
+  { id: "cabin", label: "Cabin", family: "Cabin", fallback: "sans-serif", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Cabin" },
+  { id: "noto-sans", label: "Noto Sans", family: "Noto Sans", fallback: "sans-serif", source: "web", weights: [400, 500, 600, 700, 800], supportsItalic: true, googleFamily: "Noto Sans" },
+  { id: "red-hat-display", label: "Red Hat Display", family: "Red Hat Display", fallback: "sans-serif", source: "web", weights: [400, 500, 600, 700, 800], supportsItalic: true, googleFamily: "Red Hat Display" },
+  { id: "rubik", label: "Rubik", family: "Rubik", fallback: "sans-serif", source: "web", weights: [400, 500, 600, 700, 800], supportsItalic: true, googleFamily: "Rubik" },
+  { id: "merriweather", label: "Merriweather", family: "Merriweather", fallback: "serif", source: "web", weights: [400, 700], supportsItalic: true, googleFamily: "Merriweather" },
+  { id: "eb-garamond", label: "EB Garamond", family: "EB Garamond", fallback: "serif", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "EB Garamond" },
+  { id: "literata", label: "Literata", family: "Literata", fallback: "serif", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Literata" },
+  { id: "alegreya", label: "Alegreya", family: "Alegreya", fallback: "serif", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Alegreya" },
+  { id: "archivo-black", label: "Archivo Black", family: "Archivo Black", fallback: "sans-serif", source: "web", weights: [400], supportsItalic: false, googleFamily: "Archivo Black" },
+  { id: "anton", label: "Anton", family: "Anton", fallback: "sans-serif", source: "web", weights: [400], supportsItalic: false, googleFamily: "Anton" },
+  { id: "bebas-neue", label: "Bebas Neue", family: "Bebas Neue", fallback: "sans-serif", source: "web", weights: [400], supportsItalic: false, googleFamily: "Bebas Neue" },
+  { id: "righteous", label: "Righteous", family: "Righteous", fallback: "sans-serif", source: "web", weights: [400], supportsItalic: false, googleFamily: "Righteous" },
+  { id: "yeseva-one", label: "Yeseva One", family: "Yeseva One", fallback: "serif", source: "web", weights: [400], supportsItalic: false, googleFamily: "Yeseva One" },
+  { id: "roboto-mono", label: "Roboto Mono", family: "Roboto Mono", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Roboto Mono" },
+  { id: "inconsolata", label: "Inconsolata", family: "Inconsolata", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: false, googleFamily: "Inconsolata" },
+  { id: "source-code-pro", label: "Source Code Pro", family: "Source Code Pro", fallback: "monospace", source: "web", weights: [400, 500, 600, 700], supportsItalic: true, googleFamily: "Source Code Pro" },
 ];
 
 export const TYPOGRAPHY_REGION_DEFINITIONS: readonly TypographyRegionDefinition[] = [
