@@ -21,6 +21,7 @@ from app.persistence.models import (
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
     AgentCanvasPromptContextSnapshotRow,
+    AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
     WorkflowRow,
 )
@@ -31,13 +32,19 @@ from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasBindingSourceImageAssetV2,
     CanvasBindingSourceNodeV2,
+    CanvasBindingMutationResponseV2,
     CanvasBindingV2,
+    CanvasConnectedNodeCreateResponseV2,
     CanvasNodeErrorV2,
     CanvasNodeV2,
     CanvasPositionV2,
+    CanvasLayoutPatchResponseV2,
+    CanvasLayoutPositionV2,
+    CanvasVariationDraftV2,
     ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_editing import EditingNodeContentV2
+from app.schemas.agent_runtime import AgentPrepareCompositionResultV2
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.workflow_v2_projects import ProjectCreate
 
@@ -96,6 +103,7 @@ class AgentCanvasWorkflowRepository:
                             workflow_schema_version=2,
                             canvas_model="agent_canvas_v1",
                             revision=1,
+                            layout_revision=1,
                             created_at=now,
                             updated_at=now,
                         )
@@ -151,6 +159,7 @@ class AgentCanvasWorkflowRepository:
                             AgentCanvasWorkflowRow.workflow_schema_version,
                             AgentCanvasWorkflowRow.canvas_model,
                             AgentCanvasWorkflowRow.revision,
+                            AgentCanvasWorkflowRow.layout_revision,
                         ).where(AgentCanvasWorkflowRow.workflow_id == workflow_id)
                     )
                     .mappings()
@@ -183,6 +192,15 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .all()
                 )
+                variation_rows = (
+                    connection.execute(
+                        select(AgentCanvasVariationDraftRow).where(
+                            AgentCanvasVariationDraftRow.workflow_id == workflow_id
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
         except V2PersistenceError:
             raise
         except SQLAlchemyError as error:
@@ -193,7 +211,21 @@ class AgentCanvasWorkflowRepository:
             workflow_schema_version=int(workflow["workflow_schema_version"]),
             canvas_model=cast(str, workflow["canvas_model"]),
             revision=int(workflow["revision"]),
-            nodes=tuple(_node_from_row(row) for row in node_rows),
+            layout_revision=int(workflow["layout_revision"]),
+            nodes=tuple(
+                _node_from_row(
+                    row,
+                    variation=next(
+                        (
+                            item
+                            for item in variation_rows
+                            if str(item["source_node_id"]) == str(row["node_id"])
+                        ),
+                        None,
+                    ),
+                )
+                for row in node_rows
+            ),
             bindings=tuple(_binding_from_row(row) for row in binding_rows),
             assets=(),
         )
@@ -235,11 +267,21 @@ class AgentCanvasWorkflowRepository:
                     .mappings()
                     .one_or_none()
                 )
+                variation = (
+                    connection.execute(
+                        select(AgentCanvasVariationDraftRow).where(
+                            AgentCanvasVariationDraftRow.workflow_id == workflow_id,
+                            AgentCanvasVariationDraftRow.source_node_id == node_id,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         if row is None:
             raise _node_not_found_error()
-        return _node_from_row(row)
+        return _node_from_row(row, variation=variation)
 
     def asset_is_referenced(self, asset_id: str) -> bool:
         """Return whether active canvas authoring points at one asset."""
@@ -309,6 +351,111 @@ class AgentCanvasWorkflowRepository:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
 
+    def update_layout(
+        self,
+        workflow_id: str,
+        *,
+        positions: dict[str, tuple[float, float]],
+        expected_layout_revision: int,
+    ) -> CanvasLayoutPatchResponseV2:
+        """Atomically update positions without advancing semantic authoring."""
+
+        if not positions or len(positions) > 200:
+            raise V2PersistenceError(
+                "layout_position_invalid",
+                "Layout updates require between one and 200 nodes.",
+                stage="agent_canvas_workflow_repository",
+            )
+        now = _utc_now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    workflow = (
+                        connection.execute(
+                            select(
+                                AgentCanvasWorkflowRow.revision,
+                                AgentCanvasWorkflowRow.layout_revision,
+                            ).where(AgentCanvasWorkflowRow.workflow_id == workflow_id)
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if workflow is None:
+                        raise _workflow_not_found_error()
+                    current_layout_revision = int(workflow["layout_revision"])
+                    if current_layout_revision != expected_layout_revision:
+                        raise V2PersistenceError(
+                            "layout_revision_conflict",
+                            "Layout revision does not match the current revision.",
+                            stage="agent_canvas_workflow_repository",
+                        )
+                    existing = set(
+                        connection.execute(
+                            select(AgentCanvasNodeRow.node_id).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id.in_(tuple(positions)),
+                            )
+                        ).scalars()
+                    )
+                    missing = set(positions) - existing
+                    if missing:
+                        raise V2PersistenceError(
+                            "layout_node_not_found",
+                            "One or more layout nodes were not found.",
+                            stage="agent_canvas_workflow_repository",
+                        )
+                    for node_id, (x, y) in positions.items():
+                        connection.execute(
+                            update(AgentCanvasNodeRow)
+                            .where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == node_id,
+                            )
+                            .values(position_x=x, position_y=y)
+                        )
+                    next_layout_revision = current_layout_revision + 1
+                    connection.execute(
+                        update(AgentCanvasWorkflowRow)
+                        .where(
+                            AgentCanvasWorkflowRow.workflow_id == workflow_id,
+                            AgentCanvasWorkflowRow.layout_revision == current_layout_revision,
+                        )
+                        .values(
+                            layout_revision=next_layout_revision,
+                            updated_at=now,
+                        )
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="canvas_layout_updated",
+                            created_at=now,
+                            payload={
+                                "layout_revision": next_layout_revision,
+                                "node_ids": list(positions),
+                            },
+                        ),
+                    )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return CanvasLayoutPatchResponseV2(
+            workflow_id=workflow_id,
+            revision=int(workflow["revision"]),
+            layout_revision=next_layout_revision,
+            positions=tuple(
+                CanvasLayoutPositionV2(node_id=node_id, x=x, y=y)
+                for node_id, (x, y) in positions.items()
+            ),
+        )
+
     def add_node_with_bindings(
         self,
         node: CanvasNodeV2,
@@ -374,6 +521,200 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def prepare_composition(
+        self,
+        *,
+        node: CanvasNodeV2,
+        bindings: tuple[CanvasBindingV2, ...],
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+    ) -> AgentPrepareCompositionResultV2:
+        """Atomically persist one Editing node and its complete source manifest."""
+
+        operation = f"prepare_composition:{node.workflow_id}"
+        now = node.updated_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    replay = _load_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                    )
+                    if replay is not None:
+                        connection.commit()
+                        return AgentPrepareCompositionResultV2.model_validate_json(
+                            replay
+                        ).model_copy(update={"replayed": True})
+                    current_revision = _require_workflow_revision(
+                        connection,
+                        node.workflow_id,
+                        expected_revision,
+                    )
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is None:
+                        connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                        node_event_type = "canvas_node_created"
+                    else:
+                        if str(existing["node_type"]) != "editing":
+                            raise V2PersistenceError(
+                                "composition_target_invalid",
+                                "Composition target must be an Editing node.",
+                                stage="agent_canvas_workflow_repository",
+                            )
+                        values = _node_values(node)
+                        values.pop("node_id")
+                        values.pop("workflow_id")
+                        connection.execute(
+                            update(AgentCanvasNodeRow)
+                            .where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                            .values(**values)
+                        )
+                        node_event_type = "canvas_node_updated"
+
+                    removed_rows = (
+                        connection.execute(
+                            select(AgentCanvasBindingRow).where(
+                                AgentCanvasBindingRow.workflow_id == node.workflow_id,
+                                AgentCanvasBindingRow.target_node_id == node.node_id,
+                                AgentCanvasBindingRow.binding_kind.in_(
+                                    ("video_reference", "audio_reference")
+                                ),
+                            )
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    connection.execute(
+                        delete(AgentCanvasBindingRow).where(
+                            AgentCanvasBindingRow.workflow_id == node.workflow_id,
+                            AgentCanvasBindingRow.target_node_id == node.node_id,
+                            AgentCanvasBindingRow.binding_kind.in_(
+                                ("video_reference", "audio_reference")
+                            ),
+                        )
+                    )
+                    for binding in bindings:
+                        if (
+                            binding.workflow_id != node.workflow_id
+                            or binding.target_node_id != node.node_id
+                            or not isinstance(binding.source, CanvasBindingSourceNodeV2)
+                        ):
+                            raise _invalid_binding_batch_error()
+                        _require_node(
+                            connection,
+                            binding.workflow_id,
+                            binding.source.node_id,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasBindingRow).values(**_binding_values(binding))
+                        )
+
+                    next_revision = current_revision + 1
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=node.workflow_id,
+                        current_revision=current_revision,
+                        updated_at=now,
+                    )
+                    last_event = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            node_id=node.node_id,
+                            event_type=node_event_type,
+                            created_at=now,
+                            payload={"revision": next_revision},
+                        ),
+                    )
+                    for row in removed_rows:
+                        last_event = self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                event_type="binding_removed",
+                                created_at=now,
+                                payload={
+                                    "binding_id": str(row["binding_id"]),
+                                    "revision": next_revision,
+                                },
+                            ),
+                        )
+                    for binding in bindings:
+                        last_event = self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                event_type="binding_created",
+                                created_at=now,
+                                payload={
+                                    "binding_id": binding.binding_id,
+                                    "binding_kind": binding.binding_kind,
+                                    "revision": next_revision,
+                                },
+                            ),
+                        )
+                    last_event = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            node_id=node.node_id,
+                            event_type="composition_preparation_completed",
+                            created_at=now,
+                            payload={
+                                "ordered_source_node_ids": [
+                                    binding.source.node_id for binding in bindings
+                                ],
+                                "revision": next_revision,
+                            },
+                        ),
+                    )
+                    content = EditingNodeContentV2.model_validate(node.structured_content)
+                    result = AgentPrepareCompositionResultV2(
+                        workflow_id=node.workflow_id,
+                        editing_node=node,
+                        manifest=content.manifest,
+                        bindings=bindings,
+                        semantic_revision=next_revision,
+                        events_cursor=last_event.seq,
+                    )
+                    _store_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                        response_json=result.model_dump_json(),
+                        created_at=now,
+                    )
+                    connection.commit()
+                    return result
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _conflict_error("composition_preparation_conflict") from error
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
 
     def update_node(
         self,
@@ -734,6 +1075,13 @@ class AgentCanvasWorkflowRepository:
                     connection.execute(
                         insert(AgentCanvasBindingRow).values(**_binding_values(binding))
                     )
+                    _normalize_target_binding_order(
+                        connection,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        prioritized_binding_id=binding.binding_id,
+                        requested_order=binding.display_order,
+                    )
                     _reconcile_editing_manifest_for_binding(
                         connection,
                         binding,
@@ -809,6 +1157,11 @@ class AgentCanvasWorkflowRepository:
                     )
                     if deleted.rowcount != 1:
                         raise _binding_not_found_error()
+                    _normalize_target_binding_order(
+                        connection,
+                        workflow_id=workflow_id,
+                        target_node_id=binding.target_node_id,
+                    )
                     _reconcile_editing_manifest_for_binding(
                         connection,
                         binding,
@@ -841,6 +1194,246 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(workflow_id)
+
+    def add_connected_node(
+        self,
+        *,
+        node: CanvasNodeV2,
+        binding: CanvasBindingV2,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+    ) -> CanvasConnectedNodeCreateResponseV2:
+        """Persist a new Draft node and its real binding as one semantic operation."""
+
+        operation = f"agent_canvas_connected_node:{node.workflow_id}"
+        now = node.updated_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    replay = _load_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                    )
+                    if replay is not None:
+                        connection.commit()
+                        return CanvasConnectedNodeCreateResponseV2.model_validate_json(replay)
+                    current_revision = _require_workflow_revision(
+                        connection, node.workflow_id, expected_revision
+                    )
+                    connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                    connection.execute(
+                        insert(AgentCanvasBindingRow).values(**_binding_values(binding))
+                    )
+                    binding_order = _normalize_target_binding_order(
+                        connection,
+                        workflow_id=node.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        prioritized_binding_id=binding.binding_id,
+                        requested_order=binding.display_order,
+                    )
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=node.workflow_id,
+                        current_revision=current_revision,
+                        updated_at=now,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            node_id=node.node_id,
+                            event_type="canvas_node_created",
+                            created_at=now,
+                            payload={"node_type": node.node_type, "revision": current_revision + 1},
+                        ),
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            node_id=binding.target_node_id,
+                            event_type="canvas_binding_created",
+                            created_at=now,
+                            payload={
+                                "binding_id": binding.binding_id,
+                                "input_role": binding.input_role,
+                                "revision": current_revision + 1,
+                            },
+                        ),
+                    )
+                    revision_event = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            event_type="workflow_revision_created",
+                            created_at=now,
+                            payload={"revision": current_revision + 1},
+                        ),
+                    )
+                    layout_revision = int(
+                        connection.execute(
+                            select(AgentCanvasWorkflowRow.layout_revision).where(
+                                AgentCanvasWorkflowRow.workflow_id == node.workflow_id
+                            )
+                        ).scalar_one()
+                    )
+                    response = CanvasConnectedNodeCreateResponseV2(
+                        workflow_id=node.workflow_id,
+                        revision=current_revision + 1,
+                        layout_revision=layout_revision,
+                        node=node,
+                        binding=binding.model_copy(update={"display_order": binding_order}),
+                        events_cursor=revision_event.seq,
+                    )
+                    _store_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                        response_json=response.model_dump_json(),
+                        created_at=now,
+                    )
+                    connection.commit()
+                    return response
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _conflict_error("canvas_binding_conflict") from error
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+
+    def update_binding(
+        self,
+        *,
+        binding: CanvasBindingV2,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+    ) -> CanvasBindingMutationResponseV2:
+        """Patch one binding and normalize its target inputs atomically."""
+
+        operation = f"agent_canvas_binding_patch:{binding.workflow_id}"
+        now = _utc_now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    replay = _load_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                    )
+                    if replay is not None:
+                        connection.commit()
+                        return CanvasBindingMutationResponseV2.model_validate_json(replay)
+                    current_revision = _require_workflow_revision(
+                        connection, binding.workflow_id, expected_revision
+                    )
+                    existing = (
+                        connection.execute(
+                            select(AgentCanvasBindingRow).where(
+                                AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                                AgentCanvasBindingRow.binding_id == binding.binding_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing is None:
+                        raise _binding_not_found_error()
+                    updated = connection.execute(
+                        update(AgentCanvasBindingRow)
+                        .where(
+                            AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                            AgentCanvasBindingRow.binding_id == binding.binding_id,
+                        )
+                        .values(input_role=binding.input_role, required=binding.required)
+                    )
+                    if updated.rowcount != 1:
+                        raise _binding_not_found_error()
+                    binding_order = _normalize_target_binding_order(
+                        connection,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        prioritized_binding_id=binding.binding_id,
+                        requested_order=binding.display_order,
+                    )
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=binding.workflow_id,
+                        current_revision=current_revision,
+                        updated_at=now,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=binding.workflow_id,
+                            node_id=binding.target_node_id,
+                            event_type="canvas_binding_updated",
+                            created_at=now,
+                            payload={
+                                "binding_id": binding.binding_id,
+                                "revision": current_revision + 1,
+                            },
+                        ),
+                    )
+                    revision_event = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=binding.workflow_id,
+                            event_type="workflow_revision_created",
+                            created_at=now,
+                            payload={"revision": current_revision + 1},
+                        ),
+                    )
+                    rows = (
+                        connection.execute(
+                            select(AgentCanvasBindingRow)
+                            .where(
+                                AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                                AgentCanvasBindingRow.target_node_id == binding.target_node_id,
+                            )
+                            .order_by(AgentCanvasBindingRow.display_order.asc())
+                        )
+                        .mappings()
+                        .all()
+                    )
+                    incoming = tuple(_binding_from_row(row) for row in rows)
+                    updated_binding = next(
+                        item for item in incoming if item.binding_id == binding.binding_id
+                    )
+                    response = CanvasBindingMutationResponseV2(
+                        workflow_id=binding.workflow_id,
+                        revision=current_revision + 1,
+                        binding=updated_binding.model_copy(update={"display_order": binding_order}),
+                        incoming_bindings=incoming,
+                        events_cursor=revision_event.seq,
+                    )
+                    _store_idempotency(
+                        connection,
+                        operation=operation,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                        response_json=response.model_dump_json(),
+                        created_at=now,
+                    )
+                    connection.commit()
+                    return response
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
 
 
 class AgentCanvasDocumentRepository:
@@ -1176,6 +1769,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
         "output_asset_id": node.output_asset_id,
         "video_skill_run_id": node.video_skill_run_id,
+        "derived_from_node_id": node.derived_from_node_id,
         "position_x": node.position.x,
         "position_y": node.position.y,
         "revision": node.revision,
@@ -1185,7 +1779,11 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
     }
 
 
-def _node_from_row(row: RowMapping) -> CanvasNodeV2:
+def _node_from_row(
+    row: RowMapping,
+    *,
+    variation: RowMapping | None = None,
+) -> CanvasNodeV2:
     error_json = row["error_json"]
     return CanvasNodeV2(
         node_id=str(row["node_id"]),
@@ -1205,6 +1803,7 @@ def _node_from_row(row: RowMapping) -> CanvasNodeV2:
         prompt_context_snapshot_id=cast(str | None, row["prompt_context_snapshot_id"]),
         output_asset_id=cast(str | None, row["output_asset_id"]),
         video_skill_run_id=cast(str | None, row["video_skill_run_id"]),
+        derived_from_node_id=cast(str | None, row["derived_from_node_id"]),
         position=CanvasPositionV2(
             x=float(row["position_x"]),
             y=float(row["position_y"]),
@@ -1215,6 +1814,24 @@ def _node_from_row(row: RowMapping) -> CanvasNodeV2:
             if error_json is not None
             else None
         ),
+        variation_draft=(_variation_from_row(variation) if variation is not None else None),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
+
+def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
+    return CanvasVariationDraftV2(
+        source_node_id=str(row["source_node_id"]),
+        source_node_revision=int(row["source_node_revision"]),
+        title=str(row["title"]),
+        generation_prompt=str(row["generation_prompt"]),
+        model_id=cast(str | None, row["model_id"]),
+        parameters=cast(
+            dict[str, JsonValue],
+            json.loads(str(row["parameters_json"])),
+        ),
+        variation_revision=int(row["variation_revision"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
@@ -1237,10 +1854,59 @@ def _binding_values(binding: CanvasBindingV2) -> dict[str, object]:
         ),
         "target_node_id": binding.target_node_id,
         "binding_kind": binding.binding_kind,
+        "input_role": binding.input_role,
         "required": binding.required,
         "display_order": binding.display_order,
         "created_at": binding.created_at.isoformat(),
     }
+
+
+def _normalize_target_binding_order(
+    connection: Connection,
+    *,
+    workflow_id: str,
+    target_node_id: str,
+    prioritized_binding_id: str | None = None,
+    requested_order: int | None = None,
+) -> int:
+    rows = (
+        connection.execute(
+            select(AgentCanvasBindingRow)
+            .where(
+                AgentCanvasBindingRow.workflow_id == workflow_id,
+                AgentCanvasBindingRow.target_node_id == target_node_id,
+            )
+            .order_by(
+                AgentCanvasBindingRow.display_order.asc(),
+                AgentCanvasBindingRow.created_at.asc(),
+                AgentCanvasBindingRow.binding_id.asc(),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    ordered = list(rows)
+    requested_position = 0
+    if prioritized_binding_id is not None:
+        selected = next(
+            (row for row in ordered if str(row["binding_id"]) == prioritized_binding_id),
+            None,
+        )
+        if selected is None:
+            raise _binding_not_found_error()
+        ordered.remove(selected)
+        requested_position = min(
+            requested_order if requested_order is not None else len(ordered),
+            len(ordered),
+        )
+        ordered.insert(requested_position, selected)
+    for display_order, row in enumerate(ordered):
+        connection.execute(
+            update(AgentCanvasBindingRow)
+            .where(AgentCanvasBindingRow.binding_id == str(row["binding_id"]))
+            .values(display_order=display_order)
+        )
+    return requested_position
 
 
 def _binding_from_row(row: RowMapping) -> CanvasBindingV2:
@@ -1255,10 +1921,21 @@ def _binding_from_row(row: RowMapping) -> CanvasBindingV2:
         source=source,
         target_node_id=str(row["target_node_id"]),
         binding_kind=cast(str, row["binding_kind"]),
+        input_role=cast(str, row.get("input_role") or _default_input_role(row)),
         required=bool(row["required"]),
         display_order=int(row["display_order"]),
         created_at=str(row["created_at"]),
     )
+
+
+def _default_input_role(row: RowMapping) -> str:
+    return {
+        "brief_context": "instruction",
+        "script_context": "instruction",
+        "image_reference": "visual_reference",
+        "video_reference": "source_video",
+        "audio_reference": "audio_reference",
+    }.get(str(row["binding_kind"]), "instruction")
 
 
 def _json_dump(value: object) -> str:
