@@ -12,6 +12,83 @@ from app.schemas.agent_operation_contexts import (
     DirectorTurnContextV2,
     InteractionMessageSummary,
 )
+from app.schemas.agent_canvas_creative_session import (
+    CreativeSessionStateV2,
+    ProjectCreativeMemoryV2,
+    ResolvedImageTargetV2,
+)
+
+
+class AgentMentionResolver:
+    """Resolve explicit image mentions against the current Workflow's assets."""
+
+    def __init__(
+        self,
+        workflows: AgentCanvasWorkflowRepository,
+        *,
+        asset_resolver: Callable[[str], ProjectAssetSummaryV2],
+        project_asset_lister: Callable[[str], tuple[ProjectAssetSummaryV2, ...]],
+    ) -> None:
+        self._workflows = workflows
+        self._asset_resolver = asset_resolver
+        self._project_asset_lister = project_asset_lister
+
+    def resolve_images(
+        self,
+        workflow_id: str,
+        asset_ids: tuple[str, ...],
+    ) -> tuple[ResolvedImageTargetV2, ...]:
+        workflow = self._workflows.get_workflow(workflow_id)
+        project_assets = {
+            asset.asset_id: asset for asset in self._project_asset_lister(workflow_id)
+        }
+        resolved: list[ResolvedImageTargetV2] = []
+        for asset_id in asset_ids:
+            asset = project_assets.get(asset_id)
+            if asset is None:
+                raise _context_error(
+                    "mentioned_asset_not_found",
+                    "Mentioned image asset was not found.",
+                )
+            try:
+                resolved_asset = self._asset_resolver(asset_id)
+            except (KeyError, V2PersistenceError) as error:
+                raise _context_error(
+                    "mentioned_asset_not_found",
+                    "Mentioned image asset was not found.",
+                ) from error
+            if resolved_asset.media_type != "image":
+                raise _context_error(
+                    "mentioned_asset_media_type_unsupported",
+                    "Only image assets can be mentioned directly.",
+                )
+            owners = [node for node in workflow.nodes if node.output_asset_id == asset_id]
+            if len(owners) > 1:
+                raise _context_error(
+                    "mentioned_asset_owner_invalid",
+                    "Mentioned image asset has an inconsistent owner.",
+                )
+            owner = owners[0] if owners else None
+            if (
+                owner is not None
+                and resolved_asset.source_semantic_role is not None
+                and resolved_asset.source_semantic_role != owner.semantic_role
+            ):
+                raise _context_error(
+                    "mentioned_asset_owner_invalid",
+                    "Mentioned image asset owner metadata is inconsistent.",
+                )
+            resolved.append(
+                ResolvedImageTargetV2(
+                    asset_id=resolved_asset.asset_id,
+                    owner_node_id=owner.node_id if owner is not None else None,
+                    owner_semantic_role=(owner.semantic_role if owner is not None else None),
+                    specialist_name=_specialist_for_image_target(owner),
+                    display_name=resolved_asset.display_name,
+                    checksum=resolved_asset.checksum,
+                )
+            )
+        return tuple(resolved)
 
 
 class AgentLocalContextAssembler:
@@ -22,10 +99,16 @@ class AgentLocalContextAssembler:
         workflows: AgentCanvasWorkflowRepository,
         *,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2],
+        project_asset_lister: Callable[[str], tuple[ProjectAssetSummaryV2, ...]],
         recent_message_limit: int = 16,
     ) -> None:
         self._workflows = workflows
         self._asset_resolver = asset_resolver
+        self._mentions = AgentMentionResolver(
+            workflows,
+            asset_resolver=asset_resolver,
+            project_asset_lister=project_asset_lister,
+        )
         self._recent_message_limit = recent_message_limit
 
     def assemble_director_turn(
@@ -38,11 +121,18 @@ class AgentLocalContextAssembler:
         mentioned_image_asset_ids: tuple[str, ...] = (),
         recent_messages: tuple[InteractionMessageSummary, ...] = (),
         video_skill_excerpt: str = "",
+        creative_session: CreativeSessionStateV2 | None = None,
+        creative_memory: ProjectCreativeMemoryV2 | None = None,
     ) -> DirectorTurnContextV2:
         workflow = self._workflows.get_workflow(workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
         summaries: list[str] = []
         script_summaries: list[str] = []
+        candidate_summaries: list[str] = []
+        resolved_image_targets = self._mentions.resolve_images(
+            workflow_id,
+            mentioned_image_asset_ids,
+        )
 
         for node_id in mentioned_node_ids:
             node = nodes.get(node_id)
@@ -63,21 +153,14 @@ class AgentLocalContextAssembler:
                     if content:
                         script_summaries.append(content)
 
-        for asset_id in mentioned_image_asset_ids:
-            try:
-                asset = self._asset_resolver(asset_id)
-            except (KeyError, V2PersistenceError) as error:
-                raise _context_error(
-                    "mentioned_asset_not_found",
-                    "Mentioned image asset was not found.",
-                ) from error
-            if asset.media_type != "image":
-                raise _context_error(
-                    "mentioned_asset_media_type_unsupported",
-                    "Only image assets can be mentioned directly.",
-                )
+        for asset in resolved_image_targets:
             summaries.append(
                 f"Image asset {asset.asset_id}: {asset.display_name}; checksum={asset.checksum}"
+            )
+
+        if not mentioned_node_ids:
+            candidate_summaries.extend(
+                _node_summary(node, include_prompt=False) for node in workflow.nodes[:32]
             )
 
         return DirectorTurnContextV2(
@@ -92,6 +175,10 @@ class AgentLocalContextAssembler:
             script_summary="\n".join(script_summaries),
             video_skill_excerpt=video_skill_excerpt,
             explicit_input_summaries=tuple(summaries),
+            candidate_summaries=tuple(candidate_summaries),
+            creative_session=creative_session,
+            creative_memory=creative_memory,
+            resolved_image_targets=resolved_image_targets,
         )
 
 
@@ -111,3 +198,15 @@ def _node_summary(node, *, include_prompt: bool = True) -> str:
 
 def _context_error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_local_context_assembler")
+
+
+def _specialist_for_image_target(node) -> str:
+    if node is None:
+        return "quick_media_agent"
+    if node.semantic_role == "character_main":
+        return "character_designer"
+    if node.semantic_role == "scene_design_board":
+        return "scene_designer"
+    if node.semantic_role == "storyboard_grid":
+        return "storyboard_artist"
+    return "product_designer"
