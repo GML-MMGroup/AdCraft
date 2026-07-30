@@ -33,6 +33,11 @@ class AgentCredentialSnapshot:
     model_id: str
     model_policy_id: str
     base_url: str
+    supports_tool_calls: bool
+    supports_strict_structured_output: bool
+    supports_streaming: bool
+    supports_streamed_tool_calls: bool
+    supports_reasoning_controls: bool
     api_key: str = field(repr=False)
 
 
@@ -90,6 +95,11 @@ class V2AgentCredentialBroker:
             model_id=model_id,
             model_policy_id=model_policy_id,
             base_url=self._settings.llm_base_url,
+            supports_tool_calls=True,
+            supports_strict_structured_output=True,
+            supports_streaming=True,
+            supports_streamed_tool_calls=False,
+            supports_reasoning_controls=False,
             api_key=self._settings.llm_api_key,
         )
 
@@ -104,6 +114,7 @@ def _model_for_role(settings: Settings, model_role: str) -> str:
         "storyboard": "llm_storyboard_model",
         "final_video": "llm_final_video_model",
         "bgm": "llm_bgm_model",
+        "quick_media": "llm_final_video_model",
     }.get(model_role)
     if field_name is None:
         raise AgentCredentialError(

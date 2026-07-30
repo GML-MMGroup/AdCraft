@@ -267,6 +267,7 @@ AgentCanvasSpecialistName = Literal[
     "storyboard_artist",
     "video_director",
     "bgm_director",
+    "quick_media_agent",
 ]
 
 

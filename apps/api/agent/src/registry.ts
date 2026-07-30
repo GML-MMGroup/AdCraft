@@ -57,6 +57,12 @@ export function agentForSemanticFamily(family: string): AgentName {
   if (operationClass(family) === "shot_cell") return "storyboard_artist";
   if (family === "shot_video_segment") return "video_director";
   if (family === "bgm_track") return "bgm_director";
+  if (
+    family === "general_image" ||
+    family === "general_video" ||
+    family === "general_audio"
+  )
+    return "quick_media_agent";
   throw new Error("agent_semantic_family_not_allowed");
 }
 
@@ -182,6 +188,12 @@ function skillsForOperation(
     return {
       required: ["bgm_prompt_generation", "mood_and_duration_matching"],
       optional: [],
+    };
+  }
+  if (agentName === "quick_media_agent") {
+    return {
+      required: ["creative_idea_generation"],
+      optional: ["reference_asset_selection"],
     };
   }
   throw new Error("agent_skill_policy_not_found");

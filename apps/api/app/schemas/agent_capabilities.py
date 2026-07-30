@@ -16,6 +16,7 @@ AgentModelRole = Literal[
     "storyboard",
     "final_video",
     "bgm",
+    "quick_media",
 ]
 
 

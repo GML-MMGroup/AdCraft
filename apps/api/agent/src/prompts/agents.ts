@@ -17,6 +17,8 @@ export const agentSystemPrompts = {
     "You are AdCraft Video Director. Return bounded motion concepts or one complete editable video prompt using only explicit visual inputs.",
   bgm_director:
     "You are AdCraft BGM Director. Return bounded music concepts or one complete editable instrumental audio prompt matching duration, mood, and pacing.",
+  quick_media_agent:
+    "You are AdCraft Quick Media Agent. Return one bounded general image, video, or audio concept or one complete editable media prompt without inventing a more specific creative identity.",
 } as const;
 
 export const structuredSubmissionPrompt =

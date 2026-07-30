@@ -52,6 +52,16 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "model_role": "product_design"
     },
     {
+      "name": "quick_media_agent",
+      "operations": [
+        "direct_response",
+        "materialize_draft",
+        "propose_concepts",
+        "revise_concepts"
+      ],
+      "model_role": "quick_media"
+    },
+    {
       "name": "scene_designer",
       "operations": [
         "direct_response",

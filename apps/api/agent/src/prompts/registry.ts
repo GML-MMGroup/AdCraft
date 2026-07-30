@@ -31,6 +31,7 @@ const specialistProfiles = [
   ["storyboard_artist", "Storyboard Artist", "storyboard"],
   ["video_director", "Video Director", "video"],
   ["bgm_director", "BGM Director", "bgm"],
+  ["quick_media_agent", "Quick Media Agent", "general media"],
 ] as const satisfies ReadonlyArray<readonly [AgentName, string, string]>;
 
 const registrations: ReadonlyArray<PromptRegistration> = [
