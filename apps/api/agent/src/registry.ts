@@ -113,6 +113,9 @@ function skillsForOperation(
   operation: string,
 ): { required: string[]; optional: string[] } {
   if (agentName === "director") {
+    if (operation === "conversation_turn" || operation === "proposal_action") {
+      return { required: [], optional: [] };
+    }
     return {
       required: ["audience_analysis", "campaign_appeal_generation"],
       optional: [],

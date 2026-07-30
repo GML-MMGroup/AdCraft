@@ -35,12 +35,25 @@ const specialistProfiles = [
 
 const registrations: ReadonlyArray<PromptRegistration> = [
   registration(
+    "adcraft.director.command_replan.v1",
+    "director",
+    "command_replan",
+    "AgentCommandPlanDraftV2",
+    "Video Agent Director",
+    "Repair one stale command plan from the supplied original intent, bounded plan summary, current target summaries, and conflict metadata. Do not delegate, recurse, or change targets without making the change explicit.",
+  ),
+  registration(
     "adcraft.director.conversation_turn.v1",
     "director",
     "conversation_turn",
     "AgentActionEnvelopeV2",
     "Video Agent Director",
-    "Answer one bounded user turn and delegate at most one local creative task to one registered Specialist.",
+    [
+      "Answer one bounded user turn and delegate at most one local creative task to one registered Specialist.",
+      "When the user explicitly asks for concepts for the current creative topic, set specialist_handoff to that topic's owning Specialist instead of returning only conversational text.",
+      "Current topic ownership is: script -> script_writer, product -> product_designer, props -> prop_designer, characters -> character_designer, scenes -> scene_designer, storyboard -> storyboard_artist, videos -> video_director, and bgm -> bgm_director.",
+      "Do not insert prerequisite analysis before that handoff.",
+    ].join(" "),
   ),
   registration(
     "adcraft.director.proposal_action.v1",
@@ -71,9 +84,16 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       `adcraft.${agentName}.materialize_draft.v1`,
       agentName,
       "materialize_draft",
-      "AdMediaSpecialistDraftV2",
+      "SpecialistDraftV2",
       role,
-      `Materialize one complete editable ${subject} draft from the selected concept without calling a provider.`,
+      [
+        `Materialize one complete editable ${subject} draft from the selected concept without calling a provider.`,
+        ...(subject === "script"
+          ? [
+              'Set semantic_role exactly to "advertising_script". Populate structured_content.content with the complete editable script as a top-level non-empty string. structured_content must be exactly {"content":"<complete editable script>"}. Do not use a nested concept object, return multiple concepts, or put the script only in generation_prompt.',
+            ]
+          : []),
+      ].join(" "),
     ),
     registration(
       `adcraft.${agentName}.direct_response.v1`,
