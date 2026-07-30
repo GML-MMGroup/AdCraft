@@ -3,6 +3,7 @@ import { MarkerType, type Edge } from "@xyflow/react";
 import type {
   AgentPlacementHintV2,
   AgentCanvasWorkflowV2,
+  CanvasBindingInputRoleV2,
   CanvasBindingV2,
   CanvasNodeV2,
   CanvasLayoutPositionV2,
@@ -13,6 +14,13 @@ import type {
   AgentCanvasFlowNode,
   AgentCanvasNodeCallbacks,
 } from "./AgentCanvasNode.tsx";
+
+export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasBindingInputRoleV2 {
+  if (node.node_type === "text" || node.node_type === "script") return "text_context";
+  if (node.node_type === "image") return "image_reference";
+  if (node.node_type === "audio") return "audio_reference";
+  return "video_reference";
+}
 
 export function findAvailableCanvasPosition(
   nodes: Pick<CanvasNodeV2, "position">[],

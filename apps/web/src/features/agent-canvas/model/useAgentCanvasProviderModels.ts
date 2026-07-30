@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { v2Api } from "../../../api/v2Client.ts";
+import { isV2ApiError, v2Api } from "../../../api/v2Client.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -43,7 +43,9 @@ export function useAgentCanvasProviderModels(
       if (cancelled) return;
       setCapabilities([]);
       setError(
-        loadError instanceof Error
+        isV2ApiError(loadError) && loadError.code === "provider_input_unsupported"
+          ? `Provider input unsupported: ${loadError.message}`
+          : loadError instanceof Error
           ? loadError.message
           : "Compatible provider models could not be loaded.",
       );

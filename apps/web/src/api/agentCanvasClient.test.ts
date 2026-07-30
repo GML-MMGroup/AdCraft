@@ -145,7 +145,10 @@ describe("Agent Canvas client", () => {
         target_node_id: "node-image-1",
         input_role: "text_context",
         required: true,
+        enabled: true,
         order: 0,
+        label: null,
+        metadata: {},
       }),
     ]);
 
@@ -269,6 +272,7 @@ describe("Agent Canvas client", () => {
       }
       if (url.endsWith("/variation-draft/materialize")) {
         expect(headers.get("Idempotency-Key")).toBe("materialize-key");
+        expect(JSON.parse(String(init?.body))).toEqual({ generation_action: "draft_only" });
         return jsonResponse({
           workflow_id: "workflow-1",
           workflow_revision: 9,
@@ -313,7 +317,7 @@ describe("Agent Canvas client", () => {
     await v2Api.materializeAgentCanvasVariationDraft(
       "workflow-1",
       readyNode.node_id,
-      { action: "create_draft" },
+      { generation_action: "draft_only" },
       "materialize-key",
     );
     await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);

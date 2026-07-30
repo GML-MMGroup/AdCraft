@@ -7,6 +7,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   findAvailableCanvasPosition,
+  inputRoleForSourceNode,
   incrementalPlacementForNodes,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -17,7 +18,7 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     node_id: nodeId,
     workflow_id: "workflow-1",
     node_type: nodeType,
-    creative_role: nodeType === "text" ? "general_text" : nodeType === "script" ? "script" : nodeType === "image" ? "general_image" : nodeType === "video" ? "general_video" : nodeType === "audio" ? "general_audio" : "editing",
+    creative_role: creativeRoleForNodeType(nodeType),
     role_contract_version: "ad-media-role-v1",
     title: nodeId,
     status: "draft",
@@ -35,6 +36,23 @@ function node(nodeId: string, nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   };
+}
+
+function creativeRoleForNodeType(nodeType: CanvasNodeV2["node_type"]): CanvasNodeV2["creative_role"] {
+  switch (nodeType) {
+    case "text":
+      return "general_text";
+    case "script":
+      return "script";
+    case "image":
+      return "general_image";
+    case "video":
+      return "general_video";
+    case "audio":
+      return "general_audio";
+    case "editing":
+      return "editing";
+  }
 }
 
 const workflow: AgentCanvasWorkflowV2 = {
@@ -99,6 +117,7 @@ const runtime: CanvasRuntimeSnapshotV2 = {
       execution_id: "execution-1",
       provider_task_id: null,
       waiting_for_node_ids: [],
+      blocked_by_node_ids: [],
       attempt_no: 1,
       updated_at: "2026-07-28T00:00:01Z",
       error: null,
@@ -152,6 +171,15 @@ describe("canvasGraphModel", () => {
         source: { kind: "image_asset", source_asset_id: "asset-1" },
       },
     ])).toEqual([]);
+  });
+
+  it("selects explicit input roles from canonical source node media types", () => {
+    expect(inputRoleForSourceNode(node("brief", "text"))).toBe("text_context");
+    expect(inputRoleForSourceNode(node("script", "script"))).toBe("text_context");
+    expect(inputRoleForSourceNode(node("image", "image"))).toBe("image_reference");
+    expect(inputRoleForSourceNode(node("video", "video"))).toBe("video_reference");
+    expect(inputRoleForSourceNode(node("audio", "audio"))).toBe("audio_reference");
+    expect(inputRoleForSourceNode(node("editing", "editing"))).toBe("video_reference");
   });
 
   it("places a new node near the preferred point without overlapping existing cards", () => {

@@ -1,20 +1,32 @@
 import { describe, expect, it } from "vitest";
 
+import type { CanvasRuntimeEventV2 } from "../../../types-v2.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
 
+function event(eventType: string, overrides: Partial<CanvasRuntimeEventV2> = {}): CanvasRuntimeEventV2 {
+  return {
+    seq: 12,
+    workflow_id: "workflow-1",
+    event_type: eventType,
+    project_id: "project-1",
+    execution_id: "execution-1",
+    node_id: "node-1",
+    asset_id: null,
+    binding_id: null,
+    conversation_id: null,
+    turn_id: null,
+    action_id: null,
+    created_at: "2026-07-30T00:00:00Z",
+    payload: {},
+    ...overrides,
+  };
+}
+
 describe("runtimeEventPolicy", () => {
-  it("publishes assets immediately and refreshes runtime without waiting for completion", () => {
-    expect(runtimeEventPolicy({
-      seq: 12,
-      workflow_id: "workflow-1",
-      event_type: "asset_published",
-      execution_id: "execution-1",
-      node_id: "node-image-1",
+  it("refreshes the asset read model for final project_asset_published events", () => {
+    expect(runtimeEventPolicy(event("project_asset_published", {
       asset_id: "asset-1",
-      binding_id: null,
-      created_at: "2026-07-28T00:00:00Z",
-      payload: { asset_id: "asset-1" },
-    })).toEqual({
+    }))).toEqual({
       refreshRuntime: true,
       refreshWorkflow: false,
       refreshAssets: true,
@@ -24,132 +36,62 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
-  it("routes chat and authoring events through the shared sequence", () => {
-    expect(runtimeEventPolicy({
-      seq: 13,
-      workflow_id: "workflow-1",
-      event_type: "proposal_created",
-      execution_id: null,
-      node_id: null,
-      asset_id: null,
-      binding_id: null,
-      created_at: "2026-07-28T00:00:01Z",
-      payload: {},
-    }).refreshChat).toBe(true);
+  it("refreshes runtime and canonical node state for blocked, published, and ready media", () => {
+    const blocked = runtimeEventPolicy(event("node_blocked"));
+    expect(blocked).toMatchObject({
+      refreshRuntime: true,
+      refreshNodeId: "node-1",
+      refreshAssets: false,
+    });
 
-    expect(runtimeEventPolicy({
-      seq: 14,
-      workflow_id: "workflow-1",
-      event_type: "canvas_binding_created",
-      execution_id: null,
-      node_id: "node-video-1",
-      asset_id: null,
-      binding_id: "binding-1",
-      created_at: "2026-07-28T00:00:02Z",
-      payload: {},
-    }).refreshWorkflow).toBe(true);
+    const output = runtimeEventPolicy(event("node_output_published", { asset_id: "asset-1" }));
+    expect(output).toMatchObject({
+      refreshRuntime: true,
+      refreshAssets: true,
+      refreshNodeId: "node-1",
+    });
+
+    expect(runtimeEventPolicy(event("node_ready"))).toMatchObject({
+      refreshRuntime: true,
+      refreshNodeId: "node-1",
+    });
   });
 
-  it("refreshes editing details without treating export as a canvas run", () => {
-    const policy = runtimeEventPolicy({
-      seq: 15,
-      workflow_id: "workflow-1",
-      event_type: "editing_export_completed",
+  it("routes final authoring and conversation events without obsolete event aliases", () => {
+    expect(runtimeEventPolicy(event("node_created"))).toMatchObject({
+      refreshWorkflow: true,
+      refreshChat: false,
+      refreshRuntime: false,
+    });
+    expect(runtimeEventPolicy(event("creative_proposal_resolved"))).toMatchObject({
+      refreshWorkflow: true,
+      refreshChat: true,
+      refreshRuntime: false,
+    });
+    expect(runtimeEventPolicy(event("canvas_variation_materialized"))).toMatchObject({
+      refreshWorkflow: false,
+      refreshChat: false,
+      refreshRuntime: false,
+    });
+  });
+
+  it("refreshes editing detail for progress without treating export as a canvas run", () => {
+    const policy = runtimeEventPolicy(event("editing_export_progress", {
       execution_id: null,
       node_id: "node-editing-1",
-      asset_id: "asset-final",
-      binding_id: null,
-      created_at: "2026-07-28T00:00:03Z",
-      payload: { export_id: "export-1" },
-    });
+    }));
 
-    expect(policy.refreshEditingNodeId).toBe("node-editing-1");
-    expect(policy.refreshWorkflow).toBe(true);
-  });
-
-  it("refreshes a completed Script node and the workflow materialized by proposal selection", () => {
-    const ready = runtimeEventPolicy({
-      seq: 16,
-      workflow_id: "workflow-1",
-      event_type: "node_ready",
-      execution_id: "execution-1",
-      node_id: "node-script-1",
-      asset_id: null,
-      binding_id: null,
-      created_at: "2026-07-28T00:00:04Z",
-      payload: {},
-    });
-    expect(ready.refreshNodeId).toBe("node-script-1");
-
-    const selected = runtimeEventPolicy({
-      seq: 17,
-      workflow_id: "workflow-1",
-      event_type: "proposal_selected",
-      execution_id: null,
-      node_id: "node-script-1",
-      asset_id: null,
-      binding_id: null,
-      created_at: "2026-07-28T00:00:05Z",
-      payload: {},
-    });
-    expect(selected.refreshWorkflow).toBe(true);
-    expect(selected.refreshChat).toBe(true);
-  });
-
-  it("routes command, receipt, continuation, variation, and layout events without runtime churn", () => {
-    const event = (eventType: string) => runtimeEventPolicy({
-      seq: 18,
-      workflow_id: "workflow-1",
-      event_type: eventType,
-      execution_id: null,
-      node_id: null,
-      asset_id: null,
-      binding_id: null,
-      created_at: "2026-07-28T00:00:06Z",
-      payload: {},
-    });
-
-    expect(event("agent_command_plan_created")).toMatchObject({
-      refreshChat: true,
-      refreshWorkflow: false,
+    expect(policy).toMatchObject({
       refreshRuntime: false,
+      refreshWorkflow: true,
+      refreshEditingNodeId: "node-editing-1",
     });
-    expect(event("agent_command_confirmation_invalidated")).toMatchObject({
-      refreshChat: true,
-      refreshWorkflow: false,
-      refreshRuntime: false,
-    });
-    expect(event("agent_action_receipt_created")).toMatchObject({
+    expect(runtimeEventPolicy(event("guided_action_applied"))).toMatchObject({
       refreshChat: true,
       refreshWorkflow: true,
       refreshRuntime: false,
     });
-    expect(event("agent_planning_continuation_queued")).toMatchObject({
-      refreshChat: true,
-      refreshWorkflow: false,
-      refreshRuntime: false,
-    });
-    expect(event("canvas_variation_materialized")).toMatchObject({
-      refreshChat: false,
-      refreshWorkflow: true,
-      refreshRuntime: false,
-    });
-    expect(event("canvas_layout_updated")).toMatchObject({
-      refreshChat: false,
-      refreshWorkflow: true,
-      refreshRuntime: false,
-    });
-    expect(event("canvas_binding_updated")).toMatchObject({
-      refreshChat: false,
-      refreshWorkflow: true,
-      refreshRuntime: false,
-    });
-    expect(event("guided_action_applied")).toMatchObject({
-      refreshChat: true,
-      refreshWorkflow: false,
-      refreshRuntime: false,
-    });
-    expect(event("layout_updated")).toMatchObject({
+    expect(runtimeEventPolicy(event("layout_updated"))).toMatchObject({
       refreshChat: false,
       refreshWorkflow: true,
       refreshRuntime: false,

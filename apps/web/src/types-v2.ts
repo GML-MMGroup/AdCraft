@@ -1672,7 +1672,7 @@ export interface StorageAccessDescriptorV2 {
   checksum: string;
 }
 
-export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
+export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_failed" | "failed" | "cancelled";
 
 export type NodeRuntimePhaseV2 = "waiting_for_input" | "queued" | "running" | "waiting_provider" | "recovering" | "publishing";
 
@@ -1724,7 +1724,7 @@ export interface CanvasRuntimeEventV2 {
 export interface ProviderModelCapabilityV2 {
   provider: string;
   model_id: string;
-  output_type: AgentCanvasAssetMediaTypeV2;
+  output_type: "script" | AgentCanvasAssetMediaTypeV2;
   accepted_input_types: Array<"text" | "image" | "video" | "audio">;
   max_references: number;
   reference_limits: Partial<Record<AgentCanvasAssetMediaTypeV2, number>>;
@@ -2218,7 +2218,7 @@ export interface CanvasVariationDraftResponseV2 {
 }
 
 export interface CanvasVariationMaterializeRequestV2 {
-  action: "create_draft" | "generate";
+  generation_action: "draft_only" | "generate_now";
   position?: CanvasPositionV2 | null;
 }
 
@@ -2501,7 +2501,7 @@ export interface CanvasRunRequestV2 {
   scope: "all_drafts" | "selected_nodes";
   node_ids: string[];
   retry_failed: boolean;
-  source_action: "global_run" | "node_run" | "retry_failed";
+  source_action: string;
 }
 
 export interface CanvasRunSkippedNodeV2 {
@@ -2535,7 +2535,7 @@ export interface CanvasRunCancelResponseV2 {
 export interface CanvasRuntimeEventsResponseV2 {
   workflow_id: string | null;
   events: CanvasRuntimeEventV2[];
-  next_after_seq: number;
+  next_cursor: number;
 }
 
 export interface EditingExportRequestV2 {

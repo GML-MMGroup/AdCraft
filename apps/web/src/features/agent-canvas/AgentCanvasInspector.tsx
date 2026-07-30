@@ -14,6 +14,7 @@ import {
   TrashIcon,
   UploadIcon,
 } from "../../icons.tsx";
+import { isV2ApiError } from "../../api/v2Client.ts";
 import type {
   AgentCanvasImageLibraryCategoryV2,
   AgentCanvasWorkflowV2,
@@ -43,6 +44,13 @@ function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCate
   if (role.includes("scene")) return "scene";
   if (role.includes("product") || role.includes("prop")) return "prop";
   return "character";
+}
+
+function actionErrorMessage(error: unknown): string {
+  if (isV2ApiError(error) && error.code === "provider_input_unsupported") {
+    return `Provider input unsupported: ${error.message}`;
+  }
+  return error instanceof Error ? error.message : "The node could not be updated.";
 }
 
 export function AgentCanvasInspector({
@@ -81,7 +89,7 @@ export function AgentCanvasInspector({
   onDiscardVariation: (nodeId: string) => Promise<void>;
   onMaterializeVariation: (
     node: CanvasNodeV2,
-    action: "create_draft" | "generate",
+    generationAction: "draft_only" | "generate_now",
   ) => Promise<CanvasNodeV2 | null>;
   onSaveImageToLibrary: (
     assetId: string,
@@ -111,7 +119,7 @@ export function AgentCanvasInspector({
   const [libraryName, setLibraryName] = useState(node.title);
   const [librarySaved, setLibrarySaved] = useState(false);
   const [modelId, setModelId] = useState(node.variation_draft?.model_id ?? node.model_id ?? "");
-  const [variationParameters, setVariationParameters] = useState<Record<string, unknown>>(
+  const [parameters, setParameters] = useState<Record<string, unknown>>(
     node.variation_draft?.parameters ?? node.parameters,
   );
   const draftNodeIdRef = useRef(node.node_id);
@@ -133,7 +141,7 @@ export function AgentCanvasInspector({
     setLibraryName(node.title);
     setLibrarySaved(false);
     setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
-    setVariationParameters(node.variation_draft?.parameters ?? node.parameters);
+    setParameters(node.variation_draft?.parameters ?? node.parameters);
     setError(null);
     if (changedNode) setDirty(false);
   }, [dirty, node]);
@@ -159,7 +167,7 @@ export function AgentCanvasInspector({
             : "",
       );
       setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
-      setVariationParameters(node.variation_draft?.parameters ?? node.parameters);
+      setParameters(node.variation_draft?.parameters ?? node.parameters);
       setDirty(false);
       setError(null);
     }
@@ -187,7 +195,8 @@ export function AgentCanvasInspector({
     && node.status === "ready"
     && Boolean(node.output_asset_id)
   );
-  const usesProvider = ["image", "video", "audio"].includes(node.node_type);
+  const usesProvider = ["script", "image", "video", "audio"].includes(node.node_type);
+  const canConfigureProvider = usesProvider && (node.status === "draft" || isReadyMedia);
   const currentModelIsCompatible = (
     !modelId
     || providerCapabilities.some((capability) => capability.model_id === modelId)
@@ -256,7 +265,7 @@ export function AgentCanvasInspector({
       await action();
       return true;
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The node could not be updated.");
+      setError(actionErrorMessage(actionError));
       return false;
     } finally {
       setPending(false);
@@ -273,7 +282,7 @@ export function AgentCanvasInspector({
         title: title.trim() || `${node.title} variation`,
         generation_prompt: prompt.trim(),
         model_id: modelId || null,
-        parameters: variationParameters,
+        parameters,
       }));
       if (saved) setDirty(false);
       return saved;
@@ -288,15 +297,16 @@ export function AgentCanvasInspector({
       title: title.trim() || node.title,
       generation_prompt: editsGenerationPrompt ? prompt : node.generation_prompt,
       ...(usesProvider ? { model_id: modelId || null } : {}),
+      ...(usesProvider ? { parameters } : {}),
       ...(structuredContent ? { structured_content: structuredContent } : {}),
     }));
     if (saved) setDirty(false);
     return saved;
   }
 
-  async function materializeVariation(action: "create_draft" | "generate") {
+  async function materializeVariation(generationAction: "draft_only" | "generate_now") {
     if ((dirty || !node.variation_draft) && !(await save())) return;
-    await perform(() => onMaterializeVariation(node, action));
+    await perform(() => onMaterializeVariation(node, generationAction));
   }
 
   async function discardVariation() {
@@ -305,7 +315,7 @@ export function AgentCanvasInspector({
     setTitle(node.title);
     setPrompt(node.generation_prompt ?? "");
     setModelId(node.model_id ?? "");
-    setVariationParameters(node.parameters);
+    setParameters(node.parameters);
     setDirty(false);
   }
 
@@ -379,7 +389,7 @@ export function AgentCanvasInspector({
           </label>
         ) : null}
 
-        {usesProvider ? (
+        {canConfigureProvider ? (
           <label>
             <span>Provider model</span>
             <select
@@ -396,7 +406,7 @@ export function AgentCanvasInspector({
               {!currentModelIsCompatible && modelId ? (
                 <option value={modelId} disabled>{modelId} (incompatible)</option>
               ) : null}
-              {providerCapabilities.map((capability) => (
+              {providerCapabilities.filter((capability) => capability.available).map((capability) => (
                 <option value={capability.model_id} key={capability.model_id}>
                   {capability.model_id} - {capability.provider}
                 </option>
@@ -408,6 +418,51 @@ export function AgentCanvasInspector({
               </small>
             ) : null}
           </label>
+        ) : null}
+
+        {node.node_type === "video" && canConfigureProvider ? (
+          <section className="agent-canvas-inspector__parameters" aria-label="Video generation settings">
+            <label>
+              <span>Requested duration (seconds)</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={typeof parameters.requested_duration_seconds === "number"
+                  ? parameters.requested_duration_seconds
+                  : ""}
+                disabled={pending}
+                onChange={(event) => {
+                  const next = { ...parameters };
+                  if (event.currentTarget.value === "") {
+                    delete next.requested_duration_seconds;
+                  } else {
+                    next.requested_duration_seconds = Number(event.currentTarget.value);
+                  }
+                  delete next.effective_duration_seconds;
+                  setParameters(next);
+                  setDirty(true);
+                }}
+              />
+            </label>
+            {typeof parameters.effective_duration_seconds === "number" ? (
+              <small>Effective duration: {parameters.effective_duration_seconds}s</small>
+            ) : null}
+            {providerCapabilities.some((capability) => capability.supports_native_audio) ? (
+              <label className="agent-canvas-inspector__toggle">
+                <input
+                  type="checkbox"
+                  checked={parameters.native_audio !== false}
+                  disabled={pending}
+                  onChange={(event) => {
+                    setParameters({ ...parameters, native_audio: event.currentTarget.checked });
+                    setDirty(true);
+                  }}
+                />
+                <span>Generate native dialogue, environment, and action audio</span>
+              </label>
+            ) : null}
+          </section>
         ) : null}
 
         {inboundBindings.length ? (
@@ -520,7 +575,7 @@ export function AgentCanvasInspector({
                 className="agent-canvas-inspector__primary"
                 aria-label="Create variation draft"
                 disabled={pending || !prompt.trim()}
-                onClick={() => void materializeVariation("create_draft")}
+                onClick={() => void materializeVariation("draft_only")}
               >
                 <EditIcon />
                 <span>Create draft</span>
@@ -530,7 +585,7 @@ export function AgentCanvasInspector({
                 className="agent-canvas-inspector__primary"
                 aria-label="Generate variation"
                 disabled={pending || !prompt.trim()}
-                onClick={() => void materializeVariation("generate")}
+                onClick={() => void materializeVariation("generate_now")}
               >
                 <PlayIcon />
                 <span>Generate</span>

@@ -117,7 +117,7 @@ const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
   "running",
   "waiting",
   "completed",
-  "partial_completed",
+  "partial_failed",
   "failed",
   "cancelled",
 ]);
@@ -130,6 +130,12 @@ const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
   "publishing",
 ]);
 const ASSET_MEDIA_TYPES = new Set<ProjectAssetSummaryV2["media_type"]>(["image", "video", "audio"]);
+const PROVIDER_OUTPUT_TYPES = new Set<ProviderModelCapabilityV2["output_type"]>([
+  "script",
+  "image",
+  "video",
+  "audio",
+]);
 const ASSET_SOURCE_TYPES = new Set<ProjectAssetSummaryV2["source_type"]>([
   "upload",
   "generated",
@@ -1082,7 +1088,7 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
   return {
     provider: expectNonEmptyString(record.provider, `${path}.provider`),
     model_id: expectNonEmptyString(record.model_id, `${path}.model_id`),
-    output_type: expectLiteral(record.output_type, ASSET_MEDIA_TYPES, `${path}.output_type`),
+    output_type: expectLiteral(record.output_type, PROVIDER_OUTPUT_TYPES, `${path}.output_type`),
     accepted_input_types: expectArray(record.accepted_input_types, `${path}.accepted_input_types`).map((item, index) =>
       expectLiteral(item, PROVIDER_INPUT_TYPES, `${path}.accepted_input_types[${index}]`),
     ),
@@ -2519,16 +2525,16 @@ export function normalizeCanvasRuntimeEventsResponseV2(
       events: expectArray(record.items, `${path}.items`).map((item, index) =>
         normalizeCanvasRuntimeEventV2(item, `${path}.items[${index}]`),
       ),
-      next_after_seq: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
+      next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
     };
   }
-  forbidUnknownFields(record, ["workflow_id", "events", "next_after_seq"], path);
+  forbidUnknownFields(record, ["workflow_id", "events", "next_cursor"], path);
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     events: expectArray(record.events, `${path}.events`).map((item, index) =>
       normalizeCanvasRuntimeEventV2(item, `${path}.events[${index}]`),
     ),
-    next_after_seq: expectNonNegativeInteger(record.next_after_seq, `${path}.next_after_seq`),
+    next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
   };
 }
 

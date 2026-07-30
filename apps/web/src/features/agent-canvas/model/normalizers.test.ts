@@ -296,6 +296,52 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
   });
 
+  it("accepts final Project Asset provenance without exposing storage implementation details to callers", () => {
+    const asset = normalizeProjectAssetSummaryV2({
+      ...validWorkflowPayload().assets[0],
+      project_id: "project-1",
+      workflow_id: "workflow-1",
+      semantic_type: "character",
+      size_bytes: 2048,
+      storage_key: "project-assets/project-1/asset-output-1.png",
+      source_semantic_role: "character",
+      source_node_id: "node-image-1",
+      source_execution_id: "execution-1",
+      provider: "volcengine",
+      model_id: "seedream-4-0-250828",
+      prompt_provenance: { compiler: "agent_canvas_v2" },
+      quality_metadata: { score: 0.94 },
+      created_at: "2026-07-28T10:08:00Z",
+    });
+
+    expect(asset).toMatchObject({
+      asset_id: "asset-output-1",
+      source_node_id: "node-image-1",
+      provider: "volcengine",
+    });
+  });
+
+  it("normalizes final generic-node and explicit-binding contracts", () => {
+    const canonical = validWorkflowPayload();
+    const payload = {
+      ...canonical,
+      nodes: canonical.nodes.map((node, index) => ({
+        ...node,
+        creative_role: index === 0 ? "creative_brief" : "storyboard_sequence",
+      })),
+    };
+
+    const workflow = normalizeAgentCanvasWorkflowV2(payload);
+
+    expect(workflow.nodes[1]?.creative_role).toBe("storyboard_sequence");
+    expect(workflow.bindings[0]).toMatchObject({
+      source: { kind: "node_output", source_node_id: "node-text-1" },
+      input_role: "text_context",
+      enabled: true,
+      order: 0,
+    });
+  });
+
   it("normalizes canonical Ready variations, command plans, receipts, and layout responses", () => {
     const workflowPayload = validWorkflowPayload();
     workflowPayload.nodes[1] = {
@@ -713,7 +759,7 @@ describe("Agent Canvas normalizers", () => {
 
     expect(response).toMatchObject({
       workflow_id: null,
-      next_after_seq: 52,
+      next_cursor: 52,
       events: [{
         seq: 52,
         execution_id: "execution-1",

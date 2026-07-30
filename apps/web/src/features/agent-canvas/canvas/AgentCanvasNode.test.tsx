@@ -83,6 +83,7 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
     execution_id: status === "working" ? "execution-1" : null,
     provider_task_id: null,
     waiting_for_node_ids: [],
+    blocked_by_node_ids: [],
     attempt_no: status === "working" ? 1 : 0,
     updated_at: "2026-07-28T09:00:00Z",
     error: null,
@@ -149,6 +150,14 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
+  it("labels a storyboard as one semantic Image output rather than nine shot nodes", () => {
+    const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
+    render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
+
+    expect(screen.getByLabelText("Storyboard Sequence image node")).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
   it("exports an editing node through its callback", () => {

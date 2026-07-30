@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
+  CanvasNodeV2,
   CanvasRuntimeSnapshotV2,
 } from "../../../types-v2.ts";
 
@@ -86,7 +87,7 @@ describe("useAgentCanvasRuntime", () => {
       .mockResolvedValue({
         workflow_id: "workflow-1",
         events: [],
-        next_after_seq: 42,
+        next_cursor: 42,
       });
     api.agentCanvasRuntime.mockResolvedValue(runtime);
     api.agentCanvasWorkflowWithEtag.mockResolvedValue({ value: workflow, etag: "\"workflow-r1\"" });
@@ -114,7 +115,7 @@ describe("useAgentCanvasRuntime", () => {
     api.agentCanvasEvents.mockResolvedValue({
       workflow_id: "workflow-1",
       events: [],
-      next_after_seq: 0,
+      next_cursor: 0,
     });
     const eventSource = new EventSourceStub();
     api.openAgentCanvasEventStream.mockReturnValue(eventSource);
@@ -137,7 +138,7 @@ describe("useAgentCanvasRuntime", () => {
     const event = (seq: number) => ({
       seq,
       workflow_id: "workflow-1",
-      event_type: "canvas_node_created",
+      event_type: "node_created",
       execution_id: null,
       node_id: `node-${seq}`,
       asset_id: null,
@@ -165,7 +166,7 @@ describe("useAgentCanvasRuntime", () => {
     api.agentCanvasEvents.mockResolvedValue({
       workflow_id: "workflow-1",
       events: [],
-      next_after_seq: 42,
+      next_cursor: 42,
     });
     const callbacks = {
       applyWorkflow: vi.fn(),
@@ -176,5 +177,50 @@ describe("useAgentCanvasRuntime", () => {
 
     await waitFor(() => expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200));
     expect(result.current.state.chatEvents).toEqual([]);
+  });
+
+  it("does not submit a per-node Run for Ready media", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const readyImage: CanvasNodeV2 = {
+      node_id: "image-ready-1",
+      workflow_id: "workflow-1",
+      node_type: "image",
+      creative_role: "product",
+      role_contract_version: "ad-media-role-v1",
+      title: "Product image",
+      status: "ready",
+      summary_prompt: null,
+      generation_prompt: "Product on black acrylic",
+      structured_content: {},
+      model_id: "image-model",
+      parameters: {},
+      prompt_context_snapshot_id: null,
+      output_asset_id: "asset-1",
+      position: { x: 0, y: 0 },
+      revision: 2,
+      error: null,
+      variation_draft: null,
+      created_at: "2026-07-30T00:00:00Z",
+      updated_at: "2026-07-30T00:00:00Z",
+    };
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime({
+      ...workflow,
+      nodes: [readyImage],
+    }, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    await result.current.actions.runNode(readyImage);
+
+    expect(api.runAgentCanvas).not.toHaveBeenCalled();
   });
 });
