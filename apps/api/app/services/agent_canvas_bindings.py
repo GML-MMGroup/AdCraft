@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -13,6 +14,8 @@ from app.persistence.agent_canvas_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingCreateRequestV2,
+    CanvasBindingPatchRequestV2,
+    CanvasBindingMutationResponseV2,
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
     ProjectAssetSummaryV2,
@@ -21,6 +24,19 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
     StorageAccessDescriptorV2,
 )
+from app.services.agent_canvas_authoring_validation import (
+    BindingValidationState,
+    validate_node_binding,
+)
+from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedRunInputs:
+    """Resolved runnable inputs plus bounded optional-source omissions."""
+
+    inputs: tuple[ResolvedInputSnapshotV2, ...]
+    optional_omissions: tuple[dict[str, str], ...] = ()
 
 
 class AgentCanvasBindingService:
@@ -32,12 +48,16 @@ class AgentCanvasBindingService:
         documents: AgentCanvasDocumentRepository,
         *,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2],
-        binding_capability_validator: (Callable[[object, frozenset[str]], object] | None) = None,
+        binding_capability_validator: (
+            Callable[[object, frozenset[str], int], object] | None
+        ) = None,
+        connection_policy: AgentCanvasConnectionPolicyService | None = None,
     ) -> None:
         self._workflows = workflows
         self._documents = documents
         self._asset_resolver = asset_resolver
         self._binding_capability_validator = binding_capability_validator
+        self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
 
     def create(
         self,
@@ -48,38 +68,78 @@ class AgentCanvasBindingService:
     ) -> CanvasBindingV2:
         workflow = self._workflows.get_workflow(workflow_id)
         target = self._workflows.get_node(workflow_id, request.target_node_id)
+        incoming = tuple(
+            binding for binding in workflow.bindings if binding.target_node_id == target.node_id
+        )
         if isinstance(request.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, request.source.node_id)
-            self._assert_acyclic(
-                workflow.bindings,
+            validate_node_binding(
+                bindings=tuple(
+                    BindingValidationState(
+                        source_node_id=(
+                            binding.source.node_id
+                            if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                            else None
+                        ),
+                        target_node_id=binding.target_node_id,
+                        binding_kind=binding.binding_kind,
+                    )
+                    for binding in workflow.bindings
+                ),
                 source_node_id=source.node_id,
+                source_node_type=source.node_type,
+                source_semantic_role=source.semantic_role,
                 target_node_id=target.node_id,
+                target_node_type=target.node_type,
+                binding_kind=request.binding_kind,
             )
-            _validate_node_binding_kind(source.node_type, request.binding_kind)
-            if target.node_type == "editing":
-                _validate_editing_binding(workflow.bindings, source, target.node_id, request)
+            policy_decision = self._connection_policy.decide(
+                source_node_type=source.node_type,
+                target_node_type=target.node_type,
+                input_role=request.input_role,
+            )
         else:
             asset = self._resolve_asset(request.source.asset_id)
-            if request.binding_kind != "image_reference" or asset.media_type != "image":
+            if asset.media_type != "image":
                 raise _media_incompatible_error()
+            policy_decision = self._connection_policy.decide(
+                source_node_type="image",
+                target_node_type=target.node_type,
+                input_role=request.input_role,
+                is_image_asset=True,
+            )
+        if not policy_decision.accepted or request.binding_kind != policy_decision.binding_kind:
+            raise _media_incompatible_error()
         if self._binding_capability_validator is not None and target.model_id is not None:
             input_types = {
                 _binding_input_type(binding.binding_kind)
-                for binding in workflow.bindings
+                for binding in incoming
                 if binding.target_node_id == target.node_id
             }
             input_types.add(_binding_input_type(request.binding_kind))
-            decision = self._binding_capability_validator(target, frozenset(input_types))
-            if not getattr(decision, "accepted", False):
-                raise _binding_model_incompatible_error(decision)
+            reference_count = sum(
+                _binding_input_type(binding.binding_kind) in {"image", "video", "audio"}
+                for binding in incoming
+            ) + (1 if policy_decision.input_type in {"image", "video", "audio"} else 0)
+            capability_decision = self._binding_capability_validator(
+                target,
+                frozenset(input_types),
+                reference_count,
+            )
+            if not getattr(capability_decision, "accepted", False):
+                raise _binding_model_incompatible_error(capability_decision)
         binding = CanvasBindingV2(
             binding_id=f"binding_{uuid4().hex}",
             workflow_id=workflow_id,
             source=request.source,
             target_node_id=request.target_node_id,
-            binding_kind=request.binding_kind,
+            binding_kind=policy_decision.binding_kind,
+            input_role=policy_decision.input_role or "instruction",
             required=request.required,
-            display_order=request.display_order,
+            display_order=min(
+                request.display_order if request.display_order is not None else len(incoming),
+                len(incoming),
+            ),
             created_at=datetime.now(timezone.utc),
         )
         self._workflows.add_binding(binding, expected_revision=expected_revision)
@@ -96,6 +156,62 @@ class AgentCanvasBindingService:
             workflow_id,
             binding_id,
             expected_revision=expected_revision,
+        )
+
+    def patch(
+        self,
+        workflow_id: str,
+        binding_id: str,
+        request: CanvasBindingPatchRequestV2,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+        request_fingerprint: str,
+    ) -> CanvasBindingMutationResponseV2:
+        workflow = self._workflows.get_workflow(workflow_id)
+        existing = next((item for item in workflow.bindings if item.binding_id == binding_id), None)
+        if existing is None:
+            raise V2PersistenceError(
+                "binding_not_found",
+                "Binding was not found.",
+                stage="agent_canvas_binding_service",
+            )
+        target = self._workflows.get_node(workflow_id, existing.target_node_id)
+        if isinstance(existing.source, CanvasBindingSourceNodeV2):
+            source = self._workflows.get_node(workflow_id, existing.source.node_id)
+            policy_decision = self._connection_policy.require(
+                source_node_type=source.node_type,
+                target_node_type=target.node_type,
+                input_role=request.input_role or existing.input_role,
+            )
+        else:
+            asset = self._resolve_asset(existing.source.asset_id)
+            if asset.media_type != "image":
+                raise _media_incompatible_error()
+            policy_decision = self._connection_policy.require(
+                source_node_type="image",
+                target_node_type=target.node_type,
+                input_role=request.input_role or existing.input_role,
+                is_image_asset=True,
+            )
+        incoming = tuple(
+            item for item in workflow.bindings if item.target_node_id == existing.target_node_id
+        )
+        display_order = (
+            request.display_order if request.display_order is not None else existing.display_order
+        )
+        updated = existing.model_copy(
+            update={
+                "input_role": policy_decision.input_role or existing.input_role,
+                "required": request.required if request.required is not None else existing.required,
+                "display_order": min(display_order, len(incoming) - 1),
+            }
+        )
+        return self._workflows.update_binding(
+            binding=updated,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
         )
 
     def snapshot_prompt_context(
@@ -123,6 +239,10 @@ class AgentCanvasBindingService:
                     document_kind=document.document_kind,
                     content=content[:16000],
                     content_hash=document.content_hash,
+                    binding_id=binding.binding_id,
+                    input_role=binding.input_role,
+                    required=binding.required,
+                    display_order=binding.display_order,
                 )
             )
         result = tuple(snapshots)
@@ -138,22 +258,38 @@ class AgentCanvasBindingService:
         workflow_id: str,
         target_node_id: str,
     ) -> tuple[ResolvedInputSnapshotV2, ...]:
+        return self.resolve_run_input_resolution(workflow_id, target_node_id).inputs
+
+    def resolve_run_input_resolution(
+        self,
+        workflow_id: str,
+        target_node_id: str,
+    ) -> "ResolvedRunInputs":
         target = self._workflows.get_node(workflow_id, target_node_id)
         text_inputs: tuple[ResolvedTextInputSnapshotV2, ...] = ()
         if target.prompt_context_snapshot_id is not None:
             text_inputs = self._documents.get_prompt_context_snapshot(
                 target.prompt_context_snapshot_id
             ).inputs
-        media_inputs = self._resolve_media_inputs(workflow_id, target_node_id)
-        return (*text_inputs, *media_inputs)
+        media_inputs, optional_omissions = self._resolve_media_inputs(workflow_id, target_node_id)
+        return ResolvedRunInputs(
+            inputs=tuple(
+                sorted(
+                    (*text_inputs, *media_inputs),
+                    key=lambda item: (item.display_order, item.binding_id or ""),
+                )
+            ),
+            optional_omissions=optional_omissions,
+        )
 
     def _resolve_media_inputs(
         self,
         workflow_id: str,
         target_node_id: str,
-    ) -> tuple[ResolvedMediaInputSnapshotV2, ...]:
+    ) -> tuple[tuple[ResolvedMediaInputSnapshotV2, ...], tuple[dict[str, str], ...]]:
         workflow = self._workflows.get_workflow(workflow_id)
         resolved: list[ResolvedMediaInputSnapshotV2] = []
+        optional_omissions: list[dict[str, str]] = []
         for binding in workflow.bindings:
             if binding.target_node_id != target_node_id or binding.binding_kind not in {
                 "image_reference",
@@ -172,20 +308,30 @@ class AgentCanvasBindingService:
                             "A required media binding source is not ready.",
                             stage="agent_canvas_binding_service",
                         )
+                    optional_omissions.append(
+                        {
+                            "binding_id": binding.binding_id,
+                            "source_node_id": source.node_id,
+                            "reason": "binding_source_not_ready",
+                        }
+                    )
                     continue
                 asset = self._resolve_asset(source.output_asset_id)
                 source_kind = "node"
                 source_node_id = source.node_id
                 source_revision = source.revision
+                source_semantic_role = source.semantic_role
             else:
                 asset = self._resolve_asset(binding.source.asset_id)
                 source_kind = "image_asset"
+                source_semantic_role = asset.source_semantic_role
             resolved.append(
                 ResolvedMediaInputSnapshotV2(
                     source_kind=source_kind,
                     source_node_id=source_node_id,
                     source_node_revision=source_revision,
                     binding_kind=binding.binding_kind,
+                    source_semantic_role=source_semantic_role,
                     asset_id=asset.asset_id,
                     media_type=asset.media_type,
                     asset_checksum=asset.checksum,
@@ -194,9 +340,13 @@ class AgentCanvasBindingService:
                         media_url=asset.media_url or asset.preview_url or "",
                         checksum=asset.checksum,
                     ),
+                    binding_id=binding.binding_id,
+                    input_role=binding.input_role,
+                    required=binding.required,
+                    display_order=binding.display_order,
                 )
             )
-        return tuple(resolved)
+        return tuple(resolved), tuple(optional_omissions)
 
     def _resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
         try:
@@ -214,73 +364,6 @@ class AgentCanvasBindingService:
                 stage="agent_canvas_binding_service",
             )
         return asset
-
-    @staticmethod
-    def _assert_acyclic(
-        bindings: tuple[CanvasBindingV2, ...],
-        *,
-        source_node_id: str,
-        target_node_id: str,
-    ) -> None:
-        if source_node_id == target_node_id:
-            raise _cycle_error()
-        outgoing: dict[str, set[str]] = {}
-        for binding in bindings:
-            if isinstance(binding.source, CanvasBindingSourceNodeV2):
-                outgoing.setdefault(binding.source.node_id, set()).add(binding.target_node_id)
-        pending = [target_node_id]
-        visited: set[str] = set()
-        while pending:
-            current = pending.pop()
-            if current == source_node_id:
-                raise _cycle_error()
-            if current in visited:
-                continue
-            visited.add(current)
-            pending.extend(outgoing.get(current, ()))
-
-
-def _validate_node_binding_kind(node_type: str, binding_kind: str) -> None:
-    compatible = {
-        "text": {"brief_context"},
-        "script": {"script_context"},
-        "image": {"image_reference"},
-        "video": {"video_reference"},
-        "audio": {"audio_reference"},
-    }
-    if binding_kind not in compatible.get(node_type, set()):
-        raise _media_incompatible_error()
-
-
-def _validate_editing_binding(bindings, source, target_node_id: str, request) -> None:
-    if source.node_type == "video" and request.binding_kind == "video_reference":
-        return
-    if source.node_type == "audio" and request.binding_kind == "audio_reference":
-        if source.semantic_role != "bgm":
-            raise V2PersistenceError(
-                "editing_audio_role_invalid",
-                "Editing audio input must use the bgm semantic role.",
-                stage="agent_canvas_binding_service",
-            )
-        if any(
-            binding.target_node_id == target_node_id and binding.binding_kind == "audio_reference"
-            for binding in bindings
-        ):
-            raise V2PersistenceError(
-                "editing_duplicate_bgm",
-                "Editing accepts at most one BGM audio binding.",
-                stage="agent_canvas_binding_service",
-            )
-        return
-    raise _media_incompatible_error()
-
-
-def _cycle_error() -> V2PersistenceError:
-    return V2PersistenceError(
-        "binding_cycle_detected",
-        "The binding would create a cycle.",
-        stage="agent_canvas_binding_service",
-    )
 
 
 def _media_incompatible_error() -> V2PersistenceError:

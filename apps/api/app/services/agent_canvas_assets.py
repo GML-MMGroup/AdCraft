@@ -145,6 +145,7 @@ class AgentCanvasAssetService:
         content: bytes,
         fingerprint: str,
         source_type: str = "generated",
+        source_semantic_role: str | None = None,
     ) -> ProjectAssetSummaryV2:
         """Idempotently publish validated executor bytes to unified storage."""
 
@@ -198,6 +199,7 @@ class AgentCanvasAssetService:
                     "source_type": source_type,
                     "source_node_id": node_id,
                     "source_execution_id": execution_id,
+                    "source_semantic_role": source_semantic_role,
                     "fingerprint": fingerprint,
                 },
             ),
@@ -388,7 +390,16 @@ def _asset_summary(version: AssetVersionMetadataV2) -> ProjectAssetSummaryV2:
         height=version.height,
         duration_seconds=version.duration_seconds,
         checksum=version.sha256,
+        source_semantic_role=_source_semantic_role(version.metadata),
     )
+
+
+def _source_semantic_role(metadata: dict[str, object]) -> str | None:
+    for key in ("source_semantic_role", "semantic_role", "semantic_type"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _validate_upload(
