@@ -10,7 +10,10 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
+from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
+from app.schemas import agent_canvas_editing
+from app.schemas import agent_canvas_creative_session
 from app.schemas import agent_operation_contexts
 from app.schemas import workflow_v2_expert_brief_contracts
 from app.schemas import workflow_v2_planning
@@ -19,6 +22,15 @@ from app.schemas import v2_agent_conversations
 
 
 CONTRACT_MODELS = (
+    agent_canvas.CanvasPositionV2,
+    agent_canvas.CanvasNodeErrorV2,
+    agent_canvas.CanvasVariationDraftV2,
+    agent_canvas.CanvasBindingSourceNodeV2,
+    agent_canvas.CanvasBindingSourceImageAssetV2,
+    agent_canvas.CanvasNodeV2,
+    agent_canvas.CanvasBindingV2,
+    agent_canvas_editing.EditingOutputSettingsV2,
+    agent_canvas_editing.EditingManifestV2,
     agent_canvas_ad_media.VisualStyleContractV2,
     agent_canvas_ad_media.DesignAssetContentV2,
     agent_canvas_ad_media.SceneBoardPanelV2,
@@ -38,6 +50,15 @@ CONTRACT_MODELS = (
     agent_operation_contexts.CharacterExpertAgentContext,
     agent_operation_contexts.SceneExpertAgentContext,
     agent_operation_contexts.BgmExpertAgentContext,
+    agent_canvas_creative_session.PlanningTopicProgressV2,
+    agent_canvas_creative_session.CreativeSessionStateV2,
+    agent_canvas_creative_session.ProjectCreativeMemoryV2,
+    agent_canvas_creative_session.DraftReferenceIntentV2,
+    agent_canvas_creative_session.ProposedDraftReferenceV2,
+    agent_canvas_creative_session.SpecialistDraftV2,
+    agent_canvas_creative_session.ExpertActivityV2,
+    agent_canvas_creative_session.ResolvedImageTargetV2,
+    agent_canvas_creative_session.GuidedDeliveryActionV2,
     agent_operation_contexts.InteractionMessageSummary,
     agent_operation_contexts.InteractionTargetSummary,
     agent_operation_contexts.TargetedRevisionAgentContext,
@@ -45,6 +66,7 @@ CONTRACT_MODELS = (
     agent_operation_contexts.WorkflowConversationAgentContext,
     agent_operation_contexts.ConversationSummaryAgentContext,
     agent_operation_contexts.DirectorTurnContextV2,
+    agent_operation_contexts.AgentCommandReplanContextV2,
     agent_operation_contexts.SpecialistContextV2,
     v2_agent_conversations.WorkflowConversationReply,
     v2_agent_conversations.ConversationSummaryResult,
@@ -73,7 +95,26 @@ CONTRACT_MODELS = (
     agent_runtime.SpecialistDraft,
     agent_runtime.ConceptOptionV2,
     agent_runtime.ConceptProposalDraftV2,
-    agent_runtime.AgentCanvasOperationV2,
+    agent_runtime.AgentNodeIdRefV2,
+    agent_runtime.AgentOperationResultRefV2,
+    agent_runtime.AgentAssetRefV2,
+    agent_runtime.AgentPlacementHintV2,
+    agent_runtime.AgentCreateNodeOperationV2,
+    agent_runtime.AgentPatchEditableNodeOperationV2,
+    agent_runtime.AgentCreateBindingOperationV2,
+    agent_runtime.AgentDeleteBindingOperationV2,
+    agent_runtime.AgentDeleteNodeOperationV2,
+    agent_runtime.AgentMaterializeProposalOperationV2,
+    agent_runtime.AgentForkReadyMediaOperationV2,
+    agent_runtime.AgentRequestNodeRunOperationV2,
+    agent_runtime.AgentUpdatePlanningTopicOperationV2,
+    agent_runtime.AgentPrepareCompositionOperationV2,
+    agent_runtime.AgentPrepareCompositionResultV2,
+    agent_runtime.AgentCommandPlanDraftV2,
+    agent_runtime.AgentCommandPlanCreateV2,
+    agent_runtime.AgentCommandPlanV2,
+    agent_runtime.AgentCommandReplanResultV2,
+    agent_runtime.AgentOperationResultV2,
     agent_runtime.AgentActionEnvelopeV2,
     agent_runtime.AdMediaSpecialistDraftV2,
     agent_runtime.SpecialistDirectResponseV2,
@@ -88,13 +129,14 @@ def generate_agent_contracts(output_dir: Path) -> tuple[Path, Path]:
         tuple[tuple(CONTRACT_MODELS)]  # type: ignore[valid-type]
     ).json_schema()
     # Pydantic's tuple adapter provides one shared $defs graph for all contracts.
-    definitions = combined_schema.get("$defs", {})
+    definitions = _canonicalize_schema(combined_schema.get("$defs", {}))
     schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
         "protocol_version": "1",
         "$defs": definitions,
     }
+    schema = _canonicalize_schema(schema)
     schema_path = output_dir / "agent-runtime.schema.json"
     schema_path.write_text(
         json.dumps(schema, ensure_ascii=True, indent=2, sort_keys=True) + "\n",
@@ -118,7 +160,8 @@ def generate_agent_contracts(output_dir: Path) -> tuple[Path, Path]:
 
 def _typescript_type(schema: dict[str, Any]) -> str:
     if "$ref" in schema:
-        return str(schema["$ref"]).rsplit("/", 1)[-1]
+        reference_name = str(schema["$ref"]).rsplit("/", 1)[-1]
+        return "unknown" if reference_name == "JsonValue" else reference_name
     if "const" in schema:
         return json.dumps(schema["const"], ensure_ascii=True)
     if "enum" in schema:
@@ -152,6 +195,19 @@ def _typescript_type(schema: dict[str, Any]) -> str:
     if schema_type == "null":
         return "null"
     return "unknown"
+
+
+def _canonicalize_schema(value: Any, *, parent_key: str | None = None) -> Any:
+    """Normalize order-insensitive schema arrays before serializing contracts."""
+
+    if isinstance(value, dict):
+        return {key: _canonicalize_schema(child, parent_key=key) for key, child in value.items()}
+    if isinstance(value, list):
+        normalized = [_canonicalize_schema(child) for child in value]
+        if parent_key in {"enum", "required"}:
+            return sorted(normalized, key=lambda child: json.dumps(child, sort_keys=True))
+        return normalized
+    return value
 
 
 def main() -> None:

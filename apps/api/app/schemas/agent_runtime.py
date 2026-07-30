@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -11,6 +11,10 @@ from app.schemas.agent_operation_contexts import (
     AgentCanvasSpecialistName,
     PlanningAgentContext,
 )
+from app.schemas.agent_canvas_commands import AgentPlacementHintV2
+from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
+from app.schemas.agent_canvas_editing import EditingManifestV2, EditingOutputSettingsV2
+from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
     DesignAssetContentV2,
@@ -154,6 +158,14 @@ class AgentRunContext(_StrictModel):
     system_prompt: str | None = Field(default=None, max_length=32_768)
     input_payload: dict[str, Any] = Field(default_factory=dict)
     contract_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentCanvasScriptOutput(BaseModel):
+    """Validated Script Writer output while preserving editable structured fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    content: str = Field(min_length=1, max_length=32_768)
 
 
 class AgentRunPolicy(_StrictModel):
@@ -351,32 +363,287 @@ class ConceptProposalDraftV2(_StrictModel):
     ]
     specialist_name: AgentCanvasSpecialistName
     options: tuple[ConceptOptionV2, ...] = Field(min_length=1, max_length=4)
+    proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
+        default=(),
+        max_length=64,
+    )
 
 
-class AgentCanvasOperationV2(_StrictModel):
-    operation_type: Literal[
-        "create_node",
-        "patch_node",
-        "create_binding",
-        "materialize_draft",
-        "request_node_run",
-        "update_planning_topic",
-    ]
+class AgentNodeIdRefV2(_StrictModel):
+    kind: Literal["node_id"] = "node_id"
+    node_id: str = Field(min_length=1, max_length=160)
+
+
+class AgentOperationResultRefV2(_StrictModel):
+    kind: Literal["operation_result"] = "operation_result"
     operation_id: str = Field(min_length=1, max_length=160)
-    expected_workflow_revision: int = Field(ge=1)
-    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+AgentNodeRefV2 = Annotated[
+    AgentNodeIdRefV2 | AgentOperationResultRefV2,
+    Field(discriminator="kind"),
+]
+
+
+class AgentAssetRefV2(_StrictModel):
+    kind: Literal["image_asset"] = "image_asset"
+    asset_id: str = Field(min_length=1, max_length=160)
+
+
+class _AgentCommandOperationV2(_StrictModel):
+    operation_id: str = Field(min_length=1, max_length=160)
+
+
+class AgentCreateNodeOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["create_node"] = "create_node"
+    node_type: Literal["text", "script", "image", "video", "audio"]
+    semantic_role: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=256)
+    summary_prompt: str | None = Field(default=None, max_length=8_192)
+    generation_prompt: str | None = Field(default=None, max_length=32_768)
+    structured_content: dict[str, Any] = Field(default_factory=dict)
+    model_id: str | None = Field(default=None, max_length=160)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    source_asset_id: str | None = Field(default=None, max_length=160)
+    video_skill_run_id: str | None = Field(default=None, max_length=160)
+    placement_hint: AgentPlacementHintV2
+
+
+class AgentPatchEditableNodeOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["patch_editable_node"] = "patch_editable_node"
+    node: AgentNodeRefV2
+    title: str | None = Field(default=None, min_length=1, max_length=256)
+    summary_prompt: str | None = Field(default=None, max_length=8_192)
+    generation_prompt: str | None = Field(default=None, max_length=32_768)
+    structured_content: dict[str, Any] | None = None
+    model_id: str | None = Field(default=None, max_length=160)
+    parameters: dict[str, Any] | None = None
+
+
+class AgentCreateBindingOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["create_binding"] = "create_binding"
+    source: AgentNodeRefV2 | AgentAssetRefV2
+    target: AgentNodeRefV2
+    binding_kind: Literal[
+        "brief_context",
+        "script_context",
+        "image_reference",
+        "video_reference",
+        "audio_reference",
+    ]
+    required: bool = True
+    display_order: int = Field(default=0, ge=0)
+
+
+class AgentDeleteBindingOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["delete_binding"] = "delete_binding"
+    binding_id: str = Field(min_length=1, max_length=160)
+
+
+class AgentDeleteNodeOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["delete_node"] = "delete_node"
+    node: AgentNodeRefV2
+
+
+class AgentMaterializeProposalOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["materialize_proposal"] = "materialize_proposal"
+    proposal_id: str = Field(min_length=1, max_length=160)
+    option_id: str = Field(min_length=1, max_length=160)
+    placement_hint: AgentPlacementHintV2
+
+
+class AgentForkReadyMediaOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["fork_ready_media"] = "fork_ready_media"
+    source_node: AgentNodeRefV2
+    title: str = Field(min_length=1, max_length=256)
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    model_id: str | None = Field(default=None, max_length=160)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    placement_hint: AgentPlacementHintV2
+
+
+class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["request_node_run"] = "request_node_run"
+    node: AgentNodeRefV2
+
+
+class AgentUpdatePlanningTopicOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["update_planning_topic"] = "update_planning_topic"
+    skill_run_id: str = Field(min_length=1, max_length=160)
+    topic_id: str = Field(min_length=1, max_length=160)
+    status: Literal["resolved", "skipped", "not_required"]
+    related_nodes: tuple[AgentNodeRefV2, ...] = Field(default=(), max_length=32)
+
+
+class AgentPrepareCompositionOperationV2(_AgentCommandOperationV2):
+    operation_type: Literal["prepare_composition"] = "prepare_composition"
+    editing_node: AgentNodeRefV2 | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=256)
+    ordered_video_nodes: tuple[AgentNodeRefV2, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+    bgm_audio_node: AgentNodeRefV2 | None = None
+    bgm_volume: float = Field(default=0.20, ge=0.0, le=1.0)
+    output: EditingOutputSettingsV2 = Field(default_factory=EditingOutputSettingsV2)
+    placement_hint: AgentPlacementHintV2 | None = None
 
     @model_validator(mode="after")
-    def validate_payload(self) -> "AgentCanvasOperationV2":
-        _validate_safe_payload(self.payload, field_name="operation payload")
+    def validate_composition_sources(self) -> "AgentPrepareCompositionOperationV2":
+        if self.editing_node is None and (self.title is None or self.placement_hint is None):
+            raise ValueError("A new composition requires title and placement_hint.")
+        if not self.ordered_video_nodes and self.bgm_audio_node is None:
+            raise ValueError("Composition requires at least one media source.")
+        video_refs = tuple(reference.model_dump_json() for reference in self.ordered_video_nodes)
+        if len(set(video_refs)) != len(video_refs):
+            raise ValueError("Composition video references must be unique.")
         return self
+
+
+AgentCommandOperationDraftV2 = Annotated[
+    AgentCreateNodeOperationV2
+    | AgentPatchEditableNodeOperationV2
+    | AgentCreateBindingOperationV2
+    | AgentDeleteBindingOperationV2
+    | AgentDeleteNodeOperationV2
+    | AgentMaterializeProposalOperationV2
+    | AgentForkReadyMediaOperationV2
+    | AgentRequestNodeRunOperationV2
+    | AgentUpdatePlanningTopicOperationV2
+    | AgentPrepareCompositionOperationV2,
+    Field(discriminator="operation_type"),
+]
+
+
+class AgentPrepareCompositionResultV2(_StrictModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    editing_node: CanvasNodeV2
+    manifest: EditingManifestV2
+    bindings: tuple[CanvasBindingV2, ...]
+    semantic_revision: int = Field(ge=1)
+    events_cursor: int = Field(ge=0)
+    replayed: bool = False
+
+
+_NODE_RESULT_OPERATIONS = {
+    "create_node",
+    "materialize_proposal",
+    "fork_ready_media",
+}
+
+
+def _operation_result_references(value: Any) -> tuple[str, ...]:
+    references: list[str] = []
+
+    def visit(current: Any) -> None:
+        if isinstance(current, dict):
+            if current.get("kind") == "operation_result":
+                operation_id = current.get("operation_id")
+                if isinstance(operation_id, str):
+                    references.append(operation_id)
+            for child in current.values():
+                visit(child)
+        elif isinstance(current, (list, tuple)):
+            for child in current:
+                visit(child)
+
+    visit(value)
+    return tuple(references)
+
+
+class AgentCommandPlanDraftV2(_StrictModel):
+    operations: tuple[AgentCommandOperationDraftV2, ...] = Field(
+        min_length=1,
+        max_length=8,
+    )
+    continuation_requested: bool = False
+
+    @model_validator(mode="after")
+    def validate_operation_graph(self) -> "AgentCommandPlanDraftV2":
+        all_operations = {operation.operation_id: operation for operation in self.operations}
+        if len(all_operations) != len(self.operations):
+            raise ValueError("Command operation_id values must be unique.")
+        seen: dict[str, _AgentCommandOperationV2] = {}
+        for operation in self.operations:
+            operation_payload = operation.model_dump(mode="python")
+            _validate_safe_payload(operation_payload, field_name="command operation")
+            for reference_id in _operation_result_references(operation_payload):
+                if reference_id not in seen:
+                    raise ValueError("Command operation result reference must point backward.")
+                if seen[reference_id].operation_type not in _NODE_RESULT_OPERATIONS:
+                    raise ValueError("Referenced command operation does not produce a node.")
+            seen[operation.operation_id] = operation
+        return self
+
+
+AgentCommandRiskV2 = Literal[
+    "reversible_authoring",
+    "destructive_authoring",
+    "external_effect",
+]
+AgentCommandPlanStatusV2 = Literal[
+    "pending_confirmation",
+    "applying",
+    "applied",
+    "rejected",
+    "superseded",
+    "failed",
+]
+
+
+class AgentCommandPlanCreateV2(AgentCommandPlanDraftV2):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    conversation_id: str = Field(min_length=1, max_length=160)
+    source_turn_id: str = Field(min_length=1, max_length=160)
+    base_workflow_revision: int = Field(ge=1)
+    risk: AgentCommandRiskV2
+    confirmation_required: bool
+    target_summary: str = Field(default="", max_length=4_000)
+
+
+class AgentCommandPlanV2(AgentCommandPlanCreateV2):
+    plan_id: str = Field(min_length=1, max_length=160)
+    operation_fingerprint: str = Field(min_length=1, max_length=128)
+    status: AgentCommandPlanStatusV2
+    supersedes_plan_id: str | None = Field(default=None, max_length=160)
+    replacement_plan_id: str | None = Field(default=None, max_length=160)
+    actor: Literal["agent", "user", "system"] = "agent"
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentCommandReplanResultV2(_StrictModel):
+    original_plan_id: str = Field(min_length=1, max_length=160)
+    replacement_plan: AgentCommandPlanV2
+    confirmation_transferred: bool
+
+
+class AgentOperationResultV2(_StrictModel):
+    operation_id: str = Field(min_length=1, max_length=160)
+    node_id: str | None = Field(default=None, max_length=160)
+    binding_id: str | None = Field(default=None, max_length=160)
+    execution_id: str | None = Field(default=None, max_length=160)
+    status: Literal["applied", "queued", "failed"]
+    error_code: str | None = Field(default=None, max_length=160)
+
+
+class AgentCommandTransactionResultV2(_StrictModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    operation_results: tuple[AgentOperationResultV2, ...] = Field(max_length=8)
+    created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    updated_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    deleted_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    created_binding_ids: tuple[str, ...] = Field(default=(), max_length=64)
+    deleted_binding_ids: tuple[str, ...] = Field(default=(), max_length=64)
+    post_commit_run_node_ids: tuple[str, ...] = Field(default=(), max_length=8)
 
 
 class AgentActionEnvelopeV2(_StrictModel):
     assistant_message: str = Field(min_length=1, max_length=4_000)
     specialist_handoff: AgentCanvasSpecialistName | None = None
     proposal: ConceptProposalDraftV2 | None = None
-    operations: tuple[AgentCanvasOperationV2, ...] = Field(default=(), max_length=8)
+    command_plan: AgentCommandPlanDraftV2 | None = None
     auto_continue_requested: bool = False
 
 

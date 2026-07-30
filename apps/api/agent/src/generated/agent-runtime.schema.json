@@ -11,15 +11,15 @@
         },
         "semantic_role": {
           "enum": [
+            "bgm",
+            "character_main",
+            "character_turnaround",
             "product_main",
             "product_view_board",
             "prop_main",
-            "character_main",
-            "character_turnaround",
             "scene_design_board",
             "storyboard_grid",
-            "storyboard_video_segment",
-            "bgm"
+            "storyboard_video_segment"
           ],
           "title": "Semantic Role",
           "type": "string"
@@ -52,10 +52,10 @@
         }
       },
       "required": [
-        "semantic_role",
-        "title",
         "generation_prompt",
-        "structured_content"
+        "semantic_role",
+        "structured_content",
+        "title"
       ],
       "title": "AdMediaSpecialistDraftV2",
       "type": "object"
@@ -74,14 +74,16 @@
           "title": "Auto Continue Requested",
           "type": "boolean"
         },
-        "operations": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/AgentCanvasOperationV2"
-          },
-          "maxItems": 8,
-          "title": "Operations",
-          "type": "array"
+        "command_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentCommandPlanDraftV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "proposal": {
           "anyOf": [
@@ -98,14 +100,14 @@
           "anyOf": [
             {
               "enum": [
-                "script_writer",
+                "bgm_director",
+                "character_designer",
                 "product_designer",
                 "prop_designer",
-                "character_designer",
                 "scene_designer",
+                "script_writer",
                 "storyboard_artist",
-                "video_director",
-                "bgm_director"
+                "video_director"
               ],
               "type": "string"
             },
@@ -123,12 +125,522 @@
       "title": "AgentActionEnvelopeV2",
       "type": "object"
     },
-    "AgentCanvasOperationV2": {
+    "AgentAssetRefV2": {
       "additionalProperties": false,
       "properties": {
-        "expected_workflow_revision": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "image_asset",
+          "default": "image_asset",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "title": "AgentAssetRefV2",
+      "type": "object"
+    },
+    "AgentCommandPlanCreateV2": {
+      "additionalProperties": false,
+      "properties": {
+        "base_workflow_revision": {
           "minimum": 1,
-          "title": "Expected Workflow Revision",
+          "title": "Base Workflow Revision",
+          "type": "integer"
+        },
+        "confirmation_required": {
+          "title": "Confirmation Required",
+          "type": "boolean"
+        },
+        "continuation_requested": {
+          "default": false,
+          "title": "Continuation Requested",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "create_binding": "#/$defs/AgentCreateBindingOperationV2",
+                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
+                "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
+                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
+                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
+                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
+                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              "propertyName": "operation_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentCreateBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+              }
+            ]
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        },
+        "risk": {
+          "enum": [
+            "destructive_authoring",
+            "external_effect",
+            "reversible_authoring"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Turn Id",
+          "type": "string"
+        },
+        "target_summary": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Target Summary",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_workflow_revision",
+        "confirmation_required",
+        "conversation_id",
+        "operations",
+        "risk",
+        "source_turn_id",
+        "workflow_id"
+      ],
+      "title": "AgentCommandPlanCreateV2",
+      "type": "object"
+    },
+    "AgentCommandPlanDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "continuation_requested": {
+          "default": false,
+          "title": "Continuation Requested",
+          "type": "boolean"
+        },
+        "operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "create_binding": "#/$defs/AgentCreateBindingOperationV2",
+                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
+                "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
+                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
+                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
+                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
+                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              "propertyName": "operation_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentCreateBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+              }
+            ]
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operations"
+      ],
+      "title": "AgentCommandPlanDraftV2",
+      "type": "object"
+    },
+    "AgentCommandPlanV2": {
+      "additionalProperties": false,
+      "properties": {
+        "actor": {
+          "default": "agent",
+          "enum": [
+            "agent",
+            "system",
+            "user"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
+        "base_workflow_revision": {
+          "minimum": 1,
+          "title": "Base Workflow Revision",
+          "type": "integer"
+        },
+        "confirmation_required": {
+          "title": "Confirmation Required",
+          "type": "boolean"
+        },
+        "continuation_requested": {
+          "default": false,
+          "title": "Continuation Requested",
+          "type": "boolean"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "operation_fingerprint": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Operation Fingerprint",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "create_binding": "#/$defs/AgentCreateBindingOperationV2",
+                "create_node": "#/$defs/AgentCreateNodeOperationV2",
+                "delete_binding": "#/$defs/AgentDeleteBindingOperationV2",
+                "delete_node": "#/$defs/AgentDeleteNodeOperationV2",
+                "fork_ready_media": "#/$defs/AgentForkReadyMediaOperationV2",
+                "materialize_proposal": "#/$defs/AgentMaterializeProposalOperationV2",
+                "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
+                "prepare_composition": "#/$defs/AgentPrepareCompositionOperationV2",
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
+                "update_planning_topic": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              "propertyName": "operation_type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AgentCreateNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPatchEditableNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentCreateBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteBindingOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentDeleteNodeOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentMaterializeProposalOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentForkReadyMediaOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentUpdatePlanningTopicOperationV2"
+              },
+              {
+                "$ref": "#/$defs/AgentPrepareCompositionOperationV2"
+              }
+            ]
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        },
+        "plan_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "replacement_plan_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement Plan Id"
+        },
+        "risk": {
+          "enum": [
+            "destructive_authoring",
+            "external_effect",
+            "reversible_authoring"
+          ],
+          "title": "Risk",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Turn Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "applying",
+            "failed",
+            "pending_confirmation",
+            "rejected",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "supersedes_plan_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Supersedes Plan Id"
+        },
+        "target_summary": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Target Summary",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_workflow_revision",
+        "confirmation_required",
+        "conversation_id",
+        "created_at",
+        "operation_fingerprint",
+        "operations",
+        "plan_id",
+        "risk",
+        "source_turn_id",
+        "status",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "AgentCommandPlanV2",
+      "type": "object"
+    },
+    "AgentCommandReplanContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "conflict_code": {
+          "const": "workflow_revision_conflict",
+          "title": "Conflict Code",
+          "type": "string"
+        },
+        "context_kind": {
+          "const": "agent_command_replan",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "current_target_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Current Target Summaries",
+          "type": "array"
+        },
+        "original_plan_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Original Plan Summary",
+          "type": "string"
+        },
+        "original_user_intent": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "Original User Intent",
+          "type": "string"
+        },
+        "replan_attempt": {
+          "const": 1,
+          "default": 1,
+          "title": "Replan Attempt",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "conflict_code",
+        "context_kind",
+        "conversation_id",
+        "original_plan_summary",
+        "original_user_intent",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "AgentCommandReplanContextV2",
+      "type": "object"
+    },
+    "AgentCommandReplanResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "confirmation_transferred": {
+          "title": "Confirmation Transferred",
+          "type": "boolean"
+        },
+        "original_plan_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Original Plan Id",
+          "type": "string"
+        },
+        "replacement_plan": {
+          "$ref": "#/$defs/AgentCommandPlanV2"
+        }
+      },
+      "required": [
+        "confirmation_transferred",
+        "original_plan_id",
+        "replacement_plan"
+      ],
+      "title": "AgentCommandReplanResultV2",
+      "type": "object"
+    },
+    "AgentCreateBindingOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_kind": {
+          "enum": [
+            "audio_reference",
+            "brief_context",
+            "image_reference",
+            "script_context",
+            "video_reference"
+          ],
+          "title": "Binding Kind",
+          "type": "string"
+        },
+        "display_order": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Display Order",
           "type": "integer"
         },
         "operation_id": {
@@ -138,29 +650,850 @@
           "type": "string"
         },
         "operation_type": {
-          "enum": [
-            "create_node",
-            "patch_node",
-            "create_binding",
-            "materialize_draft",
-            "request_node_run",
-            "update_planning_topic"
-          ],
+          "const": "create_binding",
+          "default": "create_binding",
           "title": "Operation Type",
           "type": "string"
         },
-        "payload": {
-          "additionalProperties": true,
-          "title": "Payload",
-          "type": "object"
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "node_id": "#/$defs/AgentNodeIdRefV2",
+                  "operation_result": "#/$defs/AgentOperationResultRefV2"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentNodeIdRefV2"
+                },
+                {
+                  "$ref": "#/$defs/AgentOperationResultRefV2"
+                }
+              ]
+            },
+            {
+              "$ref": "#/$defs/AgentAssetRefV2"
+            }
+          ],
+          "title": "Source"
+        },
+        "target": {
+          "discriminator": {
+            "mapping": {
+              "node_id": "#/$defs/AgentNodeIdRefV2",
+              "operation_result": "#/$defs/AgentOperationResultRefV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentNodeIdRefV2"
+            },
+            {
+              "$ref": "#/$defs/AgentOperationResultRefV2"
+            }
+          ],
+          "title": "Target"
         }
       },
       "required": [
-        "operation_type",
+        "binding_kind",
         "operation_id",
-        "expected_workflow_revision"
+        "source",
+        "target"
       ],
-      "title": "AgentCanvasOperationV2",
+      "title": "AgentCreateBindingOperationV2",
+      "type": "object"
+    },
+    "AgentCreateNodeOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "node_type": {
+          "enum": [
+            "audio",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Node Type",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "create_node",
+          "default": "create_node",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "placement_hint": {
+          "$ref": "#/$defs/AgentPlacementHintV2"
+        },
+        "semantic_role": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Semantic Role",
+          "type": "string"
+        },
+        "source_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Asset Id"
+        },
+        "structured_content": {
+          "additionalProperties": true,
+          "title": "Structured Content",
+          "type": "object"
+        },
+        "summary_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary Prompt"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "video_skill_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Skill Run Id"
+        }
+      },
+      "required": [
+        "node_type",
+        "operation_id",
+        "placement_hint",
+        "semantic_role",
+        "title"
+      ],
+      "title": "AgentCreateNodeOperationV2",
+      "type": "object"
+    },
+    "AgentDeleteBindingOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "delete_binding",
+          "default": "delete_binding",
+          "title": "Operation Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_id",
+        "operation_id"
+      ],
+      "title": "AgentDeleteBindingOperationV2",
+      "type": "object"
+    },
+    "AgentDeleteNodeOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "discriminator": {
+            "mapping": {
+              "node_id": "#/$defs/AgentNodeIdRefV2",
+              "operation_result": "#/$defs/AgentOperationResultRefV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentNodeIdRefV2"
+            },
+            {
+              "$ref": "#/$defs/AgentOperationResultRefV2"
+            }
+          ],
+          "title": "Node"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "delete_node",
+          "default": "delete_node",
+          "title": "Operation Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "operation_id"
+      ],
+      "title": "AgentDeleteNodeOperationV2",
+      "type": "object"
+    },
+    "AgentForkReadyMediaOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "fork_ready_media",
+          "default": "fork_ready_media",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "placement_hint": {
+          "$ref": "#/$defs/AgentPlacementHintV2"
+        },
+        "source_node": {
+          "discriminator": {
+            "mapping": {
+              "node_id": "#/$defs/AgentNodeIdRefV2",
+              "operation_result": "#/$defs/AgentOperationResultRefV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentNodeIdRefV2"
+            },
+            {
+              "$ref": "#/$defs/AgentOperationResultRefV2"
+            }
+          ],
+          "title": "Source Node"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "generation_prompt",
+        "operation_id",
+        "placement_hint",
+        "source_node",
+        "title"
+      ],
+      "title": "AgentForkReadyMediaOperationV2",
+      "type": "object"
+    },
+    "AgentMaterializeProposalOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "materialize_proposal",
+          "default": "materialize_proposal",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "placement_hint": {
+          "$ref": "#/$defs/AgentPlacementHintV2"
+        },
+        "proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "option_id",
+        "placement_hint",
+        "proposal_id"
+      ],
+      "title": "AgentMaterializeProposalOperationV2",
+      "type": "object"
+    },
+    "AgentNodeIdRefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "node_id",
+          "default": "node_id",
+          "title": "Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id"
+      ],
+      "title": "AgentNodeIdRefV2",
+      "type": "object"
+    },
+    "AgentOperationResultRefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "operation_result",
+          "default": "operation_result",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "AgentOperationResultRefV2",
+      "type": "object"
+    },
+    "AgentOperationResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Id"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "execution_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Id"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "applied",
+            "failed",
+            "queued"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "status"
+      ],
+      "title": "AgentOperationResultV2",
+      "type": "object"
+    },
+    "AgentPatchEditableNodeOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "node": {
+          "discriminator": {
+            "mapping": {
+              "node_id": "#/$defs/AgentNodeIdRefV2",
+              "operation_result": "#/$defs/AgentOperationResultRefV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentNodeIdRefV2"
+            },
+            {
+              "$ref": "#/$defs/AgentOperationResultRefV2"
+            }
+          ],
+          "title": "Node"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "patch_editable_node",
+          "default": "patch_editable_node",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "parameters": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parameters"
+        },
+        "structured_content": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Structured Content"
+        },
+        "summary_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary Prompt"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "node",
+        "operation_id"
+      ],
+      "title": "AgentPatchEditableNodeOperationV2",
+      "type": "object"
+    },
+    "AgentPlacementHintV2": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Anchor Node Id"
+        },
+        "group_key": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Key"
+        },
+        "intent": {
+          "enum": [
+            "after_anchor",
+            "append_flow",
+            "near_selection",
+            "right_sibling"
+          ],
+          "title": "Intent",
+          "type": "string"
+        }
+      },
+      "required": [
+        "intent"
+      ],
+      "title": "AgentPlacementHintV2",
+      "type": "object"
+    },
+    "AgentPrepareCompositionOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bgm_audio_node": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "node_id": "#/$defs/AgentNodeIdRefV2",
+                  "operation_result": "#/$defs/AgentOperationResultRefV2"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentNodeIdRefV2"
+                },
+                {
+                  "$ref": "#/$defs/AgentOperationResultRefV2"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bgm Audio Node"
+        },
+        "bgm_volume": {
+          "default": 0.2,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bgm Volume",
+          "type": "number"
+        },
+        "editing_node": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "node_id": "#/$defs/AgentNodeIdRefV2",
+                  "operation_result": "#/$defs/AgentOperationResultRefV2"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentNodeIdRefV2"
+                },
+                {
+                  "$ref": "#/$defs/AgentOperationResultRefV2"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Editing Node"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "prepare_composition",
+          "default": "prepare_composition",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "ordered_video_nodes": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "node_id": "#/$defs/AgentNodeIdRefV2",
+                "operation_result": "#/$defs/AgentOperationResultRefV2"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AgentNodeIdRefV2"
+              },
+              {
+                "$ref": "#/$defs/AgentOperationResultRefV2"
+              }
+            ]
+          },
+          "maxItems": 32,
+          "title": "Ordered Video Nodes",
+          "type": "array"
+        },
+        "output": {
+          "$ref": "#/$defs/EditingOutputSettingsV2"
+        },
+        "placement_hint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentPlacementHintV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "AgentPrepareCompositionOperationV2",
+      "type": "object"
+    },
+    "AgentPrepareCompositionResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/CanvasBindingV2"
+          },
+          "title": "Bindings",
+          "type": "array"
+        },
+        "editing_node": {
+          "$ref": "#/$defs/CanvasNodeV2"
+        },
+        "events_cursor": {
+          "minimum": 0,
+          "title": "Events Cursor",
+          "type": "integer"
+        },
+        "manifest": {
+          "$ref": "#/$defs/EditingManifestV2"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "semantic_revision": {
+          "minimum": 1,
+          "title": "Semantic Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bindings",
+        "editing_node",
+        "events_cursor",
+        "manifest",
+        "semantic_revision",
+        "workflow_id"
+      ],
+      "title": "AgentPrepareCompositionResultV2",
       "type": "object"
     },
     "AgentReferenceSummary": {
@@ -188,10 +1521,10 @@
           "anyOf": [
             {
               "enum": [
-                "image",
-                "video",
                 "audio",
-                "text"
+                "image",
+                "text",
+                "video"
               ],
               "type": "string"
             },
@@ -227,6 +1560,47 @@
         "semantic_type"
       ],
       "title": "AgentReferenceSummary",
+      "type": "object"
+    },
+    "AgentRequestNodeRunOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "node": {
+          "discriminator": {
+            "mapping": {
+              "node_id": "#/$defs/AgentNodeIdRefV2",
+              "operation_result": "#/$defs/AgentOperationResultRefV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentNodeIdRefV2"
+            },
+            {
+              "$ref": "#/$defs/AgentOperationResultRefV2"
+            }
+          ],
+          "title": "Node"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "request_node_run",
+          "default": "request_node_run",
+          "title": "Operation Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node",
+        "operation_id"
+      ],
+      "title": "AgentRequestNodeRunOperationV2",
       "type": "object"
     },
     "AgentRunContext": {
@@ -430,15 +1804,15 @@
       "properties": {
         "agent_name": {
           "enum": [
+            "bgm_director",
+            "character_designer",
             "director",
-            "script_writer",
             "product_designer",
             "prop_designer",
-            "character_designer",
             "scene_designer",
+            "script_writer",
             "storyboard_artist",
-            "video_director",
-            "bgm_director"
+            "video_director"
           ],
           "title": "Agent Name",
           "type": "string"
@@ -453,6 +1827,7 @@
             {
               "discriminator": {
                 "mapping": {
+                  "agent_command_replan": "#/$defs/AgentCommandReplanContextV2",
                   "bgm_expert": "#/$defs/BgmExpertAgentContext",
                   "character_expert": "#/$defs/CharacterExpertAgentContext",
                   "conversation_summary": "#/$defs/ConversationSummaryAgentContext",
@@ -505,6 +1880,9 @@
                 },
                 {
                   "$ref": "#/$defs/DirectorTurnContextV2"
+                },
+                {
+                  "$ref": "#/$defs/AgentCommandReplanContextV2"
                 },
                 {
                   "$ref": "#/$defs/SpecialistContextV2"
@@ -613,13 +1991,13 @@
         }
       },
       "required": [
-        "run_id",
-        "request_id",
         "agent_name",
-        "operation",
+        "context",
         "deadline_at",
         "model_policy_id",
-        "context"
+        "operation",
+        "request_id",
+        "run_id"
       ],
       "title": "AgentRunRequest",
       "type": "object"
@@ -629,17 +2007,17 @@
       "properties": {
         "code": {
           "enum": [
-            "agent_runtime_unavailable",
-            "agent_protocol_mismatch",
-            "agent_model_unavailable",
-            "agent_structured_output_invalid",
-            "agent_run_budget_exceeded",
             "agent_deadline_exceeded",
-            "agent_stream_backpressure_exceeded",
-            "agent_tool_not_allowed",
-            "agent_target_revision_conflict",
+            "agent_model_unavailable",
+            "agent_protocol_mismatch",
+            "agent_run_budget_exceeded",
             "agent_run_cancelled",
-            "agent_runtime_fake_forbidden"
+            "agent_runtime_fake_forbidden",
+            "agent_runtime_unavailable",
+            "agent_stream_backpressure_exceeded",
+            "agent_structured_output_invalid",
+            "agent_target_revision_conflict",
+            "agent_tool_not_allowed"
           ],
           "title": "Code",
           "type": "string"
@@ -674,15 +2052,15 @@
       "properties": {
         "agent_name": {
           "enum": [
+            "bgm_director",
+            "character_designer",
             "director",
-            "script_writer",
             "product_designer",
             "prop_designer",
-            "character_designer",
             "scene_designer",
+            "script_writer",
             "storyboard_artist",
-            "video_director",
-            "bgm_director"
+            "video_director"
           ],
           "title": "Agent Name",
           "type": "string"
@@ -694,14 +2072,14 @@
         },
         "event_type": {
           "enum": [
-            "run_started",
-            "output_delta",
-            "tool_call",
-            "tool_result",
             "heartbeat",
+            "output_delta",
+            "run_cancelled",
             "run_completed",
             "run_failed",
-            "run_cancelled"
+            "run_started",
+            "tool_call",
+            "tool_result"
           ],
           "title": "Event Type",
           "type": "string"
@@ -730,11 +2108,11 @@
         }
       },
       "required": [
-        "seq",
-        "run_id",
         "agent_name",
+        "created_at",
         "event_type",
-        "created_at"
+        "run_id",
+        "seq"
       ],
       "title": "AgentRuntimeEvent",
       "type": "object"
@@ -760,8 +2138,8 @@
         },
         "mode": {
           "enum": [
-            "real",
-            "fake"
+            "fake",
+            "real"
           ],
           "title": "Mode",
           "type": "string"
@@ -796,8 +2174,8 @@
         },
         "status": {
           "enum": [
-            "ready",
             "degraded",
+            "ready",
             "unavailable"
           ],
           "title": "Status",
@@ -805,14 +2183,14 @@
         }
       },
       "required": [
-        "runtime_version",
-        "status",
-        "mode",
-        "contract_digest",
         "capability_digest",
+        "contract_digest",
+        "mode",
+        "pi_version",
         "prompt_digest",
+        "runtime_version",
         "skill_digest",
-        "pi_version"
+        "status"
       ],
       "title": "AgentRuntimeHealth",
       "type": "object"
@@ -858,9 +2236,9 @@
         }
       },
       "required": [
+        "contract_name",
         "run_id",
         "submission_id",
-        "contract_name",
         "value"
       ],
       "title": "AgentStructuredSubmission",
@@ -1158,9 +2536,9 @@
         }
       },
       "required": [
+        "idempotency_key",
         "run_id",
         "tool_call_id",
-        "idempotency_key",
         "tool_name"
       ],
       "title": "AgentToolCall",
@@ -1216,8 +2594,8 @@
           "enum": [
             "accepted",
             "completed",
-            "rejected",
-            "failed"
+            "failed",
+            "rejected"
           ],
           "title": "Status",
           "type": "string"
@@ -1231,10 +2609,79 @@
       },
       "required": [
         "run_id",
-        "tool_call_id",
-        "status"
+        "status",
+        "tool_call_id"
       ],
       "title": "AgentToolResult",
+      "type": "object"
+    },
+    "AgentUpdatePlanningTopicOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_type": {
+          "const": "update_planning_topic",
+          "default": "update_planning_topic",
+          "title": "Operation Type",
+          "type": "string"
+        },
+        "related_nodes": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "node_id": "#/$defs/AgentNodeIdRefV2",
+                "operation_result": "#/$defs/AgentOperationResultRefV2"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/AgentNodeIdRefV2"
+              },
+              {
+                "$ref": "#/$defs/AgentOperationResultRefV2"
+              }
+            ]
+          },
+          "maxItems": 32,
+          "title": "Related Nodes",
+          "type": "array"
+        },
+        "skill_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Run Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "not_required",
+            "resolved",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "skill_run_id",
+        "status",
+        "topic_id"
+      ],
+      "title": "AgentUpdatePlanningTopicOperationV2",
       "type": "object"
     },
     "BgmContentV2": {
@@ -1290,12 +2737,12 @@
         }
       },
       "required": [
-        "music_summary",
         "duration_seconds",
-        "pace",
         "energy_curve",
         "instrumentation",
-        "mood"
+        "mood",
+        "music_summary",
+        "pace"
       ],
       "title": "BgmContentV2",
       "type": "object"
@@ -1393,11 +2840,464 @@
         }
       },
       "required": [
-        "user_input",
+        "context_kind",
         "frozen_facts",
-        "context_kind"
+        "user_input"
       ],
       "title": "BgmExpertAgentContext",
+      "type": "object"
+    },
+    "CanvasBindingSourceImageAssetV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "image_asset",
+          "default": "image_asset",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id"
+      ],
+      "title": "CanvasBindingSourceImageAssetV2",
+      "type": "object"
+    },
+    "CanvasBindingSourceNodeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "node",
+          "default": "node",
+          "title": "Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id"
+      ],
+      "title": "CanvasBindingSourceNodeV2",
+      "type": "object"
+    },
+    "CanvasBindingV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "binding_kind": {
+          "enum": [
+            "audio_reference",
+            "brief_context",
+            "image_reference",
+            "script_context",
+            "video_reference"
+          ],
+          "title": "Binding Kind",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "display_order": {
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "input_role": {
+          "default": "instruction",
+          "enum": [
+            "audio_reference",
+            "first_frame",
+            "instruction",
+            "motion_reference",
+            "source_video",
+            "visual_reference"
+          ],
+          "title": "Input Role",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "image_asset": "#/$defs/CanvasBindingSourceImageAssetV2",
+              "node": "#/$defs/CanvasBindingSourceNodeV2"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CanvasBindingSourceNodeV2"
+            },
+            {
+              "$ref": "#/$defs/CanvasBindingSourceImageAssetV2"
+            }
+          ],
+          "title": "Source"
+        },
+        "target_node_id": {
+          "minLength": 1,
+          "title": "Target Node Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_id",
+        "binding_kind",
+        "created_at",
+        "display_order",
+        "required",
+        "source",
+        "target_node_id",
+        "workflow_id"
+      ],
+      "title": "CanvasBindingV2",
+      "type": "object"
+    },
+    "CanvasNodeErrorV2": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "CanvasNodeErrorV2",
+      "type": "object"
+    },
+    "CanvasNodeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "derived_from_node_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Derived From Node Id"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasNodeErrorV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "node_id": {
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "enum": [
+            "audio",
+            "editing",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Node Type",
+          "type": "string"
+        },
+        "output_asset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Asset Id"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "position": {
+          "$ref": "#/$defs/CanvasPositionV2"
+        },
+        "prompt_context_snapshot_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Context Snapshot Id"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "role_contract_version": {
+          "const": "ad-media-role-v1",
+          "default": "ad-media-role-v1",
+          "title": "Role Contract Version",
+          "type": "string"
+        },
+        "semantic_role": {
+          "minLength": 1,
+          "title": "Semantic Role",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "failed",
+            "ready",
+            "working"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "structured_content": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Structured Content",
+          "type": "object"
+        },
+        "summary_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary Prompt"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "variation_draft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasVariationDraftV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "video_skill_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Skill Run Id"
+        },
+        "workflow_id": {
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "node_id",
+        "node_type",
+        "position",
+        "revision",
+        "semantic_role",
+        "status",
+        "title",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "CanvasNodeV2",
+      "type": "object"
+    },
+    "CanvasPositionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "CanvasPositionV2",
+      "type": "object"
+    },
+    "CanvasVariationDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "model_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Id"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "source_node_id": {
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "variation_revision": {
+          "minimum": 1,
+          "title": "Variation Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_at",
+        "generation_prompt",
+        "source_node_id",
+        "source_node_revision",
+        "title",
+        "updated_at",
+        "variation_revision"
+      ],
+      "title": "CanvasVariationDraftV2",
       "type": "object"
     },
     "CharacterExpertAgentContext": {
@@ -1484,9 +3384,9 @@
         }
       },
       "required": [
-        "user_input",
+        "context_kind",
         "frozen_facts",
-        "context_kind"
+        "user_input"
       ],
       "title": "CharacterExpertAgentContext",
       "type": "object"
@@ -1514,9 +3414,9 @@
         }
       },
       "required": [
+        "description",
         "option_id",
-        "title",
-        "description"
+        "title"
       ],
       "title": "ConceptOptionV2",
       "type": "object"
@@ -1535,37 +3435,46 @@
         },
         "proposal_kind": {
           "enum": [
-            "script",
+            "bgm",
+            "character",
             "product",
             "prop",
-            "character",
             "scene",
+            "script",
             "storyboard",
-            "video",
-            "bgm"
+            "video"
           ],
           "title": "Proposal Kind",
           "type": "string"
         },
+        "proposed_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ProposedDraftReferenceV2"
+          },
+          "maxItems": 64,
+          "title": "Proposed References",
+          "type": "array"
+        },
         "specialist_name": {
           "enum": [
-            "script_writer",
+            "bgm_director",
+            "character_designer",
             "product_designer",
             "prop_designer",
-            "character_designer",
             "scene_designer",
+            "script_writer",
             "storyboard_artist",
-            "video_director",
-            "bgm_director"
+            "video_director"
           ],
           "title": "Specialist Name",
           "type": "string"
         }
       },
       "required": [
+        "options",
         "proposal_kind",
-        "specialist_name",
-        "options"
+        "specialist_name"
       ],
       "title": "ConceptProposalDraftV2",
       "type": "object"
@@ -1614,9 +3523,9 @@
       },
       "required": [
         "context_kind",
+        "conversation_id",
         "user_input",
-        "workflow_id",
-        "conversation_id"
+        "workflow_id"
       ],
       "title": "ConversationSummaryAgentContext",
       "type": "object"
@@ -1635,6 +3544,95 @@
         "summary"
       ],
       "title": "ConversationSummaryResult",
+      "type": "object"
+    },
+    "CreativeSessionStateV2": {
+      "additionalProperties": false,
+      "properties": {
+        "current_topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Topic Id"
+        },
+        "deferred_topic_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Deferred Topic Ids",
+          "type": "array"
+        },
+        "memory_revision": {
+          "minimum": 0,
+          "title": "Memory Revision",
+          "type": "integer"
+        },
+        "skill_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Run Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "topics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlanningTopicProgressV2"
+          },
+          "maxItems": 32,
+          "title": "Topics",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_revision",
+        "skill_id",
+        "skill_run_id",
+        "skill_version",
+        "status",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "CreativeSessionStateV2",
       "type": "object"
     },
     "DesignAssetContentV2": {
@@ -1675,9 +3673,9 @@
         }
       },
       "required": [
-        "subject_identity",
         "design_summary",
-        "style"
+        "style",
+        "subject_identity"
       ],
       "title": "DesignAssetContentV2",
       "type": "object"
@@ -1685,6 +3683,15 @@
     "DirectorTurnContextV2": {
       "additionalProperties": false,
       "properties": {
+        "candidate_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Candidate Summaries",
+          "type": "array"
+        },
         "context_kind": {
           "const": "director_turn",
           "title": "Context Kind",
@@ -1695,6 +3702,28 @@
           "minLength": 1,
           "title": "Conversation Id",
           "type": "string"
+        },
+        "creative_memory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectCreativeMemoryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creative_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeSessionStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "explicit_input_summaries": {
           "default": [],
@@ -1732,6 +3761,15 @@
           "title": "Recent Messages",
           "type": "array"
         },
+        "resolved_image_targets": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResolvedImageTargetV2"
+          },
+          "maxItems": 16,
+          "title": "Resolved Image Targets",
+          "type": "array"
+        },
         "script_summary": {
           "default": "",
           "maxLength": 8192,
@@ -1764,12 +3802,291 @@
       },
       "required": [
         "context_kind",
-        "workflow_id",
-        "workflow_revision",
         "conversation_id",
-        "user_input"
+        "user_input",
+        "workflow_id",
+        "workflow_revision"
       ],
       "title": "DirectorTurnContextV2",
+      "type": "object"
+    },
+    "DraftReferenceIntentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_kind": {
+          "enum": [
+            "audio_reference",
+            "brief_context",
+            "image_reference",
+            "script_context",
+            "video_reference"
+          ],
+          "title": "Binding Kind",
+          "type": "string"
+        },
+        "display_order": {
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "input_role": {
+          "enum": [
+            "audio_reference",
+            "first_frame",
+            "instruction",
+            "motion_reference",
+            "source_video",
+            "visual_reference"
+          ],
+          "title": "Input Role",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "image_asset",
+            "node"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_kind",
+        "display_order",
+        "input_role",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "DraftReferenceIntentV2",
+      "type": "object"
+    },
+    "EditingManifestV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bgm_audio_binding_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bgm Audio Binding Id"
+        },
+        "bgm_volume": {
+          "default": 0.2,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Bgm Volume",
+          "type": "number"
+        },
+        "manifest_revision": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Manifest Revision",
+          "type": "integer"
+        },
+        "ordered_video_binding_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Ordered Video Binding Ids",
+          "type": "array"
+        },
+        "output": {
+          "$ref": "#/$defs/EditingOutputSettingsV2"
+        }
+      },
+      "title": "EditingManifestV2",
+      "type": "object"
+    },
+    "EditingOutputSettingsV2": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect_ratio": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aspect Ratio"
+        },
+        "audio_codec": {
+          "const": "aac",
+          "default": "aac",
+          "title": "Audio Codec",
+          "type": "string"
+        },
+        "container": {
+          "const": "mp4",
+          "default": "mp4",
+          "title": "Container",
+          "type": "string"
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 120,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fps"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolution"
+        },
+        "video_codec": {
+          "const": "h264",
+          "default": "h264",
+          "title": "Video Codec",
+          "type": "string"
+        }
+      },
+      "title": "EditingOutputSettingsV2",
+      "type": "object"
+    },
+    "ExpertActivityV2": {
+      "additionalProperties": false,
+      "properties": {
+        "activity_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Activity Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "operation": {
+          "enum": [
+            "materialize_draft",
+            "propose_concepts",
+            "revise_concepts"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "started",
+            "waiting"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "activity_id",
+        "created_at",
+        "operation",
+        "specialist_name",
+        "status",
+        "turn_id",
+        "workflow_id"
+      ],
+      "title": "ExpertActivityV2",
       "type": "object"
     },
     "FrontDeskIntentAgentContext": {
@@ -1839,9 +4156,9 @@
         }
       },
       "required": [
-        "user_input",
+        "context_kind",
         "frozen_facts",
-        "context_kind"
+        "user_input"
       ],
       "title": "FrontDeskIntentAgentContext",
       "type": "object"
@@ -1957,6 +4274,103 @@
       "title": "FrozenPlanningFacts",
       "type": "object"
     },
+    "GuidedDeliveryActionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "add_another_node",
+            "continue_to_composition",
+            "edit_composition_sources",
+            "export_current_cut",
+            "generate_existing_drafts",
+            "prepare_composition",
+            "skip_topic"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "confirmation_required": {
+          "title": "Confirmation Required",
+          "type": "boolean"
+        },
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "manifest_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest Revision"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "ordered_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Ordered Node Ids",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Topic Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "confirmation_required",
+        "label",
+        "reason",
+        "workflow_id"
+      ],
+      "title": "GuidedDeliveryActionV2",
+      "type": "object"
+    },
     "IntentContractAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -2017,10 +4431,10 @@
         }
       },
       "required": [
-        "user_input",
-        "frozen_facts",
+        "ad_request_summary",
         "context_kind",
-        "ad_request_summary"
+        "frozen_facts",
+        "user_input"
       ],
       "title": "IntentContractAgentContext",
       "type": "object"
@@ -2036,9 +4450,9 @@
         },
         "role": {
           "enum": [
-            "user",
             "assistant",
-            "system"
+            "system",
+            "user"
           ],
           "title": "Role",
           "type": "string"
@@ -2050,9 +4464,9 @@
         }
       },
       "required": [
-        "sequence_no",
+        "content",
         "role",
-        "content"
+        "sequence_no"
       ],
       "title": "InteractionMessageSummary",
       "type": "object"
@@ -2161,18 +4575,19 @@
         }
       },
       "required": [
-        "target_locator",
-        "node_id",
+        "expected_revision",
         "item_id",
+        "node_id",
+        "owner_display_name",
+        "owner_type",
         "slot_id",
         "slot_type",
-        "owner_type",
-        "owner_display_name",
-        "expected_revision"
+        "target_locator"
       ],
       "title": "InteractionTargetSummary",
       "type": "object"
     },
+    "JsonValue": {},
     "PlanningItemSummary": {
       "additionalProperties": false,
       "properties": {
@@ -2233,10 +4648,10 @@
           "anyOf": [
             {
               "enum": [
-                "image",
-                "video",
                 "audio",
-                "text"
+                "image",
+                "text",
+                "video"
               ],
               "type": "string"
             },
@@ -2300,6 +4715,90 @@
         "slot_type"
       ],
       "title": "PlanningSlotSummary",
+      "type": "object"
+    },
+    "PlanningTopicProgressV2": {
+      "additionalProperties": false,
+      "properties": {
+        "display_order": {
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "outcome": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Outcome"
+        },
+        "related_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Related Node Ids",
+          "type": "array"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "deferred",
+            "pending",
+            "reopened",
+            "skipped",
+            "working"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "topic_kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Topic Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_order",
+        "required",
+        "specialist_name",
+        "status",
+        "topic_id",
+        "topic_kind"
+      ],
+      "title": "PlanningTopicProgressV2",
       "type": "object"
     },
     "ProductExpertAgentContext": {
@@ -2386,11 +4885,192 @@
         }
       },
       "required": [
-        "user_input",
+        "context_kind",
         "frozen_facts",
-        "context_kind"
+        "user_input"
       ],
       "title": "ProductExpertAgentContext",
+      "type": "object"
+    },
+    "ProjectCreativeMemoryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_node_ids": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Approved Node Ids",
+          "type": "object"
+        },
+        "approved_style_summary": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Approved Style Summary",
+          "type": "string"
+        },
+        "conversation_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Conversation Summary",
+          "type": "string"
+        },
+        "creative_goal": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Creative Goal",
+          "type": "string"
+        },
+        "deferred_topics": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Deferred Topics",
+          "type": "array"
+        },
+        "duration_format": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Duration Format",
+          "type": "string"
+        },
+        "memory_revision": {
+          "minimum": 0,
+          "title": "Memory Revision",
+          "type": "integer"
+        },
+        "open_questions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Open Questions",
+          "type": "array"
+        },
+        "rejection_notes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Rejection Notes",
+          "type": "array"
+        },
+        "summary_through_sequence_no": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Summary Through Sequence No",
+          "type": "integer"
+        },
+        "target_audience": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Target Audience",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "memory_revision",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "ProjectCreativeMemoryV2",
+      "type": "object"
+    },
+    "ProposedDraftReferenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_kind": {
+          "enum": [
+            "audio_reference",
+            "brief_context",
+            "image_reference",
+            "script_context",
+            "video_reference"
+          ],
+          "title": "Binding Kind",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "display_order": {
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "input_role": {
+          "enum": [
+            "audio_reference",
+            "first_frame",
+            "instruction",
+            "motion_reference",
+            "source_video",
+            "visual_reference"
+          ],
+          "title": "Input Role",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "image_asset",
+            "node"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_kind",
+        "display_name",
+        "display_order",
+        "input_role",
+        "media_type",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "ProposedDraftReferenceV2",
       "type": "object"
     },
     "QuickMediaAgentContext": {
@@ -2428,9 +5108,9 @@
         },
         "output_media_type": {
           "enum": [
+            "audio",
             "image",
-            "video",
-            "audio"
+            "video"
           ],
           "title": "Output Media Type",
           "type": "string"
@@ -2471,14 +5151,93 @@
       },
       "required": [
         "context_kind",
-        "user_input",
-        "workflow_id",
-        "node_id",
         "item_id",
+        "node_id",
+        "output_media_type",
         "slot_id",
-        "output_media_type"
+        "user_input",
+        "workflow_id"
       ],
       "title": "QuickMediaAgentContext",
+      "type": "object"
+    },
+    "ResolvedImageTargetV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "checksum": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Checksum",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "owner_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Node Id"
+        },
+        "owner_semantic_role": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner Semantic Role"
+        },
+        "specialist_name": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm_director",
+                "character_designer",
+                "product_designer",
+                "prop_designer",
+                "scene_designer",
+                "script_writer",
+                "storyboard_artist",
+                "video_director"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "quick_media_agent",
+              "type": "string"
+            }
+          ],
+          "title": "Specialist Name"
+        }
+      },
+      "required": [
+        "asset_id",
+        "checksum",
+        "display_name",
+        "specialist_name"
+      ],
+      "title": "ResolvedImageTargetV2",
       "type": "object"
     },
     "SceneBoardPanelV2": {
@@ -2510,10 +5269,10 @@
         }
       },
       "required": [
+        "lighting_material_detail",
         "panel_index",
-        "view_or_zone",
         "spatial_description",
-        "lighting_material_detail"
+        "view_or_zone"
       ],
       "title": "SceneBoardPanelV2",
       "type": "object"
@@ -2592,14 +5351,14 @@
         }
       },
       "required": [
-        "scene_identity",
         "environment_summary",
         "layout",
         "lighting",
         "materials",
-        "time_of_day",
+        "panels",
+        "scene_identity",
         "style",
-        "panels"
+        "time_of_day"
       ],
       "title": "SceneDesignBoardContentV2",
       "type": "object"
@@ -2688,9 +5447,9 @@
         }
       },
       "required": [
-        "user_input",
+        "context_kind",
         "frozen_facts",
-        "context_kind"
+        "user_input"
       ],
       "title": "SceneExpertAgentContext",
       "type": "object"
@@ -2764,10 +5523,10 @@
         }
       },
       "required": [
-        "user_input",
-        "frozen_facts",
+        "ad_request_summary",
         "context_kind",
-        "ad_request_summary"
+        "frozen_facts",
+        "user_input"
       ],
       "title": "ScriptWriterAgentContext",
       "type": "object"
@@ -2780,6 +5539,28 @@
           "title": "Context Kind",
           "type": "string"
         },
+        "creative_memory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProjectCreativeMemoryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creative_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeSessionStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "explicit_input_summaries": {
           "default": [],
           "items": {
@@ -2791,19 +5572,50 @@
         },
         "operation": {
           "enum": [
-            "propose_concepts",
-            "revise_concepts",
+            "direct_response",
             "materialize_draft",
-            "direct_response"
+            "propose_concepts",
+            "revise_concepts"
           ],
           "title": "Operation",
           "type": "string"
+        },
+        "reference_allowlist": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Reference Allowlist",
+          "type": "array"
+        },
+        "resolved_image_targets": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResolvedImageTargetV2"
+          },
+          "maxItems": 16,
+          "title": "Resolved Image Targets",
+          "type": "array"
         },
         "script_summary": {
           "default": "",
           "maxLength": 8192,
           "title": "Script Summary",
           "type": "string"
+        },
+        "selected_option_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Option Id"
         },
         "selected_option_summary": {
           "default": "",
@@ -2813,14 +5625,14 @@
         },
         "specialist_name": {
           "enum": [
-            "script_writer",
+            "bgm_director",
+            "character_designer",
             "product_designer",
             "prop_designer",
-            "character_designer",
             "scene_designer",
+            "script_writer",
             "storyboard_artist",
-            "video_director",
-            "bgm_director"
+            "video_director"
           ],
           "title": "Specialist Name",
           "type": "string"
@@ -2864,11 +5676,11 @@
       },
       "required": [
         "context_kind",
-        "specialist_name",
         "operation",
+        "specialist_name",
+        "user_instruction",
         "workflow_id",
-        "workflow_revision",
-        "user_instruction"
+        "workflow_revision"
       ],
       "title": "SpecialistContextV2",
       "type": "object"
@@ -2965,6 +5777,94 @@
       "title": "SpecialistDraft",
       "type": "object"
     },
+    "SpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "generation_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Generation Prompt"
+        },
+        "node_type": {
+          "enum": [
+            "audio",
+            "editing",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "semantic_role": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Semantic Role",
+          "type": "string"
+        },
+        "structured_content": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Structured Content",
+          "type": "object"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "node_type",
+        "semantic_role",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "SpecialistDraftV2",
+      "type": "object"
+    },
     "StoryboardGridContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -3000,10 +5900,10 @@
         }
       },
       "required": [
-        "sequence_summary",
         "narrative_goal",
-        "style",
-        "panels"
+        "panels",
+        "sequence_summary",
+        "style"
       ],
       "title": "StoryboardGridContentV2",
       "type": "object"
@@ -3049,12 +5949,12 @@
         }
       },
       "required": [
-        "panel_index",
         "beat",
-        "composition",
         "camera",
-        "subject_action",
-        "continuity_from_previous"
+        "composition",
+        "continuity_from_previous",
+        "panel_index",
+        "subject_action"
       ],
       "title": "StoryboardPanelV2",
       "type": "object"
@@ -3196,9 +6096,9 @@
       },
       "required": [
         "context_kind",
+        "target",
         "user_input",
-        "workflow_id",
-        "target"
+        "workflow_id"
       ],
       "title": "TargetedRevisionAgentContext",
       "type": "object"
@@ -3214,9 +6114,9 @@
         },
         "audio_mode": {
           "enum": [
-            "none",
             "bgm_only",
-            "full"
+            "full",
+            "none"
           ],
           "title": "Audio Mode",
           "type": "string"
@@ -3321,15 +6221,15 @@
         }
       },
       "required": [
-        "item_id",
-        "display_name",
+        "audio_mode",
         "description",
-        "item_prompt",
-        "slot_prompts",
+        "display_name",
         "duration_seconds",
+        "item_id",
+        "item_prompt",
         "music_mood",
         "pace",
-        "audio_mode"
+        "slot_prompts"
       ],
       "title": "V2BgmBrief",
       "type": "object"
@@ -3465,13 +6365,13 @@
         }
       },
       "required": [
-        "summary_prompt",
+        "duration_seconds",
+        "energy_curve",
+        "music_brief",
+        "pace",
         "provider_prompt",
         "specialist_prompt",
-        "music_brief",
-        "duration_seconds",
-        "pace",
-        "energy_curve"
+        "summary_prompt"
       ],
       "title": "V2BgmPromptPlan",
       "type": "object"
@@ -3572,9 +6472,9 @@
         }
       },
       "required": [
-        "item_id",
-        "display_name",
         "description",
+        "display_name",
+        "item_id",
         "item_prompt",
         "slot_prompts"
       ],
@@ -3703,9 +6603,9 @@
         }
       },
       "required": [
-        "item_id",
-        "display_name",
         "description",
+        "display_name",
+        "item_id",
         "item_prompt",
         "slot_prompts"
       ],
@@ -3834,9 +6734,9 @@
         }
       },
       "required": [
-        "item_id",
-        "display_name",
         "description",
+        "display_name",
+        "item_id",
         "item_prompt",
         "slot_prompts"
       ],
@@ -3928,8 +6828,8 @@
         }
       },
       "required": [
-        "segment_summary",
         "duration_seconds",
+        "segment_summary",
         "storyboard_content"
       ],
       "title": "VideoSegmentContentV2",
@@ -3949,10 +6849,10 @@
         },
         "source": {
           "enum": [
-            "user",
-            "video_skill",
+            "platform_default",
             "references",
-            "platform_default"
+            "user",
+            "video_skill"
           ],
           "title": "Source",
           "type": "string"
@@ -3965,8 +6865,8 @@
         }
       },
       "required": [
-        "style_prompt",
-        "source"
+        "source",
+        "style_prompt"
       ],
       "title": "VisualStyleContractV2",
       "type": "object"
@@ -4021,9 +6921,9 @@
       },
       "required": [
         "context_kind",
+        "conversation_id",
         "user_input",
-        "workflow_id",
-        "conversation_id"
+        "workflow_id"
       ],
       "title": "WorkflowConversationAgentContext",
       "type": "object"
