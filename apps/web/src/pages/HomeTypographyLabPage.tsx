@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { ChevronDownIcon, ChevronRightIcon } from "../icons";
+import { ChevronDownIcon, ChevronRightIcon, DownloadIcon } from "../icons";
 import {
   DEFAULT_REGION_SETTINGS,
   FONT_CATALOG,
@@ -12,6 +12,7 @@ import {
   type TypographyRegionSettings,
 } from "../features/home-typography/fontCatalog";
 import { loadWebFont } from "../features/home-typography/webFontLoader";
+import { downloadTypographyConfig } from "../features/home-typography/exportTypographyConfig";
 import { HomeShowcase } from "./HomeShowcase";
 import "./home.css";
 import "./home-typography-lab.css";
@@ -72,6 +73,7 @@ export function HomeTypographyLabPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [fontLoadStatus, setFontLoadStatus] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
   const [fontMenuOpen, setFontMenuOpen] = useState(false);
   const fontMenuRef = useRef<HTMLDivElement>(null);
   const fontTriggerRef = useRef<HTMLButtonElement>(null);
@@ -167,6 +169,15 @@ export function HomeTypographyLabPage() {
     setSettings((current) => resetAllRegionSettings(current));
   }
 
+  function exportTypographySettings() {
+    try {
+      downloadTypographyConfig(settings);
+      setExportStatus("");
+    } catch {
+      setExportStatus("Configuration could not be exported.");
+    }
+  }
+
   return (
     <main className={`home-typography-lab home-typography-lab--dark ${inspectorCollapsed ? "is-inspector-collapsed" : ""}`}>
       <section
@@ -194,8 +205,19 @@ export function HomeTypographyLabPage() {
 
         <div className="home-typography-lab__inspector-content">
           <header className="home-typography-lab__inspector-heading">
-            <p>Internal visual calibration</p>
-            <h1>Home Typography Lab</h1>
+            <div>
+              <p>Internal visual calibration</p>
+              <h1>Home Typography Lab</h1>
+            </div>
+            <button
+              className="home-typography-lab__export"
+              type="button"
+              aria-label="Export configuration"
+              title="Export configuration"
+              onClick={exportTypographySettings}
+            >
+              <DownloadIcon />
+            </button>
           </header>
 
           <div className="home-typography-lab__control-group">
@@ -376,6 +398,7 @@ export function HomeTypographyLabPage() {
           </div>
 
           <p className="home-typography-lab__font-status" aria-live="polite">{fontLoadStatus}</p>
+          {exportStatus ? <p className="home-typography-lab__export-status" role="status">{exportStatus}</p> : null}
 
           <section className="home-typography-lab__specimen" aria-label="Selected font specimen">
             <span>Specimen</span>

@@ -1,8 +1,13 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_REGION_SETTINGS } from "../features/home-typography/fontCatalog";
 import { HomeTypographyLabPage } from "./HomeTypographyLabPage";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("HomeTypographyLabPage", () => {
   function chooseFont(fontName: string) {
@@ -16,6 +21,54 @@ describe("HomeTypographyLabPage", () => {
     render(<HomeTypographyLabPage />);
 
     expect(screen.getByRole("main").classList.contains("home-typography-lab--dark")).toBe(true);
+  });
+
+  it("downloads the complete current typography configuration as JSON", async () => {
+    let exportedBlob: Blob | undefined;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      exportedBlob = blob;
+      return "blob:typography-config";
+    });
+    const revokeObjectURL = vi.fn();
+    let downloadedFileName = "";
+
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function click() {
+      downloadedFileName = this.download;
+    });
+
+    render(<HomeTypographyLabPage />);
+    fireEvent.change(screen.getByLabelText("Typography target"), {
+      target: { value: "heroBody" },
+    });
+    chooseFont("DM Sans");
+    fireEvent.change(screen.getByLabelText("Weight"), { target: { value: "700" } });
+    fireEvent.click(screen.getByRole("button", { name: "Export configuration" }));
+
+    expect(downloadedFileName).toMatch(/^adcraft-home-typography-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:typography-config");
+    expect(JSON.parse(await exportedBlob?.text() ?? "")).toEqual({
+      ...DEFAULT_REGION_SETTINGS,
+      heroBody: {
+        ...DEFAULT_REGION_SETTINGS.heroBody,
+        fontId: "dm-sans",
+        fontWeight: 700,
+      },
+    });
+  });
+
+  it("shows a lightweight error when configuration export fails", () => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => {
+        throw new Error("Browser download APIs are unavailable");
+      }),
+      revokeObjectURL: vi.fn(),
+    });
+
+    render(<HomeTypographyLabPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Export configuration" }));
+
+    expect(screen.getByText("Configuration could not be exported.")).toBeTruthy();
   });
 
   it("applies an accent font independently from the Hero main title", () => {

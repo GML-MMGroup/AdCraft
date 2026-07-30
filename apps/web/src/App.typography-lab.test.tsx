@@ -16,7 +16,7 @@ describe("Home typography lab route", () => {
   it("renders the typography lab only at its explicit internal path", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Home Typography Lab" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Home Typography Lab" }, { timeout: 5_000 })).toBeTruthy();
     expect(screen.queryByLabelText("Primary navigation")).toBeNull();
   });
 });

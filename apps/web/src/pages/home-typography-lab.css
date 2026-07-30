@@ -205,6 +205,10 @@
 }
 
 .home-typography-lab__inspector-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   padding-bottom: 21px;
   border-bottom: 1px solid rgba(34, 39, 51, 0.11);
 }
@@ -228,6 +232,23 @@
   font-size: 31px;
   font-weight: 400;
   line-height: 1;
+}
+
+.home-typography-lab__export {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(34, 39, 51, 0.16);
+  border-radius: 6px;
+  background: #fff;
+  color: #4d5070;
+}
+
+.home-typography-lab__export svg {
+  width: 16px;
+  height: 16px;
 }
 
 .home-typography-lab__control-group {
@@ -345,6 +366,7 @@
 .home-typography-lab__font-menu-trigger:focus-visible,
 .home-typography-lab__range-grid input:focus-visible,
 .home-typography-lab__actions button:focus-visible,
+.home-typography-lab__export:focus-visible,
 .home-typography-lab__collapse:focus-visible {
   outline: 2px solid rgba(108, 93, 171, 0.7);
   outline-offset: 2px;
@@ -388,6 +410,13 @@
   min-height: 18px;
   margin: 12px 0 0;
   color: #6f7183;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-typography-lab__export-status {
+  margin: 8px 0 0;
+  color: #a34b4b;
   font-size: 12px;
   line-height: 1.45;
 }
@@ -542,6 +571,7 @@
   --brand-hover: #af9af6;
   --brand-subtle: #241e39;
   --focus-ring: #b6a4ff;
+  --error: #eb788c;
   --media-overlay: rgba(8, 9, 13, 0.72);
   --mist-blue: var(--page-bg);
   --mauve: var(--brand);
@@ -724,6 +754,7 @@
 .home-typography-lab--dark .home-typography-lab__font-menu-trigger,
 .home-typography-lab--dark .home-typography-lab__font-options,
 .home-typography-lab--dark .home-typography-lab__actions button,
+.home-typography-lab--dark .home-typography-lab__export,
 .home-typography-lab--dark .home-typography-lab__collapse {
   border-color: var(--lab-border);
   background: var(--lab-input-background);
@@ -759,6 +790,10 @@
   color: var(--lab-text-muted);
 }
 
+.home-typography-lab--dark .home-typography-lab__export-status {
+  color: var(--error);
+}
+
 .home-typography-lab--dark .home-typography-lab__font-option {
   color: var(--lab-text);
 }
@@ -778,6 +813,7 @@
   .home-typography-lab__font-menu-trigger,
   .home-typography-lab__range-grid input,
   .home-typography-lab__actions button,
+  .home-typography-lab__export,
   .home-typography-lab__collapse
 ):focus-visible {
   outline-color: var(--lab-focus);
