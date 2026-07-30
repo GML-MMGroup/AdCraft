@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeAgentCanvasChatTimelineCompatV2,
+  normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeAgentCanvasChatTimelineResponseV2,
   normalizeCanvasBindingV2,
@@ -18,6 +19,7 @@ import {
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
+  normalizeResolvedTextInputSnapshotV2,
 } from "./normalizers.ts";
 
 function validWorkflowPayload() {
@@ -33,7 +35,7 @@ function validWorkflowPayload() {
         node_id: "node-text-1",
         workflow_id: "workflow-1",
         node_type: "text",
-        semantic_role: "brief",
+        creative_role: "creative_brief",
         role_contract_version: "ad-media-role-v1",
         title: "Creative Brief",
         status: "ready",
@@ -44,7 +46,6 @@ function validWorkflowPayload() {
         parameters: {},
         prompt_context_snapshot_id: null,
         output_asset_id: null,
-        video_skill_run_id: "skill-run-1",
         position: { x: 120, y: 80 },
         revision: 3,
         error: null,
@@ -56,7 +57,7 @@ function validWorkflowPayload() {
         node_id: "node-image-1",
         workflow_id: "workflow-1",
         node_type: "image",
-        semantic_role: "character_main",
+        creative_role: "character",
         role_contract_version: "ad-media-role-v1",
         title: "Lead Character",
         status: "draft",
@@ -67,7 +68,6 @@ function validWorkflowPayload() {
         parameters: { stylization: 100 },
         prompt_context_snapshot_id: "snapshot-1",
         output_asset_id: "asset-output-1",
-        video_skill_run_id: "skill-run-1",
         position: { x: 480, y: 220 },
         revision: 5,
         error: {
@@ -84,22 +84,30 @@ function validWorkflowPayload() {
       {
         binding_id: "binding-1",
         workflow_id: "workflow-1",
-        source: { kind: "node", node_id: "node-text-1" },
+        source: { kind: "node_output", source_node_id: "node-text-1" },
         target_node_id: "node-image-1",
-        binding_kind: "brief_context",
+        input_role: "text_context",
         required: true,
-        display_order: 0,
+        enabled: true,
+        order: 0,
+        label: null,
+        metadata: {},
         created_at: "2026-07-28T10:06:30Z",
+        updated_at: "2026-07-28T10:06:30Z",
       },
       {
         binding_id: "binding-2",
         workflow_id: "workflow-1",
-        source: { kind: "image_asset", asset_id: "asset-library-1" },
+        source: { kind: "image_asset", source_asset_id: "asset-library-1" },
         target_node_id: "node-image-1",
-        binding_kind: "image_reference",
+        input_role: "image_reference",
         required: false,
-        display_order: 1,
+        enabled: true,
+        order: 1,
+        label: null,
+        metadata: {},
         created_at: "2026-07-28T10:06:31Z",
+        updated_at: "2026-07-28T10:06:31Z",
       },
     ],
     assets: [
@@ -136,6 +144,147 @@ function validWorkflowPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("normalizes the frozen node and persisted binding contract", () => {
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      nodes: validWorkflowPayload().nodes.map((node, index) => ({
+        ...node,
+        creative_role: index === 0 ? "creative_brief" : "character",
+      })),
+      bindings: [
+        {
+          binding_id: "binding-1",
+          workflow_id: "workflow-1",
+          source: { kind: "node_output", source_node_id: "node-text-1" },
+          target_node_id: "node-image-1",
+          input_role: "text_context",
+          required: true,
+          enabled: true,
+          order: 0,
+          label: "Creative direction",
+          metadata: { origin: "manual" },
+          created_at: "2026-07-28T10:06:30Z",
+          updated_at: "2026-07-28T10:06:32Z",
+        },
+        {
+          binding_id: "binding-2",
+          workflow_id: "workflow-1",
+          source: { kind: "image_asset", source_asset_id: "asset-library-1" },
+          target_node_id: "node-image-1",
+          input_role: "image_reference",
+          required: false,
+          enabled: true,
+          order: 1,
+          label: null,
+          metadata: {},
+          created_at: "2026-07-28T10:06:31Z",
+          updated_at: "2026-07-28T10:06:31Z",
+        },
+      ],
+    });
+
+    expect(workflow.nodes[0]?.creative_role).toBe("creative_brief");
+    expect(workflow.bindings[0]).toMatchObject({
+      input_role: "text_context",
+      enabled: true,
+      order: 0,
+    });
+    expect(workflow.bindings[1]?.source).toEqual({
+      kind: "image_asset",
+      source_asset_id: "asset-library-1",
+    });
+  });
+
+  it("normalizes durable proposals, specialist status, and guided actions after refresh", () => {
+    const timeline = normalizeAgentCanvasChatTimelineResponseV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      creative_session: {
+        skill_run_id: "session-1",
+        workflow_id: "workflow-1",
+        skill_id: "video-ad",
+        skill_version: "1",
+        status: "active",
+        creative_direction_snapshot_id: null,
+        current_topic_id: "characters",
+        topics: [
+          {
+            topic_id: "characters",
+            topic_kind: "character",
+            display_order: 0,
+            required: true,
+            specialist_name: "character_designer",
+            status: "in_review",
+            outcome: null,
+            related_node_ids: [],
+          },
+        ],
+        deferred_topic_ids: [],
+        memory_revision: 2,
+        updated_at: "2026-07-30T08:00:00Z",
+      },
+      items: [
+        {
+          entry_id: "entry-proposal-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 3,
+          entry_type: "concept_proposal",
+          speaker: null,
+          content: "Choose a character direction.",
+          metadata: {
+            proposal_id: "proposal-1",
+            proposal_kind: "character",
+          },
+          command_plan: null,
+          action_receipt: null,
+          guided_actions: [
+            {
+              action_id: "action-add-character",
+              action: "add_another_topic_node",
+              state: "pending",
+              creating_turn_id: "turn-1",
+              expected_semantic_revision: 7,
+              label: "Add another",
+              workflow_id: "workflow-1",
+              proposal_id: "proposal-1",
+              topic_id: "characters",
+              node_id: null,
+              ordered_node_ids: [],
+              manifest_revision: null,
+              confirmation_required: false,
+              reason: "Add another character option.",
+            },
+          ],
+          created_at: "2026-07-30T08:01:00Z",
+        },
+        {
+          entry_id: "entry-activity-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          sequence_no: 4,
+          entry_type: "expert_activity",
+          speaker: null,
+          content: "Character Designer is working",
+          metadata: {
+            specialist_name: "character_designer",
+            status: "working",
+          },
+          command_plan: null,
+          action_receipt: null,
+          guided_actions: [],
+          created_at: "2026-07-30T08:01:01Z",
+        },
+      ],
+      next_cursor: 4,
+    });
+
+    expect(timeline.creative_session?.current_topic_id).toBe("characters");
+    expect(timeline.items[0]?.entry_type).toBe("concept_proposal");
+    expect(timeline.items[0]?.guided_actions[0]?.action).toBe("add_another_topic_node");
+    expect(timeline.items[1]?.entry_type).toBe("expert_activity");
+  });
+
   it("normalizes a complete canonical workflow payload", () => {
     const workflow = normalizeAgentCanvasWorkflowV2(validWorkflowPayload());
 
@@ -183,7 +332,9 @@ describe("Agent Canvas normalizers", () => {
             workflow_id: "workflow-1",
             conversation_id: "conversation-1",
             source_turn_id: "turn-1",
+            context_snapshot_id: "context-1",
             base_workflow_revision: 7,
+            expires_at: "2026-07-29T01:16:00Z",
             operations: [{
               operation_type: "delete_node",
               operation_id: "delete-1",
@@ -194,6 +345,7 @@ describe("Agent Canvas normalizers", () => {
             confirmation_required: true,
             target_summary: "Delete one draft.",
             operation_fingerprint: "fingerprint-1",
+            idempotency_key: "plan-key-1",
             status: "pending_confirmation",
             supersedes_plan_id: null,
             replacement_plan_id: null,
@@ -298,6 +450,7 @@ describe("Agent Canvas normalizers", () => {
           execution_id: "exec-1",
           provider_task_id: "task-1",
           waiting_for_node_ids: ["node-text-1"],
+          blocked_by_node_ids: ["node-script-1"],
           attempt_no: 2,
           updated_at: "2026-07-28T10:08:00Z",
           error: null,
@@ -319,6 +472,11 @@ describe("Agent Canvas normalizers", () => {
         output_type: "image",
         accepted_input_types: ["text", "image"],
         max_references: 8,
+        reference_limits: {
+          image: 8,
+          video: 0,
+          audio: 0,
+        },
         supported_parameters: ["size", "quality"],
         supported_aspect_ratios: ["1:1", "16:9"],
         duration_range_seconds: null,
@@ -350,21 +508,26 @@ describe("Agent Canvas normalizers", () => {
             proposal_id: "proposal-1",
             workflow_id: "workflow-1",
             turn_id: "turn-1",
-            specialist: "character_designer",
+            video_skill_run_id: "session-1",
+            topic_id: "characters",
+            creative_direction_snapshot_id: null,
+            proposal_revision: 1,
+            source_proposal_id: null,
+            proposal_kind: "character",
+            specialist_name: "character_designer",
             status: "pending",
             options: [
               {
                 option_id: "option-1",
-                display_name: "Option A",
+                title: "Option A",
                 summary_prompt: "Athletic streetwear lead.",
-                semantic_role: "character_main",
-                proposed_node_type: "image",
-                reference_node_ids: ["node-text-1"],
-                reference_image_asset_ids: ["asset-library-1"],
               },
             ],
-            workflow_revision: 7,
+            proposed_references: [],
+            selected_option_id: null,
             selection_actor: null,
+            created_at: "2026-07-28T10:09:00Z",
+            updated_at: "2026-07-28T10:09:00Z",
           },
           sequence: 12,
           created_at: "2026-07-28T10:09:01Z",
@@ -532,10 +695,16 @@ describe("Agent Canvas normalizers", () => {
       items: [{
         sequence_no: 52,
         workflow_id: "workflow-1",
+        project_id: "project-1",
         event_type: "asset_published",
         execution_id: "execution-1",
         node_id: "node-image-1",
         asset_id: "asset-output-3",
+        conversation_id: "conversation-1",
+        turn_id: "turn-1",
+        action_id: "action-1",
+        trace_id: "0123456789abcdef0123456789abcdef",
+        span_id: "0123456789abcdef",
         payload: {},
         created_at: "2026-07-28T10:10:01Z",
       }],
@@ -550,8 +719,27 @@ describe("Agent Canvas normalizers", () => {
         execution_id: "execution-1",
         asset_id: "asset-output-3",
         binding_id: null,
+        project_id: "project-1",
+        conversation_id: "conversation-1",
+        turn_id: "turn-1",
+        action_id: "action-1",
       }],
     });
+  });
+
+  it("accepts the frozen guided action chat turn kind", () => {
+    expect(normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-guided-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "guided_action",
+      request: { action_id: "action-1", confirmed: true },
+      error_code: null,
+      error_message: null,
+      created_at: "2026-07-30T08:00:00Z",
+      updated_at: "2026-07-30T08:00:01Z",
+    }).turn_kind).toBe("guided_action");
   });
 
   it("accepts the backend capability list envelope", () => {
@@ -562,6 +750,11 @@ describe("Agent Canvas normalizers", () => {
         output_type: "video",
         accepted_input_types: ["text", "image"],
         max_references: 4,
+        reference_limits: {
+          image: 4,
+          video: 1,
+          audio: 1,
+        },
         supported_parameters: [],
         supported_aspect_ratios: ["16:9"],
         duration_range_seconds: [3, 12],
@@ -573,6 +766,11 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(capabilities[0]?.supports_native_audio).toBe(true);
+    expect(capabilities[0]?.reference_limits).toEqual({
+      image: 4,
+      video: 1,
+      audio: 1,
+    });
   });
 
   it("normalizes the persisted Agent Canvas conversation timeline", () => {
@@ -641,10 +839,11 @@ describe("Agent Canvas normalizers", () => {
   it("validates media access descriptors and source identity", () => {
     const nodeSnapshot = {
       snapshot_type: "media",
-      source_kind: "node",
+      source_kind: "node_output",
       source_node_id: "node-image-1",
       source_node_revision: 2,
       binding_kind: "image_reference",
+      source_semantic_role: "storyboard_sequence",
       asset_id: "asset-output-1",
       media_type: "image",
       asset_checksum: "checksum-1",
@@ -654,8 +853,19 @@ describe("Agent Canvas normalizers", () => {
         media_url: "/api/v2/assets/asset-output-1/content",
         checksum: "checksum-1",
       },
+      binding_id: "binding-image-1",
+      input_role: "image_reference",
+      required: true,
+      display_order: 1,
     };
-    expect(normalizeResolvedMediaInputSnapshotV2(nodeSnapshot).source_node_id).toBe("node-image-1");
+    expect(normalizeResolvedMediaInputSnapshotV2(nodeSnapshot)).toMatchObject({
+      source_node_id: "node-image-1",
+      source_semantic_role: "storyboard_sequence",
+      binding_id: "binding-image-1",
+      input_role: "image_reference",
+      required: true,
+      display_order: 1,
+    });
     expect(() =>
       normalizeResolvedMediaInputSnapshotV2({
         ...nodeSnapshot,
@@ -671,6 +881,29 @@ describe("Agent Canvas normalizers", () => {
         },
       }),
     ).toThrowError(/media_url/i);
+  });
+
+  it("preserves resolved text binding audit fields", () => {
+    expect(normalizeResolvedTextInputSnapshotV2({
+      snapshot_type: "text",
+      source_kind: "node_output",
+      source_node_id: "node-script-1",
+      source_node_revision: 3,
+      binding_kind: "text_context",
+      document_kind: "script",
+      content: "Scene one.",
+      content_hash: "hash-script-1",
+      binding_id: "binding-script-1",
+      input_role: "text_context",
+      required: true,
+      display_order: 0,
+    })).toMatchObject({
+      source_kind: "node_output",
+      binding_id: "binding-script-1",
+      input_role: "text_context",
+      required: true,
+      display_order: 0,
+    });
   });
 
   it("accepts joined Run and idempotently completed Editing export responses", () => {

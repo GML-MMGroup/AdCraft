@@ -2,11 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import type {
   AgentCanvasWorkflowV2,
+  CanvasBindingV2,
+  CanvasBindingMutationResponseV2,
+  CanvasConnectedNodeCreateResponseV2,
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import {
   mergeAgentCanvasLayout,
+  mergeAgentCanvasBindingMutation,
+  mergeAgentCanvasConnectedNode,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -19,7 +24,7 @@ function node(
     node_id: "node-image",
     workflow_id: "workflow-1",
     node_type: "image",
-    semantic_role: "character_main",
+    creative_role: "character",
     role_contract_version: "ad-media-role-v1",
     title: "Character",
     status: "working",
@@ -30,7 +35,6 @@ function node(
     parameters: {},
     prompt_context_snapshot_id: null,
     output_asset_id: null,
-    video_skill_run_id: null,
     position: { x: 120, y: 80 },
     revision: 2,
     error: null,
@@ -43,17 +47,44 @@ function node(
 
 const publishedAsset: ProjectAssetSummaryV2 = {
   asset_id: "asset-generated",
+  project_id: "project-1",
+  workflow_id: "workflow-1",
   media_type: "image",
   source_type: "generated",
   display_name: "Character",
   mime_type: "image/png",
   status: "ready",
+  size_bytes: 0,
+  storage_key: null,
   preview_url: "/assets/character.png",
   media_url: "/assets/character.png",
   width: 1024,
   height: 1024,
   duration_seconds: null,
   checksum: "generated",
+  source_semantic_role: "character",
+  source_node_id: "node-image",
+  source_execution_id: null,
+  provider: null,
+  model_id: null,
+  prompt_provenance: {},
+  quality_metadata: {},
+  created_at: "2026-07-28T10:05:00Z",
+};
+
+const binding: CanvasBindingV2 = {
+  binding_id: "binding-1",
+  workflow_id: "workflow-1",
+  source: { kind: "node_output", source_node_id: "node-image" },
+  target_node_id: "node-video",
+  input_role: "image_reference",
+  required: true,
+  enabled: true,
+  order: 0,
+  label: null,
+  metadata: {},
+  created_at: "2026-07-28T10:05:00Z",
+  updated_at: "2026-07-28T10:05:00Z",
 };
 
 function workflow(
@@ -237,5 +268,55 @@ describe("mergeAgentCanvasNode", () => {
       output_asset_id: publishedAsset.asset_id,
       position: { x: 510, y: 240 },
     });
+  });
+});
+
+describe("semantic mutation merges", () => {
+  it("adds an atomically connected node and its persisted binding", () => {
+    const response: CanvasConnectedNodeCreateResponseV2 = {
+      workflow_id: "workflow-1",
+      revision: 5,
+      layout_revision: 2,
+      node: node({
+        node_id: "node-video",
+        node_type: "video",
+        creative_role: "general_video",
+        position: { x: 460, y: 80 },
+      }),
+      binding,
+      events_cursor: 7,
+    };
+
+    const next = mergeAgentCanvasConnectedNode(workflow(), response);
+
+    expect(next.revision).toBe(5);
+    expect(next.layout_revision).toBe(2);
+    expect(next.nodes.map((item) => item.node_id)).toContain("node-video");
+    expect(next.bindings).toContainEqual(binding);
+  });
+
+  it("replaces the target node's incoming bindings after a binding patch", () => {
+    const optional = { ...binding, required: false, enabled: false, order: 2 };
+    const response: CanvasBindingMutationResponseV2 = {
+      workflow_id: "workflow-1",
+      revision: 6,
+      binding: optional,
+      incoming_bindings: [optional],
+      events_cursor: 8,
+    };
+
+    const next = mergeAgentCanvasBindingMutation(
+      workflow({
+        bindings: [
+          binding,
+          { ...binding, binding_id: "unrelated", target_node_id: "node-other" },
+        ],
+      }),
+      response,
+    );
+
+    expect(next.revision).toBe(6);
+    expect(next.bindings.find((item) => item.binding_id === "binding-1")).toEqual(optional);
+    expect(next.bindings.find((item) => item.binding_id === "unrelated")).toBeTruthy();
   });
 });

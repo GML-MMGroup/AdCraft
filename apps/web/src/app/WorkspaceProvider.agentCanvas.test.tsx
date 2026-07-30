@@ -23,6 +23,7 @@ vi.mock("../api/client", () => ({ api: legacyApi }));
 vi.mock("../api/v2Client", () => ({ v2Api }));
 
 import { useApp } from "../AppContextValue.ts";
+import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
 import { WORKSPACE_ACTIVE_PROJECT_KEY, WORKSPACE_WORKFLOW_KEY } from "../projects/newProject.ts";
 import { WorkspaceProvider } from "./WorkspaceProvider.tsx";
 
@@ -74,6 +75,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  v2AuthoringConflictStore.clear();
   cleanup();
 });
 
@@ -132,5 +134,24 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
     await screen.findByText("workflow-1");
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
     expect(v2Api.createAgentCanvasProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the local workflow until the user resolves a revision conflict", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    await screen.findByText("workflow-1");
+    v2Api.agentCanvasWorkflowWithEtag.mockClear();
+
+    v2AuthoringConflictStore.raise({
+      target: { resource: "workflow", id: "workflow-1" },
+      operationPath: "/workflows/workflow-1/nodes/node-1",
+      message: "Workflow revision changed.",
+      retry: vi.fn(async () => {}),
+      discard: vi.fn(async () => {}),
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    expect(v2Api.agentCanvasWorkflowWithEtag).not.toHaveBeenCalled();
+    expect(screen.getByText("workflow-1")).toBeTruthy();
   });
 });

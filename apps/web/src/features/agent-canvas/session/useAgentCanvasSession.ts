@@ -7,6 +7,8 @@ import type {
   AgentActionReceiptV2,
   AgentCanvasWorkflowV2,
   CanvasBindingCreateRequestV2,
+  CanvasBindingPatchRequestV2,
+  CanvasConnectedNodeCreateRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasLayoutPositionV2,
   CanvasNodeCreateRequestV2,
@@ -22,6 +24,8 @@ import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
 import {
   mergeAgentCanvasLayout,
+  mergeAgentCanvasBindingMutation,
+  mergeAgentCanvasConnectedNode,
   mergeAgentCanvasNode,
   mergeAgentCanvasWorkflow,
   overlayAgentCanvasPositions,
@@ -355,6 +359,56 @@ export function useAgentCanvasSession() {
     });
   }, [agentCanvasWorkflow, applyWorkflow]);
 
+  const createConnectedNode = useCallback(async (
+    request: CanvasConnectedNodeCreateRequestV2,
+  ) => {
+    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const workflowId = agentCanvasWorkflow.workflow_id;
+    return queueRef.current!.enqueue(createOperationKey("create-connected-node"), async () => {
+      const response = await v2Api.createAgentCanvasConnectedNode(
+        workflowId,
+        request,
+        createOperationKey("create-connected-node-request"),
+      );
+      setAgentCanvasWorkflow((current) => {
+        if (!current || current.workflow_id !== workflowId) return current;
+        const next = mergeAgentCanvasConnectedNode(current, response.value);
+        workflowRef.current = next;
+        return next;
+      });
+      setSelectedNodeId(response.value.node.node_id);
+      setAuthoringError(null);
+      return response.value.node;
+    });
+  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+
+  const patchBinding = useCallback(async (
+    bindingId: string,
+    request: CanvasBindingPatchRequestV2,
+  ) => {
+    if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
+    const workflowId = agentCanvasWorkflow.workflow_id;
+    return queueRef.current!.enqueue(
+      createOperationKey(`patch-binding:${bindingId}`),
+      async () => {
+        const response = await v2Api.patchAgentCanvasBinding(
+          workflowId,
+          bindingId,
+          request,
+          createOperationKey("patch-binding-request"),
+        );
+        setAgentCanvasWorkflow((current) => {
+          if (!current || current.workflow_id !== workflowId) return current;
+          const next = mergeAgentCanvasBindingMutation(current, response.value);
+          workflowRef.current = next;
+          return next;
+        });
+        setAuthoringError(null);
+        return response.value.binding;
+      },
+    );
+  }, [agentCanvasWorkflow, setAgentCanvasWorkflow]);
+
   const deleteBinding = useCallback(async (bindingId: string) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     await queueRef.current!.enqueue(createOperationKey("delete-binding"), async () => {
@@ -418,12 +472,14 @@ export function useAgentCanvasSession() {
       updateNodePosition,
       updateNodePositions,
       createNode,
+      createConnectedNode,
       saveVariationDraft,
       discardVariationDraft,
       materializeVariationDraft,
       placeActionReceiptNodes,
       deleteNode,
       createBinding,
+      patchBinding,
       deleteBinding,
       mergePublishedAsset,
       mergeNode,

@@ -20,7 +20,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     node_id: `${nodeType}-node`,
     workflow_id: "workflow-1",
     node_type: nodeType,
-    semantic_role: nodeType,
+    creative_role: nodeType === "text" ? "general_text" : nodeType === "script" ? "script" : nodeType === "image" ? "general_image" : nodeType === "video" ? "general_video" : nodeType === "audio" ? "general_audio" : "editing",
     role_contract_version: "ad-media-role-v1",
     title: `Hidden ${nodeType} title`,
     status,
@@ -35,7 +35,6 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
     output_asset_id: ["image", "video", "audio", "editing"].includes(nodeType)
       ? `${nodeType}-asset`
       : null,
-    video_skill_run_id: null,
     position: { x: 80, y: 120 },
     revision: 1,
     error: status === "failed"
@@ -50,17 +49,29 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
 function makeAsset(mediaType: "image" | "video" | "audio"): ProjectAssetSummaryV2 {
   return {
     asset_id: `${mediaType}-asset`,
+    project_id: "project-1",
+    workflow_id: "workflow-1",
     media_type: mediaType,
     source_type: "generated",
     display_name: `${mediaType} output`,
     mime_type: mediaType === "image" ? "image/webp" : `${mediaType}/mp4`,
     status: "ready",
+    size_bytes: 0,
+    storage_key: null,
     preview_url: `/media/${mediaType}-poster.webp`,
     media_url: `/media/${mediaType}-output`,
     width: mediaType === "audio" ? null : 1280,
     height: mediaType === "audio" ? null : 720,
     duration_seconds: mediaType === "image" ? null : 12,
     checksum: `${mediaType}-checksum`,
+    source_semantic_role: null,
+    source_node_id: null,
+    source_execution_id: null,
+    provider: null,
+    model_id: null,
+    prompt_provenance: {},
+    quality_metadata: {},
+    created_at: "2026-07-28T09:00:00Z",
   };
 }
 
@@ -206,10 +217,12 @@ describe("AgentCanvasNodeCard", () => {
 
 describe("AgentCanvasNodeRenderer", () => {
   it("renders connectable left and right handles", () => {
+    const onOpenConnectedNodeMenu = vi.fn();
     const data: AgentCanvasNodeData = {
       node: makeNode("image"),
       asset: makeAsset("image"),
       onRun: vi.fn(),
+      onOpenConnectedNodeMenu,
     };
 
     render(
@@ -233,5 +246,19 @@ describe("AgentCanvasNodeRenderer", () => {
 
     expect(screen.getByLabelText("Image node input")).toBeTruthy();
     expect(screen.getByLabelText("Image node output")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("Add an upstream node to Image"));
+    expect(onOpenConnectedNodeMenu).toHaveBeenCalledWith(
+      data.node.node_id,
+      "upstream",
+      expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+    );
+
+    fireEvent.click(screen.getByLabelText("Add a downstream node to Image"));
+    expect(onOpenConnectedNodeMenu).toHaveBeenCalledWith(
+      data.node.node_id,
+      "downstream",
+      expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+    );
   });
 });

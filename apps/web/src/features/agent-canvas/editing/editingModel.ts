@@ -23,8 +23,8 @@ function resolveNodeInput(
   binding: CanvasBindingV2 | undefined,
   nodeType: "video" | "audio",
 ): EditingBoundInput | null {
-  if (!binding || binding.source.kind !== "node") return null;
-  const sourceNodeId = binding.source.node_id;
+  if (!binding || binding.source.kind !== "node_output") return null;
+  const sourceNodeId = binding.source.source_node_id;
   const node = workflow.nodes.find((candidate) =>
     candidate.node_id === sourceNodeId
     && candidate.node_type === nodeType,
@@ -51,13 +51,13 @@ export function buildEditingInputs(
   );
   const videos = content.manifest.ordered_video_binding_ids.flatMap((bindingId) => {
     const binding = inbound.get(bindingId);
-    if (binding?.binding_kind !== "video_reference") return [];
+    if (binding?.input_role !== "video_reference" || !binding.enabled) return [];
     const resolved = resolveNodeInput(workflow, binding, "video");
     return resolved ? [resolved] : [];
   });
   const bgmBindingId = content.manifest.bgm_audio_binding_id;
   const bgmBinding = bgmBindingId ? inbound.get(bgmBindingId) : undefined;
-  const bgm = bgmBinding?.binding_kind === "audio_reference"
+  const bgm = bgmBinding?.input_role === "audio_reference" && bgmBinding.enabled
     ? resolveNodeInput(workflow, bgmBinding, "audio")
     : null;
   return { videos, bgm };

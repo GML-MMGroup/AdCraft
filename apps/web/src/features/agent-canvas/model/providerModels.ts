@@ -11,14 +11,14 @@ export function providerInputTypes(
 ): ProviderInputType[] {
   const inputTypes = new Set<ProviderInputType>(["text"]);
   workflow.bindings
-    .filter((binding) => binding.target_node_id === targetNodeId)
+    .filter((binding) => binding.target_node_id === targetNodeId && binding.enabled)
     .forEach((binding) => {
       const sourceRef = binding.source;
       if (sourceRef.kind === "image_asset") {
         inputTypes.add("image");
         return;
       }
-      const source = workflow.nodes.find((node) => node.node_id === sourceRef.node_id);
+      const source = workflow.nodes.find((node) => node.node_id === sourceRef.source_node_id);
       if (!source) return;
       if (source.node_type === "text" || source.node_type === "script") {
         inputTypes.add("text");

@@ -20,19 +20,24 @@ const card: ChatProposalCardV2 = {
     proposal_id: "proposal-1",
     workflow_id: "workflow-1",
     turn_id: "turn-1",
-    specialist: "character_designer",
+    video_skill_run_id: "session-1",
+    topic_id: "characters",
+    creative_direction_snapshot_id: null,
+    proposal_revision: 1,
+    source_proposal_id: null,
+    proposal_kind: "character",
+    specialist_name: "character_designer",
     status: "pending",
     options: [{
       option_id: "option-1",
-      display_name: "Hero",
+      title: "Hero",
       summary_prompt: "A focused campaign hero",
-      semantic_role: "character",
-      proposed_node_type: "image",
-      reference_node_ids: [],
-      reference_image_asset_ids: [],
     }],
-    workflow_revision: 1,
+    proposed_references: [],
+    selected_option_id: null,
     selection_actor: null,
+    created_at: "2026-07-28T00:00:00Z",
+    updated_at: "2026-07-28T00:00:00Z",
   },
   sequence: 4,
   created_at: "2026-07-28T00:00:00Z",
@@ -60,7 +65,7 @@ describe("ProposalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Select" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
 
-    expect(onSelect).toHaveBeenCalledWith("proposal-1", "option-1", "generate_now");
+    expect(onSelect).toHaveBeenCalledWith("proposal-1", "option-1", "generate_now", []);
   });
 });
 

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  V2_AUTHORING_DRAFT_DISCARDED_EVENT,
+  type V2AuthoringConflictResolution,
+} from "../../api/v2AuthoringConflictEvents.ts";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
   CloseIcon,
   EditIcon,
   PlayIcon,
@@ -11,6 +17,9 @@ import {
 import type {
   AgentCanvasImageLibraryCategoryV2,
   AgentCanvasWorkflowV2,
+  CanvasBindingInputRoleV2,
+  CanvasBindingPatchRequestV2,
+  CanvasConnectionPolicyV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
   CanvasVariationDraftUpsertV2,
@@ -24,8 +33,13 @@ type PatchNode = (
   options?: { coalesce?: boolean; optimistic?: boolean },
 ) => Promise<void>;
 
+type PatchBinding = (
+  bindingId: string,
+  patch: CanvasBindingPatchRequestV2,
+) => Promise<unknown>;
+
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
-  const role = node.semantic_role.toLocaleLowerCase();
+  const role = node.creative_role.toLocaleLowerCase();
   if (role.includes("scene")) return "scene";
   if (role.includes("product") || role.includes("prop")) return "prop";
   return "character";
@@ -35,6 +49,9 @@ export function AgentCanvasInspector({
   workflow,
   node,
   patchNode,
+  patchBinding,
+  deleteBinding,
+  connectionPolicy,
   providerCapabilities = [],
   providerCapabilitiesLoading = false,
   providerCapabilitiesError = null,
@@ -50,6 +67,9 @@ export function AgentCanvasInspector({
   workflow: AgentCanvasWorkflowV2;
   node: CanvasNodeV2;
   patchNode: PatchNode;
+  patchBinding?: PatchBinding;
+  deleteBinding?: (bindingId: string) => Promise<void>;
+  connectionPolicy?: CanvasConnectionPolicyV2 | null;
   providerCapabilities?: ProviderModelCapabilityV2[];
   providerCapabilitiesLoading?: boolean;
   providerCapabilitiesError?: string | null;
@@ -118,6 +138,42 @@ export function AgentCanvasInspector({
     if (changedNode) setDirty(false);
   }, [dirty, node]);
 
+  useEffect(() => {
+    function discardConflictDraft(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (
+        resolution?.action !== "discard"
+        || resolution.target.resource !== "workflow"
+        || resolution.target.id !== workflow.workflow_id
+        || !(resolution.operationPath.split("?", 1)[0] ?? "").includes(
+          `/nodes/${encodeURIComponent(node.node_id)}`,
+        )
+      ) return;
+      setTitle(node.variation_draft?.title ?? node.title);
+      setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
+      setTextContent(
+        typeof node.structured_content.content === "string"
+          ? node.structured_content.content
+          : typeof node.structured_content.script_text === "string"
+            ? node.structured_content.script_text
+            : "",
+      );
+      setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
+      setVariationParameters(node.variation_draft?.parameters ?? node.parameters);
+      setDirty(false);
+      setError(null);
+    }
+
+    window.addEventListener(
+      V2_AUTHORING_DRAFT_DISCARDED_EVENT,
+      discardConflictDraft as EventListener,
+    );
+    return () => window.removeEventListener(
+      V2_AUTHORING_DRAFT_DISCARDED_EVENT,
+      discardConflictDraft as EventListener,
+    );
+  }, [node, workflow.workflow_id]);
+
   const isScriptDocument = node.node_type === "script" && node.status === "ready";
   const editsTextContent = node.node_type === "text" || isScriptDocument;
   const editsGenerationPrompt = (
@@ -136,10 +192,62 @@ export function AgentCanvasInspector({
     !modelId
     || providerCapabilities.some((capability) => capability.model_id === modelId)
   );
-  const inboundReferences = workflow.bindings.filter((binding) =>
-    binding.target_node_id === node.node_id
-    && binding.source.kind === "image_asset",
-  );
+  const inboundBindings = workflow.bindings
+    .filter((binding) => binding.target_node_id === node.node_id)
+    .sort((left, right) => left.order - right.order);
+
+  function sourcePresentation(binding: (typeof inboundBindings)[number]) {
+    if (binding.source.kind === "image_asset") {
+      const sourceAssetId = binding.source.source_asset_id;
+      const asset = workflow.assets.find((item) => item.asset_id === sourceAssetId);
+      return {
+        name: asset?.display_name ?? sourceAssetId,
+        previewUrl: asset?.preview_url ?? asset?.media_url ?? null,
+      };
+    }
+    const sourceNodeId = binding.source.source_node_id;
+    const sourceNode = workflow.nodes.find((item) => item.node_id === sourceNodeId);
+    const asset = sourceNode?.output_asset_id
+      ? workflow.assets.find((item) => item.asset_id === sourceNode.output_asset_id)
+      : null;
+    return {
+      name: sourceNode?.title ?? sourceNodeId,
+      previewUrl: asset?.preview_url ?? asset?.media_url ?? null,
+    };
+  }
+
+  function allowedInputRoles(binding: (typeof inboundBindings)[number]) {
+    if (!connectionPolicy) {
+      return [
+        "text_context",
+        "image_reference",
+        "video_reference",
+        "audio_reference",
+      ] satisfies CanvasBindingInputRoleV2[];
+    }
+    if (binding.source.kind === "image_asset") {
+      return connectionPolicy.image_asset_targets[node.node_type] ?? [binding.input_role];
+    }
+    const sourceNodeId = binding.source.source_node_id;
+    const sourceNode = workflow.nodes.find((item) => (
+      item.node_id === sourceNodeId
+    ));
+    const rule = sourceNode
+      ? connectionPolicy.input_roles.find((candidate) => (
+          candidate.source_node_type === sourceNode.node_type
+          && candidate.target_node_type === node.node_type
+        ))
+      : null;
+    return rule?.roles ?? [binding.input_role];
+  }
+
+  async function updateBinding(
+    bindingId: string,
+    patch: CanvasBindingPatchRequestV2,
+  ) {
+    if (!patchBinding) return;
+    await perform(() => patchBinding(bindingId, patch));
+  }
 
   async function perform(action: () => Promise<unknown>): Promise<boolean> {
     setPending(true);
@@ -302,15 +410,106 @@ export function AgentCanvasInspector({
           </label>
         ) : null}
 
-        {inboundReferences.length ? (
-          <div className="agent-canvas-inspector__references">
-            <span>Image references</span>
-            {inboundReferences.map((binding) => (
-              <code key={binding.binding_id}>
-                {binding.source.kind === "image_asset" ? binding.source.asset_id : ""}
-              </code>
-            ))}
-          </div>
+        {inboundBindings.length ? (
+          <section className="agent-canvas-inspector__inputs" aria-label="Node inputs">
+            <div className="agent-canvas-inspector__inputs-heading">
+              <strong>Inputs</strong>
+              <span>{inboundBindings.length}</span>
+            </div>
+            {inboundBindings.map((binding, index) => {
+              const source = sourcePresentation(binding);
+              const inputRoles = allowedInputRoles(binding);
+              return (
+                <article key={binding.binding_id} className={!binding.enabled ? "is-disabled" : ""}>
+                  <div className="agent-canvas-inspector__input-source">
+                    {source.previewUrl ? (
+                      <img src={source.previewUrl} alt="" loading="lazy" decoding="async" />
+                    ) : (
+                      <span aria-hidden="true">{index + 1}</span>
+                    )}
+                    <div>
+                      <strong>{binding.label || `Input ${index + 1}`}</strong>
+                      <small>{source.name}</small>
+                    </div>
+                    <div className="agent-canvas-inspector__input-order">
+                      <button
+                        type="button"
+                        aria-label={`Move ${binding.label || `Input ${index + 1}`} earlier`}
+                        title="Move earlier"
+                        disabled={pending || !patchBinding || index === 0}
+                        onClick={() => void updateBinding(binding.binding_id, {
+                          order: inboundBindings[index - 1]?.order ?? 0,
+                        })}
+                      >
+                        <ChevronUpIcon />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${binding.label || `Input ${index + 1}`} later`}
+                        title="Move later"
+                        disabled={pending || !patchBinding || index === inboundBindings.length - 1}
+                        onClick={() => void updateBinding(binding.binding_id, {
+                          order: inboundBindings[index + 1]?.order ?? binding.order,
+                        })}
+                      >
+                        <ChevronDownIcon />
+                      </button>
+                      <button
+                        type="button"
+                        className="is-danger"
+                        aria-label={`Remove ${binding.label || `Input ${index + 1}`}`}
+                        title="Remove input"
+                        disabled={pending || !deleteBinding}
+                        onClick={() => void perform(() => deleteBinding!(binding.binding_id))}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  </div>
+                  <label>
+                    <span>Input role</span>
+                    <select
+                      value={binding.input_role}
+                      disabled={pending || !patchBinding}
+                      onChange={(event) => void updateBinding(binding.binding_id, {
+                        input_role: event.currentTarget.value as CanvasBindingInputRoleV2,
+                      })}
+                    >
+                      {inputRoles.map((inputRole) => (
+                        <option value={inputRole} key={inputRole}>
+                          {inputRole.replaceAll("_", " ")}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="agent-canvas-inspector__input-flags">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={binding.required}
+                        disabled={pending || !patchBinding}
+                        onChange={(event) => void updateBinding(binding.binding_id, {
+                          required: event.currentTarget.checked,
+                        })}
+                      />
+                      <span>Required</span>
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={binding.enabled}
+                        disabled={pending || !patchBinding}
+                        onChange={(event) => void updateBinding(binding.binding_id, {
+                          enabled: event.currentTarget.checked,
+                        })}
+                      />
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
         ) : null}
 
         {isReadyMedia ? (

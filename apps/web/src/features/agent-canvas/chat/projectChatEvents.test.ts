@@ -48,7 +48,7 @@ describe("projectChatEvents", () => {
     });
   });
 
-  it("projects one to four concept options and proposal status changes", () => {
+  it("does not synthesize proposals from partial SSE payloads", () => {
     const items = projectChatEvents([
       event(3, "concept_options_ready", {
         proposal_id: "proposal-1",
@@ -67,17 +67,7 @@ describe("projectChatEvents", () => {
       }),
     ]);
 
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
-      item_type: "proposal",
-      proposal: {
-        status: "selected",
-        options: [
-          { display_name: "Morning" },
-          { display_name: "Night" },
-        ],
-      },
-    });
+    expect(items).toEqual([]);
   });
 
   it("projects the current backend script artifact event into View Script", () => {

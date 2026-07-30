@@ -17,13 +17,18 @@ function node(
   nodeType: CanvasNodeV2["node_type"],
   status: CanvasNodeV2["status"],
   outputAssetId: string | null,
-  semanticRole = nodeType,
+  creativeRole: CanvasNodeV2["creative_role"] = nodeType === "video"
+    ? "general_video"
+    : nodeType === "audio"
+      ? "general_audio"
+      : "editing",
 ): CanvasNodeV2 {
   return {
     node_id: nodeId,
     workflow_id: "workflow-1",
     node_type: nodeType,
-    semantic_role: semanticRole,
+    creative_role: creativeRole,
+    role_contract_version: "ad-media-role-v1",
     title: nodeId,
     status,
     summary_prompt: null,
@@ -33,7 +38,6 @@ function node(
     parameters: {},
     prompt_context_snapshot_id: null,
     output_asset_id: outputAssetId,
-    video_skill_run_id: null,
     position: { x: 0, y: 0 },
     revision: 1,
     error: null,
@@ -46,18 +50,22 @@ function node(
 function binding(
   bindingId: string,
   sourceNodeId: string,
-  kind: CanvasBindingV2["binding_kind"],
+  inputRole: CanvasBindingV2["input_role"],
   order: number,
 ): CanvasBindingV2 {
   return {
     binding_id: bindingId,
     workflow_id: "workflow-1",
-    source: { kind: "node", node_id: sourceNodeId },
+    source: { kind: "node_output", source_node_id: sourceNodeId },
     target_node_id: "editing-1",
-    binding_kind: kind,
+    input_role: inputRole,
     required: false,
-    display_order: order,
+    enabled: true,
+    order,
+    label: null,
+    metadata: {},
     created_at: "2026-07-28T00:00:00Z",
+    updated_at: "2026-07-28T00:00:00Z",
   };
 }
 
@@ -100,7 +108,7 @@ const workflow: AgentCanvasWorkflowV2 = {
     node("video-1", "video", "ready", "asset-video-1"),
     node("video-2", "video", "failed", "asset-video-2"),
     node("bgm-1", "audio", "ready", "asset-bgm", "bgm"),
-    node("editing-1", "editing", "ready", "asset-final", "final_composition"),
+    node("editing-1", "editing", "ready", "asset-final", "editing"),
   ],
   bindings: [
     binding("binding-video-1", "video-1", "video_reference", 0),

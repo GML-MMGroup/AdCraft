@@ -3,9 +3,6 @@ import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { api } from "../api/client";
 import { createOperationKey } from "../api/operationKey.ts";
 import {
-  v2AuthoringConflictStore,
-} from "../api/v2AuthoringConflictStore";
-import {
   V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
   V2_AUTHORING_DRAFT_DISCARDED_EVENT,
   type V2AuthoringConflictResolution,
@@ -358,13 +355,6 @@ export function WorkspaceProvider({ children, startWithNewProject = false }: { c
     startNewProject,
     startWithNewProject,
   ]);
-
-  useEffect(() => {
-    return v2AuthoringConflictStore.subscribe((conflict) => {
-      if (!conflict) return;
-      void refreshAuthoringConflictTarget(conflict.target).catch(() => {});
-    });
-  }, [refreshAuthoringConflictTarget]);
 
   useEffect(() => {
     async function handleAuthoringConflictResolved(event: Event) {

@@ -8,25 +8,25 @@ import {
 
 describe("Agent Canvas node defaults", () => {
   it.each([
-    ["text", "generic_text"],
-    ["script", "advertising_script"],
-    ["image", "generic_image"],
-    ["video", "generic_video"],
+    ["text", "general_text"],
+    ["script", "script"],
+    ["image", "general_image"],
+    ["video", "general_video"],
     ["audio", "bgm"],
-    ["editing", "final_composition"],
-  ] as const)("uses the registered semantic role for %s nodes", (nodeType, semanticRole) => {
+    ["editing", "editing"],
+  ] as const)("uses the frozen creative role for %s nodes", (nodeType, creativeRole) => {
     expect(createDefaultCanvasNodeRequest(nodeType, { x: 10, y: 20 })).toMatchObject({
       node_type: nodeType,
-      semantic_role: semanticRole,
+      creative_role: creativeRole,
       role_contract_version: "ad-media-role-v1",
       position: { x: 10, y: 20 },
     });
   });
 
   it("uses uploaded roles for source media nodes", () => {
-    expect(sourceAssetSemanticRole("image")).toBe("generic_image");
-    expect(sourceAssetSemanticRole("video")).toBe("uploaded_video");
-    expect(sourceAssetSemanticRole("audio")).toBe("bgm");
+    expect(sourceAssetSemanticRole("image")).toBe("general_image");
+    expect(sourceAssetSemanticRole("video")).toBe("general_video");
+    expect(sourceAssetSemanticRole("audio")).toBe("general_audio");
   });
 
   it("provides a valid BGM contract for blank and imported audio nodes", () => {
