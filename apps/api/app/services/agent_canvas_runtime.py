@@ -256,15 +256,24 @@ class DynamicCanvasScheduler:
                         state="running",
                         phase="running",
                         now=self._clock(),
-                        event_type="node_run_started",
                     )
+                    event_payload: dict[str, object] = {}
+                    if context.seedance_input_audit is not None:
+                        event_payload["seedance_input_manifest"] = (
+                            context.seedance_input_audit.model_dump(mode="json")
+                        )
+                    if context.optional_input_omissions:
+                        event_payload["optional_input_omissions"] = list(
+                            context.optional_input_omissions
+                        )
                     self._workflows.set_node_runtime_state(
                         current.workflow_id,
                         lease.node_id,
                         status="working",
                         updated_at=self._clock(),
                         execution_id=lease.execution_id,
-                        event_type="provider_execution_started",
+                        event_type="node_generation_started",
+                        event_payload=event_payload,
                     )
                 for lease, context in prepared_contexts:
                     prepared.append(
@@ -307,7 +316,7 @@ class DynamicCanvasScheduler:
                     phase="waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
-                    event_type="node_blocked" if blocked else "node_waiting_for_input",
+                    event_type="node_blocked",
                     event_payload={
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
@@ -395,13 +404,6 @@ class DynamicCanvasScheduler:
                 phase="preparing_provider",
                 now=now,
                 prompt_metadata=prompt_metadata,
-                event_type="provider_inputs_resolved",
-                event_payload={
-                    "seedance_input_manifest": prepared.seedance_input_audit.model_dump(
-                        mode="json"
-                    ),
-                    "optional_input_omissions": list(prepared.optional_input_omissions),
-                },
             )
         elif prompt_metadata:
             self._runtime.update_member(
@@ -697,12 +699,12 @@ def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, .
         if (
             binding.target_node_id != target_node_id
             or not binding.required
-            or binding.source.kind != "node"
+            or binding.source.kind != "node_output"
         ):
             continue
-        source = nodes.get(binding.source.node_id)
+        source = nodes.get(binding.source.source_node_id)
         if source is None or source.status != "ready":
-            waiting.append(binding.source.node_id)
+            waiting.append(binding.source.source_node_id)
     return tuple(waiting)
 
 

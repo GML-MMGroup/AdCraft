@@ -13,12 +13,19 @@ class V2EventInsert(BaseModel):
 
     workflow_id: str = Field(min_length=1)
     event_type: str = Field(min_length=1)
+    project_id: str | None = None
     execution_id: str | None = None
     node_id: str | None = None
+    binding_id: str | None = None
     item_id: str | None = None
     slot_id: str | None = None
     asset_id: str | None = None
     version_id: str | None = None
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    action_id: str | None = None
+    trace_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    span_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{16}$")
     created_at: str = Field(min_length=1)
     payload: dict[str, Any] = Field(default_factory=dict)
 

@@ -204,9 +204,16 @@ class CanvasRuntimeEventV2(_RuntimeModel):
     sequence_no: int = Field(ge=1)
     workflow_id: str
     event_type: str
+    project_id: str | None = None
     execution_id: str | None = None
     node_id: str | None = None
+    binding_id: str | None = None
     asset_id: str | None = None
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    action_id: str | None = None
+    trace_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    span_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{16}$")
     payload: dict[str, object] = Field(default_factory=dict)
     created_at: datetime
 

@@ -56,6 +56,7 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
+    AgentTargetResolutionV2,
     CanvasBindingCreateRequestV2,
     CanvasBindingMutationResponseV2,
     CanvasBindingPatchRequestV2,
@@ -86,9 +87,16 @@ from app.schemas.agent_canvas_conversation import (
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
     ChatTurnV2,
+    ConceptProposalV2,
+    GuidedActionApplyRequestV2,
     ProposalActionRequestV2,
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
+)
+from app.schemas.agent_canvas_creative_session import CreativeSessionStateV2
+from app.schemas.agent_canvas_video_skills import (
+    VideoSkillPublicDetailV2,
+    VideoSkillSummaryListV2,
 )
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderModelCapabilityListV2,
@@ -152,16 +160,15 @@ from app.services.agent_canvas_runtime import (
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
-from app.services.agent_canvas_composition_preparation import (
-    AgentCanvasCompositionPreparationService,
-)
 from app.services.agent_canvas_context import AgentLocalContextAssembler
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.services.agent_canvas_conversation import (
     AgentConversationService,
     DeterministicDirectorGateway,
     PiDirectorGateway,
 )
 from app.services.agent_canvas_layout import AgentCanvasLayoutService
+from app.services.agent_canvas_targets import AgentCanvasTargetService
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.agent_canvas_variations import AgentCanvasVariationService
 from app.services.durable_pi_run import DurablePiRunService
@@ -182,6 +189,7 @@ class AgentCanvasRuntime:
     connected_authoring: AgentCanvasConnectedAuthoringService
     connection_policy: AgentCanvasConnectionPolicyService
     assets: AgentCanvasAssetService
+    targets: AgentCanvasTargetService
     conversations: AgentConversationService
     commands: AgentCanvasCommandService
     variations: AgentCanvasVariationService
@@ -502,7 +510,6 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         command_repository,
         run_nodes=queue_nodes,
         replan=command_replan,
-        composition_preparation=AgentCanvasCompositionPreparationService(workflow_repository),
     )
 
     def validate_variation(
@@ -556,6 +563,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             project_repository,
             workflow_repository,
             asset_service,
+            conversation_repository,
+            video_skills,
         ),
         workflows=workflow_repository,
         nodes=AgentCanvasNodeService(workflow_repository),
@@ -573,6 +582,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         ),
         connection_policy=connection_policy,
         assets=asset_service,
+        targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=AgentConversationService(
             workflows=workflow_repository,
             conversations=conversation_repository,
@@ -737,6 +747,21 @@ def get_workflow(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return workflow
+
+
+@router.get(
+    "/workflows/{workflow_id}/locators/resolve",
+    response_model=AgentTargetResolutionV2,
+)
+def resolve_locator(
+    workflow_id: str,
+    locator: Annotated[str, Query(min_length=1)],
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> AgentTargetResolutionV2:
+    try:
+        return runtime.targets.resolve(workflow_id, locator)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
 
 
 @router.patch(
@@ -1316,6 +1341,21 @@ def submit_chat_message(
 
 
 @router.get(
+    "/workflows/{workflow_id}/chat/proposals/{proposal_id}",
+    response_model=ConceptProposalV2,
+)
+def get_chat_proposal(
+    workflow_id: str,
+    proposal_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> ConceptProposalV2:
+    try:
+        return runtime.conversations.get_proposal(workflow_id, proposal_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
     "/workflows/{workflow_id}/chat/turns/{turn_id}",
     response_model=ChatTurnV2,
 )
@@ -1402,9 +1442,42 @@ def act_on_command_plan(
 
 
 @router.post(
+    "/workflows/{workflow_id}/chat/guided-actions/{action_id}/apply",
+    response_model=ChatTurnAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def apply_guided_action(
+    workflow_id: str,
+    action_id: str,
+    request: GuidedActionApplyRequestV2,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ChatTurnAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.conversations.act_on_guided_action(
+            workflow_id,
+            action_id,
+            confirmed=request.confirmed,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    background_tasks.add_task(
+        _process_agent_turn_and_resume,
+        runtime,
+        workflow_id,
+        accepted.turn_id,
+    )
+    return accepted
+
+
+@router.post(
     "/workflows/{workflow_id}/skill-runs",
     response_model=VideoSkillRunV2,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def create_video_skill_run(
     workflow_id: str,
@@ -1417,7 +1490,7 @@ def create_video_skill_run(
     try:
         runtime.workflows.get_workflow(workflow_id)
         loaded = runtime.video_skills.load(request.skill_id, request.skill_version)
-        return runtime.conversation_repository.create_skill_run(
+        skill_run = runtime.conversation_repository.create_skill_run(
             workflow_id,
             skill_id=loaded.manifest.skill_id,
             skill_version=loaded.manifest.version,
@@ -1425,6 +1498,55 @@ def create_video_skill_run(
             source_skill_run_id=request.source_skill_run_id,
             idempotency_key=idempotency_key,
         )
+        CreativeDirectionService().ensure_snapshot(
+            runtime.conversation_repository,
+            skill_run,
+            loaded,
+        )
+        return skill_run
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get("/video-skills", response_model=VideoSkillSummaryListV2)
+def list_video_skills(
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    category: Annotated[str | None, Query(max_length=80)] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> VideoSkillSummaryListV2:
+    try:
+        return runtime.video_skills.list_public_catalog(
+            category=category,
+            cursor=cursor,
+            limit=limit,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get("/video-skills/{skill_id}", response_model=VideoSkillPublicDetailV2)
+def get_video_skill(
+    skill_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> VideoSkillPublicDetailV2:
+    try:
+        return runtime.video_skills.get_public_detail(skill_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
+    "/workflows/{workflow_id}/creative-session",
+    response_model=CreativeSessionStateV2,
+)
+def get_creative_session(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CreativeSessionStateV2:
+    try:
+        runtime.workflows.get_workflow(workflow_id)
+        return runtime.conversation_repository.get_creative_session(workflow_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -1514,9 +1636,16 @@ def list_canvas_runtime_events(
             sequence_no=event.seq,
             workflow_id=event.workflow_id,
             event_type=event.event_type,
+            project_id=event.project_id,
             execution_id=event.execution_id,
             node_id=event.node_id,
+            binding_id=event.binding_id,
             asset_id=event.asset_id,
+            conversation_id=event.conversation_id,
+            turn_id=event.turn_id,
+            action_id=event.action_id,
+            trace_id=event.trace_id,
+            span_id=event.span_id,
             payload=event.payload,
             created_at=event.created_at,
         )
@@ -1550,9 +1679,16 @@ def stream_canvas_runtime_events(
                     sequence_no=event.seq,
                     workflow_id=event.workflow_id,
                     event_type=event.event_type,
+                    project_id=event.project_id,
                     execution_id=event.execution_id,
                     node_id=event.node_id,
+                    binding_id=event.binding_id,
                     asset_id=event.asset_id,
+                    conversation_id=event.conversation_id,
+                    turn_id=event.turn_id,
+                    action_id=event.action_id,
+                    trace_id=event.trace_id,
+                    span_id=event.span_id,
                     payload=event.payload,
                     created_at=event.created_at,
                 )
@@ -1653,6 +1789,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "binding_not_found": 404,
         "asset_not_found": 404,
         "asset_not_ready": 409,
+        "target_not_found": 404,
+        "target_type_not_supported": 422,
+        "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
         "idempotency_conflict": 409,
@@ -1669,6 +1808,10 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "agent_command_confirmation_required": 409,
         "agent_command_confirmation_invalidated": 409,
         "agent_command_replan_exhausted": 409,
+        "guided_action_not_found": 404,
+        "guided_action_already_applied": 409,
+        "guided_action_invalid": 422,
+        "confirmation_required": 409,
         "node_output_immutable": 409,
         "binding_cycle_detected": 409,
         "binding_media_incompatible": 422,
@@ -1709,6 +1852,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_option_not_found": 422,
         "proposal_revision_conflict": 409,
         "video_skill_not_found": 404,
+        "skill_not_found": 404,
+        "skill_catalog_cursor_invalid": 422,
+        "skill_catalog_page_invalid": 422,
         "agent_skill_manifest_invalid": 503,
         "agent_skill_file_missing": 503,
         "agent_skill_digest_mismatch": 503,
@@ -1742,7 +1888,7 @@ def _http_error(
 ) -> HTTPException:
     return HTTPException(
         status_code=status_code,
-        detail={"code": code, "message": message, **(details or {})},
+        detail={"code": code, "message": message, "details": details or {}},
     )
 
 

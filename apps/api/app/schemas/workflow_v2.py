@@ -1142,12 +1142,19 @@ class WorkflowV2Event(BaseModel):
     seq: int
     event_type: str
     workflow_id: str
+    project_id: str | None = None
     execution_id: str | None = None
     node_id: str | None = None
+    binding_id: str | None = None
     item_id: str | None = None
     slot_id: str | None = None
     asset_id: str | None = None
     version_id: str | None = None
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    action_id: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
     created_at: str
     payload: dict[str, Any] = Field(default_factory=dict)
 
