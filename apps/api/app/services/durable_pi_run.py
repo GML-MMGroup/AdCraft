@@ -128,17 +128,21 @@ class DurablePiRunService:
         lease_owner_id = f"python_{uuid4().hex}"
         lease_duration = max(60.0, self._settings.agent_runtime_run_timeout_seconds * 2)
         owns_lease = False
+        lease_generation = 0
 
         def persist_event(event: AgentRuntimeEvent) -> None:
+            nonlocal lease_generation
             if event.event_type == "heartbeat":
-                repository.acquire_lease(
+                renewed = repository.acquire_lease(
                     request.run_id,
                     lease_owner_id=lease_owner_id,
                     lease_duration_seconds=lease_duration,
                 )
+                lease_generation = renewed.lease_generation
             repository.record_event_seq(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 seq=event.seq,
             )
             event_projector.consume(
@@ -154,6 +158,7 @@ class DurablePiRunService:
                 lease_duration_seconds=lease_duration,
             )
             owns_lease = created
+            lease_generation = record.lease_generation
             if not created:
                 if record.status in {"completed", "failed", "cancelled"}:
                     return self._replayed_result(record)
@@ -169,6 +174,7 @@ class DurablePiRunService:
                     lease_duration_seconds=lease_duration,
                 )
                 owns_lease = True
+                lease_generation = record.lease_generation
                 request = request.model_copy(update={"run_id": record.run_id})
 
             outcome = self._client.run(request, on_event=persist_event)
@@ -182,6 +188,7 @@ class DurablePiRunService:
             repository.finish(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 status=status,
                 terminal_result=terminal.payload,
                 audit_metadata=_safe_audit_metadata(terminal.payload),
@@ -207,6 +214,7 @@ class DurablePiRunService:
                     repository,
                     request.run_id,
                     lease_owner_id,
+                    lease_generation,
                     code=error.code,
                     message=error.message,
                     retryable=error.retryable,
@@ -222,6 +230,7 @@ class DurablePiRunService:
                     repository,
                     request.run_id,
                     lease_owner_id,
+                    lease_generation,
                     code=error.code,
                     message=error.message,
                     retryable=False,
@@ -233,6 +242,7 @@ class DurablePiRunService:
                     repository,
                     request.run_id,
                     lease_owner_id,
+                    lease_generation,
                     code="agent_runtime_unavailable",
                     message="Agent runtime is unavailable.",
                     retryable=True,
@@ -302,6 +312,7 @@ class DurablePiRunService:
         repository: AgentRunRepository,
         run_id: str,
         lease_owner_id: str,
+        lease_generation: int,
         *,
         code: str,
         message: str,
@@ -311,6 +322,7 @@ class DurablePiRunService:
             repository.finish(
                 run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 status="failed",
                 terminal_result={
                     "code": code,

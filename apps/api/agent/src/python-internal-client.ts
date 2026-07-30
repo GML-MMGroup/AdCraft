@@ -10,6 +10,11 @@ export interface AgentCredentialSnapshot {
   readonly model_id: string;
   readonly model_policy_id: string;
   readonly base_url: string;
+  readonly supports_tool_calls: boolean;
+  readonly supports_strict_structured_output: boolean;
+  readonly supports_streaming: boolean;
+  readonly supports_streamed_tool_calls: boolean;
+  readonly supports_reasoning_controls: boolean;
   readonly api_key: string;
 }
 
@@ -58,7 +63,12 @@ export class PythonInternalClient {
       typeof payload.model_policy_id !== "string" ||
       typeof payload.base_url !== "string" ||
       typeof payload.api_key !== "string" ||
-      typeof payload.provider !== "string"
+      typeof payload.provider !== "string" ||
+      typeof payload.supports_tool_calls !== "boolean" ||
+      typeof payload.supports_strict_structured_output !== "boolean" ||
+      typeof payload.supports_streaming !== "boolean" ||
+      typeof payload.supports_streamed_tool_calls !== "boolean" ||
+      typeof payload.supports_reasoning_controls !== "boolean"
     ) {
       throw new Error("agent_protocol_mismatch");
     }

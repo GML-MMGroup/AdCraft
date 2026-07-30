@@ -32,6 +32,7 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
 )
+from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
 
@@ -151,19 +152,23 @@ class StructuredGenerationRuntime:
         )
         event_projector = V2AgentEventProjector(self._settings.media_data_dir)
         persisted_sequences: set[int] = set()
+        lease_generation = 0
 
         def persist_event(event: Any) -> None:
+            nonlocal lease_generation
             if event.seq in persisted_sequences:
                 return
             if event.event_type == "heartbeat":
-                repository.acquire_lease(
+                renewed = repository.acquire_lease(
                     request.run_id,
                     lease_owner_id=lease_owner_id,
                     lease_duration_seconds=lease_duration,
                 )
+                lease_generation = renewed.lease_generation
             repository.record_event_seq(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 seq=event.seq,
             )
             event_projector.consume(
@@ -179,6 +184,7 @@ class StructuredGenerationRuntime:
                 lease_owner_id=lease_owner_id,
                 lease_duration_seconds=lease_duration,
             )
+            lease_generation = record.lease_generation
             if not created:
                 replay = self._existing_run_result(spec, record)
                 if replay is not None:
@@ -199,6 +205,7 @@ class StructuredGenerationRuntime:
                     lease_owner_id=lease_owner_id,
                     lease_duration_seconds=lease_duration,
                 )
+                lease_generation = record.lease_generation
                 request = request.model_copy(update={"run_id": record.run_id})
                 persisted_sequences.update(range(1, record.last_event_seq + 1))
             outcome = self._agent_runtime_client.run(request, on_event=persist_event)
@@ -206,6 +213,7 @@ class StructuredGenerationRuntime:
             repository.finish(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 status={
                     "run_completed": "completed",
                     "run_failed": "failed",
@@ -238,6 +246,7 @@ class StructuredGenerationRuntime:
                 repository,
                 request.run_id,
                 lease_owner_id,
+                lease_generation,
                 error,
             )
             raise StructuredGenerationRuntimeError(
@@ -250,6 +259,7 @@ class StructuredGenerationRuntime:
                 repository,
                 request.run_id,
                 lease_owner_id,
+                lease_generation,
                 error,
             )
             if isinstance(error, QualityValidationError):
@@ -283,6 +293,7 @@ class StructuredGenerationRuntime:
                 repository,
                 request.run_id,
                 lease_owner_id,
+                lease_generation,
                 error,
             )
             quality_code = getattr(error, "code", None)
@@ -358,6 +369,7 @@ class StructuredGenerationRuntime:
         repository: AgentRunRepository,
         run_id: str,
         lease_owner_id: str,
+        lease_generation: int,
         error: Exception,
     ) -> None:
         try:
@@ -368,6 +380,7 @@ class StructuredGenerationRuntime:
             repository.finish(
                 run_id,
                 lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
                 status="failed",
                 terminal_result={"code": code, "message": "Agent runtime failed."},
                 safe_error_code=code,
@@ -610,6 +623,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             if identity is not None
             else f"req_{uuid4().hex}"
         ),
+        **agent_run_envelope_fields(context),
         parent_run_id=invocation.parent_run_id if invocation else None,
         agent_name=agent_name,
         operation=operation,

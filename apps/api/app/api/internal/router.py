@@ -63,7 +63,7 @@ def get_agent_runtime_config(
     operation: str,
     model_policy_id: str,
     settings: Settings = Depends(get_settings),
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     response.headers["Cache-Control"] = "no-store"
     try:
         snapshot = V2AgentCredentialBroker(settings).snapshot(
@@ -83,6 +83,11 @@ def get_agent_runtime_config(
         "model_id": snapshot.model_id,
         "model_policy_id": snapshot.model_policy_id,
         "base_url": snapshot.base_url,
+        "supports_tool_calls": snapshot.supports_tool_calls,
+        "supports_strict_structured_output": snapshot.supports_strict_structured_output,
+        "supports_streaming": snapshot.supports_streaming,
+        "supports_streamed_tool_calls": snapshot.supports_streamed_tool_calls,
+        "supports_reasoning_controls": snapshot.supports_reasoning_controls,
         "api_key": snapshot.api_key,
     }
 

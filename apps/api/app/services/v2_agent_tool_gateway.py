@@ -440,6 +440,7 @@ class V2AgentToolGateway:
                 stored = self._repository.store_tool_result(
                     call.run_id,
                     lease_owner_id=run.lease_owner_id or "",
+                    lease_generation=run.lease_generation,
                     idempotency_key=call.idempotency_key,
                     request_digest=digest,
                     result=result.model_dump(mode="json"),

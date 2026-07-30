@@ -46,6 +46,7 @@ class AgentRunRecord:
     deadline_at: datetime | None
     status: str
     lease_owner_id: str | None
+    lease_generation: int
     lease_expires_at: datetime | None
     last_event_seq: int
     expected_target_revision: int | None
@@ -91,6 +92,7 @@ class AgentRunRepository:
             "deadline_at": _iso(request.deadline_at),
             "status": "running",
             "lease_owner_id": lease_owner_id,
+            "lease_generation": 1,
             "lease_expires_at": _iso(lease_expiry),
             "last_event_seq": 0,
             "expected_target_revision": _expected_target_revision(request),
@@ -180,6 +182,19 @@ class AgentRunRepository:
                         "agent_run_lease_active",
                         "Agent run has a live lease owned by another worker.",
                     )
+                interrupted = (
+                    current_owner is not None
+                    and current_owner != lease_owner_id
+                    and current_expiry is not None
+                    and current_expiry <= timestamp
+                )
+                audit_metadata = _object(row["audit_metadata_json"])
+                if interrupted:
+                    audit_metadata = {
+                        **audit_metadata,
+                        "interruption_count": int(audit_metadata.get("interruption_count", 0)) + 1,
+                        "last_interruption_code": "agent_run_interrupted",
+                    }
                 result = connection.execute(
                     update(AgentRunRow)
                     .where(
@@ -190,7 +205,12 @@ class AgentRunRepository:
                     .values(
                         status="running",
                         lease_owner_id=lease_owner_id,
+                        lease_generation=int(row["lease_generation"]) + 1,
                         lease_expires_at=_iso(lease_expiry),
+                        safe_error_code=(
+                            "agent_run_interrupted" if interrupted else row["safe_error_code"]
+                        ),
+                        audit_metadata_json=_json(audit_metadata),
                         updated_at=_iso(timestamp),
                     )
                 )
@@ -211,6 +231,7 @@ class AgentRunRepository:
         run_id: str,
         *,
         lease_owner_id: str,
+        lease_generation: int,
         seq: int,
         now: datetime | None = None,
     ) -> AgentRunRecord:
@@ -219,7 +240,13 @@ class AgentRunRepository:
             raise _error("agent_event_sequence_invalid", "Agent event sequence must be positive.")
         try:
             with self._database.engine.begin() as connection:
-                row = _get_owned_row(connection, run_id, lease_owner_id, timestamp)
+                row = _get_owned_row(
+                    connection,
+                    run_id,
+                    lease_owner_id,
+                    lease_generation,
+                    timestamp,
+                )
                 if seq <= int(row["last_event_seq"]):
                     raise _error(
                         "agent_event_sequence_invalid",
@@ -242,6 +269,7 @@ class AgentRunRepository:
         run_id: str,
         *,
         lease_owner_id: str,
+        lease_generation: int,
         status: Literal["completed", "failed", "cancelled"],
         terminal_result: dict[str, Any],
         safe_error_code: str | None = None,
@@ -255,7 +283,13 @@ class AgentRunRepository:
         _validate_metadata(audit_metadata or {})
         try:
             with self._database.engine.begin() as connection:
-                row = _get_owned_row(connection, run_id, lease_owner_id, timestamp)
+                row = _get_owned_row(
+                    connection,
+                    run_id,
+                    lease_owner_id,
+                    lease_generation,
+                    timestamp,
+                )
                 merged_audit = {
                     **_object(row["audit_metadata_json"]),
                     **(audit_metadata or {}),
@@ -287,6 +321,7 @@ class AgentRunRepository:
         run_id: str,
         *,
         lease_owner_id: str,
+        lease_generation: int,
         idempotency_key: str,
         request_digest: str,
         result: dict[str, Any],
@@ -302,7 +337,13 @@ class AgentRunRepository:
         _validate_safe_json(entry, maximum_bytes=_MAX_TOOL_RESULTS_BYTES)
         try:
             with self._database.engine.begin() as connection:
-                row = _get_owned_row(connection, run_id, lease_owner_id, timestamp)
+                row = _get_owned_row(
+                    connection,
+                    run_id,
+                    lease_owner_id,
+                    lease_generation,
+                    timestamp,
+                )
                 stored = _object(row["tool_results_json"])
                 existing = stored.get(idempotency_key)
                 if existing is not None:
@@ -357,10 +398,16 @@ def _get_owned_row(
     connection: Any,
     run_id: str,
     lease_owner_id: str,
+    lease_generation: int,
     now: datetime,
 ) -> Any:
     row = _get_row(connection, run_id)
     _require_nonterminal(row)
+    if int(row["lease_generation"]) != lease_generation:
+        raise _error(
+            "agent_run_lease_stale",
+            "Agent run lease generation has been superseded.",
+        )
     if row["lease_owner_id"] != lease_owner_id:
         raise _error("agent_run_lease_not_owned", "Agent run lease is not owned by this worker.")
     expires_at = _datetime(row["lease_expires_at"])
@@ -389,6 +436,7 @@ def _record(row: Any) -> AgentRunRecord:
         deadline_at=_datetime(row["deadline_at"]),
         status=row["status"],
         lease_owner_id=row["lease_owner_id"],
+        lease_generation=int(row["lease_generation"]),
         lease_expires_at=_datetime(row["lease_expires_at"]),
         last_event_seq=int(row["last_event_seq"]),
         expected_target_revision=row["expected_target_revision"],

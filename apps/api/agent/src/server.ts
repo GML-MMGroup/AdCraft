@@ -49,9 +49,10 @@ export function createAgentRuntimeServer(options: ServerOptions) {
   const adapter = options.adapter ?? new FakeAgentModelAdapter();
   const maxRequestBytes = options.maxRequestBytes ?? 1_048_576;
   const maxQueueBytes = options.maxQueueBytes ?? 262_144;
-  const maxConcurrentRuns = options.maxConcurrentRuns ?? 8;
+  const maxConcurrentRuns = options.maxConcurrentRuns ?? 2;
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
   const activeRuns = new Map<string, ActiveRun>();
+  const activeConversations = new Map<string, string>();
 
   const server = createServer(async (incoming, response) => {
     if (!authorized(incoming, options.internalToken)) {
@@ -75,6 +76,7 @@ export function createAgentRuntimeServer(options: ServerOptions) {
         response,
         adapter,
         activeRuns,
+        activeConversations,
         maxRequestBytes,
         maxQueueBytes,
         heartbeatIntervalMs,
@@ -115,6 +117,7 @@ async function handleRun(
   response: ServerResponse,
   adapter: AgentModelAdapter,
   activeRuns: Map<string, ActiveRun>,
+  activeConversations: Map<string, string>,
   maxRequestBytes: number,
   maxQueueBytes: number,
   heartbeatIntervalMs: number,
@@ -129,6 +132,18 @@ async function handleRun(
   }
   if (activeRuns.has(request.run_id)) {
     json(response, 409, { code: "agent_run_already_active" });
+    return;
+  }
+  const conversationId =
+    "conversation_id" in request.context
+      ? request.context.conversation_id
+      : undefined;
+  if (conversationId && activeConversations.has(conversationId)) {
+    json(response, 409, { code: "agent_run_conflict" });
+    return;
+  }
+  if (request.contract_digest !== loadRuntimeManifest().contract_digest) {
+    json(response, 409, { code: "agent_contract_mismatch" });
     return;
   }
   if (activeRuns.size >= maxConcurrentRuns) {
@@ -163,6 +178,7 @@ async function handleRun(
   });
   const active: ActiveRun = { controller };
   activeRuns.set(request.run_id, active);
+  if (conversationId) activeConversations.set(conversationId, request.run_id);
   const startedAt = Date.now();
   const eventBuffer = new EventBuffer(response, maxQueueBytes);
   let terminalEmitted = false;
@@ -226,6 +242,7 @@ async function handleRun(
     clearInterval(heartbeat);
     clearTimeout(timeout);
     activeRuns.delete(request.run_id);
+    if (conversationId) activeConversations.delete(conversationId);
     await eventBuffer.close();
     response.end();
   }

@@ -1,5 +1,12 @@
 import { Agent, type AgentEvent, type AgentTool } from "@earendil-works/pi-agent-core";
-import { Type, type Model } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  Type,
+  type AssistantMessageEventStream,
+  type Context,
+  type Model,
+  type SimpleStreamOptions,
+} from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 
 import type {
@@ -161,10 +168,11 @@ export class PiModelAdapter implements AgentModelAdapter {
           apiKey: credential.api_key,
           ...(toolChoice ? { toolChoice } : {}),
         };
-        return streamSimple(
+        return modelStreamForCredential(
           selectedModel as Model<"openai-completions">,
           context,
           streamOptions,
+          credential,
         );
       },
     });
@@ -199,6 +207,26 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
   }
 
+}
+
+export function modelStreamForCredential(
+  model: Model<"openai-completions">,
+  context: Context,
+  options: SimpleStreamOptions,
+  credential: AgentCredentialSnapshot,
+  sourceFactory: () => AssistantMessageEventStream = () =>
+    streamSimple(model, context, options),
+): AssistantMessageEventStream {
+  const source = sourceFactory();
+  if (credential.supports_streamed_tool_calls) return source;
+
+  const buffered = createAssistantMessageEventStream();
+  void (async () => {
+    const events = [];
+    for await (const candidate of source) events.push(candidate);
+    for (const candidate of events) buffered.push(candidate);
+  })();
+  return buffered;
 }
 
 export function toolsForRequest(
