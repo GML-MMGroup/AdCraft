@@ -145,15 +145,6 @@ class VideoSegmentPromptService(_RecipeService):
     ) -> CompiledProviderPromptV2:
         content = VideoSegmentContentV2.model_validate(node.structured_content)
         self.validate(content, capability)
-        grid_count = sum(
-            reference.source_semantic_role == "storyboard_grid"
-            for reference in references.references
-        )
-        if grid_count != 1:
-            raise _error(
-                "role_required_reference_missing",
-                "Video Segment requires exactly one complete Storyboard Grid.",
-            )
         return self._compile(node, references)
 
 

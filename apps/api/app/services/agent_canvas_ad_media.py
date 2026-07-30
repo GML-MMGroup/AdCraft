@@ -144,14 +144,6 @@ def _role_registry() -> dict[str, _RegisteredRole]:
         "video",
         "video",
         VideoSegmentContentV2,
-        (
-            ReferenceRequirementV2(
-                binding_kind="image_reference",
-                required_role="storyboard_grid",
-                minimum=1,
-                maximum=1,
-            ),
-        ),
     )
     for role in ("generic_audio", "uploaded_audio"):
         add(role, "audio", "audio")

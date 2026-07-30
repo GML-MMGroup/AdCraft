@@ -71,6 +71,8 @@ class AdReferenceBundleResolver:
                     "role_reference_bundle_invalid",
                     "Bound media asset is not Ready.",
                 )
+            if source_role is None:
+                source_role = asset.source_semantic_role
             resolved = ResolvedAdReferenceV2(
                 binding_id=binding.binding_id,
                 source_kind=binding.source.kind,
