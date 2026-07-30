@@ -1,0 +1,143 @@
+"""Atomic click-to-create authoring for Agent Canvas."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from hashlib import sha256
+from uuid import uuid4
+
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import (
+    CanvasBindingSourceNodeV2,
+    CanvasBindingV2,
+    CanvasConnectedNodeCreateRequestV2,
+    CanvasConnectedNodeCreateResponseV2,
+    CanvasNodeV2,
+)
+from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+
+
+class AgentCanvasConnectedAuthoringService:
+    """Create one Draft node and its binding in a single semantic transaction."""
+
+    def __init__(
+        self,
+        workflows: AgentCanvasWorkflowRepository,
+        connection_policy: AgentCanvasConnectionPolicyService,
+        *,
+        binding_capability_validator: object | None = None,
+    ) -> None:
+        self._workflows = workflows
+        self._connection_policy = connection_policy
+        self._binding_capability_validator = binding_capability_validator
+
+    def create_connected_node(
+        self,
+        workflow_id: str,
+        request: CanvasConnectedNodeCreateRequestV2,
+        *,
+        expected_revision: int,
+        idempotency_key: str,
+    ) -> CanvasConnectedNodeCreateResponseV2:
+        if not idempotency_key:
+            raise V2PersistenceError(
+                "idempotency_key_required",
+                "Idempotency-Key is required.",
+                stage="agent_canvas_connected_authoring",
+            )
+        if (
+            request.node.clone_inputs_from_node_id is not None
+            or request.node.source_asset_id is not None
+            or request.node.video_skill_run_id is not None
+        ):
+            raise V2PersistenceError(
+                "connected_node_payload_invalid",
+                "Connected node creation accepts only a new Draft node payload.",
+                stage="agent_canvas_connected_authoring",
+            )
+        workflow = self._workflows.get_workflow(workflow_id)
+        anchor = self._workflows.get_node(workflow_id, request.anchor_node_id)
+        now = datetime.now(timezone.utc)
+        node = CanvasNodeV2(
+            node_id=f"node_{uuid4().hex}",
+            workflow_id=workflow_id,
+            node_type=request.node.node_type,
+            semantic_role=request.node.semantic_role,
+            role_contract_version=request.node.role_contract_version,
+            title=request.node.title,
+            status="draft",
+            summary_prompt=request.node.summary_prompt,
+            generation_prompt=request.node.generation_prompt,
+            structured_content=request.node.structured_content,
+            model_id=request.node.model_id,
+            parameters=request.node.parameters,
+            prompt_context_snapshot_id=None,
+            output_asset_id=None,
+            video_skill_run_id=None,
+            position=request.node.position,
+            revision=1,
+            error=None,
+            created_at=now,
+            updated_at=now,
+        )
+        source, target = (node, anchor) if request.direction == "upstream" else (anchor, node)
+        decision = self._connection_policy.require(
+            source_node_type=source.node_type,
+            target_node_type=target.node_type,
+            input_role=request.binding.input_role,
+        )
+        incoming = tuple(
+            binding for binding in workflow.bindings if binding.target_node_id == target.node_id
+        )
+        if target.model_id is not None and self._binding_capability_validator is not None:
+            input_types = {_input_type(binding.binding_kind) for binding in incoming}
+            input_types.add(decision.input_type or "text")
+            reference_count = sum(
+                _input_type(binding.binding_kind) in {"image", "video", "audio"}
+                for binding in incoming
+            ) + (1 if decision.input_type in {"image", "video", "audio"} else 0)
+            capability = self._binding_capability_validator(
+                target,
+                frozenset(input_types),
+                reference_count,
+            )
+            if not getattr(capability, "accepted", False):
+                raise V2PersistenceError(
+                    "provider_inputs_unsupported",
+                    "Selected model does not support the complete prospective input set.",
+                    stage="agent_canvas_connected_authoring",
+                )
+        binding = CanvasBindingV2(
+            binding_id=f"binding_{uuid4().hex}",
+            workflow_id=workflow_id,
+            source=CanvasBindingSourceNodeV2(node_id=source.node_id),
+            target_node_id=target.node_id,
+            binding_kind=decision.binding_kind or "brief_context",
+            input_role=decision.input_role or "instruction",
+            required=request.binding.required,
+            display_order=min(
+                request.binding.display_order
+                if request.binding.display_order is not None
+                else len(incoming),
+                len(incoming),
+            ),
+            created_at=now,
+        )
+        return self._workflows.add_connected_node(
+            node=node,
+            binding=binding,
+            expected_revision=expected_revision,
+            idempotency_key=idempotency_key,
+            request_fingerprint=sha256(request.model_dump_json().encode()).hexdigest(),
+        )
+
+
+def _input_type(binding_kind: str) -> str:
+    return {
+        "brief_context": "text",
+        "script_context": "text",
+        "image_reference": "image",
+        "video_reference": "video",
+        "audio_reference": "audio",
+    }[binding_kind]
