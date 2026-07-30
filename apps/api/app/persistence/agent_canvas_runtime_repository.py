@@ -473,7 +473,9 @@ class AgentCanvasRuntimeRepository:
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
 
-    def put_provider_task(self, task: CanvasProviderTaskV2, *, now: datetime) -> None:
+    def put_provider_task(self, task: CanvasProviderTaskV2, *, now: datetime) -> bool:
+        """Persist one provider transition unless a newer terminal lease won."""
+
         values = {
             **task.model_dump(mode="json"),
             "result_descriptor_json": json.dumps(task.result_descriptor, sort_keys=True),
@@ -485,14 +487,24 @@ class AgentCanvasRuntimeRepository:
         values.pop("error")
         try:
             with self._database.engine.begin() as connection:
-                existing = connection.execute(
-                    select(AgentCanvasProviderTaskRow.task_id).where(
-                        AgentCanvasProviderTaskRow.task_id == task.task_id
+                existing = (
+                    connection.execute(
+                        select(AgentCanvasProviderTaskRow).where(
+                            AgentCanvasProviderTaskRow.task_id == task.task_id
+                        )
                     )
-                ).scalar_one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if existing is None:
                     connection.execute(insert(AgentCanvasProviderTaskRow).values(**values))
                 else:
+                    existing_generation = int(existing["lease_generation"])
+                    existing_status = str(existing["status"])
+                    if existing_generation > task.lease_generation or (
+                        existing_status == "succeeded" and task.status != "succeeded"
+                    ):
+                        return False
                     values.pop("created_at")
                     connection.execute(
                         update(AgentCanvasProviderTaskRow)
@@ -501,6 +513,7 @@ class AgentCanvasRuntimeRepository:
                     )
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Provider task storage failed.") from error
+        return True
 
     def list_recoverable_tasks(self) -> tuple[CanvasProviderTaskV2, ...]:
         return self.list_provider_tasks(

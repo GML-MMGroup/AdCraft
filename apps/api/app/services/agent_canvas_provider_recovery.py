@@ -111,7 +111,9 @@ class ProviderTaskRecoveryService:
                     "error": None,
                 }
             )
-            self._runtime.put_provider_task(waiting, now=now)
+            if not self._runtime.put_provider_task(waiting, now=now):
+                self._runtime.complete_lease(lease, now=now)
+                return False
             self._runtime.update_member(
                 task.execution_id,
                 task.node_id,
@@ -144,7 +146,9 @@ class ProviderTaskRecoveryService:
                 "error": None,
             }
         )
-        self._runtime.put_provider_task(current, now=now)
+        if not self._runtime.put_provider_task(current, now=now):
+            self._runtime.complete_lease(lease, now=now)
+            return False
         payload = self._downloader(current)
         node = self._workflows.get_node(task.workflow_id, task.node_id)
         context = NodeExecutionContext(
@@ -169,7 +173,9 @@ class ProviderTaskRecoveryService:
                 "error": None,
             }
         )
-        self._runtime.put_provider_task(completed, now=now)
+        if not self._runtime.put_provider_task(completed, now=now):
+            self._runtime.complete_lease(lease, now=now)
+            return False
         self._runtime.update_member(
             task.execution_id,
             task.node_id,
@@ -206,7 +212,9 @@ class ProviderTaskRecoveryService:
                 "error": error,
             }
         )
-        self._runtime.put_provider_task(failed, now=now)
+        if not self._runtime.put_provider_task(failed, now=now):
+            self._runtime.complete_lease(lease, now=now)
+            return
         self._workflows.set_node_runtime_state(
             task.workflow_id,
             task.node_id,
@@ -245,7 +253,8 @@ class ProviderTaskRecoveryService:
                 "error": detail,
             }
         )
-        self._runtime.put_provider_task(recovering, now=now)
+        if not self._runtime.put_provider_task(recovering, now=now):
+            return
         self._runtime.update_member(
             task.execution_id,
             task.node_id,
