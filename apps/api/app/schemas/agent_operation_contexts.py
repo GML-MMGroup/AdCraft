@@ -6,6 +6,12 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.agent_canvas_creative_session import (
+    CreativeSessionStateV2,
+    ProjectCreativeMemoryV2,
+    ResolvedImageTargetV2,
+)
+
 
 _MAX_CONTEXT_TEXT = 65_536
 _MAX_COLLECTION_ITEMS = 128
@@ -279,6 +285,22 @@ class DirectorTurnContextV2(_PlanningContextModel):
     script_summary: str = Field(default="", max_length=8_192)
     video_skill_excerpt: str = Field(default="", max_length=8_192)
     explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
+    candidate_summaries: tuple[str, ...] = Field(default=(), max_length=32)
+    creative_session: CreativeSessionStateV2 | None = None
+    creative_memory: ProjectCreativeMemoryV2 | None = None
+    resolved_image_targets: tuple[ResolvedImageTargetV2, ...] = Field(default=(), max_length=16)
+
+
+class AgentCommandReplanContextV2(_PlanningContextModel):
+    context_kind: Literal["agent_command_replan"]
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    conversation_id: str = Field(min_length=1, max_length=160)
+    original_user_intent: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    original_plan_summary: str = Field(min_length=1, max_length=8_192)
+    current_target_summaries: tuple[str, ...] = Field(default=(), max_length=16)
+    conflict_code: Literal["workflow_revision_conflict"]
+    replan_attempt: Literal[1] = 1
 
 
 class SpecialistContextV2(_PlanningContextModel):
@@ -295,9 +317,14 @@ class SpecialistContextV2(_PlanningContextModel):
     user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     target_node_id: str | None = Field(default=None, max_length=160)
     selected_option_summary: str = Field(default="", max_length=8_192)
+    selected_option_id: str | None = Field(default=None, max_length=160)
     script_summary: str = Field(default="", max_length=8_192)
     video_skill_excerpt: str = Field(default="", max_length=8_192)
     explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
+    creative_session: CreativeSessionStateV2 | None = None
+    creative_memory: ProjectCreativeMemoryV2 | None = None
+    resolved_image_targets: tuple[ResolvedImageTargetV2, ...] = Field(default=(), max_length=16)
+    reference_allowlist: tuple[str, ...] = Field(default=(), max_length=64)
 
 
 PlanningAgentContext = Annotated[
@@ -314,6 +341,7 @@ PlanningAgentContext = Annotated[
         WorkflowConversationAgentContext,
         ConversationSummaryAgentContext,
         DirectorTurnContextV2,
+        AgentCommandReplanContextV2,
         SpecialistContextV2,
     ],
     Field(discriminator="context_kind"),
