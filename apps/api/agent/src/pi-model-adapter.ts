@@ -177,7 +177,7 @@ export class PiModelAdapter implements AgentModelAdapter {
     try {
       let promptError: unknown;
       try {
-        await agent.prompt(promptInput(request));
+        await agent.prompt(promptInputForRequest(request));
       } catch (error) {
         promptError = error;
       }
@@ -329,10 +329,13 @@ function contractSchema(request: AgentRunRequest): Readonly<Record<string, unkno
     : {};
 }
 
-function promptInput(request: AgentRunRequest): string {
+export function promptInputForRequest(request: AgentRunRequest): string {
   if ("user_input" in request.context) return request.context.user_input;
   if ("user_instruction" in request.context) {
     return request.context.user_instruction;
+  }
+  if ("original_user_intent" in request.context) {
+    return request.context.original_user_intent;
   }
   throw new Error("agent_context_input_missing");
 }
