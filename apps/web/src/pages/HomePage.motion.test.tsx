@@ -86,8 +86,8 @@ describe("HomePage motion", () => {
     );
 
     expect(lines.map((line) => line.textContent)).toEqual([
-      "One Sentence",
-      "Becomes an",
+      "ONE SENTENCE",
+      "BECOMES AN",
       "Ad film.",
     ]);
 

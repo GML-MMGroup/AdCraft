@@ -1,10 +1,45 @@
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-latin-variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Barlow Condensed";
+  font-style: italic;
+  font-weight: 900;
+  font-display: swap;
+  src: url("/fonts/barlow-condensed-black-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/inter-latin-variable.woff2") format("woff2");
+}
+
+.home-page {
+  --home-font-display: "Space Grotesk", "Smiley Sans", "Noto Sans SC", "PingFang SC", sans-serif;
+  --home-font-accent: "Barlow Condensed", "Space Grotesk", "Smiley Sans", sans-serif;
+  --home-font-ui: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--home-font-ui);
+}
+
+.home-page > .content-wrap {
+  width: min(1230px, calc(100vw - 180px));
+}
+
 .home-product-hero {
-  --home-product-hero-height: 570px;
-  --home-product-media-height: 360px;
+  --home-product-hero-height: 607px;
+  --home-product-media-height: 458px;
   display: grid;
-  grid-template-columns: minmax(0, 0.94fr) minmax(400px, 1.06fr);
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  width: min(var(--content-width), calc(100vw - 180px));
+  width: min(1230px, calc(100vw - 180px));
   height: var(--home-product-hero-height);
   min-height: 0;
   gap: 58px;
@@ -23,12 +58,11 @@
 .home-product-hero__title {
   max-width: 640px;
   color: #202235;
-  font-size: clamp(46px, 4.6vw, 64px);
-  font-family: var(--font-editorial);
-  font-weight: 500;
-  line-height: 1.15;
-  letter-spacing: 0.012em;
-  -webkit-text-stroke: 0.18px currentColor;
+  font-family: var(--home-font-display);
+  font-size: 62px;
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: 0;
 }
 
 .home-product-hero__title-line {
@@ -87,10 +121,16 @@
 .home-product-hero__accent {
   position: relative;
   width: fit-content;
+  margin-top: 14px;
+  padding-right: 0.08em;
   white-space: nowrap;
   color: #8f6722;
+  font-family: var(--home-font-accent);
+  font-size: 150px;
   font-style: italic;
-  font-weight: 400;
+  font-weight: 900;
+  line-height: 0.9;
+  transform: none;
 }
 
 .home-product-hero__accent .home-product-hero__character {
@@ -184,18 +224,18 @@
 
 .home-product-hero__create {
   display: inline-flex;
-  min-height: 48px;
+  min-height: 56px;
   align-items: center;
   gap: 9px;
-  margin-top: 32px;
-  padding: 0 19px 0 16px;
+  margin-top: 48px;
+  padding: 0 26px 0 22px;
   border: 1px solid rgba(239, 233, 255, 0.74);
   border-radius: 8px;
   background: rgba(128, 107, 196, 0.3);
   box-shadow: 0 12px 28px rgba(82, 65, 147, 0.18), inset 0 1px rgba(255, 255, 255, 0.44);
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   will-change: transform, box-shadow;
@@ -234,6 +274,7 @@
   max-height: 100%;
   aspect-ratio: 16 / 9;
   align-self: end;
+  margin-bottom: 22px;
   isolation: isolate;
   opacity: 1;
 }
@@ -312,7 +353,11 @@
   }
 
   .home-product-hero__title {
-    font-size: clamp(42px, 5.4vw, 54px);
+    font-size: 48px;
+  }
+
+  .home-product-hero__accent {
+    font-size: 92px;
   }
 }
 
@@ -343,8 +388,13 @@
   }
 
   .home-product-hero__title {
-    font-size: clamp(40px, 11vw, 52px);
-    line-height: 1.15;
+    font-size: 40px;
+    line-height: 1.02;
+  }
+
+  .home-product-hero__accent {
+    margin-top: 10px;
+    font-size: 70px;
   }
 
   .home-product-hero__description {
@@ -400,11 +450,12 @@
 
 .section-title h2 {
   margin: 0;
-  font-family: var(--font-display);
+  font-family: var(--home-font-display);
   font-size: clamp(32px, 3vw, 40px);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .section-title p {
