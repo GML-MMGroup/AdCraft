@@ -24,6 +24,7 @@
     {
       "name": "director",
       "operations": [
+        "command_replan",
         "conversation_turn",
         "proposal_action"
       ],
@@ -63,6 +64,7 @@
       "name": "script_writer",
       "operations": [
         "direct_response",
+        "execute_canvas_script",
         "materialize_draft",
         "propose_concepts",
         "revise_concepts"

@@ -25,6 +25,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
     {
       "name": "director",
       "operations": [
+        "command_replan",
         "conversation_turn",
         "proposal_action"
       ],
@@ -64,6 +65,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "name": "script_writer",
       "operations": [
         "direct_response",
+        "execute_canvas_script",
         "materialize_draft",
         "propose_concepts",
         "revise_concepts"
