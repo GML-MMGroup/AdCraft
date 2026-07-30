@@ -2,8 +2,8 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
-  ChatTimelineListResponseV2,
 } from "../../../types-v2.ts";
 
 const api = vi.hoisted(() => ({
@@ -48,7 +48,7 @@ describe("useAgentCanvasChat", () => {
   });
 
   it("ignores a previous project's timeline response after the workflow changes", async () => {
-    let finishOldRequest!: (value: ChatTimelineListResponseV2) => void;
+    let finishOldRequest!: (value: AgentCanvasChatViewTimelineV2) => void;
     api.agentCanvasChatTimeline.mockImplementation((workflowId: string) => {
       if (workflowId === "workflow-old") {
         return new Promise((resolve) => {
@@ -78,6 +78,19 @@ describe("useAgentCanvasChat", () => {
       finishOldRequest({
         workflow_id: "workflow-old",
         conversation_id: "conversation-old",
+        creative_session: {
+          skill_run_id: "skill-run-old",
+          workflow_id: "workflow-old",
+          skill_id: "video-ad",
+          skill_version: "1",
+          status: "active",
+          creative_direction_snapshot_id: null,
+          current_topic_id: null,
+          topics: [],
+          deferred_topic_ids: [],
+          memory_revision: 1,
+          updated_at: "2026-07-28T10:00:00Z",
+        },
         items: [{
           item_type: "message",
           message_id: "message-old",
@@ -90,12 +103,13 @@ describe("useAgentCanvasChat", () => {
           sequence: 1,
           created_at: "2026-07-28T10:00:00Z",
         }],
-        next_after_seq: 1,
+        next_cursor: 1,
       });
       await Promise.resolve();
     });
 
     expect(result.current.state.items).toEqual([]);
+    expect(result.current.state.creativeSession).toBeNull();
   });
 
   it("ignores a previous project's failed message submission after the workflow changes", async () => {
@@ -251,13 +265,35 @@ describe("useAgentCanvasChat", () => {
     api.agentCanvasChatTimeline.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
+      creative_session: {
+        skill_run_id: "session-1",
+        workflow_id: "workflow-1",
+        skill_id: "video-ad",
+        skill_version: "1",
+        status: "active",
+        creative_direction_snapshot_id: null,
+        current_topic_id: "characters",
+        topics: [{
+          topic_id: "characters",
+          topic_kind: "character",
+          display_order: 0,
+          required: true,
+          specialist_name: "character_designer",
+          status: "in_review",
+          outcome: null,
+          related_node_ids: [],
+        }],
+        deferred_topic_ids: [],
+        memory_revision: 2,
+        updated_at: "2026-07-30T08:00:00Z",
+      },
       items: [{
         item_type: "proposal_pointer",
         proposal_id: "proposal-1",
         sequence: 3,
         created_at: "2026-07-30T08:00:00Z",
       }],
-      next_after_seq: 3,
+      next_cursor: 3,
     });
     api.agentCanvasProposal.mockResolvedValue({
       proposal_id: "proposal-1",
@@ -293,6 +329,10 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.items[0]).toMatchObject({
       item_type: "proposal",
       proposal: { proposal_id: "proposal-1" },
+    });
+    expect(result.current.state.creativeSession).toMatchObject({
+      current_topic_id: "characters",
+      memory_revision: 2,
     });
   });
 
@@ -391,6 +431,7 @@ describe("useAgentCanvasChat", () => {
     api.agentCanvasChatTimeline.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
+      creative_session: null,
       items: [{
         item_type: "action_receipt",
         action_receipt: {
@@ -417,7 +458,7 @@ describe("useAgentCanvasChat", () => {
         sequence: 6,
         created_at: "2026-07-30T08:00:00Z",
       }],
-      next_after_seq: 6,
+      next_cursor: 6,
     });
     api.applyAgentCanvasGuidedAction.mockResolvedValue({
       workflow_id: "workflow-1",
@@ -492,6 +533,7 @@ describe("useAgentCanvasChat", () => {
     api.agentCanvasChatTimeline.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
+      creative_session: null,
       items: [{
         item_type: "action_receipt",
         action_receipt: {
@@ -522,7 +564,7 @@ describe("useAgentCanvasChat", () => {
         sequence: 9,
         created_at: "2026-07-28T10:00:00Z",
       }],
-      next_after_seq: 9,
+      next_cursor: 9,
     });
     api.actOnAgentCanvasCommandPlan.mockResolvedValue({
       workflow_id: "workflow-1",
@@ -561,6 +603,7 @@ describe("useAgentCanvasChat", () => {
     api.agentCanvasChatTimeline.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
+      creative_session: null,
       items: [{
         item_type: "action_receipt",
         action_receipt: {
@@ -591,7 +634,7 @@ describe("useAgentCanvasChat", () => {
         sequence: 10,
         created_at: "2026-07-28T10:00:01Z",
       }],
-      next_after_seq: 10,
+      next_cursor: 10,
     });
     renderHook(() => useAgentCanvasChat({
       workflow: workflow("workflow-1"),
@@ -599,7 +642,7 @@ describe("useAgentCanvasChat", () => {
       chatEvents: [{
         seq: 10,
         workflow_id: "workflow-1",
-        event_type: "agent_action_receipt_created",
+        event_type: "action_receipt_created",
         execution_id: null,
         node_id: null,
         asset_id: null,

@@ -11,8 +11,8 @@ import {
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
-import { v2Api } from "../../api/v2Client.ts";
 import {
   AssetsIcon,
   CloseIcon,
@@ -219,7 +219,7 @@ export function AgentCanvasPage() {
 
   useEffect(() => {
     let active = true;
-    void v2Api.agentCanvasConnectionPolicy()
+    void agentCanvasApi.agentCanvasConnectionPolicy()
       .then((policy) => {
         if (active) setConnectionPolicy(policy);
       })
@@ -456,7 +456,7 @@ export function AgentCanvasPage() {
     assetId: string,
     request: SaveAgentCanvasImageToLibraryRequestV2,
   ) => {
-    await v2Api.saveAgentCanvasImageToLibrary(
+    await agentCanvasApi.saveAgentCanvasImageToLibrary(
       assetId,
       request,
       createOperationKey("save-image-to-library"),

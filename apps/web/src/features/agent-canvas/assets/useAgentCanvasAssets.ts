@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasAssetMediaTypeV2,
@@ -154,12 +154,12 @@ export function useAgentCanvasAssets({
     try {
       let nextItems: AgentAssetBrowserItem[];
       if (scope === "project") {
-        const response = await v2Api.listAgentCanvasProjectAssets(workflowId);
+        const response = await agentCanvasApi.listAgentCanvasProjectAssets(workflowId);
         nextItems = response.assets.map(projectItem);
       } else {
         const response = scope === "my"
-          ? await v2Api.listAgentCanvasMyAssets(category)
-          : await v2Api.listAgentCanvasRecommendedAssets(category);
+          ? await agentCanvasApi.listAgentCanvasMyAssets(category)
+          : await agentCanvasApi.listAgentCanvasRecommendedAssets(category);
         nextItems = response.items.flatMap((item) => {
           const normalized = libraryItem(scope, item);
           return normalized ? [normalized] : [];
@@ -207,7 +207,7 @@ export function useAgentCanvasAssets({
         const formData = new FormData();
         formData.append("file", file);
         formData.append("metadata", JSON.stringify(metadata));
-        const response = await v2Api.uploadAgentCanvasAsset(
+        const response = await agentCanvasApi.uploadAgentCanvasAsset(
           workflowId,
           formData,
           createOperationKey("asset-upload"),

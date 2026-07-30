@@ -46,7 +46,7 @@ describe("useAgentCanvasProviderModels", () => {
     vi.clearAllMocks();
   });
 
-  it("requests Script models using its explicit enabled input media", async () => {
+  it("does not request media Provider capabilities for Script nodes", async () => {
     api.agentCanvasProviderCapabilities.mockResolvedValue([]);
     const script = node("script-1", "script");
     const workflow = {
@@ -76,10 +76,7 @@ describe("useAgentCanvasProviderModels", () => {
 
     renderHook(() => useAgentCanvasProviderModels(workflow, script));
 
-    await waitFor(() => expect(api.agentCanvasProviderCapabilities).toHaveBeenCalledWith({
-      output_type: "script",
-      input_types: ["audio", "text"],
-    }));
+    await waitFor(() => expect(api.agentCanvasProviderCapabilities).not.toHaveBeenCalled());
   });
 
   it("keeps the backend provider_input_unsupported message available to the inspector", async () => {

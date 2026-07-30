@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
@@ -9,6 +9,7 @@ import type {
   CanvasRuntimeEventV2,
   ChatMessageV2,
   ChatTimelineItemV2,
+  CreativeSessionStateV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
@@ -57,6 +58,7 @@ export function useAgentCanvasChat({
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
+  const [creativeSession, setCreativeSession] = useState<CreativeSessionStateV2 | null>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [actingProposalId, setActingProposalId] = useState<string | null>(null);
@@ -80,12 +82,14 @@ export function useAgentCanvasChat({
     setLoading(true);
     try {
       const items: ChatTimelineItemV2[] = [];
+      let nextCreativeSession: CreativeSessionStateV2 | null = null;
       let cursor = 0;
       for (;;) {
-        const timeline = await v2Api.agentCanvasChatTimeline(workflowId, cursor, 200);
+        const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
+        nextCreativeSession = timeline.creative_session;
         const hydrated = await Promise.all(timeline.items.map(async (item): Promise<ChatTimelineItemV2> => {
           if (item.item_type !== "proposal_pointer") return item;
-          const proposal = await v2Api.agentCanvasProposal(workflowId, item.proposal_id);
+          const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
           return {
             item_type: "proposal",
             proposal,
@@ -94,10 +98,11 @@ export function useAgentCanvasChat({
           };
         }));
         items.push(...hydrated);
-        if (timeline.items.length < 200 || timeline.next_after_seq <= cursor) break;
-        cursor = timeline.next_after_seq;
+        if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
+        cursor = timeline.next_cursor;
       }
       if (generation !== refreshGenerationRef.current) return;
+      setCreativeSession(nextCreativeSession);
       setPersistedItems(items);
       items.forEach((item) => {
         if (item.item_type !== "action_receipt") return;
@@ -144,6 +149,7 @@ export function useAgentCanvasChat({
     workflowGenerationRef.current += 1;
     setPersistedItems([]);
     setOptimisticItems([]);
+    setCreativeSession(null);
     setLoading(false);
     setSending(false);
     setFailedDraft(null);
@@ -160,7 +166,7 @@ export function useAgentCanvasChat({
 
   useEffect(() => {
     chatEvents.forEach((event) => {
-      if (event.event_type !== "agent_action_receipt_created") return;
+      if (event.event_type !== "action_receipt_created") return;
       const receiptId = event.payload?.receipt_id;
       if (typeof receiptId === "string" && !deliveredReceiptIdsRef.current.has(receiptId)) {
         expectedReceiptIdsRef.current.add(receiptId);
@@ -201,7 +207,7 @@ export function useAgentCanvasChat({
     setSending(true);
     setFailedDraft(null);
     try {
-      const accepted = await v2Api.submitAgentCanvasChatMessage(workflowId, {
+      const accepted = await agentCanvasApi.submitAgentCanvasChatMessage(workflowId, {
         text: draft.text.trim(),
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
@@ -255,7 +261,7 @@ export function useAgentCanvasChat({
         accepted_references: acceptedReferences,
         position: proposalPosition,
       } as const;
-      const accepted = await v2Api.actOnAgentCanvasProposal(
+      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(
         workflowId,
         proposalId,
         request,
@@ -283,7 +289,7 @@ export function useAgentCanvasChat({
     setActingProposalId(proposalId);
     setError(null);
     try {
-      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "revise",
         instruction: instruction.trim(),
       }, actionKey(
@@ -309,7 +315,7 @@ export function useAgentCanvasChat({
     setActingProposalId(proposalId);
     setError(null);
     try {
-      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "skip",
       }, actionKey(`proposal-skip:${proposalId}`, "proposal-skip"));
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
@@ -335,7 +341,7 @@ export function useAgentCanvasChat({
     setActingCommandPlanId(planId);
     setError(null);
     try {
-      const accepted = await v2Api.actOnAgentCanvasCommandPlan(
+      const accepted = await agentCanvasApi.actOnAgentCanvasCommandPlan(
         workflowId,
         planId,
         { action },
@@ -363,7 +369,7 @@ export function useAgentCanvasChat({
     setActingGuidedActionId(actionId);
     setError(null);
     try {
-      await v2Api.applyAgentCanvasGuidedAction(
+      await agentCanvasApi.applyAgentCanvasGuidedAction(
         workflowId,
         actionId,
         { confirmed: true },
@@ -393,6 +399,7 @@ export function useAgentCanvasChat({
   return {
     state: {
       items,
+      creativeSession,
       loading,
       sending,
       actingProposalId,

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { isV2ApiError, v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -34,7 +34,7 @@ export function useAgentCanvasProviderModels(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void v2Api.agentCanvasProviderCapabilities({
+    void agentCanvasApi.agentCanvasProviderCapabilities({
       output_type: nodeType,
       input_types: inputSignature ? inputSignature.split(",") : ["text"],
     }).then((items) => {

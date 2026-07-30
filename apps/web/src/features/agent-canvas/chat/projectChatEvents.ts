@@ -1,6 +1,5 @@
 import type {
   CanvasRuntimeEventV2,
-  ChatArtifactCardV2,
   ChatExpertActivityV2,
   ChatTimelineItemV2,
   SpecialistAgentNameV2,
@@ -40,11 +39,10 @@ export function projectChatEvents(
   events: CanvasRuntimeEventV2[],
 ): ChatTimelineItemV2[] {
   const activities = new Map<string, ChatExpertActivityV2>();
-  const artifacts = new Map<string, ChatArtifactCardV2>();
 
   events.forEach((event) => {
     const payload = event.payload ?? {};
-    if (event.event_type.startsWith("expert_activity_")) {
+    if (event.event_type.startsWith("specialist_activity_")) {
       const specialist = specialistValue(payload);
       const turnId = stringValue(payload.turn_id);
       if (!specialist || !turnId) return;
@@ -60,40 +58,16 @@ export function projectChatEvents(
         activity_id: key,
         turn_id: turnId,
         specialist,
-        label: specialistLabel(specialist),
+        label: stringValue(payload.label, specialistLabel(specialist)),
         operation: stringValue(payload.operation, "planning"),
         status,
         sequence: previous?.sequence ?? event.seq,
         started_at: previous?.started_at ?? event.created_at,
         finished_at: status === "working" ? null : event.created_at,
       });
-      return;
-    }
-
-    if (
-      event.event_type === "chat_artifact_created"
-      || event.event_type === "script_artifact_created"
-    ) {
-      const artifactId = stringValue(payload.artifact_id, stringValue(payload.entry_id));
-      const nodeId = stringValue(payload.script_node_id, event.node_id ?? "");
-      if (!artifactId || !nodeId) return;
-      artifacts.set(artifactId, {
-        item_type: "artifact",
-        artifact_id: artifactId,
-        artifact_kind: "script",
-        node_id: nodeId,
-        title: stringValue(payload.title, "Script"),
-        summary: stringValue(payload.summary),
-        action_label: "View Script",
-        source_turn_id: stringValue(payload.source_turn_id) || null,
-        sequence: event.seq,
-        created_at: event.created_at,
-      });
     }
   });
 
-  return [
-    ...activities.values(),
-    ...artifacts.values(),
-  ].sort((left, right) => left.sequence - right.sequence);
+  return [...activities.values()]
+    .sort((left, right) => left.sequence - right.sequence);
 }

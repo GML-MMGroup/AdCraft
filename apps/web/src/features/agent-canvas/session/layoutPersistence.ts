@@ -1,4 +1,4 @@
-import { isV2ApiError } from "../../../api/v2Client.ts";
+import { isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasLayoutPatchRequestV2,

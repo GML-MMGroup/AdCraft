@@ -34,6 +34,12 @@ function seconds(value: number | null | undefined): string {
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
 }
 
+function numericValue(value: string): number | null {
+  if (!value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function AgentCanvasEditingPanel({
   workflow,
   node,
@@ -44,7 +50,9 @@ export function AgentCanvasEditingPanel({
   const activeExport = editing.content?.active_export;
   const exportRunning = activeExport?.status === "queued" || activeExport?.status === "exporting";
   const readyVideos = editing.inputs.videos.filter((input) =>
-    input.node.status === "ready" && input.asset?.status === "ready",
+    input.entry.enabled
+    && (input.node === null || input.node.status === "ready")
+    && input.asset?.status === "ready",
   ).length;
 
   return (
@@ -189,8 +197,8 @@ export function AgentCanvasEditingPanel({
                 </div>
               ) : editing.inputs.videos.map((input, index) => (
                 <div
-                  key={input.binding.binding_id}
-                  className={`agent-editing-track agent-editing-track--${input.node.status}`}
+                  key={input.referenceId}
+                  className={`agent-editing-track agent-editing-track--${input.node?.status ?? input.asset?.status ?? "failed"}`}
                 >
                   <span className="agent-editing-track__index">{String(index + 1).padStart(2, "0")}</span>
                   <div className="agent-editing-track__thumbnail">
@@ -201,28 +209,140 @@ export function AgentCanvasEditingPanel({
                     )}
                   </div>
                   <div className="agent-editing-track__identity">
-                    <strong>{input.node.title || `Shot ${index + 1}`}</strong>
-                    <span>{input.node.status} · {seconds(input.asset?.duration_seconds)}</span>
+                    <strong>{input.node?.title || input.asset?.display_name || `Shot ${index + 1}`}</strong>
+                    <span>{input.node?.status ?? input.asset?.status ?? "Unavailable"} · {seconds(input.asset?.duration_seconds)}</span>
                   </div>
                   <div className="agent-editing-track__order">
                     <button
                       type="button"
-                      aria-label={`Move ${input.node.title || `clip ${index + 1}`} earlier`}
+                      aria-label={`Move ${input.node?.title || `clip ${index + 1}`} earlier`}
                       title="Move earlier"
                       disabled={exportRunning || index === 0}
-                      onClick={() => editing.moveVideo(input.binding.binding_id, -1)}
+                      onClick={() => editing.moveVideo(input.referenceId, -1)}
                     >
                       <ChevronUpIcon />
                     </button>
                     <button
                       type="button"
-                      aria-label={`Move ${input.node.title || `clip ${index + 1}`} later`}
+                      aria-label={`Move ${input.node?.title || `clip ${index + 1}`} later`}
                       title="Move later"
                       disabled={exportRunning || index === editing.inputs.videos.length - 1}
-                      onClick={() => editing.moveVideo(input.binding.binding_id, 1)}
+                      onClick={() => editing.moveVideo(input.referenceId, 1)}
                     >
                       <ChevronDownIcon />
                     </button>
+                  </div>
+                  <div className="agent-editing-track__settings">
+                    <label className="agent-editing-track__toggle">
+                      <input
+                        type="checkbox"
+                        checked={input.entry.enabled}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          enabled: event.currentTarget.checked,
+                        })}
+                      />
+                      <span>Enabled</span>
+                    </label>
+                    <label>
+                      <span>Trim start</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={input.entry.trim_start_seconds}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          trim_start_seconds: Math.max(0, numericValue(event.currentTarget.value) ?? 0),
+                        })}
+                      />
+                    </label>
+                    <label>
+                      <span>Trim end</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.1"
+                        value={input.entry.trim_end_seconds ?? ""}
+                        placeholder="Source"
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          trim_end_seconds: numericValue(event.currentTarget.value),
+                        })}
+                      />
+                    </label>
+                    <label>
+                      <span>Volume</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={input.entry.volume}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          volume: Number(event.currentTarget.value),
+                        })}
+                      />
+                    </label>
+                    <label className="agent-editing-track__toggle">
+                      <input
+                        type="checkbox"
+                        checked={input.entry.preserve_native_audio}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          preserve_native_audio: event.currentTarget.checked,
+                        })}
+                      />
+                      <span>Source audio</span>
+                    </label>
+                    <label>
+                      <span>Transition</span>
+                      <select
+                        value={input.entry.transition}
+                        disabled={exportRunning}
+                        onChange={(event) => {
+                          const transition = event.currentTarget.value as "cut" | "fade";
+                          editing.updateVideo(input.referenceId, {
+                            transition,
+                            ...(transition === "cut" ? { transition_duration_seconds: 0 } : {}),
+                          });
+                        }}
+                      >
+                        <option value="cut">Cut</option>
+                        <option value="fade">Fade</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>Transition duration</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="5"
+                        step="0.1"
+                        value={input.entry.transition_duration_seconds}
+                        disabled={exportRunning || input.entry.transition === "cut"}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          transition_duration_seconds: Math.min(
+                            5,
+                            Math.max(0, numericValue(event.currentTarget.value) ?? 0),
+                          ),
+                        })}
+                      />
+                    </label>
+                    <label>
+                      <span>Fit</span>
+                      <select
+                        value={input.entry.fit_mode}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.updateVideo(input.referenceId, {
+                          fit_mode: event.currentTarget.value as "fit" | "fill",
+                        })}
+                      >
+                        <option value="fill">Fill</option>
+                        <option value="fit">Fit</option>
+                      </select>
+                    </label>
                   </div>
                 </div>
               ))}
@@ -230,22 +350,90 @@ export function AgentCanvasEditingPanel({
               <div className="agent-editing-track agent-editing-track--bgm">
                 <span className="agent-editing-track__index"><MuteIcon /></span>
                 <div className="agent-editing-track__identity">
-                  <strong>{editing.inputs.bgm?.node.title || "No BGM connected"}</strong>
+                  <strong>{editing.inputs.bgm?.node?.title || editing.inputs.bgm?.asset?.display_name || "No BGM connected"}</strong>
                   <span>{editing.inputs.bgm ? seconds(editing.inputs.bgm.asset?.duration_seconds) : "Optional audio input"}</span>
                 </div>
-                <label className="agent-editing-track__volume">
-                  <span>{Math.round(editing.content.manifest.bgm_volume * 100)}%</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    aria-label="BGM volume"
-                    value={editing.content.manifest.bgm_volume}
-                    disabled={!editing.inputs.bgm || exportRunning}
-                    onChange={(event) => editing.setBgmVolume(Number(event.currentTarget.value))}
-                  />
-                </label>
+                {editing.content.manifest.bgm ? (
+                  <div className="agent-editing-track__settings agent-editing-track__settings--bgm">
+                    <label className="agent-editing-track__toggle">
+                      <input
+                        type="checkbox"
+                        checked={editing.content.manifest.bgm.enabled}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgm({ enabled: event.currentTarget.checked })}
+                      />
+                      <span>Enabled</span>
+                    </label>
+                    <label>
+                      <span>Trim start</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={editing.content.manifest.bgm.trim_start_seconds}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgm({
+                          trim_start_seconds: Math.max(0, numericValue(event.currentTarget.value) ?? 0),
+                        })}
+                      />
+                    </label>
+                    <label>
+                      <span>Trim end</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.1"
+                        value={editing.content.manifest.bgm.trim_end_seconds ?? ""}
+                        placeholder="Source"
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgm({
+                          trim_end_seconds: numericValue(event.currentTarget.value),
+                        })}
+                      />
+                    </label>
+                    <label className="agent-editing-track__volume">
+                      <span>Volume {Math.round(editing.content.manifest.bgm.volume * 100)}%</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        aria-label="BGM volume"
+                        value={editing.content.manifest.bgm.volume}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgmVolume(Number(event.currentTarget.value))}
+                      />
+                    </label>
+                    <label>
+                      <span>Fade in</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        step="0.1"
+                        value={editing.content.manifest.bgm.fade_in_seconds}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgm({
+                          fade_in_seconds: Math.min(30, Math.max(0, numericValue(event.currentTarget.value) ?? 0)),
+                        })}
+                      />
+                    </label>
+                    <label>
+                      <span>Fade out</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        step="0.1"
+                        value={editing.content.manifest.bgm.fade_out_seconds}
+                        disabled={exportRunning}
+                        onChange={(event) => editing.setBgm({
+                          fade_out_seconds: Math.min(30, Math.max(0, numericValue(event.currentTarget.value) ?? 0)),
+                        })}
+                      />
+                    </label>
+                  </div>
+                ) : null}
               </div>
             </div>
 

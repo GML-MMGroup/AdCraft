@@ -55,6 +55,10 @@ export function AgentCanvasChatPanel({
     () => workflow.assets.filter((asset) => asset.media_type === "image"),
     [workflow.assets],
   );
+  const currentTopic = useMemo(() => {
+    const session = chat.state.creativeSession;
+    return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
+  }, [chat.state.creativeSession]);
   async function send() {
     const text = draft.trim();
     if (!text || chat.state.sending) return;
@@ -81,7 +85,13 @@ export function AgentCanvasChatPanel({
       <header className="agent-chat__header">
         <div>
           <strong>AdCraft Video Agent</strong>
-          <span>{chat.state.sending ? "Thinking" : "Ready"}</span>
+          <span>
+            {chat.state.sending
+              ? "Thinking"
+              : currentTopic
+                ? `${currentTopic.topic_kind.replaceAll("_", " ")} · ${currentTopic.status.replaceAll("_", " ")}`
+                : "Ready"}
+          </span>
         </div>
       </header>
 

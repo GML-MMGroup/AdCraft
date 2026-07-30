@@ -1,5 +1,6 @@
 import type {
   AgentCanvasChatMessageRequestV2,
+  AgentCanvasChatViewTimelineV2,
   AgentCanvasCommandPlanActionRequestV2,
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
@@ -34,7 +35,6 @@ import type {
   CanvasRunRequestV2,
   CanvasRuntimeEventsResponseV2,
   CanvasRuntimeSnapshotV2,
-  ChatTimelineListResponseV2,
   ChatTurnAcceptedV2,
   EditingExportAcceptedV2,
   EditingExportCancelResponseV2,
@@ -151,7 +151,7 @@ import {
 } from "./v2Normalizers.ts";
 import {
   normalizeAgentCanvasChatTurnV2,
-  normalizeAgentCanvasChatTimelineCompatV2,
+  normalizeAgentCanvasChatTimelineV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
@@ -715,7 +715,7 @@ export const v2Api = {
     workflowId: string,
     afterSeq = 0,
     limit = 100,
-  ): Promise<ChatTimelineListResponseV2> {
+  ): Promise<AgentCanvasChatViewTimelineV2> {
     const query = new URLSearchParams({
       after_seq: String(afterSeq),
       limit: String(limit),
@@ -723,7 +723,7 @@ export const v2Api = {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
       {},
-      normalizeAgentCanvasChatTimelineCompatV2,
+      normalizeAgentCanvasChatTimelineV2,
     );
   },
 
@@ -856,13 +856,11 @@ export const v2Api = {
     workflowId: string,
     executionId: string,
     request: CanvasRunCancelRequestV2,
-    idempotencyKey: string,
   ): Promise<CanvasRunCancelResponseV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/runs/${encodeURIComponent(executionId)}/cancel`,
       {
         method: "POST",
-        headers: idempotencyHeaders(idempotencyKey),
         body: JSON.stringify(request),
       },
       normalizeCanvasRunCancelResponseV2,
@@ -938,13 +936,11 @@ export const v2Api = {
     workflowId: string,
     nodeId: string,
     exportId: string,
-    idempotencyKey: string,
   ): Promise<EditingExportCancelResponseV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/exports/${encodeURIComponent(exportId)}/cancel`,
       {
         method: "POST",
-        headers: idempotencyHeaders(idempotencyKey),
       },
       normalizeEditingExportCancelResponseV2,
     );

@@ -8,7 +8,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   buildEditingInputs,
-  moveEditingVideoBinding,
+  moveEditingVideoEntry,
   replaceEditingManifest,
 } from "./editingModel.ts";
 
@@ -71,9 +71,42 @@ function binding(
 
 const content: EditingNodeContentV2 = {
   manifest: {
-    ordered_video_binding_ids: ["binding-video-2", "binding-video-1"],
-    bgm_audio_binding_id: "binding-bgm",
-    bgm_volume: 0.2,
+    video_entries: [
+      {
+        binding_id: "binding-video-2",
+        asset_id: null,
+        enabled: true,
+        trim_start_seconds: 0,
+        trim_end_seconds: null,
+        volume: 1,
+        preserve_native_audio: true,
+        transition: "cut",
+        transition_duration_seconds: 0,
+        fit_mode: "fill",
+      },
+      {
+        binding_id: "binding-video-1",
+        asset_id: null,
+        enabled: true,
+        trim_start_seconds: 0.5,
+        trim_end_seconds: 5.5,
+        volume: 0.8,
+        preserve_native_audio: false,
+        transition: "fade",
+        transition_duration_seconds: 0.4,
+        fit_mode: "fit",
+      },
+    ],
+    bgm: {
+      binding_id: "binding-bgm",
+      asset_id: null,
+      enabled: true,
+      trim_start_seconds: 0,
+      trim_end_seconds: null,
+      volume: 0.2,
+      fade_in_seconds: 1,
+      fade_out_seconds: 1,
+    },
     output: {
       resolution: null,
       aspect_ratio: null,
@@ -165,29 +198,60 @@ describe("editingModel", () => {
   it("uses manifest binding IDs as the only canonical clip order", () => {
     const inputs = buildEditingInputs(workflow, "editing-1", content);
 
-    expect(inputs.videos.map((item) => item.binding.binding_id)).toEqual([
+    expect(inputs.videos.map((item) => item.referenceId)).toEqual([
       "binding-video-2",
       "binding-video-1",
     ]);
-    expect(inputs.videos[0]?.node.status).toBe("failed");
+    expect(inputs.videos[0]?.node?.status).toBe("failed");
     expect(inputs.videos[1]?.asset?.media_url).toBe("/shot-1.mp4");
-    expect(inputs.bgm?.node.node_id).toBe("bgm-1");
+    expect(inputs.bgm?.node?.node_id).toBe("bgm-1");
   });
 
   it("moves one clip without synthesizing or dropping binding IDs", () => {
-    expect(moveEditingVideoBinding(content.manifest, "binding-video-1", -1)
-      .ordered_video_binding_ids).toEqual(["binding-video-1", "binding-video-2"]);
-    expect(moveEditingVideoBinding(content.manifest, "missing", 1)).toBe(content.manifest);
+    expect(moveEditingVideoEntry(content.manifest, "binding-video-1", -1)
+      .video_entries.map((entry) => entry.binding_id)).toEqual([
+        "binding-video-1",
+        "binding-video-2",
+      ]);
+    expect(moveEditingVideoEntry(content.manifest, "missing", 1)).toBe(content.manifest);
+  });
+
+  it("resolves a direct Project Asset entry without inventing a Binding or Node", () => {
+    const direct = buildEditingInputs(workflow, "editing-1", {
+      ...content,
+      manifest: {
+        ...content.manifest,
+        video_entries: [{
+          ...content.manifest.video_entries[0]!,
+          binding_id: null,
+          asset_id: "asset-video-1",
+        }],
+      },
+    });
+
+    expect(direct.videos[0]).toMatchObject({
+      referenceId: "asset-video-1",
+      binding: null,
+      node: null,
+      asset: { asset_id: "asset-video-1" },
+    });
   });
 
   it("builds the authoring payload from the manifest only", () => {
     expect(replaceEditingManifest(content, {
       ...content.manifest,
-      bgm_volume: 0.35,
+      bgm: content.manifest.bgm
+        ? { ...content.manifest.bgm, volume: 0.35 }
+        : null,
     })).toEqual({
-      ordered_video_binding_ids: ["binding-video-2", "binding-video-1"],
-      bgm_audio_binding_id: "binding-bgm",
-      bgm_volume: 0.35,
+      video_entries: [
+        content.manifest.video_entries[0],
+        content.manifest.video_entries[1],
+      ],
+      bgm: {
+        ...content.manifest.bgm,
+        volume: 0.35,
+      },
       output: content.manifest.output,
       manifest_revision: 4,
     });

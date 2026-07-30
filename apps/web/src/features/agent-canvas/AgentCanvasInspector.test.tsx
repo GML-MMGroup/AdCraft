@@ -578,7 +578,7 @@ describe("AgentCanvasInspector", () => {
       model_id: "image-model-v2",
       parameters: { aspect_ratio: "1:1" },
     });
-    expect(onMaterializeVariation).toHaveBeenCalledWith(current, "generate_now");
+    expect(onMaterializeVariation).toHaveBeenCalledWith(current, "generate");
     expect(onSaveVariation.mock.invocationCallOrder[0])
       .toBeLessThan(onMaterializeVariation.mock.invocationCallOrder[0]!);
     expect(current.generation_prompt).toBe("Immutable source prompt");

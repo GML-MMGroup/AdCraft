@@ -136,7 +136,7 @@ describe("useAgentCanvasRuntime", () => {
     await waitFor(() => expect(eventSource.onmessage).not.toBeNull());
 
     const event = (seq: number) => ({
-      seq,
+      sequence_no: seq,
       workflow_id: "workflow-1",
       event_type: "node_created",
       execution_id: null,

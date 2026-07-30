@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import { useApp } from "../../../AppContextValue.ts";
 import type {
@@ -140,11 +140,11 @@ export function useAgentCanvasSession() {
       readWorkflow: assertActiveWorkflow,
       loadWorkflow: async () => {
         assertActiveWorkflow();
-        return (await v2Api.agentCanvasWorkflowWithEtag(workflowId)).value;
+        return (await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId)).value;
       },
       patchLayout: (request) => {
         assertActiveWorkflow();
-        return v2Api.patchAgentCanvasLayout(workflowId, request);
+        return agentCanvasApi.patchAgentCanvasLayout(workflowId, request);
       },
       applyWorkflow,
       applyLayout: (response) => applyLayout(response, positions),
@@ -167,7 +167,7 @@ export function useAgentCanvasSession() {
     return queueRef.current!.enqueue(
       options.coalesce ? `patch:${nodeId}` : createOperationKey(`patch:${nodeId}`),
       async () => {
-        const response = await v2Api.patchAgentCanvasNode(workflowId, nodeId, patch);
+        const response = await agentCanvasApi.patchAgentCanvasNode(workflowId, nodeId, patch);
         applyWorkflow(response.value.workflow);
         setAuthoringError(null);
       },
@@ -220,7 +220,7 @@ export function useAgentCanvasSession() {
   const createNode = useCallback(async (request: CanvasNodeCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     return queueRef.current!.enqueue(createOperationKey("create-node"), async () => {
-      const response = await v2Api.createAgentCanvasNode(agentCanvasWorkflow.workflow_id, request);
+      const response = await agentCanvasApi.createAgentCanvasNode(agentCanvasWorkflow.workflow_id, request);
       applyWorkflow(response.value.workflow);
       if (response.value.node) setSelectedNodeId(response.value.node.node_id);
       setAuthoringError(null);
@@ -235,7 +235,7 @@ export function useAgentCanvasSession() {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     const workflowId = agentCanvasWorkflow.workflow_id;
     await queueRef.current!.enqueue(createOperationKey(`variation-save:${nodeId}`), async () => {
-      const response = await v2Api.saveAgentCanvasVariationDraft(workflowId, nodeId, request);
+      const response = await agentCanvasApi.saveAgentCanvasVariationDraft(workflowId, nodeId, request);
       const keyPrefix = `${workflowId}:${nodeId}:`;
       Array.from(materializationKeysRef.current.keys()).forEach((key) => {
         if (key.startsWith(keyPrefix)) materializationKeysRef.current.delete(key);
@@ -260,12 +260,12 @@ export function useAgentCanvasSession() {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     const workflowId = agentCanvasWorkflow.workflow_id;
     await queueRef.current!.enqueue(createOperationKey(`variation-discard:${nodeId}`), async () => {
-      await v2Api.discardAgentCanvasVariationDraft(workflowId, nodeId);
+      await agentCanvasApi.discardAgentCanvasVariationDraft(workflowId, nodeId);
       const keyPrefix = `${workflowId}:${nodeId}:`;
       Array.from(materializationKeysRef.current.keys()).forEach((key) => {
         if (key.startsWith(keyPrefix)) materializationKeysRef.current.delete(key);
       });
-      const latest = await v2Api.agentCanvasWorkflowWithEtag(workflowId);
+      const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId);
       applyWorkflow(latest.value);
       setAuthoringError(null);
     });
@@ -273,7 +273,7 @@ export function useAgentCanvasSession() {
 
   const materializeVariationDraft = useCallback(async (
     source: CanvasNodeV2,
-    generationAction: "draft_only" | "generate_now",
+    action: "create_draft" | "generate",
   ) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     if (!["image", "video", "audio"].includes(source.node_type) || source.status !== "ready") {
@@ -281,27 +281,27 @@ export function useAgentCanvasSession() {
     }
     const workflowId = agentCanvasWorkflow.workflow_id;
     return queueRef.current!.enqueue(
-      createOperationKey(`variation-materialize:${source.node_id}:${generationAction}`),
+      createOperationKey(`variation-materialize:${source.node_id}:${action}`),
       async () => {
         if (workflowRef.current?.workflow_id !== workflowId) return null;
         const canonicalSource = workflowRef.current?.workflow_id === workflowId
           ? workflowRef.current.nodes.find((node) => node.node_id === source.node_id)
           : null;
         const variationRevision = canonicalSource?.variation_draft?.variation_revision ?? 0;
-        const materializationScope = `${workflowId}:${source.node_id}:${generationAction}:${variationRevision}`;
+        const materializationScope = `${workflowId}:${source.node_id}:${action}:${variationRevision}`;
         let idempotencyKey = materializationKeysRef.current.get(materializationScope);
         if (!idempotencyKey) {
           idempotencyKey = createOperationKey("variation-materialize");
           materializationKeysRef.current.set(materializationScope, idempotencyKey);
         }
-        const response = await v2Api.materializeAgentCanvasVariationDraft(
+        const response = await agentCanvasApi.materializeAgentCanvasVariationDraft(
           workflowId,
           source.node_id,
-          { generation_action: generationAction },
+          { action },
           idempotencyKey,
         );
         if (workflowRef.current?.workflow_id !== workflowId) return null;
-        const latest = await v2Api.agentCanvasWorkflowWithEtag(workflowId);
+        const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId);
         if (workflowRef.current?.workflow_id !== workflowId) return null;
         applyWorkflow(latest.value);
         const positions = incrementalPlacementForNodes(
@@ -326,7 +326,7 @@ export function useAgentCanvasSession() {
   ) => {
     const current = workflowRef.current;
     if (!current || current.workflow_id !== receipt.workflow_id || !receipt.created_node_ids.length) return;
-    const latest = await v2Api.agentCanvasWorkflowWithEtag(receipt.workflow_id);
+    const latest = await agentCanvasApi.agentCanvasWorkflowWithEtag(receipt.workflow_id);
     if (workflowRef.current?.workflow_id !== receipt.workflow_id) return;
     applyWorkflow(latest.value);
     const positions = incrementalPlacementForNodes(
@@ -342,7 +342,7 @@ export function useAgentCanvasSession() {
   const deleteNode = useCallback(async (nodeId: string) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     await queueRef.current!.enqueue(createOperationKey("delete-node"), async () => {
-      const response = await v2Api.deleteAgentCanvasNode(agentCanvasWorkflow.workflow_id, nodeId);
+      const response = await agentCanvasApi.deleteAgentCanvasNode(agentCanvasWorkflow.workflow_id, nodeId);
       applyWorkflow(response.value.workflow);
       setSelectedNodeId((current) => current === nodeId ? null : current);
       setAuthoringError(null);
@@ -352,7 +352,7 @@ export function useAgentCanvasSession() {
   const createBinding = useCallback(async (request: CanvasBindingCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     return queueRef.current!.enqueue(createOperationKey("create-binding"), async () => {
-      const response = await v2Api.createAgentCanvasBinding(agentCanvasWorkflow.workflow_id, request);
+      const response = await agentCanvasApi.createAgentCanvasBinding(agentCanvasWorkflow.workflow_id, request);
       applyWorkflow(response.value.workflow);
       setAuthoringError(null);
       return response.value.binding;
@@ -365,7 +365,7 @@ export function useAgentCanvasSession() {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     const workflowId = agentCanvasWorkflow.workflow_id;
     return queueRef.current!.enqueue(createOperationKey("create-connected-node"), async () => {
-      const response = await v2Api.createAgentCanvasConnectedNode(
+      const response = await agentCanvasApi.createAgentCanvasConnectedNode(
         workflowId,
         request,
         createOperationKey("create-connected-node-request"),
@@ -391,7 +391,7 @@ export function useAgentCanvasSession() {
     return queueRef.current!.enqueue(
       createOperationKey(`patch-binding:${bindingId}`),
       async () => {
-        const response = await v2Api.patchAgentCanvasBinding(
+        const response = await agentCanvasApi.patchAgentCanvasBinding(
           workflowId,
           bindingId,
           request,
@@ -412,7 +412,7 @@ export function useAgentCanvasSession() {
   const deleteBinding = useCallback(async (bindingId: string) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     await queueRef.current!.enqueue(createOperationKey("delete-binding"), async () => {
-      const response = await v2Api.deleteAgentCanvasBinding(agentCanvasWorkflow.workflow_id, bindingId);
+      const response = await agentCanvasApi.deleteAgentCanvasBinding(agentCanvasWorkflow.workflow_id, bindingId);
       applyWorkflow(response.value.workflow);
       setAuthoringError(null);
     });

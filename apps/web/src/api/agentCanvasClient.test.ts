@@ -272,7 +272,7 @@ describe("Agent Canvas client", () => {
       }
       if (url.endsWith("/variation-draft/materialize")) {
         expect(headers.get("Idempotency-Key")).toBe("materialize-key");
-        expect(JSON.parse(String(init?.body))).toEqual({ generation_action: "draft_only" });
+        expect(JSON.parse(String(init?.body))).toEqual({ action: "create_draft" });
         return jsonResponse({
           workflow_id: "workflow-1",
           workflow_revision: 9,
@@ -317,7 +317,7 @@ describe("Agent Canvas client", () => {
     await v2Api.materializeAgentCanvasVariationDraft(
       "workflow-1",
       readyNode.node_id,
-      { generation_action: "draft_only" },
+      { action: "create_draft" },
       "materialize-key",
     );
     await v2Api.discardAgentCanvasVariationDraft("workflow-1", readyNode.node_id);
@@ -549,6 +549,47 @@ describe("Agent Canvas client", () => {
 
     expect(result.layout_revision).toBe(5);
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:12"');
+  });
+
+  it("cancels runs and Editing exports without synthetic idempotency headers", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBeNull();
+      if (url.endsWith("/runs/execution-1/cancel")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ reason: "user_cancelled" });
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          execution_id: "execution-1",
+          status: "cancelled",
+          cancelled_node_ids: ["node-image-1"],
+          events_cursor: 30,
+        });
+      }
+      expect(url).toContain("/nodes/node-editing-1/exports/export-1/cancel");
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        node_id: "node-editing-1",
+        export_id: "export-1",
+        status: "cancelled",
+        events_cursor: 31,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const run = await v2Api.cancelAgentCanvasRun(
+      "workflow-1",
+      "execution-1",
+      { reason: "user_cancelled" },
+    );
+    const editing = await v2Api.cancelAgentCanvasEditingExport(
+      "workflow-1",
+      "node-editing-1",
+      "export-1",
+    );
+
+    expect(run.status).toBe("cancelled");
+    expect(editing.status).toBe("cancelled");
   });
 });
 

@@ -2,40 +2,54 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasBindingV2,
   CanvasNodeV2,
+  EditingBgmEntryV2,
   EditingManifestV2,
   EditingNodeContentV2,
+  EditingVideoEntryV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 
-export interface EditingBoundInput {
-  binding: CanvasBindingV2;
-  node: CanvasNodeV2;
+export interface EditingBoundInput<TEntry extends EditingVideoEntryV2 | EditingBgmEntryV2> {
+  referenceId: string;
+  entry: TEntry;
+  binding: CanvasBindingV2 | null;
+  node: CanvasNodeV2 | null;
   asset: ProjectAssetSummaryV2 | null;
 }
 
 export interface EditingInputs {
-  videos: EditingBoundInput[];
-  bgm: EditingBoundInput | null;
+  videos: Array<EditingBoundInput<EditingVideoEntryV2>>;
+  bgm: EditingBoundInput<EditingBgmEntryV2> | null;
 }
 
-function resolveNodeInput(
+function resolveEntry<TEntry extends EditingVideoEntryV2 | EditingBgmEntryV2>(
   workflow: AgentCanvasWorkflowV2,
-  binding: CanvasBindingV2 | undefined,
-  nodeType: "video" | "audio",
-): EditingBoundInput | null {
-  if (!binding || binding.source.kind !== "node_output") return null;
-  const sourceNodeId = binding.source.source_node_id;
-  const node = workflow.nodes.find((candidate) =>
-    candidate.node_id === sourceNodeId
-    && candidate.node_type === nodeType,
-  );
-  if (!node) return null;
+  inbound: Map<string, CanvasBindingV2>,
+  entry: TEntry,
+  mediaType: "video" | "audio",
+): EditingBoundInput<TEntry> {
+  const binding = entry.binding_id ? inbound.get(entry.binding_id) ?? null : null;
+  const sourceNodeId = binding?.source.kind === "node_output"
+    ? binding.source.source_node_id
+    : null;
+  const node = sourceNodeId
+    ? workflow.nodes.find((candidate) => (
+        candidate.node_id === sourceNodeId
+        && candidate.node_type === mediaType
+      )) ?? null
+    : null;
+  const assetId = entry.asset_id ?? node?.output_asset_id ?? null;
+  const asset = assetId
+    ? workflow.assets.find((candidate) => (
+        candidate.asset_id === assetId && candidate.media_type === mediaType
+      )) ?? null
+    : null;
   return {
+    referenceId: entry.binding_id ?? entry.asset_id!,
+    entry,
     binding,
     node,
-    asset: node.output_asset_id
-      ? workflow.assets.find((candidate) => candidate.asset_id === node.output_asset_id) ?? null
-      : null,
+    asset,
   };
 }
 
@@ -49,33 +63,46 @@ export function buildEditingInputs(
       .filter((binding) => binding.target_node_id === editingNodeId)
       .map((binding) => [binding.binding_id, binding]),
   );
-  const videos = content.manifest.ordered_video_binding_ids.flatMap((bindingId) => {
-    const binding = inbound.get(bindingId);
-    if (binding?.input_role !== "video_reference" || !binding.enabled) return [];
-    const resolved = resolveNodeInput(workflow, binding, "video");
-    return resolved ? [resolved] : [];
-  });
-  const bgmBindingId = content.manifest.bgm_audio_binding_id;
-  const bgmBinding = bgmBindingId ? inbound.get(bgmBindingId) : undefined;
-  const bgm = bgmBinding?.input_role === "audio_reference" && bgmBinding.enabled
-    ? resolveNodeInput(workflow, bgmBinding, "audio")
-    : null;
-  return { videos, bgm };
+  return {
+    videos: content.manifest.video_entries.map((entry) => (
+      resolveEntry(workflow, inbound, entry, "video")
+    )),
+    bgm: content.manifest.bgm
+      ? resolveEntry(workflow, inbound, content.manifest.bgm, "audio")
+      : null,
+  };
 }
 
-export function moveEditingVideoBinding(
+export function moveEditingVideoEntry(
   manifest: EditingManifestV2,
-  bindingId: string,
+  referenceId: string,
   offset: -1 | 1,
 ): EditingManifestV2 {
-  const from = manifest.ordered_video_binding_ids.indexOf(bindingId);
+  const from = manifest.video_entries.findIndex((entry) => (
+    (entry.binding_id ?? entry.asset_id) === referenceId
+  ));
   const to = from + offset;
-  if (from < 0 || to < 0 || to >= manifest.ordered_video_binding_ids.length) {
+  if (from < 0 || to < 0 || to >= manifest.video_entries.length) {
     return manifest;
   }
-  const ordered = [...manifest.ordered_video_binding_ids];
-  [ordered[from], ordered[to]] = [ordered[to], ordered[from]];
-  return { ...manifest, ordered_video_binding_ids: ordered };
+  const videoEntries = [...manifest.video_entries];
+  [videoEntries[from], videoEntries[to]] = [videoEntries[to], videoEntries[from]];
+  return { ...manifest, video_entries: videoEntries };
+}
+
+export function updateEditingVideoEntry(
+  manifest: EditingManifestV2,
+  referenceId: string,
+  patch: Partial<EditingVideoEntryV2>,
+): EditingManifestV2 {
+  const index = manifest.video_entries.findIndex((entry) => (
+    (entry.binding_id ?? entry.asset_id) === referenceId
+  ));
+  if (index < 0) return manifest;
+  const videoEntries = manifest.video_entries.map((entry, entryIndex) => (
+    entryIndex === index ? { ...entry, ...patch } : entry
+  ));
+  return { ...manifest, video_entries: videoEntries };
 }
 
 export function replaceEditingManifest(
@@ -84,7 +111,8 @@ export function replaceEditingManifest(
 ): EditingManifestV2 {
   return {
     ...manifest,
-    ordered_video_binding_ids: [...manifest.ordered_video_binding_ids],
+    video_entries: manifest.video_entries.map((entry) => ({ ...entry })),
+    bgm: manifest.bgm ? { ...manifest.bgm } : null,
     output: { ...manifest.output },
   };
 }
