@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_operation_contexts import AgentCanvasSpecialistName
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
+    ConceptDraftSpecV2,
     CreativeSessionStateV2,
     GuidedDeliveryActionV2,
     ProposedDraftReferenceV2,
@@ -17,7 +18,6 @@ from app.schemas.agent_canvas_creative_session import (
 from app.schemas.agent_runtime import (
     AgentCommandPlanV2,
     AgentOperationResultV2,
-    AgentPrepareCompositionResultV2,
 )
 
 
@@ -47,7 +47,7 @@ class ChatTurnV2(_ConversationModel):
     workflow_id: str
     conversation_id: str
     status: Literal["queued", "running", "completed", "failed"]
-    turn_kind: Literal["message", "proposal_action", "command_action"]
+    turn_kind: Literal["message", "proposal_action", "command_action", "guided_action"]
     request: dict[str, JsonValue]
     error_code: str | None = None
     error_message: str | None = None
@@ -92,7 +92,28 @@ class ChatTimelineListResponseV2(_ConversationModel):
 class ConceptOptionRecordV2(_ConversationModel):
     option_id: str
     title: str = Field(min_length=1, max_length=256)
-    description: str = Field(min_length=1, max_length=8_192)
+    summary_prompt: str = Field(
+        min_length=1,
+        max_length=8_192,
+        validation_alias=AliasChoices("summary_prompt", "description"),
+    )
+    draft_spec: ConceptDraftSpecV2 | None = Field(default=None, exclude=True)
+
+    @model_validator(mode="after")
+    def canonicalize_draft_spec(self) -> "ConceptOptionRecordV2":
+        if self.draft_spec is None:
+            object.__setattr__(
+                self,
+                "draft_spec",
+                ConceptDraftSpecV2(prompt=self.summary_prompt),
+            )
+        return self
+
+    @property
+    def description(self) -> str:
+        """Compatibility accessor for internal callers during the clean cut."""
+
+        return self.summary_prompt
 
 
 class ConceptProposalCreateV2(_ConversationModel):
@@ -126,6 +147,8 @@ class ConceptProposalV2(ConceptProposalCreateV2):
     workflow_id: str
     turn_id: str
     video_skill_run_id: str | None = None
+    topic_id: str | None = None
+    creative_direction_snapshot_id: str | None = None
     proposal_revision: int = Field(ge=1)
     source_proposal_id: str | None = None
     status: Literal["pending", "selected", "revised", "skipped"]
@@ -138,7 +161,7 @@ class ConceptProposalV2(ConceptProposalCreateV2):
 class ProposalActionRequestV2(_ConversationModel):
     action: Literal["select", "revise", "skip"]
     option_id: str | None = None
-    next_action: Literal["generate_now", "continue_planning"] | None = None
+    generation_action: Literal["draft_only", "generate_now"] | None = None
     instruction: str | None = Field(default=None, max_length=8_192)
     position: dict[str, float] | None = None
     accepted_references: tuple[ProposedDraftReferenceV2, ...] | None = Field(
@@ -148,15 +171,15 @@ class ProposalActionRequestV2(_ConversationModel):
 
     @model_validator(mode="after")
     def validate_action(self) -> "ProposalActionRequestV2":
-        if self.action == "select" and (not self.option_id or not self.next_action):
-            raise ValueError("Selection requires option_id and next_action.")
+        if self.action == "select" and (not self.option_id or not self.generation_action):
+            raise ValueError("Selection requires option_id and generation_action.")
         if self.action == "revise" and not self.instruction:
             raise ValueError("Revision requires instruction.")
         if self.action == "skip" and any(
             value is not None
             for value in (
                 self.option_id,
-                self.next_action,
+                self.generation_action,
                 self.instruction,
                 self.position,
                 self.accepted_references,
@@ -170,11 +193,17 @@ class AgentCommandPlanActionRequestV2(_ConversationModel):
     action: Literal["confirm", "reject"]
 
 
+class GuidedActionApplyRequestV2(_ConversationModel):
+    confirmed: bool = True
+
+
 class AgentActionReceiptV2(_ConversationModel):
     receipt_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     plan_id: str | None = Field(default=None, max_length=160)
     action_id: str | None = Field(default=None, max_length=160)
+    actor_kind: Literal["agent", "user", "system"] = "system"
+    idempotency_key: str | None = Field(default=None, max_length=256)
     status: Literal[
         "applied",
         "applied_with_run_error",
@@ -193,8 +222,8 @@ class AgentActionReceiptV2(_ConversationModel):
         default=(),
         max_length=8,
     )
-    composition_preparation: AgentPrepareCompositionResultV2 | None = None
     workflow_revision: int = Field(ge=1)
+    before_workflow_revision: int | None = Field(default=None, ge=1)
     placement_hints: tuple[AgentPlacementHintV2, ...] = Field(
         default=(),
         max_length=32,
@@ -202,6 +231,7 @@ class AgentActionReceiptV2(_ConversationModel):
     continuation_turn_id: str | None = Field(default=None, max_length=160)
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentCommandSubmissionV2(_ConversationModel):
@@ -238,11 +268,11 @@ class PlanningTopicStateV2(_ConversationModel):
     specialist_name: AgentCanvasSpecialistName = "script_writer"
     status: Literal[
         "pending",
-        "working",
-        "completed",
+        "in_review",
+        "resolved",
         "skipped",
+        "not_required",
         "deferred",
-        "reopened",
     ]
     outcome: str | None = None
     related_node_ids: tuple[str, ...] = ()

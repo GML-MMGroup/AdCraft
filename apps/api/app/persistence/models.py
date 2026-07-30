@@ -378,6 +378,7 @@ class AgentRunRow(Base):
     deadline_at: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="queued")
     lease_owner_id: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     lease_expires_at: Mapped[str | None] = mapped_column(Text)
     last_event_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expected_target_revision: Mapped[int | None] = mapped_column(Integer)
@@ -554,7 +555,7 @@ class AgentCanvasNodeRow(Base):
         ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
     )
     node_type: Mapped[str] = mapped_column(Text, nullable=False)
-    semantic_role: Mapped[str] = mapped_column(Text, nullable=False)
+    creative_role: Mapped[str] = mapped_column(Text, nullable=False)
     role_contract_version: Mapped[str] = mapped_column(
         Text, nullable=False, default="ad-media-role-v1"
     )
@@ -567,14 +568,10 @@ class AgentCanvasNodeRow(Base):
     parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_context_snapshot_id: Mapped[str | None] = mapped_column(Text)
     output_asset_id: Mapped[str | None] = mapped_column(Text)
-    video_skill_run_id: Mapped[str | None] = mapped_column(Text)
     position_x: Mapped[float] = mapped_column(Float, nullable=False)
     position_y: Mapped[float] = mapped_column(Float, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     error_json: Mapped[str | None] = mapped_column(Text)
-    derived_from_node_id: Mapped[str | None] = mapped_column(Text)
-    source_proposal_id: Mapped[str | None] = mapped_column(Text)
-    source_option_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -610,21 +607,20 @@ class AgentCanvasBindingRow(Base):
     __tablename__ = "agent_canvas_bindings"
     __table_args__ = (
         CheckConstraint(
-            "source_kind IN ('node', 'image_asset')",
+            "source_kind IN ('node_output', 'image_asset')",
             name="ck_agent_canvas_bindings_source_kind",
         ),
         CheckConstraint(
-            "binding_kind IN "
-            "('brief_context', 'script_context', 'image_reference', "
-            "'video_reference', 'audio_reference')",
-            name="ck_agent_canvas_bindings_kind",
+            "input_role IN "
+            "('text_context', 'image_reference', 'video_reference', 'audio_reference')",
+            name="ck_agent_canvas_bindings_input_role",
         ),
-        CheckConstraint("display_order >= 0", name="ck_agent_canvas_bindings_order"),
+        CheckConstraint("order_index >= 0", name="ck_agent_canvas_bindings_order"),
         Index(
             "ix_agent_canvas_bindings_target_order",
             "workflow_id",
             "target_node_id",
-            "display_order",
+            "order_index",
             "binding_id",
         ),
     )
@@ -639,16 +635,17 @@ class AgentCanvasBindingRow(Base):
     target_node_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_nodes.node_id"), nullable=False
     )
-    binding_kind: Mapped[str] = mapped_column(Text, nullable=False)
     input_role: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        default="instruction",
-        server_default="instruction",
     )
     required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    display_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    label: Mapped[str | None] = mapped_column(Text)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasPromptContextSnapshotRow(Base):
@@ -672,6 +669,18 @@ class AgentCanvasPromptContextSnapshotRow(Base):
         ForeignKey("agent_canvas_nodes.node_id"), nullable=False
     )
     inputs_json: Mapped[str] = mapped_column(Text, nullable=False)
+    turn_id: Mapped[str | None] = mapped_column(Text)
+    role: Mapped[str | None] = mapped_column(Text)
+    operation: Mapped[str | None] = mapped_column(Text)
+    target_asset_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    binding_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    skill_refs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    memory_digest: Mapped[str | None] = mapped_column(Text)
+    upstream_summary_digest: Mapped[str | None] = mapped_column(Text)
+    byte_estimate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_estimate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_digest: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
@@ -722,7 +731,9 @@ class AgentCanvasCommandPlanRow(Base):
     source_turn_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
     )
+    context_snapshot_id: Mapped[str] = mapped_column(Text, nullable=False)
     base_workflow_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[str] = mapped_column(Text, nullable=False)
     operations_json: Mapped[str] = mapped_column(Text, nullable=False)
     operation_fingerprint: Mapped[str] = mapped_column(Text, nullable=False)
     risk: Mapped[str] = mapped_column(Text, nullable=False)
@@ -820,9 +831,44 @@ class AgentCanvasSkillRunRow(Base):
     current_topic_id: Mapped[str | None] = mapped_column(Text)
     deferred_topic_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     memory_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    active_creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasCreativeDirectionSnapshotRow(Base):
+    __tablename__ = "agent_canvas_creative_direction_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "skill_run_id",
+            "version",
+            name="uq_agent_canvas_creative_direction_version",
+        ),
+        Index(
+            "ix_agent_canvas_creative_direction_workflow_created",
+            "workflow_id",
+            "created_at",
+        ),
+    )
+
+    snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    skill_run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_skill_runs.skill_run_id"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_skill_id: Mapped[str | None] = mapped_column(Text)
+    source_skill_version: Mapped[str | None] = mapped_column(Text)
+    source_skill_digest: Mapped[str | None] = mapped_column(Text)
+    global_direction_json: Mapped[str] = mapped_column(Text, nullable=False)
+    role_projections_json: Mapped[str] = mapped_column(Text, nullable=False)
+    source_message_id: Mapped[str | None] = mapped_column(Text)
+    source_proposal_id: Mapped[str | None] = mapped_column(Text)
+    content_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasPlanningTopicRow(Base):
@@ -914,6 +960,8 @@ class AgentCanvasConceptProposalRow(Base):
     proposal_kind: Mapped[str] = mapped_column(Text, nullable=False)
     specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
     video_skill_run_id: Mapped[str | None] = mapped_column(Text)
+    topic_id: Mapped[str | None] = mapped_column(Text)
+    creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
     proposal_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     proposed_references_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
@@ -935,6 +983,7 @@ class AgentCanvasConceptOptionRow(Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_spec_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasExpertActivityRow(Base):
@@ -951,6 +1000,40 @@ class AgentCanvasExpertActivityRow(Base):
     label: Mapped[str] = mapped_column(Text, nullable=False)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasGuidedActionRow(Base):
+    __tablename__ = "agent_canvas_guided_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('pending','applying','applied','failed')",
+            name="ck_agent_canvas_guided_actions_state",
+        ),
+        Index(
+            "ix_agent_canvas_guided_actions_workflow_state",
+            "workflow_id",
+            "state",
+            "created_at",
+        ),
+    )
+
+    action_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    creating_turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    action_type: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_semantic_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    action_json: Mapped[str] = mapped_column(Text, nullable=False)
+    apply_idempotency_key: Mapped[str | None] = mapped_column(Text)
+    apply_turn_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_chat_turns.turn_id"))
+    receipt_id: Mapped[str | None] = mapped_column(Text)
+    error_code: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 

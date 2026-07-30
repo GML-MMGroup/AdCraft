@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -92,7 +93,9 @@ class AgentCommandPlanCompiler:
             workflow_id=workflow.workflow_id,
             conversation_id=turn.conversation_id,
             source_turn_id=turn.turn_id,
+            context_snapshot_id=f"turn_context:{turn.turn_id}",
             base_workflow_revision=workflow.revision,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
             operations=draft.operations,
             continuation_requested=draft.continuation_requested,
             risk=risk,
@@ -137,28 +140,6 @@ def _risk_for(operations, workflow: AgentCanvasWorkflowV2) -> str:
         return "external_effect"
     if operation_types & {"delete_node", "delete_binding"}:
         return "destructive_authoring"
-    for operation in operations:
-        if operation.operation_type != "prepare_composition":
-            continue
-        editing_ref = operation.editing_node
-        if editing_ref is None or editing_ref.kind != "node_id":
-            continue
-        existing_sources = {
-            binding.source.node_id
-            for binding in workflow.bindings
-            if binding.target_node_id == editing_ref.node_id
-            and binding.source.kind == "node"
-            and binding.binding_kind in {"video_reference", "audio_reference"}
-        }
-        requested_sources = {
-            reference.node_id
-            for reference in operation.ordered_video_nodes
-            if reference.kind == "node_id"
-        }
-        if operation.bgm_audio_node is not None and operation.bgm_audio_node.kind == "node_id":
-            requested_sources.add(operation.bgm_audio_node.node_id)
-        if existing_sources - requested_sources:
-            return "destructive_authoring"
     return "reversible_authoring"
 
 

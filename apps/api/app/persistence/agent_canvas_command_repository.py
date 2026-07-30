@@ -22,8 +22,10 @@ from app.persistence.models import (
     AgentCanvasChatTurnRow,
     AgentCanvasCommandOperationResultRow,
     AgentCanvasCommandPlanRow,
+    AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
+    AgentCanvasPlanningTopicRow,
     AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
 )
@@ -43,8 +45,6 @@ from app.schemas.agent_runtime import (
     AgentCommandPlanV2,
     AgentCommandTransactionResultV2,
     AgentOperationResultV2,
-    AgentPrepareCompositionOperationV2,
-    AgentPrepareCompositionResultV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_authoring_validation import (
@@ -115,7 +115,9 @@ class AgentCanvasCommandRepository:
                         "workflow_id": plan.workflow_id,
                         "conversation_id": plan.conversation_id,
                         "source_turn_id": plan.source_turn_id,
+                        "context_snapshot_id": plan.context_snapshot_id,
                         "base_workflow_revision": plan.base_workflow_revision,
+                        "expires_at": plan.expires_at.isoformat(),
                         "operations_json": _dump(
                             [operation.model_dump(mode="json") for operation in plan.operations]
                         ),
@@ -371,6 +373,11 @@ class AgentCanvasCommandRepository:
                             "agent_command_plan_already_resolved",
                             "Agent command plan is already resolved.",
                         )
+                    if plan.expires_at <= datetime.now(timezone.utc):
+                        raise _error(
+                            "agent_command_plan_expired",
+                            "Agent command plan has expired.",
+                        )
                     _require_workflow_revision(
                         connection,
                         plan.workflow_id,
@@ -623,14 +630,14 @@ class AgentCanvasCommandRepository:
                     )
                     for operation in plan.operations:
                         operation_type = operation.operation_type
-                        if operation_type == "create_node":
+                        if operation_type == "create_draft_node":
                             node_id = f"node_{uuid4().hex}"
                             connection.execute(
                                 insert(AgentCanvasNodeRow).values(
                                     node_id=node_id,
                                     workflow_id=plan.workflow_id,
                                     node_type=operation.node_type,
-                                    semantic_role=operation.semantic_role,
+                                    creative_role=operation.creative_role,
                                     role_contract_version="ad-media-role-v1",
                                     title=operation.title,
                                     status=("ready" if operation.node_type == "text" else "draft"),
@@ -641,7 +648,6 @@ class AgentCanvasCommandRepository:
                                     parameters_json=_dump(operation.parameters),
                                     prompt_context_snapshot_id=None,
                                     output_asset_id=None,
-                                    video_skill_run_id=operation.video_skill_run_id,
                                     position_x=0.0,
                                     position_y=0.0,
                                     revision=1,
@@ -726,7 +732,7 @@ class AgentCanvasCommandRepository:
                                 node_id=node_id,
                                 status="applied",
                             )
-                        elif operation_type == "fork_ready_media":
+                        elif operation_type == "materialize_sibling_draft":
                             source_node_id = _resolve_node_ref(
                                 connection,
                                 plan.workflow_id,
@@ -753,7 +759,7 @@ class AgentCanvasCommandRepository:
                                     node_id=node_id,
                                     workflow_id=plan.workflow_id,
                                     node_type=source["node_type"],
-                                    semantic_role=source["semantic_role"],
+                                    creative_role=source["creative_role"],
                                     role_contract_version=source["role_contract_version"],
                                     title=operation.title,
                                     status="draft",
@@ -764,12 +770,10 @@ class AgentCanvasCommandRepository:
                                     parameters_json=_dump(operation.parameters),
                                     prompt_context_snapshot_id=source["prompt_context_snapshot_id"],
                                     output_asset_id=None,
-                                    video_skill_run_id=source["video_skill_run_id"],
                                     position_x=0.0,
                                     position_y=0.0,
                                     revision=1,
                                     error_json=None,
-                                    derived_from_node_id=source_node_id,
                                     created_at=now,
                                     updated_at=now,
                                 )
@@ -792,12 +796,14 @@ class AgentCanvasCommandRepository:
                                         source_node_id=binding["source_node_id"],
                                         source_asset_id=binding["source_asset_id"],
                                         target_node_id=node_id,
-                                        binding_kind=binding["binding_kind"],
-                                        input_role=binding.get("input_role")
-                                        or _input_role_for_binding_kind(binding["binding_kind"]),
+                                        input_role=binding["input_role"],
                                         required=binding["required"],
-                                        display_order=binding["display_order"],
+                                        enabled=binding["enabled"],
+                                        order_index=binding["order_index"],
+                                        label=binding["label"],
+                                        metadata_json=binding["metadata_json"],
                                         created_at=now,
+                                        updated_at=now,
                                     )
                                 )
                                 created_binding_ids.append(copied_binding_id)
@@ -851,16 +857,18 @@ class AgentCanvasCommandRepository:
                                                 row["source_node_id"],
                                             ),
                                             target_node_id=str(row["target_node_id"]),
-                                            binding_kind=str(row["binding_kind"]),
+                                            binding_kind=str(row["input_role"]),
                                         )
                                         for row in binding_rows
                                     ),
                                     source_node_id=cast(str, source_node_id),
                                     source_node_type=str(source_node["node_type"]),
-                                    source_semantic_role=str(source_node["semantic_role"]),
+                                    source_semantic_role=str(source_node["creative_role"]),
                                     target_node_id=target_node_id,
                                     target_node_type=str(target_node["node_type"]),
-                                    binding_kind=operation.binding_kind,
+                                    binding_kind=_input_role_for_binding_kind(
+                                        operation.binding_kind
+                                    ),
                                 )
                             binding_id = f"binding_{uuid4().hex}"
                             connection.execute(
@@ -871,17 +879,56 @@ class AgentCanvasCommandRepository:
                                     source_node_id=source_node_id,
                                     source_asset_id=source_asset_id,
                                     target_node_id=target_node_id,
-                                    binding_kind=operation.binding_kind,
                                     input_role=_input_role_for_binding_kind(operation.binding_kind),
                                     required=operation.required,
-                                    display_order=operation.display_order,
+                                    enabled=True,
+                                    order_index=operation.display_order,
+                                    label=None,
+                                    metadata_json="{}",
                                     created_at=now,
+                                    updated_at=now,
                                 )
                             )
                             created_binding_ids.append(binding_id)
                             result = AgentOperationResultV2(
                                 operation_id=operation.operation_id,
                                 binding_id=binding_id,
+                                status="applied",
+                            )
+                        elif operation_type == "patch_binding":
+                            current = (
+                                connection.execute(
+                                    select(AgentCanvasBindingRow).where(
+                                        AgentCanvasBindingRow.workflow_id == plan.workflow_id,
+                                        AgentCanvasBindingRow.binding_id == operation.binding_id,
+                                    )
+                                )
+                                .mappings()
+                                .one_or_none()
+                            )
+                            if current is None:
+                                raise _error(
+                                    "canvas_binding_not_found",
+                                    "Canvas binding was not found.",
+                                )
+                            values: dict[str, object] = {"updated_at": now}
+                            if operation.required is not None:
+                                values["required"] = operation.required
+                            if operation.enabled is not None:
+                                values["enabled"] = operation.enabled
+                            if operation.display_order is not None:
+                                values["order_index"] = operation.display_order
+                            connection.execute(
+                                update(AgentCanvasBindingRow)
+                                .where(
+                                    AgentCanvasBindingRow.workflow_id == plan.workflow_id,
+                                    AgentCanvasBindingRow.binding_id == operation.binding_id,
+                                )
+                                .values(**values)
+                            )
+                            result = AgentOperationResultV2(
+                                operation_id=operation.operation_id,
+                                binding_id=operation.binding_id,
                                 status="applied",
                             )
                         elif operation_type == "delete_binding":
@@ -951,6 +998,49 @@ class AgentCanvasCommandRepository:
                                 node_id=node_id,
                                 status="queued",
                             )
+                        elif operation_type == "update_topic_status":
+                            topic = (
+                                connection.execute(
+                                    select(AgentCanvasPlanningTopicRow).where(
+                                        AgentCanvasPlanningTopicRow.skill_run_id
+                                        == operation.skill_run_id,
+                                        AgentCanvasPlanningTopicRow.topic_id == operation.topic_id,
+                                    )
+                                )
+                                .mappings()
+                                .one_or_none()
+                            )
+                            if topic is None:
+                                raise _error(
+                                    "planning_topic_not_found",
+                                    "Planning topic was not found.",
+                                )
+                            related_node_ids = tuple(
+                                _resolve_node_ref(
+                                    connection,
+                                    plan.workflow_id,
+                                    reference,
+                                    resolved_nodes,
+                                )
+                                for reference in operation.related_nodes
+                            )
+                            connection.execute(
+                                update(AgentCanvasPlanningTopicRow)
+                                .where(
+                                    AgentCanvasPlanningTopicRow.skill_run_id
+                                    == operation.skill_run_id,
+                                    AgentCanvasPlanningTopicRow.topic_id == operation.topic_id,
+                                )
+                                .values(
+                                    status=operation.status,
+                                    outcome=f"agent_command:{operation.status}",
+                                    related_node_ids_json=_dump(related_node_ids),
+                                )
+                            )
+                            result = AgentOperationResultV2(
+                                operation_id=operation.operation_id,
+                                status="applied",
+                            )
                         else:
                             raise _error(
                                 "agent_command_operation_not_supported",
@@ -975,6 +1065,46 @@ class AgentCanvasCommandRepository:
                                 created_at=now,
                             )
                         )
+                    receipt = AgentActionReceiptV2(
+                        receipt_id=f"receipt_{plan.plan_id}",
+                        workflow_id=plan.workflow_id,
+                        plan_id=plan.plan_id,
+                        actor_kind=plan.actor,
+                        idempotency_key=plan.idempotency_key,
+                        status="applied",
+                        summary=_receipt_summary(created_node_ids),
+                        created_node_ids=tuple(created_node_ids),
+                        updated_node_ids=tuple(updated_node_ids),
+                        deleted_node_ids=tuple(deleted_node_ids),
+                        created_binding_ids=tuple(created_binding_ids),
+                        deleted_binding_ids=tuple(deleted_binding_ids),
+                        operation_results=tuple(operation_results),
+                        workflow_revision=next_revision,
+                        before_workflow_revision=current_revision,
+                        placement_hints=_placement_hints_for(
+                            plan.operations,
+                            operation_results,
+                        ),
+                    )
+                    connection.execute(
+                        insert(AgentCanvasActionReceiptRow).values(
+                            receipt_id=receipt.receipt_id,
+                            workflow_id=receipt.workflow_id,
+                            plan_id=receipt.plan_id,
+                            action_id=None,
+                            receipt_json=receipt.model_dump_json(),
+                            created_at=now,
+                        )
+                    )
+                    self._append_timeline(
+                        connection,
+                        conversation_id=plan.conversation_id,
+                        workflow_id=plan.workflow_id,
+                        entry_type="action_receipt",
+                        content=receipt.summary,
+                        metadata={"action_receipt": receipt.model_dump(mode="json")},
+                        created_at=now,
+                    )
                     connection.execute(
                         update(AgentCanvasCommandPlanRow)
                         .where(AgentCanvasCommandPlanRow.plan_id == plan.plan_id)
@@ -987,6 +1117,19 @@ class AgentCanvasCommandRepository:
                             event_type="agent_command_plan_applied",
                             created_at=now,
                             payload={
+                                "plan_id": plan.plan_id,
+                                "revision": next_revision,
+                            },
+                        ),
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=plan.workflow_id,
+                            event_type="agent_action_receipt_created",
+                            created_at=now,
+                            payload={
+                                "receipt_id": receipt.receipt_id,
                                 "plan_id": plan.plan_id,
                                 "revision": next_revision,
                             },
@@ -1015,90 +1158,41 @@ class AgentCanvasCommandRepository:
             post_commit_run_node_ids=tuple(run_node_ids),
         )
 
-    def complete_composition_plan(
+    def update_receipt_run_outcome(
         self,
-        plan: AgentCommandPlanV2,
-        operation: AgentPrepareCompositionOperationV2,
-        prepared: AgentPrepareCompositionResultV2,
-    ) -> AgentCommandTransactionResultV2:
-        """Mark a separately idempotent composition transaction as applied."""
-
-        now = _now()
-        operation_result = AgentOperationResultV2(
-            operation_id=operation.operation_id,
-            node_id=prepared.editing_node.node_id,
-            status="applied",
+        plan_id: str,
+        *,
+        queued_execution_ids: tuple[str, ...],
+        run_errors: tuple[str, ...],
+    ) -> AgentActionReceiptV2:
+        receipt = self.get_receipt_for_plan(plan_id)
+        updated = receipt.model_copy(
+            update={
+                "status": ("applied_with_run_error" if run_errors else "applied"),
+                "queued_execution_ids": queued_execution_ids,
+                "run_queue_errors": run_errors,
+            }
         )
         try:
-            with self._database.engine.connect() as connection:
-                connection.exec_driver_sql("BEGIN IMMEDIATE")
-                try:
-                    status = connection.execute(
-                        select(AgentCanvasCommandPlanRow.status).where(
-                            AgentCanvasCommandPlanRow.plan_id == plan.plan_id
-                        )
-                    ).scalar_one_or_none()
-                    if status is None:
-                        raise _error(
-                            "agent_command_plan_not_found",
-                            "Agent command plan was not found.",
-                        )
-                    existing = connection.execute(
-                        select(AgentCanvasCommandOperationResultRow.result_json).where(
-                            AgentCanvasCommandOperationResultRow.plan_id == plan.plan_id,
-                            AgentCanvasCommandOperationResultRow.operation_id
-                            == operation.operation_id,
-                        )
-                    ).scalar_one_or_none()
-                    if existing is None:
-                        connection.execute(
-                            insert(AgentCanvasCommandOperationResultRow).values(
-                                plan_id=plan.plan_id,
-                                operation_id=operation.operation_id,
-                                result_json=operation_result.model_dump_json(),
-                                created_at=now,
-                            )
-                        )
-                    else:
-                        operation_result = AgentOperationResultV2.model_validate_json(str(existing))
-                    if status != "applied":
-                        connection.execute(
-                            update(AgentCanvasCommandPlanRow)
-                            .where(AgentCanvasCommandPlanRow.plan_id == plan.plan_id)
-                            .values(status="applied", updated_at=now)
-                        )
-                        self._events.append_in_transaction(
-                            connection,
-                            V2EventInsert(
-                                workflow_id=plan.workflow_id,
-                                event_type="agent_command_plan_applied",
-                                created_at=now,
-                                payload={
-                                    "plan_id": plan.plan_id,
-                                    "revision": prepared.semantic_revision,
-                                },
-                            ),
-                        )
-                    connection.commit()
-                except BaseException:
-                    connection.rollback()
-                    raise
+            with self._database.engine.begin() as connection:
+                changed = connection.execute(
+                    update(AgentCanvasActionReceiptRow)
+                    .where(AgentCanvasActionReceiptRow.plan_id == plan_id)
+                    .values(receipt_json=updated.model_dump_json())
+                )
+                if changed.rowcount != 1:
+                    raise _error(
+                        "agent_action_receipt_not_found",
+                        "Agent action receipt was not found.",
+                    )
         except V2PersistenceError:
             raise
-        except (IntegrityError, SQLAlchemyError) as error:
+        except SQLAlchemyError as error:
             raise _error(
-                "agent_command_transaction_failed",
-                "Agent composition command finalization failed.",
+                "agent_command_storage_unavailable",
+                "Receipt storage failed.",
             ) from error
-        created = operation.editing_node is None
-        return AgentCommandTransactionResultV2(
-            workflow_id=plan.workflow_id,
-            workflow_revision=prepared.semantic_revision,
-            operation_results=(operation_result,),
-            created_node_ids=((prepared.editing_node.node_id,) if created else ()),
-            updated_node_ids=(() if created else (prepared.editing_node.node_id,)),
-            created_binding_ids=tuple(binding.binding_id for binding in prepared.bindings),
-        )
+        return updated
 
     def upsert_variation_draft(
         self,
@@ -1341,7 +1435,7 @@ class AgentCanvasCommandRepository:
                         node_id=sibling_node_id,
                         workflow_id=workflow_id,
                         node_type=str(source["node_type"]),
-                        semantic_role=str(source["semantic_role"]),
+                        creative_role=str(source["creative_role"]),
                         role_contract_version=str(source["role_contract_version"]),
                         title=str(variation["title"]),
                         status="draft",
@@ -1352,8 +1446,6 @@ class AgentCanvasCommandRepository:
                         parameters=json.loads(str(variation["parameters_json"])),
                         prompt_context_snapshot_id=None,
                         output_asset_id=None,
-                        video_skill_run_id=None,
-                        derived_from_node_id=source_node_id,
                         position=position,
                         revision=1,
                         error=None,
@@ -1366,7 +1458,7 @@ class AgentCanvasCommandRepository:
                             node_id=sibling.node_id,
                             workflow_id=sibling.workflow_id,
                             node_type=sibling.node_type,
-                            semantic_role=sibling.semantic_role,
+                            creative_role=sibling.creative_role,
                             role_contract_version=sibling.role_contract_version,
                             title=sibling.title,
                             status=sibling.status,
@@ -1377,12 +1469,10 @@ class AgentCanvasCommandRepository:
                             parameters_json=_dump(sibling.parameters),
                             prompt_context_snapshot_id=None,
                             output_asset_id=None,
-                            video_skill_run_id=None,
                             position_x=sibling.position.x,
                             position_y=sibling.position.y,
                             revision=1,
                             error_json=None,
-                            derived_from_node_id=source_node_id,
                             created_at=now,
                             updated_at=now,
                         )
@@ -1395,7 +1485,7 @@ class AgentCanvasCommandRepository:
                                 AgentCanvasBindingRow.target_node_id == source_node_id,
                             )
                             .order_by(
-                                AgentCanvasBindingRow.display_order.asc(),
+                                AgentCanvasBindingRow.order_index.asc(),
                                 AgentCanvasBindingRow.created_at.asc(),
                                 AgentCanvasBindingRow.binding_id.asc(),
                             )
@@ -1414,12 +1504,14 @@ class AgentCanvasCommandRepository:
                                 source_node_id=binding["source_node_id"],
                                 source_asset_id=binding["source_asset_id"],
                                 target_node_id=sibling_node_id,
-                                binding_kind=binding["binding_kind"],
-                                input_role=binding.get("input_role")
-                                or _input_role_for_binding_kind(binding["binding_kind"]),
+                                input_role=binding["input_role"],
                                 required=binding["required"],
-                                display_order=binding["display_order"],
+                                enabled=binding["enabled"],
+                                order_index=binding["order_index"],
+                                label=binding["label"],
+                                metadata_json=binding["metadata_json"],
                                 created_at=now,
+                                updated_at=now,
                             )
                         )
                         copied_binding_ids.append(binding_id)
@@ -1565,18 +1657,24 @@ class AgentCanvasCommandRepository:
                         else None
                     )
                     conversation_id = (
-                        str(plan_row["conversation_id"])
-                        if plan_row is not None
-                        else (
-                            connection.execute(
-                                select(AgentCanvasChatTurnRow.conversation_id).where(
-                                    AgentCanvasChatTurnRow.turn_id == receipt.action_id
-                                )
-                            ).scalar_one_or_none()
-                            if receipt.action_id is not None
-                            else None
-                        )
+                        str(plan_row["conversation_id"]) if plan_row is not None else None
                     )
+                    if conversation_id is None and receipt.action_id is not None:
+                        conversation_id = connection.execute(
+                            select(AgentCanvasChatTurnRow.conversation_id).where(
+                                AgentCanvasChatTurnRow.turn_id == receipt.action_id
+                            )
+                        ).scalar_one_or_none()
+                    if conversation_id is None and receipt.action_id is not None:
+                        conversation_id = connection.execute(
+                            select(AgentCanvasChatTurnRow.conversation_id)
+                            .join(
+                                AgentCanvasGuidedActionRow,
+                                AgentCanvasGuidedActionRow.creating_turn_id
+                                == AgentCanvasChatTurnRow.turn_id,
+                            )
+                            .where(AgentCanvasGuidedActionRow.action_id == receipt.action_id)
+                        ).scalar_one_or_none()
                     if conversation_id is not None:
                         self._append_timeline(
                             connection,
@@ -1669,12 +1767,13 @@ def _resolve_node_ref(
 
 def _input_role_for_binding_kind(binding_kind: object) -> str:
     return {
-        "brief_context": "instruction",
-        "script_context": "instruction",
-        "image_reference": "visual_reference",
-        "video_reference": "source_video",
+        "brief_context": "text_context",
+        "script_context": "text_context",
+        "text_context": "text_context",
+        "image_reference": "image_reference",
+        "video_reference": "video_reference",
         "audio_reference": "audio_reference",
-    }.get(str(binding_kind), "instruction")
+    }.get(str(binding_kind), "text_context")
 
 
 def _resolve_binding_source(
@@ -1686,10 +1785,33 @@ def _resolve_binding_source(
     if reference.kind == "image_asset":
         return "image_asset", None, str(reference.asset_id)
     return (
-        "node",
+        "node_output",
         _resolve_node_ref(connection, workflow_id, reference, operation_results),
         None,
     )
+
+
+def _creative_role(value: object) -> str:
+    return {
+        "generation_brief": "creative_brief",
+        "generic_text": "general_text",
+        "advertising_script": "script",
+        "generic_image": "general_image",
+        "uploaded_image": "general_image",
+        "product_main": "product",
+        "product_view_board": "product",
+        "prop_main": "prop",
+        "character_main": "character",
+        "character_turnaround": "character",
+        "scene_design_board": "scene",
+        "storyboard_grid": "storyboard_sequence",
+        "generic_video": "general_video",
+        "uploaded_video": "general_video",
+        "storyboard_video_segment": "storyboard_video",
+        "generic_audio": "general_audio",
+        "uploaded_audio": "general_audio",
+        "final_composition": "editing",
+    }.get(str(value), str(value))
 
 
 def _require_node(
@@ -1781,13 +1903,11 @@ def _applied_transaction_result(
         workflow_revision=plan.base_workflow_revision + 1,
         operation_results=operation_results,
         created_node_ids=node_ids(
-            "create_node",
-            "materialize_proposal",
-            "fork_ready_media",
+            "create_draft_node",
+            "materialize_sibling_draft",
         ),
         updated_node_ids=node_ids(
             "patch_editable_node",
-            "update_planning_topic",
         ),
         deleted_node_ids=node_ids("delete_node"),
         created_binding_ids=binding_ids("create_binding"),
@@ -1806,9 +1926,12 @@ def _plan_from_mapping(row: dict[str, Any] | RowMapping) -> AgentCommandPlanV2:
         workflow_id=str(row["workflow_id"]),
         conversation_id=str(row["conversation_id"]),
         source_turn_id=str(row["source_turn_id"]),
+        context_snapshot_id=str(row["context_snapshot_id"]),
         base_workflow_revision=int(row["base_workflow_revision"]),
+        expires_at=str(row["expires_at"]),
         operations=tuple(json.loads(str(row["operations_json"]))),
         operation_fingerprint=str(row["operation_fingerprint"]),
+        idempotency_key=str(row["idempotency_key"]),
         risk=cast(str, row["risk"]),
         confirmation_required=bool(row["confirmation_required"]),
         status=cast(str, row["status"]),
@@ -1826,6 +1949,25 @@ def _plan_from_mapping(row: dict[str, Any] | RowMapping) -> AgentCommandPlanV2:
 
 def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _receipt_summary(created_node_ids: list[str]) -> str:
+    if created_node_ids:
+        return f"Created {len(created_node_ids)} canvas node(s)."
+    return "Applied the requested canvas changes."
+
+
+def _placement_hints_for(
+    operations: tuple[Any, ...],
+    results: list[AgentOperationResultV2],
+) -> tuple[AgentPlacementHintV2, ...]:
+    node_operations = {result.operation_id for result in results if result.node_id is not None}
+    return tuple(
+        placement_hint
+        for operation in operations
+        if operation.operation_id in node_operations
+        and (placement_hint := getattr(operation, "placement_hint", None)) is not None
+    )
 
 
 def _load_idempotency_response(
