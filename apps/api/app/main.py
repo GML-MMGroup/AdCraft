@@ -3,14 +3,13 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router as api_v1_router
 from app.api.internal.router import router as internal_agent_router
 from app.api.v2.persistence import v2_persistence_exception_handler
-from app.api.v2.etag import semantic_workflow_mutation_id, workflow_etag
 from app.api.v2.router import api_router as api_v2_router
 from app.api.v2.endpoints.agent_canvas import create_agent_canvas_runtime
 from app.core.config import Settings, get_settings
@@ -21,10 +20,6 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database
 from app.services.v2_asset_catalog import V2AssetCatalogService
 from app.services.v2_asset_catalog_coordinator import V2AssetCatalogCoordinator
-from app.services.v2_execution_recovery import V2ExecutionRecoveryService
-from app.services.v2_final_composition_render_service import V2FinalCompositionRenderService
-from app.services.workflow_v2 import WorkflowV2Service
-from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -47,22 +42,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["ETag"],
     )
-
-    @application.middleware("http")
-    async def add_workflow_etag(request: Request, call_next):
-        response = await call_next(request)
-        workflow_id = semantic_workflow_mutation_id(request.method, request.url.path)
-        if workflow_id is None or response.status_code >= 400:
-            return response
-        runtime = create_workflow_authoring_runtime(resolved_settings.media_data_dir)
-        try:
-            current = runtime.repository.load_current(workflow_id)
-        except V2PersistenceError:
-            return response
-        finally:
-            runtime.database.dispose()
-        response.headers["ETag"] = workflow_etag(workflow_id, current.state_version)
-        return response
 
     if settings is not None:
         application.dependency_overrides[get_settings] = lambda: resolved_settings
@@ -105,9 +84,6 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AsyncIterator[None]]:
         application.state.v2_asset_catalog_coordinator = coordinator
         coordinator.ensure_indexed()
         try:
-            _recover_v2_interrupted_executions(settings)
-            _recover_v2_active_provider_task_polling(settings)
-            _recover_v2_final_composition_renders(settings)
             _recover_agent_canvas_chat_turns(settings)
             _recover_agent_canvas_executions(settings)
             _recover_agent_canvas_editing_exports(settings)
@@ -158,7 +134,7 @@ async def _poll_agent_canvas_provider_tasks(
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
             continue
-        except TimeoutError:
+        except asyncio.TimeoutError:
             pass
         try:
             await asyncio.to_thread(_recover_agent_canvas_provider_tasks, settings)
@@ -194,48 +170,6 @@ def _create_asset_catalog_coordinator(settings: Settings) -> V2AssetCatalogCoord
             catalog_root=settings.v2_recommended_catalog_root,
         )
     )
-
-
-def _recover_v2_final_composition_renders(settings: Settings) -> None:
-    """Recover persisted V2 final renders before accepting requests after a restart."""
-
-    runs_dir = settings.media_data_dir / "v2" / "runs"
-    if not runs_dir.is_dir():
-        return
-    service = V2FinalCompositionRenderService(settings)
-    for workflow_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
-        composition_dir = workflow_dir / "composition"
-        if composition_dir.is_dir():
-            service.recover_interrupted_renders(workflow_dir.name)
-
-
-def _recover_v2_interrupted_executions(settings: Settings) -> None:
-    """Run the V2 command-owned recovery once for persisted active executions."""
-
-    runs_dir = settings.media_data_dir / "v2" / "runs"
-    if not runs_dir.is_dir():
-        return
-    recovery = V2ExecutionRecoveryService(
-        settings.media_data_dir,
-        stale_running_timeout_seconds=settings.v2_stale_running_timeout_seconds,
-    )
-    for workflow_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
-        active_pointer = workflow_dir / "executions" / "active.json"
-        if active_pointer.is_file():
-            recovery.recover_interrupted_execution(workflow_dir.name, trigger="startup")
-
-
-def _recover_v2_active_provider_task_polling(settings: Settings) -> None:
-    """Resume provider polling after interrupted executions have been recovered."""
-
-    runs_dir = settings.media_data_dir / "v2" / "runs"
-    if not runs_dir.is_dir():
-        return
-    workflow_service = WorkflowV2Service(settings)
-    for workflow_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
-        active_pointer = workflow_dir / "executions" / "active.json"
-        if active_pointer.is_file():
-            workflow_service.recover_active_provider_task_polling(workflow_dir.name)
 
 
 app = create_app()

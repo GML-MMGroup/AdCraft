@@ -36,6 +36,7 @@ from app.schemas.seedance_inputs import (
 )
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
+from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_reference_input_delivery import (
     V2ProviderReferenceDeliveryError,
@@ -108,20 +109,22 @@ class ScriptNodeExecutor:
         self._timeout_seconds = timeout_seconds
 
     def __call__(self, context: NodeExecutionContext) -> NodeExecutionOutcome:
+        run_context = AgentRunContext(
+            operation="execute_canvas_script",
+            user_input=_saved_prompt(context),
+            workflow_id=context.node.workflow_id,
+            target=None,
+            input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
+        )
         request = AgentRunRequest(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
+            **agent_run_envelope_fields(run_context),
             agent_name="script_writer",
             operation="execute_canvas_script",
             deadline_at=datetime.now(timezone.utc) + timedelta(seconds=self._timeout_seconds),
             model_policy_id="script_writer.execute_canvas_script.v1",
-            context=AgentRunContext(
-                operation="execute_canvas_script",
-                user_input=_saved_prompt(context),
-                workflow_id=context.node.workflow_id,
-                target=None,
-                input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
-            ),
+            context=run_context,
             policy=AgentRunPolicy(
                 max_handoffs=0,
                 timeout_seconds=self._timeout_seconds,
@@ -194,7 +197,7 @@ class MediaNodeExecutor:
                 binding_id=reference.binding_id or f"asset_{reference.asset_id}",
                 asset_id=reference.asset_id,
                 media_type=reference.media_type,  # type: ignore[arg-type]
-                input_role=reference.input_role or "instruction",  # type: ignore[arg-type]
+                input_role=reference.input_role,  # type: ignore[arg-type]
                 source_semantic_role=reference.source_semantic_role,
                 required=reference.required,
                 display_order=reference.display_order,
@@ -274,11 +277,7 @@ class MediaNodeExecutor:
                     "provider_output_missing",
                     "Provider result did not include media content.",
                 )
-            mime_type, filename = {
-                "image": ("image/png", "image.png"),
-                "video": ("video/mp4", "video.mp4"),
-                "audio": ("audio/mpeg", "audio.mp3"),
-            }[media_type]
+            mime_type, filename = _generated_media_identity(media_type, content)
             return NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
                     content=content,
@@ -381,6 +380,16 @@ class MediaNodeExecutor:
                 "Provider output path is outside managed storage.",
             )
         return resolved.read_bytes()
+
+
+def _generated_media_identity(media_type: str, content: bytes) -> tuple[str, str]:
+    if media_type == "image" and content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "image.jpg"
+    return {
+        "image": ("image/png", "image.png"),
+        "video": ("video/mp4", "video.mp4"),
+        "audio": ("audio/mpeg", "audio.mp3"),
+    }[media_type]
 
 
 class NodeExecutionDispatcher:
