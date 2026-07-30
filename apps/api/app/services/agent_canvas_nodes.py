@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
-from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     CanvasBindingV2,
@@ -15,6 +14,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
+from app.services.agent_canvas_authoring_validation import validate_node_patch
 
 
 class AgentCanvasNodeService:
@@ -90,20 +90,16 @@ class AgentCanvasNodeService:
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
         changes = request.model_dump(exclude_unset=True)
-        if (
-            current.status == "ready"
-            and current.node_type in {"image", "video", "audio", "editing"}
-            and _changes_generated_output_definition(current, changes)
-        ):
-            raise V2PersistenceError(
-                "node_output_immutable",
-                "Ready media output cannot be overwritten in place.",
-                stage="agent_canvas_node_service",
-            )
+        status = validate_node_patch(
+            status=current.status,
+            node_type=current.node_type,
+            current=current.model_dump(mode="python"),
+            changes=changes,
+        )
         updated = current.model_copy(
             update={
                 **changes,
-                "status": _patched_status(current, changes),
+                "status": status,
                 "revision": current.revision + 1,
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -151,25 +147,3 @@ def _copy_incoming_bindings(
         for binding in workflow.bindings
         if binding.target_node_id == source_node_id
     )
-
-
-def _changes_generated_output_definition(
-    current: CanvasNodeV2,
-    changes: dict[str, object],
-) -> bool:
-    immutable_fields = {
-        "generation_prompt",
-        "model_id",
-        "parameters",
-        "structured_content",
-    }
-    return any(
-        field in changes and changes[field] != getattr(current, field) for field in immutable_fields
-    )
-
-
-def _patched_status(current: CanvasNodeV2, changes: dict[str, object]) -> str:
-    if current.node_type not in {"text", "script"}:
-        return current.status
-    content = changes.get("structured_content", current.structured_content)
-    return "ready" if content else "draft"
