@@ -523,3 +523,288 @@
 .home-typography-lab.is-inspector-collapsed .home-typography-lab__collapse svg {
   transform: none;
 }
+
+/* Mirror the application dark theme locally so the lab stays a dark calibration surface. */
+.home-typography-lab--dark {
+  --page-bg: #08090d;
+  --nav-bg: #0d0f14;
+  --surface-card: #13161d;
+  --surface-raised: #191d26;
+  --surface-input: #101218;
+  --surface-contrast: #0a0c11;
+  --text-primary: #f1f2f6;
+  --text-secondary: #9399a9;
+  --text-disabled: #666d7c;
+  --text-inverse: #17151f;
+  --border-default: #222733;
+  --border-strong: #333a49;
+  --brand: #9e8bea;
+  --brand-hover: #af9af6;
+  --brand-subtle: #241e39;
+  --focus-ring: #b6a4ff;
+  --media-overlay: rgba(8, 9, 13, 0.72);
+  --mist-blue: var(--page-bg);
+  --mauve: var(--brand);
+  --butter: #e4bc62;
+  --iris: var(--brand);
+  --rose: #eb788c;
+  --ink: var(--text-primary);
+  --muted: var(--text-secondary);
+  --surface: var(--surface-card);
+  --surface-strong: var(--surface-raised);
+  --surface-soft: var(--nav-bg);
+  --stroke: var(--border-default);
+  --stroke-dark: var(--border-default);
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
+  --glass-button: var(--surface-raised);
+  --glass-button-shadow: 0 10px 22px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 255, 255, 0.025);
+  --lab-page-background: var(--page-bg);
+  --lab-navigation-background: var(--nav-bg);
+  --lab-surface: var(--surface-card);
+  --lab-surface-raised: var(--surface-raised);
+  --lab-input-background: var(--surface-input);
+  --lab-border: var(--border-default);
+  --lab-border-strong: var(--border-strong);
+  --lab-text: var(--text-primary);
+  --lab-text-muted: var(--text-secondary);
+  --lab-text-disabled: var(--text-disabled);
+  --lab-brand: var(--brand);
+  --lab-brand-hover: var(--brand-hover);
+  --lab-brand-soft: var(--brand-subtle);
+  --lab-focus: var(--focus-ring);
+  min-height: 100vh;
+  background: var(--lab-page-background);
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__preview {
+  background:
+    linear-gradient(90deg, rgba(5, 6, 9, 0.95) 0%, rgba(6, 7, 10, 0.88) 38%, rgba(6, 7, 10, 0.56) 70%, rgba(6, 7, 10, 0.72) 100%),
+    linear-gradient(180deg, rgba(5, 6, 9, 0.38), rgba(5, 6, 9, 0.82)),
+    url("/assets/home-dark-cosmic.webp") 50% 57% / cover scroll no-repeat;
+}
+
+.home-typography-lab--dark .home-typography-lab__preview-header {
+  border-color: var(--lab-border);
+}
+
+.home-typography-lab--dark .home-typography-lab__brand {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__preview-label {
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-product-hero__title,
+.home-typography-lab--dark .section-title h2,
+.home-typography-lab--dark .recent-card h3 {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-product-hero__accent,
+.home-typography-lab--dark .home-product-hero__accent::after {
+  color: #d7ae59;
+}
+
+.home-typography-lab--dark .home-product-hero__accent::after {
+  background-image: linear-gradient(100deg, #d7ae59 0%, #f3cf78 38%, #ffe7a6 47%, #bc8d36 56%, #d7ae59 100%);
+  -webkit-text-fill-color: transparent;
+}
+
+.home-typography-lab--dark .home-product-hero__description,
+.home-typography-lab--dark .section-title p,
+.home-typography-lab--dark .recent-card p {
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-product-hero__create {
+  border-color: var(--lab-brand);
+  background: var(--lab-brand);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  color: var(--lab-page-background);
+}
+
+.home-typography-lab--dark .home-product-film::after {
+  background: rgba(8, 9, 13, 0.08);
+}
+
+.home-typography-lab--dark .recent-strip {
+  border-color: var(--lab-border);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-typography-lab--dark .recent-card {
+  border-color: var(--lab-border);
+  background: var(--lab-surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-typography-lab--dark .discover-tabs {
+  border-color: var(--lab-border);
+  background: rgba(13, 15, 20, 0.9);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-typography-lab--dark .recent-card.featured {
+  background:
+    linear-gradient(180deg, rgba(8, 9, 13, 0.04), rgba(8, 9, 13, 0.4)),
+    url("/assets/card1.webp") center / cover;
+}
+
+.home-typography-lab--dark .recent-card.featured::after {
+  background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.76));
+}
+
+.home-typography-lab--dark .recent-card.featured :is(h3, p) {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-page--static .filter-btn {
+  border: 1px solid var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: var(--glass-button-shadow);
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-page--static .filter-btn.is-active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--text-inverse);
+}
+
+.home-typography-lab--dark .discover-card {
+  border-color: var(--lab-border);
+  background: var(--surface-contrast);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-typography-lab--dark .discover-card::before {
+  background: linear-gradient(180deg, transparent 38%, var(--media-overlay));
+}
+
+.home-typography-lab--dark .home-typography-lab__preview.is-guide-visible [data-home-typography-region] {
+  outline-color: var(--lab-brand);
+}
+
+.home-typography-lab--dark .home-typography-lab__inspector {
+  border-color: var(--lab-border);
+  background: rgba(13, 15, 20, 0.97);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(22px) saturate(1.04);
+}
+
+.home-typography-lab--dark .home-typography-lab__inspector-heading,
+.home-typography-lab--dark .home-typography-lab__recipe {
+  border-color: var(--lab-border);
+}
+
+.home-typography-lab--dark .home-typography-lab__inspector-heading p {
+  color: var(--lab-brand);
+}
+
+.home-typography-lab--dark .home-typography-lab__inspector-heading h1,
+.home-typography-lab--dark .home-typography-lab__recipe h2 {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark :is(
+  .home-typography-lab__control-group > label,
+  .home-typography-lab__control-group > span,
+  .home-typography-lab__range-grid > label > span,
+  .home-typography-lab__specimen > span,
+  .home-typography-lab__guide-toggle
+) {
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-typography-lab__control-group select,
+.home-typography-lab--dark .home-typography-lab__font-menu-trigger,
+.home-typography-lab--dark .home-typography-lab__font-options,
+.home-typography-lab--dark .home-typography-lab__actions button,
+.home-typography-lab--dark .home-typography-lab__collapse {
+  border-color: var(--lab-border);
+  background: var(--lab-input-background);
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__control-group select:disabled {
+  border-color: var(--lab-border);
+  background: var(--lab-navigation-background);
+  color: var(--lab-text-disabled);
+}
+
+.home-typography-lab--dark .home-typography-lab__control-group select option {
+  background: var(--lab-input-background);
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-menu-trigger svg {
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-options {
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.36);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-group + .home-typography-lab__font-group {
+  border-color: var(--lab-border);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-group > span,
+.home-typography-lab--dark .home-typography-lab__font-status,
+.home-typography-lab--dark .home-typography-lab__recipe dt {
+  color: var(--lab-text-muted);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-option {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-option:hover,
+.home-typography-lab--dark .home-typography-lab__font-option:focus-visible {
+  background: rgba(158, 139, 234, 0.16);
+}
+
+.home-typography-lab--dark .home-typography-lab__font-option.is-selected {
+  background: var(--lab-brand-soft);
+  color: var(--lab-focus);
+}
+
+.home-typography-lab--dark :is(
+  .home-typography-lab__control-group select,
+  .home-typography-lab__font-menu-trigger,
+  .home-typography-lab__range-grid input,
+  .home-typography-lab__actions button,
+  .home-typography-lab__collapse
+):focus-visible {
+  outline-color: var(--lab-focus);
+}
+
+.home-typography-lab--dark .home-typography-lab__range-grid output,
+.home-typography-lab--dark .home-typography-lab__recipe dd,
+.home-typography-lab--dark .home-typography-lab__specimen p {
+  color: var(--lab-text);
+}
+
+.home-typography-lab--dark .home-typography-lab__range-grid input,
+.home-typography-lab--dark .home-typography-lab__guide-toggle input {
+  accent-color: var(--lab-brand);
+}
+
+.home-typography-lab--dark .home-typography-lab__specimen {
+  border-color: var(--lab-border);
+  background: var(--lab-surface-raised);
+}
+
+.home-typography-lab--dark .home-typography-lab__actions button:hover {
+  border-color: var(--lab-border-strong);
+  background: var(--lab-surface-raised);
+  color: var(--lab-brand-hover);
+}
+
+.home-typography-lab--dark .home-typography-lab__collapse {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}

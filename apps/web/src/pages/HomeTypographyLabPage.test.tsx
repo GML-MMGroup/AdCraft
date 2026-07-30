@@ -12,6 +12,12 @@ describe("HomeTypographyLabPage", () => {
     fireEvent.click(screen.getByRole("option", { name: fontName }));
   }
 
+  it("renders the typography lab in its dedicated dark theme", () => {
+    render(<HomeTypographyLabPage />);
+
+    expect(screen.getByRole("main").classList.contains("home-typography-lab--dark")).toBe(true);
+  });
+
   it("applies an accent font independently from the Hero main title", () => {
     render(<HomeTypographyLabPage />);
 

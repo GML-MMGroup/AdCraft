@@ -168,7 +168,7 @@ export function HomeTypographyLabPage() {
   }
 
   return (
-    <main className={`home-typography-lab ${inspectorCollapsed ? "is-inspector-collapsed" : ""}`}>
+    <main className={`home-typography-lab home-typography-lab--dark ${inspectorCollapsed ? "is-inspector-collapsed" : ""}`}>
       <section
         className={`home-typography-lab__preview ${showGuide ? "is-guide-visible" : ""}`}
         data-testid="home-typography-preview"
