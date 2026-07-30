@@ -21,6 +21,10 @@ from app.schemas.workflow_v2 import (
     WorkflowSlotV2,
     WorkflowV2,
 )
+from app.schemas.seedance_inputs import (
+    SeedanceInputManifestAuditV1,
+    SeedanceInputManifestV1,
+)
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_bgm_policy import (
@@ -884,6 +888,88 @@ class V2ProviderExecutor:
             provider_payload={**provider_payload, "workflow_id": workflow_id},
             reference_asset_ids=[],
         )
+
+    def execute_agent_canvas_seedance_video(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        manifest: SeedanceInputManifestV1,
+        audit: SeedanceInputManifestAuditV1,
+    ) -> V2ProviderResult:
+        """Submit one already-validated Agent Canvas manifest to Seedance.
+
+        This path deliberately does not accept legacy segment dictionaries.  The
+        manifest carries every provider-visible input exactly once, while the
+        audit is the only durable payload snapshot.
+        """
+
+        missing_message = (
+            self._missing_real_config("video")
+            if self._settings.media_mode.strip().lower() == "real"
+            else None
+        )
+        provider_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
+        reference_asset_ids = [item.asset_id for item in manifest.media_inputs]
+        if missing_message and not self._settings.v2_provider_allow_fallback:
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+                error_code="provider_configuration_missing",
+                error_message=missing_message,
+            )
+        if self._settings.media_mode.strip().lower() != "real":
+            return self._placeholder_result(
+                media_type="video",
+                slot_type="agent_canvas_video",
+                provider="dev_placeholder_video",
+                provider_payload=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+            )
+        try:
+            provider = self._media_provider()
+            submit_manifest = getattr(provider, "submit_seedance_manifest_task", None)
+            if not callable(submit_manifest):
+                return V2ProviderResult(
+                    status="failed",
+                    media_type="video",
+                    provider_payload_snapshot=provider_payload,
+                    reference_asset_ids=reference_asset_ids,
+                    error_code="provider_reference_delivery_unavailable",
+                    error_message="The configured provider cannot submit a Seedance input manifest.",
+                )
+            response = submit_manifest(manifest, VolcengineSeedanceAdapter(self._settings))
+            task_id = _video_generation_task_id_from_response(response)
+            output = {
+                "provider": "volcengine-seedance-agent-canvas",
+                "model": manifest.model_id,
+                "segments": [
+                    {
+                        "order": 1,
+                        "scene_id": node_id,
+                        "status": response.get("status", "submitted"),
+                        "task_id": task_id,
+                        "duration_seconds": manifest.effective_duration_seconds,
+                    }
+                ],
+            }
+            return _result_from_provider_output(
+                output,
+                media_type="video",
+                provider_payload=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+            )
+        except Exception as exc:  # noqa: BLE001 - normalized below at the provider boundary.
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+                error_code="provider_generation_failed",
+                error_message=_bounded_provider_error_message(str(exc), ()),
+            )
 
     def poll_task(self, task: V2ProviderTask) -> V2ProviderResult:
         media_type = str(task.metadata.get("media_type") or "video")

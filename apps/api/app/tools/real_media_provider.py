@@ -12,6 +12,7 @@ from urllib import request as urllib_request
 from uuid import uuid4
 
 from app.core.config import Settings
+from app.schemas.seedance_inputs import SeedanceInputManifestV1
 from app.tools.media_provider_protocol import MediaConfigurationError
 from app.tools.seedance_adapter import (
     DEFAULT_VIDEO_RATIO,
@@ -1023,6 +1024,15 @@ class RealMediaProvider:
         return self._submit_video_generation_request(
             adapter.payload_for_segment(segment, ratio=ratio, resolution=resolution)
         )
+
+    def submit_seedance_manifest_task(
+        self,
+        manifest: SeedanceInputManifestV1,
+        adapter: VolcengineSeedanceAdapter,
+    ) -> dict[str, Any]:
+        """Submit the typed Agent Canvas path without legacy input filtering."""
+
+        return self._submit_video_generation_request(adapter.payload_for_manifest(manifest))
 
     def _submit_video_generation_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
