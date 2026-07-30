@@ -82,7 +82,7 @@ class AgentCanvasBindingService:
                             else None
                         ),
                         target_node_id=binding.target_node_id,
-                        binding_kind=binding.binding_kind,
+                        binding_kind=binding.input_role,
                     )
                     for binding in workflow.bindings
                 ),
@@ -91,7 +91,7 @@ class AgentCanvasBindingService:
                 source_semantic_role=source.semantic_role,
                 target_node_id=target.node_id,
                 target_node_type=target.node_type,
-                binding_kind=request.binding_kind,
+                binding_kind=request.input_role,
             )
             policy_decision = self._connection_policy.decide(
                 source_node_type=source.node_type,
@@ -108,17 +108,17 @@ class AgentCanvasBindingService:
                 input_role=request.input_role,
                 is_image_asset=True,
             )
-        if not policy_decision.accepted or request.binding_kind != policy_decision.binding_kind:
+        if not policy_decision.accepted or request.input_role != policy_decision.input_role:
             raise _media_incompatible_error()
         if self._binding_capability_validator is not None and target.model_id is not None:
             input_types = {
-                _binding_input_type(binding.binding_kind)
+                _binding_input_type(binding.input_role)
                 for binding in incoming
                 if binding.target_node_id == target.node_id
             }
-            input_types.add(_binding_input_type(request.binding_kind))
+            input_types.add(_binding_input_type(request.input_role))
             reference_count = sum(
-                _binding_input_type(binding.binding_kind) in {"image", "video", "audio"}
+                _binding_input_type(binding.input_role) in {"image", "video", "audio"}
                 for binding in incoming
             ) + (1 if policy_decision.input_type in {"image", "video", "audio"} else 0)
             capability_decision = self._binding_capability_validator(
@@ -128,19 +128,23 @@ class AgentCanvasBindingService:
             )
             if not getattr(capability_decision, "accepted", False):
                 raise _binding_model_incompatible_error(capability_decision)
+        now = datetime.now(timezone.utc)
         binding = CanvasBindingV2(
             binding_id=f"binding_{uuid4().hex}",
             workflow_id=workflow_id,
             source=request.source,
             target_node_id=request.target_node_id,
-            binding_kind=policy_decision.binding_kind,
-            input_role=policy_decision.input_role or "instruction",
+            input_role=policy_decision.input_role or "text_context",
             required=request.required,
-            display_order=min(
-                request.display_order if request.display_order is not None else len(incoming),
+            enabled=request.enabled,
+            order=min(
+                request.order if request.order is not None else len(incoming),
                 len(incoming),
             ),
-            created_at=datetime.now(timezone.utc),
+            label=request.label,
+            metadata=request.metadata,
+            created_at=now,
+            updated_at=now,
         )
         self._workflows.add_binding(binding, expected_revision=expected_revision)
         return binding
@@ -197,14 +201,18 @@ class AgentCanvasBindingService:
         incoming = tuple(
             item for item in workflow.bindings if item.target_node_id == existing.target_node_id
         )
-        display_order = (
-            request.display_order if request.display_order is not None else existing.display_order
-        )
+        order = request.order if request.order is not None else existing.order
         updated = existing.model_copy(
             update={
                 "input_role": policy_decision.input_role or existing.input_role,
                 "required": request.required if request.required is not None else existing.required,
-                "display_order": min(display_order, len(incoming) - 1),
+                "enabled": request.enabled if request.enabled is not None else existing.enabled,
+                "order": min(order, len(incoming) - 1),
+                "label": request.label if request.label is not None else existing.label,
+                "metadata": (
+                    request.metadata if request.metadata is not None else existing.metadata
+                ),
+                "updated_at": datetime.now(timezone.utc),
             }
         )
         return self._workflows.update_binding(
@@ -224,7 +232,8 @@ class AgentCanvasBindingService:
         for binding in workflow.bindings:
             if (
                 binding.target_node_id != target_node_id
-                or binding.binding_kind not in {"brief_context", "script_context"}
+                or not binding.enabled
+                or binding.input_role != "text_context"
                 or not isinstance(binding.source, CanvasBindingSourceNodeV2)
             ):
                 continue
@@ -235,7 +244,7 @@ class AgentCanvasBindingService:
                 ResolvedTextInputSnapshotV2(
                     source_node_id=source.node_id,
                     source_node_revision=source.revision,
-                    binding_kind=binding.binding_kind,
+                    binding_kind="text_context",
                     document_kind=document.document_kind,
                     content=content[:16000],
                     content_hash=document.content_hash,
@@ -291,11 +300,16 @@ class AgentCanvasBindingService:
         resolved: list[ResolvedMediaInputSnapshotV2] = []
         optional_omissions: list[dict[str, str]] = []
         for binding in workflow.bindings:
-            if binding.target_node_id != target_node_id or binding.binding_kind not in {
-                "image_reference",
-                "video_reference",
-                "audio_reference",
-            }:
+            if (
+                binding.target_node_id != target_node_id
+                or not binding.enabled
+                or binding.input_role
+                not in {
+                    "image_reference",
+                    "video_reference",
+                    "audio_reference",
+                }
+            ):
                 continue
             source_node_id: str | None = None
             source_revision: int | None = None
@@ -317,7 +331,7 @@ class AgentCanvasBindingService:
                     )
                     continue
                 asset = self._resolve_asset(source.output_asset_id)
-                source_kind = "node"
+                source_kind = "node_output"
                 source_node_id = source.node_id
                 source_revision = source.revision
                 source_semantic_role = source.semantic_role
@@ -330,7 +344,7 @@ class AgentCanvasBindingService:
                     source_kind=source_kind,
                     source_node_id=source_node_id,
                     source_node_revision=source_revision,
-                    binding_kind=binding.binding_kind,
+                    binding_kind=binding.input_role,
                     source_semantic_role=source_semantic_role,
                     asset_id=asset.asset_id,
                     media_type=asset.media_type,
@@ -376,8 +390,7 @@ def _media_incompatible_error() -> V2PersistenceError:
 
 def _binding_input_type(binding_kind: str) -> str:
     return {
-        "brief_context": "text",
-        "script_context": "text",
+        "text_context": "text",
         "image_reference": "image",
         "video_reference": "video",
         "audio_reference": "audio",

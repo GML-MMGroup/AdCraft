@@ -27,8 +27,8 @@ class AgentCanvasConnectionPolicyService:
         "editing": ("video", "audio", "editing"),
     }
     _binding_kinds: dict[CanvasNodeTypeV2, CanvasBindingKindV2] = {
-        "text": "brief_context",
-        "script": "script_context",
+        "text": "text_context",
+        "script": "text_context",
         "image": "image_reference",
         "video": "video_reference",
         "audio": "audio_reference",
@@ -43,24 +43,24 @@ class AgentCanvasConnectionPolicyService:
         "editing": "video",
     }
     _roles: dict[tuple[CanvasNodeTypeV2, CanvasNodeTypeV2], tuple[CanvasInputRoleV2, ...]] = {
-        ("text", "text"): ("instruction",),
-        ("text", "script"): ("instruction",),
-        ("text", "image"): ("instruction",),
-        ("text", "video"): ("instruction",),
-        ("text", "audio"): ("instruction",),
-        ("script", "text"): ("instruction",),
-        ("script", "script"): ("instruction",),
-        ("script", "image"): ("instruction",),
-        ("script", "video"): ("instruction",),
-        ("script", "audio"): ("instruction",),
-        ("image", "image"): ("visual_reference",),
-        ("image", "video"): ("visual_reference", "first_frame"),
-        ("video", "video"): ("motion_reference", "source_video"),
-        ("video", "editing"): ("source_video",),
+        ("text", "text"): ("text_context",),
+        ("text", "script"): ("text_context",),
+        ("text", "image"): ("text_context",),
+        ("text", "video"): ("text_context",),
+        ("text", "audio"): ("text_context",),
+        ("script", "text"): ("text_context",),
+        ("script", "script"): ("text_context",),
+        ("script", "image"): ("text_context",),
+        ("script", "video"): ("text_context",),
+        ("script", "audio"): ("text_context",),
+        ("image", "image"): ("image_reference",),
+        ("image", "video"): ("image_reference",),
+        ("video", "video"): ("video_reference",),
+        ("video", "editing"): ("video_reference",),
         ("audio", "video"): ("audio_reference",),
         ("audio", "editing"): ("audio_reference",),
-        ("editing", "video"): ("motion_reference", "source_video"),
-        ("editing", "editing"): ("source_video",),
+        ("editing", "video"): ("video_reference",),
+        ("editing", "editing"): ("video_reference",),
     }
 
     def public_policy(self) -> CanvasConnectionPolicyV2:
@@ -77,8 +77,8 @@ class AgentCanvasConnectionPolicyService:
                 for (source, target), roles in self._roles.items()
             ),
             image_asset_targets={
-                "image": ("visual_reference",),
-                "video": ("visual_reference", "first_frame"),
+                "image": ("image_reference",),
+                "video": ("image_reference",),
             },
             binding_kind_by_source_type=self._binding_kinds,
             model_validation={"explicit_model": "authoring_and_run", "automatic_model": "run"},

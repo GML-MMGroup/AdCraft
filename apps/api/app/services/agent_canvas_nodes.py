@@ -40,7 +40,7 @@ class AgentCanvasNodeService:
             node_id=f"node_{uuid4().hex}",
             workflow_id=workflow_id,
             node_type=request.node_type,
-            semantic_role=request.semantic_role,
+            creative_role=request.creative_role,
             title=request.title,
             status=_initial_status(request),
             summary_prompt=request.summary_prompt,
@@ -56,7 +56,6 @@ class AgentCanvasNodeService:
                 source.prompt_context_snapshot_id if source is not None else None
             ),
             output_asset_id=request.source_asset_id,
-            video_skill_run_id=request.video_skill_run_id,
             position=request.position,
             revision=1,
             error=None,
@@ -142,6 +141,7 @@ def _copy_incoming_bindings(
                 "binding_id": f"binding_{uuid4().hex}",
                 "target_node_id": target_node_id,
                 "created_at": now,
+                "updated_at": now,
             }
         )
         for binding in workflow.bindings

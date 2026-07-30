@@ -19,21 +19,30 @@ from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 
 CanvasNodeTypeV2 = Literal["text", "script", "image", "video", "audio", "editing"]
 CanvasNodeStatusV2 = Literal["draft", "working", "ready", "failed"]
-CanvasBindingKindV2 = Literal[
-    "brief_context",
-    "script_context",
+CanvasCreativeRoleV2 = Literal[
+    "creative_brief",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard_sequence",
+    "storyboard_video",
+    "bgm",
+    "general_text",
+    "general_image",
+    "general_video",
+    "general_audio",
+    "editing",
+]
+CanvasBindingInputRoleV2 = Literal[
+    "text_context",
     "image_reference",
     "video_reference",
     "audio_reference",
 ]
-CanvasInputRoleV2 = Literal[
-    "instruction",
-    "visual_reference",
-    "first_frame",
-    "motion_reference",
-    "source_video",
-    "audio_reference",
-]
+CanvasInputRoleV2 = CanvasBindingInputRoleV2
+CanvasBindingKindV2 = CanvasBindingInputRoleV2
 ProjectAssetMediaTypeV2 = Literal["image", "video", "audio"]
 ProjectAssetSourceTypeV2 = Literal[
     "upload",
@@ -62,7 +71,7 @@ class CanvasNodeErrorV2(_AgentCanvasModel):
 
 class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     node_type: CanvasNodeTypeV2
-    semantic_role: str = Field(min_length=1)
+    creative_role: CanvasCreativeRoleV2
     role_contract_version: Literal["ad-media-role-v1"] = "ad-media-role-v1"
     title: str = Field(min_length=1)
     summary_prompt: str | None = None
@@ -73,7 +82,12 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     position: CanvasPositionV2
     clone_inputs_from_node_id: str | None = None
     source_asset_id: str | None = None
-    video_skill_run_id: str | None = None
+
+    @property
+    def semantic_role(self) -> CanvasCreativeRoleV2:
+        """Internal transition accessor; public JSON uses creative_role only."""
+
+        return self.creative_role
 
 
 class CanvasNodePatchRequestV2(_AgentCanvasModel):
@@ -154,7 +168,7 @@ class CanvasNodeV2(_AgentCanvasModel):
     node_id: str = Field(min_length=1)
     workflow_id: str = Field(min_length=1)
     node_type: CanvasNodeTypeV2
-    semantic_role: str = Field(min_length=1)
+    creative_role: CanvasCreativeRoleV2
     role_contract_version: Literal["ad-media-role-v1"] = "ad-media-role-v1"
     title: str = Field(min_length=1)
     status: CanvasNodeStatusV2
@@ -165,14 +179,18 @@ class CanvasNodeV2(_AgentCanvasModel):
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     prompt_context_snapshot_id: str | None = None
     output_asset_id: str | None = None
-    video_skill_run_id: str | None = None
-    derived_from_node_id: str | None = None
     position: CanvasPositionV2
     revision: int = Field(ge=1)
     error: CanvasNodeErrorV2 | None = None
     variation_draft: CanvasVariationDraftV2 | None = None
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def semantic_role(self) -> CanvasCreativeRoleV2:
+        """Internal transition accessor; public JSON uses creative_role only."""
+
+        return self.creative_role
 
     @model_validator(mode="after")
     def validate_ready_output(self) -> "CanvasNodeV2":
@@ -197,13 +215,21 @@ class CanvasVariationMaterializeResponseV2(_AgentCanvasModel):
 
 
 class CanvasBindingSourceNodeV2(_AgentCanvasModel):
-    kind: Literal["node"] = "node"
-    node_id: str = Field(min_length=1)
+    kind: Literal["node_output"] = "node_output"
+    source_node_id: str = Field(min_length=1)
+
+    @property
+    def node_id(self) -> str:
+        return self.source_node_id
 
 
 class CanvasBindingSourceImageAssetV2(_AgentCanvasModel):
     kind: Literal["image_asset"] = "image_asset"
-    asset_id: str = Field(min_length=1)
+    source_asset_id: str = Field(min_length=1)
+
+    @property
+    def asset_id(self) -> str:
+        return self.source_asset_id
 
 
 CanvasBindingSourceV2 = Annotated[
@@ -215,10 +241,12 @@ CanvasBindingSourceV2 = Annotated[
 class CanvasBindingCreateRequestV2(_AgentCanvasModel):
     source: CanvasBindingSourceV2
     target_node_id: str = Field(min_length=1)
-    binding_kind: CanvasBindingKindV2
-    input_role: CanvasInputRoleV2 | None = None
+    input_role: CanvasBindingInputRoleV2
     required: bool = True
-    display_order: int | None = Field(default=None, ge=0)
+    enabled: bool = True
+    order: int | None = Field(default=None, ge=0)
+    label: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class CanvasBindingV2(_AgentCanvasModel):
@@ -226,35 +254,42 @@ class CanvasBindingV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     source: CanvasBindingSourceV2
     target_node_id: str = Field(min_length=1)
-    binding_kind: CanvasBindingKindV2
-    input_role: CanvasInputRoleV2 = "instruction"
+    input_role: CanvasBindingInputRoleV2
     required: bool
-    display_order: int = Field(ge=0)
+    enabled: bool = True
+    order: int = Field(ge=0)
+    label: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime
+    updated_at: datetime
 
-    @model_validator(mode="after")
-    def normalize_legacy_default_role(self) -> "CanvasBindingV2":
-        if self.input_role != "instruction":
-            return self
-        default_role = {
-            "image_reference": "visual_reference",
-            "video_reference": "source_video",
-            "audio_reference": "audio_reference",
-        }.get(self.binding_kind)
-        if default_role is None:
-            return self
-        object.__setattr__(self, "input_role", default_role)
-        return self
+    @property
+    def binding_kind(self) -> CanvasBindingInputRoleV2:
+        return self.input_role
+
+    @property
+    def display_order(self) -> int:
+        return self.order
 
 
 class CanvasBindingPatchRequestV2(_AgentCanvasModel):
-    input_role: CanvasInputRoleV2 | None = None
+    input_role: CanvasBindingInputRoleV2 | None = None
     required: bool | None = None
-    display_order: int | None = Field(default=None, ge=0)
+    enabled: bool | None = None
+    order: int | None = Field(default=None, ge=0)
+    label: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, JsonValue] | None = None
 
     @model_validator(mode="after")
     def require_change(self) -> "CanvasBindingPatchRequestV2":
-        if self.input_role is None and self.required is None and self.display_order is None:
+        if (
+            self.input_role is None
+            and self.required is None
+            and self.enabled is None
+            and self.order is None
+            and self.label is None
+            and self.metadata is None
+        ):
             raise ValueError("Binding patch must include at least one change.")
         return self
 
@@ -287,9 +322,9 @@ class CanvasConnectionDecisionV2(_AgentCanvasModel):
 
 
 class CanvasConnectedNodeBindingRequestV2(_AgentCanvasModel):
-    input_role: CanvasInputRoleV2 | None = None
+    input_role: CanvasBindingInputRoleV2
     required: bool = True
-    display_order: int | None = Field(default=None, ge=0)
+    order: int | None = Field(default=None, ge=0)
 
 
 class CanvasConnectedNodeCreateRequestV2(_AgentCanvasModel):
@@ -316,13 +351,18 @@ class CanvasBindingMutationResponseV2(_AgentCanvasModel):
     events_cursor: int = Field(ge=0)
 
 
-class ProjectAssetSummaryV2(_AgentCanvasModel):
+class ProjectAssetV2(_AgentCanvasModel):
     asset_id: str = Field(min_length=1)
+    project_id: str | None = Field(default=None, min_length=1)
+    workflow_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
     source_type: ProjectAssetSourceTypeV2
+    semantic_type: str | None = Field(default=None, max_length=160)
     display_name: str = Field(min_length=1)
     mime_type: str = Field(min_length=1)
     status: Literal["ready", "unavailable"]
+    size_bytes: int = Field(default=0, ge=0)
+    storage_key: str | None = None
     preview_url: str | None = None
     media_url: str | None = None
     width: int | None = Field(default=None, gt=0)
@@ -330,6 +370,13 @@ class ProjectAssetSummaryV2(_AgentCanvasModel):
     duration_seconds: float | None = Field(default=None, ge=0)
     checksum: str = Field(min_length=1)
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    source_node_id: str | None = None
+    source_execution_id: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    prompt_provenance: dict[str, JsonValue] = Field(default_factory=dict)
+    quality_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    created_at: datetime | None = None
 
     @field_validator("preview_url", "media_url")
     @classmethod
@@ -339,6 +386,24 @@ class ProjectAssetSummaryV2(_AgentCanvasModel):
         if value.startswith(("/api/", "https://", "http://")):
             return value
         raise ValueError("Asset URLs must be browser-safe.")
+
+
+ProjectAssetSummaryV2 = ProjectAssetV2
+
+
+class AgentTargetRefV2(_AgentCanvasModel):
+    kind: Literal["node", "image_asset"]
+    target_id: str = Field(min_length=1)
+    locator: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
+    node_type: CanvasNodeTypeV2 | None = None
+    creative_role: CanvasCreativeRoleV2 | None = None
+    media_type: ProjectAssetMediaTypeV2 | None = None
+
+
+class AgentTargetResolutionV2(_AgentCanvasModel):
+    workflow_id: str = Field(min_length=1)
+    target: AgentTargetRefV2
 
 
 class AgentCanvasWorkflowV2(_AgentCanvasModel):
@@ -354,7 +419,7 @@ class AgentCanvasWorkflowV2(_AgentCanvasModel):
 
 
 class ProjectCreateResponseV2(AgentCanvasWorkflowV2):
-    pass
+    creative_session_id: str = Field(min_length=1)
 
 
 class CanvasMutationResponseV2(_AgentCanvasModel):
@@ -388,22 +453,22 @@ class StorageAccessDescriptorV2(_AgentCanvasModel):
 
 class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     snapshot_type: Literal["text"] = "text"
-    source_kind: Literal["node"] = "node"
+    source_kind: Literal["node_output"] = "node_output"
     source_node_id: str = Field(min_length=1)
     source_node_revision: int = Field(ge=1)
-    binding_kind: Literal["brief_context", "script_context"]
+    binding_kind: Literal["text_context"] = "text_context"
     document_kind: Literal["text", "script"]
     content: str
     content_hash: str = Field(min_length=1)
     binding_id: str | None = None
-    input_role: CanvasInputRoleV2 = "instruction"
+    input_role: Literal["text_context"] = "text_context"
     required: bool = True
     display_order: int = Field(default=0, ge=0)
 
 
 class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     snapshot_type: Literal["media"] = "media"
-    source_kind: Literal["node", "image_asset"]
+    source_kind: Literal["node_output", "image_asset"]
     source_node_id: str | None = None
     source_node_revision: int | None = Field(default=None, ge=1)
     binding_kind: Literal["image_reference", "video_reference", "audio_reference"]
@@ -413,13 +478,13 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     asset_checksum: str = Field(min_length=1)
     access_descriptor: StorageAccessDescriptorV2
     binding_id: str | None = None
-    input_role: CanvasInputRoleV2 = "instruction"
+    input_role: CanvasBindingInputRoleV2
     required: bool = True
     display_order: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def validate_source_identity(self) -> "ResolvedMediaInputSnapshotV2":
-        if self.source_kind == "node":
+        if self.source_kind == "node_output":
             if self.source_node_id is None or self.source_node_revision is None:
                 raise ValueError("Node media snapshots require source node identity.")
         elif self.source_node_id is not None or self.source_node_revision is not None:
@@ -466,4 +531,16 @@ class AgentCanvasPromptContextSnapshotV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     target_node_id: str = Field(min_length=1)
     inputs: tuple[ResolvedTextInputSnapshotV2, ...]
+    turn_id: str | None = None
+    role: str | None = None
+    operation: str | None = None
+    target_asset_ids: tuple[str, ...] = ()
+    binding_ids: tuple[str, ...] = ()
+    creative_direction_snapshot_id: str | None = None
+    skill_refs: tuple[dict[str, str], ...] = ()
+    memory_digest: str | None = None
+    upstream_summary_digest: str | None = None
+    byte_estimate: int = Field(default=0, ge=0)
+    token_estimate: int = Field(default=0, ge=0)
+    content_digest: str | None = None
     created_at: datetime

@@ -11,7 +11,6 @@ from app.schemas.agent_canvas_ad_media import (
     AdMediaRoleContractV2,
     BgmContentV2,
     DesignAssetContentV2,
-    ReferenceRequirementV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
     VideoSegmentContentV2,
@@ -58,8 +57,8 @@ class AdMediaRoleRegistry:
             return registered.content_model.model_validate(content)
         except ValidationError as error:
             code = {
-                "scene_design_board": "scene_design_board_contract_invalid",
-                "storyboard_grid": "storyboard_grid_contract_invalid",
+                "scene": "scene_design_board_contract_invalid",
+                "storyboard_sequence": "storyboard_grid_contract_invalid",
             }.get(semantic_role, "invalid_role_content")
             raise _error(code, "Structured role content is invalid.") from error
 
@@ -93,7 +92,6 @@ def _role_registry() -> dict[str, _RegisteredRole]:
         node_type: str,
         media_type: str,
         model: type[BaseModel] | None = None,
-        requirements: tuple[ReferenceRequirementV2, ...] = (),
     ) -> None:
         roles[role] = _RegisteredRole(
             contract=AdMediaRoleContractV2(
@@ -101,54 +99,28 @@ def _role_registry() -> dict[str, _RegisteredRole]:
                 node_type=node_type,
                 output_media_type=media_type,
                 content_schema_ref=model.__name__ if model else "FreeformContentV2",
-                reference_requirements=requirements,
             ),
             content_model=model,
         )
 
-    for role in ("creative_brief", "generation_brief", "generic_text"):
+    for role in ("creative_brief", "general_text"):
         add(role, "text", "text")
-    add("advertising_script", "script", "text")
-    for role in ("generic_image", "uploaded_image"):
-        add(role, "image", "image")
-    for role in (
-        "product_main",
-        "prop_main",
-        "character_main",
-    ):
+    add("script", "script", "text")
+    add("general_image", "image", "image")
+    for role in ("product", "prop", "character"):
         add(role, "image", "image", DesignAssetContentV2)
-    for role, required_role in (
-        ("product_view_board", "product_main"),
-        ("character_turnaround", "character_main"),
-    ):
-        add(
-            role,
-            "image",
-            "image",
-            DesignAssetContentV2,
-            (
-                ReferenceRequirementV2(
-                    binding_kind="image_reference",
-                    required_role=required_role,
-                    minimum=1,
-                    maximum=1,
-                ),
-            ),
-        )
-    add("scene_design_board", "image", "image", SceneDesignBoardContentV2)
-    add("storyboard_grid", "image", "image", StoryboardGridContentV2)
-    for role in ("generic_video", "uploaded_video"):
-        add(role, "video", "video")
+    add("scene", "image", "image", SceneDesignBoardContentV2)
+    add("storyboard_sequence", "image", "image", StoryboardGridContentV2)
+    add("general_video", "video", "video")
     add(
-        "storyboard_video_segment",
+        "storyboard_video",
         "video",
         "video",
         VideoSegmentContentV2,
     )
-    for role in ("generic_audio", "uploaded_audio"):
-        add(role, "audio", "audio")
+    add("general_audio", "audio", "audio")
     add("bgm", "audio", "audio", BgmContentV2)
-    add("final_composition", "editing", "video")
+    add("editing", "editing", "video")
     return roles
 
 

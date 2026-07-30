@@ -11,25 +11,19 @@ from app.schemas.agent_canvas import StorageAccessDescriptorV2
 
 AdMediaSemanticRoleV2 = Literal[
     "creative_brief",
-    "generation_brief",
-    "generic_text",
-    "advertising_script",
-    "generic_image",
-    "uploaded_image",
-    "product_main",
-    "product_view_board",
-    "prop_main",
-    "character_main",
-    "character_turnaround",
-    "scene_design_board",
-    "storyboard_grid",
-    "generic_video",
-    "uploaded_video",
-    "storyboard_video_segment",
-    "generic_audio",
-    "uploaded_audio",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard_sequence",
+    "storyboard_video",
     "bgm",
-    "final_composition",
+    "general_text",
+    "general_image",
+    "general_video",
+    "general_audio",
+    "editing",
 ]
 
 
@@ -124,8 +118,7 @@ class BgmContentV2(_AdMediaModel):
 
 class ReferenceRequirementV2(_AdMediaModel):
     binding_kind: Literal[
-        "brief_context",
-        "script_context",
+        "text_context",
         "image_reference",
         "video_reference",
         "audio_reference",
@@ -147,7 +140,7 @@ class AdMediaRoleContractV2(_AdMediaModel):
 
 class ResolvedAdReferenceV2(_AdMediaModel):
     binding_id: str
-    source_kind: Literal["node", "image_asset"]
+    source_kind: Literal["node_output", "image_asset"]
     source_node_id: str | None = None
     source_semantic_role: str | None = None
     asset_id: str

@@ -68,8 +68,8 @@ def validate_node_binding(
         target_node_id=target_node_id,
     )
     compatible = {
-        "text": {"brief_context"},
-        "script": {"script_context"},
+        "text": {"text_context"},
+        "script": {"text_context"},
         "image": {"image_reference"},
         "video": {"video_reference"},
         "audio": {"audio_reference"},
