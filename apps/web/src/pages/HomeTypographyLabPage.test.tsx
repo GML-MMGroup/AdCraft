@@ -5,15 +5,18 @@ import { HomeTypographyLabPage } from "./HomeTypographyLabPage";
 afterEach(cleanup);
 
 describe("HomeTypographyLabPage", () => {
+  function chooseFont(fontName: string) {
+    fireEvent.click(screen.getByLabelText("Font family"));
+    fireEvent.click(screen.getByRole("option", { name: fontName }));
+  }
+
   it("applies an accent font independently from the Hero main title", () => {
     render(<HomeTypographyLabPage />);
 
     fireEvent.change(screen.getByLabelText("Typography target"), {
       target: { value: "heroAccent" },
     });
-    fireEvent.change(screen.getByLabelText("Font family"), {
-      target: { value: "dm-serif-display" },
-    });
+    chooseFont("DM Serif Display");
 
     const preview = screen.getByTestId<HTMLElement>("home-typography-preview");
     expect(preview.style.getPropertyValue("--lab-hero-accent-font"))
@@ -22,19 +25,36 @@ describe("HomeTypographyLabPage", () => {
       .not.toBe('"DM Serif Display", serif');
   });
 
+  it("shows a selected background for the active font in the font menu", () => {
+    render(<HomeTypographyLabPage />);
+
+    fireEvent.click(screen.getByLabelText("Font family"));
+
+    const selectedFont = screen.getByRole("option", { name: "Instrument Serif" });
+    const otherFont = screen.getByRole("option", { name: "Manrope" });
+    expect(selectedFont.getAttribute("aria-selected")).toBe("true");
+    expect(selectedFont.classList.contains("is-selected")).toBe(true);
+    expect(otherFont.getAttribute("aria-selected")).toBe("false");
+    expect(otherFont.classList.contains("is-selected")).toBe(false);
+
+    fireEvent.click(screen.getByRole("option", { name: "DM Sans" }));
+    fireEvent.click(screen.getByLabelText("Font family"));
+
+    expect(screen.getByRole("option", { name: "DM Sans" }).classList.contains("is-selected")).toBe(true);
+    expect(screen.getByRole("option", { name: "Instrument Serif" }).classList.contains("is-selected")).toBe(false);
+  });
+
   it("restores the selected region and all regions to production defaults", () => {
     render(<HomeTypographyLabPage />);
 
     fireEvent.change(screen.getByLabelText("Typography target"), {
       target: { value: "heroAccent" },
     });
-    fireEvent.change(screen.getByLabelText("Font family"), {
-      target: { value: "dm-serif-display" },
-    });
+    chooseFont("DM Serif Display");
     fireEvent.click(screen.getByRole("button", { name: "Reset selected region" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset all typography" }));
 
     expect(screen.getByText("Current recipe")).toBeTruthy();
-    expect(screen.getByDisplayValue("Instrument Serif")).toBeTruthy();
+    expect(screen.getByLabelText("Font family").textContent).toContain("Instrument Serif");
   });
 });

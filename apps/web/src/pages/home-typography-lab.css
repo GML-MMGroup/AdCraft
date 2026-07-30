@@ -236,7 +236,8 @@
   margin-top: 18px;
 }
 
-.home-typography-lab__control-group label,
+.home-typography-lab__control-group > label,
+.home-typography-lab__control-group > span,
 .home-typography-lab__range-grid > label > span,
 .home-typography-lab__specimen > span,
 .home-typography-lab__guide-toggle {
@@ -256,7 +257,92 @@
   color: #202235;
 }
 
+.home-typography-lab__font-menu {
+  position: relative;
+}
+
+.home-typography-lab__font-menu-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px;
+  border: 1px solid rgba(34, 39, 51, 0.16);
+  border-radius: 6px;
+  background: #fff;
+  color: #202235;
+  font-size: 14px;
+  text-align: left;
+}
+
+.home-typography-lab__font-menu-trigger svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: #6f7183;
+  transition: transform 150ms ease;
+}
+
+.home-typography-lab__font-menu-trigger[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.home-typography-lab__font-options {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 312px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(34, 39, 51, 0.16);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 16px 32px rgba(38, 42, 61, 0.16);
+}
+
+.home-typography-lab__font-group + .home-typography-lab__font-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(34, 39, 51, 0.08);
+}
+
+.home-typography-lab__font-group > span {
+  display: block;
+  padding: 4px 7px 5px;
+  color: #6f7183;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.home-typography-lab__font-option {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: transparent;
+  color: #202235;
+  font-size: 13px;
+  text-align: left;
+}
+
+.home-typography-lab__font-option:hover,
+.home-typography-lab__font-option:focus-visible {
+  background: rgba(108, 93, 171, 0.08);
+}
+
+.home-typography-lab__font-option.is-selected {
+  background: rgba(108, 93, 171, 0.18);
+}
+
 .home-typography-lab__control-group select:focus-visible,
+.home-typography-lab__font-menu-trigger:focus-visible,
 .home-typography-lab__range-grid input:focus-visible,
 .home-typography-lab__actions button:focus-visible,
 .home-typography-lab__collapse:focus-visible {

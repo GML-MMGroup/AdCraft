@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { ChevronRightIcon } from "../icons";
+import { ChevronDownIcon, ChevronRightIcon } from "../icons";
 import {
   DEFAULT_REGION_SETTINGS,
   FONT_CATALOG,
@@ -72,6 +72,10 @@ export function HomeTypographyLabPage() {
   const [showGuide, setShowGuide] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [fontLoadStatus, setFontLoadStatus] = useState("");
+  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+  const fontMenuRef = useRef<HTMLDivElement>(null);
+  const fontTriggerRef = useRef<HTMLButtonElement>(null);
+  const fontOptionRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const selectedSettings = settings[selectedRegionId];
   const selectedFont = findFont(selectedSettings.fontId);
@@ -99,6 +103,19 @@ export function HomeTypographyLabPage() {
     };
   }, [selectedFont]);
 
+  useEffect(() => {
+    if (!fontMenuOpen) return;
+
+    function closeOnOutsidePress(event: PointerEvent) {
+      if (!fontMenuRef.current?.contains(event.target as Node)) {
+        setFontMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, [fontMenuOpen]);
+
   function updateSelectedSettings(update: Partial<TypographyRegionSettings>) {
     setSettings((current) => ({
       ...current,
@@ -118,6 +135,27 @@ export function HomeTypographyLabPage() {
         : font.weights[0],
       fontStyle: font.supportsItalic ? selectedSettings.fontStyle : "normal",
     });
+  }
+
+  function focusFontOption(fontId: string) {
+    window.setTimeout(() => fontOptionRefs.current.get(fontId)?.focus(), 0);
+  }
+
+  function openFontMenu() {
+    setFontMenuOpen(true);
+    focusFontOption(selectedFont.id);
+  }
+
+  function chooseFont(fontId: string) {
+    changeFont(fontId);
+    setFontMenuOpen(false);
+    fontTriggerRef.current?.focus();
+  }
+
+  function moveFontFocus(currentFontId: string, direction: -1 | 1) {
+    const currentIndex = FONT_CATALOG.findIndex((font) => font.id === currentFontId);
+    const nextIndex = (currentIndex + direction + FONT_CATALOG.length) % FONT_CATALOG.length;
+    focusFontOption(FONT_CATALOG[nextIndex].id);
   }
 
   function resetSelectedRegion() {
@@ -176,18 +214,87 @@ export function HomeTypographyLabPage() {
           </div>
 
           <div className="home-typography-lab__control-group">
-            <label htmlFor="home-typography-font">Font family</label>
-            <select
-              id="home-typography-font"
-              value={selectedFont.id}
-              onChange={(event) => changeFont(event.target.value)}
-            >
-              {groups.map(({ source, label, fonts }) => (
-                <optgroup key={source} label={label}>
-                  {fonts.map((font) => <option key={font.id} value={font.id}>{font.label}</option>)}
-                </optgroup>
-              ))}
-            </select>
+            <span id="home-typography-font-label">Font family</span>
+            <div className="home-typography-lab__font-menu" ref={fontMenuRef}>
+              <button
+                ref={fontTriggerRef}
+                className="home-typography-lab__font-menu-trigger"
+                type="button"
+                aria-labelledby="home-typography-font-label home-typography-font-value"
+                aria-controls="home-typography-font-options"
+                aria-expanded={fontMenuOpen}
+                aria-haspopup="listbox"
+                onClick={() => (fontMenuOpen ? setFontMenuOpen(false) : openFontMenu())}
+                onKeyDown={(event) => {
+                  if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) {
+                    event.preventDefault();
+                    openFontMenu();
+                  }
+                  if (event.key === "Escape") setFontMenuOpen(false);
+                }}
+              >
+                <span id="home-typography-font-value">{selectedFont.label}</span>
+                <ChevronDownIcon aria-hidden="true" />
+              </button>
+              {fontMenuOpen ? (
+                <div
+                  className="home-typography-lab__font-options"
+                  id="home-typography-font-options"
+                  role="listbox"
+                  aria-labelledby="home-typography-font-label"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setFontMenuOpen(false);
+                      fontTriggerRef.current?.focus();
+                    }
+                  }}
+                >
+                  {groups.map(({ source, label, fonts }) => (
+                    <div className="home-typography-lab__font-group" key={source} role="group" aria-label={label}>
+                      <span>{label}</span>
+                      {fonts.map((font) => {
+                        const isSelected = font.id === selectedFont.id;
+                        return (
+                          <button
+                            key={font.id}
+                            ref={(element) => {
+                              if (element) fontOptionRefs.current.set(font.id, element);
+                              else fontOptionRefs.current.delete(font.id);
+                            }}
+                            className={`home-typography-lab__font-option ${isSelected ? "is-selected" : ""}`}
+                            type="button"
+                            role="option"
+                            aria-selected={isSelected}
+                            onClick={() => chooseFont(font.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                moveFontFocus(font.id, 1);
+                              }
+                              if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                moveFontFocus(font.id, -1);
+                              }
+                              if (event.key === "Home") {
+                                event.preventDefault();
+                                focusFontOption(FONT_CATALOG[0].id);
+                              }
+                              if (event.key === "End") {
+                                event.preventDefault();
+                                focusFontOption(FONT_CATALOG.at(-1)?.id ?? font.id);
+                              }
+                            }}
+                          >
+                            {font.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           <div className="home-typography-lab__inline-controls">
