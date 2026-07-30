@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+
 from app.core.config import Settings
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeV2, ResolvedInputSnapshotV2
@@ -53,6 +55,18 @@ class ProviderCapabilityService:
                 "Node type does not use a media provider.",
             )
         input_types = _input_types(inputs)
+        reference_counts = _reference_counts(inputs)
+        violated_limit = _first_reference_limit_violation(reference_counts, self._items, node)
+        if violated_limit is not None:
+            media_type, limit = violated_limit
+            raise ProviderCapabilityError(
+                "canvas_reference_limit_exceeded",
+                "The node exceeds the configured provider reference limit.",
+                node_id=node.node_id,
+                media_type=media_type,
+                limit=limit,
+                count=reference_counts[media_type],
+            )
         compatible = self.list(
             output_type=node.node_type,
             input_types=input_types,
@@ -93,13 +107,22 @@ class ProviderCapabilityService:
         target: CanvasNodeV2,
         *,
         required_input_types: frozenset[str],
+        reference_count: int = 0,
+        reference_counts: dict[str, int] | None = None,
     ) -> BindingCapabilityDecisionV2:
         compatible = self.list(
             output_type=target.node_type,
             input_types=required_input_types,
         ).items
-        selected_compatible = target.model_id is None or any(
-            item.model_id == target.model_id for item in compatible
+        selected = next((item for item in compatible if item.model_id == target.model_id), None)
+        selected_compatible = (
+            any(
+                _reference_counts_compatible(item, reference_count, reference_counts)
+                for item in compatible
+            )
+            if target.model_id is None
+            else selected is not None
+            and _reference_counts_compatible(selected, reference_count, reference_counts)
         )
         return BindingCapabilityDecisionV2(
             accepted=selected_compatible,
@@ -131,6 +154,7 @@ def _configured_capabilities(
             output_type="image",
             accepted_input_types=frozenset({"text", "image"}),
             max_references=8,
+            reference_limits={"image": 8, "video": 0, "audio": 0},
             supported_parameters=frozenset({"aspect_ratio", "size"}),
             supported_aspect_ratios=("1:1", "16:9", "9:16", "4:3", "3:4"),
             pixel_bounds=(512, 4096),
@@ -141,13 +165,14 @@ def _configured_capabilities(
             provider="fake" if fake else "volcengine",
             model_id=settings.video_generation_model,
             output_type="video",
-            accepted_input_types=frozenset({"text", "image"}),
-            max_references=8,
+            accepted_input_types=frozenset({"text", "image", "video", "audio"}),
+            max_references=15,
+            reference_limits={"image": 9, "video": 3, "audio": 3},
             supported_parameters=frozenset(
                 {"aspect_ratio", "resolution", "duration_seconds", "generate_audio"}
             ),
             supported_aspect_ratios=("16:9", "9:16", "1:1"),
-            duration_range_seconds=(1, 12),
+            duration_range_seconds=(1, 15),
             available=video_available,
             unavailable_reason=None if video_available else "provider_not_configured",
             supports_native_audio=settings.video_generation_generate_audio,
@@ -158,6 +183,7 @@ def _configured_capabilities(
             output_type="audio",
             accepted_input_types=frozenset({"text"}),
             max_references=0,
+            reference_limits={"image": 0, "video": 0, "audio": 0},
             supported_parameters=frozenset({"duration_seconds"}),
             duration_range_seconds=(1, 600),
             available=audio_available,
@@ -180,10 +206,9 @@ def _parameters_compatible(
     inputs: tuple[object, ...],
     capability: CanvasProviderModelCapabilityV2,
 ) -> bool:
-    reference_count = sum(
-        getattr(item, "media_type", None) in {"image", "video", "audio"} for item in inputs
-    )
-    if reference_count > capability.max_references:
+    reference_counts = _reference_counts(inputs)
+    reference_count = sum(reference_counts.values())
+    if not _reference_counts_compatible(capability, reference_count, reference_counts):
         return False
     if not set(node.parameters).issubset(capability.supported_parameters):
         return False
@@ -197,7 +222,7 @@ def _parameters_compatible(
         except (TypeError, ValueError):
             return False
         low, high = capability.duration_range_seconds
-        if value < low or value > high:
+        if value < low:
             return False
     size = node.parameters.get("size") or node.parameters.get("resolution")
     if size is not None and capability.pixel_bounds is not None:
@@ -210,3 +235,49 @@ def _parameters_compatible(
         if min(width, height) < low or max(width, height) > high:
             return False
     return True
+
+
+def _reference_counts(inputs: tuple[object, ...]) -> Counter[str]:
+    return Counter(
+        str(media_type)
+        for item in inputs
+        if (media_type := getattr(item, "media_type", None)) in {"image", "video", "audio"}
+    )
+
+
+def _reference_counts_compatible(
+    capability: CanvasProviderModelCapabilityV2,
+    reference_count: int,
+    reference_counts: dict[str, int] | Counter[str] | None,
+) -> bool:
+    if reference_count > capability.max_references:
+        return False
+    return all(
+        count <= capability.reference_limits.get(media_type, capability.max_references)
+        for media_type, count in (reference_counts or {}).items()
+    )
+
+
+def _first_reference_limit_violation(
+    reference_counts: Counter[str],
+    capabilities: tuple[CanvasProviderModelCapabilityV2, ...],
+    node: CanvasNodeV2,
+) -> tuple[str, int] | None:
+    candidates = tuple(
+        item
+        for item in capabilities
+        if item.output_type == node.node_type
+        and (node.model_id is None or item.model_id == node.model_id)
+    )
+    if not candidates:
+        return None
+    for media_type in ("image", "video", "audio"):
+        count = reference_counts[media_type]
+        if count and all(
+            count > item.reference_limits.get(media_type, item.max_references)
+            for item in candidates
+        ):
+            return media_type, max(
+                item.reference_limits.get(media_type, item.max_references) for item in candidates
+            )
+    return None
