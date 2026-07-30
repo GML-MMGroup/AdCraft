@@ -4,6 +4,7 @@ import type {
   AgentCanvasWorkflowV2,
   AgentCanvasChatTurnV2,
   AgentCanvasChatTimelineResponseV2,
+  AgentCanvasChatViewTimelineV2,
   AgentCommandOperationV2,
   AgentCommandPlanV2,
   AgentCanvasImageLibraryListResponseV2,
@@ -53,12 +54,14 @@ import type {
   EditingExportRuntimeV2,
   EditingExportAcceptedV2,
   EditingExportCancelResponseV2,
+  EditingBgmEntryV2,
   EditingManifestV2,
   EditingNodeContentV2,
   EditingOutputSettingsV2,
   EditingPreviewClipV2,
   EditingPreviewV2,
   EditingSkippedInputV2,
+  EditingVideoEntryV2,
   NodeRuntimePhaseV2,
   NodeRuntimeV2,
   PlanningTopicStateV2,
@@ -117,7 +120,7 @@ const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
   "running",
   "waiting",
   "completed",
-  "partial_failed",
+  "partial_completed",
   "failed",
   "cancelled",
 ]);
@@ -131,7 +134,6 @@ const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
 ]);
 const ASSET_MEDIA_TYPES = new Set<ProjectAssetSummaryV2["media_type"]>(["image", "video", "audio"]);
 const PROVIDER_OUTPUT_TYPES = new Set<ProviderModelCapabilityV2["output_type"]>([
-  "script",
   "image",
   "video",
   "audio",
@@ -170,6 +172,8 @@ const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
 const EDITING_VIDEO_CODEC = new Set<EditingOutputSettingsV2["video_codec"]>(["h264"]);
 const EDITING_AUDIO_CODEC = new Set<EditingOutputSettingsV2["audio_codec"]>(["aac"]);
 const EDITING_CONTAINER = new Set<EditingOutputSettingsV2["container"]>(["mp4"]);
+const EDITING_TRANSITIONS = new Set<EditingVideoEntryV2["transition"]>(["cut", "fade"]);
+const EDITING_FIT_MODES = new Set<EditingVideoEntryV2["fit_mode"]>(["fit", "fill"]);
 const RESOLVED_TEXT_BINDING_KINDS = new Set<ResolvedTextInputSnapshotV2["binding_kind"]>(["text_context"]);
 const RESOLVED_DOCUMENT_KINDS = new Set<ResolvedTextInputSnapshotV2["document_kind"]>(["text", "script"]);
 const RESOLVED_MEDIA_BINDING_KINDS = new Set<ResolvedMediaInputSnapshotV2["binding_kind"]>([
@@ -1008,7 +1012,6 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
   forbidUnknownFields(
     record,
     [
-      "seq",
       "sequence_no",
       "workflow_id",
       "event_type",
@@ -1028,7 +1031,7 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
     path,
   );
   return {
-    seq: expectNonNegativeInteger(record.seq ?? record.sequence_no, `${path}.seq`),
+    seq: expectNonNegativeInteger(record.sequence_no, `${path}.sequence_no`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     event_type: expectNonEmptyString(record.event_type, `${path}.event_type`),
     project_id: record.project_id === undefined ? null : nullableString(record.project_id, `${path}.project_id`),
@@ -1107,14 +1110,9 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
 }
 
 export function normalizeProviderModelCapabilityListV2(value: unknown, path = "capabilities"): ProviderModelCapabilityListV2 {
-  let items: unknown[];
-  if (Array.isArray(value)) {
-    items = value;
-  } else {
-    const record = expectRecord(value, path);
-    forbidUnknownFields(record, ["items"], path);
-    items = expectArray(record.items, `${path}.items`);
-  }
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["items"], path);
+  const items = expectArray(record.items, `${path}.items`);
   return items.map((item, index) => normalizeProviderModelCapabilityV2(item, `${path}[${index}]`));
 }
 
@@ -1755,19 +1753,16 @@ export function normalizeChatTimelineListResponseV2(value: unknown, path = "chat
   };
 }
 
-export function normalizeAgentCanvasChatTimelineCompatV2(
+export function normalizeAgentCanvasChatTimelineV2(
   value: unknown,
   path = "chatTimeline",
-): ChatTimelineListResponseV2 {
-  const record = expectRecord(value, path);
-  if ("next_after_seq" in record) {
-    return normalizeChatTimelineListResponseV2(record, path);
-  }
-  const persisted = normalizeAgentCanvasChatTimelineResponseV2(record, path);
+): AgentCanvasChatViewTimelineV2 {
+  const persisted = normalizeAgentCanvasChatTimelineResponseV2(value, path);
   return {
     workflow_id: persisted.workflow_id,
     conversation_id: persisted.conversation_id,
-    next_after_seq: persisted.next_cursor,
+    creative_session: persisted.creative_session,
+    next_cursor: persisted.next_cursor,
     items: persisted.items.flatMap((entry): ChatTimelineItemV2[] => {
       const guidedActions: ChatTimelineItemV2[] = entry.guided_actions.length
         ? [{
@@ -1926,36 +1921,190 @@ export function normalizeEditingOutputSettingsV2(value: unknown, path = "editing
   };
 }
 
+function editingOptionalSource(
+  record: JsonRecord,
+  path: string,
+): { binding_id: string | null; asset_id: string | null } {
+  const bindingId = record.binding_id === undefined || record.binding_id === null
+    ? null
+    : expectNonEmptyString(record.binding_id, `${path}.binding_id`);
+  const assetId = record.asset_id === undefined || record.asset_id === null
+    ? null
+    : expectNonEmptyString(record.asset_id, `${path}.asset_id`);
+  if ((bindingId === null) === (assetId === null)) {
+    fail(path, "expected exactly one Binding or Asset reference");
+  }
+  return { binding_id: bindingId, asset_id: assetId };
+}
+
+function editingNumberInRange(
+  value: unknown,
+  path: string,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const normalized = value === undefined ? defaultValue : expectFiniteNumber(value, path);
+  if (normalized < minimum || normalized > maximum) {
+    fail(path, `expected value between ${minimum} and ${maximum}`);
+  }
+  return normalized;
+}
+
+export function normalizeEditingVideoEntryV2(
+  value: unknown,
+  path = "editing.videoEntry",
+): EditingVideoEntryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "binding_id",
+    "asset_id",
+    "enabled",
+    "trim_start_seconds",
+    "trim_end_seconds",
+    "volume",
+    "preserve_native_audio",
+    "transition",
+    "transition_duration_seconds",
+    "fit_mode",
+  ], path);
+  const source = editingOptionalSource(record, path);
+  const trimStart = editingNumberInRange(
+    record.trim_start_seconds,
+    `${path}.trim_start_seconds`,
+    0,
+    0,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const trimEnd = record.trim_end_seconds === undefined
+    ? null
+    : nullableFiniteNumber(record.trim_end_seconds, `${path}.trim_end_seconds`);
+  if (trimEnd !== null && trimEnd <= trimStart) {
+    fail(`${path}.trim_end_seconds`, "expected value after trim_start_seconds");
+  }
+  const transition = record.transition === undefined
+    ? "cut"
+    : expectLiteral(record.transition, EDITING_TRANSITIONS, `${path}.transition`);
+  const transitionDuration = editingNumberInRange(
+    record.transition_duration_seconds,
+    `${path}.transition_duration_seconds`,
+    0,
+    0,
+    5,
+  );
+  if (transition === "cut" && transitionDuration !== 0) {
+    fail(`${path}.transition_duration_seconds`, "cut transitions cannot have a duration");
+  }
+  return {
+    ...source,
+    enabled: record.enabled === undefined ? true : expectBoolean(record.enabled, `${path}.enabled`),
+    trim_start_seconds: trimStart,
+    trim_end_seconds: trimEnd,
+    volume: editingNumberInRange(record.volume, `${path}.volume`, 1, 0, 1),
+    preserve_native_audio: record.preserve_native_audio === undefined
+      ? true
+      : expectBoolean(record.preserve_native_audio, `${path}.preserve_native_audio`),
+    transition,
+    transition_duration_seconds: transitionDuration,
+    fit_mode: record.fit_mode === undefined
+      ? "fill"
+      : expectLiteral(record.fit_mode, EDITING_FIT_MODES, `${path}.fit_mode`),
+  };
+}
+
+export function normalizeEditingBgmEntryV2(
+  value: unknown,
+  path = "editing.bgm",
+): EditingBgmEntryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "binding_id",
+    "asset_id",
+    "enabled",
+    "trim_start_seconds",
+    "trim_end_seconds",
+    "volume",
+    "fade_in_seconds",
+    "fade_out_seconds",
+  ], path);
+  const source = editingOptionalSource(record, path);
+  const trimStart = editingNumberInRange(
+    record.trim_start_seconds,
+    `${path}.trim_start_seconds`,
+    0,
+    0,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const trimEnd = record.trim_end_seconds === undefined
+    ? null
+    : nullableFiniteNumber(record.trim_end_seconds, `${path}.trim_end_seconds`);
+  if (trimEnd !== null && trimEnd <= trimStart) {
+    fail(`${path}.trim_end_seconds`, "expected value after trim_start_seconds");
+  }
+  return {
+    ...source,
+    enabled: record.enabled === undefined ? true : expectBoolean(record.enabled, `${path}.enabled`),
+    trim_start_seconds: trimStart,
+    trim_end_seconds: trimEnd,
+    volume: editingNumberInRange(record.volume, `${path}.volume`, 0.2, 0, 1),
+    fade_in_seconds: editingNumberInRange(record.fade_in_seconds, `${path}.fade_in_seconds`, 0, 0, 30),
+    fade_out_seconds: editingNumberInRange(record.fade_out_seconds, `${path}.fade_out_seconds`, 0, 0, 30),
+  };
+}
+
 export function normalizeEditingManifestV2(value: unknown, path = "editing.manifest"): EditingManifestV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["ordered_video_binding_ids", "bgm_audio_binding_id", "bgm_volume", "output", "manifest_revision"], path);
-  const bgmVolume = record.bgm_volume === undefined ? 0.2 : expectFiniteNumber(record.bgm_volume, `${path}.bgm_volume`);
-  if (bgmVolume < 0 || bgmVolume > 1) fail(`${path}.bgm_volume`, "expected value between 0 and 1");
+  forbidUnknownFields(record, ["video_entries", "bgm", "output", "manifest_revision"], path);
+  const videoEntries = (record.video_entries === undefined
+    ? []
+    : expectArray(record.video_entries, `${path}.video_entries`)
+  ).map((item, index) => normalizeEditingVideoEntryV2(item, `${path}.video_entries[${index}]`));
+  const sourceKeys = videoEntries.map((entry) => (
+    entry.binding_id ? `binding:${entry.binding_id}` : `asset:${entry.asset_id}`
+  ));
+  if (new Set(sourceKeys).size !== sourceKeys.length) {
+    fail(`${path}.video_entries`, "input references must be unique");
+  }
+  const bgm = record.bgm === undefined || record.bgm === null
+    ? null
+    : normalizeEditingBgmEntryV2(record.bgm, `${path}.bgm`);
+  const bgmKey = bgm
+    ? bgm.binding_id
+      ? `binding:${bgm.binding_id}`
+      : `asset:${bgm.asset_id}`
+    : null;
+  if (bgmKey && sourceKeys.includes(bgmKey)) {
+    fail(`${path}.bgm`, "BGM input cannot also be a video input");
+  }
   return {
-    ordered_video_binding_ids: expectStringArray(record.ordered_video_binding_ids, `${path}.ordered_video_binding_ids`),
-    bgm_audio_binding_id: record.bgm_audio_binding_id === undefined ? null : nullableString(record.bgm_audio_binding_id, `${path}.bgm_audio_binding_id`),
-    bgm_volume: bgmVolume,
+    video_entries: videoEntries,
+    bgm,
     output: normalizeEditingOutputSettingsV2(record.output, `${path}.output`),
-    manifest_revision: expectNonNegativeInteger(record.manifest_revision, `${path}.manifest_revision`),
+    manifest_revision: record.manifest_revision === undefined
+      ? 1
+      : expectPositiveInteger(record.manifest_revision, `${path}.manifest_revision`),
   };
 }
 
 export function normalizeEditingSkippedInputV2(value: unknown, path = "editing.skippedInput"): EditingSkippedInputV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["node_id", "reason"], path);
+  forbidUnknownFields(record, ["reference_id", "node_id", "asset_id", "reason"], path);
   return {
-    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    reference_id: expectNonEmptyString(record.reference_id, `${path}.reference_id`),
+    node_id: record.node_id === undefined ? null : nullableString(record.node_id, `${path}.node_id`),
+    asset_id: record.asset_id === undefined ? null : nullableString(record.asset_id, `${path}.asset_id`),
     reason: expectLiteral(record.reason, EDITING_SKIPPED_REASONS, `${path}.reason`),
   };
 }
 
 export function normalizeEditingPreviewClipV2(value: unknown, path = "editing.previewClip"): EditingPreviewClipV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["binding_id", "node_id", "asset_id", "status", "display_order", "preview_url", "duration_seconds", "warning"], path);
+  forbidUnknownFields(record, ["reference_id", "binding_id", "node_id", "asset_id", "status", "display_order", "preview_url", "duration_seconds", "warning"], path);
   return {
-    binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
-    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
-    asset_id: nullableString(record.asset_id, `${path}.asset_id`),
+    reference_id: expectNonEmptyString(record.reference_id, `${path}.reference_id`),
+    binding_id: record.binding_id === undefined ? null : nullableString(record.binding_id, `${path}.binding_id`),
+    node_id: record.node_id === undefined ? null : nullableString(record.node_id, `${path}.node_id`),
+    asset_id: record.asset_id === undefined ? null : nullableString(record.asset_id, `${path}.asset_id`),
     status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
     preview_url: nullableString(record.preview_url, `${path}.preview_url`),
@@ -2441,7 +2590,19 @@ export function normalizeAgentCanvasVideoSkillRunV2(
   const record = expectRecord(value, path);
   forbidUnknownFields(
     record,
-    ["skill_run_id", "workflow_id", "skill_id", "skill_version", "source_skill_run_id", "created_at"],
+    [
+      "skill_run_id",
+      "workflow_id",
+      "skill_id",
+      "skill_version",
+      "source_skill_run_id",
+      "status",
+      "current_topic_id",
+      "deferred_topic_ids",
+      "memory_revision",
+      "created_at",
+      "updated_at",
+    ],
     path,
   );
   return {
@@ -2452,7 +2613,18 @@ export function normalizeAgentCanvasVideoSkillRunV2(
     source_skill_run_id: record.source_skill_run_id === undefined
       ? null
       : nullableString(record.source_skill_run_id, `${path}.source_skill_run_id`),
-    created_at: expectNonEmptyString(record.created_at, `${path}.created_at`),
+    status: expectLiteral(
+      record.status ?? "active",
+      new Set<AgentCanvasVideoSkillRunV2["status"]>(["active", "superseded"]),
+      `${path}.status`,
+    ),
+    current_topic_id: nullableStringWithDefault(record.current_topic_id, `${path}.current_topic_id`),
+    deferred_topic_ids: optionalStringArray(record.deferred_topic_ids, `${path}.deferred_topic_ids`, []),
+    memory_revision: expectNonNegativeInteger(record.memory_revision ?? 0, `${path}.memory_revision`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: record.updated_at === undefined || record.updated_at === null
+      ? null
+      : expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
 
@@ -2500,14 +2672,10 @@ export function normalizeCanvasRunCancelResponseV2(
 ): CanvasRunCancelResponseV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["workflow_id", "execution_id", "status", "cancelled_node_ids", "events_cursor"], path);
-  const status = expectString(record.status, `${path}.status`);
-  if (status !== "cancellation_requested" && status !== "cancelled") {
-    fail(`${path}.status`, "invalid cancellation status");
-  }
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     execution_id: expectNonEmptyString(record.execution_id, `${path}.execution_id`),
-    status,
+    status: expectLiteral(record.status, new Set<CanvasRunCancelResponseV2["status"]>(["cancelled"]), `${path}.status`),
     cancelled_node_ids: optionalStringArray(record.cancelled_node_ids, `${path}.cancelled_node_ids`, []),
     events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
   };
@@ -2518,21 +2686,11 @@ export function normalizeCanvasRuntimeEventsResponseV2(
   path = "events",
 ): CanvasRuntimeEventsResponseV2 {
   const record = expectRecord(value, path);
-  if ("items" in record || "next_cursor" in record) {
-    forbidUnknownFields(record, ["items", "next_cursor"], path);
-    return {
-      workflow_id: null,
-      events: expectArray(record.items, `${path}.items`).map((item, index) =>
-        normalizeCanvasRuntimeEventV2(item, `${path}.items[${index}]`),
-      ),
-      next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
-    };
-  }
-  forbidUnknownFields(record, ["workflow_id", "events", "next_cursor"], path);
+  forbidUnknownFields(record, ["items", "next_cursor"], path);
   return {
-    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
-    events: expectArray(record.events, `${path}.events`).map((item, index) =>
-      normalizeCanvasRuntimeEventV2(item, `${path}.events[${index}]`),
+    workflow_id: null,
+    events: expectArray(record.items, `${path}.items`).map((item, index) =>
+      normalizeCanvasRuntimeEventV2(item, `${path}.items[${index}]`),
     ),
     next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
   };
@@ -2579,15 +2737,11 @@ export function normalizeEditingExportCancelResponseV2(
 ): EditingExportCancelResponseV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["workflow_id", "node_id", "export_id", "status", "events_cursor"], path);
-  const status = expectString(record.status, `${path}.status`);
-  if (status !== "cancellation_requested" && status !== "cancelled") {
-    fail(`${path}.status`, "invalid cancellation status");
-  }
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
     export_id: expectNonEmptyString(record.export_id, `${path}.export_id`),
-    status,
+    status: expectLiteral(record.status, new Set<EditingExportCancelResponseV2["status"]>(["cancelled"]), `${path}.status`),
     events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
   };
 }

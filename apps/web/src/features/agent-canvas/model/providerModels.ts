@@ -4,7 +4,13 @@ import type {
 } from "../../../types-v2.ts";
 
 export type ProviderInputType = "text" | "image" | "video" | "audio";
-export type ProviderOutputType = "script" | "image" | "video" | "audio";
+export type ProviderOutputType = "image" | "video" | "audio";
+
+const PROVIDER_OUTPUT_TYPES: ReadonlySet<CanvasNodeV2["node_type"]> = new Set([
+  "image",
+  "video",
+  "audio",
+]);
 
 const INPUT_TYPE_BY_ROLE: Record<string, ProviderInputType> = {
   text_context: "text",
@@ -34,11 +40,11 @@ export function providerInputTypes(
 }
 
 export function usesProvider(node: CanvasNodeV2 | null): node is CanvasNodeV2 {
-  return Boolean(node && ["script", "image", "video", "audio"].includes(node.node_type));
+  return Boolean(node && PROVIDER_OUTPUT_TYPES.has(node.node_type));
 }
 
 export function providerOutputType(node: CanvasNodeV2 | null): ProviderOutputType | null {
-  if (!node || !["script", "image", "video", "audio"].includes(node.node_type)) return null;
+  if (!node || !PROVIDER_OUTPUT_TYPES.has(node.node_type)) return null;
   return node.node_type as ProviderOutputType;
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { isV2ApiError, v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
@@ -74,7 +74,7 @@ export function useAgentCanvasRuntime(
       do {
         runtimeRefreshQueuedRef.current = false;
         try {
-          const next = await v2Api.agentCanvasRuntime(workflowId);
+          const next = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (activeWorkflowIdRef.current !== workflowId) return;
           setRuntime(next);
           setRuntimeError(null);
@@ -108,7 +108,7 @@ export function useAgentCanvasRuntime(
       do {
         workflowRefreshQueuedRef.current = false;
         try {
-          const { value } = await v2Api.agentCanvasWorkflowWithEtag(workflowId);
+          const { value } = await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId);
           if (activeWorkflowIdRef.current === workflowId) callbacks.applyWorkflow(value);
         } catch (error) {
           if (activeWorkflowIdRef.current === workflowId) {
@@ -155,7 +155,7 @@ export function useAgentCanvasRuntime(
       do {
         assetsRefreshQueuedRef.current = false;
         try {
-          const response = await v2Api.listAgentCanvasProjectAssets(workflowId);
+          const response = await agentCanvasApi.listAgentCanvasProjectAssets(workflowId);
           if (activeWorkflowIdRef.current !== workflowId) return;
           const pending = new Map(pendingAssetPublishesRef.current);
           pending.forEach((_nodeId, assetId) => pendingAssetPublishesRef.current.delete(assetId));
@@ -191,7 +191,7 @@ export function useAgentCanvasRuntime(
     }
     const nodeId = policy.refreshEditingNodeId ?? policy.refreshNodeId;
     if (nodeId && workflowId) {
-      void v2Api.agentCanvasNode(workflowId, nodeId)
+      void agentCanvasApi.agentCanvasNode(workflowId, nodeId)
         .then((node) => {
           if (activeWorkflowIdRef.current === workflowId) callbacks.mergeNode(node);
         })
@@ -223,7 +223,7 @@ export function useAgentCanvasRuntime(
       setConnectionState(reconnectAttempt ? "reconnecting" : "connecting");
       try {
         if (cursorRef.current === 0) {
-          const baselineRuntime = await v2Api.agentCanvasRuntime(workflowId);
+          const baselineRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
           if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
           setRuntime(baselineRuntime);
           cursorRef.current = baselineRuntime.events_cursor;
@@ -231,7 +231,7 @@ export function useAgentCanvasRuntime(
         }
         for (;;) {
           const before = cursorRef.current;
-          const replay = await v2Api.agentCanvasEvents(workflowId, before, 200);
+          const replay = await agentCanvasApi.agentCanvasEvents(workflowId, before, 200);
           if (cancelled) return;
           replay.events.forEach(processEvent);
           cursorRef.current = Math.max(cursorRef.current, replay.next_cursor);
@@ -239,7 +239,7 @@ export function useAgentCanvasRuntime(
         }
         await refreshRuntime();
         if (cancelled) return;
-        eventSource = v2Api.openAgentCanvasEventStream(workflowId, cursorRef.current);
+        eventSource = agentCanvasApi.openAgentCanvasEventStream(workflowId, cursorRef.current);
         eventSource.onmessage = handleMessage;
         AGENT_CANVAS_SSE_EVENT_TYPES.forEach((type) =>
           eventSource?.addEventListener(type, handleMessage as EventListener),
@@ -268,7 +268,7 @@ export function useAgentCanvasRuntime(
         }
         if (isV2ApiError(error) && error.code === "event_cursor_expired") {
           try {
-            const latestRuntime = await v2Api.agentCanvasRuntime(workflowId);
+            const latestRuntime = await agentCanvasApi.agentCanvasRuntime(workflowId);
             if (cancelled || activeWorkflowIdRef.current !== workflowId) return;
             setRuntime(latestRuntime);
             cursorRef.current = latestRuntime.events_cursor;
@@ -310,7 +310,7 @@ export function useAgentCanvasRuntime(
     if (!workflowId) return;
     setRunPending(true);
     try {
-      await v2Api.runAgentCanvas(workflowId, {
+      await agentCanvasApi.runAgentCanvas(workflowId, {
         scope: "all_drafts",
         node_ids: [],
         retry_failed: false,
@@ -332,7 +332,7 @@ export function useAgentCanvasRuntime(
     setRunPending(true);
     try {
       const request = nodeRunRequest(node, options.retryFailed);
-      await v2Api.runAgentCanvas(
+      await agentCanvasApi.runAgentCanvas(
         workflowId,
         request,
         createOperationKey(request.retry_failed ? "retry-node" : "run-node"),
@@ -345,11 +345,10 @@ export function useAgentCanvasRuntime(
 
   const cancelRun = useCallback(async () => {
     if (!workflowId || !runtime?.active_execution_id) return;
-    await v2Api.cancelAgentCanvasRun(
+    await agentCanvasApi.cancelAgentCanvasRun(
       workflowId,
       runtime.active_execution_id,
       { reason: "user_cancelled" },
-      createOperationKey("cancel-run"),
     );
     await refreshRuntime();
   }, [refreshRuntime, runtime?.active_execution_id, workflowId]);

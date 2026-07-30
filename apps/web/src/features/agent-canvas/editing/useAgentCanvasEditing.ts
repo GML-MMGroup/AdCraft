@@ -1,18 +1,21 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { isV2ApiError, v2Api } from "../../../api/v2Client.ts";
+import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  EditingBgmEntryV2,
   EditingManifestV2,
+  EditingVideoEntryV2,
 } from "../../../types-v2.ts";
 import { normalizeEditingNodeContentV2 } from "../model/normalizers.ts";
 import {
   buildEditingInputs,
-  moveEditingVideoBinding,
+  moveEditingVideoEntry,
   replaceEditingManifest,
+  updateEditingVideoEntry,
 } from "./editingModel.ts";
 
 type PatchNode = (
@@ -107,21 +110,35 @@ export function useAgentCanvasEditing(
     }
   }, [canonicalContent, node.node_id, patchNode]);
 
-  const moveVideo = useCallback((bindingId: string, offset: -1 | 1) => {
+  const moveVideo = useCallback((referenceId: string, offset: -1 | 1) => {
     const manifest = currentManifest();
     if (!manifest) return;
-    const next = moveEditingVideoBinding(manifest, bindingId, offset);
+    const next = moveEditingVideoEntry(manifest, referenceId, offset);
     if (next !== manifest) void saveManifest(next);
   }, [currentManifest, saveManifest]);
 
-  const setBgmVolume = useCallback((volume: number) => {
+  const updateVideo = useCallback((
+    referenceId: string,
+    patch: Partial<EditingVideoEntryV2>,
+  ) => {
     const manifest = currentManifest();
     if (!manifest) return;
+    const next = updateEditingVideoEntry(manifest, referenceId, patch);
+    if (next !== manifest) void saveManifest(next);
+  }, [currentManifest, saveManifest]);
+
+  const setBgm = useCallback((patch: Partial<EditingBgmEntryV2>) => {
+    const manifest = currentManifest();
+    if (!manifest?.bgm) return;
     void saveManifest({
       ...manifest,
-      bgm_volume: Math.min(1, Math.max(0, volume)),
+      bgm: { ...manifest.bgm, ...patch },
     });
   }, [currentManifest, saveManifest]);
+
+  const setBgmVolume = useCallback((volume: number) => {
+    setBgm({ volume: Math.min(1, Math.max(0, volume)) });
+  }, [setBgm]);
 
   const setOutput = useCallback((patch: Partial<EditingManifestV2["output"]>) => {
     const manifest = currentManifest();
@@ -137,7 +154,7 @@ export function useAgentCanvasEditing(
     setExporting(true);
     setError(null);
     try {
-      await v2Api.exportAgentCanvasEditingNode(
+      await agentCanvasApi.exportAgentCanvasEditingNode(
         workflow.workflow_id,
         node.node_id,
         {
@@ -159,11 +176,10 @@ export function useAgentCanvasEditing(
     setExporting(true);
     setError(null);
     try {
-      await v2Api.cancelAgentCanvasEditingExport(
+      await agentCanvasApi.cancelAgentCanvasEditingExport(
         workflow.workflow_id,
         node.node_id,
         activeExportId,
-        createOperationKey("editing-export-cancel"),
       );
     } catch (cancelError) {
       setError(errorMessage(cancelError, "Unable to cancel export."));
@@ -185,6 +201,8 @@ export function useAgentCanvasEditing(
     error,
     clearError: () => setError(null),
     moveVideo,
+    updateVideo,
+    setBgm,
     setBgmVolume,
     setOutput,
     exportComposition,

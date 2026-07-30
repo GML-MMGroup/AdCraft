@@ -24,14 +24,14 @@ function event(
 describe("projectChatEvents", () => {
   it("turns specialist events into one activity row instead of chat bubbles", () => {
     const items = projectChatEvents([
-      event(1, "expert_activity_started", {
+      event(1, "specialist_activity_started", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
         label: "Character Designer",
         operation: "create_concepts",
       }),
-      event(2, "expert_activity_completed", {
+      event(2, "specialist_activity_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
@@ -70,7 +70,7 @@ describe("projectChatEvents", () => {
     expect(items).toEqual([]);
   });
 
-  it("projects the current backend script artifact event into View Script", () => {
+  it("does not project retired script artifact events", () => {
     const scriptEvent = event(5, "script_artifact_created", {
       entry_id: "artifact-1",
       script_node_id: "node-script-1",
@@ -78,13 +78,6 @@ describe("projectChatEvents", () => {
     });
     scriptEvent.node_id = "node-script-1";
 
-    expect(projectChatEvents([scriptEvent])).toEqual([
-      expect.objectContaining({
-        item_type: "artifact",
-        artifact_id: "artifact-1",
-        node_id: "node-script-1",
-        action_label: "View Script",
-      }),
-    ]);
+    expect(projectChatEvents([scriptEvent])).toEqual([]);
   });
 });

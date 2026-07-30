@@ -1672,7 +1672,7 @@ export interface StorageAccessDescriptorV2 {
   checksum: string;
 }
 
-export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_failed" | "failed" | "cancelled";
+export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
 
 export type NodeRuntimePhaseV2 = "waiting_for_input" | "queued" | "running" | "waiting_provider" | "recovering" | "publishing";
 
@@ -1724,7 +1724,7 @@ export interface CanvasRuntimeEventV2 {
 export interface ProviderModelCapabilityV2 {
   provider: string;
   model_id: string;
-  output_type: "script" | AgentCanvasAssetMediaTypeV2;
+  output_type: AgentCanvasAssetMediaTypeV2;
   accepted_input_types: Array<"text" | "image" | "video" | "audio">;
   max_references: number;
   reference_limits: Partial<Record<AgentCanvasAssetMediaTypeV2, number>>;
@@ -2098,6 +2098,14 @@ export interface ChatTimelineListResponseV2 {
   next_after_seq: number;
 }
 
+export interface AgentCanvasChatViewTimelineV2 {
+  workflow_id: string;
+  conversation_id: string | null;
+  creative_session: CreativeSessionStateV2 | null;
+  items: ChatTimelineItemV2[];
+  next_cursor: number;
+}
+
 export interface ChatTurnAcceptedV2 {
   workflow_id: string;
   conversation_id: string;
@@ -2116,22 +2124,48 @@ export interface EditingOutputSettingsV2 {
   container: "mp4";
 }
 
+export interface EditingVideoEntryV2 {
+  binding_id: string | null;
+  asset_id: string | null;
+  enabled: boolean;
+  trim_start_seconds: number;
+  trim_end_seconds: number | null;
+  volume: number;
+  preserve_native_audio: boolean;
+  transition: "cut" | "fade";
+  transition_duration_seconds: number;
+  fit_mode: "fit" | "fill";
+}
+
+export interface EditingBgmEntryV2 {
+  binding_id: string | null;
+  asset_id: string | null;
+  enabled: boolean;
+  trim_start_seconds: number;
+  trim_end_seconds: number | null;
+  volume: number;
+  fade_in_seconds: number;
+  fade_out_seconds: number;
+}
+
 export interface EditingManifestV2 {
-  ordered_video_binding_ids: string[];
-  bgm_audio_binding_id: string | null;
-  bgm_volume: number;
+  video_entries: EditingVideoEntryV2[];
+  bgm: EditingBgmEntryV2 | null;
   output: EditingOutputSettingsV2;
   manifest_revision: number;
 }
 
 export interface EditingSkippedInputV2 {
-  node_id: string;
+  reference_id: string;
+  node_id: string | null;
+  asset_id: string | null;
   reason: "source_not_ready" | "source_failed" | "source_output_unavailable" | "source_media_invalid";
 }
 
 export interface EditingPreviewClipV2 {
-  binding_id: string;
-  node_id: string;
+  reference_id: string;
+  binding_id: string | null;
+  node_id: string | null;
   asset_id: string | null;
   status: CanvasNodeStatusV2;
   display_order: number;
@@ -2218,7 +2252,7 @@ export interface CanvasVariationDraftResponseV2 {
 }
 
 export interface CanvasVariationMaterializeRequestV2 {
-  generation_action: "draft_only" | "generate_now";
+  action: "create_draft" | "generate";
   position?: CanvasPositionV2 | null;
 }
 
@@ -2494,7 +2528,12 @@ export interface AgentCanvasVideoSkillRunV2 {
   skill_id: string;
   skill_version: string;
   source_skill_run_id: string | null;
+  status: "active" | "superseded";
+  current_topic_id: string | null;
+  deferred_topic_ids: string[];
+  memory_revision: number;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface CanvasRunRequestV2 {
@@ -2527,7 +2566,7 @@ export interface CanvasRunCancelRequestV2 {
 export interface CanvasRunCancelResponseV2 {
   workflow_id: string;
   execution_id: string;
-  status: "cancellation_requested" | "cancelled";
+  status: "cancelled";
   cancelled_node_ids: string[];
   events_cursor: number;
 }
@@ -2559,6 +2598,6 @@ export interface EditingExportCancelResponseV2 {
   workflow_id: string;
   node_id: string;
   export_id: string;
-  status: "cancellation_requested" | "cancelled";
+  status: "cancelled";
   events_cursor: number;
 }

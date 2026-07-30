@@ -14,7 +14,7 @@ import {
   TrashIcon,
   UploadIcon,
 } from "../../icons.tsx";
-import { isV2ApiError } from "../../api/v2Client.ts";
+import { isV2ApiError } from "../../api/agentCanvasApi.ts";
 import type {
   AgentCanvasImageLibraryCategoryV2,
   AgentCanvasWorkflowV2,
@@ -89,7 +89,7 @@ export function AgentCanvasInspector({
   onDiscardVariation: (nodeId: string) => Promise<void>;
   onMaterializeVariation: (
     node: CanvasNodeV2,
-    generationAction: "draft_only" | "generate_now",
+    action: "create_draft" | "generate",
   ) => Promise<CanvasNodeV2 | null>;
   onSaveImageToLibrary: (
     assetId: string,
@@ -304,9 +304,9 @@ export function AgentCanvasInspector({
     return saved;
   }
 
-  async function materializeVariation(generationAction: "draft_only" | "generate_now") {
+  async function materializeVariation(action: "create_draft" | "generate") {
     if ((dirty || !node.variation_draft) && !(await save())) return;
-    await perform(() => onMaterializeVariation(node, generationAction));
+    await perform(() => onMaterializeVariation(node, action));
   }
 
   async function discardVariation() {
@@ -575,7 +575,7 @@ export function AgentCanvasInspector({
                 className="agent-canvas-inspector__primary"
                 aria-label="Create variation draft"
                 disabled={pending || !prompt.trim()}
-                onClick={() => void materializeVariation("draft_only")}
+                onClick={() => void materializeVariation("create_draft")}
               >
                 <EditIcon />
                 <span>Create draft</span>
@@ -585,7 +585,7 @@ export function AgentCanvasInspector({
                 className="agent-canvas-inspector__primary"
                 aria-label="Generate variation"
                 disabled={pending || !prompt.trim()}
-                onClick={() => void materializeVariation("generate_now")}
+                onClick={() => void materializeVariation("generate")}
               >
                 <PlayIcon />
                 <span>Generate</span>

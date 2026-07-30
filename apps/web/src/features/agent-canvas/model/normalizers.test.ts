@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  normalizeAgentCanvasChatTimelineCompatV2,
+  normalizeAgentCanvasChatTimelineV2,
   normalizeAgentCanvasChatTurnV2,
+  normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeAgentCanvasChatTimelineResponseV2,
   normalizeCanvasBindingV2,
@@ -360,7 +361,7 @@ describe("Agent Canvas normalizers", () => {
       },
     };
     const workflow = normalizeAgentCanvasWorkflowV2(workflowPayload);
-    const timeline = normalizeAgentCanvasChatTimelineCompatV2({
+    const timeline = normalizeAgentCanvasChatTimelineV2({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
       items: [
@@ -511,8 +512,8 @@ describe("Agent Canvas normalizers", () => {
       updated_at: "2026-07-28T10:08:00Z",
     });
 
-    const capabilities = normalizeProviderModelCapabilityListV2([
-      {
+    const capabilities = normalizeProviderModelCapabilityListV2({
+      items: [{
         provider: "openai",
         model_id: "gpt-image-1",
         output_type: "image",
@@ -529,8 +530,8 @@ describe("Agent Canvas normalizers", () => {
         pixel_bounds: [512, 2048],
         available: true,
         unavailable_reason: null,
-      },
-    ]);
+      }],
+    });
 
     const timeline = normalizeChatTimelineListResponseV2({
       workflow_id: "workflow-1",
@@ -584,13 +585,29 @@ describe("Agent Canvas normalizers", () => {
 
     const editing = normalizeEditingNodeContentV2({
       manifest: {
-        ordered_video_binding_ids: ["binding-video-1"],
+        video_entries: [
+          {
+            binding_id: "binding-video-1",
+            asset_id: null,
+            enabled: true,
+            trim_start_seconds: 0,
+            trim_end_seconds: null,
+            volume: 1,
+            preserve_native_audio: true,
+            transition: "cut",
+            transition_duration_seconds: 0,
+            fit_mode: "fill",
+          },
+        ],
+        bgm: null,
+        output: {},
         manifest_revision: 4,
       },
       dirty: true,
       preview: {
         clips: [
           {
+            reference_id: "binding-video-1",
             binding_id: "binding-video-1",
             node_id: "node-video-1",
             asset_id: "asset-video-1",
@@ -614,7 +631,8 @@ describe("Agent Canvas normalizers", () => {
     expect(runtime.node_runtime["node-image-1"]?.attempt_no).toBe(2);
     expect(capabilities[0]?.accepted_input_types).toEqual(["text", "image"]);
     expect(timeline.items[1]?.item_type).toBe("proposal");
-    expect(editing.manifest.bgm_volume).toBe(0.2);
+    expect(editing.manifest.bgm).toBeNull();
+    expect(editing.manifest.video_entries[0]?.preserve_native_audio).toBe(true);
     expect(editing.manifest.output.video_codec).toBe("h264");
   });
 
@@ -699,8 +717,17 @@ describe("Agent Canvas normalizers", () => {
     expect(() =>
       normalizeEditingNodeContentV2({
         manifest: {
-          ordered_video_binding_ids: ["binding-video-1"],
-          bgm_volume: 1.5,
+          video_entries: [],
+          bgm: {
+            binding_id: "binding-bgm-1",
+            asset_id: null,
+            enabled: true,
+            trim_start_seconds: 0,
+            trim_end_seconds: null,
+            volume: 1.5,
+            fade_in_seconds: 0,
+            fade_out_seconds: 0,
+          },
           output: {},
           manifest_revision: 4,
         },
@@ -716,12 +743,12 @@ describe("Agent Canvas normalizers", () => {
         last_successful_export: null,
         active_export: null,
       }),
-    ).toThrowError(/bgm_volume/i);
+    ).toThrowError(/volume/i);
   });
 
   it("accepts shared events with asset details inside payload only", () => {
     const event = normalizeCanvasRuntimeEventV2({
-      seq: 51,
+      sequence_no: 51,
       workflow_id: "workflow-1",
       event_type: "asset_published",
       node_id: "node-image-1",
@@ -956,13 +983,13 @@ describe("Agent Canvas normalizers", () => {
     expect(normalizeCanvasRunAcceptedV2({
       workflow_id: "workflow-1",
       execution_id: "execution-1",
-      status: "running",
+      status: "partial_completed",
       accepted_node_ids: [],
       joined_node_ids: ["node-image-1"],
       skipped: [],
       waiting_node_ids: [],
       events_cursor: 18,
-    }).status).toBe("running");
+    }).status).toBe("partial_completed");
 
     expect(normalizeEditingExportAcceptedV2({
       workflow_id: "workflow-1",
@@ -975,5 +1002,44 @@ describe("Agent Canvas normalizers", () => {
       bgm_node_id: null,
       events_cursor: 19,
     }).status).toBe("completed");
+  });
+
+  it("preserves the final Video Skill Run session fields", () => {
+    expect(normalizeAgentCanvasVideoSkillRunV2({
+      skill_run_id: "skill-run-1",
+      workflow_id: "workflow-1",
+      skill_id: "video-ad",
+      skill_version: "1",
+      source_skill_run_id: null,
+      status: "active",
+      current_topic_id: "characters",
+      deferred_topic_ids: ["bgm"],
+      memory_revision: 3,
+      created_at: "2026-07-30T08:00:00Z",
+      updated_at: "2026-07-30T08:01:00Z",
+    })).toMatchObject({
+      status: "active",
+      current_topic_id: "characters",
+      deferred_topic_ids: ["bgm"],
+      memory_revision: 3,
+      updated_at: "2026-07-30T08:01:00Z",
+    });
+  });
+
+  it("applies OpenAPI defaults to a minimal Video Skill Run response", () => {
+    expect(normalizeAgentCanvasVideoSkillRunV2({
+      skill_run_id: "skill-run-minimal",
+      workflow_id: "workflow-1",
+      skill_id: "video-ad",
+      skill_version: "1",
+      source_skill_run_id: null,
+      created_at: "2026-07-30T08:00:00Z",
+    })).toMatchObject({
+      status: "active",
+      current_topic_id: null,
+      deferred_topic_ids: [],
+      memory_revision: 0,
+      updated_at: null,
+    });
   });
 });

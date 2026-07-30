@@ -1,4 +1,4 @@
-import { isV2ApiError } from "../../../api/v2Client.ts";
+import { isV2ApiError } from "../../../api/agentCanvasApi.ts";
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   canvas_binding_cycle: "This connection would create a dependency cycle.",

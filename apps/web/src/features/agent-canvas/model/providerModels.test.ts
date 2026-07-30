@@ -4,6 +4,7 @@ import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
 import {
   providerInputTypes,
   providerOutputType,
+  usesMediaProvider,
   usesProvider,
 } from "./providerModels.ts";
 
@@ -98,7 +99,7 @@ describe("providerInputTypes", () => {
     expect(providerInputTypes(workflow, "target-1")).toEqual(["image", "text", "video"]);
   });
 
-  it("treats Script as a provider output and derives inputs from explicit binding roles", () => {
+  it("derives Script inputs without treating Script as a provider capability output", () => {
     const workflow = {
       workflow_id: "workflow-1",
       project_id: "project-1",
@@ -175,8 +176,29 @@ describe("providerInputTypes", () => {
     } as unknown as AgentCanvasWorkflowV2;
     const script = workflow.nodes.find((candidate) => candidate.node_id === "target-1")!;
 
-    expect(usesProvider(script)).toBe(true);
-    expect(providerOutputType(script)).toBe("script");
+    expect(usesProvider(script)).toBe(false);
+    expect(usesMediaProvider(script)).toBe(false);
+    expect(providerOutputType(script)).toBeNull();
     expect(providerInputTypes(workflow, script.node_id)).toEqual(["audio", "image", "text"]);
+  });
+
+  it("limits provider capability output types to media nodes", () => {
+    const expectedOutputs: Array<[
+      CanvasNodeV2["node_type"],
+      "image" | "video" | "audio" | null,
+    ]> = [
+      ["text", null],
+      ["script", null],
+      ["image", "image"],
+      ["video", "video"],
+      ["audio", "audio"],
+      ["editing", null],
+    ];
+
+    expectedOutputs.forEach(([nodeType, outputType]) => {
+      const candidate = node(`node-${nodeType}`, nodeType);
+      expect(usesMediaProvider(candidate)).toBe(outputType !== null);
+      expect(providerOutputType(candidate)).toBe(outputType);
+    });
   });
 });

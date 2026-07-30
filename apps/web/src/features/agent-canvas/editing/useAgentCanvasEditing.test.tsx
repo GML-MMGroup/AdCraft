@@ -30,9 +30,17 @@ function editingNode(): CanvasNodeV2 {
     generation_prompt: null,
     structured_content: {
       manifest: {
-        ordered_video_binding_ids: [],
-        bgm_audio_binding_id: null,
-        bgm_volume: 0.2,
+        video_entries: [],
+        bgm: {
+          binding_id: "binding-bgm",
+          asset_id: null,
+          enabled: true,
+          trim_start_seconds: 0,
+          trim_end_seconds: null,
+          volume: 0.2,
+          fade_in_seconds: 0,
+          fade_out_seconds: 0,
+        },
         output: {
           resolution: null,
           aspect_ratio: null,
@@ -99,11 +107,13 @@ describe("useAgentCanvasEditing", () => {
     await waitFor(() => expect(result.current.saving).toBe(true));
     act(() => result.current.setBgmVolume(0.7));
 
-    expect(result.current.content?.manifest.bgm_volume).toBe(0.7);
+    expect(result.current.content?.manifest.bgm?.volume).toBe(0.7);
     expect(patchNode).toHaveBeenCalledTimes(2);
     expect(patchNode.mock.calls[1]?.[1]).toMatchObject({
       structured_content: {
-        bgm_volume: 0.7,
+        bgm: {
+          volume: 0.7,
+        },
       },
     });
     expect(patchNode.mock.calls[1]?.[2]).toEqual({ coalesce: true });
