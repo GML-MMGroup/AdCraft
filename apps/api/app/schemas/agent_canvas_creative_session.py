@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.schemas.agent_canvas import (
     CanvasBindingKindV2,
+    CanvasCreativeRoleV2,
     CanvasInputRoleV2,
     CanvasNodeTypeV2,
 )
@@ -23,14 +24,12 @@ AgentCanvasSpecialistNameV2 = Literal[
     "storyboard_artist",
     "video_director",
     "bgm_director",
+    "quick_media_agent",
 ]
 GuidedDeliveryActionTypeV2 = Literal[
-    "add_another_node",
-    "generate_existing_drafts",
-    "continue_to_composition",
-    "prepare_composition",
-    "edit_composition_sources",
-    "export_current_cut",
+    "add_another_topic_node",
+    "generate_node",
+    "run_all_drafts",
     "skip_topic",
 ]
 
@@ -39,10 +38,21 @@ class _CreativeSessionModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ConceptDraftSpecV2(_CreativeSessionModel):
+    """Private bounded prompt authored for one proposal option."""
+
+    prompt: str = Field(min_length=1, max_length=32_768)
+
+
 class GuidedDeliveryActionV2(_CreativeSessionModel):
+    action_id: str = Field(min_length=1, max_length=160)
     action: GuidedDeliveryActionTypeV2
+    state: Literal["pending", "applying", "applied", "failed"]
+    creating_turn_id: str = Field(min_length=1, max_length=160)
+    expected_semantic_revision: int = Field(ge=1)
     label: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
+    proposal_id: str | None = Field(default=None, max_length=160)
     topic_id: str | None = Field(default=None, max_length=160)
     node_id: str | None = Field(default=None, max_length=160)
     ordered_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
@@ -59,11 +69,11 @@ class PlanningTopicProgressV2(_CreativeSessionModel):
     specialist_name: AgentCanvasSpecialistNameV2
     status: Literal[
         "pending",
-        "working",
-        "completed",
+        "in_review",
+        "resolved",
         "skipped",
+        "not_required",
         "deferred",
-        "reopened",
     ]
     outcome: str | None = Field(default=None, max_length=160)
     related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
@@ -75,11 +85,28 @@ class CreativeSessionStateV2(_CreativeSessionModel):
     skill_id: str = Field(min_length=1, max_length=160)
     skill_version: str = Field(min_length=1, max_length=80)
     status: Literal["active", "superseded"]
+    creative_direction_snapshot_id: str | None = Field(default=None, max_length=160)
     current_topic_id: str | None = Field(default=None, max_length=160)
     topics: tuple[PlanningTopicProgressV2, ...] = Field(default=(), max_length=32)
     deferred_topic_ids: tuple[str, ...] = Field(default=(), max_length=32)
     memory_revision: int = Field(ge=0)
     updated_at: datetime
+
+
+class CreativeDirectionSnapshotV2(_CreativeSessionModel):
+    snapshot_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    skill_run_id: str = Field(min_length=1, max_length=160)
+    version: int = Field(ge=1)
+    source_skill_id: str | None = Field(default=None, max_length=160)
+    source_skill_version: str | None = Field(default=None, max_length=80)
+    source_skill_digest: str | None = Field(default=None, max_length=160)
+    global_direction: dict[str, JsonValue] = Field(default_factory=dict)
+    role_projections: dict[str, dict[str, JsonValue]] = Field(default_factory=dict)
+    source_message_id: str | None = Field(default=None, max_length=160)
+    source_proposal_id: str | None = Field(default=None, max_length=160)
+    content_digest: str = Field(min_length=1, max_length=160)
+    created_at: datetime
 
 
 class ProjectCreativeMemoryV2(_CreativeSessionModel):
@@ -114,7 +141,7 @@ class ProposedDraftReferenceV2(DraftReferenceIntentV2):
 
 class SpecialistDraftV2(_CreativeSessionModel):
     node_type: CanvasNodeTypeV2
-    semantic_role: str = Field(min_length=1, max_length=160)
+    creative_role: CanvasCreativeRoleV2
     title: str = Field(min_length=1, max_length=256)
     summary_prompt: str = Field(min_length=1, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
@@ -133,7 +160,7 @@ class ExpertActivityV2(_CreativeSessionModel):
     turn_id: str = Field(min_length=1, max_length=160)
     specialist_name: AgentCanvasSpecialistNameV2
     operation: Literal["propose_concepts", "revise_concepts", "materialize_draft"]
-    status: Literal["started", "waiting", "completed", "failed"]
+    status: Literal["working", "completed", "failed"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
     created_at: datetime
@@ -144,6 +171,6 @@ class ResolvedImageTargetV2(_CreativeSessionModel):
     asset_id: str = Field(min_length=1, max_length=160)
     owner_node_id: str | None = Field(default=None, max_length=160)
     owner_semantic_role: str | None = Field(default=None, max_length=160)
-    specialist_name: AgentCanvasSpecialistNameV2 | Literal["quick_media_agent"]
+    specialist_name: AgentCanvasSpecialistNameV2
     display_name: str = Field(min_length=1, max_length=256)
     checksum: str = Field(min_length=1, max_length=160)

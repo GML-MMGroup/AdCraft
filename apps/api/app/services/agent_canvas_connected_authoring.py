@@ -49,7 +49,6 @@ class AgentCanvasConnectedAuthoringService:
         if (
             request.node.clone_inputs_from_node_id is not None
             or request.node.source_asset_id is not None
-            or request.node.video_skill_run_id is not None
         ):
             raise V2PersistenceError(
                 "connected_node_payload_invalid",
@@ -63,7 +62,7 @@ class AgentCanvasConnectedAuthoringService:
             node_id=f"node_{uuid4().hex}",
             workflow_id=workflow_id,
             node_type=request.node.node_type,
-            semantic_role=request.node.semantic_role,
+            creative_role=request.node.creative_role,
             role_contract_version=request.node.role_contract_version,
             title=request.node.title,
             status="draft",
@@ -74,7 +73,6 @@ class AgentCanvasConnectedAuthoringService:
             parameters=request.node.parameters,
             prompt_context_snapshot_id=None,
             output_asset_id=None,
-            video_skill_run_id=None,
             position=request.node.position,
             revision=1,
             error=None,
@@ -111,18 +109,17 @@ class AgentCanvasConnectedAuthoringService:
         binding = CanvasBindingV2(
             binding_id=f"binding_{uuid4().hex}",
             workflow_id=workflow_id,
-            source=CanvasBindingSourceNodeV2(node_id=source.node_id),
+            source=CanvasBindingSourceNodeV2(source_node_id=source.node_id),
             target_node_id=target.node_id,
-            binding_kind=decision.binding_kind or "brief_context",
-            input_role=decision.input_role or "instruction",
+            input_role=decision.input_role or "text_context",
             required=request.binding.required,
-            display_order=min(
-                request.binding.display_order
-                if request.binding.display_order is not None
-                else len(incoming),
+            enabled=True,
+            order=min(
+                request.binding.order if request.binding.order is not None else len(incoming),
                 len(incoming),
             ),
             created_at=now,
+            updated_at=now,
         )
         return self._workflows.add_connected_node(
             node=node,
@@ -135,8 +132,7 @@ class AgentCanvasConnectedAuthoringService:
 
 def _input_type(binding_kind: str) -> str:
     return {
-        "brief_context": "text",
-        "script_context": "text",
+        "text_context": "text",
         "image_reference": "image",
         "video_reference": "video",
         "audio_reference": "audio",

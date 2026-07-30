@@ -45,8 +45,8 @@ class AdReferenceBundleResolver:
         for binding in workflow.bindings:
             if binding.target_node_id != node_id:
                 continue
-            if binding.source.kind == "node":
-                source = nodes.get(binding.source.node_id)
+            if binding.source.kind == "node_output":
+                source = nodes.get(binding.source.source_node_id)
                 if source is None or source.status != "ready" or not source.output_asset_id:
                     raise _error(
                         "role_reference_bundle_invalid",
@@ -54,7 +54,7 @@ class AdReferenceBundleResolver:
                     )
                 asset_id = source.output_asset_id
                 source_node_id = source.node_id
-                source_role = source.semantic_role
+                source_role = source.creative_role
             else:
                 asset_id = binding.source.asset_id
                 source_node_id = None

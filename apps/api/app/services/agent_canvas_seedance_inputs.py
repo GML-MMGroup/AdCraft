@@ -181,17 +181,15 @@ def _with_reference_purposes(
     node: CanvasNodeV2,
     media_inputs: tuple[SeedanceMediaInputV1, ...],
 ) -> tuple[SeedanceMediaInputV1, ...]:
-    if node.semantic_role != "storyboard_video_segment":
-        return media_inputs
     return tuple(
         item.model_copy(
             update={
                 "reference_purpose": (
                     "storyboard_sequence"
-                    if item.media_type == "image" and item.source_semantic_role == "storyboard_grid"
-                    else "scene_reference"
                     if item.media_type == "image"
-                    and item.source_semantic_role == "scene_design_board"
+                    and item.source_semantic_role == "storyboard_sequence"
+                    else "scene_reference"
+                    if item.media_type == "image" and item.source_semantic_role == "scene"
                     else None
                 )
             }
