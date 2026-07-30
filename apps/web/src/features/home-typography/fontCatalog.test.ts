@@ -19,6 +19,36 @@ describe("home typography font catalog", () => {
       .toEqual(new Set(["local", "system", "web"]));
   });
 
+  it("includes the extended web font set for sans, serif, display, and mono exploration", () => {
+    const webFontIds = new Set(
+      FONT_CATALOG
+        .filter((font) => font.source === "web")
+        .map((font) => font.id),
+    );
+
+    expect([...webFontIds]).toEqual(expect.arrayContaining([
+      "geist",
+      "sora",
+      "outfit",
+      "urbanist",
+      "instrument-sans",
+      "ibm-plex-sans",
+      "bodoni-moda",
+      "lora",
+      "newsreader",
+      "source-serif-4",
+      "spectral",
+      "crimson-pro",
+      "syne",
+      "bricolage-grotesque",
+      "abril-fatface",
+      "unbounded",
+      "space-mono",
+      "fira-code",
+      "dm-mono",
+    ]));
+  });
+
   it("restores every region to the production defaults", () => {
     const changed = {
       ...DEFAULT_REGION_SETTINGS,
