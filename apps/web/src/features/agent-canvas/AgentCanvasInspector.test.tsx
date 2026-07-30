@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -6,6 +6,7 @@ import type {
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../types-v2.ts";
+import type { ProviderInputsResolvedState } from "./runtime/providerInputsResolved.ts";
 import { AgentCanvasInspector } from "./AgentCanvasInspector.tsx";
 
 function imageNode(prompt: string, revision: number): CanvasNodeV2 {
@@ -274,6 +275,162 @@ describe("AgentCanvasInspector", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Run node" })).toBeNull();
+  });
+
+  it("shows complete ordered Storyboard and Scene Design Board inputs", () => {
+    const target: CanvasNodeV2 = {
+      ...imageNode("Animate the storyboard", 3),
+      node_id: "video-1",
+      node_type: "video",
+      semantic_role: "storyboard_video_segment",
+      title: "Storyboard video",
+    };
+    const storyboard: CanvasNodeV2 = {
+      ...imageNode("Storyboard grid", 2),
+      node_id: "image-storyboard",
+      semantic_role: "storyboard_grid",
+      title: "Storyboard Grid",
+      status: "ready",
+      output_asset_id: "asset-storyboard",
+    };
+    const scene: CanvasNodeV2 = {
+      ...imageNode("Scene board", 2),
+      node_id: "image-scene",
+      semantic_role: "scene_design_board",
+      title: "Scene Design Board",
+      status: "ready",
+      output_asset_id: "asset-scene",
+    };
+    const currentWorkflow: AgentCanvasWorkflowV2 = {
+      ...workflow(target),
+      nodes: [target, scene, storyboard],
+      bindings: [
+        {
+          binding_id: "binding-scene",
+          workflow_id: "workflow-1",
+          source: { kind: "node", node_id: scene.node_id },
+          target_node_id: target.node_id,
+          binding_kind: "image_reference",
+          input_role: "visual_reference",
+          required: false,
+          display_order: 2,
+          created_at: "2026-07-30T00:00:00Z",
+        },
+        {
+          binding_id: "binding-storyboard",
+          workflow_id: "workflow-1",
+          source: { kind: "node", node_id: storyboard.node_id },
+          target_node_id: target.node_id,
+          binding_kind: "image_reference",
+          input_role: "visual_reference",
+          required: true,
+          display_order: 1,
+          created_at: "2026-07-30T00:00:00Z",
+        },
+      ],
+      assets: [
+        {
+          asset_id: "asset-storyboard",
+          media_type: "image",
+          source_type: "generated",
+          display_name: "Storyboard Grid",
+          mime_type: "image/png",
+          status: "ready",
+          preview_url: "/storyboard-grid.png",
+          media_url: "/storyboard-grid.png",
+          width: 1536,
+          height: 1024,
+          duration_seconds: null,
+          checksum: "storyboard-checksum",
+          source_semantic_role: "storyboard_grid",
+        },
+        {
+          asset_id: "asset-scene",
+          media_type: "image",
+          source_type: "generated",
+          display_name: "Scene Design Board",
+          mime_type: "image/png",
+          status: "ready",
+          preview_url: "/scene-board.png",
+          media_url: "/scene-board.png",
+          width: 1536,
+          height: 1024,
+          duration_seconds: null,
+          checksum: "scene-checksum",
+          source_semantic_role: "scene_design_board",
+        },
+      ],
+    };
+    const resolvedInputs: ProviderInputsResolvedState = {
+      node_id: target.node_id,
+      model_id: "seedance-2",
+      input_counts: { image: 2 },
+      inputs: [
+        {
+          binding_id: "binding-storyboard",
+          asset_id: "asset-storyboard",
+          source_node_id: null,
+          source_type: null,
+          media_type: "image",
+          input_role: "visual_reference",
+          source_semantic_role: "storyboard_grid",
+          reference_purpose: "storyboard_sequence",
+          required: true,
+          display_order: 1,
+          label: "Image 1",
+        },
+        {
+          binding_id: "binding-scene",
+          asset_id: "asset-scene",
+          source_node_id: null,
+          source_type: null,
+          media_type: "image",
+          input_role: "visual_reference",
+          source_semantic_role: "scene_design_board",
+          reference_purpose: "scene_reference",
+          required: false,
+          display_order: 2,
+          label: "Image 2",
+        },
+      ],
+      requested_duration_seconds: 30,
+      effective_duration_seconds: 15,
+      normalizations: ["duration_clamped_to_provider_limit"],
+      omitted_optional_inputs: [],
+      event_seq: 21,
+    };
+
+    render(
+      <AgentCanvasInspector
+        workflow={currentWorkflow}
+        node={target}
+        resolvedInputs={resolvedInputs}
+        patchNode={vi.fn()}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const section = screen.getByRole("region", { name: "Connected inputs" });
+    const inputs = within(section).getAllByTestId("agent-canvas-connected-input");
+    expect(inputs).toHaveLength(2);
+    expect(within(inputs[0]!).getByText("Image 1")).toBeTruthy();
+    expect(within(inputs[0]!).getByText("Storyboard Grid")).toBeTruthy();
+    expect(within(inputs[0]!).getByText("Required")).toBeTruthy();
+    expect(within(inputs[1]!).getByText("Image 2")).toBeTruthy();
+    expect(within(inputs[1]!).getByText("Scene Design Board")).toBeTruthy();
+    expect(within(inputs[1]!).getByText("Optional")).toBeTruthy();
+    expect((within(inputs[0]!).getByRole("img") as HTMLImageElement).src)
+      .toContain("/storyboard-grid.png");
+    expect((within(inputs[1]!).getByRole("img") as HTMLImageElement).src)
+      .toContain("/scene-board.png");
+    expect(screen.getByText(/adjusted to a 15-second clip/i)).toBeTruthy();
   });
 
   it("rehydrates a canonical Ready variation and saves it before generating only a sibling", async () => {

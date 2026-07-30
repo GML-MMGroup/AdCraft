@@ -12,6 +12,7 @@ describe("Agent Canvas SSE subscriptions", () => {
       "binding_created",
       "binding_removed",
       "asset_published",
+      "provider_inputs_resolved",
       "node_run_started",
       "editing_export_completed",
       "agent_command_plan_created",

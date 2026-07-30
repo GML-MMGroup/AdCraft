@@ -276,7 +276,7 @@ async function requestV2Response(
       : typeof detail === "string"
         ? detail
         : `Request failed with status ${response.status}`;
-    const details = asRecord(detailRecord?.details) ?? {};
+    const details = structuredErrorDetails(detailRecord);
     const violations = Array.isArray(detailRecord?.violations)
       ? detailRecord.violations
       : Array.isArray(details.violations)
@@ -1382,6 +1382,27 @@ function normalizeWorkflowV2PlanFromChatResponse(value: unknown): V2PlanFromChat
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function structuredErrorDetails(
+  detail: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (!detail) return {};
+  const reserved = new Set([
+    "code",
+    "message",
+    "details",
+    "stage",
+    "violations",
+    "suggested_actions",
+  ]);
+  const inline = Object.fromEntries(
+    Object.entries(detail).filter(([key]) => !reserved.has(key)),
+  );
+  return {
+    ...inline,
+    ...(asRecord(detail.details) ?? {}),
+  };
 }
 
 function recordsFrom(value: unknown): Array<Record<string, unknown>> {

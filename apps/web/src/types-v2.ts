@@ -1479,6 +1479,14 @@ export type CanvasBindingKindV2 =
   | "video_reference"
   | "audio_reference";
 
+export type CanvasInputRoleV2 =
+  | "instruction"
+  | "visual_reference"
+  | "first_frame"
+  | "motion_reference"
+  | "source_video"
+  | "audio_reference";
+
 export type AgentCanvasAssetMediaTypeV2 = "image" | "video" | "audio";
 
 export type AgentCanvasAssetSourceTypeV2 = "upload" | "generated" | "recommended" | "library" | "editing_export";
@@ -1562,6 +1570,7 @@ export interface CanvasBindingV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
   binding_kind: CanvasBindingKindV2;
+  input_role: CanvasInputRoleV2;
   required: boolean;
   display_order: number;
   created_at: string;
@@ -1580,6 +1589,7 @@ export interface ProjectAssetSummaryV2 {
   height: number | null;
   duration_seconds: number | null;
   checksum: string;
+  source_semantic_role?: string | null;
 }
 
 export interface AgentCanvasWorkflowV2 {
@@ -1603,6 +1613,10 @@ export interface ResolvedTextInputSnapshotV2 {
   document_kind: "text" | "script";
   content: string;
   content_hash: string;
+  binding_id: string | null;
+  input_role: CanvasInputRoleV2;
+  required: boolean;
+  display_order: number;
 }
 
 export interface ResolvedMediaInputSnapshotV2 {
@@ -1611,10 +1625,15 @@ export interface ResolvedMediaInputSnapshotV2 {
   source_node_id: string | null;
   source_node_revision: number | null;
   binding_kind: "image_reference" | "video_reference" | "audio_reference";
+  source_semantic_role: string | null;
   asset_id: string;
   media_type: AgentCanvasAssetMediaTypeV2;
   asset_checksum: string;
   access_descriptor: StorageAccessDescriptorV2;
+  binding_id: string | null;
+  input_role: CanvasInputRoleV2;
+  required: boolean;
+  display_order: number;
 }
 
 export type ResolvedInputSnapshotV2 = ResolvedTextInputSnapshotV2 | ResolvedMediaInputSnapshotV2;
@@ -1637,6 +1656,10 @@ export interface NodeRuntimeV2 {
   execution_id: string | null;
   provider_task_id: string | null;
   waiting_for_node_ids: string[];
+  blocked_by_node_ids: string[];
+  requested_duration_seconds: number | null;
+  effective_duration_seconds: number | null;
+  normalizations: string[];
   attempt_no: number;
   updated_at: string;
   error: CanvasNodeErrorV2 | null;
@@ -1674,6 +1697,11 @@ export interface ProviderModelCapabilityV2 {
   output_type: AgentCanvasAssetMediaTypeV2;
   accepted_input_types: Array<"text" | "image" | "video" | "audio">;
   max_references: number;
+  reference_limits: {
+    image?: number;
+    video?: number;
+    audio?: number;
+  };
   supported_parameters: string[];
   supported_aspect_ratios: string[];
   duration_range_seconds: [number, number] | null;
@@ -2145,6 +2173,13 @@ export interface CanvasBindingCreateRequestV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
   binding_kind: CanvasBindingKindV2;
+  input_role?: CanvasInputRoleV2;
+  required?: boolean;
+  display_order?: number;
+}
+
+export interface CanvasBindingPatchRequestV2 {
+  input_role?: CanvasInputRoleV2;
   required?: boolean;
   display_order?: number;
 }

@@ -44,11 +44,14 @@ import {
 import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgrounds.tsx";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import {
-  bindingKindForSourceNode,
   findAvailableCanvasPosition,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvas/canvasGraphModel.ts";
+import {
+  bindingRequestForImageAsset,
+  bindingRequestForNode,
+} from "./canvas/bindingRequests.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
@@ -60,6 +63,8 @@ import {
 } from "./model/nodeDefaults.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
+import { blockedUpstreamNodeIds } from "./runtime/runtimeAttention.ts";
+import { presentAgentCanvasRunError } from "./runtime/runErrorPresentation.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
 import { AgentCanvasInspector } from "./AgentCanvasInspector.tsx";
 import "@xyflow/react/dist/style.css";
@@ -204,14 +209,29 @@ export function AgentCanvasPage() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
+  const [attentionNodeIds, setAttentionNodeIds] = useState<string[]>([]);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+
+  const runNodeWithFeedback = useCallback(async (
+    node: CanvasNodeV2,
+    options: { retryFailed?: boolean } = {},
+  ) => {
+    setSurfaceError(null);
+    setAttentionNodeIds([]);
+    try {
+      await runNode(node, options);
+    } catch (error) {
+      const presentation = presentAgentCanvasRunError(error, workflow);
+      setSurfaceError(presentation.message);
+      setAttentionNodeIds(presentation.attentionNodeIds);
+      throw new Error(presentation.message);
+    }
+  }, [runNode, workflow]);
 
   const runNodeById = useCallback((nodeId: string, retryFailed = false) => {
     const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
-    if (node) void runNode(node, { retryFailed }).catch((error) => {
-      setSurfaceError(error instanceof Error ? error.message : "Node run failed.");
-    });
-  }, [runNode, workflow?.nodes]);
+    if (node) void runNodeWithFeedback(node, { retryFailed }).catch(() => {});
+  }, [runNodeWithFeedback, workflow?.nodes]);
 
   const openEditing = useCallback((nodeId: string) => {
     setEditingNodeId(nodeId);
@@ -229,10 +249,20 @@ export function AgentCanvasPage() {
   }), [openEditing, runNodeById, setSelectedNodeId]);
 
   const canonicalNodes = useMemo(
-    () => workflow
-      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks)
-      : [],
-    [live.state.runtime, nodeCallbacks, workflow],
+    () => {
+      if (!workflow) return [];
+      const highlighted = new Set([
+        ...attentionNodeIds,
+        ...blockedUpstreamNodeIds(live.state.runtime),
+      ]);
+      return toAgentCanvasFlowNodes(
+        workflow,
+        live.state.runtime,
+        nodeCallbacks,
+        highlighted,
+      );
+    },
+    [attentionNodeIds, live.state.runtime, nodeCallbacks, workflow],
   );
   const edges = useMemo(
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings) : [],
@@ -271,13 +301,11 @@ export function AgentCanvasPage() {
     if (!source || !target) return;
     setSurfaceError(null);
     try {
-      await createBinding({
-        source: { kind: "node", node_id: source.node_id },
-        target_node_id: connection.target,
-        binding_kind: bindingKindForSourceNode(source),
-        required: false,
-        display_order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
-      });
+      await createBinding(bindingRequestForNode(
+        source,
+        connection.target,
+        workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
+      ));
     } catch (error) {
       if (isV2ApiError(error) && error.code === "binding_model_incompatible") {
         const compatible = Array.isArray(error.details.compatible_model_ids)
@@ -326,6 +354,18 @@ export function AgentCanvasPage() {
     }
   }, [cancelRun]);
 
+  const runAllWithFeedback = useCallback(async () => {
+    setSurfaceError(null);
+    setAttentionNodeIds([]);
+    try {
+      await runAll();
+    } catch (error) {
+      const presentation = presentAgentCanvasRunError(error, workflow);
+      setSurfaceError(presentation.message);
+      setAttentionNodeIds(presentation.attentionNodeIds);
+    }
+  }, [runAll, workflow]);
+
   const createNode = useCallback(async (nodeType: CanvasNodeTypeV2) => {
     if (!workflow) return;
     const instance = flowRef.current;
@@ -352,13 +392,11 @@ export function AgentCanvasPage() {
     const targetNodeId = session.state.selectedNode.node_id;
     const startOrder = workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length;
     for (const [index, selection] of selections.entries()) {
-      await createBinding({
-        source: { kind: "image_asset", asset_id: selection.assetId },
-        target_node_id: targetNodeId,
-        binding_kind: "image_reference",
-        required: false,
-        display_order: startOrder + index,
-      });
+      await createBinding(bindingRequestForImageAsset(
+        selection.assetId,
+        targetNodeId,
+        startOrder + index,
+      ));
     }
   }, [createBinding, session.state.selectedNode, workflow]);
 
@@ -559,9 +597,7 @@ export function AgentCanvasPage() {
               aria-label="Run all draft nodes"
               title="Run all"
               disabled={live.state.runPending}
-              onClick={() => void runAll().catch((error) => {
-                setSurfaceError(error instanceof Error ? error.message : "Run could not start.");
-              })}
+              onClick={() => void runAllWithFeedback()}
             >
               <PlayIcon />
             </button>
@@ -586,7 +622,10 @@ export function AgentCanvasPage() {
             providerCapabilities={providerModels.capabilities}
             providerCapabilitiesLoading={providerModels.loading}
             providerCapabilitiesError={providerModels.error}
-            onRun={runNode}
+            resolvedInputs={
+              live.state.resolvedInputsByNodeId[session.state.selectedNode.node_id] ?? null
+            }
+            onRun={runNodeWithFeedback}
             onSaveVariation={saveVariationDraft}
             onDiscardVariation={discardVariationDraft}
             onMaterializeVariation={materializeVariationDraft}
@@ -603,6 +642,7 @@ export function AgentCanvasPage() {
             className="agent-canvas-notice"
             onClick={() => {
               setSurfaceError(null);
+              setAttentionNodeIds([]);
               clearAuthoringError();
             }}
           >

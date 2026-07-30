@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { v2Api } from "./v2Client.ts";
+import { V2ApiError, v2Api } from "./v2Client.ts";
 import { v2EtagStore } from "./v2EtagStore.ts";
 
 const emptyWorkflow = {
@@ -217,6 +217,28 @@ describe("Agent Canvas client", () => {
     }, "export-key");
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("preserves structured top-level Agent Canvas run error details", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      detail: {
+        code: "upstream_inputs_not_ready",
+        message: "Required upstream inputs are not ready.",
+        missing_node_ids: ["node-storyboard", "node-scene"],
+      },
+    }, { status: 409 })));
+
+    const error = await v2Api.runAgentCanvas("workflow-1", {
+      scope: "selected_nodes",
+      node_ids: ["node-video-1"],
+      retry_failed: false,
+      source_action: "node_run",
+    }, "run-key").catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(V2ApiError);
+    expect((error as V2ApiError).details).toEqual({
+      missing_node_ids: ["node-storyboard", "node-scene"],
+    });
   });
 
   it("uses semantic ETags for command actions and Ready variation authoring", async () => {

@@ -17,6 +17,9 @@ import type {
   ProviderModelCapabilityV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
+import { AgentCanvasConnectedInputs } from "./AgentCanvasConnectedInputs.tsx";
+import type { ProviderInputsResolvedState } from "./runtime/providerInputsResolved.ts";
+import { presentAgentCanvasNodeError } from "./runtime/runErrorPresentation.ts";
 
 type PatchNode = (
   nodeId: string,
@@ -38,6 +41,7 @@ export function AgentCanvasInspector({
   providerCapabilities = [],
   providerCapabilitiesLoading = false,
   providerCapabilitiesError = null,
+  resolvedInputs = null,
   onRun,
   onSaveVariation,
   onDiscardVariation,
@@ -53,6 +57,7 @@ export function AgentCanvasInspector({
   providerCapabilities?: ProviderModelCapabilityV2[];
   providerCapabilitiesLoading?: boolean;
   providerCapabilitiesError?: string | null;
+  resolvedInputs?: ProviderInputsResolvedState | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
   onSaveVariation: (
     nodeId: string,
@@ -136,11 +141,6 @@ export function AgentCanvasInspector({
     !modelId
     || providerCapabilities.some((capability) => capability.model_id === modelId)
   );
-  const inboundReferences = workflow.bindings.filter((binding) =>
-    binding.target_node_id === node.node_id
-    && binding.source.kind === "image_asset",
-  );
-
   async function perform(action: () => Promise<unknown>): Promise<boolean> {
     setPending(true);
     setError(null);
@@ -302,15 +302,16 @@ export function AgentCanvasInspector({
           </label>
         ) : null}
 
-        {inboundReferences.length ? (
-          <div className="agent-canvas-inspector__references">
-            <span>Image references</span>
-            {inboundReferences.map((binding) => (
-              <code key={binding.binding_id}>
-                {binding.source.kind === "image_asset" ? binding.source.asset_id : ""}
-              </code>
-            ))}
-          </div>
+        <AgentCanvasConnectedInputs
+          workflow={workflow}
+          nodeId={node.node_id}
+          resolvedInputs={resolvedInputs}
+        />
+
+        {node.error ? (
+          <p className="agent-canvas-inspector__error" role="alert">
+            {presentAgentCanvasNodeError(node.error)}
+          </p>
         ) : null}
 
         {isReadyMedia ? (

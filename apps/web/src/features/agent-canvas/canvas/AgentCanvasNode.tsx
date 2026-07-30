@@ -50,6 +50,7 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
   disabled?: boolean;
+  attention?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
 }
@@ -62,6 +63,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   runtime?: NodeRuntimeV2 | null;
   selected?: boolean;
   disabled?: boolean;
+  attention?: boolean;
 }
 
 function firstString(record: Record<string, unknown>, keys: string[]) {
@@ -200,6 +202,7 @@ export function AgentCanvasNodeCard({
   runtime,
   selected = false,
   disabled = false,
+  attention = false,
   onRun,
   onRetry,
   onExport,
@@ -218,6 +221,7 @@ export function AgentCanvasNodeCard({
         `agent-canvas-node--${node.node_type}`,
         `agent-canvas-node--${status}`,
         selected ? "agent-canvas-node--selected" : "",
+        attention ? "agent-canvas-node--attention" : "",
       ].filter(Boolean).join(" ")}
       data-testid={`agent-canvas-node-${node.node_id}`}
       data-node-type={node.node_type}
@@ -298,6 +302,7 @@ export function AgentCanvasNodeRenderer({
         runtime={data.runtime}
         selected={selected}
         disabled={data.disabled}
+        attention={data.attention}
         onRun={data.onRun}
         onRetry={data.onRetry}
         onExport={data.onExport}

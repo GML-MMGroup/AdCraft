@@ -5,6 +5,7 @@ import type {
   AgentCanvasWorkflowV2,
   CanvasBindingKindV2,
   CanvasBindingV2,
+  CanvasInputRoleV2,
   CanvasNodeV2,
   CanvasLayoutPositionV2,
   CanvasPositionV2,
@@ -21,6 +22,13 @@ export function bindingKindForSourceNode(node: CanvasNodeV2): CanvasBindingKindV
   if (node.node_type === "image") return "image_reference";
   if (node.node_type === "audio") return "audio_reference";
   return "video_reference";
+}
+
+export function inputRoleForSourceNode(node: CanvasNodeV2): CanvasInputRoleV2 {
+  if (node.node_type === "image") return "visual_reference";
+  if (node.node_type === "video" || node.node_type === "editing") return "source_video";
+  if (node.node_type === "audio") return "audio_reference";
+  return "instruction";
 }
 
 export function findAvailableCanvasPosition(
@@ -99,6 +107,7 @@ export function toAgentCanvasFlowNodes(
   workflow: AgentCanvasWorkflowV2,
   runtime: CanvasRuntimeSnapshotV2 | null,
   callbacks: AgentCanvasNodeCallbacks,
+  attentionNodeIds: ReadonlySet<string> = new Set(),
 ): AgentCanvasFlowNode[] {
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
   return workflow.nodes.map((node) => ({
@@ -109,6 +118,7 @@ export function toAgentCanvasFlowNodes(
       node,
       asset: node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null,
       runtime: runtime?.node_runtime[node.node_id] ?? null,
+      attention: attentionNodeIds.has(node.node_id),
       ...callbacks,
     },
   }));

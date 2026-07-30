@@ -18,6 +18,7 @@ import {
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
+  normalizeResolvedTextInputSnapshotV2,
 } from "./normalizers.ts";
 
 function validWorkflowPayload() {
@@ -87,6 +88,7 @@ function validWorkflowPayload() {
         source: { kind: "node", node_id: "node-text-1" },
         target_node_id: "node-image-1",
         binding_kind: "brief_context",
+        input_role: "instruction",
         required: true,
         display_order: 0,
         created_at: "2026-07-28T10:06:30Z",
@@ -97,6 +99,7 @@ function validWorkflowPayload() {
         source: { kind: "image_asset", asset_id: "asset-library-1" },
         target_node_id: "node-image-1",
         binding_kind: "image_reference",
+        input_role: "visual_reference",
         required: false,
         display_order: 1,
         created_at: "2026-07-28T10:06:31Z",
@@ -116,6 +119,7 @@ function validWorkflowPayload() {
         height: 1024,
         duration_seconds: null,
         checksum: "sha256-output-1",
+        source_semantic_role: "storyboard_grid",
       },
       {
         asset_id: "asset-library-1",
@@ -444,6 +448,17 @@ describe("Agent Canvas normalizers", () => {
     ).toThrowError(/source/i);
   });
 
+  it("accepts canonical binding input roles and rejects domain-specific roles", () => {
+    expect(normalizeCanvasBindingV2(validWorkflowPayload().bindings[1]).input_role)
+      .toBe("visual_reference");
+    expect(() =>
+      normalizeCanvasBindingV2({
+        ...validWorkflowPayload().bindings[1],
+        input_role: "storyboard_sequence",
+      }),
+    ).toThrowError(/input_role/i);
+  });
+
   it("rejects malformed runtime payloads", () => {
     expect(() =>
       normalizeCanvasRuntimeSnapshotV2({
@@ -562,6 +577,11 @@ describe("Agent Canvas normalizers", () => {
         output_type: "video",
         accepted_input_types: ["text", "image"],
         max_references: 4,
+        reference_limits: {
+          image: 9,
+          video: 3,
+          audio: 3,
+        },
         supported_parameters: [],
         supported_aspect_ratios: ["16:9"],
         duration_range_seconds: [3, 12],
@@ -573,6 +593,11 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(capabilities[0]?.supports_native_audio).toBe(true);
+    expect(capabilities[0]?.reference_limits).toEqual({
+      image: 9,
+      video: 3,
+      audio: 3,
+    });
   });
 
   it("normalizes the persisted Agent Canvas conversation timeline", () => {
@@ -645,6 +670,11 @@ describe("Agent Canvas normalizers", () => {
       source_node_id: "node-image-1",
       source_node_revision: 2,
       binding_kind: "image_reference",
+      binding_id: "binding-image-1",
+      input_role: "visual_reference",
+      required: true,
+      display_order: 2,
+      source_semantic_role: "storyboard_grid",
       asset_id: "asset-output-1",
       media_type: "image",
       asset_checksum: "checksum-1",
@@ -655,7 +685,14 @@ describe("Agent Canvas normalizers", () => {
         checksum: "checksum-1",
       },
     };
-    expect(normalizeResolvedMediaInputSnapshotV2(nodeSnapshot).source_node_id).toBe("node-image-1");
+    expect(normalizeResolvedMediaInputSnapshotV2(nodeSnapshot)).toMatchObject({
+      source_node_id: "node-image-1",
+      binding_id: "binding-image-1",
+      input_role: "visual_reference",
+      required: true,
+      display_order: 2,
+      source_semantic_role: "storyboard_grid",
+    });
     expect(() =>
       normalizeResolvedMediaInputSnapshotV2({
         ...nodeSnapshot,
@@ -671,6 +708,28 @@ describe("Agent Canvas normalizers", () => {
         },
       }),
     ).toThrowError(/media_url/i);
+  });
+
+  it("preserves ordered binding metadata on resolved text inputs", () => {
+    expect(normalizeResolvedTextInputSnapshotV2({
+      snapshot_type: "text",
+      source_kind: "node",
+      source_node_id: "node-script-1",
+      source_node_revision: 4,
+      binding_kind: "script_context",
+      document_kind: "script",
+      content: "Open on the product.",
+      content_hash: "sha256-script",
+      binding_id: "binding-script-1",
+      input_role: "instruction",
+      required: true,
+      display_order: 0,
+    })).toMatchObject({
+      binding_id: "binding-script-1",
+      input_role: "instruction",
+      required: true,
+      display_order: 0,
+    });
   });
 
   it("accepts joined Run and idempotently completed Editing export responses", () => {

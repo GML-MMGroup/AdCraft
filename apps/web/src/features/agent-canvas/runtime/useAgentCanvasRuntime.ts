@@ -14,6 +14,10 @@ import {
   normalizeProjectAssetSummaryV2,
 } from "../model/normalizers.ts";
 import { AGENT_CANVAS_SSE_EVENT_TYPES } from "./eventTypes.ts";
+import {
+  parseProviderInputsResolvedEvent,
+  type ProviderInputsResolvedState,
+} from "./providerInputsResolved.ts";
 import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
@@ -34,6 +38,9 @@ export function useAgentCanvasRuntime(
   const [runPending, setRunPending] = useState(false);
   const [chatRevision, setChatRevision] = useState(0);
   const [chatEvents, setChatEvents] = useState<CanvasRuntimeEventV2[]>([]);
+  const [resolvedInputsByNodeId, setResolvedInputsByNodeId] = useState<
+    Record<string, ProviderInputsResolvedState>
+  >({});
   const cursorRef = useRef(0);
   const runtimeRefreshRef = useRef<Promise<void> | null>(null);
   const workflowRefreshRef = useRef<Promise<void> | null>(null);
@@ -62,6 +69,7 @@ export function useAgentCanvasRuntime(
     setRuntimeError(null);
     setChatEvents([]);
     setChatRevision(0);
+    setResolvedInputsByNodeId({});
   }, [workflowId]);
 
   const refreshRuntime = useCallback(async () => {
@@ -181,6 +189,17 @@ export function useAgentCanvasRuntime(
   const processEvent = useCallback((event: CanvasRuntimeEventV2) => {
     if (event.seq <= cursorRef.current) return;
     cursorRef.current = event.seq;
+    const resolvedInputs = parseProviderInputsResolvedEvent(event);
+    if (resolvedInputs) {
+      setResolvedInputsByNodeId((current) => {
+        const existing = current[resolvedInputs.node_id];
+        if (existing && existing.event_seq >= resolvedInputs.event_seq) return current;
+        return {
+          ...current,
+          [resolvedInputs.node_id]: resolvedInputs,
+        };
+      });
+    }
     const policy = runtimeEventPolicy(event);
     if (policy.refreshRuntime) void refreshRuntime();
     if (policy.refreshWorkflow) void refreshWorkflow();
@@ -361,6 +380,7 @@ export function useAgentCanvasRuntime(
       runPending,
       chatRevision,
       chatEvents,
+      resolvedInputsByNodeId,
     },
     actions: {
       refreshRuntime,

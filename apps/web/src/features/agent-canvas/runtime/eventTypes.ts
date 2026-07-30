@@ -15,6 +15,7 @@ export const AGENT_CANVAS_SSE_EVENT_TYPES = [
   "node_failed",
   "node_cancelled",
   "node_run_cancelled",
+  "provider_inputs_resolved",
   "provider_execution_started",
   "provider_task_submitted",
   "provider_task_waiting",

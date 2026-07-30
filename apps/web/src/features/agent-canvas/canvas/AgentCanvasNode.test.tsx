@@ -188,6 +188,15 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
   });
 
+  it("highlights a required upstream node without changing its visible status", () => {
+    const node = makeNode("image", "draft");
+    render(<AgentCanvasNodeCard node={node} attention />);
+
+    const card = screen.getByTestId(`agent-canvas-node-${node.node_id}`);
+    expect(card.classList.contains("agent-canvas-node--attention")).toBe(true);
+    expect(card.dataset.nodeStatus).toBe("draft");
+  });
+
   it("renders image and video posters with the same full-bleed media surface", () => {
     const imageView = render(
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,

@@ -12,6 +12,7 @@ import type {
   AgentPlacementHintV2,
   BindingCapabilityDecisionV2,
   CanvasBindingKindV2,
+  CanvasInputRoleV2,
   CanvasBindingSourceImageAssetV2,
   CanvasBindingSourceNodeV2,
   CanvasBindingSourceV2,
@@ -77,6 +78,14 @@ const CANVAS_BINDING_KINDS = new Set<CanvasBindingKindV2>([
   "script_context",
   "image_reference",
   "video_reference",
+  "audio_reference",
+]);
+const CANVAS_INPUT_ROLES = new Set<CanvasInputRoleV2>([
+  "instruction",
+  "visual_reference",
+  "first_frame",
+  "motion_reference",
+  "source_video",
   "audio_reference",
 ]);
 const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
@@ -163,6 +172,13 @@ const RECEIPT_STATUSES = new Set<AgentActionReceiptV2["status"]>([
   "rejected",
   "failed",
 ]);
+
+function defaultInputRole(bindingKind: CanvasBindingKindV2): CanvasInputRoleV2 {
+  if (bindingKind === "image_reference") return "visual_reference";
+  if (bindingKind === "video_reference") return "source_video";
+  if (bindingKind === "audio_reference") return "audio_reference";
+  return "instruction";
+}
 
 function fail(path: string, message: string): never {
   throw new Error(`Invalid ${path}: ${message}`);
@@ -307,6 +323,21 @@ function expectUnknownRecord(value: unknown, path: string) {
 function optionalUnknownRecord(value: unknown, path: string, defaultValue: JsonRecord = {}) {
   if (value === undefined) return defaultValue;
   return expectUnknownRecord(value, path);
+}
+
+function normalizeReferenceLimits(
+  value: unknown,
+  path: string,
+): ProviderModelCapabilityV2["reference_limits"] {
+  if (value === undefined) return {};
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["image", "video", "audio"], path);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, limit]) => [
+      key,
+      expectNonNegativeInteger(limit, `${path}.${key}`),
+    ]),
+  );
 }
 
 function expectNullableRecord(value: unknown, path: string) {
@@ -491,13 +522,17 @@ export function normalizeCanvasBindingSourceV2(value: unknown, path = "binding.s
 
 export function normalizeCanvasBindingV2(value: unknown, path = "binding"): CanvasBindingV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["binding_id", "workflow_id", "source", "target_node_id", "binding_kind", "required", "display_order", "created_at"], path);
+  forbidUnknownFields(record, ["binding_id", "workflow_id", "source", "target_node_id", "binding_kind", "input_role", "required", "display_order", "created_at"], path);
+  const bindingKind = expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`);
   return {
     binding_id: expectNonEmptyString(record.binding_id, `${path}.binding_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     source: normalizeCanvasBindingSourceV2(record.source, `${path}.source`),
     target_node_id: expectNonEmptyString(record.target_node_id, `${path}.target_node_id`),
-    binding_kind: expectLiteral(record.binding_kind, CANVAS_BINDING_KINDS, `${path}.binding_kind`),
+    binding_kind: bindingKind,
+    input_role: record.input_role === undefined
+      ? defaultInputRole(bindingKind)
+      : expectLiteral(record.input_role, CANVAS_INPUT_ROLES, `${path}.input_role`),
     required: expectBoolean(record.required, `${path}.required`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
@@ -521,6 +556,7 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
       "height",
       "duration_seconds",
       "checksum",
+      "source_semantic_role",
     ],
     path,
   );
@@ -537,6 +573,9 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
     height: nullablePositiveInteger(record.height, `${path}.height`),
     duration_seconds: nullableNonNegativeNumber(record.duration_seconds, `${path}.duration_seconds`),
     checksum: expectNonEmptyString(record.checksum, `${path}.checksum`),
+    source_semantic_role: record.source_semantic_role === undefined
+      ? null
+      : nullableString(record.source_semantic_role, `${path}.source_semantic_role`),
   };
 }
 
@@ -564,16 +603,29 @@ export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"
 
 export function normalizeResolvedTextInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedTextInputSnapshotV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "document_kind", "content", "content_hash"], path);
+  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "document_kind", "content", "content_hash", "binding_id", "input_role", "required", "display_order"], path);
+  const bindingKind = expectLiteral(record.binding_kind, RESOLVED_TEXT_BINDING_KINDS, `${path}.binding_kind`);
   return {
     snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedTextInputSnapshotV2["snapshot_type"]>(["text"]), `${path}.snapshot_type`),
     source_kind: expectLiteral(record.source_kind, new Set<ResolvedTextInputSnapshotV2["source_kind"]>(["node"]), `${path}.source_kind`),
     source_node_id: expectNonEmptyString(record.source_node_id, `${path}.source_node_id`),
     source_node_revision: expectPositiveInteger(record.source_node_revision, `${path}.source_node_revision`),
-    binding_kind: expectLiteral(record.binding_kind, RESOLVED_TEXT_BINDING_KINDS, `${path}.binding_kind`),
+    binding_kind: bindingKind,
     document_kind: expectLiteral(record.document_kind, RESOLVED_DOCUMENT_KINDS, `${path}.document_kind`),
     content: expectString(record.content, `${path}.content`),
     content_hash: expectNonEmptyString(record.content_hash, `${path}.content_hash`),
+    binding_id: record.binding_id === undefined
+      ? null
+      : nullableString(record.binding_id, `${path}.binding_id`),
+    input_role: record.input_role === undefined
+      ? "instruction"
+      : expectLiteral(record.input_role, CANVAS_INPUT_ROLES, `${path}.input_role`),
+    required: record.required === undefined
+      ? true
+      : expectBoolean(record.required, `${path}.required`),
+    display_order: record.display_order === undefined
+      ? 0
+      : expectNonNegativeInteger(record.display_order, `${path}.display_order`),
   };
 }
 
@@ -597,7 +649,7 @@ export function normalizeStorageAccessDescriptorV2(
 
 export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "resolvedInput"): ResolvedMediaInputSnapshotV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "asset_id", "media_type", "asset_checksum", "access_descriptor"], path);
+  forbidUnknownFields(record, ["snapshot_type", "source_kind", "source_node_id", "source_node_revision", "binding_kind", "source_semantic_role", "asset_id", "media_type", "asset_checksum", "access_descriptor", "binding_id", "input_role", "required", "display_order"], path);
   const sourceKind = expectLiteral(
     record.source_kind,
     new Set<ResolvedMediaInputSnapshotV2["source_kind"]>(["node", "image_asset"]),
@@ -613,16 +665,32 @@ export function normalizeResolvedMediaInputSnapshotV2(value: unknown, path = "re
   if (sourceKind === "image_asset" && (sourceNodeId !== null || sourceNodeRevision !== null)) {
     fail(path, "image asset media source cannot include node identity");
   }
+  const bindingKind = expectLiteral(record.binding_kind, RESOLVED_MEDIA_BINDING_KINDS, `${path}.binding_kind`);
   return {
     snapshot_type: expectLiteral(record.snapshot_type, new Set<ResolvedMediaInputSnapshotV2["snapshot_type"]>(["media"]), `${path}.snapshot_type`),
     source_kind: sourceKind,
     source_node_id: sourceNodeId,
     source_node_revision: sourceNodeRevision,
-    binding_kind: expectLiteral(record.binding_kind, RESOLVED_MEDIA_BINDING_KINDS, `${path}.binding_kind`),
+    binding_kind: bindingKind,
+    source_semantic_role: record.source_semantic_role === undefined
+      ? null
+      : nullableString(record.source_semantic_role, `${path}.source_semantic_role`),
     asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
     media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
     asset_checksum: expectNonEmptyString(record.asset_checksum, `${path}.asset_checksum`),
     access_descriptor: normalizeStorageAccessDescriptorV2(record.access_descriptor, `${path}.access_descriptor`),
+    binding_id: record.binding_id === undefined
+      ? null
+      : nullableString(record.binding_id, `${path}.binding_id`),
+    input_role: record.input_role === undefined
+      ? defaultInputRole(bindingKind)
+      : expectLiteral(record.input_role, CANVAS_INPUT_ROLES, `${path}.input_role`),
+    required: record.required === undefined
+      ? true
+      : expectBoolean(record.required, `${path}.required`),
+    display_order: record.display_order === undefined
+      ? 0
+      : expectNonNegativeInteger(record.display_order, `${path}.display_order`),
   };
 }
 
@@ -636,7 +704,7 @@ export function normalizeResolvedInputSnapshotV2(value: unknown, path = "resolve
 
 export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runtime"): NodeRuntimeV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["node_id", "visible_status", "phase", "execution_id", "provider_task_id", "waiting_for_node_ids", "attempt_no", "updated_at", "error"], path);
+  forbidUnknownFields(record, ["node_id", "visible_status", "phase", "execution_id", "provider_task_id", "waiting_for_node_ids", "blocked_by_node_ids", "requested_duration_seconds", "effective_duration_seconds", "normalizations", "attempt_no", "updated_at", "error"], path);
   const phase = optionalNullableLiteral(record.phase, NODE_RUNTIME_PHASES, `${path}.phase`);
   return {
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
@@ -645,6 +713,14 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     execution_id: nullableString(record.execution_id, `${path}.execution_id`),
     provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
     waiting_for_node_ids: optionalStringArray(record.waiting_for_node_ids, `${path}.waiting_for_node_ids`, []),
+    blocked_by_node_ids: optionalStringArray(record.blocked_by_node_ids, `${path}.blocked_by_node_ids`, []),
+    requested_duration_seconds: record.requested_duration_seconds === undefined
+      ? null
+      : nullableNonNegativeNumber(record.requested_duration_seconds, `${path}.requested_duration_seconds`),
+    effective_duration_seconds: record.effective_duration_seconds === undefined
+      ? null
+      : nullableNonNegativeNumber(record.effective_duration_seconds, `${path}.effective_duration_seconds`),
+    normalizations: optionalStringArray(record.normalizations, `${path}.normalizations`, []),
     attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
@@ -731,6 +807,7 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
       "output_type",
       "accepted_input_types",
       "max_references",
+      "reference_limits",
       "supported_parameters",
       "supported_aspect_ratios",
       "duration_range_seconds",
@@ -749,6 +826,7 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
       expectLiteral(item, PROVIDER_INPUT_TYPES, `${path}.accepted_input_types[${index}]`),
     ),
     max_references: expectNonNegativeInteger(record.max_references, `${path}.max_references`),
+    reference_limits: normalizeReferenceLimits(record.reference_limits, `${path}.reference_limits`),
     supported_parameters: expectStringArray(record.supported_parameters, `${path}.supported_parameters`),
     supported_aspect_ratios: expectStringArray(record.supported_aspect_ratios, `${path}.supported_aspect_ratios`),
     duration_range_seconds: record.duration_range_seconds === null ? null : expectTuple2Number(record.duration_range_seconds, `${path}.duration_range_seconds`),

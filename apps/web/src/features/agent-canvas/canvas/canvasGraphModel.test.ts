@@ -9,6 +9,7 @@ import {
   bindingKindForSourceNode,
   findAvailableCanvasPosition,
   incrementalPlacementForNodes,
+  inputRoleForSourceNode,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvasGraphModel.ts";
@@ -105,7 +106,7 @@ describe("canvasGraphModel", () => {
       onRetry: vi.fn(),
       onExport: vi.fn(),
       onOpenMedia: vi.fn(),
-    });
+    }, new Set(["image-1"]));
 
     expect(nodes).toHaveLength(2);
     expect(nodes[0]).toMatchObject({
@@ -116,6 +117,7 @@ describe("canvasGraphModel", () => {
         node: { node_id: "image-1" },
         asset: { asset_id: "asset-1" },
         runtime: { visible_status: "working" },
+        attention: true,
       },
     });
   });
@@ -135,6 +137,17 @@ describe("canvasGraphModel", () => {
     expect(bindingKindForSourceNode(node("video", "video"))).toBe("video_reference");
     expect(bindingKindForSourceNode(node("audio", "audio"))).toBe("audio_reference");
     expect(bindingKindForSourceNode(node("editing", "editing"))).toBe("video_reference");
+  });
+
+  it.each([
+    ["text", "instruction"],
+    ["script", "instruction"],
+    ["image", "visual_reference"],
+    ["video", "source_video"],
+    ["audio", "audio_reference"],
+    ["editing", "source_video"],
+  ] as const)("maps %s sources to the canonical %s role", (nodeType, expectedRole) => {
+    expect(inputRoleForSourceNode(node("source", nodeType))).toBe(expectedRole);
   });
 
   it("places a new node near the preferred point without overlapping existing cards", () => {

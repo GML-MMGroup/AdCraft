@@ -177,4 +177,62 @@ describe("useAgentCanvasRuntime", () => {
     await waitFor(() => expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200));
     expect(result.current.state.chatEvents).toEqual([]);
   });
+
+  it("stores the latest redacted provider inputs by node ID", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_after_seq: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+
+    eventSource.emit("provider_inputs_resolved", {
+      seq: 43,
+      workflow_id: "workflow-1",
+      event_type: "provider_inputs_resolved",
+      execution_id: "execution-1",
+      node_id: "node-video-1",
+      asset_id: null,
+      binding_id: null,
+      created_at: "2026-07-30T00:00:00Z",
+      payload: {
+        node_id: "node-video-1",
+        model_id: "seedance-2",
+        inputs: [{
+          binding_id: "binding-storyboard",
+          asset_id: "asset-storyboard",
+          media_type: "image",
+          input_role: "visual_reference",
+          source_semantic_role: "storyboard_grid",
+          reference_purpose: "storyboard_sequence",
+          required: true,
+          display_order: 0,
+          label: "Image 1",
+        }],
+        requested_duration_seconds: 30,
+        effective_duration_seconds: 15,
+        normalizations: ["duration_clamped_to_provider_limit"],
+      },
+    });
+
+    await waitFor(() => expect(
+      result.current.state.resolvedInputsByNodeId["node-video-1"],
+    ).toMatchObject({
+      model_id: "seedance-2",
+      inputs: [{
+        binding_id: "binding-storyboard",
+        label: "Image 1",
+      }],
+      effective_duration_seconds: 15,
+    }));
+  });
 });
