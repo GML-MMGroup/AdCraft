@@ -212,6 +212,7 @@ async function handleRun(
   } catch (error) {
     if (!terminalEmitted) {
       const failure = safeRuntimeFailure(error);
+      logStructuredRejectionDiagnostic(request, failure);
       const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
         event(request, 0, terminal.eventType, {
@@ -300,6 +301,25 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");
   }
   return undefined;
+}
+
+function logStructuredRejectionDiagnostic(
+  request: AgentRunRequest,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (failure?.code !== "agent_structured_output_invalid") return;
+  console.warn(
+    JSON.stringify({
+      event: "agent_structured_submission_rejected",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      stage: "structured_submission",
+      safe_error_code: failure.code,
+      exception_class: failure.constructor.name,
+      retryable: false,
+    }),
+  );
 }
 
 async function readJson(incoming: IncomingMessage, maximumBytes: number): Promise<unknown> {

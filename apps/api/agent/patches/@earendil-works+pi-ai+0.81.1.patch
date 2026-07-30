@@ -1,0 +1,24 @@
+diff --git a/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js b/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
+index a7718b4..d8256ee 100644
+--- a/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
++++ b/node_modules/@earendil-works/pi-ai/dist/api/openai-completions.js
+@@ -221,7 +221,7 @@ export const stream = (model, context, options) => {
+                     block = {
+                         type: "toolCall",
+                         id: toolCall.id || "",
+-                        name: toolCall.function?.name || "",
++                        name: "",
+                         arguments: {},
+                         partialArgs: "",
+                         streamIndex,
+@@ -327,8 +327,8 @@ export const stream = (model, context, options) => {
+                                 block.id = toolCall.id;
+                                 toolCallBlocksById.set(toolCall.id, block);
+                             }
+-                            if (!block.name && toolCall.function?.name) {
+-                                block.name = toolCall.function.name;
++                            if (toolCall.function?.name) {
++                                block.name += toolCall.function.name;
+                             }
+                             let delta = "";
+                             if (toolCall.function?.arguments) {

@@ -7,6 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "postinstall": "patch-package",
     "start": "tsx src/main.ts",
     "build": "tsc",
     "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.30",
+    "patch-package": "^8.0.0",
     "tsx": "4.20.3",
     "typescript": "5.8.3",
     "vitest": "3.2.7"
