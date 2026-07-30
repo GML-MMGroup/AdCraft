@@ -139,5 +139,20 @@ describe("runtimeEventPolicy", () => {
       refreshWorkflow: true,
       refreshRuntime: false,
     });
+    expect(event("canvas_binding_updated")).toMatchObject({
+      refreshChat: false,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+    expect(event("guided_action_applied")).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: false,
+    });
+    expect(event("layout_updated")).toMatchObject({
+      refreshChat: false,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
   });
 });

@@ -3,7 +3,6 @@ import { MarkerType, type Edge } from "@xyflow/react";
 import type {
   AgentPlacementHintV2,
   AgentCanvasWorkflowV2,
-  CanvasBindingKindV2,
   CanvasBindingV2,
   CanvasNodeV2,
   CanvasLayoutPositionV2,
@@ -14,14 +13,6 @@ import type {
   AgentCanvasFlowNode,
   AgentCanvasNodeCallbacks,
 } from "./AgentCanvasNode.tsx";
-
-export function bindingKindForSourceNode(node: CanvasNodeV2): CanvasBindingKindV2 {
-  if (node.node_type === "text") return "brief_context";
-  if (node.node_type === "script") return "script_context";
-  if (node.node_type === "image") return "image_reference";
-  if (node.node_type === "audio") return "audio_reference";
-  return "video_reference";
-}
 
 export function findAvailableCanvasPosition(
   nodes: Pick<CanvasNodeV2, "position">[],
@@ -115,10 +106,10 @@ export function toAgentCanvasFlowNodes(
 }
 
 export function toAgentCanvasFlowEdges(bindings: CanvasBindingV2[]): Edge[] {
-  return bindings.flatMap((binding) => binding.source.kind === "node"
+  return bindings.flatMap((binding) => binding.enabled && binding.source.kind === "node_output"
     ? [{
         id: binding.binding_id,
-        source: binding.source.node_id,
+        source: binding.source.source_node_id,
         target: binding.target_node_id,
         sourceHandle: "output",
         targetHandle: "input",

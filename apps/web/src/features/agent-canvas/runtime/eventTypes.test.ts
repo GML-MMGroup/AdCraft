@@ -26,6 +26,11 @@ describe("Agent Canvas SSE subscriptions", () => {
       "canvas_variation_draft_discarded",
       "canvas_variation_materialized",
       "canvas_layout_updated",
+      "canvas_binding_updated",
+      "layout_updated",
+      "guided_action_created",
+      "guided_action_applied",
+      "provider_inputs_resolved",
     ]));
   });
 });

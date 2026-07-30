@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createOperationKey } from "../../api/operationKey.ts";
-import { isV2ApiError, v2Api } from "../../api/v2Client.ts";
+import { v2Api } from "../../api/v2Client.ts";
 import {
   AssetsIcon,
   CloseIcon,
@@ -26,6 +26,8 @@ import {
   VideoIcon,
 } from "../../icons.tsx";
 import type {
+  CanvasBindingInputRoleV2,
+  CanvasConnectionPolicyV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
   ProjectAssetSummaryV2,
@@ -41,21 +43,22 @@ import {
   type AgentCanvasFlowNode,
   type AgentCanvasNodeCallbacks,
 } from "./canvas/index.ts";
+import { AgentCanvasConnectedNodeMenu } from "./canvas/AgentCanvasConnectedNodeMenu.tsx";
 import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgrounds.tsx";
+import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import {
-  bindingKindForSourceNode,
   findAvailableCanvasPosition,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvas/canvasGraphModel.ts";
+import { connectionRuleForPair } from "./canvas/connectionPolicy.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
   AGENT_CANVAS_NODE_LABELS,
   createDefaultCanvasNodeRequest,
-  sourceAssetSemanticRole,
   sourceAssetStructuredContent,
 } from "./model/nodeDefaults.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
@@ -168,6 +171,7 @@ export function AgentCanvasPage() {
     applyWorkflow,
     clearAuthoringError,
     createBinding,
+    createConnectedNode,
     createNode: createCanvasNode,
     discardVariationDraft,
     deleteBinding,
@@ -176,6 +180,7 @@ export function AgentCanvasPage() {
     mergeNode,
     mergePublishedAsset,
     patchNode,
+    patchBinding,
     placeActionReceiptNodes,
     saveVariationDraft,
     setSelectedNodeId,
@@ -204,7 +209,27 @@ export function AgentCanvasPage() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
+  const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
+  const [connectedNodeMenu, setConnectedNodeMenu] = useState<{
+    anchorNodeId: string;
+    direction: "upstream" | "downstream";
+    point: { x: number; y: number };
+  } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void v2Api.agentCanvasConnectionPolicy()
+      .then((policy) => {
+        if (active) setConnectionPolicy(policy);
+      })
+      .catch((error) => {
+        if (active) setSurfaceError(canvasAuthoringErrorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const runNodeById = useCallback((nodeId: string, retryFailed = false) => {
     const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
@@ -225,6 +250,10 @@ export function AgentCanvasPage() {
     onOpenMedia: (nodeId, assetId) => {
       setSelectedNodeId(nodeId);
       setMediaAssetId(assetId);
+    },
+    onOpenConnectedNodeMenu: (nodeId, direction, point) => {
+      setSelectedNodeId(nodeId);
+      setConnectedNodeMenu({ anchorNodeId: nodeId, direction, point });
     },
   }), [openEditing, runNodeById, setSelectedNodeId]);
 
@@ -265,34 +294,32 @@ export function AgentCanvasPage() {
   }, [onNodesChange]);
 
   const connect = useCallback(async (connection: Connection) => {
-    if (!workflow || !connection.source || !connection.target || connection.source === connection.target) return;
+    if (!workflow || !connectionPolicy || !connection.source || !connection.target || connection.source === connection.target) {
+      if (!connectionPolicy) setSurfaceError("Connection policy is still loading.");
+      return;
+    }
     const source = workflow.nodes.find((node) => node.node_id === connection.source);
     const target = workflow.nodes.find((node) => node.node_id === connection.target);
     if (!source || !target) return;
+    const rule = connectionRuleForPair(connectionPolicy, source.node_type, target.node_type);
+    if (!rule) {
+      setSurfaceError("These node types cannot be connected.");
+      return;
+    }
     setSurfaceError(null);
     try {
       await createBinding({
-        source: { kind: "node", node_id: source.node_id },
+        source: { kind: "node_output", source_node_id: source.node_id },
         target_node_id: connection.target,
-        binding_kind: bindingKindForSourceNode(source),
-        required: false,
-        display_order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
+        input_role: rule.default_role,
+        required: true,
+        enabled: true,
+        order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
       });
     } catch (error) {
-      if (isV2ApiError(error) && error.code === "binding_model_incompatible") {
-        const compatible = Array.isArray(error.details.compatible_model_ids)
-          ? error.details.compatible_model_ids.filter((value): value is string => typeof value === "string")
-          : [];
-        setSurfaceError(
-          compatible.length
-            ? `The selected model cannot use this input. Choose ${compatible.join(", ")} in the node settings.`
-            : "The selected model cannot use this input. Choose a compatible model in the node settings.",
-        );
-      } else {
-        setSurfaceError(error instanceof Error ? error.message : "The nodes could not be connected.");
-      }
+      setSurfaceError(canvasAuthoringErrorMessage(error));
     }
-  }, [createBinding, workflow]);
+  }, [connectionPolicy, createBinding, workflow]);
 
   const recoverDeletedCanvasState = useCallback(async () => {
     setNodes(canonicalNodes);
@@ -353,11 +380,12 @@ export function AgentCanvasPage() {
     const startOrder = workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length;
     for (const [index, selection] of selections.entries()) {
       await createBinding({
-        source: { kind: "image_asset", asset_id: selection.assetId },
+        source: { kind: "image_asset", source_asset_id: selection.assetId },
         target_node_id: targetNodeId,
-        binding_kind: "image_reference",
-        required: false,
-        display_order: startOrder + index,
+        input_role: "image_reference",
+        required: true,
+        enabled: true,
+        order: startOrder + index,
       });
     }
   }, [createBinding, session.state.selectedNode, workflow]);
@@ -371,7 +399,11 @@ export function AgentCanvasPage() {
     const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition);
     await createCanvasNode({
       node_type: selection.mediaType,
-      semantic_role: sourceAssetSemanticRole(selection.mediaType),
+      creative_role: selection.mediaType === "image"
+        ? "general_image"
+        : selection.mediaType === "video"
+          ? "general_video"
+          : "general_audio",
       role_contract_version: "ad-media-role-v1",
       title: selection.displayName,
       structured_content: sourceAssetStructuredContent(
@@ -383,6 +415,42 @@ export function AgentCanvasPage() {
       source_asset_id: selection.assetId,
     });
   }, [createCanvasNode, workflow]);
+
+  const createConnectedNodeFromMenu = useCallback(async (
+    nodeType: CanvasNodeTypeV2,
+    inputRole: CanvasBindingInputRoleV2,
+  ) => {
+    if (!workflow || !connectedNodeMenu) return;
+    const anchor = workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId);
+    if (!anchor) return;
+    const preferred = {
+      x: anchor.position.x + (connectedNodeMenu.direction === "downstream" ? 340 : -340),
+      y: anchor.position.y,
+    };
+    const position = findAvailableCanvasPosition(workflow.nodes, preferred);
+    const targetNodeId = connectedNodeMenu.direction === "downstream"
+      ? null
+      : anchor.node_id;
+    const order = targetNodeId
+      ? workflow.bindings.filter((binding) => binding.target_node_id === targetNodeId).length
+      : 0;
+    setConnectedNodeMenu(null);
+    setSurfaceError(null);
+    try {
+      await createConnectedNode({
+        anchor_node_id: anchor.node_id,
+        direction: connectedNodeMenu.direction,
+        node: createDefaultCanvasNodeRequest(nodeType, position),
+        binding: {
+          input_role: inputRole,
+          required: true,
+          order,
+        },
+      });
+    } catch (error) {
+      setSurfaceError(canvasAuthoringErrorMessage(error));
+    }
+  }, [connectedNodeMenu, createConnectedNode, workflow]);
 
   const saveImageToLibrary = useCallback(async (
     assetId: string,
@@ -444,6 +512,9 @@ export function AgentCanvasPage() {
   const mediaAsset = mediaAssetId
     ? workflow.assets.find((asset) => asset.asset_id === mediaAssetId) ?? null
     : null;
+  const connectedMenuAnchor = connectedNodeMenu
+    ? workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId) ?? null
+    : null;
   const running = Boolean(live.state.runtime?.active_execution_id);
   const proposalPreferredPosition = flowRef.current?.screenToFlowPosition({
     x: window.innerWidth * 0.46,
@@ -491,6 +562,7 @@ export function AgentCanvasPage() {
           onPaneClick={() => {
             setSelectedNodeId(null);
             setAddMenuOpen(false);
+            setConnectedNodeMenu(null);
           }}
           onMoveEnd={(_event, viewport) => writeViewport(workflow.workflow_id, viewport)}
           fitView={false}
@@ -583,6 +655,9 @@ export function AgentCanvasPage() {
             workflow={workflow}
             node={session.state.selectedNode}
             patchNode={patchNode}
+            patchBinding={patchBinding}
+            deleteBinding={deleteBinding}
+            connectionPolicy={connectionPolicy}
             providerCapabilities={providerModels.capabilities}
             providerCapabilitiesLoading={providerModels.loading}
             providerCapabilitiesError={providerModels.error}
@@ -641,6 +716,17 @@ export function AgentCanvasPage() {
 
         {mediaAsset ? (
           <MediaViewer asset={mediaAsset} onClose={() => setMediaAssetId(null)} />
+        ) : null}
+
+        {connectedNodeMenu && connectedMenuAnchor && connectionPolicy ? (
+          <AgentCanvasConnectedNodeMenu
+            anchorNode={connectedMenuAnchor}
+            direction={connectedNodeMenu.direction}
+            point={connectedNodeMenu.point}
+            policy={connectionPolicy}
+            onSelect={(nodeType, inputRole) => void createConnectedNodeFromMenu(nodeType, inputRole)}
+            onClose={() => setConnectedNodeMenu(null)}
+          />
         ) : null}
       </div>
 

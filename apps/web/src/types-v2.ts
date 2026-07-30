@@ -1472,12 +1472,29 @@ export type CanvasNodeTypeV2 = "text" | "script" | "image" | "video" | "audio" |
 
 export type CanvasNodeStatusV2 = "draft" | "working" | "ready" | "failed";
 
-export type CanvasBindingKindV2 =
-  | "brief_context"
-  | "script_context"
+export type CanvasCreativeRoleV2 =
+  | "creative_brief"
+  | "script"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "storyboard_sequence"
+  | "storyboard_video"
+  | "bgm"
+  | "general_text"
+  | "general_image"
+  | "general_video"
+  | "general_audio"
+  | "editing";
+
+export type CanvasBindingInputRoleV2 =
+  | "text_context"
   | "image_reference"
   | "video_reference"
   | "audio_reference";
+
+export type CanvasBindingKindV2 = CanvasBindingInputRoleV2;
 
 export type AgentCanvasAssetMediaTypeV2 = "image" | "video" | "audio";
 
@@ -1524,7 +1541,7 @@ export interface CanvasNodeV2 {
   node_id: string;
   workflow_id: string;
   node_type: CanvasNodeTypeV2;
-  semantic_role: string;
+  creative_role: CanvasCreativeRoleV2;
   role_contract_version: "ad-media-role-v1";
   title: string;
   status: CanvasNodeStatusV2;
@@ -1535,7 +1552,6 @@ export interface CanvasNodeV2 {
   parameters: Record<string, unknown>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
-  video_skill_run_id: string | null;
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
@@ -1545,13 +1561,13 @@ export interface CanvasNodeV2 {
 }
 
 export interface CanvasBindingSourceNodeV2 {
-  kind: "node";
-  node_id: string;
+  kind: "node_output";
+  source_node_id: string;
 }
 
 export interface CanvasBindingSourceImageAssetV2 {
   kind: "image_asset";
-  asset_id: string;
+  source_asset_id: string;
 }
 
 export type CanvasBindingSourceV2 = CanvasBindingSourceNodeV2 | CanvasBindingSourceImageAssetV2;
@@ -1561,25 +1577,42 @@ export interface CanvasBindingV2 {
   workflow_id: string;
   source: CanvasBindingSourceV2;
   target_node_id: string;
-  binding_kind: CanvasBindingKindV2;
+  input_role: CanvasBindingInputRoleV2;
   required: boolean;
-  display_order: number;
+  enabled: boolean;
+  order: number;
+  label: string | null;
+  metadata: Record<string, unknown>;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ProjectAssetSummaryV2 {
   asset_id: string;
+  project_id: string | null;
+  workflow_id: string | null;
   media_type: AgentCanvasAssetMediaTypeV2;
   source_type: AgentCanvasAssetSourceTypeV2;
+  semantic_type: string | null;
   display_name: string;
   mime_type: string;
   status: ProjectAssetStatusV2;
+  size_bytes: number;
+  storage_key: string | null;
   preview_url: string | null;
   media_url: string | null;
   width: number | null;
   height: number | null;
   duration_seconds: number | null;
   checksum: string;
+  source_semantic_role: string | null;
+  source_node_id: string | null;
+  source_execution_id: string | null;
+  provider: string | null;
+  model_id: string | null;
+  prompt_provenance: Record<string, unknown>;
+  quality_metadata: Record<string, unknown>;
+  created_at: string | null;
 }
 
 export interface AgentCanvasWorkflowV2 {
@@ -1594,27 +1627,40 @@ export interface AgentCanvasWorkflowV2 {
   assets: ProjectAssetSummaryV2[];
 }
 
+export interface AgentCanvasProjectCreateResponseV2 extends AgentCanvasWorkflowV2 {
+  creative_session_id: string;
+}
+
 export interface ResolvedTextInputSnapshotV2 {
   snapshot_type: "text";
-  source_kind: "node";
+  source_kind: "node_output";
   source_node_id: string;
   source_node_revision: number;
-  binding_kind: "brief_context" | "script_context";
+  binding_kind: "text_context";
   document_kind: "text" | "script";
   content: string;
   content_hash: string;
+  binding_id: string | null;
+  input_role: "text_context";
+  required: boolean;
+  display_order: number;
 }
 
 export interface ResolvedMediaInputSnapshotV2 {
   snapshot_type: "media";
-  source_kind: "node" | "image_asset";
+  source_kind: "node_output" | "image_asset";
   source_node_id: string | null;
   source_node_revision: number | null;
   binding_kind: "image_reference" | "video_reference" | "audio_reference";
+  source_semantic_role: string | null;
   asset_id: string;
   media_type: AgentCanvasAssetMediaTypeV2;
   asset_checksum: string;
   access_descriptor: StorageAccessDescriptorV2;
+  binding_id: string | null;
+  input_role: CanvasBindingInputRoleV2;
+  required: boolean;
+  display_order: number;
 }
 
 export type ResolvedInputSnapshotV2 = ResolvedTextInputSnapshotV2 | ResolvedMediaInputSnapshotV2;
@@ -1637,6 +1683,7 @@ export interface NodeRuntimeV2 {
   execution_id: string | null;
   provider_task_id: string | null;
   waiting_for_node_ids: string[];
+  blocked_by_node_ids: string[];
   attempt_no: number;
   updated_at: string;
   error: CanvasNodeErrorV2 | null;
@@ -1660,10 +1707,16 @@ export interface CanvasRuntimeEventV2 {
   seq: number;
   workflow_id: string;
   event_type: string;
+  project_id: string | null;
   execution_id: string | null;
   node_id: string | null;
   asset_id: string | null;
   binding_id: string | null;
+  conversation_id: string | null;
+  turn_id: string | null;
+  action_id: string | null;
+  trace_id: string | null;
+  span_id: string | null;
   created_at: string;
   payload: Record<string, unknown> | null;
 }
@@ -1674,6 +1727,7 @@ export interface ProviderModelCapabilityV2 {
   output_type: AgentCanvasAssetMediaTypeV2;
   accepted_input_types: Array<"text" | "image" | "video" | "audio">;
   max_references: number;
+  reference_limits: Partial<Record<AgentCanvasAssetMediaTypeV2, number>>;
   supported_parameters: string[];
   supported_aspect_ratios: string[];
   duration_range_seconds: [number, number] | null;
@@ -1702,9 +1756,16 @@ export type SpecialistAgentNameV2 =
   | "scene_designer"
   | "storyboard_artist"
   | "video_director"
-  | "bgm_director";
+  | "bgm_director"
+  | "quick_media_agent";
 
-export type PlanningTopicStatusV2 = "pending" | "in_review" | "resolved" | "skipped" | "not_required";
+export type PlanningTopicStatusV2 =
+  | "pending"
+  | "in_review"
+  | "resolved"
+  | "skipped"
+  | "not_required"
+  | "deferred";
 
 export interface PlanningTopicStateV2 {
   topic_id: string;
@@ -1744,28 +1805,51 @@ export interface ChatArtifactCardV2 {
 
 export interface ConceptOptionV2 {
   option_id: string;
-  display_name: string;
+  title: string;
   summary_prompt: string;
-  semantic_role: string;
-  proposed_node_type: CanvasNodeTypeV2;
-  reference_node_ids: string[];
-  reference_image_asset_ids: string[];
+}
+
+export interface ProposedDraftReferenceV2 {
+  source_kind: "node" | "image_asset";
+  source_id: string;
+  binding_kind: CanvasBindingKindV2;
+  input_role: CanvasBindingInputRoleV2;
+  required: boolean;
+  display_order: number;
+  display_name: string;
+  media_type: "text" | "image" | "video" | "audio";
 }
 
 export interface ConceptProposalV2 {
   proposal_id: string;
   workflow_id: string;
   turn_id: string;
-  specialist: SpecialistAgentNameV2;
-  status: "pending" | "selected" | "revised" | "skipped" | "superseded";
+  video_skill_run_id: string | null;
+  topic_id: string | null;
+  creative_direction_snapshot_id: string | null;
+  proposal_revision: number;
+  source_proposal_id: string | null;
+  proposal_kind: "script" | "product" | "prop" | "character" | "scene" | "storyboard" | "video" | "bgm";
+  specialist_name: SpecialistAgentNameV2;
+  status: "pending" | "selected" | "revised" | "skipped";
   options: ConceptOptionV2[];
-  workflow_revision: number;
+  proposed_references: ProposedDraftReferenceV2[];
+  selected_option_id: string | null;
   selection_actor: "user" | "agent" | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ChatProposalCardV2 {
   item_type: "proposal";
   proposal: ConceptProposalV2;
+  sequence: number;
+  created_at: string;
+}
+
+export interface ChatProposalPointerV2 {
+  item_type: "proposal_pointer";
+  proposal_id: string;
   sequence: number;
   created_at: string;
 }
@@ -1800,14 +1884,21 @@ export interface AgentImageAssetRefV2 {
   asset_id: string;
 }
 
+export type AgentCommandBindingKindV2 =
+  | "brief_context"
+  | "script_context"
+  | "image_reference"
+  | "video_reference"
+  | "audio_reference";
+
 interface AgentCommandOperationBaseV2 {
   operation_id: string;
 }
 
 export interface AgentCreateNodeOperationV2 extends AgentCommandOperationBaseV2 {
-  operation_type: "create_node";
+  operation_type: "create_draft_node";
   node_type: Exclude<CanvasNodeTypeV2, "editing">;
-  semantic_role: string;
+  creative_role: CanvasCreativeRoleV2;
   title: string;
   summary_prompt: string | null;
   generation_prompt: string | null;
@@ -1834,9 +1925,17 @@ export interface AgentCreateBindingOperationV2 extends AgentCommandOperationBase
   operation_type: "create_binding";
   source: AgentNodeRefV2 | AgentImageAssetRefV2;
   target: AgentNodeRefV2;
-  binding_kind: CanvasBindingKindV2;
+  binding_kind: AgentCommandBindingKindV2;
   required: boolean;
   display_order: number;
+}
+
+export interface AgentPatchBindingOperationV2 extends AgentCommandOperationBaseV2 {
+  operation_type: "patch_binding";
+  binding_id: string;
+  required: boolean | null;
+  enabled: boolean | null;
+  display_order: number | null;
 }
 
 export interface AgentDeleteBindingOperationV2 extends AgentCommandOperationBaseV2 {
@@ -1849,15 +1948,8 @@ export interface AgentDeleteNodeOperationV2 extends AgentCommandOperationBaseV2 
   node: AgentNodeRefV2;
 }
 
-export interface AgentMaterializeProposalOperationV2 extends AgentCommandOperationBaseV2 {
-  operation_type: "materialize_proposal";
-  proposal_id: string;
-  option_id: string;
-  placement_hint: AgentPlacementHintV2;
-}
-
 export interface AgentForkReadyMediaOperationV2 extends AgentCommandOperationBaseV2 {
-  operation_type: "fork_ready_media";
+  operation_type: "materialize_sibling_draft";
   source_node: AgentNodeRefV2;
   title: string;
   generation_prompt: string;
@@ -1872,7 +1964,7 @@ export interface AgentRequestNodeRunOperationV2 extends AgentCommandOperationBas
 }
 
 export interface AgentUpdatePlanningTopicOperationV2 extends AgentCommandOperationBaseV2 {
-  operation_type: "update_planning_topic";
+  operation_type: "update_topic_status";
   skill_run_id: string;
   topic_id: string;
   status: "resolved" | "skipped" | "not_required";
@@ -1883,9 +1975,9 @@ export type AgentCommandOperationV2 =
   | AgentCreateNodeOperationV2
   | AgentPatchEditableNodeOperationV2
   | AgentCreateBindingOperationV2
+  | AgentPatchBindingOperationV2
   | AgentDeleteBindingOperationV2
   | AgentDeleteNodeOperationV2
-  | AgentMaterializeProposalOperationV2
   | AgentForkReadyMediaOperationV2
   | AgentRequestNodeRunOperationV2
   | AgentUpdatePlanningTopicOperationV2;
@@ -1908,13 +2000,16 @@ export interface AgentCommandPlanV2 {
   workflow_id: string;
   conversation_id: string;
   source_turn_id: string;
+  context_snapshot_id: string;
   base_workflow_revision: number;
+  expires_at: string;
   operations: AgentCommandOperationV2[];
   continuation_requested: boolean;
   risk: AgentCommandRiskV2;
   confirmation_required: boolean;
   target_summary: string;
   operation_fingerprint: string;
+  idempotency_key: string;
   status: AgentCommandPlanStatusV2;
   supersedes_plan_id: string | null;
   replacement_plan_id: string | null;
@@ -1943,6 +2038,8 @@ export interface AgentActionReceiptV2 {
   workflow_id: string;
   plan_id: string | null;
   action_id: string | null;
+  actor_kind: "agent" | "user" | "system";
+  idempotency_key: string | null;
   status: AgentActionReceiptStatusV2;
   summary: string;
   created_node_ids: string[];
@@ -1954,10 +2051,12 @@ export interface AgentActionReceiptV2 {
   run_queue_errors: string[];
   operation_results: AgentOperationResultV2[];
   workflow_revision: number;
+  before_workflow_revision: number | null;
   placement_hints: AgentPlacementHintV2[];
   continuation_turn_id: string | null;
   error_code: string | null;
   error_message: string | null;
+  created_at: string;
 }
 
 export interface ChatCommandPlanCardV2 {
@@ -1974,13 +2073,23 @@ export interface ChatActionReceiptCardV2 {
   created_at: string;
 }
 
+export interface ChatGuidedActionsCardV2 {
+  item_type: "guided_actions";
+  source_entry_id: string;
+  actions: GuidedDeliveryActionV2[];
+  sequence: number;
+  created_at: string;
+}
+
 export type ChatTimelineItemV2 =
   | ChatMessageV2
   | ChatArtifactCardV2
   | ChatProposalCardV2
+  | ChatProposalPointerV2
   | ChatExpertActivityV2
   | ChatCommandPlanCardV2
-  | ChatActionReceiptCardV2;
+  | ChatActionReceiptCardV2
+  | ChatGuidedActionsCardV2;
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
@@ -2071,7 +2180,7 @@ export interface AgentCanvasProjectCreateRequestV2 {
 
 export interface CanvasNodeCreateRequestV2 {
   node_type: CanvasNodeTypeV2;
-  semantic_role: string;
+  creative_role: CanvasCreativeRoleV2;
   role_contract_version?: "ad-media-role-v1";
   title: string;
   summary_prompt?: string | null;
@@ -2082,7 +2191,6 @@ export interface CanvasNodeCreateRequestV2 {
   position: CanvasPositionV2;
   clone_inputs_from_node_id?: string | null;
   source_asset_id?: string | null;
-  video_skill_run_id?: string | null;
 }
 
 export interface CanvasNodePatchRequestV2 {
@@ -2144,9 +2252,67 @@ export interface CanvasLayoutPatchResponseV2 {
 export interface CanvasBindingCreateRequestV2 {
   source: CanvasBindingSourceV2;
   target_node_id: string;
-  binding_kind: CanvasBindingKindV2;
+  input_role: CanvasBindingInputRoleV2;
   required?: boolean;
-  display_order?: number;
+  enabled?: boolean;
+  order?: number | null;
+  label?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CanvasBindingPatchRequestV2 {
+  input_role?: CanvasBindingInputRoleV2 | null;
+  required?: boolean | null;
+  enabled?: boolean | null;
+  order?: number | null;
+  label?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface CanvasConnectionRoleRuleV2 {
+  source_node_type: CanvasNodeTypeV2;
+  target_node_type: CanvasNodeTypeV2;
+  roles: CanvasBindingInputRoleV2[];
+  default_role: CanvasBindingInputRoleV2;
+}
+
+export interface CanvasConnectionPolicyV2 {
+  policy_version: "agent_canvas_connection_policy_v1";
+  target_node_types: Record<CanvasNodeTypeV2, CanvasNodeTypeV2[]>;
+  input_roles: CanvasConnectionRoleRuleV2[];
+  image_asset_targets: Partial<Record<CanvasNodeTypeV2, CanvasBindingInputRoleV2[]>>;
+  binding_kind_by_source_type: Record<CanvasNodeTypeV2, CanvasBindingKindV2>;
+  model_validation: Record<string, string>;
+}
+
+export interface CanvasConnectedNodeBindingRequestV2 {
+  input_role: CanvasBindingInputRoleV2;
+  required?: boolean;
+  order?: number | null;
+}
+
+export interface CanvasConnectedNodeCreateRequestV2 {
+  anchor_node_id: string;
+  direction: "upstream" | "downstream";
+  node: CanvasNodeCreateRequestV2;
+  binding: CanvasConnectedNodeBindingRequestV2;
+}
+
+export interface CanvasConnectedNodeCreateResponseV2 {
+  workflow_id: string;
+  revision: number;
+  layout_revision: number;
+  node: CanvasNodeV2;
+  binding: CanvasBindingV2;
+  events_cursor: number;
+}
+
+export interface CanvasBindingMutationResponseV2 {
+  workflow_id: string;
+  revision: number;
+  binding: CanvasBindingV2;
+  incoming_bindings: CanvasBindingV2[];
+  events_cursor: number;
 }
 
 export interface CanvasMutationResponseV2 {
@@ -2191,23 +2357,80 @@ export interface AgentCanvasChatMessageRequestV2 {
   auto_continue: boolean;
 }
 
+export type GuidedDeliveryActionTypeV2 =
+  | "add_another_topic_node"
+  | "generate_node"
+  | "run_all_drafts"
+  | "skip_topic";
+
+export interface GuidedDeliveryActionV2 {
+  action_id: string;
+  action: GuidedDeliveryActionTypeV2;
+  state: "pending" | "applying" | "applied" | "failed";
+  creating_turn_id: string;
+  expected_semantic_revision: number;
+  label: string;
+  workflow_id: string;
+  proposal_id: string | null;
+  topic_id: string | null;
+  node_id: string | null;
+  ordered_node_ids: string[];
+  manifest_revision: number | null;
+  confirmation_required: boolean;
+  reason: string;
+}
+
+export interface CreativeSessionTopicV2 {
+  topic_id: string;
+  topic_kind: string;
+  display_order: number;
+  required: boolean;
+  specialist_name: SpecialistAgentNameV2;
+  status: PlanningTopicStatusV2;
+  outcome: string | null;
+  related_node_ids: string[];
+}
+
+export interface CreativeSessionStateV2 {
+  skill_run_id: string;
+  workflow_id: string;
+  skill_id: string;
+  skill_version: string;
+  status: "active" | "superseded";
+  creative_direction_snapshot_id: string | null;
+  current_topic_id: string | null;
+  topics: CreativeSessionTopicV2[];
+  deferred_topic_ids: string[];
+  memory_revision: number;
+  updated_at: string;
+}
+
 export interface AgentCanvasChatTimelineEntryV2 {
   entry_id: string;
   workflow_id: string;
   conversation_id: string;
   sequence_no: number;
-  entry_type: "message" | "script_artifact" | "command_plan" | "action_receipt";
+  entry_type:
+    | "message"
+    | "script_artifact"
+    | "concept_proposal"
+    | "expert_activity"
+    | "planning_progress"
+    | "command_plan"
+    | "action_receipt";
   speaker: "user" | "adcraft_video_agent" | null;
   content: string;
   metadata: Record<string, unknown>;
   command_plan: AgentCommandPlanV2 | null;
   action_receipt: AgentActionReceiptV2 | null;
+  guided_actions: GuidedDeliveryActionV2[];
   created_at: string;
 }
 
 export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
+  creative_session: CreativeSessionStateV2 | null;
   items: AgentCanvasChatTimelineEntryV2[];
   next_cursor: number;
 }
@@ -2217,7 +2440,7 @@ export interface AgentCanvasChatTurnV2 {
   workflow_id: string;
   conversation_id: string;
   status: "queued" | "running" | "completed" | "failed";
-  turn_kind: "message" | "proposal_action" | "command_action";
+  turn_kind: "message" | "proposal_action" | "command_action" | "guided_action";
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;
@@ -2229,7 +2452,8 @@ export type AgentCanvasProposalActionRequestV2 =
   | {
       action: "select";
       option_id: string;
-      next_action: "generate_now" | "continue_planning";
+      generation_action: "draft_only" | "generate_now";
+      accepted_references?: ProposedDraftReferenceV2[] | null;
       position?: CanvasPositionV2 | null;
       instruction?: null;
     }
@@ -2237,19 +2461,25 @@ export type AgentCanvasProposalActionRequestV2 =
       action: "revise";
       instruction: string;
       option_id?: null;
-      next_action?: null;
+      generation_action?: null;
+      accepted_references?: null;
       position?: null;
     }
   | {
       action: "skip";
       option_id?: null;
-      next_action?: null;
+      generation_action?: null;
+      accepted_references?: null;
       instruction?: null;
       position?: null;
     };
 
 export interface AgentCanvasCommandPlanActionRequestV2 {
   action: "confirm" | "reject";
+}
+
+export interface AgentCanvasGuidedActionApplyRequestV2 {
+  confirmed: boolean;
 }
 
 export interface AgentCanvasVideoSkillRunCreateRequestV2 {

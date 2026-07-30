@@ -6,6 +6,7 @@ import type {
   CanvasNodeV2,
   ProjectAssetSummaryV2,
 } from "../../types-v2.ts";
+import { V2_AUTHORING_DRAFT_DISCARDED_EVENT } from "../../api/v2AuthoringConflictEvents.ts";
 import { AgentCanvasInspector } from "./AgentCanvasInspector.tsx";
 
 function imageNode(prompt: string, revision: number): CanvasNodeV2 {
@@ -13,7 +14,7 @@ function imageNode(prompt: string, revision: number): CanvasNodeV2 {
     node_id: "image-1",
     workflow_id: "workflow-1",
     node_type: "image",
-    semantic_role: "generic_image",
+    creative_role: "general_image",
     role_contract_version: "ad-media-role-v1",
     title: "Image",
     status: "draft",
@@ -24,7 +25,6 @@ function imageNode(prompt: string, revision: number): CanvasNodeV2 {
     parameters: {},
     prompt_context_snapshot_id: null,
     output_asset_id: null,
-    video_skill_run_id: null,
     position: { x: 0, y: 0 },
     revision,
     error: null,
@@ -90,9 +90,52 @@ describe("AgentCanvasInspector", () => {
     view.rerender(
       <AgentCanvasInspector workflow={workflow(refreshed)} node={refreshed} {...props} />,
     );
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, {
+      detail: {
+        target: { resource: "workflow", id: "workflow-1" },
+        operationPath: "/workflows/workflow-1/bindings/binding-2",
+        action: "discard",
+      },
+    }));
 
     expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value)
       .toBe("Unsaved local prompt");
+  });
+
+  it("discards a dirty prompt after the user resolves a workflow conflict with Discard", () => {
+    const first = imageNode("Server prompt", 1);
+    const props = {
+      patchNode: vi.fn(),
+      onRun: vi.fn(),
+      onSaveVariation: vi.fn(),
+      onDiscardVariation: vi.fn(),
+      onMaterializeVariation: vi.fn(),
+      onSaveImageToLibrary: vi.fn(),
+      onDelete: vi.fn(),
+      onOpenEditing: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const view = render(
+      <AgentCanvasInspector workflow={workflow(first)} node={first} {...props} />,
+    );
+    fireEvent.change(screen.getByLabelText("Generation prompt"), {
+      target: { value: "Unsaved local prompt" },
+    });
+
+    const refreshed = imageNode("Latest server prompt", 2);
+    view.rerender(
+      <AgentCanvasInspector workflow={workflow(refreshed)} node={refreshed} {...props} />,
+    );
+    fireEvent(window, new CustomEvent(V2_AUTHORING_DRAFT_DISCARDED_EVENT, {
+      detail: {
+        target: { resource: "workflow", id: "workflow-1" },
+        operationPath: "/workflows/workflow-1/nodes/image-1",
+        action: "discard",
+      },
+    }));
+
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value)
+      .toBe("Latest server prompt");
   });
 
   it("saves a dirty prompt before running the node", async () => {
@@ -131,7 +174,7 @@ describe("AgentCanvasInspector", () => {
       ...imageNode("Write a concise launch film", 1),
       node_id: "script-1",
       node_type: "script",
-      semantic_role: "advertising_script",
+      creative_role: "script",
       title: "Script",
       structured_content: {},
     };
@@ -168,7 +211,7 @@ describe("AgentCanvasInspector", () => {
     const current = {
       ...imageNode("Generated image", 2),
       status: "ready" as const,
-      semantic_role: "product",
+      creative_role: "product",
       output_asset_id: "asset-image-1",
     };
     const onSaveImageToLibrary = vi.fn().mockResolvedValue(undefined);
@@ -247,12 +290,76 @@ describe("AgentCanvasInspector", () => {
     ));
   });
 
+  it("shows every persisted input and edits its role and dependency flags", async () => {
+    const current = imageNode("Generate product", 1);
+    const source = {
+      ...imageNode("Reference", 1),
+      node_id: "source-image",
+      title: "Storyboard Grid",
+      status: "ready" as const,
+    };
+    const currentWorkflow = workflow(current);
+    currentWorkflow.nodes.push(source);
+    currentWorkflow.bindings.push({
+      binding_id: "binding-reference",
+      workflow_id: currentWorkflow.workflow_id,
+      source: { kind: "node_output", source_node_id: source.node_id },
+      target_node_id: current.node_id,
+      input_role: "image_reference",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: "Image 1",
+      metadata: {},
+      created_at: "2026-07-30T08:00:00Z",
+      updated_at: "2026-07-30T08:00:00Z",
+    });
+    const patchBinding = vi.fn().mockResolvedValue(undefined);
+    const deleteBinding = vi.fn().mockResolvedValue(undefined);
+    render(
+      <AgentCanvasInspector
+        workflow={currentWorkflow}
+        node={current}
+        patchNode={vi.fn()}
+        patchBinding={patchBinding}
+        deleteBinding={deleteBinding}
+        onRun={vi.fn()}
+        onSaveVariation={vi.fn()}
+        onDiscardVariation={vi.fn()}
+        onMaterializeVariation={vi.fn()}
+        onSaveImageToLibrary={vi.fn()}
+        onDelete={vi.fn()}
+        onOpenEditing={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Image 1")).toBeTruthy();
+    expect(screen.getByText("Storyboard Grid")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Input role"), {
+      target: { value: "text_context" },
+    });
+    await waitFor(() => expect(patchBinding).toHaveBeenCalledWith(
+      "binding-reference",
+      { input_role: "text_context" },
+    ));
+
+    fireEvent.click(screen.getByLabelText("Required"));
+    await waitFor(() => expect(patchBinding).toHaveBeenCalledWith(
+      "binding-reference",
+      { required: false },
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Image 1" }));
+    await waitFor(() => expect(deleteBinding).toHaveBeenCalledWith("binding-reference"));
+  });
+
   it("does not offer Run for a Ready Script document", () => {
     const current: CanvasNodeV2 = {
       ...imageNode("", 2),
       node_id: "script-ready",
       node_type: "script",
-      semantic_role: "advertising_script",
+      creative_role: "script",
       title: "Approved script",
       status: "ready",
       structured_content: { content: "Open on the product at sunrise." },

@@ -18,6 +18,9 @@ const CHAT_EVENT_FRAGMENTS = [
   "planning_",
   "script_artifact",
   "director_",
+  "guided_action_",
+  "creative_proposal_",
+  "action_receipt_",
 ];
 
 const AUTHORING_EVENT_FRAGMENTS = [
@@ -46,10 +49,15 @@ const AGENT_COMMAND_WORKFLOW_EVENTS = new Set([
 ]);
 
 const AGENT_CANVAS_AUTHORING_EVENTS = new Set([
+  "node_created",
+  "node_updated",
+  "node_deleted",
+  "layout_updated",
   "canvas_variation_draft_saved",
   "canvas_variation_draft_discarded",
   "canvas_variation_materialized",
   "canvas_layout_updated",
+  "layout_updated",
 ]);
 
 export function runtimeEventPolicy(

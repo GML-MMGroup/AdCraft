@@ -6,6 +6,7 @@ import {
   EditIcon,
   ImageIcon,
   PlayIcon,
+  PlusIcon,
   RunCurrentIcon,
   UnmuteIcon,
   UploadIcon,
@@ -43,6 +44,11 @@ export interface AgentCanvasNodeCallbacks {
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
   onOpenMedia?: (nodeId: string, assetId: string) => void;
+  onOpenConnectedNodeMenu?: (
+    nodeId: string,
+    direction: "upstream" | "downstream",
+    point: { x: number; y: number },
+  ) => void;
 }
 
 export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanvasNodeCallbacks {
@@ -290,7 +296,35 @@ export function AgentCanvasNodeRenderer({
           position={Position.Left}
           isConnectable={isConnectable}
           aria-label={`${label} node input`}
-        />
+        >
+          <span
+            className="agent-canvas-node__handle-plus"
+            role="button"
+            tabIndex={0}
+            aria-label={`Add an upstream node to ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onOpenConnectedNodeMenu?.(
+                data.node.node_id,
+                "upstream",
+                { x: event.clientX, y: event.clientY },
+              );
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              data.onOpenConnectedNodeMenu?.(
+                data.node.node_id,
+                "upstream",
+                { x: bounds.left, y: bounds.top },
+              );
+            }}
+          >
+            <PlusIcon />
+          </span>
+        </Handle>
       ) : null}
       <AgentCanvasNodeCard
         node={data.node}
@@ -311,7 +345,35 @@ export function AgentCanvasNodeRenderer({
           position={Position.Right}
           isConnectable={isConnectable}
           aria-label={`${label} node output`}
-        />
+        >
+          <span
+            className="agent-canvas-node__handle-plus"
+            role="button"
+            tabIndex={0}
+            aria-label={`Add a downstream node to ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onOpenConnectedNodeMenu?.(
+                data.node.node_id,
+                "downstream",
+                { x: event.clientX, y: event.clientY },
+              );
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              data.onOpenConnectedNodeMenu?.(
+                data.node.node_id,
+                "downstream",
+                { x: bounds.right, y: bounds.top },
+              );
+            }}
+          >
+            <PlusIcon />
+          </span>
+        </Handle>
       ) : null}
     </div>
   );

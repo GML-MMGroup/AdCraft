@@ -1,6 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { AssetsIcon, CloseIcon, DocumentIcon, EditIcon, SendIcon } from "../../../icons.tsx";
+import {
+  AssetsIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  CloseIcon,
+  DocumentIcon,
+  EditIcon,
+  SendIcon,
+} from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
   AgentActionReceiptV2,
@@ -9,8 +17,10 @@ import type {
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
+  ChatGuidedActionsCardV2,
   ChatProposalCardV2,
   ConceptOptionV2,
+  ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
 import "./agent-canvas-chat.css";
@@ -45,7 +55,6 @@ export function AgentCanvasChatPanel({
     () => workflow.assets.filter((asset) => asset.media_type === "image"),
     [workflow.assets],
   );
-
   async function send() {
     const text = draft.trim();
     if (!text || chat.state.sending) return;
@@ -133,6 +142,17 @@ export function AgentCanvasChatPanel({
               />
             );
           }
+          if (item.item_type === "guided_actions") {
+            return (
+              <GuidedActionsCard
+                key={`guided-${item.source_entry_id}`}
+                card={item}
+                actingActionId={chat.state.actingGuidedActionId}
+                onApply={chat.actions.applyGuidedAction}
+              />
+            );
+          }
+          if (item.item_type === "proposal_pointer") return null;
           return (
             <ProposalCard
               key={`proposal-${item.proposal.proposal_id}`}
@@ -368,7 +388,12 @@ export function ProposalCard({
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
-  onSelect: (proposalId: string, optionId: string, nextAction: "generate_now" | "continue_planning") => Promise<void>;
+  onSelect: (
+    proposalId: string,
+    optionId: string,
+    generationAction: "draft_only" | "generate_now",
+    acceptedReferences: ProposedDraftReferenceV2[],
+  ) => Promise<void>;
   onRevise: (proposalId: string, instruction: string) => Promise<void>;
   onSkip: (proposalId: string) => Promise<void>;
 }) {
@@ -377,10 +402,30 @@ export function ProposalCard({
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
   const proposal = card.proposal;
+  const availableReferences = proposal.proposed_references;
+  const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
+    proposal.proposed_references,
+  );
+  useEffect(() => {
+    setAcceptedReferences(proposal.proposed_references);
+  }, [proposal.proposal_id, proposal.proposal_revision, proposal.proposed_references]);
+
+  function withOrders(references: ProposedDraftReferenceV2[]) {
+    return references.map((reference, index) => ({ ...reference, display_order: index }));
+  }
+
+  function moveReference(index: number, offset: -1 | 1) {
+    const target = index + offset;
+    if (target < 0 || target >= acceptedReferences.length) return;
+    const next = [...acceptedReferences];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    setAcceptedReferences(withOrders(next));
+  }
+
   return (
     <article className="agent-chat__proposal">
       <header>
-        <strong>{proposal.specialist
+        <strong>{proposal.specialist_name
           .split("_")
           .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
           .join(" ")}</strong>
@@ -398,11 +443,96 @@ export function ProposalCard({
               setSelectionConfirmed(false);
             }}
           >
-            <strong>{option.display_name}</strong>
+            <strong>{option.title}</strong>
             <span>{option.summary_prompt}</span>
           </button>
         ))}
       </div>
+      {acceptedReferences.length || proposal.status === "pending" ? (
+        <section className="agent-chat__proposal-references" aria-label="Accepted references">
+          <header>
+            <strong>References</strong>
+            <span>{acceptedReferences.length}</span>
+          </header>
+          {acceptedReferences.map((reference, index) => (
+            <div key={`${reference.source_kind}:${reference.source_id}`}>
+              <span>
+                <strong>{reference.display_name}</strong>
+                <small>{reference.media_type} · {reference.input_role.replaceAll("_", " ")}</small>
+              </span>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={reference.required}
+                  disabled={pending || proposal.status !== "pending"}
+                  onChange={(event) => setAcceptedReferences((current) => current.map((item, itemIndex) => (
+                    itemIndex === index ? { ...item, required: event.currentTarget.checked } : item
+                  )))}
+                />
+                Required
+              </label>
+              <button
+                type="button"
+                aria-label={`Move ${reference.display_name} earlier`}
+                disabled={pending || proposal.status !== "pending" || index === 0}
+                onClick={() => moveReference(index, -1)}
+              >
+                <ChevronUpIcon />
+              </button>
+              <button
+                type="button"
+                aria-label={`Move ${reference.display_name} later`}
+                disabled={pending || proposal.status !== "pending" || index === acceptedReferences.length - 1}
+                onClick={() => moveReference(index, 1)}
+              >
+                <ChevronDownIcon />
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${reference.display_name}`}
+                disabled={pending || proposal.status !== "pending"}
+                onClick={() => setAcceptedReferences((current) => withOrders(
+                  current.filter((_item, itemIndex) => itemIndex !== index),
+                ))}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ))}
+          {proposal.status === "pending" ? (
+            <select
+              value=""
+              aria-label="Add proposal reference"
+              disabled={pending}
+              onChange={(event) => {
+                const reference = availableReferences.find((candidate) => (
+                  `${candidate.source_kind}:${candidate.source_id}` === event.currentTarget.value
+                ));
+                if (!reference || acceptedReferences.some((candidate) => (
+                  candidate.source_kind === reference.source_kind
+                  && candidate.source_id === reference.source_id
+                ))) return;
+                setAcceptedReferences((current) => withOrders([...current, reference]));
+              }}
+            >
+              <option value="">Add reference...</option>
+              {availableReferences
+                .filter((reference) => !acceptedReferences.some((candidate) => (
+                  candidate.source_kind === reference.source_kind
+                  && candidate.source_id === reference.source_id
+                )))
+                .map((reference) => (
+                  <option
+                    key={`${reference.source_kind}:${reference.source_id}`}
+                    value={`${reference.source_kind}:${reference.source_id}`}
+                  >
+                    {reference.display_name}
+                  </option>
+                ))}
+            </select>
+          ) : null}
+        </section>
+      ) : null}
       {proposal.status === "pending" ? (
         <div className="agent-chat__proposal-actions">
           {selected && !selectionConfirmed ? (
@@ -411,11 +541,11 @@ export function ProposalCard({
             </button>
           ) : selected ? (
             <>
-              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "generate_now")}>
-                Generate now
+              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "draft_only", acceptedReferences)}>
+                Create draft
               </button>
-              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "continue_planning")}>
-                Continue planning
+              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "generate_now", acceptedReferences)}>
+                Generate now
               </button>
             </>
           ) : null}
@@ -445,5 +575,32 @@ export function ProposalCard({
         </form>
       ) : null}
     </article>
+  );
+}
+
+export function GuidedActionsCard({
+  card,
+  actingActionId,
+  onApply,
+}: {
+  card: ChatGuidedActionsCardV2;
+  actingActionId: string | null;
+  onApply: (actionId: string) => Promise<void>;
+}) {
+  return (
+    <div className="agent-chat__guided-actions" aria-label="Suggested next actions">
+      {card.actions.map((action) => (
+        <button
+          type="button"
+          key={action.action_id}
+          disabled={action.state !== "pending" || Boolean(actingActionId)}
+          title={action.reason}
+          onClick={() => void onApply(action.action_id)}
+        >
+          <span>{action.label}</span>
+          {action.state !== "pending" ? <small>{action.state}</small> : null}
+        </button>
+      ))}
+    </div>
   );
 }

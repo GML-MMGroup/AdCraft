@@ -19,7 +19,7 @@ const draftNode = {
   node_id: "node-image-1",
   workflow_id: "workflow-1",
   node_type: "image",
-  semantic_role: "product",
+  creative_role: "product",
   role_contract_version: "ad-media-role-v1",
   title: "Product image",
   status: "draft",
@@ -30,7 +30,6 @@ const draftNode = {
   parameters: {},
   prompt_context_snapshot_id: null,
   output_asset_id: null,
-  video_skill_run_id: null,
   position: { x: 120, y: 80 },
   revision: 1,
   error: null,
@@ -70,7 +69,10 @@ describe("Agent Canvas client", () => {
           name: "Summer launch",
           description: "",
         });
-        return jsonResponse(emptyWorkflow, { status: 201, etag: '"workflow-workflow-1-r1"' });
+        return jsonResponse({
+          ...emptyWorkflow,
+          creative_session_id: "session-1",
+        }, { status: 201, etag: '"workflow-workflow-1-r1"' });
       }
       return jsonResponse(emptyWorkflow, { etag: '"workflow-workflow-1-r2"' });
     });
@@ -82,7 +84,7 @@ describe("Agent Canvas client", () => {
     );
     const loaded = await v2Api.agentCanvasWorkflowWithEtag("workflow-1");
 
-    expect(created.value.canvas_model).toBe("agent_canvas_v1");
+    expect(created.value.creative_session_id).toBe("session-1");
     expect(created.etag).toBe('"workflow-workflow-1-r1"');
     expect(loaded.etag).toBe('"workflow-workflow-1-r2"');
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow-workflow-1-r2"');
@@ -93,12 +95,16 @@ describe("Agent Canvas client", () => {
     const binding = {
       binding_id: "binding-1",
       workflow_id: "workflow-1",
-      source: { kind: "node", node_id: "node-script-1" },
+      source: { kind: "node_output", source_node_id: "node-script-1" },
       target_node_id: "node-image-1",
-      binding_kind: "script_context",
+      input_role: "text_context",
       required: true,
-      display_order: 0,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
       created_at: "2026-07-28T00:00:00Z",
+      updated_at: "2026-07-28T00:00:00Z",
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -125,7 +131,7 @@ describe("Agent Canvas client", () => {
     await Promise.all([
       v2Api.createAgentCanvasNode("workflow-1", {
         node_type: "image",
-        semantic_role: "product",
+        creative_role: "product",
         title: "Product image",
         summary_prompt: "A product portrait",
         generation_prompt: "Studio product portrait",
@@ -135,11 +141,11 @@ describe("Agent Canvas client", () => {
         position: { x: 120, y: 80 },
       }),
       v2Api.createAgentCanvasBinding("workflow-1", {
-        source: { kind: "node", node_id: "node-script-1" },
+        source: { kind: "node_output", source_node_id: "node-script-1" },
         target_node_id: "node-image-1",
-        binding_kind: "script_context",
+        input_role: "text_context",
         required: true,
-        display_order: 0,
+        order: 0,
       }),
     ]);
 
@@ -314,6 +320,196 @@ describe("Agent Canvas client", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:10"');
+  });
+
+  it("reads the frozen connection policy and proposal detail contracts", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/canvas/connection-policy")) {
+        return jsonResponse({
+          policy_version: "agent_canvas_connection_policy_v1",
+          target_node_types: {
+            text: ["text", "script"],
+            script: ["text", "script"],
+            image: ["text", "script", "image"],
+            video: ["text", "script", "image", "video", "audio", "editing"],
+            audio: ["text", "script"],
+            editing: ["video", "audio", "editing"],
+          },
+          input_roles: [
+            {
+              source_node_type: "image",
+              target_node_type: "video",
+              roles: ["image_reference"],
+              default_role: "image_reference",
+            },
+          ],
+          image_asset_targets: {
+            image: ["image_reference"],
+            video: ["image_reference"],
+          },
+          binding_kind_by_source_type: {
+            text: "text_context",
+            script: "text_context",
+            image: "image_reference",
+            video: "video_reference",
+            audio: "audio_reference",
+            editing: "video_reference",
+          },
+          model_validation: {
+            explicit_model: "authoring_and_run",
+            automatic_model: "run",
+          },
+        });
+      }
+      return jsonResponse({
+        proposal_id: "proposal-1",
+        workflow_id: "workflow-1",
+        turn_id: "turn-1",
+        video_skill_run_id: "session-1",
+        topic_id: "character",
+        creative_direction_snapshot_id: null,
+        proposal_revision: 1,
+        source_proposal_id: null,
+        proposal_kind: "character",
+        specialist_name: "character_designer",
+        status: "pending",
+        options: [{
+          option_id: "option-1",
+          title: "Quiet confidence",
+          summary_prompt: "A restrained editorial lead.",
+        }],
+        proposed_references: [],
+        selected_option_id: null,
+        selection_actor: null,
+        created_at: "2026-07-30T08:00:00Z",
+        updated_at: "2026-07-30T08:00:00Z",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const policy = await v2Api.agentCanvasConnectionPolicy();
+    const proposal = await v2Api.agentCanvasProposal("workflow-1", "proposal-1");
+
+    expect(policy.input_roles[0]?.default_role).toBe("image_reference");
+    expect(proposal.options[0]?.title).toBe("Quiet confidence");
+  });
+
+  it("creates connected nodes and patches bindings with real workflow preconditions", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    const binding = {
+      binding_id: "binding-1",
+      workflow_id: "workflow-1",
+      source: { kind: "node_output", source_node_id: "node-image-1" },
+      target_node_id: "node-video-1",
+      input_role: "image_reference",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
+      created_at: "2026-07-30T08:00:00Z",
+      updated_at: "2026-07-30T08:00:00Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const headers = new Headers(init?.headers);
+      expect(headers.get("If-Match")).toBe('"workflow:workflow-1:revision:7"');
+      expect(headers.get("Idempotency-Key")).toBeTruthy();
+      if (url.endsWith("/connected-nodes")) {
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          anchor_node_id: "node-image-1",
+          direction: "downstream",
+          binding: {
+            input_role: "image_reference",
+            required: true,
+          },
+        });
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          revision: 8,
+          layout_revision: 2,
+          node: { ...draftNode, node_id: "node-video-1", node_type: "video", creative_role: "general_video" },
+          binding,
+          events_cursor: 20,
+        }, { status: 201, etag: '"workflow:workflow-1:revision:8"' });
+      }
+      expect(JSON.parse(String(init?.body))).toEqual({
+        input_role: "image_reference",
+        required: false,
+        enabled: false,
+        order: 2,
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        revision: 9,
+        binding: { ...binding, required: false, enabled: false, order: 2 },
+        incoming_bindings: [{ ...binding, required: false, enabled: false, order: 2 }],
+        events_cursor: 21,
+      }, { etag: '"workflow:workflow-1:revision:9"' });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const connected = await v2Api.createAgentCanvasConnectedNode(
+      "workflow-1",
+      {
+        anchor_node_id: "node-image-1",
+        direction: "downstream",
+        node: {
+          node_type: "video",
+          creative_role: "general_video",
+          title: "Video",
+          generation_prompt: "Animate the product.",
+          position: { x: 500, y: 80 },
+        },
+        binding: {
+          input_role: "image_reference",
+          required: true,
+        },
+      },
+      "connected-key",
+    );
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    const patched = await v2Api.patchAgentCanvasBinding(
+      "workflow-1",
+      "binding-1",
+      {
+        input_role: "image_reference",
+        required: false,
+        enabled: false,
+        order: 2,
+      },
+      "binding-patch-key",
+    );
+
+    expect(connected.value.node.node_id).toBe("node-video-1");
+    expect(patched.value.binding.enabled).toBe(false);
+  });
+
+  it("applies guided actions by stable action id without sending button text", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/chat/guided-actions/action-1/apply");
+      expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("guided-key");
+      expect(JSON.parse(String(init?.body))).toEqual({ confirmed: true });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-guided-1",
+        status: "queued",
+        events_cursor: 22,
+      }, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const accepted = await v2Api.applyAgentCanvasGuidedAction(
+      "workflow-1",
+      "action-1",
+      { confirmed: true },
+      "guided-key",
+    );
+
+    expect(accepted.turn_id).toBe("turn-guided-1");
   });
 
   it("persists layout batches against layout_revision without semantic If-Match", async () => {

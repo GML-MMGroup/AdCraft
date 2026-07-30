@@ -9,6 +9,7 @@ import type {
   CanvasRuntimeEventV2,
   ChatMessageV2,
   ChatTimelineItemV2,
+  ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
 
@@ -16,6 +17,7 @@ type SubmitDraft = {
   text: string;
   mentionedNodeIds: string[];
   mentionedImageAssetIds: string[];
+  idempotencyKey?: string;
 };
 
 function mergeTimelineItems(
@@ -30,7 +32,9 @@ function mergeTimelineItems(
     if (item.item_type === "proposal") return `proposal:${item.proposal.proposal_id}`;
     if (item.item_type === "expert_activity") return `activity:${item.activity_id}`;
     if (item.item_type === "command_plan") return `command:${item.command_plan.plan_id}`;
-    return `receipt:${item.action_receipt.receipt_id}`;
+    if (item.item_type === "action_receipt") return `receipt:${item.action_receipt.receipt_id}`;
+    if (item.item_type === "proposal_pointer") return `proposal:${item.proposal_id}`;
+    return `guided:${item.source_entry_id}`;
   };
   [...persisted, ...projected, ...optimistic].forEach((item) => {
     keys.set(keyFor(item), item);
@@ -57,6 +61,7 @@ export function useAgentCanvasChat({
   const [sending, setSending] = useState(false);
   const [actingProposalId, setActingProposalId] = useState<string | null>(null);
   const [actingCommandPlanId, setActingCommandPlanId] = useState<string | null>(null);
+  const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const refreshGenerationRef = useRef(0);
@@ -78,7 +83,17 @@ export function useAgentCanvasChat({
       let cursor = 0;
       for (;;) {
         const timeline = await v2Api.agentCanvasChatTimeline(workflowId, cursor, 200);
-        items.push(...timeline.items);
+        const hydrated = await Promise.all(timeline.items.map(async (item): Promise<ChatTimelineItemV2> => {
+          if (item.item_type !== "proposal_pointer") return item;
+          const proposal = await v2Api.agentCanvasProposal(workflowId, item.proposal_id);
+          return {
+            item_type: "proposal",
+            proposal,
+            sequence: item.sequence,
+            created_at: item.created_at,
+          };
+        }));
+        items.push(...hydrated);
         if (timeline.items.length < 200 || timeline.next_after_seq <= cursor) break;
         cursor = timeline.next_after_seq;
       }
@@ -134,6 +149,7 @@ export function useAgentCanvasChat({
     setFailedDraft(null);
     setActingProposalId(null);
     setActingCommandPlanId(null);
+    setActingGuidedActionId(null);
     actionKeysRef.current.clear();
     pendingActionTurnIdsRef.current.clear();
     pendingCommandPlanIdsRef.current.clear();
@@ -152,11 +168,11 @@ export function useAgentCanvasChat({
     });
   }, [chatEvents]);
 
-  const actionKey = useCallback((key: string) => {
-    const existing = actionKeysRef.current.get(key);
+  const actionKey = useCallback((identity: string, prefix: string) => {
+    const existing = actionKeysRef.current.get(identity);
     if (existing) return existing;
-    const created = createOperationKey(key);
-    actionKeysRef.current.set(key, created);
+    const created = createOperationKey(prefix);
+    actionKeysRef.current.set(identity, created);
     return created;
   }, []);
 
@@ -169,6 +185,7 @@ export function useAgentCanvasChat({
     if (!workflowId || !draft.text.trim()) return false;
     const workflowGeneration = workflowGenerationRef.current;
     const optimisticId = createOperationKey("optimistic");
+    const idempotencyKey = draft.idempotencyKey ?? createOperationKey("chat");
     setOptimisticItems((current) => [...current, {
       item_type: "message",
       message_id: optimisticId,
@@ -190,7 +207,7 @@ export function useAgentCanvasChat({
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
         video_skill_run_id: null,
         auto_continue: false,
-      }, createOperationKey("chat"));
+      }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
         setOptimisticItems((current) => current.map((item) => (
@@ -210,7 +227,7 @@ export function useAgentCanvasChat({
       setOptimisticItems((current) => current.filter((item) => (
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
-      setFailedDraft(draft);
+      setFailedDraft({ ...draft, idempotencyKey });
       setError(submitError instanceof Error ? submitError.message : "Message could not be sent.");
       return false;
     } finally {
@@ -223,19 +240,30 @@ export function useAgentCanvasChat({
   const selectProposal = useCallback(async (
     proposalId: string,
     optionId: string,
-    nextAction: "generate_now" | "continue_planning",
+    generationAction: "draft_only" | "generate_now",
+    acceptedReferences: ProposedDraftReferenceV2[],
   ) => {
     if (!workflowId || actingProposalId) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
     try {
-      const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
+      const request = {
         action: "select",
         option_id: optionId,
-        next_action: nextAction,
+        generation_action: generationAction,
+        accepted_references: acceptedReferences,
         position: proposalPosition,
-      }, actionKey(`proposal-select:${proposalId}:${optionId}:${nextAction}`));
+      } as const;
+      const accepted = await v2Api.actOnAgentCanvasProposal(
+        workflowId,
+        proposalId,
+        request,
+        actionKey(
+          `proposal-select:${proposalId}:${JSON.stringify(request)}`,
+          "proposal-select",
+        ),
+      );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       void refresh();
     } catch (actionError) {
@@ -258,7 +286,10 @@ export function useAgentCanvasChat({
       const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "revise",
         instruction: instruction.trim(),
-      }, actionKey(`proposal-revise:${proposalId}:${instruction.trim()}`));
+      }, actionKey(
+        `proposal-revise:${proposalId}:${instruction.trim()}`,
+        "proposal-revise",
+      ));
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       void refresh();
     } catch (actionError) {
@@ -280,7 +311,7 @@ export function useAgentCanvasChat({
     try {
       const accepted = await v2Api.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "skip",
-      }, actionKey(`proposal-skip:${proposalId}`));
+      }, actionKey(`proposal-skip:${proposalId}`, "proposal-skip"));
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       void refresh();
     } catch (actionError) {
@@ -308,7 +339,7 @@ export function useAgentCanvasChat({
         workflowId,
         planId,
         { action },
-        actionKey(`command-${action}:${planId}`),
+        actionKey(`command-${action}:${planId}`, `command-${action}`),
       );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       void refresh();
@@ -326,6 +357,33 @@ export function useAgentCanvasChat({
     }
   }, [actionKey, actingCommandPlanId, refresh, workflowId]);
 
+  const applyGuidedAction = useCallback(async (actionId: string) => {
+    if (!workflowId || actingGuidedActionId) return;
+    const workflowGeneration = workflowGenerationRef.current;
+    setActingGuidedActionId(actionId);
+    setError(null);
+    try {
+      await v2Api.applyAgentCanvasGuidedAction(
+        workflowId,
+        actionId,
+        { confirmed: true },
+        actionKey(`guided-action:${actionId}`, "guided-action"),
+      );
+      pendingActionTurnIdsRef.current.add(actionId);
+      void refresh();
+    } catch (actionError) {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setError(actionError instanceof Error
+          ? actionError.message
+          : "The guided action could not be applied.");
+      }
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingGuidedActionId(null);
+      }
+    }
+  }, [actingGuidedActionId, actionKey, refresh, workflowId]);
+
   const projectedItems = useMemo(() => projectChatEvents(chatEvents), [chatEvents]);
   const items = useMemo(
     () => mergeTimelineItems(persistedItems, projectedItems, optimisticItems),
@@ -339,6 +397,7 @@ export function useAgentCanvasChat({
       sending,
       actingProposalId,
       actingCommandPlanId,
+      actingGuidedActionId,
       error,
       failedDraft,
     },
@@ -349,6 +408,7 @@ export function useAgentCanvasChat({
       reviseProposal,
       skipProposal,
       actOnCommandPlan,
+      applyGuidedAction,
       clearFailedDraft: () => setFailedDraft(null),
     },
   };

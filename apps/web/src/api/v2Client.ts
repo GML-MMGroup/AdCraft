@@ -3,6 +3,8 @@ import type {
   AgentCanvasCommandPlanActionRequestV2,
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
+  AgentCanvasGuidedActionApplyRequestV2,
+  AgentCanvasProjectCreateResponseV2,
   AgentCanvasProjectCreateRequestV2,
   AgentCanvasProposalActionRequestV2,
   AgentCanvasVideoSkillRunCreateRequestV2,
@@ -10,12 +12,18 @@ import type {
   AgentCanvasWorkflowV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
+  CanvasBindingMutationResponseV2,
+  CanvasBindingPatchRequestV2,
+  CanvasConnectedNodeCreateRequestV2,
+  CanvasConnectedNodeCreateResponseV2,
+  CanvasConnectionPolicyV2,
   CanvasLayoutPatchRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasMutationResponseV2,
   CanvasNodeCreateRequestV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
+  ConceptProposalV2,
   CanvasVariationDraftResponseV2,
   CanvasVariationDraftUpsertV2,
   CanvasVariationMaterializeRequestV2,
@@ -145,9 +153,13 @@ import {
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasChatTimelineCompatV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
+  normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeCanvasMutationResponseV2,
+  normalizeCanvasBindingMutationResponseV2,
+  normalizeCanvasConnectedNodeCreateResponseV2,
+  normalizeCanvasConnectionPolicyV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
   normalizeCanvasVariationDraftResponseV2,
@@ -157,6 +169,7 @@ import {
   normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
   normalizeChatTurnAcceptedV2,
+  normalizeConceptProposalV2,
   normalizeEditingExportAcceptedV2,
   normalizeEditingExportCancelResponseV2,
   normalizeProjectAssetListResponseV2,
@@ -453,7 +466,7 @@ export const v2Api = {
   createAgentCanvasProject(
     request: AgentCanvasProjectCreateRequestV2,
     idempotencyKey: string,
-  ): Promise<V2EtaggedResponse<AgentCanvasWorkflowV2>> {
+  ): Promise<V2EtaggedResponse<AgentCanvasProjectCreateResponseV2>> {
     return requestV2WithEtag(
       "/projects",
       {
@@ -461,7 +474,7 @@ export const v2Api = {
         headers: idempotencyHeaders(idempotencyKey),
         body: JSON.stringify(request),
       },
-      normalizeAgentCanvasWorkflowV2,
+      normalizeAgentCanvasProjectCreateResponseV2,
     );
   },
 
@@ -584,6 +597,47 @@ export const v2Api = {
     );
   },
 
+  agentCanvasConnectionPolicy(): Promise<CanvasConnectionPolicyV2> {
+    return requestV2(
+      "/canvas/connection-policy",
+      {},
+      normalizeCanvasConnectionPolicyV2,
+    );
+  },
+
+  createAgentCanvasConnectedNode(
+    workflowId: string,
+    request: CanvasConnectedNodeCreateRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<CanvasConnectedNodeCreateResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/connected-nodes`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasConnectedNodeCreateResponseV2,
+    );
+  },
+
+  patchAgentCanvasBinding(
+    workflowId: string,
+    bindingId: string,
+    request: CanvasBindingPatchRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<CanvasBindingMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/bindings/${encodeURIComponent(bindingId)}`,
+      {
+        method: "PATCH",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasBindingMutationResponseV2,
+    );
+  },
+
   deleteAgentCanvasBinding(
     workflowId: string,
     bindingId: string,
@@ -697,6 +751,17 @@ export const v2Api = {
     );
   },
 
+  agentCanvasProposal(
+    workflowId: string,
+    proposalId: string,
+  ): Promise<ConceptProposalV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/proposals/${encodeURIComponent(proposalId)}`,
+      {},
+      normalizeConceptProposalV2,
+    );
+  },
+
   actOnAgentCanvasProposal(
     workflowId: string,
     proposalId: string,
@@ -736,6 +801,23 @@ export const v2Api = {
         },
       },
     ).then((response) => response.value);
+  },
+
+  applyAgentCanvasGuidedAction(
+    workflowId: string,
+    actionId: string,
+    request: AgentCanvasGuidedActionApplyRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/guided-actions/${encodeURIComponent(actionId)}/apply`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+    );
   },
 
   createAgentCanvasVideoSkillRun(
