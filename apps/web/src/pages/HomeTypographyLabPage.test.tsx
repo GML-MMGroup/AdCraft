@@ -6,7 +6,9 @@ afterEach(cleanup);
 
 describe("HomeTypographyLabPage", () => {
   function chooseFont(fontName: string) {
-    fireEvent.click(screen.getByLabelText("Font family"));
+    if (!screen.queryByRole("listbox")) {
+      fireEvent.click(screen.getByLabelText("Font family"));
+    }
     fireEvent.click(screen.getByRole("option", { name: fontName }));
   }
 
@@ -38,10 +40,14 @@ describe("HomeTypographyLabPage", () => {
     expect(otherFont.classList.contains("is-selected")).toBe(false);
 
     fireEvent.click(screen.getByRole("option", { name: "DM Sans" }));
-    fireEvent.click(screen.getByLabelText("Font family"));
 
+    expect(screen.getByRole("listbox")).toBeTruthy();
     expect(screen.getByRole("option", { name: "DM Sans" }).classList.contains("is-selected")).toBe(true);
     expect(screen.getByRole("option", { name: "Instrument Serif" }).classList.contains("is-selected")).toBe(false);
+
+    fireEvent.pointerDown(screen.getByTestId("home-typography-preview"));
+
+    expect(screen.queryByRole("listbox")).toBeNull();
   });
 
   it("restores the selected region and all regions to production defaults", () => {
@@ -51,7 +57,9 @@ describe("HomeTypographyLabPage", () => {
       target: { value: "heroAccent" },
     });
     chooseFont("DM Serif Display");
-    fireEvent.click(screen.getByRole("button", { name: "Reset selected region" }));
+    const resetSelectedButton = screen.getByRole("button", { name: "Reset selected region" });
+    fireEvent.pointerDown(resetSelectedButton);
+    fireEvent.click(resetSelectedButton);
     fireEvent.click(screen.getByRole("button", { name: "Reset all typography" }));
 
     expect(screen.getByText("Current recipe")).toBeTruthy();

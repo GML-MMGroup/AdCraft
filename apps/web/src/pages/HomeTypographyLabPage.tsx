@@ -148,8 +148,6 @@ export function HomeTypographyLabPage() {
 
   function chooseFont(fontId: string) {
     changeFont(fontId);
-    setFontMenuOpen(false);
-    fontTriggerRef.current?.focus();
   }
 
   function moveFontFocus(currentFontId: string, direction: -1 | 1) {
