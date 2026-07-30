@@ -41,6 +41,7 @@ describe("HomePage hero title", () => {
     ]);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
+    expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");
     expect(lines[2]?.querySelectorAll(".home-product-hero__glyph")).toHaveLength(8);
     expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(0);
   });

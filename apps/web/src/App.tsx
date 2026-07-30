@@ -9,6 +9,7 @@ const AssetsPage = lazy(() => import("./pages/AssetsPage").then((module) => ({ d
 const WorkflowPage = lazy(() => import("./pages/WorkflowPage").then((module) => ({ default: module.WorkflowPage })));
 const TrashPage = lazy(() => import("./pages/TrashPage").then((module) => ({ default: module.TrashPage })));
 const ApiSpacePage = lazy(() => import("./pages/ApiSpacePage").then((module) => ({ default: module.ApiSpacePage })));
+const HomeTypographyLabPage = lazy(() => import("./pages/HomeTypographyLabPage").then((module) => ({ default: module.HomeTypographyLabPage })));
 const WorkspaceRoute = lazy(() => import("./app/WorkspaceRoute").then((module) => ({ default: module.WorkspaceRoute })));
 
 function routePath(route: RouteName) {
@@ -33,6 +34,7 @@ function AppRoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
+        <Route path="/design-lab/home-typography" element={<HomeTypographyLabPage />} />
         <Route element={<LightweightShell />}>
           <Route path="/" element={<HomePage navigate={navigateRoute} />} />
           <Route path="/home" element={<Navigate to="/" replace />} />

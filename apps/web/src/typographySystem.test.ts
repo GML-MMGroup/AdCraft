@@ -15,6 +15,10 @@ const styles = [
   "features/workflow/final-composition/final-composition.css",
 ].map((path) => readFileSync(resolve(appRoot, "src", path), "utf8")).join("\n");
 const indexHtml = readFileSync(resolve(appRoot, "index.html"), "utf8");
+const labLoader = readFileSync(
+  resolve(appRoot, "src/features/home-typography/webFontLoader.ts"),
+  "utf8",
+);
 const fontFiles = [
   "manrope-latin-variable.woff2",
   "instrument-serif-latin.woff2",
@@ -43,6 +47,13 @@ describe("typography system", () => {
       expect(existsSync(path)).toBe(true);
       expect(statSync(path).size).toBeGreaterThan(0);
     }
+  });
+
+  it("keeps Google Fonts out of production styles while allowing the isolated lab loader", () => {
+    expect(indexHtml).not.toContain("fonts.googleapis.com");
+    expect(styles).not.toContain("fonts.googleapis.com");
+    expect(labLoader).toContain("fonts.googleapis.com");
+    expect(labLoader).toContain("dataset.homeTypographyFont");
   });
 
   it("defines the interface, brand, and technical font roles", () => {
