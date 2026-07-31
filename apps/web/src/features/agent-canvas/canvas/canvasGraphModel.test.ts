@@ -159,6 +159,7 @@ describe("canvasGraphModel", () => {
       id: "binding-1",
       source: "image-1",
       target: "video-1",
+      type: "default",
     })]);
   });
 

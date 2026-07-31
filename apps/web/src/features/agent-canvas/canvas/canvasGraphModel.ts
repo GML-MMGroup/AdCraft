@@ -121,7 +121,7 @@ export function toAgentCanvasFlowEdges(bindings: CanvasBindingV2[]): Edge[] {
         target: binding.target_node_id,
         sourceHandle: "output",
         targetHandle: "input",
-        type: "smoothstep",
+        type: "default",
         markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
         data: { binding },
         style: {
