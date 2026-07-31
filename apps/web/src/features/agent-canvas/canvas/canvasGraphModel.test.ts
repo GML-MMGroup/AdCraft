@@ -138,7 +138,6 @@ describe("canvasGraphModel", () => {
       onRun: vi.fn(),
       onRetry: vi.fn(),
       onExport: vi.fn(),
-      onOpenMedia: vi.fn(),
     });
 
     expect(nodes).toHaveLength(2);
@@ -248,7 +247,6 @@ describe("canvasGraphModel", () => {
       onRun: vi.fn(),
       onRetry: vi.fn(),
       onExport: vi.fn(),
-      onOpenMedia: vi.fn(),
     });
 
     expect(nodes.find((item) => item.id === "source")?.data.runtime).toBeNull();

@@ -9,7 +9,7 @@ import {
   type Viewport,
   useNodesState,
 } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { agentCanvasApi } from "../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../api/operationKey.ts";
@@ -26,7 +26,6 @@ import type {
   CanvasNodeTypeV2,
   CanvasNodeV2,
   CanvasPositionV2,
-  ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
 import {
@@ -61,7 +60,7 @@ import {
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
 import { useAgentCanvasSession } from "./session/useAgentCanvasSession.ts";
-import { AgentCanvasInspector } from "./AgentCanvasInspector.tsx";
+import { AgentCanvasInlineWorkbench } from "./workbench/AgentCanvasInlineWorkbench.tsx";
 import "@xyflow/react/dist/style.css";
 import "./agent-canvas-page.css";
 
@@ -93,62 +92,6 @@ function writeViewport(workflowId: string, viewport: Viewport): void {
   } catch {
     // Viewport persistence is disposable and must never block the canvas.
   }
-}
-
-function MediaViewer({
-  asset,
-  onClose,
-}: {
-  asset: ProjectAssetSummaryV2;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
-
-  return (
-    <div
-      className="agent-canvas-media-viewer"
-      role="dialog"
-      aria-modal="true"
-      aria-label={asset.display_name}
-    >
-      <button
-        type="button"
-        className="agent-canvas-media-viewer__backdrop"
-        aria-label="Close media preview"
-        onClick={onClose}
-      />
-      <button
-        type="button"
-        className="agent-canvas-media-viewer__close"
-        aria-label="Close media preview"
-        title="Close"
-        onClick={onClose}
-      >
-        <CloseIcon />
-      </button>
-      <div className="agent-canvas-media-viewer__content">
-        {asset.media_type === "image" ? (
-          <img src={asset.media_url ?? asset.preview_url ?? ""} alt={asset.display_name} />
-        ) : asset.media_type === "video" ? (
-          <video
-            src={asset.media_url ?? ""}
-            poster={asset.preview_url ?? undefined}
-            controls
-            autoPlay
-            playsInline
-          />
-        ) : (
-          <audio src={asset.media_url ?? ""} controls autoPlay />
-        )}
-      </div>
-    </div>
-  );
 }
 
 export function AgentCanvasPage() {
@@ -195,7 +138,6 @@ export function AgentCanvasPage() {
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-  const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     menuPosition: CanvasPositionV2;
     canvasPosition: CanvasPositionV2;
@@ -208,6 +150,7 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const referenceUploadInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -235,19 +178,102 @@ export function AgentCanvasPage() {
     setSelectedNodeId(nodeId);
   }, [setSelectedNodeId]);
 
+  const uploadSelectedNodeReferences = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    const targetNode = session.state.selectedNode;
+    if (!workflow || !targetNode || !files.length) return;
+    if (targetNode.node_type === "editing") {
+      setSurfaceError("Use connected Video and Audio nodes as Editing inputs.");
+      return;
+    }
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length !== files.length) {
+      setSurfaceError("Only image files can be attached as prompt references.");
+      return;
+    }
+    setSurfaceError(null);
+    try {
+      const startOrder = workflow.bindings.filter((binding) => (
+        binding.target_node_id === targetNode.node_id
+      )).length;
+      for (const [index, file] of imageFiles.entries()) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("metadata", JSON.stringify({
+          media_type: "image",
+          title: file.name.replace(/\.[^.]+$/, "") || file.name,
+          semantic_role: null,
+          metadata: {},
+        }));
+        const uploaded = await agentCanvasApi.uploadAgentCanvasAsset(
+          workflow.workflow_id,
+          formData,
+          createOperationKey("node-reference-upload"),
+        );
+        await createBinding({
+          source: { kind: "image_asset", source_asset_id: uploaded.asset.asset_id },
+          target_node_id: targetNode.node_id,
+          input_role: "image_reference",
+          required: true,
+          enabled: true,
+          order: startOrder + index,
+        });
+      }
+      await refreshWorkflow();
+    } catch (error) {
+      setSurfaceError(error instanceof Error ? error.message : "Reference upload failed.");
+    }
+  }, [createBinding, refreshWorkflow, session.state.selectedNode, workflow]);
+
+  const saveImageToLibrary = useCallback(async (
+    assetId: string,
+    request: SaveAgentCanvasImageToLibraryRequestV2,
+  ) => {
+    await agentCanvasApi.saveAgentCanvasImageToLibrary(
+      assetId,
+      request,
+      createOperationKey("save-image-to-library"),
+    );
+  }, []);
+
+  const renderWorkbench = useCallback((node: CanvasNodeV2) => {
+    if (!workflow || session.state.selectedNodeId !== node.node_id) return null;
+    return (
+      <AgentCanvasInlineWorkbench
+        workflow={workflow}
+        node={node}
+        patchNode={patchNode}
+        patchBinding={patchBinding}
+        deleteBinding={deleteBinding}
+        connectionPolicy={connectionPolicy}
+        providerCapabilities={providerModels.capabilities}
+        providerCapabilitiesLoading={providerModels.loading}
+        providerCapabilitiesError={providerModels.error}
+        onRun={runNode}
+        onSaveVariation={saveVariationDraft}
+        onDiscardVariation={discardVariationDraft}
+        onMaterializeVariation={materializeVariationDraft}
+        onSaveImageToLibrary={saveImageToLibrary}
+        onDelete={deleteNode}
+        onOpenEditing={() => openEditing(node.node_id)}
+        onOpenAssets={() => setAssetsOpen(true)}
+        onUploadReferences={() => referenceUploadInputRef.current?.click()}
+        onClose={() => setSelectedNodeId(null)}
+      />
+    );
+  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.capabilities, providerModels.error, providerModels.loading, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
+
   const nodeCallbacks = useMemo<AgentCanvasNodeCallbacks>(() => ({
     onRun: (nodeId) => runNodeById(nodeId, false),
     onRetry: (nodeId) => runNodeById(nodeId, true),
     onExport: openEditing,
-    onOpenMedia: (nodeId, assetId) => {
-      setSelectedNodeId(nodeId);
-      setMediaAssetId(assetId);
-    },
+    renderWorkbench,
     onOpenConnectedNodeMenu: (nodeId, direction, point) => {
       setSelectedNodeId(nodeId);
       setConnectedNodeMenu({ anchorNodeId: nodeId, direction, point });
     },
-  }), [openEditing, runNodeById, setSelectedNodeId]);
+  }), [openEditing, renderWorkbench, runNodeById, setSelectedNodeId]);
 
   const canonicalNodes = useMemo(
     () => workflow
@@ -448,17 +474,6 @@ export function AgentCanvasPage() {
     }
   }, [connectedNodeMenu, createConnectedNode, workflow]);
 
-  const saveImageToLibrary = useCallback(async (
-    assetId: string,
-    request: SaveAgentCanvasImageToLibraryRequestV2,
-  ) => {
-    await agentCanvasApi.saveAgentCanvasImageToLibrary(
-      assetId,
-      request,
-      createOperationKey("save-image-to-library"),
-    );
-  }, []);
-
   const focusNode = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId);
     void flowRef.current?.fitView({
@@ -504,9 +519,6 @@ export function AgentCanvasPage() {
 
   const editingNode = editingNodeId
     ? workflow.nodes.find((node) => node.node_id === editingNodeId && node.node_type === "editing") ?? null
-    : null;
-  const mediaAsset = mediaAssetId
-    ? workflow.assets.find((asset) => asset.asset_id === mediaAssetId) ?? null
     : null;
   const connectedMenuAnchor = connectedNodeMenu
     ? workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId) ?? null
@@ -653,28 +665,6 @@ export function AgentCanvasPage() {
           </div>
         ) : null}
 
-        {session.state.selectedNode ? (
-          <AgentCanvasInspector
-            workflow={workflow}
-            node={session.state.selectedNode}
-            patchNode={patchNode}
-            patchBinding={patchBinding}
-            deleteBinding={deleteBinding}
-            connectionPolicy={connectionPolicy}
-            providerCapabilities={providerModels.capabilities}
-            providerCapabilitiesLoading={providerModels.loading}
-            providerCapabilitiesError={providerModels.error}
-            onRun={runNode}
-            onSaveVariation={saveVariationDraft}
-            onDiscardVariation={discardVariationDraft}
-            onMaterializeVariation={materializeVariationDraft}
-            onSaveImageToLibrary={saveImageToLibrary}
-            onDelete={deleteNode}
-            onOpenEditing={() => openEditing(session.state.selectedNode!.node_id)}
-            onClose={() => setSelectedNodeId(null)}
-          />
-        ) : null}
-
         {(surfaceError || session.state.authoringError || live.state.runtimeError) ? (
           <button
             type="button"
@@ -717,9 +707,16 @@ export function AgentCanvasPage() {
           />
         ) : null}
 
-        {mediaAsset ? (
-          <MediaViewer asset={mediaAsset} onClose={() => setMediaAssetId(null)} />
-        ) : null}
+        <input
+          ref={referenceUploadInputRef}
+          className="agent-canvas-reference-upload-input"
+          type="file"
+          accept="image/*"
+          multiple
+          tabIndex={-1}
+          aria-hidden="true"
+          onChange={(event) => void uploadSelectedNodeReferences(event)}
+        />
 
         {contextMenu ? (
           <AgentCanvasContextMenu

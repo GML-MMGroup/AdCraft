@@ -187,7 +187,7 @@ describe("AgentCanvasNodeCard", () => {
       />,
     );
 
-    expect(screen.getByRole("img", { name: "video output" }).classList.contains("agent-canvas-node__media")).toBe(true);
+    expect(screen.getByLabelText("video output").classList.contains("agent-canvas-node__media")).toBe(true);
     expect(screen.getByText("Failed")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Retry video node" }));
     expect(onRetry).toHaveBeenCalledWith(node.node_id);
@@ -208,7 +208,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
   });
 
-  it("renders image and video posters with the same full-bleed media surface", () => {
+  it("renders image and video outputs with the same full-bleed media surface", () => {
     const imageView = render(
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,
     );
@@ -218,9 +218,25 @@ describe("AgentCanvasNodeCard", () => {
 
     imageView.unmount();
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
-    const videoPoster = screen.getByRole("img", { name: "video output" });
-    expect(videoPoster.classList.contains("agent-canvas-node__media")).toBe(true);
-    expect(videoPoster.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+    const video = screen.getByLabelText("video output");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video.getAttribute("src")).toBe("/media/video-output");
+    expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
+    expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+  });
+
+  it("keeps the generated image in the node instead of opening a separate media preview", () => {
+    const asset = makeAsset("image");
+
+    render(
+      <AgentCanvasNodeCard
+        node={makeNode("image", "ready")}
+        asset={asset}
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
+    expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
 });
 
@@ -269,5 +285,36 @@ describe("AgentCanvasNodeRenderer", () => {
       "downstream",
       expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
     );
+  });
+
+  it("renders the selected node workbench directly below the node shell", () => {
+    const data = {
+      node: makeNode("image"),
+      asset: makeAsset("image"),
+      renderWorkbench: () => <div aria-label="Image node workbench">Prompt controls</div>,
+    } as AgentCanvasNodeData & {
+      renderWorkbench: () => JSX.Element;
+    };
+
+    render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(screen.getByLabelText("Image node workbench")).toBeTruthy();
   });
 });

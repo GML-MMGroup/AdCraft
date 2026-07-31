@@ -715,6 +715,14 @@
   height: 100%;
 }
 
+.agent-canvas-reference-upload-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .agent-canvas-media-viewer {
   position: absolute;
   z-index: 60;
