@@ -2474,6 +2474,8 @@ export interface GuidedDeliveryActionV2 {
   node_id: string | null;
   ordered_node_ids: string[];
   manifest_revision: number | null;
+  recipe_id: string | null;
+  recipe_revision: number | null;
   confirmation_required: boolean;
   reason: string;
 }

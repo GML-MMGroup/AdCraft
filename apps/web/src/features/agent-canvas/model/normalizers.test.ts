@@ -254,6 +254,8 @@ describe("Agent Canvas normalizers", () => {
               node_id: null,
               ordered_node_ids: [],
               manifest_revision: null,
+              recipe_id: "recipe-guided-1",
+              recipe_revision: 1,
               confirmation_required: false,
               reason: "Add another character option.",
             },
@@ -284,6 +286,8 @@ describe("Agent Canvas normalizers", () => {
     expect(timeline.creative_session?.current_topic_id).toBe("characters");
     expect(timeline.items[0]?.entry_type).toBe("concept_proposal");
     expect(timeline.items[0]?.guided_actions[0]?.action).toBe("add_another_topic_node");
+    expect(timeline.items[0]?.guided_actions[0]?.recipe_id).toBe("recipe-guided-1");
+    expect(timeline.items[0]?.guided_actions[0]?.recipe_revision).toBe(1);
     expect(timeline.items[1]?.entry_type).toBe("expert_activity");
   });
 

@@ -2462,6 +2462,8 @@ export function normalizeGuidedDeliveryActionV2(
       "node_id",
       "ordered_node_ids",
       "manifest_revision",
+      "recipe_id",
+      "recipe_revision",
       "confirmation_required",
       "reason",
     ],
@@ -2504,6 +2506,10 @@ export function normalizeGuidedDeliveryActionV2(
     manifest_revision: record.manifest_revision === undefined || record.manifest_revision === null
       ? null
       : expectPositiveInteger(record.manifest_revision, `${path}.manifest_revision`),
+    recipe_id: nullableStringWithDefault(record.recipe_id, `${path}.recipe_id`),
+    recipe_revision: record.recipe_revision === undefined || record.recipe_revision === null
+      ? null
+      : expectPositiveInteger(record.recipe_revision, `${path}.recipe_revision`),
     confirmation_required: expectBoolean(record.confirmation_required, `${path}.confirmation_required`),
     reason: expectNonEmptyString(record.reason, `${path}.reason`),
   };
