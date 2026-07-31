@@ -63,6 +63,11 @@ const CHAT_EVENTS = new Set([
   "agent_turn_completed",
   "agent_turn_failed",
   "agent_turn_interrupted",
+  "continuation_queued",
+  "continuation_started",
+  "continuation_retry_scheduled",
+  "continuation_completed",
+  "continuation_failed",
   "specialist_activity_started",
   "specialist_activity_completed",
   "specialist_activity_failed",
@@ -76,6 +81,10 @@ const CHAT_EVENTS = new Set([
   "action_receipt_created",
   "creative_topic_updated",
   "creative_direction_updated",
+  "creation_mode_resolved",
+  "production_recipe_created",
+  "production_recipe_revised",
+  "planning_topic_updated",
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([

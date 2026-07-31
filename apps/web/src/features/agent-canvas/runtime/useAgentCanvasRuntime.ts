@@ -50,6 +50,7 @@ export function useAgentCanvasRuntime(
   const workflowRefreshQueuedRef = useRef(false);
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
+  const seenTransitionKeysRef = useRef<Set<string>>(new Set());
 
   const workflowId = workflow?.workflow_id ?? null;
   const activeWorkflowIdRef = useRef<string | null>(workflowId);
@@ -63,6 +64,7 @@ export function useAgentCanvasRuntime(
     workflowRefreshQueuedRef.current = false;
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
+    seenTransitionKeysRef.current.clear();
   }
 
   useEffect(() => {
@@ -191,6 +193,15 @@ export function useAgentCanvasRuntime(
   const processEvent = useCallback((event: CanvasRuntimeEventV2) => {
     if (event.seq <= cursorRef.current) return;
     cursorRef.current = event.seq;
+    const transitionKey = event.transition_key;
+    if (transitionKey) {
+      if (seenTransitionKeysRef.current.has(transitionKey)) return;
+      seenTransitionKeysRef.current.add(transitionKey);
+      if (seenTransitionKeysRef.current.size > 500) {
+        const oldest = seenTransitionKeysRef.current.values().next().value;
+        if (typeof oldest === "string") seenTransitionKeysRef.current.delete(oldest);
+      }
+    }
     const inputManifest = inputManifestAuditFromEvent(event);
     if (inputManifest) {
       setInputManifestsByNodeId((current) => ({

@@ -11,7 +11,11 @@ import {
 } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
+  AgentCanvasContinuationV2,
+  AgentCanvasCreationModeV2,
   AgentActionReceiptV2,
+  AdaptiveProductionRecipeV2,
+  AdaptiveProductionStageV2,
   CanvasPositionV2,
   CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
@@ -32,6 +36,7 @@ export function AgentCanvasChatPanel({
   proposalPosition,
   onFocusNode,
   onActionReceipt,
+  onWorkflowRefresh,
 }: {
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
@@ -39,6 +44,7 @@ export function AgentCanvasChatPanel({
   proposalPosition: CanvasPositionV2;
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
+  onWorkflowRefresh?: () => Promise<void> | void;
 }) {
   const chat = useAgentCanvasChat({
     workflow,
@@ -46,6 +52,7 @@ export function AgentCanvasChatPanel({
     chatEvents,
     proposalPosition,
     onActionReceipt,
+    onWorkflowRefresh,
   });
   const [draft, setDraft] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -59,6 +66,19 @@ export function AgentCanvasChatPanel({
     const session = chat.state.creativeSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
   }, [chat.state.creativeSession]);
+  const currentRecipeStage = useMemo(() => {
+    const recipe = chat.state.recipe;
+    if (!recipe?.current_topic_id) return null;
+    return recipe.stages.find((stage) => stage.topic_id === recipe.current_topic_id) ?? null;
+  }, [chat.state.recipe]);
+  const activeContinuation = useMemo(
+    () => chat.state.continuations.find((continuation) => (
+      continuation.delivery_status === "queued"
+      || continuation.delivery_status === "leased"
+      || continuation.delivery_status === "retry_wait"
+    )) ?? null,
+    [chat.state.continuations],
+  );
   async function send() {
     const text = draft.trim();
     if (!text || chat.state.sending) return;
@@ -88,7 +108,11 @@ export function AgentCanvasChatPanel({
           <span>
             {chat.state.sending
               ? "Thinking"
-              : currentTopic
+              : activeContinuation
+                ? continuationLabel(activeContinuation)
+                : currentRecipeStage
+                  ? `${currentRecipeStage.title} · ${currentRecipeStage.status.replaceAll("_", " ")}`
+                : currentTopic
                 ? `${currentTopic.topic_kind.replaceAll("_", " ")} · ${currentTopic.status.replaceAll("_", " ")}`
                 : "Ready"}
           </span>
@@ -101,6 +125,17 @@ export function AgentCanvasChatPanel({
         ) : null}
         {!chat.state.loading && !chat.state.items.length ? (
           <div className="agent-chat__empty">Describe the ad you want to build.</div>
+        ) : null}
+        {chat.state.continuations
+          .filter((continuation) => ["queued", "leased", "retry_wait"].includes(continuation.delivery_status))
+          .map((continuation) => (
+            <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
+          ))}
+        {chat.state.creationMode || chat.state.recipe ? (
+          <ProductionRecipeProgress
+            creationMode={chat.state.creationMode}
+            recipe={chat.state.recipe}
+          />
         ) : null}
         {chat.state.items.map((item) => {
           if (item.item_type === "message") {
@@ -170,7 +205,6 @@ export function AgentCanvasChatPanel({
               pending={chat.state.actingProposalId === item.proposal.proposal_id}
               onSelect={chat.actions.selectProposal}
               onRevise={chat.actions.reviseProposal}
-              onSkip={chat.actions.skipProposal}
             />
           );
         })}
@@ -184,6 +218,14 @@ export function AgentCanvasChatPanel({
               Retry
             </button>
           ) : null}
+        </div>
+      ) : null}
+      {chat.state.notice ? (
+        <div className="agent-chat__notice" role="status">
+          <span>{chat.state.notice}</span>
+          <button type="button" aria-label="Dismiss notice" onClick={chat.actions.clearNotice}>
+            <CloseIcon />
+          </button>
         </div>
       ) : null}
 
@@ -306,6 +348,80 @@ export function SpecialistActivityRow({
   );
 }
 
+function continuationLabel(continuation: AgentCanvasContinuationV2): string {
+  if (continuation.delivery_status === "retry_wait") {
+    return `Retrying${continuation.next_attempt_at ? " shortly" : ""}`;
+  }
+  return continuation.delivery_status === "leased" ? "Working" : "Queued";
+}
+
+export function ContinuationActivityRow({
+  continuation,
+}: {
+  continuation: AgentCanvasContinuationV2;
+}) {
+  return (
+    <div className={`agent-chat__activity agent-chat__continuation is-${continuation.delivery_status}`}>
+      <i aria-hidden="true" />
+      <span>
+        AdCraft Video Agent is {continuationLabel(continuation).toLowerCase()}
+        {continuation.attempt_count > 0 ? ` · attempt ${continuation.attempt_count}` : ""}
+      </span>
+    </div>
+  );
+}
+
+function creationModeLabel(mode: AgentCanvasCreationModeV2 | null): string {
+  if (!mode) return "Production plan";
+  return mode
+    .split("_")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function stageStatusLabel(stage: AdaptiveProductionStageV2): string {
+  if (stage.status === "working") return "Working";
+  if (stage.status === "completed") return "Complete";
+  if (stage.status === "skipped") return "Skipped";
+  if (stage.status === "reopened") return "Reopened";
+  return "Pending";
+}
+
+export function ProductionRecipeProgress({
+  creationMode,
+  recipe,
+}: {
+  creationMode: AgentCanvasCreationModeV2 | null;
+  recipe: AdaptiveProductionRecipeV2 | null;
+}) {
+  const visibleStages = recipe?.stages.filter((stage) => stage.applicability !== "not_required") ?? [];
+  return (
+    <section className="agent-chat__recipe" aria-label="Production plan">
+      <header>
+        <strong>{creationModeLabel(creationMode ?? recipe?.creation_mode ?? null)}</strong>
+        {recipe ? <span>Revision {recipe.revision}</span> : null}
+      </header>
+      {visibleStages.length ? (
+        <ol>
+          {visibleStages.map((stage) => (
+            <li
+              key={stage.topic_id}
+              className={`is-${stage.status}${stage.topic_id === recipe?.current_topic_id ? " is-current" : ""}`}
+              title={stage.objective}
+            >
+              <i aria-hidden="true" />
+              <span>{stage.title}</span>
+              <small>{stageStatusLabel(stage)}</small>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p>The agent is preparing a production plan.</p>
+      )}
+    </section>
+  );
+}
+
 function commandOperationLabel(operationType: string): string {
   return operationType
     .split("_")
@@ -370,10 +486,12 @@ export function ActionReceiptCard({
   card: ChatActionReceiptCardV2;
 }) {
   const receipt = card.action_receipt;
+  const isNoop = receipt.status === "not_applied";
+  const isSuperseded = receipt.status === "superseded";
   return (
     <article className={`agent-chat__receipt is-${receipt.status}`}>
       <header>
-        <strong>Canvas updated</strong>
+        <strong>{isNoop ? "No canvas change" : isSuperseded ? "Action superseded" : "Canvas updated"}</strong>
         <span>{receipt.status.replaceAll("_", " ")}</span>
       </header>
       <p>{receipt.summary}</p>
@@ -382,7 +500,8 @@ export function ActionReceiptCard({
           {receipt.run_queue_errors.map((error) => <li key={error}>{error}</li>)}
         </ul>
       ) : null}
-      {receipt.continuation_turn_id ? (
+      {receipt.error ? <small>{receipt.error.message}</small> : null}
+      {receipt.continuation_turn_id || receipt.continuation_id ? (
         <small>Planning continues automatically</small>
       ) : null}
     </article>
@@ -394,7 +513,6 @@ export function ProposalCard({
   pending,
   onSelect,
   onRevise,
-  onSkip,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
@@ -405,7 +523,6 @@ export function ProposalCard({
     acceptedReferences: ProposedDraftReferenceV2[],
   ) => Promise<void>;
   onRevise: (proposalId: string, instruction: string) => Promise<void>;
-  onSkip: (proposalId: string) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<ConceptOptionV2 | null>(null);
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
@@ -562,7 +679,6 @@ export function ProposalCard({
           <button type="button" disabled={pending} title="Revise options" onClick={() => setRevising((current) => !current)}>
             <EditIcon />Revise
           </button>
-          <button type="button" disabled={pending} onClick={() => void onSkip(proposal.proposal_id)}>Skip</button>
         </div>
       ) : null}
       {revising ? (
@@ -599,7 +715,7 @@ export function GuidedActionsCard({
 }) {
   return (
     <div className="agent-chat__guided-actions" aria-label="Suggested next actions">
-      {card.actions.map((action) => (
+      {card.actions.filter((action) => action.state !== "superseded").map((action) => (
         <button
           type="button"
           key={action.action_id}

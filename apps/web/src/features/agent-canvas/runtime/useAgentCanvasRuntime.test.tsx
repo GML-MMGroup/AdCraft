@@ -250,6 +250,52 @@ describe("useAgentCanvasRuntime", () => {
     expect(callbacks.applyWorkflow).not.toHaveBeenCalled();
   });
 
+  it("advances the SSE cursor but ignores duplicate continuation transitions", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    const event = (sequence_no: number) => ({
+      sequence_no,
+      workflow_id: "workflow-1",
+      event_type: "continuation_started",
+      project_id: "project-1",
+      execution_id: null,
+      node_id: null,
+      asset_id: null,
+      binding_id: null,
+      conversation_id: "conversation-1",
+      turn_id: "turn-1",
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: "continuation-1:leased:1",
+      attempt: 1,
+      created_at: "2026-07-31T05:00:00Z",
+      payload: {},
+    });
+
+    eventSource.emit("continuation_started", event(43));
+    await waitFor(() => expect(result.current.state.chatRevision).toBe(1));
+    eventSource.emit("continuation_started", event(44));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.current.state.chatRevision).toBe(1);
+    expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200);
+  });
+
   it("keeps a selected node Draft and exposes required source IDs when backend preflight rejects it", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

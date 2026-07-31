@@ -2078,8 +2078,17 @@ export interface AgentOperationResultV2 {
 export type AgentActionReceiptStatusV2 =
   | "applied"
   | "applied_with_run_error"
+  | "not_applied"
   | "rejected"
+  | "superseded"
   | "failed";
+
+export interface AgentStructuredErrorV2 {
+  code: string;
+  message: string;
+  retryable: boolean | null;
+  stage: string | null;
+}
 
 export interface AgentActionReceiptV2 {
   receipt_id: string;
@@ -2102,6 +2111,9 @@ export interface AgentActionReceiptV2 {
   before_workflow_revision: number | null;
   placement_hints: AgentPlacementHintV2[];
   continuation_turn_id: string | null;
+  continuation_id: string | null;
+  superseded_by: string | null;
+  error: AgentStructuredErrorV2 | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
@@ -2150,6 +2162,9 @@ export interface AgentCanvasChatViewTimelineV2 {
   workflow_id: string;
   conversation_id: string | null;
   creative_session: CreativeSessionStateV2 | null;
+  creation_mode: AgentCanvasCreationModeV2 | null;
+  recipe: AdaptiveProductionRecipeV2 | null;
+  continuations: AgentCanvasContinuationV2[];
   items: ChatTimelineItemV2[];
   next_cursor: number;
 }
@@ -2161,6 +2176,7 @@ export interface ChatTurnAcceptedV2 {
   turn_id: string;
   status: "queued";
   events_cursor: number;
+  continuation: AgentCanvasContinuationV2 | null;
 }
 
 export interface EditingOutputSettingsV2 {
@@ -2448,7 +2464,7 @@ export type GuidedDeliveryActionTypeV2 =
 export interface GuidedDeliveryActionV2 {
   action_id: string;
   action: GuidedDeliveryActionTypeV2;
-  state: "pending" | "applying" | "applied" | "failed";
+  state: "pending" | "applying" | "applied" | "superseded" | "failed";
   creating_turn_id: string;
   expected_semantic_revision: number;
   label: string;
@@ -2460,6 +2476,83 @@ export interface GuidedDeliveryActionV2 {
   manifest_revision: number | null;
   confirmation_required: boolean;
   reason: string;
+}
+
+export type AgentCanvasCreationModeV2 =
+  | "ordinary_conversation"
+  | "targeted_authoring"
+  | "quick_media"
+  | "guided_production";
+
+export type AdaptiveProductionTopicKindV2 =
+  | "creative_direction"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "script"
+  | "storyboard"
+  | "video"
+  | "audio";
+
+export type AdaptiveProductionStageApplicabilityV2 =
+  | "required"
+  | "optional"
+  | "not_required";
+
+export type AdaptiveProductionStageStatusV2 =
+  | "pending"
+  | "working"
+  | "completed"
+  | "skipped"
+  | "not_required"
+  | "reopened";
+
+export interface AdaptiveProductionStageV2 {
+  topic_id: string;
+  topic_kind: AdaptiveProductionTopicKindV2;
+  title: string;
+  objective: string;
+  applicability: AdaptiveProductionStageApplicabilityV2;
+  applicability_reason: string;
+  specialist_name: SpecialistAgentNameV2;
+  proposal_mode: "single_plan" | "choice_set";
+  candidate_count: number;
+  status: AdaptiveProductionStageStatusV2;
+  related_node_ids: string[];
+}
+
+export interface AdaptiveProductionRecipeV2 {
+  recipe_id: string;
+  workflow_id: string;
+  conversation_id: string;
+  skill_run_id: string | null;
+  revision: number;
+  creation_mode: AgentCanvasCreationModeV2;
+  current_topic_id: string | null;
+  stages: AdaptiveProductionStageV2[];
+  anchor_digest: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AgentContinuationDeliveryStatusV2 =
+  | "queued"
+  | "leased"
+  | "retry_wait"
+  | "completed"
+  | "failed";
+
+export interface AgentCanvasContinuationV2 {
+  continuation_id: string;
+  delivery_status: AgentContinuationDeliveryStatusV2;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  source_turn_id: string | null;
+  continuation_turn_id: string | null;
+  max_attempts: number | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
 }
 
 export interface CreativeSessionTopicV2 {
@@ -2513,6 +2606,9 @@ export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
   creative_session: CreativeSessionStateV2 | null;
+  creation_mode: AgentCanvasCreationModeV2 | null;
+  recipe: AdaptiveProductionRecipeV2 | null;
+  continuations: AgentCanvasContinuationV2[];
   items: AgentCanvasChatTimelineEntryV2[];
   next_cursor: number;
 }
@@ -2526,6 +2622,9 @@ export interface AgentCanvasChatTurnV2 {
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;
+  creation_mode: AgentCanvasCreationModeV2 | null;
+  recipe: AdaptiveProductionRecipeV2 | null;
+  continuation: AgentCanvasContinuationV2 | null;
   created_at: string;
   updated_at: string;
 }

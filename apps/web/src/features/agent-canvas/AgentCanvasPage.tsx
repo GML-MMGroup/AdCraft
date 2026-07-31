@@ -748,6 +748,7 @@ export function AgentCanvasPage() {
         proposalPosition={proposalPosition}
         onFocusNode={focusNode}
         onActionReceipt={placeReceiptNodes}
+        onWorkflowRefresh={refreshWorkflow}
       />
     </div>
   );

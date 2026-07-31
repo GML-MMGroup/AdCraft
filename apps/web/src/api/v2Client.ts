@@ -768,7 +768,7 @@ export const v2Api = {
     request: AgentCanvasProposalActionRequestV2,
     idempotencyKey: string,
   ): Promise<ChatTurnAcceptedV2> {
-    return requestV2(
+    return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/chat/proposals/${encodeURIComponent(proposalId)}/actions`,
       {
         method: "POST",
@@ -776,7 +776,14 @@ export const v2Api = {
         body: JSON.stringify(request),
       },
       normalizeChatTurnAcceptedV2,
-    );
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
   },
 
   actOnAgentCanvasCommandPlan(
@@ -809,7 +816,7 @@ export const v2Api = {
     request: AgentCanvasGuidedActionApplyRequestV2,
     idempotencyKey: string,
   ): Promise<ChatTurnAcceptedV2> {
-    return requestV2(
+    return requestV2WithEtag(
       `/workflows/${encodeURIComponent(workflowId)}/chat/guided-actions/${encodeURIComponent(actionId)}/apply`,
       {
         method: "POST",
@@ -817,7 +824,14 @@ export const v2Api = {
         body: JSON.stringify(request),
       },
       normalizeChatTurnAcceptedV2,
-    );
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
   },
 
   createAgentCanvasVideoSkillRun(

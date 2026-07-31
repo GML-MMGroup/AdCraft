@@ -123,7 +123,10 @@
   box-shadow: 0 0 0 4px rgb(149 129 215 / 12%);
 }
 
-.agent-chat__activity.is-working i {
+.agent-chat__activity.is-working i,
+.agent-chat__continuation.is-queued i,
+.agent-chat__continuation.is-leased i,
+.agent-chat__continuation.is-retry_wait i {
   animation: agent-activity-pulse 1.25s ease-in-out infinite;
 }
 
@@ -146,6 +149,84 @@
   background: rgb(255 255 255 / 45%);
   color: inherit;
   text-align: left;
+}
+
+.agent-chat__recipe {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgb(111 96 168 / 18%);
+  border-radius: 7px;
+  background: rgb(111 96 168 / 5%);
+}
+
+.agent-chat__recipe > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.agent-chat__recipe > header span,
+.agent-chat__recipe p {
+  margin: 0;
+  color: #7b7890;
+  font-size: 10px;
+}
+
+.agent-chat__recipe ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-chat__recipe li {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  color: #717185;
+  font-size: 10px;
+}
+
+.agent-chat__recipe li i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a6a6b5;
+}
+
+.agent-chat__recipe li.is-working i,
+.agent-chat__recipe li.is-current i {
+  background: #8a70d2;
+  box-shadow: 0 0 0 4px rgb(138 112 210 / 14%);
+}
+
+.agent-chat__recipe li.is-completed i {
+  background: #4fa987;
+}
+
+.agent-chat__recipe li.is-skipped i {
+  background: #a1a0ad;
+}
+
+.agent-chat__recipe li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat__recipe li small {
+  color: #89869d;
+  font-size: 9px;
+}
+
+[data-theme="dark"] .agent-chat__recipe {
+  background: rgb(255 255 255 / 5%);
 }
 
 .agent-chat__artifact svg {
@@ -496,6 +577,33 @@
   background: rgb(185 72 92 / 9%);
   color: #a54f60;
   font-size: 11px;
+}
+
+.agent-chat__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 12px;
+  border-top: 1px solid rgb(103 91 153 / 16%);
+  background: rgb(115 99 174 / 8%);
+  color: #66568d;
+  font-size: 11px;
+}
+
+.agent-chat__notice button {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+}
+
+.agent-chat__notice svg {
+  width: 12px;
 }
 
 .agent-chat__composer {
