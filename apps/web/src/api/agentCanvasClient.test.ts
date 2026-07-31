@@ -505,6 +505,7 @@ describe("Agent Canvas client", () => {
       }, { status: 202 });
     });
     vi.stubGlobal("fetch", fetchMock);
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
 
     const accepted = await v2Api.applyAgentCanvasGuidedAction(
       "workflow-1",

@@ -598,6 +598,72 @@ describe("Agent Canvas normalizers", () => {
     })).toThrowError(/candidate_count/i);
   });
 
+  it("normalizes the backend creative session creation-mode decision", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      creative_session: {
+        skill_run_id: "session-1",
+        workflow_id: "workflow-1",
+        skill_id: "platform-default",
+        skill_version: "1",
+        status: "active",
+        creation_mode: {
+          mode: "ordinary_conversation",
+          reason: "The user is continuing an ordinary conversation.",
+          target_node_id: null,
+          target_asset_id: null,
+        },
+        active_recipe: null,
+        creative_direction_snapshot_id: "direction-1",
+        current_topic_id: "script",
+        topics: [],
+        deferred_topic_ids: [],
+        memory_revision: 0,
+        updated_at: "2026-07-31T07:56:23Z",
+      },
+      continuations: [],
+      items: [],
+      next_cursor: 0,
+    });
+
+    expect(timeline.creative_session?.creation_mode).toEqual({
+      mode: "ordinary_conversation",
+      reason: "The user is continuing an ordinary conversation.",
+      target_node_id: null,
+      target_asset_id: null,
+    });
+    expect(timeline.creative_session?.active_recipe).toBeNull();
+  });
+
+  it("normalizes creation-mode decisions returned on persisted chat turns", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-creation-mode-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "message",
+      request: { content: "Continue" },
+      error_code: null,
+      error_message: null,
+      creation_mode: {
+        mode: "targeted_authoring",
+        reason: "The user targeted an existing video node.",
+        target_node_id: "node-video-1",
+        target_asset_id: null,
+      },
+      recipe: null,
+      continuation: null,
+      created_at: "2026-07-31T07:56:23Z",
+      updated_at: "2026-07-31T07:56:24Z",
+    });
+
+    expect(turn.creation_mode).toMatchObject({
+      mode: "targeted_authoring",
+      target_node_id: "node-video-1",
+    });
+  });
+
   it("normalizes canonical Ready variations, command plans, receipts, and layout responses", () => {
     const workflowPayload = validWorkflowPayload();
     workflowPayload.nodes[1] = {

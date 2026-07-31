@@ -2566,12 +2566,21 @@ export interface CreativeSessionTopicV2 {
   related_node_ids: string[];
 }
 
+export interface CreationModeDecisionV2 {
+  mode: AgentCanvasCreationModeV2;
+  reason: string;
+  target_node_id: string | null;
+  target_asset_id: string | null;
+}
+
 export interface CreativeSessionStateV2 {
   skill_run_id: string;
   workflow_id: string;
   skill_id: string;
   skill_version: string;
   status: "active" | "superseded";
+  creation_mode: CreationModeDecisionV2 | null;
+  active_recipe: AdaptiveProductionRecipeV2 | null;
   creative_direction_snapshot_id: string | null;
   current_topic_id: string | null;
   topics: CreativeSessionTopicV2[];
@@ -2622,7 +2631,7 @@ export interface AgentCanvasChatTurnV2 {
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;
-  creation_mode: AgentCanvasCreationModeV2 | null;
+  creation_mode: CreationModeDecisionV2 | null;
   recipe: AdaptiveProductionRecipeV2 | null;
   continuation: AgentCanvasContinuationV2 | null;
   created_at: string;

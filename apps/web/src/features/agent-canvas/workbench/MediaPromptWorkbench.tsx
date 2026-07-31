@@ -73,14 +73,23 @@ export function MediaPromptWorkbench({
                     type="number"
                     min="1"
                     step="1"
-                    value={typeof draft.parameters.requested_duration_seconds === "number"
-                      ? draft.parameters.requested_duration_seconds
+                    value={typeof draft.parameters.duration_seconds === "number"
+                      ? draft.parameters.duration_seconds
                       : ""}
                     disabled={draft.pending}
                     onChange={(event) => {
                       const next = { ...draft.parameters };
-                      if (event.currentTarget.value) next.requested_duration_seconds = Number(event.currentTarget.value);
-                      else delete next.requested_duration_seconds;
+                      const duration = Number(event.currentTarget.value);
+                      if (
+                        event.currentTarget.value
+                        && Number.isInteger(duration)
+                        && duration > 0
+                      ) {
+                        next.duration_seconds = duration;
+                      } else {
+                        delete next.duration_seconds;
+                      }
+                      delete next.requested_duration_seconds;
                       delete next.effective_duration_seconds;
                       draft.setParameters(next);
                     }}
