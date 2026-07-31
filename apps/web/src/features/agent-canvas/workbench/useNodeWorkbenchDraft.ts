@@ -9,6 +9,7 @@ import type {
   AgentCanvasImageLibraryCategoryV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
+import { normalizeProviderParameters } from "../model/providerModels.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
@@ -33,38 +34,6 @@ function structuredText(node: CanvasNodeV2): string {
     ? node.structured_content.content
     : node.structured_content.text;
   return typeof fallback === "string" ? fallback : "";
-}
-
-function normalizeProviderParameters(
-  nodeType: CanvasNodeV2["node_type"],
-  source: Record<string, unknown>,
-): { parameters: Record<string, unknown>; migrated: boolean } {
-  if (nodeType !== "video") return { parameters: source, migrated: false };
-  const parameters = { ...source };
-  const requestedDuration = parameters.requested_duration_seconds;
-  const currentDuration = parameters.duration_seconds;
-  if (
-    typeof currentDuration !== "number"
-    && typeof requestedDuration === "number"
-    && Number.isInteger(requestedDuration)
-    && requestedDuration > 0
-  ) {
-    parameters.duration_seconds = requestedDuration;
-  }
-  if (
-    typeof parameters.duration_seconds === "number"
-    && (!Number.isInteger(parameters.duration_seconds) || parameters.duration_seconds <= 0)
-  ) {
-    delete parameters.duration_seconds;
-  }
-  const migrated = (
-    "requested_duration_seconds" in parameters
-    || "effective_duration_seconds" in parameters
-    || parameters.duration_seconds !== currentDuration
-  );
-  delete parameters.requested_duration_seconds;
-  delete parameters.effective_duration_seconds;
-  return { parameters, migrated };
 }
 
 export function useNodeWorkbenchDraft({

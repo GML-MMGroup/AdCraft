@@ -121,10 +121,12 @@ export function AgentCanvasPage() {
     applyWorkflow,
     mergePublishedAsset,
     mergeNode,
+    patchNode,
   }), [
     applyWorkflow,
     mergeNode,
     mergePublishedAsset,
+    patchNode,
   ]);
   const live = useAgentCanvasRuntime(workflow, runtimeCallbacks);
   const providerModels = useAgentCanvasProviderModels(workflow, session.state.selectedNode);

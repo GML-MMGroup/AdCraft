@@ -4,6 +4,7 @@ import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
 import {
   providerInputTypes,
   providerOutputType,
+  runnableDraftParameterMigrations,
   usesMediaProvider,
   usesProvider,
 } from "./providerModels.ts";
@@ -200,5 +201,50 @@ describe("providerInputTypes", () => {
       expect(usesMediaProvider(candidate)).toBe(outputType !== null);
       expect(providerOutputType(candidate)).toBe(outputType);
     });
+  });
+
+  it("collects canonical duration migrations only for runnable Draft video nodes", () => {
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 3,
+      layout_revision: 1,
+      nodes: [
+        {
+          ...node("video-zero", "video"),
+          status: "draft",
+          output_asset_id: null,
+          parameters: {
+            requested_duration_seconds: 0,
+            effective_duration_seconds: 15,
+          },
+        },
+        {
+          ...node("video-thirty", "video"),
+          status: "draft",
+          output_asset_id: null,
+          parameters: { requested_duration_seconds: 30 },
+        },
+        {
+          ...node("video-ready", "video"),
+          parameters: { requested_duration_seconds: 12 },
+        },
+        {
+          ...node("image-draft", "image"),
+          status: "draft",
+          output_asset_id: null,
+          parameters: { requested_duration_seconds: 12 },
+        },
+      ],
+      bindings: [],
+      assets: [],
+    };
+
+    expect(runnableDraftParameterMigrations(workflow)).toEqual([
+      { node_id: "video-zero", parameters: {} },
+      { node_id: "video-thirty", parameters: { duration_seconds: 30 } },
+    ]);
   });
 });
