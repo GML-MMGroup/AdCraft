@@ -46,14 +46,14 @@ function normalizeProviderParameters(
   if (
     typeof currentDuration !== "number"
     && typeof requestedDuration === "number"
-    && Number.isFinite(requestedDuration)
+    && Number.isInteger(requestedDuration)
     && requestedDuration > 0
   ) {
     parameters.duration_seconds = requestedDuration;
   }
   if (
     typeof parameters.duration_seconds === "number"
-    && (!Number.isFinite(parameters.duration_seconds) || parameters.duration_seconds <= 0)
+    && (!Number.isInteger(parameters.duration_seconds) || parameters.duration_seconds <= 0)
   ) {
     delete parameters.duration_seconds;
   }

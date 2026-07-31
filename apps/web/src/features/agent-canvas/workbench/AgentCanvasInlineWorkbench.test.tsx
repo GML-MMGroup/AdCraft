@@ -225,6 +225,25 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
+  it("does not persist fractional video durations that the provider contract rejects", async () => {
+    const node = {
+      ...makeNode("video"),
+      generation_prompt: "Animate the supplied references.",
+    };
+    const props = renderWorkbench(node);
+    const duration = screen.getByLabelText("Requested video duration");
+
+    fireEvent.change(duration, { target: { value: "20.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
+
+    await waitFor(() => {
+      expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
+        parameters: {},
+      }));
+    });
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
   it("renders upstream media as removable thumbnails without generic workbench chrome", () => {
     const node = makeNode("image");
     const props = renderWorkbench(node, { workflow: makeReferenceWorkflow(node) });

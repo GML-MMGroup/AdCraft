@@ -139,20 +139,21 @@ export function useAgentCanvasChat({
       let cursor = 0;
       for (;;) {
         const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
+        const timelineRecipe = timeline.recipe ?? timeline.creative_session?.active_recipe ?? null;
         nextCreativeSession = timeline.creative_session;
         nextCreationMode = (
           timeline.creation_mode
           ?? timeline.creative_session?.creation_mode?.mode
           ?? null
         );
-        nextRecipe = timeline.recipe ?? timeline.creative_session?.active_recipe ?? null;
+        nextRecipe = timelineRecipe;
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });
         const hydrated = await Promise.all(timeline.items.map(async (item): Promise<ChatTimelineItemV2> => {
           if (item.item_type !== "proposal_pointer") return item;
           const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
-          const stage = timeline.recipe?.stages.find((candidate) => candidate.topic_id === proposal.topic_id);
+          const stage = timelineRecipe?.stages.find((candidate) => candidate.topic_id === proposal.topic_id);
           if (stage && proposal.options.length !== stage.candidate_count) {
             hasInvalidProposalCardinality = true;
             // Keep the persisted pointer, which is intentionally not rendered as a proposal card.

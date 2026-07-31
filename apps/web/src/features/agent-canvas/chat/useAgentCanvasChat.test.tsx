@@ -345,6 +345,102 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.recipe).toBeNull();
   });
 
+  it("validates proposal cardinality against the nested active recipe", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      creative_session: {
+        skill_run_id: "session-1",
+        workflow_id: "workflow-1",
+        skill_id: "video-ad",
+        skill_version: "1",
+        status: "active",
+        creation_mode: {
+          mode: "guided_production",
+          reason: "The user requested guided production.",
+          target_node_id: null,
+          target_asset_id: null,
+        },
+        active_recipe: {
+          recipe_id: "recipe-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          skill_run_id: "session-1",
+          revision: 1,
+          creation_mode: "guided_production",
+          current_topic_id: "characters",
+          stages: [{
+            topic_id: "characters",
+            topic_kind: "character",
+            title: "Character design",
+            objective: "Choose the campaign lead.",
+            applicability: "required",
+            applicability_reason: "The campaign needs a lead character.",
+            specialist_name: "character_designer",
+            proposal_mode: "choice_set",
+            candidate_count: 2,
+            status: "working",
+            related_node_ids: [],
+          }],
+          anchor_digest: "anchor-1",
+          created_at: "2026-07-31T05:00:00Z",
+          updated_at: "2026-07-31T05:01:00Z",
+        },
+        creative_direction_snapshot_id: null,
+        current_topic_id: "characters",
+        topics: [],
+        deferred_topic_ids: [],
+        memory_revision: 2,
+        updated_at: "2026-07-31T05:01:00Z",
+      },
+      items: [{
+        item_type: "proposal_pointer",
+        proposal_id: "proposal-1",
+        sequence: 3,
+        created_at: "2026-07-31T05:01:00Z",
+      }],
+      next_cursor: 3,
+    });
+    api.agentCanvasProposal.mockResolvedValue({
+      proposal_id: "proposal-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-1",
+      video_skill_run_id: "session-1",
+      topic_id: "characters",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "character",
+      specialist_name: "character_designer",
+      status: "pending",
+      options: [{ option_id: "option-1", title: "Hero", summary_prompt: "Editorial lead" }],
+      proposed_references: [],
+      selected_option_id: null,
+      selection_actor: null,
+      created_at: "2026-07-31T05:01:00Z",
+      updated_at: "2026-07-31T05:01:00Z",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow("workflow-1"),
+      chatRevision: 0,
+      chatEvents: [],
+      proposalPosition: { x: 0, y: 0 },
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(result.current.state.recipe).toMatchObject({ recipe_id: "recipe-1" });
+    expect(result.current.state.items[0]).toMatchObject({
+      item_type: "proposal_pointer",
+      proposal_id: "proposal-1",
+    });
+    expect(result.current.state.error).toBe(
+      "The current proposal is incomplete and needs to be regenerated.",
+    );
+  });
+
   it("restores a backend continuation as Agent work in progress after refresh", async () => {
     api.agentCanvasChatTimeline.mockResolvedValue({
       workflow_id: "workflow-1",

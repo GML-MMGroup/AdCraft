@@ -80,7 +80,11 @@ export function MediaPromptWorkbench({
                     onChange={(event) => {
                       const next = { ...draft.parameters };
                       const duration = Number(event.currentTarget.value);
-                      if (event.currentTarget.value && Number.isFinite(duration) && duration > 0) {
+                      if (
+                        event.currentTarget.value
+                        && Number.isInteger(duration)
+                        && duration > 0
+                      ) {
                         next.duration_seconds = duration;
                       } else {
                         delete next.duration_seconds;
