@@ -6,8 +6,10 @@ import type {
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
   CanvasVariationDraftUpsertV2,
+  ProviderInputManifestAuditV2,
   ProviderModelCapabilityV2,
   SaveAgentCanvasImageToLibraryRequestV2,
+  UpstreamInputReadinessIssueV2,
 } from "../../../types-v2.ts";
 
 export type PatchNode = (
@@ -31,6 +33,8 @@ export interface AgentCanvasInlineWorkbenchProps {
   providerCapabilities?: ProviderModelCapabilityV2[];
   providerCapabilitiesLoading?: boolean;
   providerCapabilitiesError?: string | null;
+  inputManifest?: ProviderInputManifestAuditV2 | null;
+  inputReadinessIssue?: UpstreamInputReadinessIssueV2 | null;
   onRun: (node: CanvasNodeV2) => Promise<void>;
   onSaveVariation: (
     nodeId: string,

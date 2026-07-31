@@ -10,6 +10,8 @@ import type {
 import {
   ActionReceiptCard,
   CommandPlanCard,
+  GuidedActionsCard,
+  ProductionRecipeProgress,
   ProposalCard,
   SpecialistActivityRow,
 } from "./AgentCanvasChatPanel.tsx";
@@ -54,7 +56,6 @@ describe("ProposalCard", () => {
         pending={false}
         onSelect={onSelect}
         onRevise={vi.fn()}
-        onSkip={vi.fn()}
       />,
     );
 
@@ -124,6 +125,123 @@ describe("command control cards", () => {
     );
     expect(screen.queryByRole("button", { name: "Confirm command" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Reject command" })).toBeNull();
+  });
+
+  it("renders the backend recipe order and hides not-required stages", () => {
+    render(
+      <ProductionRecipeProgress
+        creationMode="guided_production"
+        recipe={{
+          recipe_id: "recipe-1",
+          workflow_id: "workflow-1",
+          conversation_id: "conversation-1",
+          skill_run_id: null,
+          revision: 2,
+          creation_mode: "guided_production",
+          current_topic_id: "topic-scene",
+          stages: [
+            {
+              topic_id: "topic-product",
+              topic_kind: "product",
+              title: "Product design",
+              objective: "Use the existing product reference.",
+              applicability: "not_required",
+              applicability_reason: "Already approved.",
+              specialist_name: "product_designer",
+              proposal_mode: "single_plan",
+              candidate_count: 1,
+              status: "not_required",
+              related_node_ids: ["node-product-1"],
+            },
+            {
+              topic_id: "topic-scene",
+              topic_kind: "scene",
+              title: "Scene design",
+              objective: "Choose a setting.",
+              applicability: "required",
+              applicability_reason: "A setting is required.",
+              specialist_name: "scene_designer",
+              proposal_mode: "choice_set",
+              candidate_count: 3,
+              status: "working",
+              related_node_ids: [],
+            },
+            {
+              topic_id: "topic-audio",
+              topic_kind: "audio",
+              title: "Audio direction",
+              objective: "Set the music direction.",
+              applicability: "optional",
+              applicability_reason: "Music can be added later.",
+              specialist_name: "bgm_director",
+              proposal_mode: "single_plan",
+              candidate_count: 1,
+              status: "pending",
+              related_node_ids: [],
+            },
+          ],
+          anchor_digest: "anchor-1",
+          created_at: "2026-07-31T05:00:00Z",
+          updated_at: "2026-07-31T05:01:00Z",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Scene design")).toBeTruthy();
+    expect(screen.getByText("Audio direction")).toBeTruthy();
+    expect(screen.queryByText("Product design")).toBeNull();
+  });
+
+  it("removes superseded guided actions instead of leaving stale controls clickable", () => {
+    render(
+      <GuidedActionsCard
+        card={{
+          item_type: "guided_actions",
+          source_entry_id: "entry-1",
+          sequence: 1,
+          created_at: "2026-07-31T05:00:00Z",
+          actions: [
+            {
+              action_id: "action-stale",
+              action: "add_another_topic_node",
+              state: "superseded",
+              creating_turn_id: "turn-1",
+              expected_semantic_revision: 2,
+              label: "Add another",
+              workflow_id: "workflow-1",
+              proposal_id: "proposal-1",
+              topic_id: "topic-1",
+              node_id: null,
+              ordered_node_ids: [],
+              manifest_revision: null,
+              confirmation_required: false,
+              reason: "A newer proposal replaced this action.",
+            },
+            {
+              action_id: "action-current",
+              action: "skip_topic",
+              state: "pending",
+              creating_turn_id: "turn-2",
+              expected_semantic_revision: 3,
+              label: "Skip optional audio",
+              workflow_id: "workflow-1",
+              proposal_id: null,
+              topic_id: "topic-audio",
+              node_id: null,
+              ordered_node_ids: [],
+              manifest_revision: null,
+              confirmation_required: false,
+              reason: "Audio is optional for this production plan.",
+            },
+          ],
+        }}
+        actingActionId={null}
+        onApply={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Add another" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Skip optional audio" })).toBeTruthy();
   });
 
   it("renders durable action acknowledgements without parsing assistant prose", () => {

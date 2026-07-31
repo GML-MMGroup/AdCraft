@@ -7,13 +7,19 @@ import type {
   CanvasNodeV2,
   CanvasRuntimeEventV2,
   CanvasRuntimeSnapshotV2,
+  ProviderInputManifestAuditV2,
   ProjectAssetSummaryV2,
+  UpstreamInputReadinessIssueV2,
 } from "../../../types-v2.ts";
 import {
   normalizeCanvasRuntimeEventV2,
   normalizeProjectAssetSummaryV2,
 } from "../model/normalizers.ts";
 import { AGENT_CANVAS_SSE_EVENT_TYPES } from "./eventTypes.ts";
+import {
+  inputManifestAuditFromEvent,
+  upstreamInputReadinessIssueFromDetails,
+} from "./inputManifestAudit.ts";
 import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
@@ -34,6 +40,8 @@ export function useAgentCanvasRuntime(
   const [runPending, setRunPending] = useState(false);
   const [chatRevision, setChatRevision] = useState(0);
   const [chatEvents, setChatEvents] = useState<CanvasRuntimeEventV2[]>([]);
+  const [inputManifestsByNodeId, setInputManifestsByNodeId] = useState<Record<string, ProviderInputManifestAuditV2>>({});
+  const [inputReadinessIssue, setInputReadinessIssue] = useState<UpstreamInputReadinessIssueV2 | null>(null);
   const cursorRef = useRef(0);
   const runtimeRefreshRef = useRef<Promise<void> | null>(null);
   const workflowRefreshRef = useRef<Promise<void> | null>(null);
@@ -42,6 +50,7 @@ export function useAgentCanvasRuntime(
   const workflowRefreshQueuedRef = useRef(false);
   const assetsRefreshQueuedRef = useRef(false);
   const pendingAssetPublishesRef = useRef<Map<string, string | null>>(new Map());
+  const seenTransitionKeysRef = useRef<Set<string>>(new Set());
 
   const workflowId = workflow?.workflow_id ?? null;
   const activeWorkflowIdRef = useRef<string | null>(workflowId);
@@ -55,6 +64,7 @@ export function useAgentCanvasRuntime(
     workflowRefreshQueuedRef.current = false;
     assetsRefreshQueuedRef.current = false;
     pendingAssetPublishesRef.current.clear();
+    seenTransitionKeysRef.current.clear();
   }
 
   useEffect(() => {
@@ -62,6 +72,8 @@ export function useAgentCanvasRuntime(
     setRuntimeError(null);
     setChatEvents([]);
     setChatRevision(0);
+    setInputManifestsByNodeId({});
+    setInputReadinessIssue(null);
   }, [workflowId]);
 
   const refreshRuntime = useCallback(async () => {
@@ -181,6 +193,22 @@ export function useAgentCanvasRuntime(
   const processEvent = useCallback((event: CanvasRuntimeEventV2) => {
     if (event.seq <= cursorRef.current) return;
     cursorRef.current = event.seq;
+    const transitionKey = event.transition_key;
+    if (transitionKey) {
+      if (seenTransitionKeysRef.current.has(transitionKey)) return;
+      seenTransitionKeysRef.current.add(transitionKey);
+      if (seenTransitionKeysRef.current.size > 500) {
+        const oldest = seenTransitionKeysRef.current.values().next().value;
+        if (typeof oldest === "string") seenTransitionKeysRef.current.delete(oldest);
+      }
+    }
+    const inputManifest = inputManifestAuditFromEvent(event);
+    if (inputManifest) {
+      setInputManifestsByNodeId((current) => ({
+        ...current,
+        [inputManifest.node_id]: inputManifest,
+      }));
+    }
     const policy = runtimeEventPolicy(event);
     if (policy.refreshRuntime) void refreshRuntime();
     if (policy.refreshWorkflow) void refreshWorkflow();
@@ -337,7 +365,16 @@ export function useAgentCanvasRuntime(
         request,
         createOperationKey(request.retry_failed ? "retry-node" : "run-node"),
       );
+      setInputReadinessIssue((current) => (
+        current?.target_node_id === node.node_id ? null : current
+      ));
       await refreshRuntime();
+    } catch (error) {
+      if (isV2ApiError(error) && error.code === "upstream_inputs_not_ready") {
+        const issue = upstreamInputReadinessIssueFromDetails(node.node_id, error.details);
+        if (issue) setInputReadinessIssue(issue);
+      }
+      throw error;
     } finally {
       setRunPending(false);
     }
@@ -361,6 +398,8 @@ export function useAgentCanvasRuntime(
       runPending,
       chatRevision,
       chatEvents,
+      inputManifestsByNodeId,
+      inputReadinessIssue,
     },
     actions: {
       refreshRuntime,

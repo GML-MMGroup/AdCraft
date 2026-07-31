@@ -336,6 +336,117 @@ describe("useAgentCanvasChat", () => {
     });
   });
 
+  it("restores a backend continuation as Agent work in progress after refresh", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      creative_session: null,
+      continuations: [{
+        continuation_id: "continuation-1",
+        delivery_status: "retry_wait",
+        attempt_count: 2,
+        next_attempt_at: "2026-07-31T05:00:00Z",
+        source_turn_id: "turn-1",
+        continuation_turn_id: "turn-2",
+        max_attempts: 3,
+        last_error_code: null,
+        last_error_message: null,
+      }],
+      items: [],
+      next_cursor: 0,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow("workflow-1"),
+      chatRevision: 0,
+      chatEvents: [],
+      proposalPosition: { x: 0, y: 0 },
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(result.current.state.continuations).toEqual([
+      expect.objectContaining({
+        continuation_id: "continuation-1",
+        delivery_status: "retry_wait",
+        attempt_count: 2,
+      }),
+    ]);
+    expect(result.current.state.error).toBeNull();
+  });
+
+  it("does not treat a not-applied guided receipt as a canvas mutation", async () => {
+    const onActionReceipt = vi.fn();
+    api.agentCanvasChatTimeline.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      creative_session: null,
+      continuations: [],
+      items: [{
+        item_type: "action_receipt",
+        action_receipt: {
+          receipt_id: "receipt-noop-1",
+          workflow_id: "workflow-1",
+          plan_id: null,
+          action_id: "action-1",
+          status: "not_applied",
+          summary: "No additional node was needed.",
+          created_node_ids: [],
+          updated_node_ids: [],
+          deleted_node_ids: [],
+          created_binding_ids: [],
+          deleted_binding_ids: [],
+          queued_execution_ids: [],
+          run_queue_errors: [],
+          operation_results: [],
+          workflow_revision: 2,
+          before_workflow_revision: 2,
+          placement_hints: [],
+          continuation_turn_id: null,
+          continuation_id: null,
+          superseded_by: null,
+          error: null,
+          error_code: null,
+          error_message: null,
+        },
+        sequence: 1,
+        created_at: "2026-07-31T05:00:00Z",
+      }],
+      next_cursor: 1,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow("workflow-1"),
+      chatRevision: 0,
+      chatEvents: [{
+        seq: 1,
+        workflow_id: "workflow-1",
+        event_type: "action_receipt_created",
+        project_id: "project-workflow-1",
+        execution_id: null,
+        node_id: null,
+        asset_id: null,
+        binding_id: null,
+        conversation_id: "conversation-1",
+        turn_id: "turn-1",
+        action_id: "action-1",
+        trace_id: null,
+        span_id: null,
+        created_at: "2026-07-31T05:00:00Z",
+        payload: { receipt_id: "receipt-noop-1" },
+      }],
+      proposalPosition: { x: 0, y: 0 },
+      onActionReceipt,
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(onActionReceipt).not.toHaveBeenCalled();
+    expect(result.current.state.notice).toBe("No additional node was needed.");
+  });
+
   it("selects a proposal with a frozen generation action and accepted references", async () => {
     api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
     api.actOnAgentCanvasProposal.mockResolvedValue({
