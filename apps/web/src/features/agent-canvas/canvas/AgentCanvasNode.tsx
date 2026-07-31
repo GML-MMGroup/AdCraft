@@ -50,7 +50,7 @@ export interface AgentCanvasNodeCallbacks {
   onRun?: (nodeId: string) => void;
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
-  onOpenMedia?: (nodeId: string, assetId: string) => void;
+  renderWorkbench?: (node: CanvasNodeV2) => ReactNode;
   onOpenConnectedNodeMenu?: (
     nodeId: string,
     direction: "upstream" | "downstream",
@@ -119,6 +119,13 @@ function typeIcon(nodeType: CanvasNodeTypeV2): ReactNode {
   return <EditIcon />;
 }
 
+function typeMarkerImage(nodeType: CanvasNodeTypeV2): string {
+  if (nodeType === "image") return "/imgs/image.webp";
+  if (nodeType === "video" || nodeType === "editing") return "/imgs/video.webp";
+  if (nodeType === "audio") return "/imgs/audio.webp";
+  return "/imgs/text.webp";
+}
+
 function actionIcon(action: "run" | "retry" | "export") {
   if (action === "retry") return <RunCurrentIcon />;
   if (action === "export") return <UploadIcon />;
@@ -136,18 +143,30 @@ function stopMouse(event: ReactMouseEvent<HTMLButtonElement>) {
 function MediaSurface({
   node,
   asset,
-  onOpenMedia,
 }: {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
-  onOpenMedia?: (nodeId: string, assetId: string) => void;
 }) {
-  const src = asset?.preview_url ?? (node.node_type === "image" ? asset?.media_url : null);
-  const canOpen = Boolean(asset?.asset_id && onOpenMedia);
-  const content = src ? (
+  const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
+  if (node.node_type === "video" && mediaUrl) {
+    return (
+      <video
+        className="agent-canvas-node__media agent-canvas-node__media--cover"
+        src={mediaUrl}
+        poster={asset?.preview_url ?? undefined}
+        aria-label={asset?.display_name || "Video output"}
+        muted
+        loop
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+
+  return mediaUrl ? (
     <img
       className="agent-canvas-node__media agent-canvas-node__media--cover"
-      src={src}
+      src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
       draggable={false}
       loading="lazy"
@@ -157,23 +176,6 @@ function MediaSurface({
     <div className="agent-canvas-node__media-placeholder" aria-label={`${NODE_TYPE_LABELS[node.node_type]} preview unavailable`}>
       {typeIcon(node.node_type)}
     </div>
-  );
-
-  if (!canOpen) return content;
-  return (
-    <button
-      type="button"
-      className="agent-canvas-node__media-button nodrag nopan"
-      aria-label={`Open ${asset?.display_name || NODE_TYPE_LABELS[node.node_type]} preview`}
-      onPointerDown={stopPointer}
-      onMouseDown={stopMouse}
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpenMedia?.(node.node_id, asset!.asset_id);
-      }}
-    >
-      {content}
-    </button>
   );
 }
 
@@ -196,8 +198,7 @@ function AudioSurface({ asset }: { asset?: ProjectAssetSummaryV2 | null }) {
 function NodeSurface({
   node,
   asset,
-  onOpenMedia,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenMedia">) {
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset">) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <div className={`agent-canvas-node__copy agent-canvas-node__copy--${node.node_type}`}>
@@ -207,7 +208,7 @@ function NodeSurface({
     );
   }
   if (node.node_type === "audio") return <AudioSurface asset={asset} />;
-  return <MediaSurface node={node} asset={asset} onOpenMedia={onOpenMedia} />;
+  return <MediaSurface node={node} asset={asset} />;
 }
 
 function nodeAction(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2) {
@@ -227,7 +228,6 @@ export function AgentCanvasNodeCard({
   onRun,
   onRetry,
   onExport,
-  onOpenMedia,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const action = nodeAction(node.node_type, status);
@@ -254,11 +254,11 @@ export function AgentCanvasNodeCard({
         aria-label={typeMarkerLabel(node, label)}
         title={`${label} node`}
       >
-        {typeIcon(node.node_type)}
+        <img src={typeMarkerImage(node.node_type)} alt="" draggable={false} />
       </span>
 
       <div className="agent-canvas-node__surface">
-        <NodeSurface node={node} asset={asset} onOpenMedia={onOpenMedia} />
+        <NodeSurface node={node} asset={asset} />
         {status === "working" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
@@ -304,6 +304,7 @@ export function AgentCanvasNodeRenderer({
   isConnectable,
 }: NodeProps<AgentCanvasFlowNode>) {
   const label = semanticNodeLabel(data.node);
+  const workbench = data.renderWorkbench?.(data.node);
   return (
     <div className="agent-canvas-node-shell">
       {data.showInputHandle !== false ? (
@@ -353,8 +354,8 @@ export function AgentCanvasNodeRenderer({
         onRun={data.onRun}
         onRetry={data.onRetry}
         onExport={data.onExport}
-        onOpenMedia={data.onOpenMedia}
       />
+      {workbench ? <div className="agent-canvas-node-workbench-anchor nodrag nopan nowheel">{workbench}</div> : null}
       {data.showOutputHandle !== false ? (
         <Handle
           id="output"
