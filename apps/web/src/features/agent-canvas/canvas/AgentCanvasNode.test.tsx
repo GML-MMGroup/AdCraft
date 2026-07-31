@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -93,6 +95,18 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
 afterEach(() => cleanup());
 
 describe("AgentCanvasNodeCard", () => {
+  it("uses an unframed type icon rather than a circular marker badge", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const markerRule = css.match(/\.agent-canvas-node__type-marker\s*\{([\s\S]*?)\n\}/)?.[1];
+
+    expect(markerRule).toBeDefined();
+    expect(markerRule).toContain("background: transparent");
+    expect(markerRule).toContain("border: 0");
+    expect(markerRule).not.toContain("border-radius");
+    expect(markerRule).not.toContain("box-shadow");
+  });
+
   it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
     "renders a lightweight %s card with a border-aligned type marker and no title",
     (nodeType) => {
