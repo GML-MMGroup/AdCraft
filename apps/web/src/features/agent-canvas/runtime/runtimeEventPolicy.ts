@@ -30,6 +30,7 @@ const RUNTIME_EVENTS = new Set([
   "provider_task_polled",
   "provider_task_completed",
   "provider_task_failed",
+  "provider_inputs_resolved",
   "node_output_published",
   "runtime_snapshot_updated",
 ]);

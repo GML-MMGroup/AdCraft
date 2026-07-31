@@ -179,6 +179,128 @@ describe("useAgentCanvasRuntime", () => {
     expect(result.current.state.chatEvents).toEqual([]);
   });
 
+  it("retains a sanitized provider input audit without creating client-side graph state", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    eventSource.emit("provider_inputs_resolved", {
+      sequence_no: 43,
+      workflow_id: "workflow-1",
+      event_type: "provider_inputs_resolved",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "node-video-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: "node-run:node-video-1:inputs-resolved:1",
+      attempt: 1,
+      created_at: "2026-07-31T04:00:00Z",
+      payload: {
+        input_manifest_id: "manifest-1",
+        media_inputs: [{
+          binding_id: "binding-image-1",
+          source_node_id: "node-image-1",
+          asset_id: "asset-image-1",
+          media_type: "image",
+          input_role: "image_reference",
+          required: true,
+          display_order: 0,
+          media_url: "https://must-not-be-stored.example/image.png",
+        }],
+      },
+    });
+
+    await waitFor(() => expect(result.current.state.inputManifestsByNodeId["node-video-1"]).toEqual({
+      node_id: "node-video-1",
+      input_manifest_id: "manifest-1",
+      execution_id: "execution-1",
+      node_run_id: null,
+      text_inputs: [],
+      media_inputs: [{
+        binding_id: "binding-image-1",
+        source_node_id: "node-image-1",
+        asset_id: "asset-image-1",
+        media_type: "image",
+        input_role: "image_reference",
+        source_semantic_role: null,
+        transport_type: null,
+        required: true,
+        display_order: 0,
+      }],
+      omitted_optional_inputs: [],
+    }));
+    expect(callbacks.applyWorkflow).not.toHaveBeenCalled();
+  });
+
+  it("keeps a selected node Draft and exposes required source IDs when backend preflight rejects it", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const draftVideo: CanvasNodeV2 = {
+      node_id: "node-video-1",
+      workflow_id: "workflow-1",
+      node_type: "video",
+      creative_role: "general_video",
+      role_contract_version: "ad-media-role-v1",
+      title: "Video Draft",
+      status: "draft",
+      summary_prompt: null,
+      generation_prompt: "A short cinematic product video.",
+      structured_content: {},
+      model_id: "video-model",
+      parameters: {},
+      prompt_context_snapshot_id: null,
+      output_asset_id: null,
+      position: { x: 0, y: 0 },
+      revision: 1,
+      error: null,
+      variation_draft: null,
+      created_at: "2026-07-31T04:00:00Z",
+      updated_at: "2026-07-31T04:00:00Z",
+    };
+    api.runAgentCanvas.mockRejectedValueOnce({
+      status: 409,
+      code: "upstream_inputs_not_ready",
+      details: { missing_required_source_node_ids: ["node-script-1", "node-image-1"] },
+    });
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime({ ...workflow, nodes: [draftVideo] }, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    await expect(result.current.actions.runNode(draftVideo)).rejects.toMatchObject({ code: "upstream_inputs_not_ready" });
+
+    await waitFor(() => expect(result.current.state.inputReadinessIssue).toEqual({
+      target_node_id: "node-video-1",
+      source_node_ids: ["node-script-1", "node-image-1"],
+    }));
+    expect(callbacks.mergeNode).not.toHaveBeenCalled();
+  });
+
   it("does not submit a per-node Run for Ready media", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

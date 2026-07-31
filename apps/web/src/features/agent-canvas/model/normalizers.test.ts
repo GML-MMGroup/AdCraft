@@ -343,6 +343,67 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("accepts additive typed-input runtime metadata and idempotent event identity", () => {
+    const runtime = normalizeCanvasRuntimeSnapshotV2({
+      workflow_id: "workflow-1",
+      active_execution_id: "execution-1",
+      execution_status: "waiting",
+      node_runtime: {
+        "node-video-1": {
+          node_id: "node-video-1",
+          visible_status: "draft",
+          phase: "waiting_for_input",
+          execution_id: "execution-1",
+          provider_task_id: null,
+          input_manifest_id: "manifest-1",
+          waiting_reason: "waiting_for_input",
+          missing_required_source_node_ids: ["node-script-1", "node-image-1"],
+          waiting_for_node_ids: ["node-script-1"],
+          blocked_by_node_ids: [],
+          attempt_no: 0,
+          updated_at: "2026-07-31T04:00:00Z",
+          error: null,
+        },
+      },
+      queued_node_ids: [],
+      working_node_ids: [],
+      waiting_node_ids: ["node-video-1"],
+      ready_node_ids: [],
+      failed_node_ids: [],
+      events_cursor: 17,
+      updated_at: "2026-07-31T04:00:00Z",
+    });
+    const event = normalizeCanvasRuntimeEventV2({
+      sequence_no: 18,
+      workflow_id: "workflow-1",
+      event_type: "provider_inputs_resolved",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "node-video-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: "node-run:node-video-1:inputs-resolved:1",
+      attempt: 1,
+      created_at: "2026-07-31T04:00:01Z",
+      payload: { input_manifest_id: "manifest-1" },
+    });
+
+    expect(runtime.node_runtime["node-video-1"]).toMatchObject({
+      input_manifest_id: "manifest-1",
+      waiting_reason: "waiting_for_input",
+      missing_required_source_node_ids: ["node-script-1", "node-image-1"],
+    });
+    expect(event).toMatchObject({
+      transition_key: "node-run:node-video-1:inputs-resolved:1",
+      attempt: 1,
+    });
+  });
+
   it("normalizes canonical Ready variations, command plans, receipts, and layout responses", () => {
     const workflowPayload = validWorkflowPayload();
     workflowPayload.nodes[1] = {

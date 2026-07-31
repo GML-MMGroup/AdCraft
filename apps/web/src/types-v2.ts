@@ -1682,6 +1682,9 @@ export interface NodeRuntimeV2 {
   phase: NodeRuntimePhaseV2 | null;
   execution_id: string | null;
   provider_task_id: string | null;
+  input_manifest_id?: string | null;
+  waiting_reason?: string | null;
+  missing_required_source_node_ids?: string[];
   waiting_for_node_ids: string[];
   blocked_by_node_ids: string[];
   attempt_no: number;
@@ -1717,8 +1720,53 @@ export interface CanvasRuntimeEventV2 {
   action_id: string | null;
   trace_id: string | null;
   span_id: string | null;
+  transition_key?: string | null;
+  attempt?: number | null;
   created_at: string;
   payload: Record<string, unknown> | null;
+}
+
+export interface ProviderResolvedTextInputAuditV2 {
+  binding_id: string;
+  source_node_id: string;
+  snapshot_id: string | null;
+  input_role: "text_context";
+  required: boolean;
+  display_order: number;
+}
+
+export interface ProviderResolvedMediaInputAuditV2 {
+  binding_id: string;
+  source_node_id: string | null;
+  asset_id: string;
+  media_type: AgentCanvasAssetMediaTypeV2;
+  input_role: CanvasBindingInputRoleV2;
+  source_semantic_role: string | null;
+  transport_type: string | null;
+  required: boolean;
+  display_order: number;
+}
+
+export interface ProviderOmittedOptionalInputAuditV2 {
+  binding_id: string;
+  source_node_id: string | null;
+  reason_code: string;
+}
+
+/** A browser-safe projection of one backend-resolved provider input manifest. */
+export interface ProviderInputManifestAuditV2 {
+  node_id: string;
+  input_manifest_id: string;
+  execution_id: string | null;
+  node_run_id: string | null;
+  text_inputs: ProviderResolvedTextInputAuditV2[];
+  media_inputs: ProviderResolvedMediaInputAuditV2[];
+  omitted_optional_inputs: ProviderOmittedOptionalInputAuditV2[];
+}
+
+export interface UpstreamInputReadinessIssueV2 {
+  target_node_id: string;
+  source_node_ids: string[];
 }
 
 export interface ProviderModelCapabilityV2 {

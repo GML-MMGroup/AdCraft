@@ -53,6 +53,7 @@ export const AGENT_CANVAS_SSE_EVENT_TYPES = [
   "provider_task_polled",
   "provider_task_completed",
   "provider_task_failed",
+  "provider_inputs_resolved",
   "node_output_published",
   "runtime_snapshot_updated",
   "editing_export_queued",

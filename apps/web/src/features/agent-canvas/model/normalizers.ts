@@ -947,6 +947,9 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
       "phase",
       "execution_id",
       "provider_task_id",
+      "input_manifest_id",
+      "waiting_reason",
+      "missing_required_source_node_ids",
       "waiting_for_node_ids",
       "blocked_by_node_ids",
       "attempt_no",
@@ -962,6 +965,13 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     phase: phase ?? null,
     execution_id: nullableString(record.execution_id, `${path}.execution_id`),
     provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
+    input_manifest_id: nullableStringWithDefault(record.input_manifest_id, `${path}.input_manifest_id`),
+    waiting_reason: nullableStringWithDefault(record.waiting_reason, `${path}.waiting_reason`),
+    missing_required_source_node_ids: optionalStringArray(
+      record.missing_required_source_node_ids,
+      `${path}.missing_required_source_node_ids`,
+      [],
+    ),
     waiting_for_node_ids: optionalStringArray(record.waiting_for_node_ids, `${path}.waiting_for_node_ids`, []),
     blocked_by_node_ids: optionalStringArray(record.blocked_by_node_ids, `${path}.blocked_by_node_ids`, []),
     attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
@@ -1025,6 +1035,8 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
       "action_id",
       "trace_id",
       "span_id",
+      "transition_key",
+      "attempt",
       "created_at",
       "payload",
     ],
@@ -1046,6 +1058,10 @@ export function normalizeCanvasRuntimeEventV2(value: unknown, path = "event"): C
     action_id: record.action_id === undefined ? null : nullableString(record.action_id, `${path}.action_id`),
     trace_id: record.trace_id === undefined ? null : nullableString(record.trace_id, `${path}.trace_id`),
     span_id: record.span_id === undefined ? null : nullableString(record.span_id, `${path}.span_id`),
+    transition_key: nullableStringWithDefault(record.transition_key, `${path}.transition_key`),
+    attempt: record.attempt === undefined || record.attempt === null
+      ? null
+      : expectNonNegativeInteger(record.attempt, `${path}.attempt`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     payload: record.payload === null || record.payload === undefined
       ? null

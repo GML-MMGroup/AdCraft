@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { EditingWorkbench } from "./EditingWorkbench.tsx";
 import { MediaPromptWorkbench } from "./MediaPromptWorkbench.tsx";
+import { NodeInputRuntimeSummary } from "./NodeInputRuntimeSummary.tsx";
 import { NodeReferenceStrip } from "./NodeReferenceStrip.tsx";
 import { NodeWorkbenchShell } from "./NodeWorkbenchShell.tsx";
 import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
@@ -20,6 +21,8 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     providerCapabilities = [],
     providerCapabilitiesLoading = false,
     providerCapabilitiesError = null,
+    inputManifest,
+    inputReadinessIssue,
     onDelete,
     onClose,
     onOpenAssets,
@@ -63,6 +66,12 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       onClose={onClose}
     >
       {references}
+      <NodeInputRuntimeSummary
+        workflow={workflow}
+        node={node}
+        inputManifest={inputManifest}
+        inputReadinessIssue={inputReadinessIssue}
+      />
       {node.node_type === "text" ? <TextWorkbench node={node} draft={draft} /> : null}
       {node.node_type === "script" ? <ScriptWorkbench node={node} draft={draft} /> : null}
       {["image", "video", "audio"].includes(node.node_type) ? (
