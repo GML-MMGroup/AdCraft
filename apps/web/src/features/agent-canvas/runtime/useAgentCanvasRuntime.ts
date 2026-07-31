@@ -30,13 +30,20 @@ type RuntimeCallbacks = {
   applyWorkflow: (workflow: AgentCanvasWorkflowV2) => void;
   mergePublishedAsset: (asset: ProjectAssetSummaryV2, nodeId?: string | null) => void;
   mergeNode: (node: CanvasNodeV2) => void;
-  patchNode?: (nodeId: string, patch: CanvasNodePatchRequestV2) => Promise<void>;
 };
+
+type RuntimeNodePatcher = (
+  nodeId: string,
+  patch: CanvasNodePatchRequestV2,
+) => Promise<void>;
 
 export function useAgentCanvasRuntime(
   workflow: AgentCanvasWorkflowV2 | null,
   callbacks: RuntimeCallbacks,
+  patchNode?: RuntimeNodePatcher,
 ) {
+  const patchNodeRef = useRef(patchNode);
+  patchNodeRef.current = patchNode;
   const [runtime, setRuntime] = useState<CanvasRuntimeSnapshotV2 | null>(null);
   const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "live" | "reconnecting" | "unavailable">("idle");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -342,7 +349,7 @@ export function useAgentCanvasRuntime(
     setRunPending(true);
     try {
       const migrations = runnableDraftParameterMigrations(workflow);
-      const patchNode = callbacks.patchNode;
+      const patchNode = patchNodeRef.current;
       if (migrations.length && !patchNode) {
         throw new Error("Global Run cannot migrate legacy provider parameters.");
       }
@@ -361,7 +368,7 @@ export function useAgentCanvasRuntime(
     } finally {
       setRunPending(false);
     }
-  }, [callbacks, refreshRuntime, workflow, workflowId]);
+  }, [refreshRuntime, workflow, workflowId]);
 
   const runNode = useCallback(async (
     node: CanvasNodeV2,

@@ -329,6 +329,7 @@ describe("useAgentCanvasRuntime", () => {
       updated_at: "2026-07-31T04:00:00Z",
     };
     let resolvePatch!: () => void;
+    const firstPatchNode = vi.fn().mockResolvedValue(undefined);
     const patchNode = vi.fn(() => new Promise<void>((resolve) => {
       resolvePatch = resolve;
     }));
@@ -336,19 +337,23 @@ describe("useAgentCanvasRuntime", () => {
       applyWorkflow: vi.fn(),
       mergePublishedAsset: vi.fn(),
       mergeNode: vi.fn(),
-      patchNode,
     };
-    const { result } = renderHook(() => useAgentCanvasRuntime({
-      ...workflow,
-      nodes: [draftVideo],
-    }, callbacks));
+    const { result, rerender } = renderHook(
+      ({ patchNode: currentPatchNode }) => useAgentCanvasRuntime({
+        ...workflow,
+        nodes: [draftVideo],
+      }, callbacks, currentPatchNode),
+      { initialProps: { patchNode: firstPatchNode } },
+    );
 
     await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    rerender({ patchNode });
     const runPromise = result.current.actions.runAll();
     await waitFor(() => expect(patchNode).toHaveBeenCalledWith(
       draftVideo.node_id,
       { parameters: {} },
     ));
+    expect(firstPatchNode).not.toHaveBeenCalled();
     expect(api.runAgentCanvas).not.toHaveBeenCalled();
 
     resolvePatch();
@@ -359,6 +364,7 @@ describe("useAgentCanvasRuntime", () => {
       expect.objectContaining({ scope: "all_drafts" }),
       expect.any(String),
     );
+    expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce();
   });
 
   it("keeps a selected node Draft and exposes required source IDs when backend preflight rejects it", async () => {
