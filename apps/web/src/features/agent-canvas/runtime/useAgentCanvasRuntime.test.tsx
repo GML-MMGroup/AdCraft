@@ -296,6 +296,77 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200);
   });
 
+  it("persists legacy Draft video parameters before submitting a global Run", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const draftVideo: CanvasNodeV2 = {
+      node_id: "node-video-legacy",
+      workflow_id: "workflow-1",
+      node_type: "video",
+      creative_role: "general_video",
+      role_contract_version: "ad-media-role-v1",
+      title: "Legacy Video Draft",
+      status: "draft",
+      summary_prompt: null,
+      generation_prompt: "Animate the supplied references.",
+      structured_content: {},
+      model_id: null,
+      parameters: {
+        requested_duration_seconds: 0,
+        effective_duration_seconds: 15,
+      },
+      prompt_context_snapshot_id: null,
+      output_asset_id: null,
+      position: { x: 0, y: 0 },
+      revision: 1,
+      error: null,
+      variation_draft: null,
+      created_at: "2026-07-31T04:00:00Z",
+      updated_at: "2026-07-31T04:00:00Z",
+    };
+    let resolvePatch!: () => void;
+    const firstPatchNode = vi.fn().mockResolvedValue(undefined);
+    const patchNode = vi.fn(() => new Promise<void>((resolve) => {
+      resolvePatch = resolve;
+    }));
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result, rerender } = renderHook(
+      ({ patchNode: currentPatchNode }) => useAgentCanvasRuntime({
+        ...workflow,
+        nodes: [draftVideo],
+      }, callbacks, currentPatchNode),
+      { initialProps: { patchNode: firstPatchNode } },
+    );
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    rerender({ patchNode });
+    const runPromise = result.current.actions.runAll();
+    await waitFor(() => expect(patchNode).toHaveBeenCalledWith(
+      draftVideo.node_id,
+      { parameters: {} },
+    ));
+    expect(firstPatchNode).not.toHaveBeenCalled();
+    expect(api.runAgentCanvas).not.toHaveBeenCalled();
+
+    resolvePatch();
+    await runPromise;
+
+    expect(api.runAgentCanvas).toHaveBeenCalledWith(
+      "workflow-1",
+      expect.objectContaining({ scope: "all_drafts" }),
+      expect.any(String),
+    );
+    expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce();
+  });
+
   it("keeps a selected node Draft and exposes required source IDs when backend preflight rejects it", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

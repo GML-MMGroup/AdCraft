@@ -5,6 +5,7 @@ import { createOperationKey } from "../../../api/operationKey.ts";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
+  CanvasNodePatchRequestV2,
   CanvasRuntimeEventV2,
   CanvasRuntimeSnapshotV2,
   ProviderInputManifestAuditV2,
@@ -15,6 +16,7 @@ import {
   normalizeCanvasRuntimeEventV2,
   normalizeProjectAssetSummaryV2,
 } from "../model/normalizers.ts";
+import { runnableDraftParameterMigrations } from "../model/providerModels.ts";
 import { AGENT_CANVAS_SSE_EVENT_TYPES } from "./eventTypes.ts";
 import {
   inputManifestAuditFromEvent,
@@ -30,10 +32,18 @@ type RuntimeCallbacks = {
   mergeNode: (node: CanvasNodeV2) => void;
 };
 
+type RuntimeNodePatcher = (
+  nodeId: string,
+  patch: CanvasNodePatchRequestV2,
+) => Promise<void>;
+
 export function useAgentCanvasRuntime(
   workflow: AgentCanvasWorkflowV2 | null,
   callbacks: RuntimeCallbacks,
+  patchNode?: RuntimeNodePatcher,
 ) {
+  const patchNodeRef = useRef(patchNode);
+  patchNodeRef.current = patchNode;
   const [runtime, setRuntime] = useState<CanvasRuntimeSnapshotV2 | null>(null);
   const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "live" | "reconnecting" | "unavailable">("idle");
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
@@ -335,9 +345,19 @@ export function useAgentCanvasRuntime(
   }, [processEvent, refreshRuntime, refreshWorkflow, workflowId]);
 
   const runAll = useCallback(async () => {
-    if (!workflowId) return;
+    if (!workflowId || !workflow) return;
     setRunPending(true);
     try {
+      const migrations = runnableDraftParameterMigrations(workflow);
+      const patchNode = patchNodeRef.current;
+      if (migrations.length && !patchNode) {
+        throw new Error("Global Run cannot migrate legacy provider parameters.");
+      }
+      for (const migration of migrations) {
+        await patchNode!(migration.node_id, {
+          parameters: migration.parameters,
+        });
+      }
       await agentCanvasApi.runAgentCanvas(workflowId, {
         scope: "all_drafts",
         node_ids: [],
@@ -348,7 +368,7 @@ export function useAgentCanvasRuntime(
     } finally {
       setRunPending(false);
     }
-  }, [refreshRuntime, workflowId]);
+  }, [refreshRuntime, workflow, workflowId]);
 
   const runNode = useCallback(async (
     node: CanvasNodeV2,
