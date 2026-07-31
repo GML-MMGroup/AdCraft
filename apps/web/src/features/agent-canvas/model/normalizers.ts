@@ -54,6 +54,7 @@ import type {
   ChatTurnAcceptedV2,
   ConceptOptionV2,
   ConceptProposalV2,
+  CreationModeDecisionV2,
   CreativeSessionStateV2,
   CreativeSessionTopicV2,
   EditingExportRuntimeV2,
@@ -2539,6 +2540,24 @@ function normalizeCreativeSessionTopicV2(
   };
 }
 
+function normalizeCreationModeDecisionV2(
+  value: unknown,
+  path: string,
+): CreationModeDecisionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["mode", "reason", "target_node_id", "target_asset_id"],
+    path,
+  );
+  return {
+    mode: expectLiteral(record.mode, CREATION_MODES, `${path}.mode`),
+    reason: expectNonEmptyString(record.reason, `${path}.reason`),
+    target_node_id: nullableStringWithDefault(record.target_node_id, `${path}.target_node_id`),
+    target_asset_id: nullableStringWithDefault(record.target_asset_id, `${path}.target_asset_id`),
+  };
+}
+
 function normalizeCreativeSessionStateV2(
   value: unknown,
   path: string,
@@ -2552,6 +2571,8 @@ function normalizeCreativeSessionStateV2(
       "skill_id",
       "skill_version",
       "status",
+      "creation_mode",
+      "active_recipe",
       "creative_direction_snapshot_id",
       "current_topic_id",
       "topics",
@@ -2567,6 +2588,12 @@ function normalizeCreativeSessionStateV2(
     skill_id: expectNonEmptyString(record.skill_id, `${path}.skill_id`),
     skill_version: expectNonEmptyString(record.skill_version, `${path}.skill_version`),
     status: expectLiteral(record.status, new Set<CreativeSessionStateV2["status"]>(["active", "superseded"]), `${path}.status`),
+    creation_mode: record.creation_mode === undefined || record.creation_mode === null
+      ? null
+      : normalizeCreationModeDecisionV2(record.creation_mode, `${path}.creation_mode`),
+    active_recipe: record.active_recipe === undefined || record.active_recipe === null
+      ? null
+      : normalizeAdaptiveProductionRecipeV2(record.active_recipe, `${path}.active_recipe`),
     creative_direction_snapshot_id: nullableStringWithDefault(
       record.creative_direction_snapshot_id,
       `${path}.creative_direction_snapshot_id`,
@@ -2850,7 +2877,7 @@ export function normalizeAgentCanvasChatTurnV2(
     error_message: nullableString(record.error_message, `${path}.error_message`),
     creation_mode: record.creation_mode === undefined || record.creation_mode === null
       ? null
-      : expectLiteral(record.creation_mode, CREATION_MODES, `${path}.creation_mode`),
+      : normalizeCreationModeDecisionV2(record.creation_mode, `${path}.creation_mode`),
     recipe: record.recipe === undefined || record.recipe === null
       ? null
       : normalizeAdaptiveProductionRecipeV2(record.recipe, `${path}.recipe`),

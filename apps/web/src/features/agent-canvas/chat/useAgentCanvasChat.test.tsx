@@ -271,6 +271,13 @@ describe("useAgentCanvasChat", () => {
         skill_id: "video-ad",
         skill_version: "1",
         status: "active",
+        creation_mode: {
+          mode: "ordinary_conversation",
+          reason: "The user is continuing an ordinary conversation.",
+          target_node_id: null,
+          target_asset_id: null,
+        },
+        active_recipe: null,
         creative_direction_snapshot_id: null,
         current_topic_id: "characters",
         topics: [{
@@ -334,6 +341,8 @@ describe("useAgentCanvasChat", () => {
       current_topic_id: "characters",
       memory_revision: 2,
     });
+    expect(result.current.state.creationMode).toBe("ordinary_conversation");
+    expect(result.current.state.recipe).toBeNull();
   });
 
   it("restores a backend continuation as Agent work in progress after refresh", async () => {

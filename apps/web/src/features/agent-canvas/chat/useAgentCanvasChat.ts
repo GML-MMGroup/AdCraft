@@ -140,8 +140,12 @@ export function useAgentCanvasChat({
       for (;;) {
         const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
         nextCreativeSession = timeline.creative_session;
-        nextCreationMode = timeline.creation_mode ?? null;
-        nextRecipe = timeline.recipe ?? null;
+        nextCreationMode = (
+          timeline.creation_mode
+          ?? timeline.creative_session?.creation_mode?.mode
+          ?? null
+        );
+        nextRecipe = timeline.recipe ?? timeline.creative_session?.active_recipe ?? null;
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });

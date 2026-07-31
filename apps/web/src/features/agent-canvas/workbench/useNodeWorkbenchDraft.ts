@@ -35,6 +35,38 @@ function structuredText(node: CanvasNodeV2): string {
   return typeof fallback === "string" ? fallback : "";
 }
 
+function normalizeProviderParameters(
+  nodeType: CanvasNodeV2["node_type"],
+  source: Record<string, unknown>,
+): { parameters: Record<string, unknown>; migrated: boolean } {
+  if (nodeType !== "video") return { parameters: source, migrated: false };
+  const parameters = { ...source };
+  const requestedDuration = parameters.requested_duration_seconds;
+  const currentDuration = parameters.duration_seconds;
+  if (
+    typeof currentDuration !== "number"
+    && typeof requestedDuration === "number"
+    && Number.isFinite(requestedDuration)
+    && requestedDuration > 0
+  ) {
+    parameters.duration_seconds = requestedDuration;
+  }
+  if (
+    typeof parameters.duration_seconds === "number"
+    && (!Number.isFinite(parameters.duration_seconds) || parameters.duration_seconds <= 0)
+  ) {
+    delete parameters.duration_seconds;
+  }
+  const migrated = (
+    "requested_duration_seconds" in parameters
+    || "effective_duration_seconds" in parameters
+    || parameters.duration_seconds !== currentDuration
+  );
+  delete parameters.requested_duration_seconds;
+  delete parameters.effective_duration_seconds;
+  return { parameters, migrated };
+}
+
 export function useNodeWorkbenchDraft({
   workflow,
   node,
@@ -61,8 +93,15 @@ export function useNodeWorkbenchDraft({
   );
   const [textContent, setTextContent] = useState(structuredText(node));
   const [modelId, setModelId] = useState(node.variation_draft?.model_id ?? node.model_id ?? "");
-  const [parameters, setParameters] = useState<Record<string, unknown>>(
+  const initialParameterState = normalizeProviderParameters(
+    node.node_type,
     node.variation_draft?.parameters ?? node.parameters,
+  );
+  const [parameters, setParameters] = useState<Record<string, unknown>>(
+    initialParameterState.parameters,
+  );
+  const [parameterMigrationRequired, setParameterMigrationRequired] = useState(
+    initialParameterState.migrated,
   );
   const [libraryCategory, setLibraryCategory] = useState<AgentCanvasImageLibraryCategoryV2>(
     defaultLibraryCategory(node),
@@ -84,7 +123,12 @@ export function useNodeWorkbenchDraft({
     setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
     setTextContent(structuredText(node));
     setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
-    setParameters(node.variation_draft?.parameters ?? node.parameters);
+    const parameterState = normalizeProviderParameters(
+      node.node_type,
+      node.variation_draft?.parameters ?? node.parameters,
+    );
+    setParameters(parameterState.parameters);
+    setParameterMigrationRequired(parameterState.migrated);
     setLibraryCategory(defaultLibraryCategory(node));
     setLibraryName(node.title);
     setLibrarySaved(false);
@@ -146,7 +190,10 @@ export function useNodeWorkbenchDraft({
         model_id: modelId || null,
         parameters,
       }));
-      if (saved) setDirty(false);
+      if (saved) {
+        setDirty(false);
+        setParameterMigrationRequired(false);
+      }
       return saved;
     }
 
@@ -162,17 +209,20 @@ export function useNodeWorkbenchDraft({
         },
       } : {}),
     }));
-    if (saved) setDirty(false);
+    if (saved) {
+      setDirty(false);
+      setParameterMigrationRequired(false);
+    }
     return saved;
   };
 
   const run = async () => {
-    if (dirty && !(await save())) return;
+    if ((dirty || parameterMigrationRequired) && !(await save())) return;
     await perform(() => onRun(node));
   };
 
   const materializeVariation = async (action: "create_draft" | "generate") => {
-    if ((dirty || !node.variation_draft) && !(await save())) return;
+    if ((dirty || parameterMigrationRequired || !node.variation_draft) && !(await save())) return;
     await perform(() => onMaterializeVariation(node, action));
   };
 
@@ -207,7 +257,12 @@ export function useNodeWorkbenchDraft({
     modelId,
     setModelId: (value: string) => { setModelId(value); setDirty(true); },
     parameters,
-    setParameters: (value: Record<string, unknown>) => { setParameters(value); setDirty(true); },
+    setParameters: (value: Record<string, unknown>) => {
+      const parameterState = normalizeProviderParameters(node.node_type, value);
+      setParameters(parameterState.parameters);
+      setParameterMigrationRequired(parameterState.migrated);
+      setDirty(true);
+    },
     libraryCategory,
     setLibraryCategory: (value: AgentCanvasImageLibraryCategoryV2) => {
       setLibraryCategory(value);

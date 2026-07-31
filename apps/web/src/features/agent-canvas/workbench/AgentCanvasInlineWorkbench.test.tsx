@@ -182,6 +182,49 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onOpenAssets).toHaveBeenCalledOnce();
   });
 
+  it("migrates legacy video duration parameters before running an existing node", async () => {
+    const node = {
+      ...makeNode("video"),
+      generation_prompt: "Animate the supplied references.",
+      parameters: {
+        requested_duration_seconds: 0,
+        effective_duration_seconds: 15,
+      },
+    };
+    const props = renderWorkbench(node);
+
+    expect((screen.getByLabelText("Requested video duration") as HTMLInputElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
+
+    await waitFor(() => {
+      expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
+        parameters: {},
+      }));
+    });
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("preserves requested video durations above the provider limit under the canonical key", async () => {
+    const node = {
+      ...makeNode("video"),
+      generation_prompt: "Animate the supplied references.",
+      parameters: { requested_duration_seconds: 30 },
+    };
+    const props = renderWorkbench(node);
+    const duration = screen.getByLabelText("Requested video duration");
+
+    expect((duration as HTMLInputElement).value).toBe("30");
+    fireEvent.change(duration, { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run video node" }));
+
+    await waitFor(() => {
+      expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
+        parameters: { duration_seconds: 20 },
+      }));
+    });
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
   it("renders upstream media as removable thumbnails without generic workbench chrome", () => {
     const node = makeNode("image");
     const props = renderWorkbench(node, { workflow: makeReferenceWorkflow(node) });
