@@ -71,6 +71,20 @@ function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> 
 afterEach(() => cleanup());
 
 describe("AgentCanvasInlineWorkbench", () => {
+  it.each<[CanvasNodeTypeV2, string]>([
+    ["text", "Text content"],
+    ["script", "Script content"],
+    ["image", "Generation prompt"],
+  ])("uses a compact prompt composer for %s without node name chrome", (nodeType, textareaLabel) => {
+    const node = makeNode(nodeType);
+    renderWorkbench(node);
+
+    expect(screen.getByLabelText(textareaLabel)).toBeTruthy();
+    expect(screen.queryByText("Name")).toBeNull();
+    expect(screen.queryByText(node.title)).toBeNull();
+    expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
+  });
+
   it("saves structured text directly from the node workbench without offering a run action", async () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);

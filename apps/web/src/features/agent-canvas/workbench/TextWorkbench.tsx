@@ -11,17 +11,7 @@ export function TextWorkbench({
 }) {
   return (
     <div className="agent-node-workbench__body">
-      <label className="agent-node-workbench__title-field">
-        <span>Name</span>
-        <input
-          aria-label="Node title"
-          value={draft.title}
-          disabled={draft.pending}
-          onChange={(event) => draft.setTitle(event.currentTarget.value)}
-        />
-      </label>
       <label className="agent-node-workbench__composer">
-        <span>Text content</span>
         <textarea
           aria-label="Text content"
           value={draft.textContent}
@@ -31,18 +21,19 @@ export function TextWorkbench({
         />
       </label>
       {draft.error ? <p className="agent-node-workbench__error" role="alert">{draft.error}</p> : null}
-      <footer className="agent-node-workbench__footer">
-        <span>Text is saved as canvas context.</span>
-        <button
-          type="button"
-          className="agent-node-workbench__run"
-          aria-label="Save text node"
-          title="Save text"
-          disabled={draft.pending}
-          onClick={() => void draft.save()}
-        >
-          <SaveIcon />
-        </button>
+      <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer">
+        <div>
+          <button
+            type="button"
+            className="agent-node-workbench__run"
+            aria-label="Save text node"
+            title="Save text"
+            disabled={draft.pending}
+            onClick={() => void draft.save()}
+          >
+            <SaveIcon />
+          </button>
+        </div>
       </footer>
     </div>
   );

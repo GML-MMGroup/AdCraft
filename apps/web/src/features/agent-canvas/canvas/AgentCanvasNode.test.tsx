@@ -95,7 +95,7 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
 afterEach(() => cleanup());
 
 describe("AgentCanvasNodeCard", () => {
-  it("uses an unframed type icon rather than a circular marker badge", () => {
+  it("anchors a visible unframed type icon on the card's top-left border", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const markerRule = css.match(/\.agent-canvas-node__type-marker\s*\{([\s\S]*?)\n\}/)?.[1];
@@ -103,6 +103,11 @@ describe("AgentCanvasNodeCard", () => {
     expect(markerRule).toBeDefined();
     expect(markerRule).toContain("background: transparent");
     expect(markerRule).toContain("border: 0");
+    expect(markerRule).toContain("top: 0");
+    expect(markerRule).toContain("left: 0");
+    expect(markerRule).toContain("width: 40px");
+    expect(markerRule).toContain("height: 40px");
+    expect(markerRule).toContain("transform: translateY(-50%)");
     expect(markerRule).not.toContain("border-radius");
     expect(markerRule).not.toContain("box-shadow");
   });

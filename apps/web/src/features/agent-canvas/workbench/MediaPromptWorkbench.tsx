@@ -27,7 +27,6 @@ export function MediaPromptWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
-        <span>Generation prompt</span>
         <textarea
           aria-label="Generation prompt"
           value={draft.prompt}
