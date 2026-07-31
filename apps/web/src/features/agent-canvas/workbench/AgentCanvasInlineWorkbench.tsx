@@ -59,8 +59,6 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   return (
     <NodeWorkbenchShell
       nodeType={node.node_type}
-      title={node.title}
-      status={node.status}
       pending={draft.pending}
       onDelete={() => void deleteCurrentNode()}
       onClose={onClose}

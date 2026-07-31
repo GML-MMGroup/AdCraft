@@ -12,17 +12,7 @@ export function ScriptWorkbench({
   const canRun = node.status === "draft" || node.status === "failed";
   return (
     <div className="agent-node-workbench__body">
-      <label className="agent-node-workbench__title-field">
-        <span>Name</span>
-        <input
-          aria-label="Node title"
-          value={draft.title}
-          disabled={draft.pending}
-          onChange={(event) => draft.setTitle(event.currentTarget.value)}
-        />
-      </label>
       <label className="agent-node-workbench__composer agent-node-workbench__composer--script">
-        <span>Script content</span>
         <textarea
           aria-label="Script content"
           value={draft.textContent}
@@ -32,8 +22,7 @@ export function ScriptWorkbench({
         />
       </label>
       {draft.error ? <p className="agent-node-workbench__error" role="alert">{draft.error}</p> : null}
-      <footer className="agent-node-workbench__footer">
-        <span>Save edits before running the script.</span>
+      <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer">
         <div>
           <button
             type="button"
