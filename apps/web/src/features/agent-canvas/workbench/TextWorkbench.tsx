@@ -1,4 +1,4 @@
-import { SaveIcon } from "../../../icons.tsx";
+import { SendIcon } from "../../../icons.tsx";
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
@@ -31,7 +31,7 @@ export function TextWorkbench({
             disabled={draft.pending}
             onClick={() => void draft.save()}
           >
-            <SaveIcon />
+            <SendIcon />
           </button>
         </div>
       </footer>

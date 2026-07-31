@@ -1,15 +1,12 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import type { PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import {
   DocumentIcon,
   EditIcon,
   ImageIcon,
-  PlayIcon,
   PlusIcon,
-  RunCurrentIcon,
   UnmuteIcon,
-  UploadIcon,
   VideoIcon,
 } from "../../../icons.tsx";
 import type {
@@ -37,7 +34,6 @@ const NODE_STATUS_LABELS: Record<CanvasNodeStatusV2, string> = {
   failed: "Failed",
 };
 
-const RUNNABLE_NODE_TYPES = new Set<CanvasNodeTypeV2>(["script", "image", "video", "audio"]);
 const IMAGE_ROLE_LABELS: Partial<Record<CanvasNodeV2["creative_role"], string>> = {
   product: "Product",
   prop: "Prop",
@@ -126,20 +122,6 @@ function typeMarkerImage(nodeType: CanvasNodeTypeV2): string {
   return "/imgs/text.webp";
 }
 
-function actionIcon(action: "run" | "retry" | "export") {
-  if (action === "retry") return <RunCurrentIcon />;
-  if (action === "export") return <UploadIcon />;
-  return <PlayIcon />;
-}
-
-function stopPointer(event: ReactPointerEvent<HTMLButtonElement>) {
-  event.stopPropagation();
-}
-
-function stopMouse(event: ReactMouseEvent<HTMLButtonElement>) {
-  event.stopPropagation();
-}
-
 function MediaSurface({
   node,
   asset,
@@ -211,29 +193,14 @@ function NodeSurface({
   return <MediaSurface node={node} asset={asset} />;
 }
 
-function nodeAction(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2) {
-  if (nodeType === "text") return null;
-  if (nodeType === "editing") return "export" as const;
-  if (status === "failed") return "retry" as const;
-  if (status === "draft" && RUNNABLE_NODE_TYPES.has(nodeType)) return "run" as const;
-  return null;
-}
-
 export function AgentCanvasNodeCard({
   node,
   asset,
   runtime,
   selected = false,
-  disabled = false,
-  onRun,
-  onRetry,
-  onExport,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
-  const action = nodeAction(node.node_type, status);
   const label = semanticNodeLabel(node);
-  const actionCallback = action === "run" ? onRun : action === "retry" ? onRetry : onExport;
-  const actionDisabled = disabled || status === "working" || !actionCallback;
 
   return (
     <article
@@ -277,23 +244,6 @@ export function AgentCanvasNodeCard({
         {NODE_STATUS_LABELS[status]}
       </span>
 
-      {action ? (
-        <button
-          type="button"
-          className={`agent-canvas-node__action agent-canvas-node__action--${action} nodrag nopan nowheel`}
-          aria-label={`${action === "run" ? "Run" : action === "retry" ? "Retry" : "Export"} ${node.node_type} node`}
-          title={action === "run" ? "Run node" : action === "retry" ? "Retry node" : "Export"}
-          disabled={actionDisabled}
-          onPointerDown={stopPointer}
-          onMouseDown={stopMouse}
-          onClick={(event) => {
-            event.stopPropagation();
-            actionCallback?.(node.node_id);
-          }}
-        >
-          {actionIcon(action)}
-        </button>
-      ) : null}
     </article>
   );
 }
@@ -350,10 +300,6 @@ export function AgentCanvasNodeRenderer({
         asset={data.asset}
         runtime={data.runtime}
         selected={selected}
-        disabled={data.disabled}
-        onRun={data.onRun}
-        onRetry={data.onRetry}
-        onExport={data.onExport}
       />
       {workbench ? <div className="agent-canvas-node-workbench-anchor nodrag nopan nowheel">{workbench}</div> : null}
       {data.showOutputHandle !== false ? (

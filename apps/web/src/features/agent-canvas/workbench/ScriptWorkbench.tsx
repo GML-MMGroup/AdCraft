@@ -1,4 +1,4 @@
-import { PlayIcon, SaveIcon } from "../../../icons.tsx";
+import { SendIcon } from "../../../icons.tsx";
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
@@ -26,25 +26,16 @@ export function ScriptWorkbench({
         <div>
           <button
             type="button"
-            aria-label="Save script node"
-            title="Save script"
+            className="agent-node-workbench__run"
+            aria-label={canRun
+              ? node.status === "failed" ? "Retry script node" : "Run script node"
+              : "Save script node"}
+            title={canRun ? node.status === "failed" ? "Retry script" : "Run script" : "Save script"}
             disabled={draft.pending}
-            onClick={() => void draft.save()}
+            onClick={() => void (canRun ? draft.run() : draft.save())}
           >
-            <SaveIcon />
+            <SendIcon />
           </button>
-          {canRun ? (
-            <button
-              type="button"
-              className="agent-node-workbench__run"
-              aria-label={node.status === "failed" ? "Retry script node" : "Run script node"}
-              title={node.status === "failed" ? "Retry script" : "Run script"}
-              disabled={draft.pending}
-              onClick={() => void draft.run()}
-            >
-              <PlayIcon />
-            </button>
-          ) : null}
         </div>
       </footer>
     </div>

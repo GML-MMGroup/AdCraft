@@ -47,11 +47,66 @@ function makeWorkflow(node: CanvasNodeV2): AgentCanvasWorkflowV2 {
   };
 }
 
+function makeReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 {
+  const source = {
+    ...makeNode("image", "ready"),
+    node_id: "source-image",
+    title: "Character board",
+    output_asset_id: "source-image-asset",
+  };
+  return {
+    ...makeWorkflow(target),
+    nodes: [source, target],
+    bindings: [{
+      binding_id: "source-binding",
+      workflow_id: "workflow-1",
+      source: { kind: "node_output", source_node_id: source.node_id },
+      target_node_id: target.node_id,
+      input_role: "visual_reference",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
+      created_at: "2026-07-31T00:00:00Z",
+      updated_at: "2026-07-31T00:00:00Z",
+    }],
+    assets: [{
+      asset_id: "source-image-asset",
+      project_id: "project-1",
+      workflow_id: "workflow-1",
+      media_type: "image",
+      source_type: "generated",
+      display_name: "Character board",
+      mime_type: "image/webp",
+      status: "ready",
+      size_bytes: 0,
+      storage_key: null,
+      preview_url: "/assets/character-board.webp",
+      media_url: "/assets/character-board.webp",
+      width: 1024,
+      height: 1024,
+      duration_seconds: null,
+      checksum: "source-image-checksum",
+      source_semantic_role: null,
+      source_node_id: source.node_id,
+      source_execution_id: null,
+      provider: null,
+      model_id: null,
+      prompt_provenance: {},
+      quality_metadata: {},
+      created_at: "2026-07-31T00:00:00Z",
+    }],
+  } as AgentCanvasWorkflowV2;
+}
+
 function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
   const props = {
     workflow: makeWorkflow(node),
     node,
     patchNode: vi.fn().mockResolvedValue(undefined),
+    patchBinding: vi.fn().mockResolvedValue(undefined),
+    deleteBinding: vi.fn().mockResolvedValue(undefined),
     onRun: vi.fn().mockResolvedValue(undefined),
     onSaveVariation: vi.fn().mockResolvedValue(undefined),
     onDiscardVariation: vi.fn().mockResolvedValue(undefined),
@@ -127,11 +182,24 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onOpenAssets).toHaveBeenCalledOnce();
   });
 
-  it("opens the local upload control from the media workbench", () => {
-    const props = renderWorkbench(makeNode("image"));
+  it("renders upstream media as removable thumbnails without generic workbench chrome", () => {
+    const node = makeNode("image");
+    const props = renderWorkbench(node, { workflow: makeReferenceWorkflow(node) });
 
-    fireEvent.click(screen.getByRole("button", { name: "Upload image reference" }));
+    expect(screen.getByRole("img", { name: "Character board reference" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Remove Character board reference" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Delete node" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close node workbench" })).toBeNull();
+    expect(screen.queryByText("References")).toBeNull();
 
-    expect(props.onUploadReferences).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Character board reference" }));
+    expect(props.deleteBinding).toHaveBeenCalledWith("source-binding");
+  });
+
+  it("uses the asset library as the only visible reference entry point", () => {
+    renderWorkbench(makeNode("image"));
+
+    expect(screen.getByRole("button", { name: "Choose asset references" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upload image reference" })).toBeNull();
   });
 });
