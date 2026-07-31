@@ -156,10 +156,7 @@
   position: relative;
 }
 
-.agent-canvas-add-menu {
-  position: absolute;
-  top: 44px;
-  left: 0;
+.agent-canvas-node-picker {
   display: grid;
   width: 164px;
   padding: 6px;
@@ -170,7 +167,13 @@
   backdrop-filter: blur(18px);
 }
 
-.agent-canvas-add-menu button {
+.agent-canvas-add-menu {
+  position: absolute;
+  top: 44px;
+  left: 0;
+}
+
+.agent-canvas-node-picker button {
   display: grid;
   height: 38px;
   align-items: center;
@@ -185,13 +188,84 @@
   cursor: pointer;
 }
 
-.agent-canvas-add-menu button:hover {
+.agent-canvas-node-picker button:hover {
   background: rgb(111 91 176 / 10%);
 }
 
-.agent-canvas-add-menu span {
+.agent-canvas-node-picker span {
   font-size: 13px;
   font-weight: 600;
+}
+
+.agent-canvas-context-menu__backdrop {
+  position: fixed;
+  z-index: 31;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  cursor: default;
+  background: transparent;
+  border: 0;
+}
+
+.agent-canvas-context-menu {
+  position: fixed;
+  z-index: 32;
+  min-width: 188px;
+  padding: 6px;
+  color: #313448;
+  background: rgb(249 250 255 / 70%);
+  border: 1px solid rgb(255 255 255 / 82%);
+  border-radius: 18px;
+  box-shadow:
+    0 20px 44px rgb(30 31 54 / 24%),
+    inset 0 1px 0 rgb(255 255 255 / 72%);
+  backdrop-filter: blur(28px) saturate(1.35);
+}
+
+.agent-canvas-context-menu__action {
+  display: grid;
+  width: 100%;
+  height: 42px;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 13px;
+  cursor: pointer;
+}
+
+.agent-canvas-context-menu__action:hover,
+.agent-canvas-context-menu__action:focus-visible {
+  color: #56439c;
+  background: rgb(119 97 198 / 14%);
+  outline: 0;
+}
+
+.agent-canvas-context-menu__action svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-canvas-context-menu__node-picker {
+  width: 188px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.agent-canvas-context-menu__node-picker button {
+  border-radius: 13px;
 }
 
 .agent-canvas-toolbar__connection {
@@ -747,6 +821,7 @@ html[data-theme="dark"] .agent-canvas-pointer-dot {
 html[data-theme="dark"] :is(
   .agent-canvas-toolbar,
   .agent-canvas-add-menu,
+  .agent-canvas-context-menu,
   .agent-canvas-inspector,
   .agent-canvas-overlay
 ) {
@@ -755,7 +830,11 @@ html[data-theme="dark"] :is(
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] .agent-canvas-add-menu button,
+html[data-theme="dark"] :is(
+  .agent-canvas-add-menu,
+  .agent-canvas-context-menu
+) .agent-canvas-node-picker button,
+html[data-theme="dark"] .agent-canvas-context-menu__action,
 html[data-theme="dark"] .agent-canvas-inspector {
   color: #e4e5ee;
 }

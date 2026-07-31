@@ -16,20 +16,16 @@ import { createOperationKey } from "../../api/operationKey.ts";
 import {
   AssetsIcon,
   CloseIcon,
-  DocumentIcon,
-  EditIcon,
-  ImageIcon,
-  MuteIcon,
   PauseIcon,
   PlayIcon,
   PlusIcon,
-  VideoIcon,
 } from "../../icons.tsx";
 import type {
   CanvasBindingInputRoleV2,
   CanvasConnectionPolicyV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
+  CanvasPositionV2,
   ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
@@ -44,6 +40,8 @@ import {
   type AgentCanvasNodeCallbacks,
 } from "./canvas/index.ts";
 import { AgentCanvasConnectedNodeMenu } from "./canvas/AgentCanvasConnectedNodeMenu.tsx";
+import { AgentCanvasContextMenu } from "./canvas/AgentCanvasContextMenu.tsx";
+import { AgentCanvasNodePicker } from "./canvas/AgentCanvasNodePicker.tsx";
 import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgrounds.tsx";
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
@@ -57,7 +55,6 @@ import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
-  AGENT_CANVAS_NODE_LABELS,
   createDefaultCanvasNodeRequest,
   sourceAssetStructuredContent,
 } from "./model/nodeDefaults.ts";
@@ -69,15 +66,6 @@ import "@xyflow/react/dist/style.css";
 import "./agent-canvas-page.css";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
-
-function nodeIcon(type: CanvasNodeTypeV2) {
-  if (type === "text") return <EditIcon />;
-  if (type === "script") return <DocumentIcon />;
-  if (type === "image") return <ImageIcon />;
-  if (type === "video") return <VideoIcon />;
-  if (type === "audio") return <MuteIcon />;
-  return <EditIcon />;
-}
 
 function viewportStorageKey(workflowId: string): string {
   return `adcraft:agent-canvas:viewport:${workflowId}`;
@@ -208,6 +196,10 @@ export function AgentCanvasPage() {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [mediaAssetId, setMediaAssetId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    menuPosition: CanvasPositionV2;
+    canvasPosition: CanvasPositionV2;
+  } | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [connectionPolicy, setConnectionPolicy] = useState<CanvasConnectionPolicyV2 | null>(null);
   const [connectedNodeMenu, setConnectedNodeMenu] = useState<{
@@ -353,15 +345,19 @@ export function AgentCanvasPage() {
     }
   }, [cancelRun]);
 
-  const createNode = useCallback(async (nodeType: CanvasNodeTypeV2) => {
+  const createNode = useCallback(async (
+    nodeType: CanvasNodeTypeV2,
+    preferredPosition?: CanvasPositionV2,
+  ) => {
     if (!workflow) return;
     const instance = flowRef.current;
-    const preferredPosition = instance
+    const defaultPosition = instance
       ? instance.screenToFlowPosition({ x: window.innerWidth * 0.48, y: window.innerHeight * 0.46 })
       : { x: 120, y: 120 };
-    const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition);
+    const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition ?? defaultPosition);
     setSurfaceError(null);
     setAddMenuOpen(false);
+    setContextMenu(null);
     try {
       await createCanvasNode(createDefaultCanvasNodeRequest(nodeType, position));
     } catch (error) {
@@ -559,10 +555,20 @@ export function AgentCanvasPage() {
           onNodesDelete={deleteNodes}
           onConnect={(connection) => void connect(connection)}
           onEdgesDelete={deleteEdges}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            const menuPosition = { x: event.clientX, y: event.clientY };
+            const canvasPosition = flowRef.current?.screenToFlowPosition(menuPosition) ?? { x: 120, y: 120 };
+            setSelectedNodeId(null);
+            setAddMenuOpen(false);
+            setConnectedNodeMenu(null);
+            setContextMenu({ menuPosition, canvasPosition });
+          }}
           onPaneClick={() => {
             setSelectedNodeId(null);
             setAddMenuOpen(false);
             setConnectedNodeMenu(null);
+            setContextMenu(null);
           }}
           onMoveEnd={(_event, viewport) => writeViewport(workflow.workflow_id, viewport)}
           fitView={false}
@@ -596,14 +602,11 @@ export function AgentCanvasPage() {
               <PlusIcon />
             </button>
             {addMenuOpen ? (
-              <div className="agent-canvas-add-menu">
-                {(Object.keys(AGENT_CANVAS_NODE_LABELS) as CanvasNodeTypeV2[]).map((type) => (
-                  <button type="button" key={type} onClick={() => void createNode(type)}>
-                    {nodeIcon(type)}
-                    <span>{AGENT_CANVAS_NODE_LABELS[type]}</span>
-                  </button>
-                ))}
-              </div>
+              <AgentCanvasNodePicker
+                className="agent-canvas-node-picker agent-canvas-add-menu"
+                menuLabel="Add node types"
+                onSelect={(nodeType) => void createNode(nodeType)}
+              />
             ) : null}
           </div>
           <button
@@ -716,6 +719,15 @@ export function AgentCanvasPage() {
 
         {mediaAsset ? (
           <MediaViewer asset={mediaAsset} onClose={() => setMediaAssetId(null)} />
+        ) : null}
+
+        {contextMenu ? (
+          <AgentCanvasContextMenu
+            menuPosition={contextMenu.menuPosition}
+            canvasPosition={contextMenu.canvasPosition}
+            onCreateNode={(nodeType, position) => void createNode(nodeType, position)}
+            onClose={() => setContextMenu(null)}
+          />
         ) : null}
 
         {connectedNodeMenu && connectedMenuAnchor && connectionPolicy ? (
