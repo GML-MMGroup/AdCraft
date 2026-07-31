@@ -2,7 +2,6 @@ import { useEffect } from "react";
 
 import { EditingWorkbench } from "./EditingWorkbench.tsx";
 import { MediaPromptWorkbench } from "./MediaPromptWorkbench.tsx";
-import { NodeInputRuntimeSummary } from "./NodeInputRuntimeSummary.tsx";
 import { NodeReferenceStrip } from "./NodeReferenceStrip.tsx";
 import { NodeWorkbenchShell } from "./NodeWorkbenchShell.tsx";
 import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
@@ -15,15 +14,10 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const {
     workflow,
     node,
-    patchBinding,
     deleteBinding,
-    connectionPolicy,
     providerCapabilities = [],
     providerCapabilitiesLoading = false,
     providerCapabilitiesError = null,
-    inputManifest,
-    inputReadinessIssue,
-    onDelete,
     onClose,
     onOpenAssets,
     onUploadReferences,
@@ -39,17 +33,10 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
-  const deleteCurrentNode = async () => {
-    const deleted = await draft.perform(() => onDelete(node.node_id));
-    if (deleted) onClose();
-  };
-
   const references = node.node_type === "editing" ? null : (
     <NodeReferenceStrip
       workflow={workflow}
       node={node}
-      connectionPolicy={connectionPolicy}
-      patchBinding={patchBinding}
       deleteBinding={deleteBinding}
       pending={draft.pending}
       perform={draft.perform}
@@ -59,17 +46,8 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   return (
     <NodeWorkbenchShell
       nodeType={node.node_type}
-      pending={draft.pending}
-      onDelete={() => void deleteCurrentNode()}
-      onClose={onClose}
     >
       {references}
-      <NodeInputRuntimeSummary
-        workflow={workflow}
-        node={node}
-        inputManifest={inputManifest}
-        inputReadinessIssue={inputReadinessIssue}
-      />
       {node.node_type === "text" ? <TextWorkbench node={node} draft={draft} /> : null}
       {node.node_type === "script" ? <ScriptWorkbench node={node} draft={draft} /> : null}
       {["image", "video", "audio"].includes(node.node_type) ? (

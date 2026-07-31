@@ -107,7 +107,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(markerRule).toContain("left: 0");
     expect(markerRule).toContain("width: 40px");
     expect(markerRule).toContain("height: 40px");
-    expect(markerRule).toContain("transform: translateY(-50%)");
+    expect(markerRule).toContain("transform: translateY(-100%)");
     expect(markerRule).not.toContain("border-radius");
     expect(markerRule).not.toContain("box-shadow");
   });
@@ -132,32 +132,29 @@ describe("AgentCanvasNodeCard", () => {
     },
   );
 
-  it.each<CanvasNodeTypeV2>(["script", "image", "video", "audio"])(
-    "runs an executable %s node through its callback",
-    (nodeType) => {
-      const onRun = vi.fn();
-      const node = makeNode(nodeType);
-
-      render(
-        <AgentCanvasNodeCard
-          node={node}
-          asset={nodeType === "image" || nodeType === "video" || nodeType === "audio" ? makeAsset(nodeType) : null}
-          onRun={onRun}
-        />,
-      );
-      fireEvent.pointerDown(screen.getByRole("button", { name: `Run ${nodeType} node` }));
-      fireEvent.click(screen.getByRole("button", { name: `Run ${nodeType} node` }));
-
-      expect(onRun).toHaveBeenCalledOnce();
-      expect(onRun).toHaveBeenCalledWith(node.node_id);
-    },
-  );
-
   it("never offers Run for a text node", () => {
     render(<AgentCanvasNodeCard node={makeNode("text")} onRun={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: /Run text node/i })).toBeNull();
   });
+
+  it.each<CanvasNodeTypeV2>(["script", "image", "video", "audio", "editing"])(
+    "keeps %s actions in the inline composer instead of the card corner",
+    (nodeType) => {
+      const status = nodeType === "editing" ? "ready" : "draft";
+      render(
+        <AgentCanvasNodeCard
+          node={makeNode(nodeType, status)}
+          asset={nodeType === "editing" ? makeAsset("video") : null}
+          onRun={vi.fn()}
+          onRetry={vi.fn()}
+          onExport={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByRole("button")).toBeNull();
+    },
+  );
 
   it("does not run a Ready generated node in place", () => {
     render(
@@ -179,37 +176,17 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
-  it("exports an editing node through its callback", () => {
-    const onExport = vi.fn();
-    const node = makeNode("editing", "ready");
-    render(
-      <AgentCanvasNodeCard
-        node={node}
-        asset={makeAsset("video")}
-        onExport={onExport}
-      />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Export editing node" }));
-
-    expect(onExport).toHaveBeenCalledWith(node.node_id);
-  });
-
-  it("retries a failed executable node and keeps its last media visible", () => {
-    const onRetry = vi.fn();
+  it("keeps the last media visible for a failed executable node", () => {
     const node = makeNode("video", "failed");
     render(
       <AgentCanvasNodeCard
         node={node}
         asset={makeAsset("video")}
-        onRetry={onRetry}
       />,
     );
 
     expect(screen.getByLabelText("video output").classList.contains("agent-canvas-node__media")).toBe(true);
     expect(screen.getByText("Failed")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Retry video node" }));
-    expect(onRetry).toHaveBeenCalledWith(node.node_id);
   });
 
   it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
@@ -335,5 +312,15 @@ describe("AgentCanvasNodeRenderer", () => {
     );
 
     expect(screen.getByLabelText("Image node workbench")).toBeTruthy();
+  });
+
+  it("centers the inline workbench beneath its card", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const anchorRule = css.match(/\.agent-canvas-node-workbench-anchor\s*\{([\s\S]*?)\n\}/)?.[1];
+
+    expect(anchorRule).toBeDefined();
+    expect(anchorRule).toContain("left: 50%");
+    expect(anchorRule).toContain("transform: translateX(-50%)");
   });
 });

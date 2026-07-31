@@ -67,7 +67,7 @@
   border: 0;
   background: transparent;
   pointer-events: none;
-  transform: translateY(-50%);
+  transform: translateY(-100%);
 }
 
 .agent-canvas-node__type-marker img {
@@ -100,9 +100,10 @@
   position: absolute;
   z-index: 24;
   top: calc(100% + 18px);
-  left: 0;
+  left: 50%;
   width: max-content;
   max-width: min(640px, calc(100vw - 48px));
+  transform: translateX(-50%);
 }
 
 .agent-canvas-node__media-placeholder {
@@ -268,53 +269,6 @@
 
 .agent-canvas-node__status--failed i {
   background: #ff838a;
-}
-
-.agent-canvas-node__action {
-  position: absolute;
-  z-index: 7;
-  right: 10px;
-  bottom: 9px;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.44);
-  border-radius: 50%;
-  background: rgba(246, 247, 252, 0.9);
-  box-shadow: 0 6px 15px rgba(18, 20, 34, 0.24);
-  color: var(--agent-node-accent);
-  cursor: pointer;
-  backdrop-filter: blur(9px);
-  transition:
-    transform 140ms ease,
-    background 140ms ease,
-    opacity 140ms ease;
-}
-
-.agent-canvas-node__action svg {
-  width: 15px;
-  height: 15px;
-}
-
-.agent-canvas-node__action:not(:disabled):hover {
-  background: #fff;
-  transform: translateY(-1px) scale(1.06);
-}
-
-.agent-canvas-node__action:focus-visible {
-  outline: 2px solid var(--agent-node-accent);
-  outline-offset: 2px;
-}
-
-.agent-canvas-node__action:disabled {
-  cursor: default;
-  opacity: 0.46;
-}
-
-.agent-canvas-node__action--retry {
-  color: #c7434d;
 }
 
 .agent-canvas-node__working {
