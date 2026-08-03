@@ -52,7 +52,8 @@ _ROLE_BOUNDARIES = {
         "Do not progress narrative action across panels.",
     ),
     "storyboard_sequence": (
-        "Render one complete 3x3 storyboard grid for one coherent sequence.",
+        "Render one complete 3x3 storyboard grid for one coherent sequence. "
+        "Use visual storytelling without visible text in every panel.",
         "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
     ),
     "storyboard_video": (
@@ -114,6 +115,11 @@ class AgentCanvasProviderPromptCompiler:
         *,
         creative_direction_projection: Mapping[str, object] | None = None,
     ) -> CompiledProviderPromptV2:
+        if not str(node.generation_prompt or "").strip():
+            raise _error(
+                "node_prompt_empty",
+                "A media Node requires a saved generation prompt before provider preparation.",
+            )
         if role_contract.semantic_role != node.semantic_role:
             raise _error(
                 "provider_prompt_contract_failed",
@@ -177,6 +183,7 @@ class AgentCanvasProviderPromptCompiler:
             style_source=style.source,
             prompt=prompt,
             negative_prompt=negative,
+            provider_parameters=_provider_parameters(node.semantic_role),
         )
 
 
@@ -259,6 +266,12 @@ def _render_content(structured: object) -> str:
     if structured is None:
         return ""
     return json.dumps(structured.model_dump(mode="json"), sort_keys=True)
+
+
+def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bool]:
+    if semantic_role == "storyboard_sequence":
+        return {"sequential_generation": False}
+    return {}
 
 
 def _digest(value: object) -> str:

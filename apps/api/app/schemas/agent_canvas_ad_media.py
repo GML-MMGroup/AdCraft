@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -68,6 +69,11 @@ class SceneDesignBoardContentV2(_AdMediaModel):
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "SceneDesignBoardContentV2":
         _require_panel_sequence(self.panels, "scene_design_board_contract_invalid")
+        _require_distinct_panel_values(
+            self.panels,
+            lambda panel: (panel.view_or_zone, panel.spatial_description),
+            "scene_design_board_contract_invalid",
+        )
         return self
 
 
@@ -90,6 +96,16 @@ class StoryboardGridContentV2(_AdMediaModel):
     @model_validator(mode="after")
     def validate_panel_sequence(self) -> "StoryboardGridContentV2":
         _require_panel_sequence(self.panels, "storyboard_grid_contract_invalid")
+        _require_distinct_panel_values(
+            self.panels,
+            lambda panel: (
+                panel.beat,
+                panel.composition,
+                panel.camera,
+                panel.subject_action,
+            ),
+            "storyboard_grid_contract_invalid",
+        )
         return self
 
 
@@ -132,7 +148,7 @@ class AdMediaRoleContractV2(_AdMediaModel):
     semantic_role: AdMediaSemanticRoleV2
     node_type: Literal["text", "script", "image", "video", "audio", "editing"]
     output_media_type: Literal["text", "image", "video", "audio"]
-    role_contract_version: Literal["ad-media-role-v1"] = "ad-media-role-v1"
+    role_contract_version: Literal["ad-media-role-v2"] = "ad-media-role-v2"
     content_schema_ref: str
     output_cardinality: Literal[1] = 1
     reference_requirements: tuple[ReferenceRequirementV2, ...] = ()
@@ -195,4 +211,14 @@ def resolve_visual_style(
 
 def _require_panel_sequence(panels: tuple[object, ...], error_code: str) -> None:
     if [getattr(panel, "panel_index") for panel in panels] != list(range(1, 10)):
+        raise ValueError(error_code)
+
+
+def _require_distinct_panel_values(
+    panels: tuple[object, ...],
+    signature: Callable[[object], object],
+    error_code: str,
+) -> None:
+    values = [signature(panel) for panel in panels]
+    if len(values) != len(set(values)):
         raise ValueError(error_code)
