@@ -37,6 +37,7 @@ class WorkflowEventRow(Base):
     execution_id: Mapped[str | None] = mapped_column(Text)
     seq: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    transition_key: Mapped[str | None] = mapped_column(Text, unique=True)
     node_id: Mapped[str | None] = mapped_column(Text)
     item_id: Mapped[str | None] = mapped_column(Text)
     slot_id: Mapped[str | None] = mapped_column(Text)
@@ -261,6 +262,8 @@ class AssetVersionRow(Base):
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
     duration_seconds: Mapped[float | None] = mapped_column(Float)
+    frame_rate: Mapped[float | None] = mapped_column(Float)
+    has_audio: Mapped[bool | None] = mapped_column(Boolean)
     prompt: Mapped[str | None] = mapped_column(Text)
     provider: Mapped[str | None] = mapped_column(Text)
     model_id: Mapped[str | None] = mapped_column(Text)
@@ -564,7 +567,8 @@ class AgentCanvasNodeRow(Base):
     summary_prompt: Mapped[str | None] = mapped_column(Text)
     generation_prompt: Mapped[str | None] = mapped_column(Text)
     structured_content_json: Mapped[str] = mapped_column(Text, nullable=False)
-    model_id: Mapped[str | None] = mapped_column(Text)
+    model_selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="default")
+    model_ref: Mapped[str | None] = mapped_column(Text)
     parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_context_snapshot_id: Mapped[str | None] = mapped_column(Text)
     output_asset_id: Mapped[str | None] = mapped_column(Text)
@@ -574,6 +578,102 @@ class AgentCanvasNodeRow(Base):
     error_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProviderConnectionRow(Base):
+    """Secret-safe installation metadata for one configured provider."""
+
+    __tablename__ = "provider_connections"
+    __table_args__ = (
+        CheckConstraint(
+            "connection_state IN ('configured', 'unconfigured', 'invalid')",
+            name="ck_provider_connections_state",
+        ),
+        CheckConstraint(
+            "credential_revision > 0",
+            name="ck_provider_connections_positive_revision",
+        ),
+    )
+
+    provider_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    connection_state: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_status_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    credential_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProviderModelRow(Base):
+    """One trusted, provider-visible model catalog record."""
+
+    __tablename__ = "provider_models"
+    __table_args__ = (
+        CheckConstraint(
+            "capability IN ('agent', 'text', 'image', 'video', 'audio')",
+            name="ck_provider_models_capability",
+        ),
+        CheckConstraint(
+            "availability IN ('available', 'unavailable', 'unauthorized', 'unsupported', 'deprecated')",
+            name="ck_provider_models_availability",
+        ),
+        CheckConstraint("catalog_revision > 0", name="ck_provider_models_positive_revision"),
+        Index("ix_provider_models_provider_capability", "provider_id", "capability"),
+    )
+
+    model_ref: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_connections.provider_id"), nullable=False
+    )
+    provider_model_id: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
+    capability: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    availability: Mapped[str] = mapped_column(Text, nullable=False)
+    unavailable_reason: Mapped[str | None] = mapped_column(Text)
+    catalog_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ModelDefaultRow(Base):
+    """One installation-scoped default selected from the persisted model catalog."""
+
+    __tablename__ = "model_defaults"
+    __table_args__ = (
+        CheckConstraint(
+            "default_key IN ('agent', 'text', 'image', 'video', 'audio')",
+            name="ck_model_defaults_key",
+        ),
+        CheckConstraint("revision > 0", name="ck_model_defaults_positive_revision"),
+    )
+
+    default_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    model_ref: Mapped[str] = mapped_column(ForeignKey("provider_models.model_ref"), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProviderModelSyncRunRow(Base):
+    """A bounded audit entry for one provider catalog synchronization attempt."""
+
+    __tablename__ = "provider_model_sync_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('succeeded', 'failed')",
+            name="ck_provider_model_sync_runs_status",
+        ),
+        Index("ix_provider_model_sync_runs_provider_created", "provider_id", "created_at"),
+    )
+
+    sync_run_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    provider_id: Mapped[str] = mapped_column(
+        ForeignKey("provider_connections.provider_id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    catalog_revision: Mapped[int | None] = mapped_column(Integer)
+    summary_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasDocumentRow(Base):
@@ -777,6 +877,9 @@ class AgentCanvasActionReceiptRow(Base):
     )
     plan_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_command_plans.plan_id"))
     action_id: Mapped[str | None] = mapped_column(Text)
+    proposal_id: Mapped[str | None] = mapped_column(Text)
+    proposal_option_id: Mapped[str | None] = mapped_column(Text)
+    proposal_generation_action: Mapped[str | None] = mapped_column(Text)
     receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -799,7 +902,8 @@ class AgentCanvasVariationDraftRow(Base):
     source_node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     generation_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    model_id: Mapped[str | None] = mapped_column(Text)
+    model_selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="default")
+    model_ref: Mapped[str | None] = mapped_column(Text)
     parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
     variation_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -832,6 +936,9 @@ class AgentCanvasSkillRunRow(Base):
     deferred_topic_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     memory_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active_creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    creation_mode_json: Mapped[str | None] = mapped_column(Text)
+    active_recipe_id: Mapped[str | None] = mapped_column(Text)
+    active_recipe_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -885,6 +992,49 @@ class AgentCanvasPlanningTopicRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     outcome: Mapped[str | None] = mapped_column(Text)
     related_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasProductionRecipeRow(Base):
+    __tablename__ = "agent_canvas_production_recipes"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipe_id",
+            "revision",
+            name="uq_agent_canvas_production_recipe_revision",
+        ),
+        Index(
+            "ix_agent_canvas_production_recipe_workflow_revision",
+            "workflow_id",
+            "created_at",
+        ),
+    )
+
+    recipe_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_conversations.conversation_id"), nullable=False
+    )
+    skill_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_canvas_skill_runs.skill_run_id")
+    )
+    creation_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    current_topic_id: Mapped[str | None] = mapped_column(Text)
+    stages_json: Mapped[str] = mapped_column(Text, nullable=False)
+    goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    deliverables_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    dependencies_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    recommended_next_topic_ids_json: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="[]",
+    )
+    completion_criteria_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    anchor_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasCreativeMemoryRow(Base):
@@ -942,9 +1092,72 @@ class AgentCanvasChatTurnRow(Base):
     turn_kind: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     request_json: Mapped[str] = mapped_column(Text, nullable=False)
+    creation_mode_json: Mapped[str | None] = mapped_column(Text)
+    recipe_id: Mapped[str | None] = mapped_column(Text)
+    recipe_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasContinuationOutboxRow(Base):
+    __tablename__ = "agent_canvas_continuation_outbox"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','leased','retry_wait','completed','failed','superseded')",
+            name="ck_agent_canvas_continuation_status",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts > 0",
+            name="ck_agent_canvas_continuation_attempts",
+        ),
+        CheckConstraint(
+            "lease_generation >= 0",
+            name="ck_agent_canvas_continuation_lease_generation",
+        ),
+        UniqueConstraint(
+            "continuation_turn_id",
+            name="uq_agent_canvas_continuation_turn",
+        ),
+        UniqueConstraint(
+            "conversation_id",
+            "payload_digest",
+            "operation",
+            name="uq_agent_canvas_continuation_delivery",
+        ),
+        Index(
+            "ix_agent_canvas_continuation_due",
+            "status",
+            "next_attempt_at",
+            "created_at",
+        ),
+    )
+
+    continuation_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_conversations.conversation_id"), nullable=False
+    )
+    source_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    continuation_turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    next_attempt_at: Mapped[str] = mapped_column(Text, nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    last_error_code: Mapped[str | None] = mapped_column(Text)
+    last_error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -961,14 +1174,14 @@ class AgentCanvasConceptProposalRow(Base):
     specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
     video_skill_run_id: Mapped[str | None] = mapped_column(Text)
     topic_id: Mapped[str | None] = mapped_column(Text)
+    target_node_id: Mapped[str | None] = mapped_column(Text)
+    target_node_revision: Mapped[int | None] = mapped_column(Integer)
+    proposal_purpose: Mapped[str | None] = mapped_column(Text)
     creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
     proposal_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     proposed_references_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
-    publication_identity: Mapped[str | None] = mapped_column(Text, unique=True)
-    status: Mapped[str] = mapped_column(Text, nullable=False)
-    selected_option_id: Mapped[str | None] = mapped_column(Text)
-    selection_actor: Mapped[str | None] = mapped_column(Text)
+    availability: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -997,7 +1210,7 @@ class AgentCanvasExpertActivityRow(Base):
     specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
     operation: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    label: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(Text, nullable=False)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1008,7 +1221,7 @@ class AgentCanvasGuidedActionRow(Base):
     __tablename__ = "agent_canvas_guided_actions"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('pending','applying','applied','failed')",
+            "state IN ('pending','applying','applied','superseded','failed')",
             name="ck_agent_canvas_guided_actions_state",
         ),
         Index(
@@ -1020,6 +1233,7 @@ class AgentCanvasGuidedActionRow(Base):
     )
 
     action_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    logical_key: Mapped[str] = mapped_column(Text, nullable=False, default="")
     workflow_id: Mapped[str] = mapped_column(
         ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
     )
@@ -1115,6 +1329,14 @@ class AgentCanvasExecutionMemberRow(Base):
     attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     waiting_for_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     provider_task_id: Mapped[str | None] = mapped_column(Text)
+    run_intent_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    run_intent_snapshot_json: Mapped[str | None] = mapped_column(Text)
+    run_intent_snapshot_digest: Mapped[str | None] = mapped_column(Text)
+    resolved_input_manifest_id: Mapped[str | None] = mapped_column(Text)
+    resolved_input_manifest_json: Mapped[str | None] = mapped_column(Text)
+    resolved_input_manifest_digest: Mapped[str | None] = mapped_column(Text)
+    effective_parameters_json: Mapped[str | None] = mapped_column(Text)
+    omitted_optional_inputs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     prompt_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     error_json: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
