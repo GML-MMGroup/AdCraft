@@ -15,7 +15,10 @@ import {
   ProposalCard,
   SpecialistActivityRow,
 } from "./AgentCanvasChatPanel.tsx";
-import { resizeChatComposerTextarea } from "./chatComposerTextarea.ts";
+import {
+  resizeChatComposerTextarea,
+  snapChatComposerScroll,
+} from "./chatComposerTextarea.ts";
 
 describe("chat composer textarea", () => {
   it("grows with its content and only scrolls after reaching its height limit", () => {
@@ -36,10 +39,31 @@ describe("chat composer textarea", () => {
     expect(textarea.style.overflowY).toBe("hidden");
 
     scrollHeight = 220;
-    clientHeight = 125;
+    clientHeight = 120;
     resizeChatComposerTextarea(textarea);
     expect(textarea.style.height).toBe("220px");
     expect(textarea.style.overflowY).toBe("auto");
+  });
+
+  it("snaps native textarea scrolling to complete line boundaries", () => {
+    const textarea = document.createElement("textarea");
+    textarea.style.lineHeight = "20px";
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(textarea, "clientHeight", {
+      configurable: true,
+      value: 120,
+    });
+
+    textarea.scrollTop = 29;
+    snapChatComposerScroll(textarea);
+    expect(textarea.scrollTop).toBe(20);
+
+    textarea.scrollTop = 95;
+    snapChatComposerScroll(textarea);
+    expect(textarea.scrollTop).toBe(80);
   });
 });
 

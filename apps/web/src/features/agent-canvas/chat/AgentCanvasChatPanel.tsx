@@ -26,7 +26,10 @@ import type {
   ConceptOptionV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
-import { resizeChatComposerTextarea } from "./chatComposerTextarea.ts";
+import {
+  resizeChatComposerTextarea,
+  snapChatComposerScroll,
+} from "./chatComposerTextarea.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
 import "./agent-canvas-chat.css";
 
@@ -273,6 +276,7 @@ export function AgentCanvasChatPanel({
           placeholder="Ask AdCraft Video Agent..."
           aria-label="Message AdCraft Video Agent"
           onChange={(event) => setDraft(event.target.value)}
+          onScroll={(event) => snapChatComposerScroll(event.currentTarget)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
