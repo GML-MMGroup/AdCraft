@@ -51,6 +51,21 @@ class ProjectRecordPage(BaseModel):
     next_cursor: str | None = None
 
 
+class ProjectCatalogRecord(ProjectRecord):
+    """Internal Project record joined to its owning Agent Canvas Workflow."""
+
+    workflow_id: str = Field(min_length=1)
+
+
+class ProjectCatalogRecordPage(BaseModel):
+    """Internal deterministic page of joined Project catalog records."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    items: tuple[ProjectCatalogRecord, ...] = ()
+    next_cursor: str | None = None
+
+
 class ProjectV2(BaseModel):
     """The durable Project envelope that owns exactly one V2 Workflow."""
 

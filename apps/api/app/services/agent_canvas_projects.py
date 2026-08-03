@@ -18,8 +18,8 @@ from app.schemas.agent_canvas import (
     ProjectCreateResponseV2,
 )
 from app.schemas.workflow_v2_projects import (
+    ProjectCatalogRecord,
     ProjectCreate,
-    ProjectRecord,
     ProjectStatusV2,
     ProjectV2,
     ProjectV2ListResponse,
@@ -91,7 +91,7 @@ class AgentCanvasProjectService:
         )
 
     def get_project(self, project_id: str) -> ProjectV2:
-        return self._detail(self._projects.get(project_id))
+        return self._detail(self._projects.get_catalog(project_id))
 
     def list_projects(
         self,
@@ -100,7 +100,7 @@ class AgentCanvasProjectService:
         limit: int,
         cursor: str | None,
     ) -> ProjectV2ListResponse:
-        page = self._projects.list(status=status, limit=limit, cursor=cursor)
+        page = self._projects.list_catalog(status=status, limit=limit, cursor=cursor)
         return ProjectV2ListResponse(
             items=tuple(self._summary(project) for project in page.items),
             next_cursor=page.next_cursor,
@@ -113,33 +113,31 @@ class AgentCanvasProjectService:
         expected_version: int,
         changes: dict[str, object],
     ) -> ProjectV2:
-        self._workflows.workflow_id_for_project(project_id)
-        return self._detail(
-            self._projects.update(
-                project_id,
-                expected_version=expected_version,
-                changes=changes,
-            )
+        self._projects.get_catalog(project_id)
+        self._projects.update(
+            project_id,
+            expected_version=expected_version,
+            changes=changes,
         )
+        return self._detail(self._projects.get_catalog(project_id))
 
     def trash_project(self, project_id: str, *, expected_version: int) -> ProjectV2:
-        self._workflows.workflow_id_for_project(project_id)
-        return self._detail(self._projects.trash(project_id, expected_version=expected_version))
+        self._projects.get_catalog(project_id)
+        self._projects.trash(project_id, expected_version=expected_version)
+        return self._detail(self._projects.get_catalog(project_id))
 
     def restore_project(self, project_id: str, *, expected_version: int) -> ProjectV2:
-        self._workflows.workflow_id_for_project(project_id)
-        return self._detail(self._projects.restore(project_id, expected_version=expected_version))
+        self._projects.get_catalog(project_id)
+        self._projects.restore(project_id, expected_version=expected_version)
+        return self._detail(self._projects.get_catalog(project_id))
 
-    def _summary(self, project: ProjectRecord) -> ProjectV2Summary:
+    def _summary(self, project: ProjectCatalogRecord) -> ProjectV2Summary:
         return ProjectV2Summary(
             **project.model_dump(exclude={"description", "created_at", "deleted_at"}),
-            workflow_id=self._workflows.workflow_id_for_project(project.project_id),
         )
 
-    def _detail(self, project: ProjectRecord) -> ProjectV2:
-        workflow = self._workflows.get_workflow(
-            self._workflows.workflow_id_for_project(project.project_id)
-        )
+    def _detail(self, project: ProjectCatalogRecord) -> ProjectV2:
+        workflow = self._workflows.get_workflow(project.workflow_id)
         return ProjectV2(
             project_id=project.project_id,
             workflow_id=workflow.workflow_id,
