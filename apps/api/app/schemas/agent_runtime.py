@@ -12,7 +12,7 @@ from app.schemas.agent_operation_contexts import (
     PlanningAgentContext,
 )
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
-from app.schemas.agent_canvas import CanvasCreativeRoleV2
+from app.schemas.agent_canvas import CanvasCreativeRoleV2, ModelSelectionModeV1
 from app.schemas.agent_canvas_creative_session import (
     ConceptDraftSpecV2,
     ProposedDraftReferenceV2,
@@ -165,6 +165,14 @@ class AgentCanvasScriptOutput(BaseModel):
     content: str = Field(min_length=1, max_length=32_768)
 
 
+class AgentCanvasTextOutput(BaseModel):
+    """Validated generic Text Node output from the bounded Quick Media Agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(min_length=1, max_length=32_768)
+
+
 class AgentRunPolicy(_StrictModel):
     max_turns: int = Field(default=8, ge=1, le=64)
     max_tool_calls: int = Field(default=16, ge=0, le=128)
@@ -186,6 +194,7 @@ class AgentRunRequest(_StrictModel):
     operation: str = Field(min_length=1, max_length=120)
     deadline_at: datetime
     model_policy_id: str = Field(min_length=1, max_length=160)
+    model_ref: str | None = Field(default=None, min_length=1, max_length=320)
     context: PlanningAgentContext | AgentRunContext
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)
@@ -319,7 +328,10 @@ class AgentRuntimeError(_StrictModel):
     code: Literal[
         "agent_runtime_unavailable",
         "agent_protocol_mismatch",
+        "agent_model_incompatible",
+        "agent_model_policy_mismatch",
         "agent_model_unavailable",
+        "agent_operation_not_allowed",
         "agent_structured_output_invalid",
         "agent_run_budget_exceeded",
         "agent_deadline_exceeded",
@@ -328,6 +340,8 @@ class AgentRuntimeError(_StrictModel):
         "agent_target_revision_conflict",
         "agent_run_cancelled",
         "agent_runtime_fake_forbidden",
+        "provider_credentials_invalid",
+        "provider_credentials_missing",
     ]
     message: str = Field(min_length=1, max_length=1_024)
     retryable: bool = False
@@ -438,6 +452,18 @@ class _AgentCommandOperationV2(_StrictModel):
     operation_id: str = Field(min_length=1, max_length=160)
 
 
+def _validate_model_selection(
+    mode: ModelSelectionModeV1 | None,
+    model_ref: str | None,
+    *,
+    partial: bool = False,
+) -> None:
+    if partial and mode is None and model_ref is None:
+        return
+    if (mode == "default" and model_ref is not None) or (mode == "explicit" and not model_ref):
+        raise ValueError("model_selection_invalid")
+
+
 class AgentCreateDraftNodeOperationV2(_AgentCommandOperationV2):
     operation_type: Literal["create_draft_node"] = "create_draft_node"
     node_type: Literal["text", "script", "image", "video", "audio"]
@@ -446,11 +472,17 @@ class AgentCreateDraftNodeOperationV2(_AgentCommandOperationV2):
     summary_prompt: str | None = Field(default=None, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
     structured_content: dict[str, Any] = Field(default_factory=dict)
-    model_id: str | None = Field(default=None, max_length=160)
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, Any] = Field(default_factory=dict)
     source_asset_id: str | None = Field(default=None, max_length=160)
     video_skill_run_id: str | None = Field(default=None, max_length=160)
     placement_hint: AgentPlacementHintV2
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "AgentCreateDraftNodeOperationV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
 
 
 class AgentPatchEditableNodeOperationV2(_AgentCommandOperationV2):
@@ -460,8 +492,18 @@ class AgentPatchEditableNodeOperationV2(_AgentCommandOperationV2):
     summary_prompt: str | None = Field(default=None, max_length=8_192)
     generation_prompt: str | None = Field(default=None, max_length=32_768)
     structured_content: dict[str, Any] | None = None
-    model_id: str | None = Field(default=None, max_length=160)
+    model_selection_mode: ModelSelectionModeV1 | None = None
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "AgentPatchEditableNodeOperationV2":
+        _validate_model_selection(
+            self.model_selection_mode,
+            self.model_ref,
+            partial=True,
+        )
+        return self
 
 
 class AgentCreateBindingOperationV2(_AgentCommandOperationV2):
@@ -508,9 +550,15 @@ class AgentMaterializeSiblingDraftOperationV2(_AgentCommandOperationV2):
     source_node: AgentNodeRefV2
     title: str = Field(min_length=1, max_length=256)
     generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_id: str | None = Field(default=None, max_length=160)
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, Any] = Field(default_factory=dict)
     placement_hint: AgentPlacementHintV2
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "AgentMaterializeSiblingDraftOperationV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
 
 
 class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):

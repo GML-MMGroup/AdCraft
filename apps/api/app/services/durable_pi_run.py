@@ -107,7 +107,7 @@ class DurablePiRunService:
         request: AgentRunRequest,
         *,
         identity_fields: Mapping[str, str | int],
-        model_id: str | None = None,
+        model_ref: str | None = None,
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
@@ -119,6 +119,7 @@ class DurablePiRunService:
                 "audit_metadata": {
                     **request.audit_metadata,
                     **identity.audit_metadata,
+                    **({"model_ref": model_ref} if model_ref is not None else {}),
                 },
             }
         )
@@ -148,7 +149,7 @@ class DurablePiRunService:
             event_projector.consume(
                 event,
                 workflow_id=getattr(request.context, "workflow_id", None),
-                model_id=model_id,
+                model_id=model_ref,
             )
 
         try:

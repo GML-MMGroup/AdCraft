@@ -59,11 +59,14 @@ export class PiModelAdapter implements AgentModelAdapter {
           request.contract_name ?? "",
         )
       : undefined;
+    if (!request.model_ref) throw new Error("agent_protocol_mismatch");
     const credential = await this.python.credential(
       request.credential_ref ?? "llm-default",
+      request.run_id,
       request.agent_name,
       request.operation,
       request.model_policy_id,
+      request.model_ref,
     );
     const operationDescriptor = getOperationDescriptor(
       request.agent_name,
@@ -358,14 +361,24 @@ function contractSchema(request: AgentRunRequest): Readonly<Record<string, unkno
 }
 
 export function promptInputForRequest(request: AgentRunRequest): string {
-  if ("user_input" in request.context) return request.context.user_input;
-  if ("user_instruction" in request.context) {
-    return request.context.user_instruction;
-  }
-  if ("original_user_intent" in request.context) {
-    return request.context.original_user_intent;
-  }
-  throw new Error("agent_context_input_missing");
+  const primaryInput =
+    "user_input" in request.context
+      ? request.context.user_input
+      : "user_instruction" in request.context
+        ? request.context.user_instruction
+        : "original_user_intent" in request.context
+          ? request.context.original_user_intent
+          : undefined;
+  if (!primaryInput) throw new Error("agent_context_input_missing");
+  if (!("context_kind" in request.context)) return primaryInput;
+
+  const typedContext = Object.fromEntries(
+    Object.entries(request.context).filter(([key]) => key !== "contract_schema"),
+  );
+  return [
+    `User request:\n${primaryInput}`,
+    `Validated typed operation context:\n${JSON.stringify(typedContext)}`,
+  ].join("\n\n");
 }
 
 async function projectOutputDelta(

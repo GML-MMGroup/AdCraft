@@ -7,6 +7,7 @@ import type {
 export interface AgentCredentialSnapshot {
   readonly protocol_version: "1";
   readonly provider: string;
+  readonly model_ref: string;
   readonly model_id: string;
   readonly model_policy_id: string;
   readonly base_url: string;
@@ -37,14 +38,18 @@ export class PythonInternalClient {
 
   async credential(
     credentialRef: string,
+    runId: string,
     agentName: AgentRunRequest["agent_name"],
     operation: string,
     modelPolicyId: string,
+    modelRef: string,
   ): Promise<AgentCredentialSnapshot> {
     const query = new URLSearchParams({
+      run_id: runId,
       agent_name: agentName,
       operation,
       model_policy_id: modelPolicyId,
+      model_ref: modelRef,
     });
     const response = await this.#fetch(
       `${this.#baseUrl}/internal/v1/agent-runtime-config/${encodeURIComponent(credentialRef)}?${query.toString()}`,
@@ -59,6 +64,7 @@ export class PythonInternalClient {
     const payload = await boundedJson(response);
     if (
       payload.protocol_version !== "1" ||
+      typeof payload.model_ref !== "string" ||
       typeof payload.model_id !== "string" ||
       typeof payload.model_policy_id !== "string" ||
       typeof payload.base_url !== "string" ||
@@ -99,12 +105,23 @@ export class PythonInternalClient {
 }
 
 async function boundedJson(response: Response): Promise<Record<string, unknown>> {
-  if (!response.ok) throw new Error(`agent_internal_request_failed:${response.status}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > 65_536) throw new Error("agent_protocol_mismatch");
   const payload: unknown = JSON.parse(new TextDecoder().decode(bytes));
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("agent_protocol_mismatch");
+  }
+  if (!response.ok) {
+    const detail = (payload as Record<string, unknown>).detail;
+    if (
+      detail &&
+      typeof detail === "object" &&
+      !Array.isArray(detail) &&
+      typeof (detail as Record<string, unknown>).code === "string"
+    ) {
+      throw new Error((detail as Record<string, string>).code);
+    }
+    throw new Error(`agent_internal_request_failed:${response.status}`);
   }
   return payload as Record<string, unknown>;
 }

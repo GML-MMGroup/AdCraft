@@ -59,18 +59,32 @@ def require_agent_internal_auth(
 def get_agent_runtime_config(
     credential_ref: str,
     response: Response,
+    run_id: str,
     agent_name: AgentName,
     operation: str,
     model_policy_id: str,
+    model_ref: str,
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str | bool]:
     response.headers["Cache-Control"] = "no-store"
     try:
+        database = create_v2_database(settings.media_data_dir)
+        try:
+            run = AgentRunRepository(database).load(run_id)
+        finally:
+            database.dispose()
+        frozen_model_ref = run.audit_metadata.get("model_ref")
+        if frozen_model_ref != model_ref:
+            raise AgentCredentialError(
+                "agent_model_policy_mismatch",
+                "Agent runtime model reference does not match the frozen run policy.",
+            )
         snapshot = V2AgentCredentialBroker(settings).snapshot(
             credential_ref,
             agent_name=agent_name,
             operation=operation,
             model_policy_id=model_policy_id,
+            model_ref=model_ref,
         )
     except AgentCredentialError as error:
         raise HTTPException(
@@ -80,6 +94,7 @@ def get_agent_runtime_config(
     return {
         "protocol_version": snapshot.protocol_version,
         "provider": snapshot.provider,
+        "model_ref": snapshot.model_ref,
         "model_id": snapshot.model_id,
         "model_policy_id": snapshot.model_policy_id,
         "base_url": snapshot.base_url,
