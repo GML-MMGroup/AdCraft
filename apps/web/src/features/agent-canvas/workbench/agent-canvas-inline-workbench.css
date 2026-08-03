@@ -110,6 +110,10 @@
   box-shadow: none;
 }
 
+html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
+  outline: none;
+}
+
 .agent-node-workbench__composer--script textarea {
   min-height: 148px;
   font-family: "Bodoni Moda", "Instrument Serif", Georgia, serif;

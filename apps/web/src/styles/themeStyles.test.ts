@@ -74,6 +74,18 @@ describe("theme styles", () => {
     expect(focusBlock).toContain("outline: none");
   });
 
+  test("keeps the node prompt composer free of the global focus outline", () => {
+    const workbenchStyles = source(
+      "features/agent-canvas/workbench/agent-canvas-inline-workbench.css",
+    );
+    const focusBlock = declarationBlock(
+      workbenchStyles,
+      'html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible',
+    );
+
+    expect(focusBlock).toContain("outline: none");
+  });
+
   test("keeps non-critical theme rules out of the initial style entry", () => {
     expect(source("main.tsx")).not.toContain('import "./styles/theme.css"');
     expect(source("components/Layout.tsx")).toContain('import "../styles/theme.css"');
