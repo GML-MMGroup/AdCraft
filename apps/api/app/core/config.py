@@ -91,6 +91,8 @@ class Settings:
     llm_provider: str = "OpenAI Compatible"
     llm_api_key: str | None = None
     llm_base_url: str | None = None
+    siliconflow_api_key: str | None = None
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     llm_transient_retry_delay_seconds: float = 2.0
     llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
     llm_team_model: str = "doubao-seed-2-0-mini-260428"
@@ -228,6 +230,11 @@ class Settings:
             llm_provider=os.getenv("LLM_PROVIDER", cls.llm_provider),
             llm_api_key=os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
             llm_base_url=os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL") or None,
+            siliconflow_api_key=os.getenv("SILICONFLOW_API_KEY") or None,
+            siliconflow_base_url=os.getenv(
+                "SILICONFLOW_BASE_URL",
+                cls.siliconflow_base_url,
+            ),
             llm_transient_retry_delay_seconds=_read_float(
                 "LLM_TRANSIENT_RETRY_DELAY_SECONDS",
                 cls.llm_transient_retry_delay_seconds,

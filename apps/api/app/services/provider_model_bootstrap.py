@@ -1,0 +1,94 @@
+"""Startup seeding for trusted provider catalog entries and installation defaults."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from app.core.config import Settings
+from app.persistence.provider_model_repository import ProviderModelRepository
+from app.services.provider_model_catalog import ProviderModelCatalogService
+
+
+@dataclass(frozen=True)
+class ProviderModelBootstrapResult:
+    seeded_providers: tuple[str, ...]
+    seeded_defaults: tuple[str, ...]
+
+
+class ProviderModelBootstrapService:
+    """Seed missing model policy without replacing existing catalog or defaults."""
+
+    def __init__(self, settings: Settings, repository: ProviderModelRepository) -> None:
+        self._settings = settings
+        self._repository = repository
+
+    def bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
+        catalog = ProviderModelCatalogService(
+            self._repository,
+            provider_available=self._provider_available,
+        )
+        seeded_providers: list[str] = []
+        for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
+            if self._repository.list_models(provider_id=provider_id):
+                continue
+            catalog.sync(provider_id, now=now)
+            seeded_providers.append(provider_id)
+
+        existing = catalog.get_default_records()
+        candidates = {
+            key: model_ref
+            for key, model_ref in self._recognized_defaults().items()
+            if key not in existing
+        }
+        valid_candidates: dict[str, str] = {}
+        for key, model_ref in candidates.items():
+            try:
+                model = self._repository.get_model(model_ref)
+            except ValueError:
+                continue
+            if model.availability != "available":
+                continue
+            valid_candidates[key] = model_ref
+        if valid_candidates:
+            catalog.set_defaults(valid_candidates, now=now)
+        return ProviderModelBootstrapResult(
+            seeded_providers=tuple(seeded_providers),
+            seeded_defaults=tuple(valid_candidates),
+        )
+
+    def _provider_available(self, provider_id: str) -> bool:
+        if provider_id == "fake":
+            return True
+        if provider_id == "siliconflow":
+            return bool(self._settings.siliconflow_api_key)
+        if provider_id == "volcengine_ark":
+            return bool(
+                self._settings.llm_api_key
+                or self._settings.image_generation_api_key
+                or self._settings.video_generation_api_key
+            )
+        if provider_id == "tianpuyue":
+            return bool(self._settings.bgm_api_key)
+        return False
+
+    def _recognized_defaults(self) -> dict[str, str]:
+        if self._settings.agent_runtime_mode == "fake" or self._settings.media_mode == "mock":
+            return {
+                "agent": "fake:deterministic-text",
+                "text": "fake:deterministic-text",
+                "image": "fake:deterministic-image",
+                "video": "fake:deterministic-video",
+                "audio": "fake:deterministic-audio",
+            }
+        text_ref = (
+            "siliconflow:zai-org/GLM-5.2"
+            if self._settings.siliconflow_api_key
+            else "volcengine_ark:doubao-seed-2-0-mini-260428"
+        )
+        return {
+            "agent": text_ref,
+            "text": text_ref,
+            "image": "volcengine_ark:doubao-seedream-5-0-lite-260128",
+            "video": "volcengine_ark:doubao-seedance-2-0-fast-260128",
+            "audio": "tianpuyue:TemPolor-i3",
+        }
