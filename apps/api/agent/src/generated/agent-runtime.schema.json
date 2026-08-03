@@ -1,5 +1,446 @@
 {
   "$defs": {
+    "AdaptiveProductionCompletionCriteriaV2": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_omission_deliverable_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Accepted Omission Deliverable Ids",
+          "type": "array"
+        },
+        "required_deliverable_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Required Deliverable Ids",
+          "type": "array"
+        }
+      },
+      "title": "AdaptiveProductionCompletionCriteriaV2",
+      "type": "object"
+    },
+    "AdaptiveProductionDeliverableV2": {
+      "additionalProperties": false,
+      "properties": {
+        "deliverable_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Deliverable Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "output_kind": {
+          "enum": [
+            "audio",
+            "editing",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Output Kind",
+          "type": "string"
+        },
+        "related_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Related Asset Ids",
+          "type": "array"
+        },
+        "related_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Related Node Ids",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "deliverable_id",
+        "description",
+        "output_kind"
+      ],
+      "title": "AdaptiveProductionDeliverableV2",
+      "type": "object"
+    },
+    "AdaptiveProductionDependencyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "rationale": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "source_topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Topic Id",
+          "type": "string"
+        },
+        "target_topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Target Topic Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rationale",
+        "source_topic_id",
+        "target_topic_id"
+      ],
+      "title": "AdaptiveProductionDependencyV2",
+      "type": "object"
+    },
+    "AdaptiveProductionRecipeDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Anchor Digest",
+          "type": "string"
+        },
+        "completion_criteria": {
+          "$ref": "#/$defs/AdaptiveProductionCompletionCriteriaV2"
+        },
+        "current_topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Topic Id"
+        },
+        "deliverables": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionDeliverableV2"
+          },
+          "maxItems": 32,
+          "title": "Deliverables",
+          "type": "array"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionDependencyV2"
+          },
+          "maxItems": 64,
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "goal": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Goal",
+          "type": "string"
+        },
+        "recommended_next_topic_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Recommended Next Topic Ids",
+          "type": "array"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionStageV2"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Stages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "anchor_digest",
+        "stages"
+      ],
+      "title": "AdaptiveProductionRecipeDraftV2",
+      "type": "object"
+    },
+    "AdaptiveProductionRecipeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Anchor Digest",
+          "type": "string"
+        },
+        "completion_criteria": {
+          "$ref": "#/$defs/AdaptiveProductionCompletionCriteriaV2"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "creation_mode": {
+          "enum": [
+            "guided_production",
+            "ordinary_conversation",
+            "quick_media",
+            "targeted_authoring"
+          ],
+          "title": "Creation Mode",
+          "type": "string"
+        },
+        "current_topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Topic Id"
+        },
+        "deliverables": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionDeliverableV2"
+          },
+          "maxItems": 32,
+          "title": "Deliverables",
+          "type": "array"
+        },
+        "dependencies": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionDependencyV2"
+          },
+          "maxItems": 64,
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "goal": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Goal",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recommended_next_topic_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Recommended Next Topic Ids",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "skill_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Run Id"
+        },
+        "stages": {
+          "items": {
+            "$ref": "#/$defs/AdaptiveProductionStageV2"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Stages",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "anchor_digest",
+        "conversation_id",
+        "created_at",
+        "creation_mode",
+        "recipe_id",
+        "revision",
+        "stages",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "AdaptiveProductionRecipeV2",
+      "type": "object"
+    },
+    "AdaptiveProductionStageV2": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability": {
+          "enum": [
+            "not_required",
+            "optional",
+            "required"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "applicability_reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Applicability Reason",
+          "type": "string"
+        },
+        "candidate_count": {
+          "maximum": 4,
+          "minimum": 1,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "objective": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "proposal_mode": {
+          "enum": [
+            "choice_set",
+            "single_plan"
+          ],
+          "title": "Proposal Mode",
+          "type": "string"
+        },
+        "related_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Related Node Ids",
+          "type": "array"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "not_required",
+            "pending",
+            "reopened",
+            "skipped",
+            "working"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "topic_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "creative_direction",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
+          ],
+          "title": "Topic Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "applicability",
+        "applicability_reason",
+        "candidate_count",
+        "objective",
+        "proposal_mode",
+        "specialist_name",
+        "status",
+        "title",
+        "topic_id",
+        "topic_kind"
+      ],
+      "title": "AdaptiveProductionStageV2",
+      "type": "object"
+    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -711,10 +1152,11 @@
           "default": null,
           "title": "Generation Prompt"
         },
-        "model_id": {
+        "model_ref": {
           "anyOf": [
             {
-              "maxLength": 160,
+              "maxLength": 320,
+              "minLength": 3,
               "type": "string"
             },
             {
@@ -722,7 +1164,16 @@
             }
           ],
           "default": null,
-          "title": "Model Id"
+          "title": "Model Ref"
+        },
+        "model_selection_mode": {
+          "default": "default",
+          "enum": [
+            "default",
+            "explicit"
+          ],
+          "title": "Model Selection Mode",
+          "type": "string"
         },
         "node_type": {
           "enum": [
@@ -895,10 +1346,11 @@
           "title": "Generation Prompt",
           "type": "string"
         },
-        "model_id": {
+        "model_ref": {
           "anyOf": [
             {
-              "maxLength": 160,
+              "maxLength": 320,
+              "minLength": 3,
               "type": "string"
             },
             {
@@ -906,7 +1358,16 @@
             }
           ],
           "default": null,
-          "title": "Model Id"
+          "title": "Model Ref"
+        },
+        "model_selection_mode": {
+          "default": "default",
+          "enum": [
+            "default",
+            "explicit"
+          ],
+          "title": "Model Selection Mode",
+          "type": "string"
         },
         "operation_id": {
           "maxLength": 160,
@@ -1167,10 +1628,11 @@
           "default": null,
           "title": "Generation Prompt"
         },
-        "model_id": {
+        "model_ref": {
           "anyOf": [
             {
-              "maxLength": 160,
+              "maxLength": 320,
+              "minLength": 3,
               "type": "string"
             },
             {
@@ -1178,7 +1640,23 @@
             }
           ],
           "default": null,
-          "title": "Model Id"
+          "title": "Model Ref"
+        },
+        "model_selection_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "explicit"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Selection Mode"
         },
         "node": {
           "discriminator": {
@@ -1764,6 +2242,20 @@
           "title": "Model Policy Id",
           "type": "string"
         },
+        "model_ref": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Ref"
+        },
         "operation": {
           "maxLength": 120,
           "minLength": 1,
@@ -1843,7 +2335,10 @@
         "code": {
           "enum": [
             "agent_deadline_exceeded",
+            "agent_model_incompatible",
+            "agent_model_policy_mismatch",
             "agent_model_unavailable",
+            "agent_operation_not_allowed",
             "agent_protocol_mismatch",
             "agent_run_budget_exceeded",
             "agent_run_cancelled",
@@ -1852,7 +2347,9 @@
             "agent_stream_backpressure_exceeded",
             "agent_structured_output_invalid",
             "agent_target_revision_conflict",
-            "agent_tool_not_allowed"
+            "agent_tool_not_allowed",
+            "provider_credentials_invalid",
+            "provider_credentials_missing"
           ],
           "title": "Code",
           "type": "string"
@@ -2830,6 +3327,77 @@
       "title": "CanvasBindingV2",
       "type": "object"
     },
+    "CanvasModelSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "availability": {
+          "enum": [
+            "available",
+            "deprecated",
+            "unauthorized",
+            "unavailable",
+            "unsupported"
+          ],
+          "title": "Availability",
+          "type": "string"
+        },
+        "capability": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Capability",
+          "type": "string"
+        },
+        "catalog_revision": {
+          "minimum": 1,
+          "title": "Catalog Revision",
+          "type": "integer"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "provider_id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "unavailable_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unavailable Reason"
+        }
+      },
+      "required": [
+        "availability",
+        "capability",
+        "catalog_revision",
+        "display_name",
+        "model_ref",
+        "provider_id"
+      ],
+      "title": "CanvasModelSummaryV2",
+      "type": "object"
+    },
     "CanvasNodeErrorV2": {
       "additionalProperties": false,
       "properties": {
@@ -2907,9 +3475,11 @@
           "default": null,
           "title": "Generation Prompt"
         },
-        "model_id": {
+        "model_ref": {
           "anyOf": [
             {
+              "maxLength": 320,
+              "minLength": 3,
               "type": "string"
             },
             {
@@ -2917,7 +3487,27 @@
             }
           ],
           "default": null,
-          "title": "Model Id"
+          "title": "Model Ref"
+        },
+        "model_selection_mode": {
+          "default": "default",
+          "enum": [
+            "default",
+            "explicit"
+          ],
+          "title": "Model Selection Mode",
+          "type": "string"
+        },
+        "model_summary": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasModelSummaryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "node_id": {
           "minLength": 1,
@@ -2976,8 +3566,11 @@
           "type": "integer"
         },
         "role_contract_version": {
-          "const": "ad-media-role-v1",
-          "default": "ad-media-role-v1",
+          "default": "ad-media-role-v2",
+          "enum": [
+            "ad-media-role-v1",
+            "ad-media-role-v2"
+          ],
           "title": "Role Contract Version",
           "type": "string"
         },
@@ -3085,10 +3678,11 @@
           "title": "Generation Prompt",
           "type": "string"
         },
-        "model_id": {
+        "model_ref": {
           "anyOf": [
             {
-              "maxLength": 160,
+              "maxLength": 320,
+              "minLength": 3,
               "type": "string"
             },
             {
@@ -3096,7 +3690,16 @@
             }
           ],
           "default": null,
-          "title": "Model Id"
+          "title": "Model Ref"
+        },
+        "model_selection_mode": {
+          "default": "default",
+          "enum": [
+            "default",
+            "explicit"
+          ],
+          "title": "Model Selection Mode",
+          "type": "string"
         },
         "parameters": {
           "additionalProperties": {
@@ -3412,6 +4015,116 @@
       "title": "ConversationSummaryResult",
       "type": "object"
     },
+    "CreationModeDecisionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "guided_production",
+            "ordinary_conversation",
+            "quick_media",
+            "targeted_authoring"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "target_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Asset Id"
+        },
+        "target_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Id"
+        }
+      },
+      "required": [
+        "mode",
+        "reason"
+      ],
+      "title": "CreationModeDecisionV2",
+      "type": "object"
+    },
+    "CreativeAnchorSetV2": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_facts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Approved Facts",
+          "type": "array"
+        },
+        "aspect_ratio": {
+          "default": "",
+          "maxLength": 32,
+          "title": "Aspect Ratio",
+          "type": "string"
+        },
+        "audience": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Audience",
+          "type": "string"
+        },
+        "campaign_goal": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Campaign Goal",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "duration": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Duration",
+          "type": "string"
+        },
+        "subject_product": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Subject Product",
+          "type": "array"
+        }
+      },
+      "required": [
+        "digest"
+      ],
+      "title": "CreativeAnchorSetV2",
+      "type": "object"
+    },
     "CreativeDirectionSnapshotV2": {
       "additionalProperties": false,
       "properties": {
@@ -3546,6 +4259,28 @@
     "CreativeSessionStateV2": {
       "additionalProperties": false,
       "properties": {
+        "active_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdaptiveProductionRecipeV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreationModeDecisionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "creative_direction_snapshot_id": {
           "anyOf": [
             {
@@ -3585,6 +4320,17 @@
           "minimum": 0,
           "title": "Memory Revision",
           "type": "integer"
+        },
+        "readiness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProductionReadinessProjectionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "skill_id": {
           "maxLength": 160,
@@ -3693,6 +4439,19 @@
     "DirectorTurnContextV2": {
       "additionalProperties": false,
       "properties": {
+        "approved_anchor_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approved Anchor Digest"
+        },
         "candidate_summaries": {
           "default": [],
           "items": {
@@ -3712,6 +4471,17 @@
           "minLength": 1,
           "title": "Conversation Id",
           "type": "string"
+        },
+        "creation_mode_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreationModeDecisionV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "creative_memory": {
           "anyOf": [
@@ -3850,7 +4620,7 @@
           "type": "string"
         },
         "required": {
-          "default": true,
+          "default": false,
           "title": "Required",
           "type": "boolean"
         },
@@ -4163,6 +4933,12 @@
           "title": "Created At",
           "type": "string"
         },
+        "display_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
         "error_code": {
           "anyOf": [
             {
@@ -4251,6 +5027,7 @@
       "required": [
         "activity_id",
         "created_at",
+        "display_name",
         "operation",
         "specialist_name",
         "status",
@@ -4451,8 +5228,6 @@
         "action": {
           "enum": [
             "add_another_topic_node",
-            "generate_node",
-            "run_all_drafts",
             "skip_topic"
           ],
           "title": "Action",
@@ -4483,6 +5258,12 @@
           "maxLength": 160,
           "minLength": 1,
           "title": "Label",
+          "type": "string"
+        },
+        "logical_key": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Logical Key",
           "type": "string"
         },
         "manifest_revision": {
@@ -4539,12 +5320,39 @@
           "title": "Reason",
           "type": "string"
         },
+        "recipe_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe Id"
+        },
+        "recipe_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe Revision"
+        },
         "state": {
           "enum": [
             "applied",
             "applying",
             "failed",
-            "pending"
+            "pending",
+            "superseded"
           ],
           "title": "State",
           "type": "string"
@@ -5105,6 +5913,88 @@
       "title": "ProductExpertAgentContext",
       "type": "object"
     },
+    "ProductionCompletionProjectionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery": {
+          "enum": [
+            "failed",
+            "not_ready",
+            "partial",
+            "ready"
+          ],
+          "title": "Delivery",
+          "type": "string"
+        },
+        "generation": {
+          "enum": [
+            "complete",
+            "failed",
+            "in_progress",
+            "not_started",
+            "partial_failed"
+          ],
+          "title": "Generation",
+          "type": "string"
+        },
+        "planning": {
+          "enum": [
+            "complete",
+            "in_progress",
+            "not_started"
+          ],
+          "title": "Planning",
+          "type": "string"
+        }
+      },
+      "required": [
+        "delivery",
+        "generation",
+        "planning"
+      ],
+      "title": "ProductionCompletionProjectionV2",
+      "type": "object"
+    },
+    "ProductionReadinessProjectionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "completion": {
+          "$ref": "#/$defs/ProductionCompletionProjectionV2"
+        },
+        "discussable_topic_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Discussable Topic Ids",
+          "type": "array"
+        },
+        "materializable_topic_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Materializable Topic Ids",
+          "type": "array"
+        },
+        "runnable_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Runnable Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "completion"
+      ],
+      "title": "ProductionReadinessProjectionV2",
+      "type": "object"
+    },
     "ProjectCreativeMemoryV2": {
       "additionalProperties": false,
       "properties": {
@@ -5227,9 +6117,10 @@
         },
         "action": {
           "enum": [
+            "archive",
+            "reopen",
             "revise",
-            "select",
-            "skip"
+            "select"
           ],
           "title": "Action",
           "type": "string"
@@ -5263,6 +6154,25 @@
           "default": null,
           "title": "Instruction"
         },
+        "mutable_dimensions": {
+          "default": [],
+          "items": {
+            "enum": [
+              "audio",
+              "camera",
+              "composition",
+              "copy",
+              "lighting",
+              "other",
+              "pacing",
+              "style"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Mutable Dimensions",
+          "type": "array"
+        },
         "option_id": {
           "anyOf": [
             {
@@ -5289,12 +6199,129 @@
           ],
           "default": null,
           "title": "Position"
+        },
+        "replace_whole_concept": {
+          "default": false,
+          "title": "Replace Whole Concept",
+          "type": "boolean"
         }
       },
       "required": [
         "action"
       ],
       "title": "ProposalActionRequestV2",
+      "type": "object"
+    },
+    "ProposalRevisionContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_anchors": {
+          "$ref": "#/$defs/CreativeAnchorSetV2"
+        },
+        "mutable_dimensions": {
+          "default": [],
+          "items": {
+            "enum": [
+              "audio",
+              "camera",
+              "composition",
+              "copy",
+              "lighting",
+              "other",
+              "pacing",
+              "style"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Mutable Dimensions",
+          "type": "array"
+        },
+        "prior_options": {
+          "items": {
+            "$ref": "#/$defs/ProposalRevisionOptionV2"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Prior Options",
+          "type": "array"
+        },
+        "relevant_target_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Relevant Target Summaries",
+          "type": "array"
+        },
+        "replace_whole_concept": {
+          "default": false,
+          "title": "Replace Whole Concept",
+          "type": "boolean"
+        },
+        "source_proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Proposal Id",
+          "type": "string"
+        },
+        "source_proposal_revision": {
+          "minimum": 1,
+          "title": "Source Proposal Revision",
+          "type": "integer"
+        },
+        "topic_objective": {
+          "default": "",
+          "maxLength": 4000,
+          "title": "Topic Objective",
+          "type": "string"
+        },
+        "user_instruction": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Instruction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approved_anchors",
+        "prior_options",
+        "source_proposal_id",
+        "source_proposal_revision",
+        "user_instruction"
+      ],
+      "title": "ProposalRevisionContextV2",
+      "type": "object"
+    },
+    "ProposalRevisionOptionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "summary",
+        "title"
+      ],
+      "title": "ProposalRevisionOptionV2",
       "type": "object"
     },
     "ProposedDraftReferenceV2": {
@@ -5343,7 +6370,7 @@
           "type": "string"
         },
         "required": {
-          "default": true,
+          "default": false,
           "title": "Required",
           "type": "boolean"
         },
@@ -5828,6 +6855,29 @@
     "SpecialistContextV2": {
       "additionalProperties": false,
       "properties": {
+        "approved_anchor_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Approved Anchor Summaries",
+          "type": "array"
+        },
+        "candidate_count": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Count"
+        },
         "context_kind": {
           "const": "specialist_handoff",
           "title": "Context Kind",
@@ -5855,6 +6905,19 @@
           ],
           "default": null
         },
+        "current_topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Topic Id"
+        },
         "explicit_input_summaries": {
           "default": [],
           "items": {
@@ -5873,6 +6936,33 @@
           ],
           "title": "Operation",
           "type": "string"
+        },
+        "proposal_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "choice_set",
+                "single_plan"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Mode"
+        },
+        "proposal_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProposalRevisionContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "reference_allowlist": {
           "default": [],
