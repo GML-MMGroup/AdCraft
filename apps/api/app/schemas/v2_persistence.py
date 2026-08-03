@@ -24,6 +24,7 @@ class V2EventInsert(BaseModel):
     conversation_id: str | None = None
     turn_id: str | None = None
     action_id: str | None = None
+    transition_key: str | None = Field(default=None, min_length=1, max_length=256)
     trace_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     span_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{16}$")
     created_at: str = Field(min_length=1)
@@ -61,6 +62,17 @@ class DataMigrationCompletion(BaseModel):
     details: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class ProjectCatalogRepairReportV2(BaseModel):
+    """Audit report for the one-time Project catalog orphan cleanup."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    migration_name: str = Field(min_length=1)
+    scanned_count: int = Field(ge=0)
+    removed_count: int = Field(ge=0)
+    removed_project_ids: tuple[str, ...] = ()
+
+
 class DatabaseBackupReport(BaseModel):
     """Immutable backup result required before the authoring schema upgrade."""
 
@@ -84,6 +96,7 @@ class PersistenceBootstrapState(BaseModel):
     schema_revision: str
     database_backup_status: Literal["not_required", "created", "existing"] = "not_required"
     data_migration_name: str
+    project_catalog_repair_report: ProjectCatalogRepairReportV2 | None = None
 
 
 class PersistenceBootstrapFailure(BaseModel):
