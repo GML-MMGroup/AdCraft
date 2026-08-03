@@ -12,11 +12,16 @@ from app.persistence.agent_canvas_runtime_repository import (
 )
 from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas import CanvasNodeErrorV2
-from app.schemas.agent_canvas_runtime import CanvasProviderTaskV2, NodeExecutionLeaseV2
+from app.schemas.agent_canvas_runtime import (
+    CanvasProviderTaskV2,
+    NodeExecutionLeaseV2,
+    ResolvedModelExecutionV1,
+)
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
     NodeExecutionContext,
 )
+from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -47,6 +52,7 @@ class ProviderTaskRecoveryService:
         downloader: Downloader,
         media_publisher: Publisher,
         on_batch_reconciled: BatchCallback | None = None,
+        state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str = "provider-recovery",
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
@@ -56,6 +62,7 @@ class ProviderTaskRecoveryService:
         self._downloader = downloader
         self._media_publisher = media_publisher
         self._on_batch_reconciled = on_batch_reconciled
+        self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id
         self._clock = clock
 
@@ -73,6 +80,8 @@ class ProviderTaskRecoveryService:
             except Exception as error:
                 self._record_retryable_error(task, error)
                 execution_ids.add(task.execution_id)
+        for execution_id in execution_ids:
+            self._state_machine.reconcile(self._runtime, execution_id, now=self._clock())
         if execution_ids and self._on_batch_reconciled is not None:
             self._on_batch_reconciled(tuple(sorted(execution_ids)))
         return tuple(reconciled)
@@ -90,6 +99,7 @@ class ProviderTaskRecoveryService:
             return False
         poll = self._poller(task)
         remote_task_id = poll.remote_task_id or task.remote_task_id
+        result_descriptor = _merge_result_descriptor(task, poll)
         if poll.status in {"submitted", "waiting", "running"}:
             if task.recovery_deadline <= now:
                 self._fail_task(
@@ -107,7 +117,7 @@ class ProviderTaskRecoveryService:
                     "status": "waiting",
                     "lease_generation": lease.generation,
                     "next_poll_at": now + timedelta(seconds=8),
-                    "result_descriptor": poll.result_descriptor or task.result_descriptor,
+                    "result_descriptor": result_descriptor,
                     "error": None,
                 }
             )
@@ -142,7 +152,7 @@ class ProviderTaskRecoveryService:
                 "remote_task_id": remote_task_id,
                 "status": "recovering",
                 "lease_generation": lease.generation,
-                "result_descriptor": poll.result_descriptor or task.result_descriptor,
+                "result_descriptor": result_descriptor,
                 "error": None,
             }
         )
@@ -151,14 +161,38 @@ class ProviderTaskRecoveryService:
             return False
         payload = self._downloader(current)
         node = self._workflows.get_node(task.workflow_id, task.node_id)
+        stored_resolution = current.result_descriptor.get("model_resolution")
+        resolution = (
+            ResolvedModelExecutionV1.model_validate(stored_resolution)
+            if isinstance(stored_resolution, dict)
+            else None
+        )
         context = NodeExecutionContext(
             execution_id=task.execution_id,
             node=node,
             inputs=(),
-            model_id=node.model_id,
+            model_id=resolution.provider_model_id if resolution is not None else None,
+            provider_id=resolution.provider_id if resolution is not None else None,
+            model_resolution=resolution,
         )
         fingerprint = f"provider-task:{task.task_id}"
         asset_id = self._media_publisher(context, payload, fingerprint)
+        member = next(
+            item
+            for item in self._runtime.list_members(task.execution_id)
+            if item.node_id == task.node_id
+        )
+        if not self._state_machine.transition_member(
+            self._runtime,
+            member,
+            state="succeeded",
+            phase=None,
+            provider_task_id=task.task_id,
+            now=now,
+            expected_lease_generation=lease.generation,
+        ):
+            self._runtime.complete_lease(lease, now=now)
+            return False
         self._workflows.publish_node_output(
             task.workflow_id,
             task.node_id,
@@ -176,14 +210,6 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(completed, now=now):
             self._runtime.complete_lease(lease, now=now)
             return False
-        self._runtime.update_member(
-            task.execution_id,
-            task.node_id,
-            state="succeeded",
-            phase=None,
-            provider_task_id=task.task_id,
-            now=now,
-        )
         self._runtime.complete_lease(lease, now=now)
         return True
 
@@ -215,6 +241,23 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(failed, now=now):
             self._runtime.complete_lease(lease, now=now)
             return
+        member = next(
+            item
+            for item in self._runtime.list_members(task.execution_id)
+            if item.node_id == task.node_id
+        )
+        if member.state == "succeeded" or not self._state_machine.transition_member(
+            self._runtime,
+            member,
+            state="failed",
+            phase=None,
+            provider_task_id=task.task_id,
+            now=now,
+            error=error,
+            expected_lease_generation=lease.generation,
+        ):
+            self._runtime.complete_lease(lease, now=now)
+            return
         self._workflows.set_node_runtime_state(
             task.workflow_id,
             task.node_id,
@@ -224,14 +267,6 @@ class ProviderTaskRecoveryService:
             execution_id=task.execution_id,
             event_type="node_failed",
             event_payload={"code": error.code},
-        )
-        self._runtime.update_member(
-            task.execution_id,
-            task.node_id,
-            state="failed",
-            phase=None,
-            now=now,
-            error=error,
         )
         self._runtime.complete_lease(lease, now=now)
 
@@ -266,6 +301,19 @@ class ProviderTaskRecoveryService:
             event_type="provider_task_recovering",
             event_payload={"code": detail.code},
         )
+
+
+def _merge_result_descriptor(
+    task: CanvasProviderTaskV2,
+    poll: ProviderPollResult,
+) -> dict[str, object]:
+    """Merge remote progress without replacing the attempt's frozen model."""
+
+    merged = dict(task.result_descriptor)
+    merged.update(poll.result_descriptor or {})
+    if "model_resolution" in task.result_descriptor:
+        merged["model_resolution"] = task.result_descriptor["model_resolution"]
+    return merged
 
 
 class AgentCanvasProviderPollLoop:

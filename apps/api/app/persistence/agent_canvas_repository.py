@@ -30,6 +30,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
 )
 from app.persistence.project_repository import ProjectRepository
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_canvas import (
     AgentCanvasDocumentRecordV2,
     AgentCanvasPromptContextSnapshotV2,
@@ -44,6 +45,7 @@ from app.schemas.agent_canvas import (
     CanvasPositionV2,
     CanvasLayoutPatchResponseV2,
     CanvasLayoutPositionV2,
+    CanvasModelSummaryV2,
     CanvasVariationDraftV2,
     ResolvedTextInputSnapshotV2,
 )
@@ -287,6 +289,10 @@ class AgentCanvasWorkflowRepository:
             raise
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
+        model_summaries = _load_model_summaries(
+            self._database,
+            node_rows,
+        )
         return AgentCanvasWorkflowV2(
             workflow_id=str(workflow["workflow_id"]),
             project_id=str(workflow["project_id"]),
@@ -305,6 +311,7 @@ class AgentCanvasWorkflowRepository:
                         ),
                         None,
                     ),
+                    model_summary=model_summaries.get(str(row["model_ref"])),
                 )
                 for row in node_rows
             ),
@@ -353,7 +360,8 @@ class AgentCanvasWorkflowRepository:
             raise _unavailable_error() from error
         if row is None:
             raise _node_not_found_error()
-        return _node_from_row(row, variation=variation)
+        model_summary = _load_model_summaries(self._database, (row,)).get(str(row["model_ref"]))
+        return _node_from_row(row, variation=variation, model_summary=model_summary)
 
     def asset_is_referenced(self, asset_id: str) -> bool:
         """Return whether active canvas authoring points at one asset."""
@@ -669,6 +677,20 @@ class AgentCanvasWorkflowRepository:
         timestamp = updated_at.isoformat()
         try:
             with self._database.engine.begin() as connection:
+                current = (
+                    connection.execute(
+                        select(AgentCanvasNodeRow).where(
+                            AgentCanvasNodeRow.workflow_id == workflow_id,
+                            AgentCanvasNodeRow.node_id == node_id,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if current is None:
+                    raise _node_not_found_error()
+                if str(current["status"]) == "ready" and status != "ready":
+                    return _node_from_row(current)
                 changed = connection.execute(
                     update(AgentCanvasNodeRow)
                     .where(
@@ -1549,6 +1571,29 @@ class AgentCanvasDocumentRepository:
             created_at=str(row["created_at"]),
         )
 
+    def find_prompt_context_snapshot(
+        self,
+        *,
+        workflow_id: str,
+        target_node_id: str,
+        operation: str,
+    ) -> AgentCanvasPromptContextSnapshotV2 | None:
+        try:
+            with self._database.engine.connect() as connection:
+                snapshot_id = connection.execute(
+                    select(AgentCanvasPromptContextSnapshotRow.snapshot_id)
+                    .where(
+                        AgentCanvasPromptContextSnapshotRow.workflow_id == workflow_id,
+                        AgentCanvasPromptContextSnapshotRow.target_node_id == target_node_id,
+                        AgentCanvasPromptContextSnapshotRow.operation == operation,
+                    )
+                    .order_by(AgentCanvasPromptContextSnapshotRow.created_at.asc())
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return self.get_prompt_context_snapshot(str(snapshot_id)) if snapshot_id else None
+
 
 def _load_idempotency(
     connection: Connection,
@@ -1744,7 +1789,8 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "summary_prompt": node.summary_prompt,
         "generation_prompt": node.generation_prompt,
         "structured_content_json": _json_dump(node.structured_content),
-        "model_id": node.model_id,
+        "model_selection_mode": node.model_selection_mode,
+        "model_ref": node.model_ref,
         "parameters_json": _json_dump(node.parameters),
         "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
         "output_asset_id": node.output_asset_id,
@@ -1761,6 +1807,7 @@ def _node_from_row(
     row: RowMapping,
     *,
     variation: RowMapping | None = None,
+    model_summary: CanvasModelSummaryV2 | None = None,
 ) -> CanvasNodeV2:
     error_json = row["error_json"]
     return CanvasNodeV2(
@@ -1776,7 +1823,9 @@ def _node_from_row(
         structured_content=cast(
             dict[str, JsonValue], json.loads(str(row["structured_content_json"]))
         ),
-        model_id=cast(str | None, row["model_id"]),
+        model_selection_mode=cast(str, row["model_selection_mode"]),
+        model_ref=cast(str | None, row["model_ref"]),
+        model_summary=model_summary,
         parameters=cast(dict[str, JsonValue], json.loads(str(row["parameters_json"]))),
         prompt_context_snapshot_id=cast(str | None, row["prompt_context_snapshot_id"]),
         output_asset_id=cast(str | None, row["output_asset_id"]),
@@ -1802,7 +1851,8 @@ def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
         source_node_revision=int(row["source_node_revision"]),
         title=str(row["title"]),
         generation_prompt=str(row["generation_prompt"]),
-        model_id=cast(str | None, row["model_id"]),
+        model_selection_mode=cast(str, row["model_selection_mode"]),
+        model_ref=cast(str | None, row["model_ref"]),
         parameters=cast(
             dict[str, JsonValue],
             json.loads(str(row["parameters_json"])),
@@ -1811,6 +1861,30 @@ def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _load_model_summaries(
+    database: V2Database,
+    node_rows: tuple[RowMapping, ...] | list[RowMapping],
+) -> dict[str, CanvasModelSummaryV2]:
+    refs = {str(row["model_ref"]) for row in node_rows if row["model_ref"] is not None}
+    if not refs:
+        return {}
+    repository = ProviderModelRepository(database)
+    records = {record.model_ref: record for record in repository.list_models()}
+    return {
+        model_ref: CanvasModelSummaryV2(
+            model_ref=record.model_ref,
+            provider_id=record.provider_id,
+            display_name=record.display_name,
+            capability=cast("str", record.capability),
+            availability=cast("str", record.availability),
+            unavailable_reason=record.unavailable_reason,
+            catalog_revision=record.catalog_revision,
+        )
+        for model_ref, record in records.items()
+        if model_ref in refs
+    }
 
 
 def _binding_values(binding: CanvasBindingV2) -> dict[str, object]:

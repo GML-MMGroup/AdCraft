@@ -20,6 +20,7 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database
 from app.services.v2_asset_catalog import V2AssetCatalogService
 from app.services.v2_asset_catalog_coordinator import V2AssetCatalogCoordinator
+from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
 
 logger = logging.getLogger(__name__)
 
@@ -85,17 +86,24 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AsyncIterator[None]]:
         coordinator.ensure_indexed()
         try:
             _recover_agent_canvas_chat_turns(settings)
+            _recover_agent_canvas_continuations(settings)
             _recover_agent_canvas_executions(settings)
             _recover_agent_canvas_editing_exports(settings)
             provider_poll_stop = asyncio.Event()
             provider_poll_task = asyncio.create_task(
                 _poll_agent_canvas_provider_tasks(settings, provider_poll_stop)
             )
+            continuation_poll_stop = asyncio.Event()
+            continuation_poll_task = asyncio.create_task(
+                _poll_agent_canvas_continuations(settings, continuation_poll_stop)
+            )
             try:
                 yield
             finally:
                 provider_poll_stop.set()
+                continuation_poll_stop.set()
                 await provider_poll_task
+                await continuation_poll_task
         finally:
             coordinator.shutdown()
 
@@ -119,8 +127,41 @@ def _recover_agent_canvas_executions(settings: Settings) -> None:
     runtime = create_agent_canvas_runtime(settings)
     try:
         runtime.provider_recovery.recover_due_tasks()
+        state_machine = AgentCanvasExecutionStateMachine()
+        for execution in runtime.runtime_repository.list_executions():
+            state_machine.reconcile(
+                runtime.runtime_repository,
+                execution.execution_id,
+                now=execution.updated_at,
+                workflows=runtime.workflows,
+            )
         for execution in runtime.runtime_repository.list_active_executions():
             runtime.scheduler.resume(execution.execution_id)
+    finally:
+        runtime.database.dispose()
+
+
+async def _poll_agent_canvas_continuations(
+    settings: Settings,
+    stop: asyncio.Event,
+) -> None:
+    interval = max(1, settings.v2_provider_task_poll_interval_seconds)
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+            continue
+        except asyncio.TimeoutError:
+            pass
+        try:
+            await asyncio.to_thread(_recover_agent_canvas_continuations, settings)
+        except Exception:  # noqa: BLE001 - later poll cycles must remain available.
+            logger.exception("Agent Canvas continuation polling cycle failed.")
+
+
+def _recover_agent_canvas_continuations(settings: Settings) -> None:
+    runtime = create_agent_canvas_runtime(settings)
+    try:
+        runtime.continuation_worker.run_once()
     finally:
         runtime.database.dispose()
 
