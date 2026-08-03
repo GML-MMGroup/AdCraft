@@ -504,11 +504,12 @@ class RealMediaProvider:
         slot_type = str(request.get("slot_type") or "image")
         slot_id = str(request.get("slot_id") or slot_type).replace(":", "_")
         semantic_type = str(request.get("semantic_type") or slot_type)
+        model = str(request.get("provider_model_id") or self._settings.image_generation_model)
         reference_assets = [
             asset for asset in request.get("reference_assets", []) if isinstance(asset, dict)
         ]
         body, wire_audit = serialize_volcengine_image_generation_request(
-            model=self._settings.image_generation_model,
+            model=model,
             canonical_prompt=prompt,
             size=_normalize_image_generation_size(self._settings.image_generation_size),
             references=reference_assets,
@@ -545,7 +546,7 @@ class RealMediaProvider:
             )
         asset = {
             "provider": request.get("provider") or "volcengine-v2-canonical-image-generation",
-            "model": self._settings.image_generation_model,
+            "model": model,
             "asset_id": f"{slot_id}-v2-canonical-image",
             "asset_type": "image",
             "type": "image",
@@ -578,7 +579,7 @@ class RealMediaProvider:
         }
         return {
             "provider": asset["provider"],
-            "model": self._settings.image_generation_model,
+            "model": model,
             "assets": [asset],
             "input_assets": _v2_sanitized_reference_assets(reference_assets),
             "output_assets": [asset],

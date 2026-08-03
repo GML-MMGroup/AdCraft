@@ -792,17 +792,18 @@ class V2ProviderExecutor:
             try:
                 provider = self._media_provider()
                 if media_type == "image":
-                    output = provider.generate_v2_canonical_image(
-                        {
-                            "prompt": prompt,
-                            "slot_type": slot_type,
-                            "slot_id": str(provider_payload.get("node_id") or slot_type),
-                            "semantic_type": slot_type,
-                            "reference_assets": reference_assets,
-                            "submitted_reference_asset_ids": reference_asset_ids,
-                        },
-                        workflow_id,
-                    )
+                    image_request: dict[str, Any] = {
+                        "prompt": prompt,
+                        "slot_type": slot_type,
+                        "slot_id": str(provider_payload.get("node_id") or slot_type),
+                        "semantic_type": slot_type,
+                        "reference_assets": reference_assets,
+                        "submitted_reference_asset_ids": reference_asset_ids,
+                    }
+                    for field in ("provider_id", "provider_model_id"):
+                        if isinstance(value := provider_payload.get(field), str) and value.strip():
+                            image_request[field] = value.strip()
+                    output = provider.generate_v2_canonical_image(image_request, workflow_id)
                 elif media_type == "video":
                     duration = int(provider_payload.get("duration_seconds") or 5)
                     segment = {
@@ -848,12 +849,20 @@ class V2ProviderExecutor:
                             workflow_id,
                         )
                 elif media_type == "audio":
+                    audio_payload = {
+                        **provider_payload,
+                        "provider_prompt": prompt,
+                        "prompt": prompt,
+                    }
+                    if (
+                        isinstance(
+                            provider_model_id := provider_payload.get("provider_model_id"), str
+                        )
+                        and provider_model_id.strip()
+                    ):
+                        audio_payload["model"] = provider_model_id.strip()
                     output = provider.generate_bgm_audio(
-                        {
-                            **provider_payload,
-                            "provider_prompt": prompt,
-                            "prompt": prompt,
-                        },
+                        audio_payload,
                         workflow_id,
                     )
                 else:
