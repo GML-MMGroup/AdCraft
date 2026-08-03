@@ -8,11 +8,16 @@ from app.schemas.front_desk import FrontDeskIntentOutput
 from app.schemas.agent_runtime import (
     AgentActionEnvelopeV2,
     AgentCanvasScriptOutput,
+    AgentCanvasTextOutput,
     AgentCommandPlanDraftV2,
     ConceptProposalDraftV2,
     SpecialistDraft,
 )
-from app.schemas.agent_canvas_creative_session import SpecialistDraftV2
+from app.schemas.agent_canvas_creative_session import (
+    AdaptiveProductionRecipeDraftV2,
+    CreationModeDecisionV2,
+    SpecialistDraftV2,
+)
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import (
     V2BgmExpertPlan,
@@ -44,9 +49,12 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         SpecialistDraft,
         AgentActionEnvelopeV2,
         AgentCanvasScriptOutput,
+        AgentCanvasTextOutput,
         AgentCommandPlanDraftV2,
         ConceptProposalDraftV2,
         SpecialistDraftV2,
+        CreationModeDecisionV2,
+        AdaptiveProductionRecipeDraftV2,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,

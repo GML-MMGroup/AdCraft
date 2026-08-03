@@ -27,7 +27,9 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "operations": [
         "command_replan",
         "conversation_turn",
-        "proposal_action"
+        "plan_production_recipe",
+        "proposal_action",
+        "resolve_creation_mode"
       ],
       "model_role": "front_desk"
     },
@@ -55,6 +57,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "name": "quick_media_agent",
       "operations": [
         "direct_response",
+        "execute_canvas_text",
         "materialize_draft",
         "propose_concepts",
         "revise_concepts"

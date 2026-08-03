@@ -191,6 +191,9 @@ function skillsForOperation(
     };
   }
   if (agentName === "quick_media_agent") {
+    if (operation === "execute_canvas_text") {
+      return { required: [], optional: [] };
+    }
     return {
       required: ["creative_idea_generation"],
       optional: ["reference_asset_selection"],
