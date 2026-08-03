@@ -4536,6 +4536,9 @@ class WorkflowV2Service:
             "slot_type": task.metadata.get("slot_type"),
             "media_type": task.metadata.get("media_type"),
             "provider_result_id": task.metadata.get("provider_result_id"),
+            "poll_count": task.poll_count,
+            "attempt_count": task.attempt_count,
+            "retry_count": task.retry_count,
         }
         if result is not None:
             payload.update(
