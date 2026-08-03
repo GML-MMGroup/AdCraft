@@ -16,6 +16,7 @@ from app.persistence.agent_canvas_runtime_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
+from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_ad_media import (
     AdReferenceBundleV2,
     CompiledProviderPromptV2,
@@ -28,8 +29,10 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRunSkippedNodeV2,
     CanvasRuntimeSnapshotV2,
     CanvasProviderTaskV2,
+    EffectiveMediaParameterSnapshotV2,
     NodeExecutionLeaseV2,
     NodeRuntimeV2,
+    ResolvedModelExecutionV1,
 )
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_node_execution import (
@@ -41,13 +44,22 @@ from app.services.agent_canvas_node_execution import (
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
 )
+from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
+from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
+from app.services.model_resolution import ModelResolutionService
 
 
 MediaPublisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], str]
 ScriptReadyPublisher = Callable[[str, str], object]
+TextReadyPublisher = Callable[[CanvasNodeV2], object]
 MediaContextPreparer = Callable[
     [CanvasNodeV2],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
+]
+StageTraceWriter = Callable[
+    [NodeExecutionContext, str, dict[str, object], str | None, datetime, datetime],
+    None,
 ]
 Clock = Callable[[], datetime]
 RunEligibilityValidator = Callable[[CanvasNodeV2], None]
@@ -62,12 +74,14 @@ class AgentCanvasRunService:
         runtime: AgentCanvasRuntimeRepository,
         events: EventRepository,
         *,
+        run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
         eligibility_validator: RunEligibilityValidator | None = None,
         clock: Clock = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._workflows = workflows
         self._runtime = runtime
         self._events = events
+        self._run_snapshots = run_snapshots
         self._eligibility_validator = eligibility_validator
         self._clock = clock
 
@@ -91,12 +105,31 @@ class AgentCanvasRunService:
             reason = _skip_reason(node, request)
             if reason is None:
                 if request.scope == "selected_nodes":
-                    missing_node_ids = _required_sources_not_ready(workflow, node.node_id, nodes)
+                    unready_bindings = _unready_required_bindings(
+                        workflow,
+                        node.node_id,
+                        nodes,
+                    )
+                    missing_node_ids = tuple(
+                        binding.source.source_node_id for binding in unready_bindings
+                    )
                     if missing_node_ids:
                         raise _run_error(
                             "upstream_inputs_not_ready",
                             "Required upstream inputs are not ready.",
-                            details={"missing_node_ids": list(missing_node_ids)},
+                            details={
+                                "missing_node_ids": list(missing_node_ids),
+                                "target_node_id": node.node_id,
+                                "bindings": [
+                                    {
+                                        "binding_id": binding.binding_id,
+                                        "source_node_id": binding.source.source_node_id,
+                                        "target_node_id": binding.target_node_id,
+                                        "required": binding.required,
+                                    }
+                                    for binding in unready_bindings
+                                ],
+                            },
                         )
                 try:
                     if self._eligibility_validator is not None:
@@ -144,6 +177,14 @@ class AgentCanvasRunService:
                 }
                 or node_id in joined
             ]
+        if self._run_snapshots is not None:
+            freeze_node_ids = tuple(accepted) if active is None else joined
+            self._run_snapshots.freeze_members(
+                execution.execution_id,
+                now=now,
+                node_ids=freeze_node_ids,
+            )
+        members = self._runtime.list_members(execution.execution_id)
         cursor = self._events.max_seq(workflow_id)
         return CanvasRunAcceptedV2(
             workflow_id=workflow_id,
@@ -154,6 +195,11 @@ class AgentCanvasRunService:
             skipped=tuple(skipped),
             waiting_node_ids=(),
             events_cursor=cursor,
+            run_intent_snapshot_ids={
+                member.node_id: member.run_intent_snapshot_id
+                for member in members
+                if member.run_intent_snapshot_id is not None
+            },
         )
 
     @staticmethod
@@ -175,9 +221,15 @@ class DynamicCanvasScheduler:
         capabilities: ProviderCapabilityService,
         dispatcher: NodeExecutionDispatcher,
         *,
+        model_resolution: ModelResolutionService | None = None,
         media_publisher: MediaPublisher,
         script_ready_publisher: ScriptReadyPublisher | None = None,
+        text_ready_publisher: TextReadyPublisher | None = None,
         media_context_preparer: MediaContextPreparer | None = None,
+        stage_trace_writer: StageTraceWriter | None = None,
+        input_compiler: AgentCanvasResolvedInputCompiler | None = None,
+        run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
+        state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -189,15 +241,22 @@ class DynamicCanvasScheduler:
         self._runtime = runtime
         self._bindings = bindings
         self._capabilities = capabilities
+        self._model_resolution = model_resolution
         self._dispatcher = dispatcher
         self._media_publisher = media_publisher
         self._script_ready_publisher = script_ready_publisher
+        self._text_ready_publisher = text_ready_publisher
         self._media_context_preparer = media_context_preparer
+        self._stage_trace_writer = stage_trace_writer
+        self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(bindings)
+        self._run_snapshots = run_snapshots
+        self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
             "video": video_limit,
             "audio": audio_limit,
+            "text": total_limit,
             "script": total_limit,
         }
         self._total_limit = total_limit
@@ -266,6 +325,10 @@ class DynamicCanvasScheduler:
                         event_payload["optional_input_omissions"] = list(
                             context.optional_input_omissions
                         )
+                    if context.model_resolution is not None:
+                        event_payload["model_resolution"] = context.model_resolution.model_dump(
+                            mode="json"
+                        )
                     self._workflows.set_node_runtime_state(
                         current.workflow_id,
                         lease.node_id,
@@ -280,7 +343,7 @@ class DynamicCanvasScheduler:
                         (
                             lease,
                             context,
-                            executor.submit(self._dispatcher.execute, context),
+                            executor.submit(self._execute_member, context),
                         )
                     )
                 for lease, context, future in prepared:
@@ -298,28 +361,40 @@ class DynamicCanvasScheduler:
         execution = self._runtime.get_execution(execution_id)
         workflow = self._workflows.get_workflow(execution.workflow_id)
         nodes = {node.node_id: node for node in workflow.nodes}
+        members = self._runtime.list_members(execution_id)
+        members_by_node = {member.node_id: member for member in members}
         candidates: list[CanvasExecutionMembershipV2] = []
-        for member in self._runtime.list_members(execution_id):
+        for member in members:
             if member.state not in {"queued", "waiting"}:
                 continue
-            waiting = _required_sources_not_ready(workflow, member.node_id, nodes)
+            required_waiting = _frozen_unready_sources(member, nodes, required=True)
+            preferred_waiting = tuple(
+                source_node_id
+                for source_node_id in _frozen_unready_sources(member, nodes, required=False)
+                if members_by_node.get(source_node_id) is not None
+                and members_by_node[source_node_id].state in {"queued", "waiting", "running"}
+            )
+            waiting = tuple(dict.fromkeys((*required_waiting, *preferred_waiting)))
             if waiting:
                 blocked = tuple(
                     source_node_id
-                    for source_node_id in waiting
+                    for source_node_id in required_waiting
                     if (source := nodes.get(source_node_id)) is None or source.status == "failed"
                 )
                 self._runtime.update_member(
                     execution_id,
                     member.node_id,
                     state="blocked" if blocked else "waiting",
-                    phase="waiting_for_input",
+                    phase="blocked_by_upstream" if blocked else "waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
-                    event_type="node_blocked",
+                    event_type=(
+                        "node_blocked" if required_waiting else "node_waiting_for_preferred_input"
+                    ),
                     event_payload={
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
+                        "preferred_upstream_node_ids": list(preferred_waiting),
                     },
                 )
                 continue
@@ -354,23 +429,86 @@ class DynamicCanvasScheduler:
         node_id: str,
     ) -> NodeExecutionContext:
         now = self._clock()
-        node = self._workflows.get_node(workflow_id, node_id)
-        input_resolution = self._bindings.resolve_run_input_resolution(workflow_id, node_id)
-        inputs = input_resolution.inputs
+        member = next(
+            item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
+        )
+        frozen_node = member.prompt_metadata.get("frozen_node")
+        node = (
+            CanvasNodeV2.model_validate(frozen_node)
+            if isinstance(frozen_node, dict)
+            else self._workflows.get_node(workflow_id, node_id)
+        )
+        stored_manifest = member.resolved_input_manifest or member.prompt_metadata.get(
+            "resolved_input_manifest"
+        )
+        manifest = (
+            ResolvedNodeInputManifestV2.model_validate(stored_manifest)
+            if isinstance(stored_manifest, dict)
+            else (
+                self._run_snapshots.resolve_inputs(
+                    execution_id,
+                    node_id,
+                    compiler=self._input_compiler,
+                )
+                if self._run_snapshots is not None and member.run_intent_snapshot is not None
+                else self._input_compiler.compile(
+                    workflow_id=workflow_id,
+                    target_node_id=node_id,
+                    execution_id=execution_id,
+                    node_run_id=f"node_run_{execution_id}_{node_id}",
+                    run_intent_snapshot_id=member.run_intent_snapshot_id,
+                    binding_snapshots=(
+                        member.run_intent_snapshot.binding_snapshots
+                        if member.run_intent_snapshot is not None
+                        else None
+                    ),
+                )
+            )
+        )
+        inputs = self._input_compiler.materialize_inputs(manifest)
         model_id = None
         provider_id = None
+        resolution = None
         compiled_prompt = None
         reference_bundle = None
-        prompt_metadata: dict[str, object] = {}
+        effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None
+        prompt_metadata: dict[str, object] = dict(member.prompt_metadata)
+        prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
+        runtime_omissions = tuple(
+            item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+        )
+        stored_resolution = prompt_metadata.get("model_resolution")
+        if isinstance(stored_resolution, dict):
+            resolution = ResolvedModelExecutionV1.model_validate(stored_resolution)
+        elif self._model_resolution is not None and node.node_type != "editing":
+            resolution = self._model_resolution.resolve(node)
+            prompt_metadata["model_resolution"] = resolution.model_dump(mode="json")
+        if resolution is not None:
+            model_id = resolution.provider_model_id
+            provider_id = resolution.provider_id
         if node.node_type in {"image", "video", "audio"}:
-            capability = self._capabilities.resolve(node, inputs)
-            model_id = capability.model_id
-            provider_id = capability.provider
+            selected_node = (
+                node.model_copy(
+                    update={
+                        "model_selection_mode": "explicit",
+                        "model_ref": resolution.model_ref,
+                    }
+                )
+                if resolution is not None
+                else node
+            )
+            capability = self._capabilities.resolve(selected_node, inputs)
+            effective_parameters = self._capabilities.effective_parameters(node, capability)
+            prompt_metadata["effective_parameters"] = effective_parameters.model_dump(mode="json")
+            if resolution is None:
+                model_id = capability.model_id
+                provider_id = capability.provider
             if self._media_context_preparer is not None:
                 compiled_prompt, reference_bundle = self._media_context_preparer(node)
                 if compiled_prompt is not None:
                     prompt_metadata.update(
                         {
+                            "compiled_provider_prompt": compiled_prompt.model_dump(mode="json"),
                             "prompt_registry_ref": compiled_prompt.prompt_registry_ref,
                             "prompt_registry_digest": compiled_prompt.prompt_registry_digest,
                             "render_context_digest": compiled_prompt.render_context_digest,
@@ -384,11 +522,135 @@ class DynamicCanvasScheduler:
             inputs=inputs,
             model_id=model_id,
             provider_id=provider_id,
+            model_resolution=resolution,
             compiled_prompt=compiled_prompt,
             reference_bundle=reference_bundle,
-            optional_input_omissions=input_resolution.optional_omissions,
+            effective_parameters=effective_parameters,
+            input_manifest=manifest,
+            optional_input_omissions=tuple(
+                {
+                    "binding_id": item.binding_id,
+                    "source_node_id": item.source_node_id or "",
+                    "reason": item.reason_code,
+                }
+                for item in manifest.omitted_optional_inputs
+            ),
         )
-        prepared = self._dispatcher.prepare(context)
+        trace_started_at = self._clock()
+        try:
+            prepared = self._dispatcher.prepare(context)
+        except Exception as error:
+            self._trace_stage(
+                context,
+                "provider_compilation",
+                status="failed",
+                error=error,
+                started_at=trace_started_at,
+            )
+            raise
+        self._trace_stage(
+            prepared,
+            "provider_compilation",
+            status="completed",
+            started_at=trace_started_at,
+        )
+        transport_by_binding = {
+            item.binding_id: item.provider_input_type
+            for item in prepared.delivered_references
+            if item.binding_id is not None
+        }
+        if transport_by_binding:
+            prompt_metadata["provider_input_delivery"] = [
+                {
+                    "binding_id": item.binding_id,
+                    "asset_id": item.asset_id,
+                    "provider_input_type": item.provider_input_type,
+                    "checksum": item.checksum,
+                }
+                for item in prepared.delivered_references
+            ]
+        if prepared.optional_input_omissions:
+            prompt_metadata["optional_input_omissions"] = list(prepared.optional_input_omissions)
+        if effective_parameters is not None and effective_parameters.normalizations:
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="running",
+                now=now,
+                prompt_metadata=prompt_metadata,
+                resolved_input_manifest=manifest.model_dump(mode="json"),
+                resolved_input_manifest_id=manifest.manifest_id,
+                resolved_input_manifest_digest=manifest.manifest_digest,
+                effective_parameters=effective_parameters,
+                omitted_optional_inputs=runtime_omissions,
+                event_type="media_parameters_normalized",
+                event_payload={
+                    "requested": effective_parameters.requested,
+                    "effective": effective_parameters.effective,
+                    "normalizations": list(effective_parameters.normalizations),
+                },
+            )
+        if stored_manifest is None:
+            self._runtime.update_member(
+                execution_id,
+                node_id,
+                state="running",
+                phase="running",
+                now=now,
+                prompt_metadata=prompt_metadata,
+                resolved_input_manifest=manifest.model_dump(mode="json"),
+                resolved_input_manifest_id=manifest.manifest_id,
+                resolved_input_manifest_digest=manifest.manifest_digest,
+                effective_parameters=effective_parameters,
+                omitted_optional_inputs=runtime_omissions,
+                event_type="provider_inputs_resolved",
+                event_payload={
+                    "execution_id": execution_id,
+                    "node_run_id": manifest.node_run_id,
+                    "node_id": node_id,
+                    "input_manifest_id": manifest.manifest_id,
+                    "input_manifest": manifest.model_dump(mode="json"),
+                    "text_inputs": [
+                        {
+                            "binding_id": item.binding_id,
+                            "source_node_id": item.source_node_id,
+                            "snapshot_id": item.snapshot_id,
+                            "input_role": item.input_role,
+                            "display_order": item.display_order,
+                        }
+                        for item in manifest.text_inputs
+                    ],
+                    "media_inputs": [
+                        {
+                            "binding_id": item.binding_id,
+                            "source_node_id": item.source_node_id,
+                            "asset_id": item.asset_id,
+                            "media_type": item.media_type,
+                            "input_role": item.input_role,
+                            "display_order": item.display_order,
+                            "checksum": item.checksum,
+                            "transport_type": transport_by_binding.get(item.binding_id),
+                        }
+                        for item in manifest.media_inputs
+                    ],
+                    "omitted_optional_inputs": [
+                        item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
+                    ],
+                    "refresh": ["workflow_nodes", "runtime"],
+                },
+            )
+            for omission in manifest.omitted_optional_inputs:
+                self._runtime.update_member(
+                    execution_id,
+                    node_id,
+                    state="running",
+                    phase="running",
+                    now=now,
+                    omitted_optional_inputs=runtime_omissions,
+                    event_type="provider_input_omitted",
+                    event_payload=omission.model_dump(mode="json"),
+                )
         if prepared.seedance_input_audit is not None:
             prompt_metadata["seedance_input_manifest"] = prepared.seedance_input_audit.model_dump(
                 mode="json"
@@ -401,20 +663,48 @@ class DynamicCanvasScheduler:
                 execution_id,
                 node_id,
                 state="running",
-                phase="preparing_provider",
+                phase="running",
                 now=now,
                 prompt_metadata=prompt_metadata,
+                resolved_input_manifest=manifest.model_dump(mode="json"),
+                resolved_input_manifest_id=manifest.manifest_id,
+                resolved_input_manifest_digest=manifest.manifest_digest,
+                effective_parameters=effective_parameters,
+                omitted_optional_inputs=runtime_omissions,
             )
         elif prompt_metadata:
             self._runtime.update_member(
                 execution_id,
                 node_id,
                 state="running",
-                phase="preparing_provider",
+                phase="running",
                 now=now,
                 prompt_metadata=prompt_metadata,
+                effective_parameters=effective_parameters,
+                omitted_optional_inputs=runtime_omissions,
             )
         return prepared
+
+    def _execute_member(self, context: NodeExecutionContext) -> NodeExecutionOutcome:
+        started_at = self._clock()
+        try:
+            outcome = self._dispatcher.execute(context)
+        except Exception as error:
+            self._trace_stage(
+                context,
+                "provider_call",
+                status="failed",
+                error=error,
+                started_at=started_at,
+            )
+            raise
+        self._trace_stage(
+            context,
+            "provider_call",
+            status=("waiting" if outcome.provider_task_id is not None else "completed"),
+            started_at=started_at,
+        )
+        return outcome
 
     def _complete_member(
         self,
@@ -439,13 +729,23 @@ class DynamicCanvasScheduler:
                     lease_generation=lease.generation,
                     next_poll_at=now,
                     recovery_deadline=now + timedelta(hours=1),
-                    result_descriptor=outcome.result_descriptor or {},
+                    result_descriptor={
+                        **(outcome.result_descriptor or {}),
+                        **(
+                            {"model_resolution": context.model_resolution.model_dump(mode="json")}
+                            if context.model_resolution is not None
+                            else {}
+                        ),
+                    },
                 ),
                 now=now,
             )
-            self._runtime.update_member(
-                execution_id,
-                node_id,
+            member = next(
+                item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
+            )
+            if not self._state_machine.transition_member(
+                self._runtime,
+                member,
                 state="running",
                 phase="waiting_provider",
                 provider_task_id=outcome.provider_task_id,
@@ -454,14 +754,52 @@ class DynamicCanvasScheduler:
                 event_payload={
                     "provider_task_id": outcome.provider_task_id,
                     "remote_task_id": outcome.remote_task_id,
+                    "model_resolution": (
+                        context.model_resolution.model_dump(mode="json")
+                        if context.model_resolution is not None
+                        else None
+                    ),
                 },
-            )
+                expected_lease_generation=lease.generation,
+            ):
+                self._runtime.complete_lease(lease, now=now)
             return
         asset_id = None
         if outcome.media is not None:
             fingerprint = _execution_fingerprint(context)
-            asset_id = self._media_publisher(context, outcome.media, fingerprint)
-        self._workflows.publish_node_output(
+            publication_started_at = self._clock()
+            try:
+                asset_id = self._media_publisher(context, outcome.media, fingerprint)
+            except Exception as error:
+                self._trace_stage(
+                    context,
+                    "publication",
+                    status="failed",
+                    error=error,
+                    started_at=publication_started_at,
+                )
+                raise
+            self._trace_stage(
+                context,
+                "publication",
+                status="completed",
+                started_at=publication_started_at,
+                extra={"asset_id": asset_id},
+            )
+        member = next(
+            item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
+        )
+        if not self._state_machine.transition_member(
+            self._runtime,
+            member,
+            state="succeeded",
+            phase=None,
+            now=now,
+            expected_lease_generation=lease.generation,
+        ):
+            self._runtime.complete_lease(lease, now=now)
+            return
+        published_node = self._workflows.publish_node_output(
             workflow_id,
             node_id,
             execution_id=execution_id,
@@ -471,14 +809,46 @@ class DynamicCanvasScheduler:
         )
         if context.node.node_type == "script" and self._script_ready_publisher is not None:
             self._script_ready_publisher(workflow_id, node_id)
-        self._runtime.update_member(
-            execution_id,
-            node_id,
-            state="succeeded",
-            phase=None,
-            now=now,
-        )
+        if context.node.node_type == "text" and self._text_ready_publisher is not None:
+            self._text_ready_publisher(published_node)
         self._runtime.complete_lease(lease, now=now)
+
+    def _trace_stage(
+        self,
+        context: NodeExecutionContext,
+        stage: str,
+        *,
+        status: str,
+        started_at: datetime,
+        error: Exception | None = None,
+        extra: dict[str, object] | None = None,
+    ) -> None:
+        if self._stage_trace_writer is None:
+            return
+        output: dict[str, object] = {
+            "status": status,
+            "workflow_id": context.node.workflow_id,
+            "execution_id": context.execution_id,
+            "node_id": context.node.node_id,
+            "node_run_id": (
+                context.input_manifest.node_run_id
+                if context.input_manifest is not None
+                else f"node_run_{context.execution_id}_{context.node.node_id}"
+            ),
+            **(extra or {}),
+        }
+        finished_at = self._clock()
+        try:
+            self._stage_trace_writer(
+                context,
+                stage,
+                output,
+                str(error)[:1_024] if error is not None else None,
+                started_at,
+                finished_at,
+            )
+        except Exception:
+            return
 
     def _fail_member(
         self,
@@ -492,6 +862,22 @@ class DynamicCanvasScheduler:
             message=str(error),
             retryable=False,
         )
+        member = next(
+            item
+            for item in self._runtime.list_members(lease.execution_id)
+            if item.node_id == lease.node_id
+        )
+        if member.state == "succeeded" or not self._state_machine.transition_member(
+            self._runtime,
+            member,
+            state="failed",
+            phase=None,
+            now=now,
+            error=detail,
+            expected_lease_generation=lease.generation,
+        ):
+            self._runtime.complete_lease(lease, now=now)
+            return
         self._workflows.set_node_runtime_state(
             workflow_id,
             lease.node_id,
@@ -502,48 +888,13 @@ class DynamicCanvasScheduler:
             event_type="node_failed",
             event_payload={"code": detail.code},
         )
-        self._runtime.update_member(
-            lease.execution_id,
-            lease.node_id,
-            state="failed",
-            phase=None,
-            now=now,
-            error=detail,
-        )
         self._runtime.complete_lease(lease, now=now)
 
     def _finish_if_quiescent(self, execution_id: str) -> None:
-        members = self._runtime.list_members(execution_id)
-        if any(
-            member.state == "running"
-            and member.phase in {"waiting_provider", "recovering", "publishing"}
-            for member in members
-        ):
-            self._runtime.set_execution_status(
-                execution_id,
-                "waiting",
-                now=self._clock(),
-                event_type="execution_waiting",
-            )
-            return
-        succeeded = sum(member.state == "succeeded" for member in members)
-        failed_or_waiting = sum(
-            member.state in {"failed", "waiting", "blocked", "queued"} for member in members
-        )
-        if not failed_or_waiting:
-            status = "completed"
-            event_type = "execution_completed"
-        elif succeeded:
-            status = "partial_completed"
-            event_type = "execution_partial_completed"
-        else:
-            status = "failed"
-            event_type = "execution_failed"
-        self._runtime.set_execution_status(
+        self._state_machine.reconcile(
+            self._runtime,
             execution_id,
-            status,
             now=self._clock(),
-            event_type=event_type,
         )
 
     def _cancel_members(
@@ -624,19 +975,64 @@ class CanvasRuntimeSnapshotService:
     def get(self, workflow_id: str) -> CanvasRuntimeSnapshotV2:
         workflow = self._workflows.get_workflow(workflow_id)
         active = self._runtime.get_active_execution(workflow_id)
-        members = (
-            {item.node_id: item for item in self._runtime.list_members(active.execution_id)}
-            if active
-            else {}
-        )
+        members = {
+            item.node_id: item
+            for item in (
+                self._runtime.list_members(active.execution_id)
+                if active
+                else self._runtime.list_latest_members_for_workflow(workflow_id)
+            )
+        }
         runtime = {
             node.node_id: NodeRuntimeV2(
                 node_id=node.node_id,
                 visible_status=node.status,
                 phase=members[node.node_id].phase if node.node_id in members else None,
-                execution_id=active.execution_id if node.node_id in members and active else None,
+                execution_id=(
+                    members[node.node_id].execution_id if node.node_id in members else None
+                ),
                 provider_task_id=(
                     members[node.node_id].provider_task_id if node.node_id in members else None
+                ),
+                run_intent_snapshot_id=(
+                    members[node.node_id].run_intent_snapshot_id
+                    if node.node_id in members
+                    else None
+                ),
+                input_manifest_id=(
+                    (
+                        members[node.node_id].resolved_input_manifest_id
+                        or _input_manifest_id(members[node.node_id])
+                    )
+                    if node.node_id in members
+                    else None
+                ),
+                effective_parameters=(
+                    members[node.node_id].effective_parameters.effective
+                    if node.node_id in members
+                    and members[node.node_id].effective_parameters is not None
+                    else {}
+                ),
+                normalizations=(
+                    members[node.node_id].effective_parameters.normalizations
+                    if node.node_id in members
+                    and members[node.node_id].effective_parameters is not None
+                    else ()
+                ),
+                omitted_optional_inputs=(
+                    members[node.node_id].omitted_optional_inputs if node.node_id in members else ()
+                ),
+                waiting_reason=(
+                    members[node.node_id].phase
+                    if node.node_id in members
+                    and members[node.node_id].phase == "waiting_for_input"
+                    else None
+                ),
+                missing_required_source_node_ids=(
+                    members[node.node_id].waiting_for_node_ids
+                    if node.node_id in members
+                    and members[node.node_id].phase == "waiting_for_input"
+                    else ()
                 ),
                 waiting_for_node_ids=(
                     members[node.node_id].waiting_for_node_ids if node.node_id in members else ()
@@ -673,7 +1069,7 @@ class CanvasRuntimeSnapshotService:
 
 
 def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
-    if node.node_type in {"text", "editing"}:
+    if node.node_type == "editing":
         return "node_not_runnable"
     if node.status == "ready":
         return "node_already_ready"
@@ -694,17 +1090,43 @@ def _skip_message(reason: str) -> str:
 
 
 def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, ...]:
+    return tuple(
+        binding.source.source_node_id
+        for binding in _unready_required_bindings(workflow, target_node_id, nodes)
+    )
+
+
+def _frozen_unready_sources(
+    member: CanvasExecutionMembershipV2,
+    nodes: dict[str, CanvasNodeV2],
+    *,
+    required: bool,
+) -> tuple[str, ...]:
+    snapshot = member.run_intent_snapshot
+    if snapshot is None:
+        return ()
+    return tuple(
+        binding.source_id
+        for binding in snapshot.binding_snapshots
+        if binding.required is required
+        and binding.source_kind == "node_output"
+        and ((source := nodes.get(binding.source_id)) is None or source.status != "ready")
+    )
+
+
+def _unready_required_bindings(workflow, target_node_id, nodes):
     waiting = []
     for binding in workflow.bindings:
         if (
             binding.target_node_id != target_node_id
             or not binding.required
+            or not binding.enabled
             or binding.source.kind != "node_output"
         ):
             continue
         source = nodes.get(binding.source.source_node_id)
         if source is None or source.status != "ready":
-            waiting.append(binding.source.source_node_id)
+            waiting.append(binding)
     return tuple(waiting)
 
 
@@ -719,7 +1141,11 @@ def _execution_fingerprint(context: NodeExecutionContext) -> str:
                 "execution_id": context.execution_id,
                 "node_id": context.node.node_id,
                 "node_revision": context.node.revision,
-                "model_id": context.model_id,
+                "model_ref": (
+                    context.model_resolution.model_ref
+                    if context.model_resolution is not None
+                    else None
+                ),
                 "inputs": [str(item) for item in context.inputs],
                 "prompt_digest": (
                     context.compiled_prompt.prompt_digest
@@ -743,6 +1169,14 @@ def _ids(
     phase: str,
 ) -> tuple[str, ...]:
     return tuple(node_id for node_id, item in runtime.items() if item.phase == phase)
+
+
+def _input_manifest_id(member: CanvasExecutionMembershipV2) -> str | None:
+    manifest = member.prompt_metadata.get("resolved_input_manifest")
+    if not isinstance(manifest, dict):
+        return None
+    value = manifest.get("manifest_id")
+    return value if isinstance(value, str) and value else None
 
 
 def _run_error(
