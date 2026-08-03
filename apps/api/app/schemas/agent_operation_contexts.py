@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_creative_session import (
+    CreationModeDecisionV2,
     CreativeSessionStateV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
@@ -290,6 +291,11 @@ class DirectorTurnContextV2(_PlanningContextModel):
     creative_session: CreativeSessionStateV2 | None = None
     creative_memory: ProjectCreativeMemoryV2 | None = None
     resolved_image_targets: tuple[ResolvedImageTargetV2, ...] = Field(default=(), max_length=16)
+    creation_mode_decision: CreationModeDecisionV2 | None = None
+    approved_anchor_digest: str | None = Field(
+        default=None,
+        pattern=r"^[a-f0-9]{64}$",
+    )
 
 
 class AgentCommandReplanContextV2(_PlanningContextModel):
@@ -302,6 +308,60 @@ class AgentCommandReplanContextV2(_PlanningContextModel):
     current_target_summaries: tuple[str, ...] = Field(default=(), max_length=16)
     conflict_code: Literal["workflow_revision_conflict"]
     replan_attempt: Literal[1] = 1
+
+
+class CreativeAnchorSetV2(_PlanningContextModel):
+    subject_product: tuple[str, ...] = Field(default=(), max_length=16)
+    audience: str = Field(default="", max_length=2_000)
+    campaign_goal: str = Field(default="", max_length=4_000)
+    duration: str = Field(default="", max_length=256)
+    aspect_ratio: str = Field(default="", max_length=32)
+    approved_facts: tuple[str, ...] = Field(default=(), max_length=32)
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @property
+    def has_protected_values(self) -> bool:
+        return bool(
+            self.subject_product
+            or self.audience
+            or self.campaign_goal
+            or self.duration
+            or self.aspect_ratio
+            or self.approved_facts
+        )
+
+
+class ProposalRevisionOptionV2(_PlanningContextModel):
+    option_id: str = Field(min_length=1, max_length=160)
+    title: str = Field(min_length=1, max_length=256)
+    summary: str = Field(min_length=1, max_length=8_192)
+
+
+class ProposalRevisionContextV2(_PlanningContextModel):
+    source_proposal_id: str = Field(min_length=1, max_length=160)
+    source_proposal_revision: int = Field(ge=1)
+    prior_options: tuple[ProposalRevisionOptionV2, ...] = Field(
+        min_length=1,
+        max_length=4,
+    )
+    approved_anchors: CreativeAnchorSetV2
+    topic_objective: str = Field(default="", max_length=4_000)
+    user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
+    mutable_dimensions: tuple[
+        Literal[
+            "style",
+            "lighting",
+            "composition",
+            "camera",
+            "copy",
+            "pacing",
+            "audio",
+            "other",
+        ],
+        ...,
+    ] = Field(default=(), max_length=8)
+    replace_whole_concept: bool = False
+    relevant_target_summaries: tuple[str, ...] = Field(default=(), max_length=16)
 
 
 class SpecialistContextV2(_PlanningContextModel):
@@ -326,6 +386,11 @@ class SpecialistContextV2(_PlanningContextModel):
     creative_memory: ProjectCreativeMemoryV2 | None = None
     resolved_image_targets: tuple[ResolvedImageTargetV2, ...] = Field(default=(), max_length=16)
     reference_allowlist: tuple[str, ...] = Field(default=(), max_length=64)
+    current_topic_id: str | None = Field(default=None, max_length=160)
+    proposal_mode: Literal["single_plan", "choice_set"] | None = None
+    candidate_count: int | None = Field(default=None, ge=1, le=4)
+    approved_anchor_summaries: tuple[str, ...] = Field(default=(), max_length=16)
+    proposal_revision: ProposalRevisionContextV2 | None = None
 
 
 PlanningAgentContext = Annotated[
