@@ -115,27 +115,10 @@ class VideoSegmentPromptService(_RecipeService):
         content: VideoSegmentContentV2,
         capability: ProviderModelCapabilityV2,
     ) -> None:
-        if (
-            capability.max_duration_seconds is not None
-            and content.duration_seconds > capability.max_duration_seconds
-        ):
-            raise _error(
-                "video_duration_unsupported",
-                "Requested video duration exceeds model capability.",
-            )
-        native_audio_required = any(
-            (
-                content.dialogue,
-                content.voice_style,
-                content.environment_sound,
-                content.action_effects,
-            )
-        )
-        if native_audio_required and not capability.supports_native_audio:
-            raise _error(
-                "video_native_audio_unsupported",
-                "Selected video model cannot preserve required native audio.",
-            )
+        # Pydantic enforces a positive request. Model-specific duration and
+        # native-audio normalization is performed once by the runtime capability
+        # service so this role contract cannot block an otherwise viable video.
+        del content, capability
 
     def render_prompt(
         self,

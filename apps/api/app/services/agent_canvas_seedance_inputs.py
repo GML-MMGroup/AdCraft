@@ -9,6 +9,7 @@ from app.schemas.agent_canvas import (
     ResolvedInputSnapshotV2,
     ResolvedTextInputSnapshotV2,
 )
+from app.schemas.agent_canvas_runtime import EffectiveMediaParameterSnapshotV2
 from app.schemas.seedance_inputs import (
     SeedanceDeliveredMediaInputV1,
     SeedanceInputManifestAuditV1,
@@ -35,14 +36,24 @@ class AgentCanvasSeedanceInputCompiler:
         model_id: str,
         resolved_inputs: tuple[ResolvedInputSnapshotV2, ...],
         delivered_media: tuple[SeedanceDeliveredMediaInputV1, ...],
+        compiled_prompt: str | None = None,
+        effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None,
     ) -> tuple[SeedanceInputManifestV1, SeedanceInputManifestAuditV1]:
         if node.node_type != "video":
             raise ValueError("Seedance manifests require a Video node.")
-        prompt = str(node.generation_prompt or node.summary_prompt or node.title).strip()
+        prompt = str(compiled_prompt or node.generation_prompt or "").strip()
         if not prompt:
             raise ValueError("v2_video_prompt_empty")
-        requested_duration, effective_duration, normalizations = self._normalize_duration(
-            node.parameters.get("duration_seconds")
+        effective = (
+            effective_parameters.effective if effective_parameters is not None else node.parameters
+        )
+        requested = (
+            effective_parameters.requested if effective_parameters is not None else node.parameters
+        )
+        requested_duration, effective_duration, normalizations = self._duration_values(
+            requested.get("duration_seconds"),
+            effective.get("duration_seconds"),
+            effective_parameters.normalizations if effective_parameters is not None else (),
         )
         text_inputs = self._compile_text_inputs(resolved_inputs)
         media_inputs = self._compile_media_inputs(delivered_media)
@@ -56,22 +67,35 @@ class AgentCanvasSeedanceInputCompiler:
             image_inputs=tuple(item for item in media_inputs if item.media_type == "image"),
             video_inputs=tuple(item for item in media_inputs if item.media_type == "video"),
             audio_inputs=tuple(item for item in media_inputs if item.media_type == "audio"),
-            aspect_ratio=str(node.parameters.get("aspect_ratio") or "16:9"),
-            resolution=str(node.parameters.get("resolution") or "720p"),
+            aspect_ratio=str(effective.get("aspect_ratio") or "16:9"),
+            resolution=str(effective.get("resolution") or "720p"),
             requested_duration_seconds=requested_duration,
             effective_duration_seconds=effective_duration,
-            generate_audio=bool(node.parameters.get("generate_audio", False)),
+            generate_audio=bool(effective.get("generate_audio", False)),
             normalizations=normalizations,
         )
         return manifest, _audit_projection(manifest)
 
-    def _normalize_duration(self, value: object) -> tuple[int, int, tuple[str, ...]]:
-        requested = self._default_duration_seconds if value is None else _integer_duration(value)
+    def _duration_values(
+        self,
+        requested_value: object,
+        effective_value: object,
+        normalizations: tuple[str, ...],
+    ) -> tuple[int, int, tuple[str, ...]]:
+        requested = (
+            self._default_duration_seconds
+            if requested_value is None
+            else _integer_duration(requested_value)
+        )
         if requested < 1:
             raise ValueError("duration_seconds must be at least 1")
-        if requested > 15:
-            return requested, 15, ("duration_clamped_to_provider_limit",)
-        return requested, requested, ()
+        effective = requested if effective_value is None else _integer_duration(effective_value)
+        if effective < 1:
+            raise ValueError("duration_seconds must be at least 1")
+        if effective > 15:
+            effective = 15
+            normalizations = (*normalizations, "duration_clamped_to_provider_limit")
+        return requested, effective, tuple(dict.fromkeys(normalizations))
 
     @staticmethod
     def _compile_text_inputs(
