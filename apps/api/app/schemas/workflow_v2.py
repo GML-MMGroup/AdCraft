@@ -1153,6 +1153,7 @@ class WorkflowV2Event(BaseModel):
     conversation_id: str | None = None
     turn_id: str | None = None
     action_id: str | None = None
+    transition_key: str | None = None
     trace_id: str | None = None
     span_id: str | None = None
     created_at: str
