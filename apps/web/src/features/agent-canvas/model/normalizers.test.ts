@@ -13,6 +13,7 @@ import {
   normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
   normalizeCanvasRunAcceptedV2,
+  normalizeCanvasVariationDraftV2,
   normalizeCanvasVariationMaterializeResponseV2,
   normalizeChatTurnAcceptedV2,
   normalizeChatTimelineListResponseV2,
@@ -1010,6 +1011,24 @@ describe("Agent Canvas normalizers", () => {
     expect(normalized.model_selection_mode).toBe("explicit");
     expect(normalized.model_ref).toBe("fake:deterministic-image");
     expect(normalized.model_summary?.display_name).toBe("Deterministic Image");
+  });
+
+  it("normalizes model selection on a variation draft without a raw model ID", () => {
+    const normalized = normalizeCanvasVariationDraftV2({
+      source_node_id: "node-image-1",
+      source_node_revision: 2,
+      title: "Amber product variation",
+      generation_prompt: "Make the product lighting warmer.",
+      model_selection_mode: "explicit",
+      model_ref: "volcengine_ark:doubao-seedream-5-0-lite-260128",
+      parameters: { aspect_ratio: "16:9" },
+      variation_revision: 1,
+      created_at: "2026-08-03T02:00:00Z",
+      updated_at: "2026-08-03T02:00:00Z",
+    });
+
+    expect(normalized.model_selection_mode).toBe("explicit");
+    expect(normalized.model_ref).toBe("volcengine_ark:doubao-seedream-5-0-lite-260128");
   });
 
   it("rejects malformed binding payloads", () => {

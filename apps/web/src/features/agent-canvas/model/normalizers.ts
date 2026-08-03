@@ -463,6 +463,8 @@ export function normalizeCanvasVariationDraftV2(
     "title",
     "generation_prompt",
     "model_id",
+    "model_selection_mode",
+    "model_ref",
     "parameters",
     "variation_revision",
     "created_at",
@@ -474,6 +476,10 @@ export function normalizeCanvasVariationDraftV2(
     title: expectNonEmptyString(record.title, `${path}.title`),
     generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
     model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+    model_selection_mode: record.model_selection_mode === undefined
+      ? "default"
+      : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
+    model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
     parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
     variation_revision: expectPositiveInteger(record.variation_revision, `${path}.variation_revision`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),

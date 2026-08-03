@@ -1543,6 +1543,8 @@ export interface CanvasVariationDraftV2 {
   title: string;
   generation_prompt: string;
   model_id: string | null;
+  model_selection_mode: CanvasModelSelectionModeV2;
+  model_ref: string | null;
   parameters: Record<string, unknown>;
   variation_revision: number;
   created_at: string;
