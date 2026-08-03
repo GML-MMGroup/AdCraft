@@ -48,6 +48,7 @@ describe("provider registry client", () => {
       if (url.endsWith("/model-defaults")) {
         return jsonResponse({
           defaults: { text: "siliconflow:zai-org/GLM-5.2" },
+          modes: { text: "explicit" },
           revisions: { text: 3 },
         });
       }
@@ -64,9 +65,10 @@ describe("provider registry client", () => {
     expect(providers.items[0]?.display_name).toBe("SiliconFlow");
     expect(models.items[0]?.model_ref).toBe("siliconflow:zai-org/GLM-5.2");
     expect(defaults.defaults.text).toBe("siliconflow:zai-org/GLM-5.2");
+    expect(defaults.modes.text).toBe("explicit");
   });
 
-  it("syncs a provider catalog and patches selected global defaults", async () => {
+  it("syncs a provider catalog and atomically patches an Audio model with its routing mode", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/providers/siliconflow/models/sync")) {
@@ -82,16 +84,16 @@ describe("provider registry client", () => {
         expect(init?.method).toBe("PATCH");
         expect(JSON.parse(String(init?.body))).toEqual({
           defaults: {
-            agent: "siliconflow:zai-org/GLM-5.2",
-            text: "siliconflow:zai-org/GLM-5.2",
+            audio: "tianpuyue:TemPolor-i3",
           },
+          modes: { audio: "automatic" },
         });
         return jsonResponse({
           defaults: {
-            agent: "siliconflow:zai-org/GLM-5.2",
-            text: "siliconflow:zai-org/GLM-5.2",
+            audio: "tianpuyue:TemPolor-i3",
           },
-          revisions: { agent: 4, text: 4 },
+          modes: { audio: "automatic" },
+          revisions: { audio: 4 },
         });
       }
       throw new Error(`Unexpected request ${url}`);
@@ -101,13 +103,14 @@ describe("provider registry client", () => {
     const sync = await api.syncProviderModels("siliconflow");
     const defaults = await api.patchModelDefaults({
       defaults: {
-        agent: "siliconflow:zai-org/GLM-5.2",
-        text: "siliconflow:zai-org/GLM-5.2",
+        audio: "tianpuyue:TemPolor-i3",
       },
+      modes: { audio: "automatic" },
     });
 
     expect(sync.catalog_revision).toBe(4);
-    expect(defaults.revisions.agent).toBe(4);
+    expect(defaults.revisions.audio).toBe(4);
+    expect(defaults.modes.audio).toBe("automatic");
   });
 });
 

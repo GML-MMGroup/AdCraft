@@ -4,6 +4,7 @@ import { api } from "../api/client.ts";
 import {
   MODEL_DEFAULT_PURPOSES,
   type ModelDefaultPurpose,
+  type ModelDefaultsPatchRequestV1,
   type ModelDefaultsResponseV1,
   type ProviderConnectionStatusV1,
   type ProviderModelSummaryV1,
@@ -20,7 +21,7 @@ type ModelsByPurpose = Record<ModelDefaultPurpose, ProviderModelSummaryV1[]>;
 export function ApiSpacePage() {
   const [providers, setProviders] = useState<ProviderConnectionStatusV1[]>([]);
   const [modelsByProvider, setModelsByProvider] = useState<ModelsByProvider>({});
-  const [defaults, setDefaults] = useState<ModelDefaultsResponseV1>({ defaults: {}, revisions: {} });
+  const [defaults, setDefaults] = useState<ModelDefaultsResponseV1>({ defaults: {}, modes: {}, revisions: {} });
   const [modelsByPurpose, setModelsByPurpose] = useState<ModelsByPurpose>(emptyModelsByPurpose);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,13 +86,13 @@ export function ApiSpacePage() {
       });
   }, []);
 
-  const saveDefaults = useCallback(async (changes: Partial<Record<ModelDefaultPurpose, string>>) => {
+  const saveDefaults = useCallback(async (changes: ModelDefaultsPatchRequestV1) => {
     setDefaultsPending(true);
     setDefaultsNotice(null);
     try {
-      const response = await api.patchModelDefaults({ defaults: changes });
+      const response = await api.patchModelDefaults(changes);
       setDefaults(response);
-      setDefaultsNotice({ kind: "success", message: "Default models saved." });
+      setDefaultsNotice({ kind: "success", message: "Default model settings saved." });
     } catch (error) {
       setDefaultsNotice({ kind: "error", message: providerRegistryErrorMessage(error, "defaults") });
     } finally {
@@ -127,6 +128,7 @@ export function ApiSpacePage() {
       <ModelDefaultsPanel
         defaults={defaults}
         modelsByPurpose={modelsByPurpose}
+        loading={loading}
         pending={defaultsPending}
         notice={defaultsNotice}
         onSave={saveDefaults}

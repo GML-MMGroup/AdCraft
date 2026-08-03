@@ -38,10 +38,19 @@ export function providerRegistryErrorMessage(
     return "Model synchronization failed. Existing model choices were kept.";
   }
   if (code === "model_capability_mismatch") {
-    return "This model cannot be used for the selected default.";
+    return backendMessage(error) ?? "This model cannot be used for the selected default.";
+  }
+  if (code === "model_not_found") {
+    return backendMessage(error) ?? "This model is no longer available in the provider catalog.";
   }
   if (code === "model_unavailable") {
-    return "This model is currently unavailable.";
+    return backendMessage(error) ?? "This model is currently unavailable.";
+  }
+  if (code === "model_default_mode_invalid") {
+    return backendMessage(error) ?? "The selected default routing mode is invalid.";
+  }
+  if (code === "model_automatic_policy_unsupported") {
+    return backendMessage(error) ?? "Automatic routing is not available for this model purpose.";
   }
   if (error instanceof ApiError && error.status === 403) {
     return "This browser is not allowed to manage local credentials.";
@@ -54,6 +63,13 @@ export function providerRegistryErrorMessage(
   if (operation === "defaults") return "Unable to save default models.";
   if (operation === "test") return "Unable to test this credential.";
   return "Unable to save credentials. No changes were confirmed.";
+}
+
+function backendMessage(error: unknown): string | null {
+  if (!(error instanceof ApiError) || !error.payload || typeof error.payload !== "object") return null;
+  const detail = (error.payload as { detail?: unknown }).detail;
+  const message = detail && typeof detail === "object" ? (detail as { message?: unknown }).message : null;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
 }
 
 function providerRegistryErrorCode(error: unknown): string {

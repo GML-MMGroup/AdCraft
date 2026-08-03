@@ -60,6 +60,47 @@
   font: inherit;
 }
 
+.api-space-routing-mode {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.api-space-routing-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: min(100%, 230px);
+  overflow: hidden;
+  border: 1px solid rgba(74, 82, 111, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.api-space-routing-toggle button {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.api-space-routing-toggle button + button {
+  border-left: 1px solid rgba(74, 82, 111, 0.14);
+}
+
+.api-space-routing-toggle button.is-active {
+  background: rgba(118, 91, 203, 0.16);
+  color: var(--accent-strong);
+}
+
+.api-space-routing-toggle button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .api-space-provider-surface--tianpuyue .api-space-save-bar {
   background: rgba(232, 240, 248, 0.42);
 }
@@ -354,6 +395,15 @@ html[data-theme="dark"] .api-space-default-field select {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
+}
+
+html[data-theme="dark"] .api-space-routing-toggle {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+}
+
+html[data-theme="dark"] .api-space-routing-toggle button + button {
+  border-color: var(--border-default);
 }
 
 html[data-theme="dark"] .api-space-inline-notice.is-error {

@@ -37,18 +37,22 @@ const providers = [
 
 const glm = model("siliconflow:zai-org/GLM-5.2", "SiliconFlow", "GLM-5.2", "text");
 const arkText = model("volcengine_ark:doubao-seed-2-0-mini-260428", "Volcengine Ark", "Doubao Seed 2.0 Mini", "text");
+const tianpuyueAudio = model("tianpuyue:TemPolor-i3", "Tianpuyue", "TemPolor i3", "audio");
+const tianpuyueLongAudio = model("tianpuyue:TemPolor-i3.5", "Tianpuyue", "TemPolor i3.5", "audio");
 
 describe("ApiSpacePage provider registry", () => {
   beforeEach(() => {
     fixture.api.listProviders.mockResolvedValue({ items: providers });
     fixture.api.getModelDefaults.mockResolvedValue({
-      defaults: { agent: glm.model_ref, text: glm.model_ref },
-      revisions: { agent: 2, text: 2 },
+      defaults: { agent: glm.model_ref, text: glm.model_ref, audio: tianpuyueAudio.model_ref },
+      modes: { agent: "explicit", text: "explicit", audio: "automatic" },
+      revisions: { agent: 2, text: 2, audio: 2 },
     });
     fixture.api.listProviderModels.mockImplementation((query: { provider?: string; purpose?: string }) => {
       if (query.provider === "siliconflow") return Promise.resolve({ items: [glm] });
       if (query.provider === "volcengine_ark") return Promise.resolve({ items: [arkText] });
       if (query.purpose === "agent" || query.purpose === "text") return Promise.resolve({ items: [glm, arkText] });
+      if (query.purpose === "audio" || query.provider === "tianpuyue") return Promise.resolve({ items: [tianpuyueAudio, tianpuyueLongAudio] });
       return Promise.resolve({ items: [] });
     });
     fixture.api.updateProviderCredentials.mockResolvedValue({
@@ -77,8 +81,9 @@ describe("ApiSpacePage provider registry", () => {
       status: "succeeded",
     });
     fixture.api.patchModelDefaults.mockResolvedValue({
-      defaults: { agent: glm.model_ref, text: glm.model_ref },
-      revisions: { agent: 3, text: 3 },
+      defaults: { agent: glm.model_ref, text: glm.model_ref, audio: tianpuyueAudio.model_ref },
+      modes: { agent: "explicit", text: "explicit", audio: "automatic" },
+      revisions: { agent: 3, text: 3, audio: 3 },
     });
   });
 
@@ -162,6 +167,30 @@ describe("ApiSpacePage provider registry", () => {
 
     await waitFor(() => expect(fixture.api.patchModelDefaults).toHaveBeenCalledWith({
       defaults: { text: arkText.model_ref },
+    }));
+  });
+
+  it("shows the backend-provided Audio routing mode beside its preferred model", async () => {
+    render(<ApiSpacePage />);
+
+    const automatic = await screen.findByRole("radio", { name: "Automatic" });
+    await waitFor(() => expect(automatic.getAttribute("aria-checked")).toBe("true"));
+    expect(screen.getByRole("radio", { name: "Explicit" }).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByLabelText("Audio default model") as HTMLSelectElement).value).toBe(tianpuyueAudio.model_ref);
+  });
+
+  it("saves the Audio model and routing mode together in one patch", async () => {
+    render(<ApiSpacePage />);
+    const audioModel = await screen.findByLabelText("Audio default model");
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Automatic" }).getAttribute("aria-checked")).toBe("true"));
+
+    fireEvent.click(screen.getByRole("radio", { name: "Explicit" }));
+    fireEvent.change(audioModel, { target: { value: tianpuyueLongAudio.model_ref } });
+    fireEvent.click(screen.getByRole("button", { name: "Save default models" }));
+
+    await waitFor(() => expect(fixture.api.patchModelDefaults).toHaveBeenCalledWith({
+      defaults: { audio: tianpuyueLongAudio.model_ref },
+      modes: { audio: "explicit" },
     }));
   });
 
