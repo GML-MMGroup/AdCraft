@@ -6,9 +6,11 @@ import asyncio
 import json
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Literal
+from uuid import uuid4
 
 from fastapi import (
     APIRouter,
@@ -46,6 +48,9 @@ from app.persistence.agent_canvas_runtime_repository import (
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
 from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
 )
@@ -54,6 +59,7 @@ from app.persistence.database import V2Database, create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
     AgentTargetResolutionV2,
@@ -120,7 +126,10 @@ from app.schemas.workflow_v2_projects import (
     ProjectV2ListResponse,
     ProjectV2UpdateRequest,
 )
-from app.services.agent_canvas_assets import AgentCanvasAssetService
+from app.services.agent_canvas_assets import (
+    AgentCanvasAssetService,
+    deterministic_media_facts_probe,
+)
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
 )
@@ -137,6 +146,7 @@ from app.services.agent_canvas_nodes import AgentCanvasNodeService
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
     build_default_node_dispatcher,
+    generated_asset_publication_metadata,
 )
 from app.services.agent_canvas_provider_recovery import (
     ProviderPollResult,
@@ -150,6 +160,7 @@ from app.services.agent_canvas_provider_prompts import (
     AgentCanvasProviderPromptCompiler,
     list_agent_canvas_prompt_registrations,
 )
+from app.services.agent_canvas_production_plan import AgentCanvasProductionPlanService
 from app.services.agent_canvas_references import AdReferenceBundleResolver
 from app.services.agent_canvas_projects import AgentCanvasProjectService
 from app.services.agent_canvas_runtime import (
@@ -157,6 +168,7 @@ from app.services.agent_canvas_runtime import (
     CanvasRuntimeSnapshotService,
     DynamicCanvasScheduler,
 )
+from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
@@ -167,10 +179,18 @@ from app.services.agent_canvas_conversation import (
     DeterministicDirectorGateway,
     PiDirectorGateway,
 )
+from app.services.agent_canvas_continuation_worker import (
+    AgentCanvasContinuationWorker,
+)
 from app.services.agent_canvas_layout import AgentCanvasLayoutService
 from app.services.agent_canvas_targets import AgentCanvasTargetService
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_variations import AgentCanvasVariationService
+from app.services.model_selection import ModelSelectionService
+from app.services.model_resolution import ModelResolutionService
+from app.services.provider_model_bootstrap import ProviderModelBootstrapService
+from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
@@ -207,6 +227,8 @@ class AgentCanvasRuntime:
     editing_nodes: EditingNodeService
     editing_exports: EditingExportService
     editing_export_repository: AgentCanvasEditingExportRepository
+    continuation_outbox: AgentCanvasContinuationOutboxRepository
+    continuation_worker: AgentCanvasContinuationWorker
 
 
 def get_agent_canvas_runtime(
@@ -223,6 +245,32 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
     """Build one request/startup-scoped Agent Canvas runtime."""
 
     database = create_v2_database(settings.media_data_dir)
+    model_repository = ProviderModelRepository(database)
+    ProviderModelBootstrapService(settings, model_repository).bootstrap(
+        now=datetime.now(timezone.utc).isoformat()
+    )
+    model_catalog = ProviderModelCatalogService(
+        model_repository,
+        provider_available=lambda provider_id: (
+            provider_id == "fake"
+            or (provider_id == "siliconflow" and bool(settings.siliconflow_api_key))
+            or (
+                provider_id == "volcengine_ark"
+                and bool(
+                    settings.llm_api_key
+                    or settings.image_generation_api_key
+                    or settings.video_generation_api_key
+                )
+            )
+            or (provider_id == "tianpuyue" and bool(settings.bgm_api_key))
+        ),
+    )
+    model_selection = ModelSelectionService(model_catalog)
+    model_resolution = ModelResolutionService(
+        model_selection,
+        model_repository,
+        allow_fake=(settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"),
+    )
     project_repository = ProjectRepository(database)
     event_repository = EventRepository(database)
     workflow_repository = AgentCanvasWorkflowRepository(
@@ -230,13 +278,23 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         project_repository,
         event_repository,
     )
+    document_repository = AgentCanvasDocumentRepository(database)
     asset_repository = V2AssetLibraryRepository(database)
     asset_service = AgentCanvasAssetService(
         settings.media_data_dir,
         asset_repository,
         workflow_repository,
+        media_facts_probe=(
+            deterministic_media_facts_probe
+            if settings.agent_runtime_mode == "fake" or settings.media_mode == "mock"
+            else None
+        ),
     )
     conversation_repository = AgentCanvasConversationRepository(
+        database,
+        event_repository,
+    )
+    continuation_outbox = AgentCanvasContinuationOutboxRepository(
         database,
         event_repository,
     )
@@ -259,14 +317,16 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 ),
             ),
             timeout_seconds=settings.agent_runtime_run_timeout_seconds,
+            model_resolution=model_resolution,
         )
     )
-    provider_capabilities = ProviderCapabilityService(settings)
+    provider_capabilities = ProviderCapabilityService(model_catalog)
     connection_policy = AgentCanvasConnectionPolicyService()
     binding_service = AgentCanvasBindingService(
         workflow_repository,
-        AgentCanvasDocumentRepository(database),
+        document_repository,
         asset_resolver=asset_service.resolve_asset,
+        asset_version_resolver=asset_service.resolve_asset_version,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -310,12 +370,51 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         )
         return compiled, bundle
 
+    def write_stage_trace(
+        context,
+        stage,
+        output,
+        error,
+        started_at,
+        finished_at,
+    ) -> None:
+        V2AgentTraceWriter(settings.media_data_dir, context.node.workflow_id).append(
+            agent="provider_runtime",
+            model=context.model_id,
+            prompt="",
+            output=output,
+            error=error,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=max(
+                0,
+                int((finished_at - started_at).total_seconds() * 1_000),
+            ),
+            metadata={
+                "trace_role": stage,
+                "provider": context.provider_id,
+                "workflow_id": context.node.workflow_id,
+                "execution_id": context.execution_id,
+                "node_id": context.node.node_id,
+                "model_resolution": (
+                    context.model_resolution.model_dump(mode="json")
+                    if context.model_resolution is not None
+                    else None
+                ),
+            },
+        )
+
+    run_snapshots = AgentCanvasRunIntentSnapshotService(
+        workflow_repository,
+        runtime_repository,
+    )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
         binding_service,
         provider_capabilities,
         dispatcher,
+        model_resolution=model_resolution,
         media_publisher=lambda context, payload, fingerprint: (
             asset_service.publish_generated_bytes(
                 context.node.workflow_id,
@@ -326,6 +425,10 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 content=payload.content,
                 fingerprint=fingerprint,
                 source_semantic_role=context.node.semantic_role,
+                publication_metadata={
+                    **generated_asset_publication_metadata(context),
+                    **dict(payload.metadata),
+                },
             ).asset_id
         ),
         script_ready_publisher=lambda workflow_id, node_id: (
@@ -335,7 +438,13 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 source_turn_id=None,
             )
         ),
+        text_ready_publisher=lambda node: _persist_text_document(
+            document_repository,
+            node,
+        ),
         media_context_preparer=prepare_media_context,
+        stage_trace_writer=write_stage_trace,
+        run_snapshots=run_snapshots,
         image_limit=settings.v2_max_parallel_image_jobs,
         video_limit=settings.v2_max_parallel_video_jobs,
         audio_limit=settings.v2_max_parallel_audio_jobs,
@@ -425,6 +534,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             content=path.read_bytes(),
             mime_type={"video": "video/mp4", "audio": "audio/mpeg"}[media_type],
             filename=f"{task.node_id}.{extension}",
+            metadata=descriptor,
         )
 
     provider_recovery = ProviderTaskRecoveryService(
@@ -442,6 +552,10 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 content=payload.content,
                 fingerprint=fingerprint,
                 source_semantic_role=context.node.semantic_role,
+                publication_metadata={
+                    **generated_asset_publication_metadata(context),
+                    **dict(payload.metadata),
+                },
             ).asset_id
         ),
         on_batch_reconciled=lambda execution_ids: [
@@ -463,19 +577,23 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         events=event_repository,
         renderer=AgentCanvasCompositionRenderer(settings),
     )
+
     run_service = AgentCanvasRunService(
         workflow_repository,
         runtime_repository,
         event_repository,
-        eligibility_validator=lambda node: (
-            provider_capabilities.resolve(node, ())
-            if node.node_type in {"image", "video", "audio"}
-            else None
-        ),
+        run_snapshots=run_snapshots,
     )
     command_repository = AgentCanvasCommandRepository(
         database,
         event_repository,
+        model_selection_validator=lambda node_type, model_selection_mode, model_ref: (
+            model_selection.validate_selection(
+                node_type=node_type,
+                model_selection_mode=model_selection_mode,
+                model_ref=model_ref,
+            )
+        ),
     )
     command_compiler = AgentCommandPlanCompiler()
 
@@ -521,7 +639,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 "status": "draft",
                 "title": request.title,
                 "generation_prompt": request.generation_prompt,
-                "model_id": request.model_id,
+                "model_selection_mode": request.model_selection_mode,
+                "model_ref": request.model_ref,
                 "parameters": request.parameters,
                 "output_asset_id": None,
                 "error": None,
@@ -529,6 +648,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             deep=True,
         )
         try:
+            model_selection.validate_authoring(candidate)
             provider_capabilities.resolve(
                 candidate,
                 binding_service.resolve_run_inputs(
@@ -536,7 +656,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                     source.node_id,
                 ),
             )
-        except ProviderCapabilityError as error:
+        except (ProviderCapabilityError, V2PersistenceError) as error:
             raise V2PersistenceError(
                 "variation_model_incompatible",
                 "Variation model is incompatible with its inputs.",
@@ -557,6 +677,37 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             idempotency_key=idempotency_key,
         ),
     )
+    conversation_service = AgentConversationService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        nodes=AgentCanvasNodeService(
+            workflow_repository,
+            model_selection=model_selection,
+        ),
+        gateway=director_gateway,
+        video_skills=video_skills,
+        context_assembler=AgentLocalContextAssembler(
+            workflow_repository,
+            asset_resolver=asset_service.resolve_asset,
+            project_asset_lister=asset_service.list_project_assets,
+        ),
+        asset_resolver=asset_service.resolve_asset,
+        connection_policy=connection_policy,
+        command_compiler=command_compiler,
+        command_service=command_service,
+        run_nodes=queue_nodes,
+        continuation_outbox=continuation_outbox,
+    )
+    continuation_worker = AgentCanvasContinuationWorker(
+        continuation_outbox,
+        process_turn=conversation_service.process_turn,
+        worker_id=f"agent-canvas-continuation:{uuid4().hex}",
+        fail_turn=lambda turn_id, code, message: conversation_repository.fail_turn(
+            turn_id,
+            code=code,
+            message=message,
+        ),
+    )
     return AgentCanvasRuntime(
         database=database,
         projects=AgentCanvasProjectService(
@@ -567,11 +718,15 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             video_skills,
         ),
         workflows=workflow_repository,
-        nodes=AgentCanvasNodeService(workflow_repository),
+        nodes=AgentCanvasNodeService(
+            workflow_repository,
+            model_selection=model_selection,
+        ),
         bindings=binding_service,
         connected_authoring=AgentCanvasConnectedAuthoringService(
             workflow_repository,
             connection_policy,
+            model_selection=model_selection,
             binding_capability_validator=lambda target, input_types, reference_count: (
                 provider_capabilities.validate_binding(
                     target,
@@ -583,23 +738,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         connection_policy=connection_policy,
         assets=asset_service,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
-        conversations=AgentConversationService(
-            workflows=workflow_repository,
-            conversations=conversation_repository,
-            nodes=AgentCanvasNodeService(workflow_repository),
-            gateway=director_gateway,
-            video_skills=video_skills,
-            context_assembler=AgentLocalContextAssembler(
-                workflow_repository,
-                asset_resolver=asset_service.resolve_asset,
-                project_asset_lister=asset_service.list_project_assets,
-            ),
-            asset_resolver=asset_service.resolve_asset,
-            connection_policy=connection_policy,
-            command_compiler=command_compiler,
-            command_service=command_service,
-            run_nodes=queue_nodes,
-        ),
+        conversations=conversation_service,
         commands=command_service,
         variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
@@ -620,6 +759,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         editing_nodes=editing_nodes,
         editing_exports=editing_exports,
         editing_export_repository=editing_export_repository,
+        continuation_outbox=continuation_outbox,
+        continuation_worker=continuation_worker,
     )
 
 
@@ -1296,10 +1437,20 @@ def get_chat_timeline(
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
 ) -> ChatTimelineListResponseV2:
     try:
-        return runtime.conversations.get_timeline(
+        timeline = runtime.conversations.get_timeline(
             workflow_id,
             after_seq=after_seq,
             limit=limit,
+        )
+        if timeline.creative_session is None:
+            return timeline
+        return timeline.model_copy(
+            update={
+                "creative_session": _creative_session_with_readiness(
+                    runtime,
+                    timeline.creative_session,
+                )
+            }
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
@@ -1545,8 +1696,8 @@ def get_creative_session(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
 ) -> CreativeSessionStateV2:
     try:
-        runtime.workflows.get_workflow(workflow_id)
-        return runtime.conversation_repository.get_creative_session(workflow_id)
+        session = runtime.conversation_repository.get_creative_session(workflow_id)
+        return _creative_session_with_readiness(runtime, session)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -1555,6 +1706,10 @@ def get_creative_session(
     "/workflows/{workflow_id}/runs",
     response_model=CanvasRunAcceptedV2,
     status_code=status.HTTP_202_ACCEPTED,
+    summary="Run Draft Canvas Nodes",
+    description=(
+        "Runs Draft Text, Script, Image, Video, and Audio Nodes. Editing Nodes are export-only."
+    ),
 )
 def start_canvas_run(
     workflow_id: str,
@@ -1722,6 +1877,12 @@ def _validate_event_cursor(
 @router.get(
     "/provider-models/capabilities",
     response_model=CanvasProviderModelCapabilityListV2,
+    deprecated=True,
+    summary="List Canvas Provider Capabilities (Compatibility)",
+    description=(
+        "Compatibility projection of the canonical provider model catalog. "
+        "Use GET /api/v1/models for new integrations."
+    ),
 )
 def list_canvas_provider_capabilities(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
@@ -1758,6 +1919,29 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _persist_text_document(
+    documents: AgentCanvasDocumentRepository,
+    node: CanvasNodeV2,
+) -> None:
+    content = node.structured_content
+    if content is None or not isinstance(content.get("content"), str):
+        raise V2PersistenceError(
+            "text_output_invalid",
+            "Text Node output must contain text content.",
+            stage="agent_canvas_text_document",
+        )
+    documents.put(
+        workflow_id=node.workflow_id,
+        node_id=node.node_id,
+        document_kind="text",
+        content=content,
+        content_hash=sha256(
+            json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        node_revision=node.revision,
+    )
 
 
 def _expected_revision(value: str | None, workflow_id: str) -> int:
@@ -1798,6 +1982,12 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "variation_source_not_ready": 409,
         "variation_source_media_type_unsupported": 422,
         "variation_model_incompatible": 409,
+        "model_selection_invalid": 422,
+        "model_not_found": 409,
+        "model_unavailable": 409,
+        "model_default_not_configured": 409,
+        "model_capability_mismatch": 409,
+        "agent_model_incompatible": 409,
         "variation_draft_not_found": 404,
         "variation_materialization_conflict": 409,
         "layout_revision_conflict": 409,
@@ -1812,7 +2002,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guided_action_already_applied": 409,
         "guided_action_invalid": 422,
         "confirmation_required": 409,
-        "node_output_immutable": 409,
+        "ready_node_immutable": 409,
+        "ready_node_inputs_immutable": 409,
         "binding_cycle_detected": 409,
         "binding_media_incompatible": 422,
         "binding_model_incompatible": 409,
@@ -1894,3 +2085,21 @@ def _http_error(
 
 def _image_library_response(items) -> ImageLibraryListResponseV2:
     return ImageLibraryListResponseV2(items=tuple(item.model_dump(mode="json") for item in items))
+
+
+def _creative_session_with_readiness(
+    runtime: AgentCanvasRuntime,
+    session: CreativeSessionStateV2,
+) -> CreativeSessionStateV2:
+    """Project readiness from canonical workflow, runtime, and Asset facts."""
+
+    if session.active_recipe is None:
+        return session
+    workflow = runtime.workflows.get_workflow(session.workflow_id)
+    readiness = AgentCanvasProductionPlanService().readiness(
+        session.active_recipe,
+        workflow=workflow,
+        runtime=runtime.runtime_snapshots.get(session.workflow_id),
+        assets=runtime.assets.list_project_assets(session.workflow_id),
+    )
+    return session.model_copy(update={"readiness": readiness})

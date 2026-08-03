@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -12,6 +13,10 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
+from app.schemas.agent_canvas_runtime import (
+    GeneratedAssetProvenanceV2,
+    PublishedMediaFactsV2,
+)
 from app.schemas.v2_asset_library import (
     AssetEntityCreate,
     AssetEntityMemberCreate,
@@ -25,6 +30,10 @@ from app.schemas.v2_asset_library import (
     AssetVersionMetadataV2,
 )
 from app.services.v2_storage_adapter import StorageAdapter
+from app.services.v2_final_composition_renderer import V2MediaProbe, V2MediaProbeResult
+
+
+MediaFactsProbe = Callable[[Path, str], V2MediaProbeResult]
 
 
 @dataclass(frozen=True)
@@ -35,6 +44,20 @@ class AssetContentResponse:
     headers: dict[str, str]
 
 
+def deterministic_media_facts_probe(path: Path, media_type: str) -> V2MediaProbeResult:
+    """Return bounded facts only for explicit fake-provider test execution."""
+
+    return V2MediaProbeResult(
+        path=path,
+        media_type=media_type,
+        width=1024 if media_type in {"image", "video"} else None,
+        height=576 if media_type in {"image", "video"} else None,
+        duration_seconds=1.0 if media_type in {"video", "audio"} else None,
+        fps=24.0 if media_type == "video" else None,
+        has_audio=media_type == "audio",
+    )
+
+
 class AgentCanvasAssetService:
     """Reuse V2 SQLite metadata and content-addressed storage for canvas media."""
 
@@ -43,11 +66,14 @@ class AgentCanvasAssetService:
         data_dir: Path,
         assets: V2AssetLibraryRepository,
         workflows: AgentCanvasWorkflowRepository,
+        *,
+        media_facts_probe: MediaFactsProbe | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._assets = assets
         self._workflows = workflows
         self._storage = StorageAdapter(data_dir)
+        self._media_facts_probe = media_facts_probe or V2MediaProbe()
 
     def upload_bytes(
         self,
@@ -117,6 +143,20 @@ class AgentCanvasAssetService:
             )
         return self._asset_summary(version)
 
+    def resolve_asset_version(
+        self,
+        asset_id: str,
+        version_id: str,
+    ) -> ProjectAssetSummaryV2:
+        version = self._assets.find_version(asset_id=asset_id, version_id=version_id)
+        if version is None:
+            raise V2PersistenceError(
+                "asset_version_not_found",
+                "Asset version was not found.",
+                stage="agent_canvas_asset_service",
+            )
+        return self._asset_summary(version)
+
     def resolve_target_asset(
         self,
         workflow_id: str,
@@ -164,6 +204,7 @@ class AgentCanvasAssetService:
         fingerprint: str,
         source_type: str = "generated",
         source_semantic_role: str | None = None,
+        publication_metadata: Mapping[str, object] | None = None,
     ) -> ProjectAssetSummaryV2:
         """Idempotently publish validated executor bytes to unified storage."""
 
@@ -196,7 +237,38 @@ class AgentCanvasAssetService:
         )
         staging.parent.mkdir(parents=True, exist_ok=True)
         staging.write_bytes(content)
+        facts = self._probe_generated_media(
+            staging,
+            mime_type=mime_type,
+            checksum=checksum,
+            size_bytes=len(content),
+        )
         storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        workflow = self._workflows.get_workflow(workflow_id)
+        provenance = {
+            **dict(publication_metadata or {}),
+            "project_id": workflow.project_id,
+            "workflow_id": workflow_id,
+            "node_id": node_id,
+            "execution_id": execution_id,
+            "checksum": checksum,
+            "publication_status": "ready",
+            "publication_id": fingerprint,
+        }
+        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        generated_provenance = _generated_provenance(
+            provenance,
+            workflow_id=workflow_id,
+            node_id=node_id,
+            execution_id=execution_id,
+            node_revision=(node.revision if node is not None else 1),
+        )
+        provenance.update(
+            {
+                "published_media_facts": facts.model_dump(mode="json"),
+                "generated_asset_provenance": generated_provenance.model_dump(mode="json"),
+            }
+        )
         version = self._assets.create_asset_version(
             AssetRecordCreate(
                 asset_id=asset_id,
@@ -211,7 +283,13 @@ class AgentCanvasAssetService:
                 sha256=checksum,
                 size_bytes=len(content),
                 mime_type=mime_type,
+                width=facts.width,
+                height=facts.height,
+                duration_seconds=facts.duration_seconds,
+                provider=_optional_string(provenance.get("provider")),
+                model_id=_optional_string(provenance.get("model_id")),
                 source_workflow_id=workflow_id,
+                source_node_id=node_id,
                 metadata={
                     "display_name": Path(filename).stem,
                     "source_type": source_type,
@@ -219,10 +297,61 @@ class AgentCanvasAssetService:
                     "source_execution_id": execution_id,
                     "source_semantic_role": source_semantic_role,
                     "fingerprint": fingerprint,
+                    **provenance,
                 },
             ),
         )
         return self._asset_summary(version)
+
+    def _probe_generated_media(
+        self,
+        path: Path,
+        *,
+        mime_type: str,
+        checksum: str,
+        size_bytes: int,
+    ) -> PublishedMediaFactsV2:
+        media_type = mime_type.split("/", 1)[0]
+        probe = self._media_facts_probe(path, media_type)
+        if probe.error is not None:
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Provider output could not be probed.",
+                stage="agent_canvas_asset_service",
+            )
+        if media_type == "image" and (probe.width is None or probe.height is None):
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Image output is missing measured dimensions.",
+                stage="agent_canvas_asset_service",
+            )
+        if media_type == "video" and (
+            probe.width is None
+            or probe.height is None
+            or probe.duration_seconds is None
+            or probe.fps is None
+        ):
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Video output is missing measured media facts.",
+                stage="agent_canvas_asset_service",
+            )
+        if media_type == "audio" and probe.duration_seconds is None:
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Audio output is missing a measured duration.",
+                stage="agent_canvas_asset_service",
+            )
+        return PublishedMediaFactsV2(
+            width=probe.width,
+            height=probe.height,
+            duration_seconds=probe.duration_seconds,
+            frame_rate=probe.fps,
+            has_audio=probe.has_audio,
+            checksum=checksum,
+            size_bytes=size_bytes,
+            mime_type=mime_type,
+        )
 
     def list_project_assets(self, workflow_id: str) -> tuple[ProjectAssetSummaryV2, ...]:
         return tuple(
@@ -414,6 +543,7 @@ def _asset_summary(
         source_type = "generated"
     return ProjectAssetSummaryV2(
         asset_id=version.asset_id,
+        version_id=version.version_id,
         project_id=project_id,
         workflow_id=workflow_id,
         media_type=media_type,
@@ -439,6 +569,16 @@ def _asset_summary(
         provider=version.provider,
         model_id=version.model_id,
         prompt_provenance={"prompt": version.prompt} if version.prompt else {},
+        actual_media_facts=(
+            dict(version.metadata.get("published_media_facts", {}))
+            if isinstance(version.metadata.get("published_media_facts"), Mapping)
+            else {}
+        ),
+        generation_provenance=(
+            dict(version.metadata.get("generated_asset_provenance", {}))
+            if isinstance(version.metadata.get("generated_asset_provenance"), Mapping)
+            else {}
+        ),
         quality_metadata=version.quality or {},
         created_at=version.created_at,
     )
@@ -533,6 +673,75 @@ def _source_semantic_role(metadata: dict[str, object]) -> str | None:
 
 def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _optional_positive_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+
+
+def _optional_nonnegative_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if value >= 0 else None
+
+
+def _generated_provenance(
+    metadata: Mapping[str, object],
+    *,
+    workflow_id: str,
+    node_id: str,
+    execution_id: str,
+    node_revision: int,
+) -> GeneratedAssetProvenanceV2:
+    prompt_registry_ref = _optional_string(metadata.get("prompt_registry_ref")) or (
+        "agent_canvas_provider_prompt_v2"
+    )
+    return GeneratedAssetProvenanceV2(
+        node_run_snapshot_id=(
+            _optional_string(metadata.get("node_run_snapshot_id"))
+            or f"run_intent_{_stable_identifier('snapshot', execution_id, node_id)}"
+        ),
+        input_manifest_id=_optional_string(metadata.get("input_manifest_id")),
+        node_revision=node_revision,
+        compiled_prompt_digest=_hex_digest(
+            metadata.get("compiled_prompt_digest") or metadata.get("prompt_digest")
+        ),
+        prompt_registry_ref=prompt_registry_ref,
+        prompt_registry_digest=_hex_digest(
+            metadata.get("prompt_registry_digest") or prompt_registry_ref
+        ),
+        provider=_optional_string(metadata.get("provider")) or "unknown",
+        model_id=_optional_string(metadata.get("model_id")) or "unknown",
+        provider_task_id=_optional_string(metadata.get("provider_task_id")),
+        requested_parameters=_json_mapping(metadata.get("requested_parameters")),
+        effective_parameters=_json_mapping(metadata.get("effective_parameters")),
+        normalizations=tuple(
+            item for item in metadata.get("normalizations", ()) if isinstance(item, str) and item
+        )
+        if isinstance(metadata.get("normalizations"), (list, tuple))
+        else (),
+        source_asset_version_ids=tuple(
+            item
+            for item in metadata.get("source_asset_version_ids", ())
+            if isinstance(item, str) and item
+        )
+        if isinstance(metadata.get("source_asset_version_ids"), (list, tuple))
+        else (),
+    )
+
+
+def _hex_digest(value: object) -> str:
+    if (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value.lower())
+    ):
+        return value.lower()
+    return hashlib.sha256(str(value or "").encode()).hexdigest()
+
+
+def _json_mapping(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _validate_upload(

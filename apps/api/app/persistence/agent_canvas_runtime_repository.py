@@ -25,6 +25,8 @@ from app.schemas.agent_canvas_runtime import (
     CanvasExecutionMembershipV2,
     CanvasExecutionRecordV2,
     CanvasProviderTaskV2,
+    EffectiveMediaParameterSnapshotV2,
+    NodeRunIntentSnapshotV2,
     NodeExecutionLeaseV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
@@ -236,6 +238,43 @@ class AgentCanvasRuntimeRepository:
             ) from error
         return _execution(row) if row is not None else None
 
+    def list_latest_members_for_workflow(
+        self,
+        workflow_id: str,
+    ) -> tuple[CanvasExecutionMembershipV2, ...]:
+        """Return the newest durable member facts for each Node in a Workflow."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasExecutionMemberRow)
+                        .join(
+                            AgentCanvasExecutionRow,
+                            AgentCanvasExecutionRow.execution_id
+                            == AgentCanvasExecutionMemberRow.execution_id,
+                        )
+                        .where(AgentCanvasExecutionRow.workflow_id == workflow_id)
+                        .order_by(
+                            AgentCanvasExecutionRow.updated_at.desc(),
+                            AgentCanvasExecutionRow.created_at.desc(),
+                            AgentCanvasExecutionMemberRow.member_order.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed", "Execution storage is unavailable."
+            ) from error
+
+        latest: dict[str, CanvasExecutionMembershipV2] = {}
+        for row in rows:
+            member = _member(row)
+            latest.setdefault(member.node_id, member)
+        return tuple(latest.values())
+
     def list_active_executions(self) -> tuple[CanvasExecutionRecordV2, ...]:
         try:
             with self._database.engine.connect() as connection:
@@ -244,6 +283,26 @@ class AgentCanvasRuntimeRepository:
                         select(AgentCanvasExecutionRow)
                         .where(AgentCanvasExecutionRow.status.in_(_ACTIVE_EXECUTION_STATES))
                         .order_by(AgentCanvasExecutionRow.created_at.asc())
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed", "Execution storage is unavailable."
+            ) from error
+        return tuple(_execution(row) for row in rows)
+
+    def list_executions(self) -> tuple[CanvasExecutionRecordV2, ...]:
+        """List durable executions for bounded startup reconciliation."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasExecutionRow).order_by(
+                            AgentCanvasExecutionRow.created_at.asc()
+                        )
                     )
                     .mappings()
                     .all()
@@ -283,13 +342,59 @@ class AgentCanvasRuntimeRepository:
         waiting_for_node_ids: tuple[str, ...] = (),
         provider_task_id: str | None = None,
         prompt_metadata: dict[str, object] | None = None,
+        run_intent_snapshot: NodeRunIntentSnapshotV2 | None = None,
+        resolved_input_manifest: dict[str, object] | None = None,
+        resolved_input_manifest_id: str | None = None,
+        resolved_input_manifest_digest: str | None = None,
+        effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None,
+        omitted_optional_inputs: tuple[dict[str, object], ...] | None = None,
         error: CanvasNodeErrorV2 | None = None,
         event_type: str | None = None,
         event_payload: dict[str, object] | None = None,
-    ) -> None:
+        expected_state: str | None = None,
+        expected_phase: str | None = None,
+        expected_lease_generation: int | None = None,
+        expected_provider_task_id: str | None = None,
+        validate_expected_phase: bool = False,
+        validate_expected_provider_task_id: bool = False,
+    ) -> bool:
         timestamp = now.isoformat()
         try:
             with self._database.engine.begin() as connection:
+                current = (
+                    connection.execute(
+                        select(AgentCanvasExecutionMemberRow).where(
+                            AgentCanvasExecutionMemberRow.execution_id == execution_id,
+                            AgentCanvasExecutionMemberRow.node_id == node_id,
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if current is None:
+                    raise _error("execution_member_not_found", "Execution member was not found.")
+                if (
+                    expected_state is not None
+                    and str(current["state"]) != expected_state
+                    or validate_expected_phase
+                    and cast(str | None, current["phase"]) != expected_phase
+                    or validate_expected_provider_task_id
+                    and cast(str | None, current["provider_task_id"]) != expected_provider_task_id
+                ):
+                    return False
+                if expected_lease_generation is not None:
+                    lease = (
+                        connection.execute(
+                            select(AgentCanvasNodeLeaseRow).where(
+                                AgentCanvasNodeLeaseRow.execution_id == execution_id,
+                                AgentCanvasNodeLeaseRow.node_id == node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if lease is None or int(lease["generation"]) != expected_lease_generation:
+                        return False
                 row = connection.execute(
                     update(AgentCanvasExecutionMemberRow)
                     .where(
@@ -304,6 +409,44 @@ class AgentCanvasRuntimeRepository:
                         **(
                             {"prompt_metadata_json": json.dumps(prompt_metadata, sort_keys=True)}
                             if prompt_metadata is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "run_intent_snapshot_id": run_intent_snapshot.snapshot_id,
+                                "run_intent_snapshot_json": run_intent_snapshot.model_dump_json(),
+                                "run_intent_snapshot_digest": run_intent_snapshot.snapshot_digest,
+                            }
+                            if run_intent_snapshot is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "resolved_input_manifest_id": resolved_input_manifest_id,
+                                "resolved_input_manifest_json": json.dumps(
+                                    resolved_input_manifest,
+                                    sort_keys=True,
+                                ),
+                                "resolved_input_manifest_digest": resolved_input_manifest_digest,
+                            }
+                            if resolved_input_manifest is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "effective_parameters_json": effective_parameters.model_dump_json(),
+                            }
+                            if effective_parameters is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "omitted_optional_inputs_json": json.dumps(
+                                    omitted_optional_inputs,
+                                    sort_keys=True,
+                                ),
+                            }
+                            if omitted_optional_inputs is not None
                             else {}
                         ),
                         error_json=error.model_dump_json() if error else None,
@@ -325,6 +468,7 @@ class AgentCanvasRuntimeRepository:
                             payload=event_payload or {},
                         ),
                     )
+                return True
         except V2PersistenceError:
             raise
         except SQLAlchemyError as exc:
@@ -589,6 +733,14 @@ class AgentCanvasRuntimeRepository:
                 attempt_no=0,
                 waiting_for_node_ids_json="[]",
                 provider_task_id=None,
+                run_intent_snapshot_id=None,
+                run_intent_snapshot_json=None,
+                run_intent_snapshot_digest=None,
+                resolved_input_manifest_id=None,
+                resolved_input_manifest_json=None,
+                resolved_input_manifest_digest=None,
+                effective_parameters_json=None,
+                omitted_optional_inputs_json="[]",
                 prompt_metadata_json="{}",
                 error_json=None,
                 updated_at=now,
@@ -640,6 +792,7 @@ def _execution(row: RowMapping) -> CanvasExecutionRecordV2:
 def _member(row: RowMapping) -> CanvasExecutionMembershipV2:
     error_json = cast(str | None, row["error_json"])
     return CanvasExecutionMembershipV2(
+        member_id=str(row["member_id"]),
         execution_id=str(row["execution_id"]),
         workflow_id=str(row["workflow_id"]),
         node_id=str(row["node_id"]),
@@ -648,6 +801,31 @@ def _member(row: RowMapping) -> CanvasExecutionMembershipV2:
         attempt_no=int(row["attempt_no"]),
         waiting_for_node_ids=tuple(json.loads(str(row["waiting_for_node_ids_json"]))),
         provider_task_id=cast(str | None, row["provider_task_id"]),
+        run_intent_snapshot_id=cast(str | None, row["run_intent_snapshot_id"]),
+        run_intent_snapshot=(
+            NodeRunIntentSnapshotV2.model_validate_json(str(row["run_intent_snapshot_json"]))
+            if row["run_intent_snapshot_json"]
+            else None
+        ),
+        run_intent_snapshot_digest=cast(str | None, row["run_intent_snapshot_digest"]),
+        resolved_input_manifest_id=cast(str | None, row["resolved_input_manifest_id"]),
+        resolved_input_manifest=(
+            json.loads(str(row["resolved_input_manifest_json"]))
+            if row["resolved_input_manifest_json"]
+            else None
+        ),
+        resolved_input_manifest_digest=cast(
+            str | None,
+            row["resolved_input_manifest_digest"],
+        ),
+        effective_parameters=(
+            EffectiveMediaParameterSnapshotV2.model_validate_json(
+                str(row["effective_parameters_json"])
+            )
+            if row["effective_parameters_json"]
+            else None
+        ),
+        omitted_optional_inputs=tuple(json.loads(str(row["omitted_optional_inputs_json"]))),
         prompt_metadata=json.loads(str(row["prompt_metadata_json"])),
         error=CanvasNodeErrorV2.model_validate_json(error_json) if error_json else None,
         updated_at=str(row["updated_at"]),

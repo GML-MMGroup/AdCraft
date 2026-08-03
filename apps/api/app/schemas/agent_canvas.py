@@ -19,6 +19,8 @@ from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 
 CanvasNodeTypeV2 = Literal["text", "script", "image", "video", "audio", "editing"]
 CanvasNodeStatusV2 = Literal["draft", "working", "ready", "failed"]
+RoleContractVersionV2 = Literal["ad-media-role-v1", "ad-media-role-v2"]
+ModelSelectionModeV1 = Literal["default", "explicit"]
 CanvasCreativeRoleV2 = Literal[
     "creative_brief",
     "script",
@@ -69,15 +71,31 @@ class CanvasNodeErrorV2(_AgentCanvasModel):
     retryable: bool
 
 
+class CanvasModelSummaryV2(_AgentCanvasModel):
+    model_ref: str = Field(min_length=3, max_length=320)
+    provider_id: str = Field(min_length=1, max_length=80)
+    display_name: str = Field(min_length=1, max_length=256)
+    capability: Literal["text", "image", "video", "audio"]
+    availability: Literal["available", "unavailable", "unauthorized", "unsupported", "deprecated"]
+    unavailable_reason: str | None = None
+    catalog_revision: int = Field(ge=1)
+
+
+def _validate_model_selection(mode: str | None, model_ref: str | None) -> None:
+    if (mode == "default" and model_ref is not None) or (mode == "explicit" and not model_ref):
+        raise ValueError("model_selection_invalid")
+
+
 class CanvasNodeCreateRequestV2(_AgentCanvasModel):
     node_type: CanvasNodeTypeV2
     creative_role: CanvasCreativeRoleV2
-    role_contract_version: Literal["ad-media-role-v1"] = "ad-media-role-v1"
+    role_contract_version: RoleContractVersionV2 = "ad-media-role-v2"
     title: str = Field(min_length=1)
     summary_prompt: str | None = None
     generation_prompt: str | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
-    model_id: str | None = None
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     position: CanvasPositionV2
     clone_inputs_from_node_id: str | None = None
@@ -89,15 +107,29 @@ class CanvasNodeCreateRequestV2(_AgentCanvasModel):
 
         return self.creative_role
 
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "CanvasNodeCreateRequestV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
+
 
 class CanvasNodePatchRequestV2(_AgentCanvasModel):
     title: str | None = Field(default=None, min_length=1)
     summary_prompt: str | None = None
     generation_prompt: str | None = None
     structured_content: dict[str, JsonValue] | None = None
-    model_id: str | None = None
+    model_selection_mode: ModelSelectionModeV1 | None = None
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, JsonValue] | None = None
     position: CanvasPositionV2 | None = Field(default=None, deprecated=True)
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "CanvasNodePatchRequestV2":
+        selected_fields = self.model_fields_set
+        if "model_selection_mode" not in selected_fields and "model_ref" not in selected_fields:
+            return self
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
 
 
 class ProjectCreateRequestV2(_AgentCanvasModel):
@@ -112,18 +144,30 @@ class CanvasVariationDraftV2(_AgentCanvasModel):
     source_node_revision: int = Field(ge=1)
     title: str = Field(min_length=1, max_length=256)
     generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_id: str | None = Field(default=None, max_length=160)
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     variation_revision: int = Field(ge=1)
     created_at: datetime
     updated_at: datetime
 
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "CanvasVariationDraftV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
+
 
 class CanvasVariationDraftUpsertV2(_AgentCanvasModel):
     title: str = Field(min_length=1, max_length=256)
     generation_prompt: str = Field(min_length=1, max_length=32_768)
-    model_id: str | None = Field(default=None, max_length=160)
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "CanvasVariationDraftUpsertV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
 
 
 class CanvasVariationDraftResponseV2(_AgentCanvasModel):
@@ -169,13 +213,15 @@ class CanvasNodeV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     node_type: CanvasNodeTypeV2
     creative_role: CanvasCreativeRoleV2
-    role_contract_version: Literal["ad-media-role-v1"] = "ad-media-role-v1"
+    role_contract_version: RoleContractVersionV2 = "ad-media-role-v2"
     title: str = Field(min_length=1)
     status: CanvasNodeStatusV2
     summary_prompt: str | None = None
     generation_prompt: str | None = None
     structured_content: dict[str, JsonValue] = Field(default_factory=dict)
-    model_id: str | None = None
+    model_selection_mode: ModelSelectionModeV1 = "default"
+    model_ref: str | None = Field(default=None, min_length=3, max_length=320)
+    model_summary: CanvasModelSummaryV2 | None = None
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     prompt_context_snapshot_id: str | None = None
     output_asset_id: str | None = None
@@ -191,6 +237,11 @@ class CanvasNodeV2(_AgentCanvasModel):
         """Internal transition accessor; public JSON uses creative_role only."""
 
         return self.creative_role
+
+    @model_validator(mode="after")
+    def validate_model_selection(self) -> "CanvasNodeV2":
+        _validate_model_selection(self.model_selection_mode, self.model_ref)
+        return self
 
     @model_validator(mode="after")
     def validate_ready_output(self) -> "CanvasNodeV2":
@@ -242,7 +293,7 @@ class CanvasBindingCreateRequestV2(_AgentCanvasModel):
     source: CanvasBindingSourceV2
     target_node_id: str = Field(min_length=1)
     input_role: CanvasBindingInputRoleV2
-    required: bool = True
+    required: bool = False
     enabled: bool = True
     order: int | None = Field(default=None, ge=0)
     label: str | None = Field(default=None, max_length=160)
@@ -323,7 +374,7 @@ class CanvasConnectionDecisionV2(_AgentCanvasModel):
 
 class CanvasConnectedNodeBindingRequestV2(_AgentCanvasModel):
     input_role: CanvasBindingInputRoleV2
-    required: bool = True
+    required: bool = False
     order: int | None = Field(default=None, ge=0)
 
 
@@ -353,6 +404,7 @@ class CanvasBindingMutationResponseV2(_AgentCanvasModel):
 
 class ProjectAssetV2(_AgentCanvasModel):
     asset_id: str = Field(min_length=1)
+    version_id: str | None = Field(default=None, min_length=1)
     project_id: str | None = Field(default=None, min_length=1)
     workflow_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
@@ -375,6 +427,8 @@ class ProjectAssetV2(_AgentCanvasModel):
     provider: str | None = None
     model_id: str | None = None
     prompt_provenance: dict[str, JsonValue] = Field(default_factory=dict)
+    actual_media_facts: dict[str, JsonValue] = Field(default_factory=dict)
+    generation_provenance: dict[str, JsonValue] = Field(default_factory=dict)
     quality_metadata: dict[str, JsonValue] = Field(default_factory=dict)
     created_at: datetime | None = None
 
@@ -462,7 +516,7 @@ class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     content_hash: str = Field(min_length=1)
     binding_id: str | None = None
     input_role: Literal["text_context"] = "text_context"
-    required: bool = True
+    required: bool = False
     display_order: int = Field(default=0, ge=0)
 
 
@@ -474,12 +528,13 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     binding_kind: Literal["image_reference", "video_reference", "audio_reference"]
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     asset_id: str = Field(min_length=1)
+    asset_version_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
     asset_checksum: str = Field(min_length=1)
     access_descriptor: StorageAccessDescriptorV2
     binding_id: str | None = None
     input_role: CanvasBindingInputRoleV2
-    required: bool = True
+    required: bool = False
     display_order: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -490,6 +545,56 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
         elif self.source_node_id is not None or self.source_node_revision is not None:
             raise ValueError("Image asset snapshots cannot include a source node.")
         return self
+
+
+class ResolvedTextBindingInputV2(_AgentCanvasModel):
+    binding_id: str = Field(min_length=1)
+    source_node_id: str = Field(min_length=1)
+    source_node_revision: int = Field(ge=1)
+    input_role: Literal["text_context"] = "text_context"
+    required: bool = False
+    display_order: int = Field(default=0, ge=0)
+    snapshot_id: str = Field(min_length=1)
+    document_kind: Literal["text", "script"]
+    content_digest: str = Field(min_length=1)
+    content: str
+
+
+class ResolvedMediaBindingInputV2(_AgentCanvasModel):
+    binding_id: str = Field(min_length=1)
+    source_kind: Literal["node_output", "image_asset"]
+    source_node_id: str | None = None
+    source_node_revision: int | None = Field(default=None, ge=1)
+    input_role: Literal["image_reference", "video_reference", "audio_reference"]
+    source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    required: bool = False
+    display_order: int = Field(default=0, ge=0)
+    asset_id: str = Field(min_length=1)
+    asset_version_id: str | None = Field(default=None, min_length=1)
+    media_type: ProjectAssetMediaTypeV2
+    checksum: str = Field(min_length=1)
+
+
+class OmittedOptionalInputV2(_AgentCanvasModel):
+    binding_id: str = Field(min_length=1)
+    source_node_id: str | None = None
+    reason_code: str = Field(min_length=1)
+
+
+class ResolvedNodeInputManifestV2(_AgentCanvasModel):
+    manifest_id: str = Field(min_length=1)
+    workflow_id: str = Field(min_length=1)
+    execution_id: str = Field(min_length=1)
+    node_run_id: str = Field(min_length=1)
+    target_node_id: str = Field(min_length=1)
+    workflow_revision: int = Field(ge=1)
+    text_inputs: tuple[ResolvedTextBindingInputV2, ...] = ()
+    media_inputs: tuple[ResolvedMediaBindingInputV2, ...] = ()
+    omitted_optional_inputs: tuple[OmittedOptionalInputV2, ...] = ()
+    run_intent_snapshot_id: str | None = Field(default=None, min_length=1)
+    manifest_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    delivered_asset_version_ids: tuple[str, ...] = ()
+    created_at: datetime
 
 
 ResolvedInputSnapshotV2 = Annotated[
