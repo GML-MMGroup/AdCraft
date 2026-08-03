@@ -33,6 +33,8 @@ import type {
   CanvasMutationResponseV2,
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
+  CanvasModelSelectionModeV2,
+  CanvasModelSummaryV2,
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
@@ -92,6 +94,15 @@ type JsonRecord = Record<string, unknown>;
 const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
 const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
+const CANVAS_MODEL_SELECTION_MODES = new Set<CanvasModelSelectionModeV2>(["default", "explicit"]);
+const CANVAS_MODEL_CAPABILITIES = new Set<CanvasModelSummaryV2["capability"]>(["text", "image", "video", "audio"]);
+const CANVAS_MODEL_AVAILABILITIES = new Set<CanvasModelSummaryV2["availability"]>([
+  "available",
+  "unavailable",
+  "unauthorized",
+  "unsupported",
+  "deprecated",
+]);
 const CANVAS_CREATIVE_ROLES = new Set<CanvasCreativeRoleV2>([
   "creative_brief",
   "script",
@@ -480,6 +491,24 @@ export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): Canv
   };
 }
 
+export function normalizeCanvasModelSummaryV2(value: unknown, path = "model_summary"): CanvasModelSummaryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["model_ref", "provider_id", "display_name", "capability", "availability", "unavailable_reason", "catalog_revision"],
+    path,
+  );
+  return {
+    model_ref: expectNonEmptyString(record.model_ref, `${path}.model_ref`),
+    provider_id: expectNonEmptyString(record.provider_id, `${path}.provider_id`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    capability: expectLiteral(record.capability, CANVAS_MODEL_CAPABILITIES, `${path}.capability`),
+    availability: expectLiteral(record.availability, CANVAS_MODEL_AVAILABILITIES, `${path}.availability`),
+    unavailable_reason: nullableString(record.unavailable_reason, `${path}.unavailable_reason`),
+    catalog_revision: expectPositiveInteger(record.catalog_revision, `${path}.catalog_revision`),
+  };
+}
+
 export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNodeV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(
@@ -496,6 +525,9 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "generation_prompt",
       "structured_content",
       "model_id",
+      "model_selection_mode",
+      "model_ref",
+      "model_summary",
       "parameters",
       "prompt_context_snapshot_id",
       "output_asset_id",
@@ -533,7 +565,14 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     summary_prompt: nullableString(record.summary_prompt, `${path}.summary_prompt`),
     generation_prompt: nullableString(record.generation_prompt, `${path}.generation_prompt`),
     structured_content: expectRecordValue(record.structured_content, `${path}.structured_content`),
-    model_id: nullableString(record.model_id, `${path}.model_id`),
+    model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+    model_selection_mode: record.model_selection_mode === undefined
+      ? "default"
+      : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
+    model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
+    model_summary: record.model_summary === null || record.model_summary === undefined
+      ? null
+      : normalizeCanvasModelSummaryV2(record.model_summary, `${path}.model_summary`),
     parameters: expectRecordValue(record.parameters, `${path}.parameters`),
     prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
     output_asset_id: outputAssetId,

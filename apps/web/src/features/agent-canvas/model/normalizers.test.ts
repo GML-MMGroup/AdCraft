@@ -987,6 +987,31 @@ describe("Agent Canvas normalizers", () => {
     ).toThrowError(/position/i);
   });
 
+  it("accepts model selection fields returned by the canvas node API", () => {
+    const node = {
+      ...validWorkflowPayload().nodes[1],
+      model_selection_mode: "explicit",
+      model_ref: "fake:deterministic-image",
+      model_summary: {
+        model_ref: "fake:deterministic-image",
+        provider_id: "fake",
+        display_name: "Deterministic Image",
+        capability: "image",
+        availability: "available",
+        unavailable_reason: null,
+        catalog_revision: 3,
+      },
+    };
+    delete node.model_id;
+
+    const normalized = normalizeCanvasNodeV2(node);
+
+    expect(normalized.model_id).toBeNull();
+    expect(normalized.model_selection_mode).toBe("explicit");
+    expect(normalized.model_ref).toBe("fake:deterministic-image");
+    expect(normalized.model_summary?.display_name).toBe("Deterministic Image");
+  });
+
   it("rejects malformed binding payloads", () => {
     expect(() =>
       normalizeCanvasBindingV2({

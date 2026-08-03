@@ -1525,6 +1525,18 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
+export type CanvasModelSelectionModeV2 = "default" | "explicit";
+
+export interface CanvasModelSummaryV2 {
+  model_ref: string;
+  provider_id: string;
+  display_name: string;
+  capability: "text" | "image" | "video" | "audio";
+  availability: "available" | "unavailable" | "unauthorized" | "unsupported" | "deprecated";
+  unavailable_reason: string | null;
+  catalog_revision: number;
+}
+
 export interface CanvasVariationDraftV2 {
   source_node_id: string;
   source_node_revision: number;
@@ -1549,6 +1561,9 @@ export interface CanvasNodeV2 {
   generation_prompt: string | null;
   structured_content: Record<string, unknown>;
   model_id: string | null;
+  model_selection_mode: CanvasModelSelectionModeV2;
+  model_ref: string | null;
+  model_summary: CanvasModelSummaryV2 | null;
   parameters: Record<string, unknown>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
