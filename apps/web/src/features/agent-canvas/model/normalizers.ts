@@ -143,6 +143,7 @@ const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
 ]);
 const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
   "waiting_for_input",
+  "blocked_by_upstream",
   "queued",
   "running",
   "waiting_provider",
@@ -1030,7 +1031,11 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
       "phase",
       "execution_id",
       "provider_task_id",
+      "run_intent_snapshot_id",
       "input_manifest_id",
+      "effective_parameters",
+      "normalizations",
+      "omitted_optional_inputs",
       "waiting_reason",
       "missing_required_source_node_ids",
       "waiting_for_node_ids",
@@ -1048,7 +1053,13 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     phase: phase ?? null,
     execution_id: nullableString(record.execution_id, `${path}.execution_id`),
     provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
+    run_intent_snapshot_id: nullableStringWithDefault(record.run_intent_snapshot_id, `${path}.run_intent_snapshot_id`),
     input_manifest_id: nullableStringWithDefault(record.input_manifest_id, `${path}.input_manifest_id`),
+    effective_parameters: optionalUnknownRecord(record.effective_parameters, `${path}.effective_parameters`),
+    normalizations: optionalStringArray(record.normalizations, `${path}.normalizations`, []),
+    omitted_optional_inputs: expectArray(record.omitted_optional_inputs ?? [], `${path}.omitted_optional_inputs`).map(
+      (item, index) => expectRecordValue(item, `${path}.omitted_optional_inputs[${index}]`),
+    ),
     waiting_reason: nullableStringWithDefault(record.waiting_reason, `${path}.waiting_reason`),
     missing_required_source_node_ids: optionalStringArray(
       record.missing_required_source_node_ids,

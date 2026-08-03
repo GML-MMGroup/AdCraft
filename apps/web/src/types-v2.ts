@@ -1701,7 +1701,14 @@ export interface StorageAccessDescriptorV2 {
 
 export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
 
-export type NodeRuntimePhaseV2 = "waiting_for_input" | "queued" | "running" | "waiting_provider" | "recovering" | "publishing";
+export type NodeRuntimePhaseV2 =
+  | "waiting_for_input"
+  | "blocked_by_upstream"
+  | "queued"
+  | "running"
+  | "waiting_provider"
+  | "recovering"
+  | "publishing";
 
 export interface NodeRuntimeV2 {
   node_id: string;
@@ -1709,7 +1716,11 @@ export interface NodeRuntimeV2 {
   phase: NodeRuntimePhaseV2 | null;
   execution_id: string | null;
   provider_task_id: string | null;
+  run_intent_snapshot_id: string | null;
   input_manifest_id?: string | null;
+  effective_parameters: Record<string, unknown>;
+  normalizations: string[];
+  omitted_optional_inputs: Array<Record<string, unknown>>;
   waiting_reason?: string | null;
   missing_required_source_node_ids?: string[];
   waiting_for_node_ids: string[];

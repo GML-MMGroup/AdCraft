@@ -410,6 +410,66 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("normalizes frozen run intent and effective runtime metadata", () => {
+    const runtime = normalizeCanvasRuntimeSnapshotV2({
+      workflow_id: "workflow-1",
+      active_execution_id: "execution-1",
+      execution_status: "waiting",
+      node_runtime: {
+        "node-video-1": {
+          node_id: "node-video-1",
+          visible_status: "draft",
+          phase: "blocked_by_upstream",
+          execution_id: "execution-1",
+          provider_task_id: null,
+          run_intent_snapshot_id: "run-intent-1",
+          input_manifest_id: "manifest-1",
+          effective_parameters: {
+            duration_seconds: 15,
+            generate_audio: false,
+          },
+          normalizations: ["duration_clamped_to_provider_limit"],
+          omitted_optional_inputs: [
+            {
+              binding_id: "binding-audio-1",
+              reason: "provider_input_unsupported",
+            },
+          ],
+          waiting_reason: "blocked_by_upstream",
+          missing_required_source_node_ids: [],
+          waiting_for_node_ids: ["node-image-1"],
+          blocked_by_node_ids: ["node-image-1"],
+          attempt_no: 1,
+          updated_at: "2026-08-03T09:00:00Z",
+          error: null,
+        },
+      },
+      queued_node_ids: [],
+      working_node_ids: [],
+      waiting_node_ids: ["node-video-1"],
+      ready_node_ids: [],
+      failed_node_ids: [],
+      events_cursor: 18,
+      updated_at: "2026-08-03T09:00:00Z",
+    });
+
+    expect(runtime.node_runtime["node-video-1"]).toMatchObject({
+      phase: "blocked_by_upstream",
+      run_intent_snapshot_id: "run-intent-1",
+      effective_parameters: {
+        duration_seconds: 15,
+        generate_audio: false,
+      },
+      normalizations: ["duration_clamped_to_provider_limit"],
+      omitted_optional_inputs: [
+        {
+          binding_id: "binding-audio-1",
+          reason: "provider_input_unsupported",
+        },
+      ],
+    });
+  });
+
   it("normalizes durable continuation delivery and non-applied guided receipts", () => {
     const accepted = normalizeChatTurnAcceptedV2({
       workflow_id: "workflow-1",
