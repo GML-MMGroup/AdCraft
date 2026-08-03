@@ -64,6 +64,16 @@ describe("theme styles", () => {
     }
   });
 
+  test("keeps the chat composer textarea free of the global focus outline", () => {
+    const chatStyles = source("features/agent-canvas/chat/agent-canvas-chat.css");
+    const focusBlock = declarationBlock(
+      chatStyles,
+      'html[data-theme="dark"] .agent-chat__composer textarea:focus-visible',
+    );
+
+    expect(focusBlock).toContain("outline: none");
+  });
+
   test("keeps non-critical theme rules out of the initial style entry", () => {
     expect(source("main.tsx")).not.toContain('import "./styles/theme.css"');
     expect(source("components/Layout.tsx")).toContain('import "../styles/theme.css"');

@@ -633,6 +633,10 @@
   line-height: 1.45;
 }
 
+html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {
+  outline: none;
+}
+
 .agent-chat__composer-actions {
   display: flex;
   justify-content: space-between;
