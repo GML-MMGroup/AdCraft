@@ -137,6 +137,7 @@ class V2ProviderReferenceWireAudit(BaseModel):
 class V2ReferenceInputDeliveryFailure(BaseModel):
     asset_id: str
     slot_id: str
+    binding_id: str | None = None
     code: str
     message: str
     reason: str
@@ -324,9 +325,13 @@ class V2ProviderReferenceInputDeliveryService:
         *,
         provider: str,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+        target_media_type: str | None = None,
+        model_id: str | None = None,
+        capability_context: dict[str, object] | None = None,
     ) -> V2DeliveredReferenceSet:
         """Deliver explicit Canvas media bindings in persisted input order."""
 
+        del target_media_type, model_id, capability_context
         delivery_modes = _delivery_modes_for_provider(provider)
         references: list[V2DeliveredProviderReference] = []
         failures: list[V2ReferenceInputDeliveryFailure] = []
@@ -703,6 +708,7 @@ def _canvas_delivery_failure(
     return V2ReferenceInputDeliveryFailure(
         asset_id=input_snapshot.asset_id,
         slot_id=input_snapshot.source_node_id or input_snapshot.asset_id,
+        binding_id=input_snapshot.binding_id,
         code=CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE,
         message="Bound media cannot be delivered to the configured provider.",
         reason=reason,

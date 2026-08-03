@@ -45,9 +45,17 @@ class AdReferenceBundleResolver:
         for binding in workflow.bindings:
             if binding.target_node_id != node_id:
                 continue
+            if binding.binding_kind not in {
+                "image_reference",
+                "video_reference",
+                "audio_reference",
+            }:
+                continue
             if binding.source.kind == "node_output":
                 source = nodes.get(binding.source.source_node_id)
                 if source is None or source.status != "ready" or not source.output_asset_id:
+                    if not binding.required:
+                        continue
                     raise _error(
                         "role_reference_bundle_invalid",
                         "Bound source node does not have a Ready media output.",
@@ -62,11 +70,15 @@ class AdReferenceBundleResolver:
             try:
                 asset = self._asset_resolver(asset_id)
             except (KeyError, V2PersistenceError) as error:
+                if not binding.required:
+                    continue
                 raise _error(
                     "role_reference_bundle_invalid",
                     "Bound media asset is unavailable.",
                 ) from error
-            if asset.status != "ready" or asset.media_url is None:
+            if asset is None or asset.status != "ready" or asset.media_url is None:
+                if not binding.required:
+                    continue
                 raise _error(
                     "role_reference_bundle_invalid",
                     "Bound media asset is not Ready.",
