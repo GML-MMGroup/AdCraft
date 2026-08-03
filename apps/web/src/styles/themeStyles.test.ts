@@ -74,6 +74,17 @@ describe("theme styles", () => {
     expect(focusBlock).toContain("outline: none");
   });
 
+  test("keeps three full chat lines visible before capped automatic growth", () => {
+    const chatStyles = source("features/agent-canvas/chat/agent-canvas-chat.css");
+    const textareaBlock = declarationBlock(chatStyles, ".agent-chat__composer textarea");
+
+    expect(textareaBlock).toContain("min-height: 68px");
+    expect(textareaBlock).toContain("max-height: 163px");
+    expect(textareaBlock).toContain("padding: 5px 2px 6px");
+    expect(textareaBlock).toContain("line-height: 19px");
+    expect(textareaBlock).toContain("overflow-y: hidden");
+  });
+
   test("keeps the node prompt composer free of the global focus outline", () => {
     const workbenchStyles = source(
       "features/agent-canvas/workbench/agent-canvas-inline-workbench.css",

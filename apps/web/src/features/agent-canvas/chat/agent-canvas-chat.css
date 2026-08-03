@@ -622,7 +622,10 @@
 .agent-chat__composer textarea {
   display: block;
   width: 100%;
-  min-height: 64px;
+  min-height: 68px;
+  max-height: 163px;
+  padding: 5px 2px 6px;
+  overflow-y: hidden;
   resize: none;
   border: 0;
   outline: 0;
@@ -630,7 +633,7 @@
   color: inherit;
   font: inherit;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 19px;
 }
 
 html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {

@@ -15,6 +15,33 @@ import {
   ProposalCard,
   SpecialistActivityRow,
 } from "./AgentCanvasChatPanel.tsx";
+import { resizeChatComposerTextarea } from "./chatComposerTextarea.ts";
+
+describe("chat composer textarea", () => {
+  it("grows with its content and only scrolls after reaching its height limit", () => {
+    const textarea = document.createElement("textarea");
+    let scrollHeight = 86;
+    let clientHeight = 86;
+    Object.defineProperty(textarea, "scrollHeight", {
+      configurable: true,
+      get: () => scrollHeight,
+    });
+    Object.defineProperty(textarea, "clientHeight", {
+      configurable: true,
+      get: () => clientHeight,
+    });
+
+    resizeChatComposerTextarea(textarea);
+    expect(textarea.style.height).toBe("86px");
+    expect(textarea.style.overflowY).toBe("hidden");
+
+    scrollHeight = 220;
+    clientHeight = 163;
+    resizeChatComposerTextarea(textarea);
+    expect(textarea.style.height).toBe("220px");
+    expect(textarea.style.overflowY).toBe("auto");
+  });
+});
 
 const card: ChatProposalCardV2 = {
   item_type: "proposal",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   AssetsIcon,
@@ -26,6 +26,7 @@ import type {
   ConceptOptionV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
+import { resizeChatComposerTextarea } from "./chatComposerTextarea.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
 import "./agent-canvas-chat.css";
 
@@ -58,6 +59,7 @@ export function AgentCanvasChatPanel({
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
   const [mentionedAssetIds, setMentionedAssetIds] = useState<string[]>([]);
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const imageAssets = useMemo(
     () => workflow.assets.filter((asset) => asset.media_type === "image"),
     [workflow.assets],
@@ -79,6 +81,12 @@ export function AgentCanvasChatPanel({
     )) ?? null,
     [chat.state.continuations],
   );
+  useLayoutEffect(() => {
+    if (composerTextareaRef.current) {
+      resizeChatComposerTextarea(composerTextareaRef.current);
+    }
+  }, [draft]);
+
   async function send() {
     const text = draft.trim();
     if (!text || chat.state.sending) return;
@@ -259,6 +267,8 @@ export function AgentCanvasChatPanel({
           </div>
         ) : null}
         <textarea
+          ref={composerTextareaRef}
+          rows={3}
           value={draft}
           placeholder="Ask AdCraft Video Agent..."
           aria-label="Message AdCraft Video Agent"
