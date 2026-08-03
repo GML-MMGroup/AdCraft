@@ -85,6 +85,20 @@ describe("theme styles", () => {
     expect(textareaBlock).toContain("overflow-y: hidden");
   });
 
+  test("keeps chat timeline scrolling stable and contained", () => {
+    const chatStyles = source("features/agent-canvas/chat/agent-canvas-chat.css");
+    const shellBlock = declarationBlock(chatStyles, ".agent-chat__timeline-shell");
+    const timelineBlock = declarationBlock(chatStyles, ".agent-chat__timeline");
+    const jumpBlock = declarationBlock(chatStyles, ".agent-chat__jump-to-latest");
+
+    expect(shellBlock).toContain("position: relative");
+    expect(shellBlock).toContain("min-height: 0");
+    expect(timelineBlock).toContain("scrollbar-gutter: stable");
+    expect(timelineBlock).toContain("scrollbar-width: thin");
+    expect(timelineBlock).toContain("overscroll-behavior: contain");
+    expect(jumpBlock).toContain("position: absolute");
+  });
+
   test("keeps the node prompt composer free of the global focus outline", () => {
     const workbenchStyles = source(
       "features/agent-canvas/workbench/agent-canvas-inline-workbench.css",

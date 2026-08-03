@@ -31,6 +31,7 @@ import {
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
+import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import "./agent-canvas-chat.css";
 
 export function AgentCanvasChatPanel({
@@ -84,6 +85,14 @@ export function AgentCanvasChatPanel({
     )) ?? null,
     [chat.state.continuations],
   );
+  const timelineContentVersion = useMemo(() => {
+    const latestItem = chat.state.items[chat.state.items.length - 1];
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}`;
+  }, [chat.state.items]);
+  const timelineScroll = useChatTimelineScroll({
+    contentVersion: timelineContentVersion,
+    resetKey: workflow.workflow_id,
+  });
   useLayoutEffect(() => {
     if (composerTextareaRef.current) {
       resizeChatComposerTextarea(composerTextareaRef.current);
@@ -93,6 +102,7 @@ export function AgentCanvasChatPanel({
   async function send() {
     const text = draft.trim();
     if (!text || chat.state.sending) return;
+    timelineScroll.followLatest();
     const request = {
       text,
       mentionedNodeIds,
@@ -130,95 +140,115 @@ export function AgentCanvasChatPanel({
         </div>
       </header>
 
-      <div className="agent-chat__timeline" aria-live="polite">
-        {chat.state.loading && !chat.state.items.length ? (
-          <div className="agent-chat__empty">Loading conversation...</div>
-        ) : null}
-        {!chat.state.loading && !chat.state.items.length ? (
-          <div className="agent-chat__empty">Describe the ad you want to build.</div>
-        ) : null}
-        {chat.state.continuations
-          .filter((continuation) => ["queued", "leased", "retry_wait"].includes(continuation.delivery_status))
-          .map((continuation) => (
-            <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
-          ))}
-        {chat.state.creationMode || chat.state.recipe ? (
-          <ProductionRecipeProgress
-            creationMode={chat.state.creationMode}
-            recipe={chat.state.recipe}
-          />
-        ) : null}
-        {chat.state.items.map((item) => {
-          if (item.item_type === "message") {
-            return (
-              <div
-                className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
-                key={`message-${item.message_id}`}
-              >
-                <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
-                <p>{item.text}</p>
-              </div>
-            );
-          }
-          if (item.item_type === "expert_activity") {
-            return <SpecialistActivityRow key={`activity-${item.activity_id}`} activity={item} />;
-          }
-          if (item.item_type === "artifact") {
-            return (
-              <button
-                className="agent-chat__artifact"
-                key={`artifact-${item.artifact_id}`}
-                type="button"
-                onClick={() => onFocusNode(item.node_id)}
-              >
-                <DocumentIcon />
-                <span>
-                  <strong>{item.title}</strong>
-                  <small>{item.summary}</small>
-                </span>
-                <b>View Script</b>
-              </button>
-            );
-          }
-          if (item.item_type === "command_plan") {
-            return (
-              <CommandPlanCard
-                key={`command-${item.command_plan.plan_id}`}
-                card={item}
-                pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
-                onAction={chat.actions.actOnCommandPlan}
+      <div className="agent-chat__timeline-shell">
+        <div
+          className="agent-chat__timeline"
+          ref={timelineScroll.timelineRef}
+          aria-live="polite"
+          onScroll={timelineScroll.onTimelineScroll}
+        >
+          <div className="agent-chat__timeline-content" ref={timelineScroll.timelineContentRef}>
+            {chat.state.loading && !chat.state.items.length ? (
+              <div className="agent-chat__empty">Loading conversation...</div>
+            ) : null}
+            {!chat.state.loading && !chat.state.items.length ? (
+              <div className="agent-chat__empty">Describe the ad you want to build.</div>
+            ) : null}
+            {chat.state.continuations
+              .filter((continuation) => ["queued", "leased", "retry_wait"].includes(continuation.delivery_status))
+              .map((continuation) => (
+                <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
+              ))}
+            {chat.state.creationMode || chat.state.recipe ? (
+              <ProductionRecipeProgress
+                creationMode={chat.state.creationMode}
+                recipe={chat.state.recipe}
               />
-            );
-          }
-          if (item.item_type === "action_receipt") {
-            return (
-              <ActionReceiptCard
-                key={`receipt-${item.action_receipt.receipt_id}`}
-                card={item}
-              />
-            );
-          }
-          if (item.item_type === "guided_actions") {
-            return (
-              <GuidedActionsCard
-                key={`guided-${item.source_entry_id}`}
-                card={item}
-                actingActionId={chat.state.actingGuidedActionId}
-                onApply={chat.actions.applyGuidedAction}
-              />
-            );
-          }
-          if (item.item_type === "proposal_pointer") return null;
-          return (
-            <ProposalCard
-              key={`proposal-${item.proposal.proposal_id}`}
-              card={item}
-              pending={chat.state.actingProposalId === item.proposal.proposal_id}
-              onSelect={chat.actions.selectProposal}
-              onRevise={chat.actions.reviseProposal}
-            />
-          );
-        })}
+            ) : null}
+            {chat.state.items.map((item) => {
+              if (item.item_type === "message") {
+                return (
+                  <div
+                    className={`agent-chat__message agent-chat__message--${item.speaker === "user" ? "user" : "agent"}`}
+                    key={`message-${item.message_id}`}
+                  >
+                    <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
+                    <p>{item.text}</p>
+                  </div>
+                );
+              }
+              if (item.item_type === "expert_activity") {
+                return <SpecialistActivityRow key={`activity-${item.activity_id}`} activity={item} />;
+              }
+              if (item.item_type === "artifact") {
+                return (
+                  <button
+                    className="agent-chat__artifact"
+                    key={`artifact-${item.artifact_id}`}
+                    type="button"
+                    onClick={() => onFocusNode(item.node_id)}
+                  >
+                    <DocumentIcon />
+                    <span>
+                      <strong>{item.title}</strong>
+                      <small>{item.summary}</small>
+                    </span>
+                    <b>View Script</b>
+                  </button>
+                );
+              }
+              if (item.item_type === "command_plan") {
+                return (
+                  <CommandPlanCard
+                    key={`command-${item.command_plan.plan_id}`}
+                    card={item}
+                    pending={chat.state.actingCommandPlanId === item.command_plan.plan_id}
+                    onAction={chat.actions.actOnCommandPlan}
+                  />
+                );
+              }
+              if (item.item_type === "action_receipt") {
+                return (
+                  <ActionReceiptCard
+                    key={`receipt-${item.action_receipt.receipt_id}`}
+                    card={item}
+                  />
+                );
+              }
+              if (item.item_type === "guided_actions") {
+                return (
+                  <GuidedActionsCard
+                    key={`guided-${item.source_entry_id}`}
+                    card={item}
+                    actingActionId={chat.state.actingGuidedActionId}
+                    onApply={chat.actions.applyGuidedAction}
+                  />
+                );
+              }
+              if (item.item_type === "proposal_pointer") return null;
+              return (
+                <ProposalCard
+                  key={`proposal-${item.proposal.proposal_id}`}
+                  card={item}
+                  pending={chat.state.actingProposalId === item.proposal.proposal_id}
+                  onSelect={chat.actions.selectProposal}
+                  onRevise={chat.actions.reviseProposal}
+                />
+              );
+            })}
+          </div>
+        </div>
+        {timelineScroll.hasUnseenContent ? (
+          <button
+            className="agent-chat__jump-to-latest"
+            type="button"
+            aria-label="Jump to latest message"
+            title="Jump to latest message"
+            onClick={timelineScroll.followLatest}
+          >
+            <ChevronDownIcon />
+          </button>
+        ) : null}
       </div>
 
       {chat.state.error ? (
