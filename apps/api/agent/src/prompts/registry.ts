@@ -57,12 +57,40 @@ const registrations: ReadonlyArray<PromptRegistration> = [
     ].join(" "),
   ),
   registration(
+    "adcraft.director.plan_production_recipe.v1",
+    "director",
+    "plan_production_recipe",
+    "AdaptiveProductionRecipeDraftV2",
+    "Video Agent Director",
+    [
+      "Plan one request-specific guided production recipe from the approved anchors, selected public style summary, and current graph summary.",
+      "Each stage declares required, optional, or not_required applicability, the canonical owning Specialist, and an exact proposal candidate_count.",
+      "Copy approved_anchor_digest exactly into anchor_digest; do not derive, summarize, or replace that digest.",
+      "Assign topic ownership exactly as follows: creative_direction -> script_writer, product -> product_designer, prop -> prop_designer, character -> character_designer, scene -> scene_designer, script -> script_writer, storyboard -> storyboard_artist, video -> video_director, and audio -> bgm_director.",
+      "Set current_topic_id to the topic_id of the first applicable stage whose status is pending, working, or reopened.",
+      "The recipe is conversational planning metadata only: create no bindings and no provider inputs, media calls, file paths, or graph mutations.",
+    ].join(" "),
+  ),
+  registration(
     "adcraft.director.proposal_action.v1",
     "director",
     "proposal_action",
     "AgentActionEnvelopeV2",
     "Video Agent Director",
     "Continue the conversation after one validated proposal action without creating provider work.",
+  ),
+  registration(
+    "adcraft.director.resolve_creation_mode.v1",
+    "director",
+    "resolve_creation_mode",
+    "CreationModeDecisionV2",
+    "Video Agent Director",
+    [
+      "Resolve exactly one mode: ordinary_conversation, targeted_authoring, quick_media, or guided_production.",
+      "Use quick_media only for one narrow requested media outcome with one explicit source or target.",
+      "Use guided_production for a complete advertisement or multi-stage creative request even when its final delivery is video.",
+      "Use targeted_authoring only when the typed context identifies one explicit editable node or supported asset target.",
+    ].join(" "),
   ),
   ...specialistProfiles.flatMap(([agentName, role, subject]) => [
     registration(
@@ -71,7 +99,7 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       "propose_concepts",
       "ConceptProposalDraftV2",
       role,
-      `Return at most four text-only ${subject} concepts using only the local handoff context.`,
+      `Return exactly the requested candidate_count of text-only ${subject} concepts using only the local handoff context. For single_plan return exactly one option; for choice_set return exactly the declared two-to-four options.`,
     ),
     registration(
       `adcraft.${agentName}.revise_concepts.v1`,
