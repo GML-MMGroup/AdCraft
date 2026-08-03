@@ -36,7 +36,7 @@ describe("chat composer textarea", () => {
     expect(textarea.style.overflowY).toBe("hidden");
 
     scrollHeight = 220;
-    clientHeight = 163;
+    clientHeight = 125;
     resizeChatComposerTextarea(textarea);
     expect(textarea.style.height).toBe("220px");
     expect(textarea.style.overflowY).toBe("auto");

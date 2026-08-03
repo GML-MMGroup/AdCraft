@@ -74,12 +74,12 @@ describe("theme styles", () => {
     expect(focusBlock).toContain("outline: none");
   });
 
-  test("keeps three full chat lines visible before capped automatic growth", () => {
+  test("grows the chat composer from three to exactly six full lines", () => {
     const chatStyles = source("features/agent-canvas/chat/agent-canvas-chat.css");
     const textareaBlock = declarationBlock(chatStyles, ".agent-chat__composer textarea");
 
     expect(textareaBlock).toContain("min-height: 68px");
-    expect(textareaBlock).toContain("max-height: 163px");
+    expect(textareaBlock).toContain("max-height: 125px");
     expect(textareaBlock).toContain("padding: 5px 2px 6px");
     expect(textareaBlock).toContain("line-height: 19px");
     expect(textareaBlock).toContain("overflow-y: hidden");
