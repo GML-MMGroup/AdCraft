@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, Callable, cast
 from uuid import uuid4
 
 from sqlalchemy import delete, func, insert, select, update
@@ -54,18 +54,37 @@ from app.services.agent_canvas_authoring_validation import (
 )
 
 
+ModelSelectionValidator = Callable[[str, str, str | None], object]
+
+
 class AgentCanvasCommandRepository:
     """Own immutable command plans and all-or-nothing semantic application."""
 
-    def __init__(self, database: V2Database, events: EventRepository) -> None:
+    def __init__(
+        self,
+        database: V2Database,
+        events: EventRepository,
+        *,
+        model_selection_validator: ModelSelectionValidator | None = None,
+    ) -> None:
         if events.database is not database:
             raise ValueError("Command and event repositories must share one database.")
         self._database = database
         self._events = events
+        self._model_selection_validator = model_selection_validator
 
     @property
     def database(self) -> V2Database:
         return self._database
+
+    def _validate_model_selection(
+        self,
+        node_type: str,
+        model_selection_mode: str,
+        model_ref: str | None,
+    ) -> None:
+        if self._model_selection_validator is not None:
+            self._model_selection_validator(node_type, model_selection_mode, model_ref)
 
     def create_or_get_plan(
         self,
@@ -631,6 +650,11 @@ class AgentCanvasCommandRepository:
                     for operation in plan.operations:
                         operation_type = operation.operation_type
                         if operation_type == "create_draft_node":
+                            self._validate_model_selection(
+                                operation.node_type,
+                                operation.model_selection_mode,
+                                operation.model_ref,
+                            )
                             node_id = f"node_{uuid4().hex}"
                             connection.execute(
                                 insert(AgentCanvasNodeRow).values(
@@ -644,7 +668,8 @@ class AgentCanvasCommandRepository:
                                     summary_prompt=operation.summary_prompt,
                                     generation_prompt=operation.generation_prompt,
                                     structured_content_json=_dump(operation.structured_content),
-                                    model_id=operation.model_id,
+                                    model_selection_mode=operation.model_selection_mode,
+                                    model_ref=operation.model_ref,
                                     parameters_json=_dump(operation.parameters),
                                     prompt_context_snapshot_id=None,
                                     output_asset_id=None,
@@ -687,7 +712,8 @@ class AgentCanvasCommandRepository:
                                 "structured_content": json.loads(
                                     str(current["structured_content_json"])
                                 ),
-                                "model_id": current["model_id"],
+                                "model_selection_mode": current["model_selection_mode"],
+                                "model_ref": current["model_ref"],
                                 "parameters": json.loads(str(current["parameters_json"])),
                             }
                             next_status = validate_node_patch(
@@ -705,7 +731,8 @@ class AgentCanvasCommandRepository:
                                         "title",
                                         "summary_prompt",
                                         "generation_prompt",
-                                        "model_id",
+                                        "model_selection_mode",
+                                        "model_ref",
                                     }
                                 },
                                 "status": next_status,
@@ -718,6 +745,20 @@ class AgentCanvasCommandRepository:
                                 )
                             if "parameters" in changes:
                                 values["parameters_json"] = _dump(changes["parameters"])
+                            self._validate_model_selection(
+                                str(current["node_type"]),
+                                cast(
+                                    str,
+                                    values.get(
+                                        "model_selection_mode",
+                                        current["model_selection_mode"],
+                                    ),
+                                ),
+                                cast(
+                                    str | None,
+                                    values.get("model_ref", current["model_ref"]),
+                                ),
+                            )
                             connection.execute(
                                 update(AgentCanvasNodeRow)
                                 .where(
@@ -753,6 +794,11 @@ class AgentCanvasCommandRepository:
                                     "variation_source_not_ready",
                                     "Variation source must be Ready media.",
                                 )
+                            self._validate_model_selection(
+                                str(source["node_type"]),
+                                operation.model_selection_mode,
+                                operation.model_ref,
+                            )
                             node_id = f"node_{uuid4().hex}"
                             connection.execute(
                                 insert(AgentCanvasNodeRow).values(
@@ -766,7 +812,8 @@ class AgentCanvasCommandRepository:
                                     summary_prompt=source["summary_prompt"],
                                     generation_prompt=operation.generation_prompt,
                                     structured_content_json=source["structured_content_json"],
-                                    model_id=operation.model_id,
+                                    model_selection_mode=operation.model_selection_mode,
+                                    model_ref=operation.model_ref,
                                     parameters_json=_dump(operation.parameters),
                                     prompt_context_snapshot_id=source["prompt_context_snapshot_id"],
                                     output_asset_id=None,
@@ -827,6 +874,11 @@ class AgentCanvasCommandRepository:
                                 operation.target,
                                 resolved_nodes,
                             )
+                            target_node = _require_node(
+                                connection,
+                                plan.workflow_id,
+                                target_node_id,
+                            )
                             if source_kind == "image_asset":
                                 if operation.binding_kind != "image_reference":
                                     raise _error(
@@ -838,11 +890,6 @@ class AgentCanvasCommandRepository:
                                     connection,
                                     plan.workflow_id,
                                     cast(str, source_node_id),
-                                )
-                                target_node = _require_node(
-                                    connection,
-                                    plan.workflow_id,
-                                    target_node_id,
                                 )
                                 binding_rows = connection.execute(
                                     select(AgentCanvasBindingRow).where(
@@ -870,6 +917,11 @@ class AgentCanvasCommandRepository:
                                         operation.binding_kind
                                     ),
                                 )
+                            self._validate_model_selection(
+                                str(target_node["node_type"]),
+                                str(target_node["model_selection_mode"]),
+                                cast(str | None, target_node["model_ref"]),
+                            )
                             binding_id = f"binding_{uuid4().hex}"
                             connection.execute(
                                 insert(AgentCanvasBindingRow).values(
@@ -1232,12 +1284,18 @@ class AgentCanvasCommandRepository:
                         "source_node_revision": int(source["revision"]),
                         "title": request.title,
                         "generation_prompt": request.generation_prompt,
-                        "model_id": request.model_id,
+                        "model_selection_mode": request.model_selection_mode,
+                        "model_ref": request.model_ref,
                         "parameters_json": _dump(request.parameters),
                         "variation_revision": variation_revision,
                         "created_at": created_at,
                         "updated_at": now,
                     }
+                    self._validate_model_selection(
+                        str(source["node_type"]),
+                        request.model_selection_mode,
+                        request.model_ref,
+                    )
                     if existing is None:
                         connection.execute(
                             insert(AgentCanvasVariationDraftRow).values(
@@ -1294,7 +1352,8 @@ class AgentCanvasCommandRepository:
                 source_node_revision=int(source["revision"]),
                 title=request.title,
                 generation_prompt=request.generation_prompt,
-                model_id=request.model_id,
+                model_selection_mode=request.model_selection_mode,
+                model_ref=request.model_ref,
                 parameters=request.parameters,
                 variation_revision=variation_revision,
                 created_at=created_at,
@@ -1442,7 +1501,8 @@ class AgentCanvasCommandRepository:
                         summary_prompt=cast(str | None, source["summary_prompt"]),
                         generation_prompt=str(variation["generation_prompt"]),
                         structured_content=json.loads(str(source["structured_content_json"])),
-                        model_id=cast(str | None, variation["model_id"]),
+                        model_selection_mode=cast(str, variation["model_selection_mode"]),
+                        model_ref=cast(str | None, variation["model_ref"]),
                         parameters=json.loads(str(variation["parameters_json"])),
                         prompt_context_snapshot_id=None,
                         output_asset_id=None,
@@ -1452,6 +1512,11 @@ class AgentCanvasCommandRepository:
                         variation_draft=None,
                         created_at=now,
                         updated_at=now,
+                    )
+                    self._validate_model_selection(
+                        sibling.node_type,
+                        sibling.model_selection_mode,
+                        sibling.model_ref,
                     )
                     connection.execute(
                         insert(AgentCanvasNodeRow).values(
@@ -1465,7 +1530,8 @@ class AgentCanvasCommandRepository:
                             summary_prompt=sibling.summary_prompt,
                             generation_prompt=sibling.generation_prompt,
                             structured_content_json=_dump(sibling.structured_content),
-                            model_id=sibling.model_id,
+                            model_selection_mode=sibling.model_selection_mode,
+                            model_ref=sibling.model_ref,
                             parameters_json=_dump(sibling.parameters),
                             prompt_context_snapshot_id=None,
                             output_asset_id=None,

@@ -15,13 +15,20 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_editing import default_editing_content
 from app.services.agent_canvas_authoring_validation import validate_node_patch
+from app.services.model_selection import ModelSelectionService
 
 
 class AgentCanvasNodeService:
     """Apply visible node lifecycle invariants before persistence."""
 
-    def __init__(self, repository: AgentCanvasWorkflowRepository) -> None:
+    def __init__(
+        self,
+        repository: AgentCanvasWorkflowRepository,
+        *,
+        model_selection: ModelSelectionService | None = None,
+    ) -> None:
         self._repository = repository
+        self._model_selection = model_selection
 
     def create(
         self,
@@ -50,7 +57,8 @@ class AgentCanvasNodeService:
                 if request.node_type == "editing" and not request.structured_content
                 else request.structured_content
             ),
-            model_id=request.model_id,
+            model_selection_mode=request.model_selection_mode,
+            model_ref=request.model_ref,
             parameters=request.parameters,
             prompt_context_snapshot_id=(
                 source.prompt_context_snapshot_id if source is not None else None
@@ -72,6 +80,11 @@ class AgentCanvasNodeService:
             if source is not None
             else ()
         )
+        if self._model_selection is not None:
+            self._model_selection.validate_authoring(node)
+            node = node.model_copy(
+                update={"model_summary": self._model_selection.summary_for(node.model_ref)}
+            )
         self._repository.add_node_with_bindings(
             node,
             bindings,
@@ -103,6 +116,11 @@ class AgentCanvasNodeService:
                 "updated_at": datetime.now(timezone.utc),
             }
         )
+        if self._model_selection is not None:
+            self._model_selection.validate_authoring(updated)
+            updated = updated.model_copy(
+                update={"model_summary": self._model_selection.summary_for(updated.model_ref)}
+            )
         self._repository.update_node(updated, expected_revision=expected_revision)
         return updated
 

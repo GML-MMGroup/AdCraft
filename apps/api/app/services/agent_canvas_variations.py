@@ -51,7 +51,14 @@ class AgentCanvasVariationService:
     ) -> CanvasVariationDraftResponseV2:
         source = self._workflows.get_node(workflow_id, source_node_id)
         request = request.model_copy(
-            update={"model_id": request.model_id or source.model_id},
+            update=(
+                {
+                    "model_selection_mode": source.model_selection_mode,
+                    "model_ref": source.model_ref,
+                }
+                if request.model_selection_mode == "default" and request.model_ref is None
+                else {}
+            ),
             deep=True,
         )
         if self._variation_validator is not None:

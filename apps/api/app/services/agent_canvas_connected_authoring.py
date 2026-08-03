@@ -16,6 +16,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+from app.services.model_selection import ModelSelectionService
 
 
 class AgentCanvasConnectedAuthoringService:
@@ -26,10 +27,12 @@ class AgentCanvasConnectedAuthoringService:
         workflows: AgentCanvasWorkflowRepository,
         connection_policy: AgentCanvasConnectionPolicyService,
         *,
+        model_selection: ModelSelectionService | None = None,
         binding_capability_validator: object | None = None,
     ) -> None:
         self._workflows = workflows
         self._connection_policy = connection_policy
+        self._model_selection = model_selection
         self._binding_capability_validator = binding_capability_validator
 
     def create_connected_node(
@@ -69,7 +72,8 @@ class AgentCanvasConnectedAuthoringService:
             summary_prompt=request.node.summary_prompt,
             generation_prompt=request.node.generation_prompt,
             structured_content=request.node.structured_content,
-            model_id=request.node.model_id,
+            model_selection_mode=request.node.model_selection_mode,
+            model_ref=request.node.model_ref,
             parameters=request.node.parameters,
             prompt_context_snapshot_id=None,
             output_asset_id=None,
@@ -80,6 +84,8 @@ class AgentCanvasConnectedAuthoringService:
             updated_at=now,
         )
         source, target = (node, anchor) if request.direction == "upstream" else (anchor, node)
+        if self._model_selection is not None:
+            self._model_selection.validate_authoring(node)
         decision = self._connection_policy.require(
             source_node_type=source.node_type,
             target_node_type=target.node_type,
@@ -88,7 +94,7 @@ class AgentCanvasConnectedAuthoringService:
         incoming = tuple(
             binding for binding in workflow.bindings if binding.target_node_id == target.node_id
         )
-        if target.model_id is not None and self._binding_capability_validator is not None:
+        if self._binding_capability_validator is not None:
             input_types = {_input_type(binding.binding_kind) for binding in incoming}
             input_types.add(decision.input_type or "text")
             reference_count = sum(
