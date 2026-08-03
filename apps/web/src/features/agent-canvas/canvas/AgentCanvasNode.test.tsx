@@ -138,6 +138,21 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: /Run text node/i })).toBeNull();
   });
 
+  it("keeps a blocked Draft visible as waiting for upstream output", () => {
+    render(
+      <AgentCanvasNodeCard
+        node={makeNode("image")}
+        runtime={{
+          ...makeRuntime("draft"),
+          waiting_reason: "blocked_by_upstream",
+          blocked_by_node_ids: ["upstream-node"],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Waiting for upstream")).toBeTruthy();
+  });
+
   it.each<CanvasNodeTypeV2>(["script", "image", "video", "audio", "editing"])(
     "keeps %s actions in the inline composer instead of the card corner",
     (nodeType) => {

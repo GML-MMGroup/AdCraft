@@ -47,7 +47,10 @@ function withNodePatch(
           ...(patch.structured_content !== undefined && patch.structured_content !== null
             ? { structured_content: patch.structured_content }
             : {}),
-          ...(patch.model_id !== undefined ? { model_id: patch.model_id } : {}),
+          ...(patch.model_selection_mode !== undefined
+            ? { model_selection_mode: patch.model_selection_mode }
+            : {}),
+          ...(patch.model_ref !== undefined ? { model_ref: patch.model_ref } : {}),
           ...(patch.parameters !== undefined && patch.parameters !== null
             ? { parameters: patch.parameters }
             : {}),

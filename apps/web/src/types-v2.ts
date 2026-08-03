@@ -1537,6 +1537,16 @@ export interface CanvasModelSummaryV2 {
   catalog_revision: number;
 }
 
+/** Secret-safe model identity frozen for one runtime attempt. */
+export interface CanvasRuntimeModelResolutionV2 {
+  node_id: string;
+  model_ref: string;
+  provider_id: string;
+  provider_model_id: string;
+  credential_revision: number;
+  catalog_revision: number;
+}
+
 export interface CanvasVariationDraftV2 {
   source_node_id: string;
   source_node_revision: number;
@@ -1968,7 +1978,8 @@ export interface AgentCreateNodeOperationV2 extends AgentCommandOperationBaseV2 
   summary_prompt: string | null;
   generation_prompt: string | null;
   structured_content: Record<string, unknown>;
-  model_id: string | null;
+  model_selection_mode: CanvasModelSelectionModeV2;
+  model_ref: string | null;
   parameters: Record<string, unknown>;
   source_asset_id: string | null;
   video_skill_run_id: string | null;
@@ -1982,7 +1993,8 @@ export interface AgentPatchEditableNodeOperationV2 extends AgentCommandOperation
   summary_prompt: string | null;
   generation_prompt: string | null;
   structured_content: Record<string, unknown> | null;
-  model_id: string | null;
+  model_selection_mode: CanvasModelSelectionModeV2 | null;
+  model_ref: string | null;
   parameters: Record<string, unknown> | null;
 }
 
@@ -2018,7 +2030,8 @@ export interface AgentForkReadyMediaOperationV2 extends AgentCommandOperationBas
   source_node: AgentNodeRefV2;
   title: string;
   generation_prompt: string;
-  model_id: string | null;
+  model_selection_mode: CanvasModelSelectionModeV2;
+  model_ref: string | null;
   parameters: Record<string, unknown>;
   placement_hint: AgentPlacementHintV2;
 }
@@ -2301,7 +2314,8 @@ export interface CanvasNodeCreateRequestV2 {
   summary_prompt?: string | null;
   generation_prompt?: string | null;
   structured_content?: Record<string, unknown>;
-  model_id?: string | null;
+  model_selection_mode?: CanvasModelSelectionModeV2;
+  model_ref?: string | null;
   parameters?: Record<string, unknown>;
   position: CanvasPositionV2;
   clone_inputs_from_node_id?: string | null;
@@ -2313,7 +2327,8 @@ export interface CanvasNodePatchRequestV2 {
   summary_prompt?: string | null;
   generation_prompt?: string | null;
   structured_content?: Record<string, unknown> | null;
-  model_id?: string | null;
+  model_selection_mode?: CanvasModelSelectionModeV2;
+  model_ref?: string | null;
   parameters?: Record<string, unknown> | null;
   position?: CanvasPositionV2 | null;
 }
@@ -2321,7 +2336,8 @@ export interface CanvasNodePatchRequestV2 {
 export interface CanvasVariationDraftUpsertV2 {
   title: string;
   generation_prompt: string;
-  model_id?: string | null;
+  model_selection_mode?: CanvasModelSelectionModeV2;
+  model_ref?: string | null;
   parameters?: Record<string, unknown>;
 }
 

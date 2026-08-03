@@ -161,6 +161,62 @@ describe("useAgentCanvasRuntime", () => {
     ));
   });
 
+  it("keeps the latest secret-safe resolved model metadata per node", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    eventSource.emit("node_generation_started", {
+      sequence_no: 43,
+      workflow_id: "workflow-1",
+      event_type: "node_generation_started",
+      project_id: "project-1",
+      execution_id: "execution-1",
+      node_id: "image-1",
+      asset_id: null,
+      binding_id: null,
+      conversation_id: null,
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: "image-1:started:1",
+      attempt: 1,
+      created_at: "2026-08-03T00:00:00Z",
+      payload: {
+        model_resolution: {
+          model_ref: "siliconflow:zai-org/GLM-5.2",
+          provider_id: "siliconflow",
+          provider_model_id: "zai-org/GLM-5.2",
+          credential_revision: 3,
+          catalog_revision: 12,
+          api_key: "not-retained",
+        },
+      },
+    });
+
+    await waitFor(() => expect(result.current.state.modelResolutionsByNodeId["image-1"]).toEqual({
+      node_id: "image-1",
+      model_ref: "siliconflow:zai-org/GLM-5.2",
+      provider_id: "siliconflow",
+      provider_model_id: "zai-org/GLM-5.2",
+      credential_revision: 3,
+      catalog_revision: 12,
+    }));
+  });
+
   it("starts replay from the runtime high-water mark instead of replaying historical receipts", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

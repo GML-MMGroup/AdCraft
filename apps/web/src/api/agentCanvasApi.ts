@@ -44,7 +44,6 @@ export const agentCanvasApi = {
   agentCanvasRuntime: v2Api.agentCanvasRuntime,
   agentCanvasEvents: v2Api.agentCanvasEvents,
   openAgentCanvasEventStream: v2Api.openAgentCanvasEventStream,
-  agentCanvasProviderCapabilities: v2Api.agentCanvasProviderCapabilities,
   exportAgentCanvasEditingNode: v2Api.exportAgentCanvasEditingNode,
   cancelAgentCanvasEditingExport: v2Api.cancelAgentCanvasEditingExport,
 } as const;

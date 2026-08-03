@@ -13,6 +13,16 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   provider_inputs_unsupported: "The selected provider cannot use these inputs.",
   provider_reference_delivery_unavailable: "The provider cannot currently receive this reference.",
   upstream_inputs_not_ready: "Required upstream nodes must be Ready before this node can run.",
+  model_not_configured: "No default model is configured for this node type.",
+  model_default_not_configured: "No default model is configured for this node type.",
+  model_not_found: "The selected model is no longer in the local catalog.",
+  model_unavailable: "The selected model is currently unavailable.",
+  model_capability_mismatch: "The selected model cannot run this node with its current inputs.",
+  provider_credentials_missing: "This model provider has no configured credential.",
+  provider_credentials_invalid: "This model provider credential is not valid.",
+  agent_model_incompatible: "The Agent default cannot perform this action.",
+  model_catalog_sync_failed: "The provider model catalog could not be synchronized.",
+  model_selection_invalid: "Choose a valid model selection before running this node.",
 };
 
 export function canvasAuthoringErrorMessage(error: unknown): string {

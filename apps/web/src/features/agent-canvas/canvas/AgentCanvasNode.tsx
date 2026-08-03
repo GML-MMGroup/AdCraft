@@ -201,6 +201,8 @@ export function AgentCanvasNodeCard({
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
+  const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
+    || Boolean(runtime?.blocked_by_node_ids.length);
 
   return (
     <article
@@ -239,9 +241,12 @@ export function AgentCanvasNodeCard({
         ) : null}
       </div>
 
-      <span className={`agent-canvas-node__status agent-canvas-node__status--${status}`}>
+      <span
+        className={`agent-canvas-node__status agent-canvas-node__status--${status}${blockedByUpstream ? " agent-canvas-node__status--blocked" : ""}`}
+        title={blockedByUpstream ? "Waiting for required upstream nodes." : undefined}
+      >
         <i aria-hidden="true" />
-        {NODE_STATUS_LABELS[status]}
+        {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
       </span>
 
     </article>

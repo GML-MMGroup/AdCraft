@@ -1,27 +1,31 @@
 import { SendIcon } from "../../../icons.tsx";
-import type { CanvasNodeV2, ProviderModelCapabilityV2 } from "../../../types-v2.ts";
+import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
+import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
+import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
+import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import { NodeAssetActions } from "./NodeAssetActions.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
 export function MediaPromptWorkbench({
   node,
   draft,
-  capabilities,
-  capabilitiesLoading,
-  capabilitiesError,
+  models,
+  modelsLoading,
+  modelsError,
+  modelResolution,
   onOpenAssets,
   onUploadReferences,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
-  capabilities: ProviderModelCapabilityV2[];
-  capabilitiesLoading: boolean;
-  capabilitiesError: string | null;
+  models: ProviderModelSummaryV1[];
+  modelsLoading: boolean;
+  modelsError: string | null;
+  modelResolution: CanvasRuntimeModelResolutionV2 | null;
   onOpenAssets: () => void;
   onUploadReferences: () => void;
 }) {
   const canConfigureProvider = node.status === "draft" || draft.isReadyMedia;
-  const currentModelIsCompatible = !draft.modelId || capabilities.some((item) => item.model_id === draft.modelId);
 
   return (
     <div className="agent-node-workbench__body">
@@ -35,8 +39,7 @@ export function MediaPromptWorkbench({
         />
       </label>
 
-      {capabilitiesError ? <p className="agent-node-workbench__field-error">{capabilitiesError}</p> : null}
-      {draft.error ? <p className="agent-node-workbench__error" role="alert">{draft.error}</p> : null}
+      <NodeWorkbenchError draft={draft} />
 
       <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer">
         <NodeAssetActions
@@ -48,23 +51,17 @@ export function MediaPromptWorkbench({
         <div className="agent-node-workbench__composer-actions">
           {canConfigureProvider ? (
             <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label="Generation options">
-              <label>
-                <span>Model</span>
-            <select
-              aria-label="Provider model"
-              value={draft.modelId}
-              disabled={draft.pending || capabilitiesLoading}
-              onChange={(event) => draft.setModelId(event.currentTarget.value)}
-            >
-              <option value="">{capabilitiesLoading ? "Loading models..." : "Automatic"}</option>
-              {!currentModelIsCompatible && draft.modelId ? (
-                <option value={draft.modelId} disabled>{draft.modelId} (unavailable)</option>
-              ) : null}
-              {capabilities.filter((item) => item.available).map((item) => (
-                <option key={item.model_id} value={item.model_id}>{item.model_id}</option>
-              ))}
-            </select>
-              </label>
+              <CanvasModelPicker
+                models={models}
+                loading={modelsLoading}
+                error={modelsError}
+                selectionMode={draft.modelSelectionMode}
+                modelRef={draft.modelRef}
+                modelSummary={node.model_summary}
+                modelResolution={modelResolution}
+                disabled={draft.pending}
+                onChange={draft.setModelSelection}
+              />
               {node.node_type === "video" ? (
                 <label>
                   <span>Duration</span>

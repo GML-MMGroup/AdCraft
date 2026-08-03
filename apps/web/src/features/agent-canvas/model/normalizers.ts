@@ -1463,7 +1463,8 @@ function normalizeAgentCommandOperationV2(
       "summary_prompt",
       "generation_prompt",
       "structured_content",
-      "model_id",
+      "model_selection_mode",
+      "model_ref",
       "parameters",
       "source_asset_id",
       "video_skill_run_id",
@@ -1478,7 +1479,10 @@ function normalizeAgentCommandOperationV2(
       summary_prompt: nullableStringWithDefault(record.summary_prompt, `${path}.summary_prompt`),
       generation_prompt: nullableStringWithDefault(record.generation_prompt, `${path}.generation_prompt`),
       structured_content: optionalUnknownRecord(record.structured_content, `${path}.structured_content`, {}),
-      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      model_selection_mode: record.model_selection_mode === undefined
+        ? "default"
+        : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
+      model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
       parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
       source_asset_id: nullableStringWithDefault(record.source_asset_id, `${path}.source_asset_id`),
       video_skill_run_id: nullableStringWithDefault(record.video_skill_run_id, `${path}.video_skill_run_id`),
@@ -1494,7 +1498,8 @@ function normalizeAgentCommandOperationV2(
       "summary_prompt",
       "generation_prompt",
       "structured_content",
-      "model_id",
+      "model_selection_mode",
+      "model_ref",
       "parameters",
     ], path);
     return {
@@ -1507,7 +1512,10 @@ function normalizeAgentCommandOperationV2(
       structured_content: record.structured_content === undefined
         ? null
         : expectNullableRecord(record.structured_content, `${path}.structured_content`),
-      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      model_selection_mode: record.model_selection_mode === undefined || record.model_selection_mode === null
+        ? null
+        : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
+      model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
       parameters: record.parameters === undefined
         ? null
         : expectNullableRecord(record.parameters, `${path}.parameters`),
@@ -1586,7 +1594,8 @@ function normalizeAgentCommandOperationV2(
       "source_node",
       "title",
       "generation_prompt",
-      "model_id",
+      "model_selection_mode",
+      "model_ref",
       "parameters",
       "placement_hint",
     ], path);
@@ -1596,7 +1605,10 @@ function normalizeAgentCommandOperationV2(
       source_node: normalizeAgentNodeRefV2(record.source_node, `${path}.source_node`),
       title: expectNonEmptyString(record.title, `${path}.title`),
       generation_prompt: expectNonEmptyString(record.generation_prompt, `${path}.generation_prompt`),
-      model_id: nullableStringWithDefault(record.model_id, `${path}.model_id`),
+      model_selection_mode: record.model_selection_mode === undefined
+        ? "default"
+        : expectLiteral(record.model_selection_mode, CANVAS_MODEL_SELECTION_MODES, `${path}.model_selection_mode`),
+      model_ref: nullableStringWithDefault(record.model_ref, `${path}.model_ref`),
       parameters: optionalUnknownRecord(record.parameters, `${path}.parameters`, {}),
       placement_hint: normalizeAgentPlacementHintV2(record.placement_hint, `${path}.placement_hint`),
     };

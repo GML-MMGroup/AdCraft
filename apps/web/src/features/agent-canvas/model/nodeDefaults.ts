@@ -50,6 +50,8 @@ export function createDefaultCanvasNodeRequest(
     generation_prompt: ["script", "image", "video", "audio"].includes(nodeType)
       ? ""
       : null,
+    model_selection_mode: "default",
+    model_ref: null,
     ...(nodeType === "text"
       ? { structured_content: { content: "" } }
       : nodeType === "audio"

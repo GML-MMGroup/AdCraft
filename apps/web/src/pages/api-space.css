@@ -15,6 +15,51 @@
   border-color: rgba(86, 112, 166, 0.28);
 }
 
+.api-space-loading,
+.api-space-model-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.api-space-clear-confirmation {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.api-space-default-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px 20px;
+  border-top: 1px solid rgba(74, 82, 111, 0.15);
+}
+
+.api-space-default-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.api-space-default-field select {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(74, 82, 111, 0.2);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  font: inherit;
+}
+
 .api-space-provider-surface--tianpuyue .api-space-save-bar {
   background: rgba(232, 240, 248, 0.42);
 }
@@ -229,6 +274,12 @@
     align-items: stretch;
   }
 
+  .api-space-default-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
   .api-space-save-actions {
     width: 100%;
   }
@@ -293,6 +344,16 @@ html[data-theme="dark"] .api-space-credential-control input:focus-visible {
 html[data-theme="dark"] .api-space-credential-control input:disabled,
 html[data-theme="dark"] .api-space-save-bar {
   background: var(--nav-bg);
+}
+
+html[data-theme="dark"] .api-space-default-grid {
+  border-color: var(--border-default);
+}
+
+html[data-theme="dark"] .api-space-default-field select {
+  border-color: var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
 }
 
 html[data-theme="dark"] .api-space-inline-notice.is-error {

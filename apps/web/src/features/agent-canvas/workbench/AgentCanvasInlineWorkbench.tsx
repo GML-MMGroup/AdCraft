@@ -15,9 +15,10 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
     workflow,
     node,
     deleteBinding,
-    providerCapabilities = [],
-    providerCapabilitiesLoading = false,
-    providerCapabilitiesError = null,
+    providerModels = [],
+    providerModelsLoading = false,
+    providerModelsError = null,
+    modelResolution = null,
     onClose,
     onOpenAssets,
     onUploadReferences,
@@ -48,15 +49,34 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       nodeType={node.node_type}
     >
       {references}
-      {node.node_type === "text" ? <TextWorkbench node={node} draft={draft} /> : null}
-      {node.node_type === "script" ? <ScriptWorkbench node={node} draft={draft} /> : null}
+      {node.node_type === "text" ? (
+        <TextWorkbench
+          node={node}
+          draft={draft}
+          models={providerModels}
+          modelsLoading={providerModelsLoading}
+          modelsError={providerModelsError}
+          modelResolution={modelResolution}
+        />
+      ) : null}
+      {node.node_type === "script" ? (
+        <ScriptWorkbench
+          node={node}
+          draft={draft}
+          models={providerModels}
+          modelsLoading={providerModelsLoading}
+          modelsError={providerModelsError}
+          modelResolution={modelResolution}
+        />
+      ) : null}
       {["image", "video", "audio"].includes(node.node_type) ? (
         <MediaPromptWorkbench
           node={node}
           draft={draft}
-          capabilities={providerCapabilities}
-          capabilitiesLoading={providerCapabilitiesLoading}
-          capabilitiesError={providerCapabilitiesError}
+          models={providerModels}
+          modelsLoading={providerModelsLoading}
+          modelsError={providerModelsError}
+          modelResolution={modelResolution}
           onOpenAssets={onOpenAssets}
           onUploadReferences={onUploadReferences}
         />

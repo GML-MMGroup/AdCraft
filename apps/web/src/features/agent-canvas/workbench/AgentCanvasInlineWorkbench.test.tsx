@@ -140,21 +140,21 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
   });
 
-  it("saves structured text directly from the node workbench without offering a run action", async () => {
+  it("saves structured text before running a Text node", async () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);
 
     fireEvent.change(screen.getByLabelText("Text content"), {
       target: { value: "A revised campaign brief" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save text node" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run text node" }));
 
     await waitFor(() => {
       expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
         structured_content: { content: "A revised campaign brief" },
       }));
     });
-    expect(screen.queryByRole("button", { name: /run text node/i })).toBeNull();
+    expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
   it("saves a ready media prompt before creating a sibling variation", async () => {
@@ -172,6 +172,34 @@ describe("AgentCanvasInlineWorkbench", () => {
       }));
     });
     expect(props.onMaterializeVariation).toHaveBeenCalledWith(node, "generate");
+  });
+
+  it("pins a catalog model through canonical selection fields without sending model_id", async () => {
+    const node = makeNode("image");
+    const props = renderWorkbench(node, {
+      providerModels: [{
+        model_ref: "siliconflow:stable-image",
+        provider_id: "siliconflow",
+        provider_model_id: "stable-image",
+        display_name: "Stable Image",
+        capability: "image",
+        capability_metadata: {},
+        availability: "available",
+        unavailable_reason: null,
+        catalog_revision: 4,
+      }],
+    });
+
+    fireEvent.click(screen.getByLabelText("Choose model"));
+    fireEvent.click(screen.getByRole("option", { name: /Stable Image/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Run image node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
+      model_selection_mode: "explicit",
+      model_ref: "siliconflow:stable-image",
+    })));
+    const request = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(request).not.toHaveProperty("model_id");
   });
 
   it("opens the shared assets browser from the media workbench", () => {

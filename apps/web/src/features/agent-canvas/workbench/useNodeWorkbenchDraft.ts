@@ -10,6 +10,7 @@ import type {
   CanvasNodeV2,
 } from "../../../types-v2.ts";
 import { normalizeProviderParameters } from "../model/providerModels.ts";
+import { canvasAuthoringErrorMessage } from "../canvas/canvasErrorMessage.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 
 function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCategoryV2 {
@@ -19,11 +20,24 @@ function defaultLibraryCategory(node: CanvasNodeV2): AgentCanvasImageLibraryCate
   return "character";
 }
 
-function errorMessage(error: unknown): string {
-  if (isV2ApiError(error) && error.code === "provider_input_unsupported") {
-    return `Provider input unsupported: ${error.message}`;
+type WorkbenchErrorAction = "open_api_space" | "choose_model" | "sync_models" | null;
+
+function errorState(error: unknown): { message: string; action: WorkbenchErrorAction } {
+  if (!isV2ApiError(error)) {
+    return {
+      message: error instanceof Error ? error.message : "The node could not be updated.",
+      action: null,
+    };
   }
-  return error instanceof Error ? error.message : "The node could not be updated.";
+  const code = error.code ?? "";
+  const action: WorkbenchErrorAction = ["provider_credentials_missing", "provider_credentials_invalid", "model_not_configured", "model_default_not_configured", "agent_model_incompatible"].includes(code)
+    ? "open_api_space"
+    : ["model_not_found", "model_unavailable", "model_capability_mismatch", "binding_model_incompatible", "model_selection_invalid"].includes(code)
+      ? "choose_model"
+      : code === "model_catalog_sync_failed"
+        ? "sync_models"
+        : null;
+  return { message: canvasAuthoringErrorMessage(error), action };
 }
 
 function structuredText(node: CanvasNodeV2): string {
@@ -61,7 +75,12 @@ export function useNodeWorkbenchDraft({
     node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "",
   );
   const [textContent, setTextContent] = useState(structuredText(node));
-  const [modelId, setModelId] = useState(node.variation_draft?.model_id ?? node.model_id ?? "");
+  const [modelSelectionMode, setModelSelectionMode] = useState(
+    node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default",
+  );
+  const [modelRef, setModelRef] = useState(
+    node.variation_draft?.model_ref ?? node.model_ref,
+  );
   const initialParameterState = normalizeProviderParameters(
     node.node_type,
     node.variation_draft?.parameters ?? node.parameters,
@@ -79,19 +98,21 @@ export function useNodeWorkbenchDraft({
   const [librarySaved, setLibrarySaved] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<WorkbenchErrorAction>(null);
   const [dirty, setDirty] = useState(false);
   const draftNodeIdRef = useRef(node.node_id);
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const editsTextContent = node.node_type === "text" || node.node_type === "script";
   const editsGenerationPrompt = ["image", "video", "audio"].includes(node.node_type);
-  const usesProvider = ["script", "image", "video", "audio"].includes(node.node_type);
+  const usesProvider = ["text", "script", "image", "video", "audio"].includes(node.node_type);
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
     setPrompt(node.variation_draft?.generation_prompt ?? node.generation_prompt ?? "");
     setTextContent(structuredText(node));
-    setModelId(node.variation_draft?.model_id ?? node.model_id ?? "");
+    setModelSelectionMode(node.variation_draft?.model_selection_mode ?? node.model_selection_mode ?? "default");
+    setModelRef(node.variation_draft?.model_ref ?? node.model_ref);
     const parameterState = normalizeProviderParameters(
       node.node_type,
       node.variation_draft?.parameters ?? node.parameters,
@@ -102,6 +123,7 @@ export function useNodeWorkbenchDraft({
     setLibraryName(node.title);
     setLibrarySaved(false);
     setError(null);
+    setErrorAction(null);
   }, [node]);
 
   useEffect(() => {
@@ -140,7 +162,9 @@ export function useNodeWorkbenchDraft({
       await action();
       return true;
     } catch (actionError) {
-      setError(errorMessage(actionError));
+      const nextError = errorState(actionError);
+      setError(nextError.message);
+      setErrorAction(nextError.action);
       return false;
     } finally {
       setPending(false);
@@ -156,7 +180,8 @@ export function useNodeWorkbenchDraft({
       const saved = await perform(() => onSaveVariation(node.node_id, {
         title: title.trim() || `${node.title} variation`,
         generation_prompt: prompt.trim(),
-        model_id: modelId || null,
+        model_selection_mode: modelSelectionMode,
+        model_ref: modelSelectionMode === "explicit" ? modelRef : null,
         parameters,
       }));
       if (saved) {
@@ -170,7 +195,11 @@ export function useNodeWorkbenchDraft({
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
       ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
-      ...(usesProvider ? { model_id: modelId || null, parameters } : {}),
+      ...(usesProvider ? {
+        model_selection_mode: modelSelectionMode,
+        model_ref: modelSelectionMode === "explicit" ? modelRef : null,
+        parameters,
+      } : {}),
       ...(editsTextContent ? {
         structured_content: {
           ...node.structured_content,
@@ -223,8 +252,13 @@ export function useNodeWorkbenchDraft({
     setPrompt: (value: string) => { setPrompt(value); setDirty(true); },
     textContent,
     setTextContent: (value: string) => { setTextContent(value); setDirty(true); },
-    modelId,
-    setModelId: (value: string) => { setModelId(value); setDirty(true); },
+    modelSelectionMode,
+    modelRef,
+    setModelSelection: (mode: "default" | "explicit", ref: string | null) => {
+      setModelSelectionMode(mode);
+      setModelRef(mode === "explicit" ? ref : null);
+      setDirty(true);
+    },
     parameters,
     setParameters: (value: Record<string, unknown>) => {
       const parameterState = normalizeProviderParameters(node.node_type, value);
@@ -242,6 +276,7 @@ export function useNodeWorkbenchDraft({
     librarySaved,
     pending,
     error,
+    errorAction,
     dirty,
     isReadyMedia,
     editsTextContent,

@@ -123,12 +123,100 @@
   gap: 9px;
 }
 
+.agent-node-workbench__model-picker {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.agent-node-workbench__model-label {
+  color: rgb(218 221 234 / 60%);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.agent-node-workbench__model-picker details {
+  position: relative;
+}
+
+.agent-node-workbench__model-picker summary {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 9px;
+  list-style: none;
+  color: #f1f3fa;
+  background: rgb(7 8 12 / 38%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.agent-node-workbench__model-picker summary::-webkit-details-marker { display: none; }
+.agent-node-workbench__model-picker summary[aria-disabled="true"] { cursor: default; opacity: 0.55; }
+.agent-node-workbench__model-picker summary > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-node-workbench__model-picker summary small { color: #b8e9d9; font-size: 9px; text-transform: capitalize; }
+.agent-node-workbench__model-picker summary small.is-unavailable,
+.agent-node-workbench__model-picker summary small.is-unauthorized,
+.agent-node-workbench__model-picker summary small.is-deprecated,
+.agent-node-workbench__model-picker summary small.is-unsupported { color: #ff9da5; }
+
+.agent-node-workbench__model-menu {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 5px);
+  left: 0;
+  display: grid;
+  width: min(360px, calc(100vw - 72px));
+  max-height: 236px;
+  overflow: auto;
+  padding: 5px;
+  background: rgb(25 26 33 / 99%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 34%);
+}
+
+.agent-node-workbench__model-menu button {
+  display: grid;
+  width: 100%;
+  gap: 2px;
+  padding: 8px;
+  color: #edf0f8;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.agent-node-workbench__model-menu button:hover:not(:disabled),
+.agent-node-workbench__model-menu button[aria-selected="true"] { background: rgb(157 130 255 / 16%); }
+.agent-node-workbench__model-menu button:disabled { cursor: not-allowed; opacity: 0.5; }
+.agent-node-workbench__model-menu strong { font-size: 11px; font-weight: 650; }
+.agent-node-workbench__model-menu small,
+.agent-node-workbench__model-menu em,
+.agent-node-workbench__model-menu p { color: rgb(218 221 234 / 58%); font-size: 10px; font-style: normal; }
+.agent-node-workbench__model-menu p { margin: 7px; }
+.agent-node-workbench__model-resolution { margin: 0; color: rgb(178 222 210 / 76%); font-size: 10px; }
+
 .agent-node-workbench__field-error,
 .agent-node-workbench__error {
   margin: 0;
   color: #ff9da5;
   font-size: 11px;
   line-height: 1.4;
+}
+
+.agent-node-workbench__error a {
+  margin-left: 7px;
+  color: #f5e6ff;
+  font-weight: 650;
+  text-decoration: underline;
 }
 
 .agent-node-workbench__library {

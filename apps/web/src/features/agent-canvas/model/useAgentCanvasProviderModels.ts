@@ -1,32 +1,35 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
-import type {
-  AgentCanvasWorkflowV2,
-  CanvasNodeV2,
-  ProviderModelCapabilityV2,
-} from "../../../types-v2.ts";
-import { providerInputTypes, usesMediaProvider } from "./providerModels.ts";
+import { api } from "../../../api/client.ts";
+import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
+import type { AgentCanvasWorkflowV2, CanvasNodeV2 } from "../../../types-v2.ts";
 
+const MODEL_PICKER_NODE_TYPES = new Set<CanvasNodeV2["node_type"]>([
+  "text",
+  "script",
+  "image",
+  "video",
+  "audio",
+]);
+
+/**
+ * The backend filters its catalog by the complete node/input contract. The
+ * canvas intentionally never reconstructs provider compatibility locally.
+ */
 export function useAgentCanvasProviderModels(
-  workflow: AgentCanvasWorkflowV2 | null,
+  _workflow: AgentCanvasWorkflowV2 | null,
   node: CanvasNodeV2 | null,
 ) {
-  const [capabilities, setCapabilities] = useState<ProviderModelCapabilityV2[]>([]);
+  const [models, setModels] = useState<ProviderModelSummaryV1[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputTypes = useMemo(
-    () => workflow && node ? providerInputTypes(workflow, node.node_id) : [],
-    [node, workflow],
-  );
-  const inputSignature = inputTypes.join(",");
-  const nodeType = usesMediaProvider(node) && (node.status === "draft" || node.status === "failed")
+  const nodeType = node && MODEL_PICKER_NODE_TYPES.has(node.node_type)
     ? node.node_type
     : null;
 
   useEffect(() => {
     if (!nodeType) {
-      setCapabilities([]);
+      setModels([]);
       setLoading(false);
       setError(null);
       return undefined;
@@ -34,28 +37,22 @@ export function useAgentCanvasProviderModels(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void agentCanvasApi.agentCanvasProviderCapabilities({
-      output_type: nodeType,
-      input_types: inputSignature ? inputSignature.split(",") : ["text"],
-    }).then((items) => {
-      if (!cancelled) setCapabilities(items);
-    }).catch((loadError) => {
-      if (cancelled) return;
-      setCapabilities([]);
-      setError(
-        isV2ApiError(loadError) && loadError.code === "provider_input_unsupported"
-          ? `Provider input unsupported: ${loadError.message}`
-          : loadError instanceof Error
-          ? loadError.message
-          : "Compatible provider models could not be loaded.",
-      );
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
+    void api.listProviderModels({ node_type: nodeType })
+      .then((response) => {
+        if (!cancelled) setModels(response.items);
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setModels([]);
+        setError(loadError instanceof Error ? loadError.message : "Compatible models could not be loaded.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [inputSignature, nodeType]);
+  }, [nodeType]);
 
-  return { capabilities, loading, error };
+  return { models, loading, error };
 }

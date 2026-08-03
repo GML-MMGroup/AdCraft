@@ -247,10 +247,11 @@ export function AgentCanvasPage() {
         patchBinding={patchBinding}
         deleteBinding={deleteBinding}
         connectionPolicy={connectionPolicy}
-        providerCapabilities={providerModels.capabilities}
-        providerCapabilitiesLoading={providerModels.loading}
-        providerCapabilitiesError={providerModels.error}
+        providerModels={providerModels.models}
+        providerModelsLoading={providerModels.loading}
+        providerModelsError={providerModels.error}
         inputManifest={live.state.inputManifestsByNodeId[node.node_id]}
+        modelResolution={live.state.modelResolutionsByNodeId[node.node_id]}
         inputReadinessIssue={live.state.inputReadinessIssue}
         onRun={runNode}
         onSaveVariation={saveVariationDraft}
@@ -264,7 +265,7 @@ export function AgentCanvasPage() {
         onClose={() => setSelectedNodeId(null)}
       />
     );
-  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.capabilities, providerModels.error, providerModels.loading, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
+  }, [connectionPolicy, deleteBinding, deleteNode, discardVariationDraft, live.state.inputManifestsByNodeId, live.state.inputReadinessIssue, live.state.modelResolutionsByNodeId, materializeVariationDraft, openEditing, patchBinding, patchNode, providerModels.error, providerModels.loading, providerModels.models, runNode, saveImageToLibrary, saveVariationDraft, session.state.selectedNodeId, setSelectedNodeId, workflow]);
 
   const nodeCallbacks = useMemo<AgentCanvasNodeCallbacks>(() => ({
     onRun: (nodeId) => runNodeById(nodeId, false),

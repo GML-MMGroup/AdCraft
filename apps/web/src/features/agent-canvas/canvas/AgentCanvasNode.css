@@ -271,6 +271,11 @@
   background: #ff838a;
 }
 
+.agent-canvas-node__status--blocked i {
+  background: #e6c987;
+  box-shadow: 0 0 0 4px rgba(230, 201, 135, 0.15);
+}
+
 .agent-canvas-node__working {
   position: absolute;
   z-index: 4;

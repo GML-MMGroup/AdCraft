@@ -29,4 +29,26 @@ describe("canvasAuthoringErrorMessage", () => {
   it("preserves an unknown backend message", () => {
     expect(canvasAuthoringErrorMessage(new Error("Connection failed."))).toBe("Connection failed.");
   });
+
+  it("maps model failures without exposing backend implementation details", () => {
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 409,
+      code: "provider_credentials_missing",
+      message: "missing provider key",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }))).toBe("This model provider has no configured credential.");
+
+    expect(canvasAuthoringErrorMessage(new V2ApiError({
+      status: 409,
+      code: "model_unavailable",
+      message: "unavailable",
+      details: {},
+      violations: [],
+      suggestedActions: [],
+      payload: null,
+    }))).toBe("The selected model is currently unavailable.");
+  });
 });

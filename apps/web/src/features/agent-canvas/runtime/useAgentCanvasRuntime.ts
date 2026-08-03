@@ -7,6 +7,7 @@ import type {
   CanvasNodeV2,
   CanvasNodePatchRequestV2,
   CanvasRuntimeEventV2,
+  CanvasRuntimeModelResolutionV2,
   CanvasRuntimeSnapshotV2,
   ProviderInputManifestAuditV2,
   ProjectAssetSummaryV2,
@@ -24,6 +25,7 @@ import {
 } from "./inputManifestAudit.ts";
 import { resolvePublishedAssets } from "./publishedAssets.ts";
 import { nodeRunRequest } from "./runRequest.ts";
+import { modelResolutionFromEvent } from "./modelResolution.ts";
 import { runtimeEventPolicy } from "./runtimeEventPolicy.ts";
 
 type RuntimeCallbacks = {
@@ -51,6 +53,7 @@ export function useAgentCanvasRuntime(
   const [chatRevision, setChatRevision] = useState(0);
   const [chatEvents, setChatEvents] = useState<CanvasRuntimeEventV2[]>([]);
   const [inputManifestsByNodeId, setInputManifestsByNodeId] = useState<Record<string, ProviderInputManifestAuditV2>>({});
+  const [modelResolutionsByNodeId, setModelResolutionsByNodeId] = useState<Record<string, CanvasRuntimeModelResolutionV2>>({});
   const [inputReadinessIssue, setInputReadinessIssue] = useState<UpstreamInputReadinessIssueV2 | null>(null);
   const cursorRef = useRef(0);
   const runtimeRefreshRef = useRef<Promise<void> | null>(null);
@@ -83,6 +86,7 @@ export function useAgentCanvasRuntime(
     setChatEvents([]);
     setChatRevision(0);
     setInputManifestsByNodeId({});
+    setModelResolutionsByNodeId({});
     setInputReadinessIssue(null);
   }, [workflowId]);
 
@@ -217,6 +221,13 @@ export function useAgentCanvasRuntime(
       setInputManifestsByNodeId((current) => ({
         ...current,
         [inputManifest.node_id]: inputManifest,
+      }));
+    }
+    const modelResolution = modelResolutionFromEvent(event);
+    if (modelResolution) {
+      setModelResolutionsByNodeId((current) => ({
+        ...current,
+        [modelResolution.node_id]: modelResolution,
       }));
     }
     const policy = runtimeEventPolicy(event);
@@ -375,7 +386,7 @@ export function useAgentCanvasRuntime(
     options: { retryFailed?: boolean } = {},
   ) => {
     if (!workflowId) return;
-    if (!["script", "image", "video", "audio"].includes(node.node_type)) return;
+    if (!["text", "script", "image", "video", "audio"].includes(node.node_type)) return;
     if (node.status !== "draft" && node.status !== "failed") return;
     setRunPending(true);
     try {
@@ -419,6 +430,7 @@ export function useAgentCanvasRuntime(
       chatRevision,
       chatEvents,
       inputManifestsByNodeId,
+      modelResolutionsByNodeId,
       inputReadinessIssue,
     },
     actions: {

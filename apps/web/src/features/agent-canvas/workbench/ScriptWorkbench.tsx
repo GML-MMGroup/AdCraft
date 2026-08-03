@@ -1,13 +1,24 @@
 import { SendIcon } from "../../../icons.tsx";
-import type { CanvasNodeV2 } from "../../../types-v2.ts";
+import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
+import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
+import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
+import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
 export function ScriptWorkbench({
   node,
   draft,
+  models,
+  modelsLoading,
+  modelsError,
+  modelResolution,
 }: {
   node: CanvasNodeV2;
   draft: NodeWorkbenchDraft;
+  models: ProviderModelSummaryV1[];
+  modelsLoading: boolean;
+  modelsError: string | null;
+  modelResolution: CanvasRuntimeModelResolutionV2 | null;
 }) {
   const canRun = node.status === "draft" || node.status === "failed";
   return (
@@ -21,7 +32,18 @@ export function ScriptWorkbench({
           onChange={(event) => draft.setTextContent(event.currentTarget.value)}
         />
       </label>
-      {draft.error ? <p className="agent-node-workbench__error" role="alert">{draft.error}</p> : null}
+      <CanvasModelPicker
+        models={models}
+        loading={modelsLoading}
+        error={modelsError}
+        selectionMode={draft.modelSelectionMode}
+        modelRef={draft.modelRef}
+        modelSummary={node.model_summary}
+        modelResolution={modelResolution}
+        disabled={draft.pending}
+        onChange={draft.setModelSelection}
+      />
+      <NodeWorkbenchError draft={draft} />
       <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer">
         <div>
           <button
