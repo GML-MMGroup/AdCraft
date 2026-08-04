@@ -1642,8 +1642,16 @@ describe("Agent Canvas normalizers", () => {
       joined_node_ids: ["node-image-1"],
       skipped: [],
       waiting_node_ids: [],
+      run_intent_snapshot_ids: {
+        "node-image-1": "run-intent-snapshot-1",
+      },
       events_cursor: 18,
-    }).status).toBe("partial_completed");
+    })).toMatchObject({
+      status: "partial_completed",
+      run_intent_snapshot_ids: {
+        "node-image-1": "run-intent-snapshot-1",
+      },
+    });
 
     expect(normalizeEditingExportAcceptedV2({
       workflow_id: "workflow-1",

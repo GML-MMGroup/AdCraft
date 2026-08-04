@@ -2811,6 +2811,7 @@ export interface CanvasRunAcceptedV2 {
   joined_node_ids: string[];
   skipped: CanvasRunSkippedNodeV2[];
   waiting_node_ids: string[];
+  run_intent_snapshot_ids: Record<string, string>;
   events_cursor: number;
 }
 

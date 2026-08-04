@@ -3217,9 +3217,14 @@ export function normalizeCanvasRunAcceptedV2(
       "joined_node_ids",
       "skipped",
       "waiting_node_ids",
+      "run_intent_snapshot_ids",
       "events_cursor",
     ],
     path,
+  );
+  const runIntentSnapshotIdsRecord = expectRecord(
+    record.run_intent_snapshot_ids ?? {},
+    `${path}.run_intent_snapshot_ids`,
   );
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -3236,6 +3241,12 @@ export function normalizeCanvasRunAcceptedV2(
       };
     }),
     waiting_node_ids: expectStringArray(record.waiting_node_ids, `${path}.waiting_node_ids`),
+    run_intent_snapshot_ids: Object.fromEntries(
+      Object.entries(runIntentSnapshotIdsRecord).map(([nodeId, snapshotId]) => [
+        nodeId,
+        expectNonEmptyString(snapshotId, `${path}.run_intent_snapshot_ids.${nodeId}`),
+      ]),
+    ),
     events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
   };
 }

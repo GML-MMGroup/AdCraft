@@ -185,6 +185,9 @@ describe("Agent Canvas client", () => {
           joined_node_ids: [],
           skipped: [],
           waiting_node_ids: [],
+          run_intent_snapshot_ids: {
+            "node-image-1": "run-intent-snapshot-1",
+          },
           events_cursor: 5,
         }, { status: 202 });
       }
@@ -214,7 +217,7 @@ describe("Agent Canvas client", () => {
       video_skill_run_id: null,
       auto_continue: false,
     }, "chat-key");
-    await v2Api.runAgentCanvas("workflow-1", {
+    const runAccepted = await v2Api.runAgentCanvas("workflow-1", {
       scope: "selected_nodes",
       node_ids: ["node-image-1"],
       retry_failed: false,
@@ -226,6 +229,9 @@ describe("Agent Canvas client", () => {
     }, "export-key");
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(runAccepted.run_intent_snapshot_ids).toEqual({
+      "node-image-1": "run-intent-snapshot-1",
+    });
   });
 
   it("uses semantic ETags for command actions and Ready variation authoring", async () => {
