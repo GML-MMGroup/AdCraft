@@ -30,6 +30,7 @@ from app.persistence.models import (
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
     AgentCanvasGuidedActionRow,
+    AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
     AgentCanvasPromptContextSnapshotRow,
     AgentCanvasSkillRunRow,
@@ -68,6 +69,7 @@ from app.schemas.agent_canvas_creative_session import (
     ProjectCreativeMemoryV2,
     ProposedDraftReferenceV2,
 )
+from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -474,6 +476,167 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
 
+    def activate_style_skill(
+        self,
+        *,
+        workflow_id: str,
+        skill_run: VideoSkillRunV2,
+        snapshot: CreativeDirectionSnapshotV2,
+        public_skill: VideoSkillPublicDetailV2,
+        request_fingerprint: str,
+        idempotency_key: str,
+    ) -> VideoSkillRunV2:
+        """Atomically activate one verified package and its frozen snapshot."""
+
+        if (
+            skill_run.workflow_id != workflow_id
+            or snapshot.workflow_id != workflow_id
+            or snapshot.skill_run_id != skill_run.skill_run_id
+            or snapshot.snapshot_id != skill_run.active_creative_direction_snapshot_id
+            or snapshot.source_skill_id != skill_run.skill_id
+            or snapshot.source_skill_version != skill_run.skill_version
+            or public_skill.skill_id != skill_run.skill_id
+            or public_skill.version != skill_run.skill_version
+        ):
+            raise _error(
+                "style_skill_snapshot_invalid",
+                "Style Skill activation state is inconsistent.",
+            )
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    replay = _load_style_activation_idempotency(
+                        connection,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                    )
+                    if replay is not None:
+                        connection.commit()
+                        return VideoSkillRunV2.model_validate_json(replay)
+
+                    _require_workflow(connection, workflow_id)
+                    active = (
+                        connection.execute(
+                            select(AgentCanvasSkillRunRow).where(
+                                AgentCanvasSkillRunRow.workflow_id == workflow_id,
+                                AgentCanvasSkillRunRow.status == "active",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    active_id = str(active["skill_run_id"]) if active is not None else None
+                    if (
+                        skill_run.source_skill_run_id is not None
+                        and skill_run.source_skill_run_id != active_id
+                    ):
+                        raise _error(
+                            "style_skill_activation_conflict",
+                            "The active Style Skill changed before activation.",
+                        )
+                    if active is not None and (
+                        str(active["skill_id"]) == skill_run.skill_id
+                        and str(active["skill_version"]) == skill_run.skill_version
+                        and active["active_creative_direction_snapshot_id"] is not None
+                    ):
+                        result = _skill_run_with_public(connection, active)
+                        _store_style_activation_idempotency(
+                            connection,
+                            idempotency_key=idempotency_key,
+                            request_fingerprint=request_fingerprint,
+                            response_json=result.model_dump_json(),
+                            created_at=now,
+                        )
+                        connection.commit()
+                        return result
+
+                    connection.execute(
+                        update(AgentCanvasSkillRunRow)
+                        .where(
+                            AgentCanvasSkillRunRow.workflow_id == workflow_id,
+                            AgentCanvasSkillRunRow.status == "active",
+                        )
+                        .values(status="superseded", updated_at=now)
+                    )
+                    connection.execute(
+                        insert(AgentCanvasSkillRunRow).values(
+                            skill_run_id=skill_run.skill_run_id,
+                            workflow_id=workflow_id,
+                            skill_id=skill_run.skill_id,
+                            skill_version=skill_run.skill_version,
+                            source_skill_run_id=skill_run.source_skill_run_id,
+                            status="active",
+                            active_creative_direction_snapshot_id=snapshot.snapshot_id,
+                            idempotency_key=idempotency_key,
+                            created_at=skill_run.created_at.isoformat(),
+                            updated_at=now,
+                        )
+                    )
+                    connection.execute(
+                        insert(AgentCanvasCreativeDirectionSnapshotRow).values(
+                            snapshot_id=snapshot.snapshot_id,
+                            workflow_id=workflow_id,
+                            skill_run_id=skill_run.skill_run_id,
+                            version=snapshot.version,
+                            source_skill_id=snapshot.source_skill_id,
+                            source_skill_version=snapshot.source_skill_version,
+                            source_skill_digest=snapshot.source_skill_digest,
+                            global_direction_json=_dump(snapshot.global_direction),
+                            role_projections_json=_dump(snapshot.role_projections),
+                            source_message_id=snapshot.source_message_id,
+                            source_proposal_id=snapshot.source_proposal_id,
+                            content_digest=snapshot.content_digest,
+                            created_at=snapshot.created_at.isoformat(),
+                        )
+                    )
+                    event_payload = {
+                        "workflow_id": workflow_id,
+                        "skill_run_id": skill_run.skill_run_id,
+                        "skill_id": skill_run.skill_id,
+                        "skill_version": skill_run.skill_version,
+                        "creative_direction_snapshot_id": snapshot.snapshot_id,
+                        "package_digest": snapshot.source_skill_digest,
+                    }
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="creative_direction_snapshot_created",
+                            created_at=snapshot.created_at.isoformat(),
+                            payload=event_payload,
+                        ),
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            event_type="style_skill_activated",
+                            created_at=snapshot.created_at.isoformat(),
+                            payload=event_payload,
+                        ),
+                    )
+                    result = self._get_skill_run_in_transaction(connection, skill_run.skill_run_id)
+                    _store_style_activation_idempotency(
+                        connection,
+                        idempotency_key=idempotency_key,
+                        request_fingerprint=request_fingerprint,
+                        response_json=result.model_dump_json(),
+                        created_at=now,
+                    )
+                    connection.commit()
+                    return result
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+
     def get_skill_run(self, skill_run_id: str) -> VideoSkillRunV2:
         try:
             with self._database.engine.connect() as connection:
@@ -486,13 +649,15 @@ class AgentCanvasConversationRepository:
                     .mappings()
                     .one_or_none()
                 )
+                if row is not None:
+                    return _skill_run_with_public(connection, row)
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         if row is None:
             raise _error("creative_session_not_found", "Creative session was not found.")
-        return _skill_run(row)
+        raise AssertionError("Unreachable skill run lookup state.")
 
     def get_active_style_skill_run(self, workflow_id: str) -> VideoSkillRunV2:
         try:
@@ -507,6 +672,8 @@ class AgentCanvasConversationRepository:
                     .mappings()
                     .one_or_none()
                 )
+                if row is not None:
+                    return _skill_run_with_public(connection, row)
         except SQLAlchemyError as error:
             raise _error(
                 "conversation_persistence_unavailable",
@@ -514,7 +681,7 @@ class AgentCanvasConversationRepository:
             ) from error
         if row is None:
             raise _error("style_skill_run_not_found", "Style Skill Run was not found.")
-        return _skill_run(row)
+        raise AssertionError("Unreachable active skill run lookup state.")
 
     @staticmethod
     def _get_skill_run_in_transaction(
@@ -530,7 +697,7 @@ class AgentCanvasConversationRepository:
             .mappings()
             .one()
         )
-        return _skill_run(row)
+        return _skill_run_with_public(connection, row)
 
     def persist_creation_mode(
         self,
@@ -2040,6 +2207,8 @@ class AgentCanvasConversationRepository:
                                 AgentCanvasConceptProposalRow.availability,
                                 AgentCanvasConceptProposalRow.video_skill_run_id,
                                 AgentCanvasConceptProposalRow.topic_id,
+                                AgentCanvasConceptProposalRow.specialist_name,
+                                AgentCanvasConceptProposalRow.creative_direction_snapshot_id,
                             ).where(
                                 AgentCanvasConceptProposalRow.proposal_id == proposal_id,
                                 AgentCanvasConceptProposalRow.workflow_id == proposal.workflow_id,
@@ -2053,6 +2222,57 @@ class AgentCanvasConversationRepository:
                             "proposal_not_available",
                             "Proposal is not available for application.",
                         )
+                    persisted_skill_run_id = (
+                        str(proposal_state["video_skill_run_id"])
+                        if proposal_state["video_skill_run_id"]
+                        else None
+                    )
+                    if skill_run_id != persisted_skill_run_id:
+                        raise _error(
+                            "style_skill_snapshot_invalid",
+                            "Proposal Style Skill provenance is inconsistent.",
+                        )
+                    creative_direction_snapshot_id = (
+                        str(proposal_state["creative_direction_snapshot_id"])
+                        if proposal_state["creative_direction_snapshot_id"]
+                        else None
+                    )
+                    skill_refs: tuple[dict[str, str], ...] = ()
+                    if persisted_skill_run_id is not None:
+                        snapshot_row = (
+                            connection.execute(
+                                select(AgentCanvasCreativeDirectionSnapshotRow).where(
+                                    AgentCanvasCreativeDirectionSnapshotRow.snapshot_id
+                                    == creative_direction_snapshot_id
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if snapshot_row is None:
+                            raise _error(
+                                "style_skill_snapshot_invalid",
+                                "Proposal Creative Direction snapshot is unavailable.",
+                            )
+                        role = str(proposal_state["specialist_name"])
+                        projection = json.loads(str(snapshot_row["role_projections_json"])).get(
+                            role
+                        )
+                        skill_ref = {
+                            "skill_run_id": persisted_skill_run_id,
+                            "skill_id": str(snapshot_row["source_skill_id"]),
+                            "skill_version": str(snapshot_row["source_skill_version"]),
+                            "package_digest": str(snapshot_row["source_skill_digest"]),
+                            "role": role,
+                        }
+                        if isinstance(projection, dict):
+                            source_path = str(projection.get("source_path") or "")
+                            role_digest = str(projection.get("digest") or "")
+                            if source_path:
+                                skill_ref["role_guidance_path"] = source_path
+                            if role_digest:
+                                skill_ref["role_guidance_digest"] = role_digest
+                        skill_refs = (skill_ref,)
                     session = _require_guidance_session_row(
                         connection,
                         proposal.guidance_session_id,
@@ -2147,6 +2367,17 @@ class AgentCanvasConversationRepository:
                                     )
                                 ]
                             ),
+                            creative_direction_snapshot_id=(creative_direction_snapshot_id),
+                            skill_refs_json=_dump(skill_refs),
+                            content_digest=hashlib.sha256(
+                                _dump(
+                                    {
+                                        "generation_prompt": node.generation_prompt,
+                                        "structured_content": node.structured_content,
+                                        "skill_refs": skill_refs,
+                                    }
+                                ).encode("utf-8")
+                            ).hexdigest(),
                             created_at=now,
                         )
                     )
@@ -3421,7 +3652,11 @@ def _append_timeline_entry(
     )
 
 
-def _skill_run(row: RowMapping) -> VideoSkillRunV2:
+def _skill_run(
+    row: RowMapping,
+    *,
+    public_skill: VideoSkillPublicDetailV2 | None = None,
+) -> VideoSkillRunV2:
     return VideoSkillRunV2(
         skill_run_id=str(row["skill_run_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -3436,8 +3671,33 @@ def _skill_run(row: RowMapping) -> VideoSkillRunV2:
             if row["active_creative_direction_snapshot_id"]
             else None
         ),
+        public_skill=public_skill,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+    )
+
+
+def _skill_run_with_public(
+    connection: Connection,
+    row: RowMapping,
+) -> VideoSkillRunV2:
+    snapshot_id = row["active_creative_direction_snapshot_id"]
+    if snapshot_id is None:
+        return _skill_run(row)
+    global_direction_json = connection.execute(
+        select(AgentCanvasCreativeDirectionSnapshotRow.global_direction_json).where(
+            AgentCanvasCreativeDirectionSnapshotRow.snapshot_id == str(snapshot_id)
+        )
+    ).scalar_one_or_none()
+    if global_direction_json is None:
+        return _skill_run(row)
+    global_direction = json.loads(str(global_direction_json))
+    public_payload = global_direction.get("public_skill")
+    if not isinstance(public_payload, dict):
+        return _skill_run(row)
+    return _skill_run(
+        row,
+        public_skill=VideoSkillPublicDetailV2.model_validate(public_payload),
     )
 
 
@@ -3841,6 +4101,55 @@ def _require_guidance_revision(row: RowMapping, expected_revision: int) -> None:
 
 def _dump(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _load_style_activation_idempotency(
+    connection: Connection,
+    *,
+    idempotency_key: str,
+    request_fingerprint: str,
+) -> str | None:
+    row = (
+        connection.execute(
+            select(
+                AgentCanvasIdempotencyRow.request_fingerprint,
+                AgentCanvasIdempotencyRow.response_json,
+            ).where(
+                AgentCanvasIdempotencyRow.operation == "activate_style_skill",
+                AgentCanvasIdempotencyRow.idempotency_key == idempotency_key,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    if str(row["request_fingerprint"]) != request_fingerprint:
+        raise _error(
+            "idempotency_conflict",
+            "Idempotency key was reused with a different request.",
+        )
+    return str(row["response_json"])
+
+
+def _store_style_activation_idempotency(
+    connection: Connection,
+    *,
+    idempotency_key: str,
+    request_fingerprint: str,
+    response_json: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        insert(AgentCanvasIdempotencyRow).values(
+            record_id=f"idem_{uuid4().hex}",
+            operation="activate_style_skill",
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            response_json=response_json,
+            created_at=created_at,
+        )
+    )
 
 
 def _now() -> str:
