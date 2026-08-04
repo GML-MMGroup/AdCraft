@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.config import Settings
+from app.core.config import PROJECT_ROOT, Settings
 from app.persistence.provider_model_repository import ProviderModelRepository
+from app.services.provider_credentials import (
+    DotenvCredentialStore,
+    ProviderConnectionService,
+    ProviderCredentialRegistry,
+)
 from app.services.provider_model_catalog import ProviderModelCatalogService
 
 
@@ -23,16 +28,30 @@ class ProviderModelBootstrapService:
         self._repository = repository
 
     def bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
+        registry = ProviderCredentialRegistry()
+        ProviderConnectionService(
+            registry=registry,
+            dotenv_store=DotenvCredentialStore(
+                PROJECT_ROOT,
+                allowed_fields={
+                    binding.dotenv_field
+                    for provider_id in registry.provider_ids
+                    for binding in registry.get(provider_id).bindings.values()
+                },
+            ),
+            metadata_repository=self._repository,
+            settings_loader=lambda: self._settings,
+        ).synchronize_metadata(updated_at=now)
         catalog = ProviderModelCatalogService(
             self._repository,
             provider_available=self._provider_available,
         )
         seeded_providers: list[str] = []
         for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
-            if self._repository.list_models(provider_id=provider_id):
-                continue
-            catalog.sync(provider_id, now=now)
-            seeded_providers.append(provider_id)
+            had_models = bool(self._repository.list_models(provider_id=provider_id))
+            catalog.reconcile_trusted_models(provider_id, now=now)
+            if not had_models:
+                seeded_providers.append(provider_id)
 
         existing = catalog.get_default_records()
         candidates = {
