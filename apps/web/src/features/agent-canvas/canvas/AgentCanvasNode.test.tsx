@@ -299,10 +299,12 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(handleRule).toContain("width: 40px");
     expect(handleRule).toContain("height: 40px");
     expect(handleRule).toContain("background: transparent");
-    expect(targetRule).toContain("width: 28px");
-    expect(targetRule).toContain("height: 28px");
-    expect(inputRule).toContain("left: -26px");
-    expect(outputRule).toContain("right: -26px");
+    expect(targetRule).toContain("width: 18px");
+    expect(targetRule).toContain("height: 18px");
+    expect(inputRule).toContain("left: -41px");
+    expect(inputRule).toContain("transform: translateY(-50%)");
+    expect(outputRule).toContain("right: -41px");
+    expect(outputRule).toContain("transform: translateY(-50%)");
   });
 
   it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(

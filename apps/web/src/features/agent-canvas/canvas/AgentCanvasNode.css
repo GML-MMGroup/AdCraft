@@ -541,8 +541,8 @@
 
 .agent-canvas-node__handle-target {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   border: 2px solid rgba(255, 255, 255, 0.95);
   border-radius: 50%;
@@ -555,11 +555,13 @@
 }
 
 .agent-canvas-node__handle--input {
-  left: -26px;
+  left: -41px;
+  transform: translateY(-50%);
 }
 
 .agent-canvas-node__handle--output {
-  right: -26px;
+  right: -41px;
+  transform: translateY(-50%);
 }
 
 .agent-canvas-node__handle--output .agent-canvas-node__handle-target {
