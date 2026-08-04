@@ -460,6 +460,16 @@ class AgentTargetResolutionV2(_AgentCanvasModel):
     target: AgentTargetRefV2
 
 
+class ActiveStyleSkillSummaryV2(_AgentCanvasModel):
+    skill_run_id: str = Field(min_length=1)
+    skill_id: str = Field(min_length=1)
+    skill_version: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    creative_direction_snapshot_id: str = Field(min_length=1)
+
+
 class AgentCanvasWorkflowV2(_AgentCanvasModel):
     workflow_id: str = Field(min_length=1)
     project_id: str = Field(min_length=1)
@@ -470,6 +480,7 @@ class AgentCanvasWorkflowV2(_AgentCanvasModel):
     nodes: tuple[CanvasNodeV2, ...] = ()
     bindings: tuple[CanvasBindingV2, ...] = ()
     assets: tuple[ProjectAssetSummaryV2, ...] = ()
+    active_style_skill: ActiveStyleSkillSummaryV2 | None = None
 
 
 class ProjectCreateResponseV2(AgentCanvasWorkflowV2):

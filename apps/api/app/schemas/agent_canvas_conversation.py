@@ -21,6 +21,7 @@ from app.schemas.agent_runtime import (
     AgentCommandPlanV2,
     AgentOperationResultV2,
 )
+from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 
 
 class _ConversationModel(BaseModel):
@@ -353,6 +354,7 @@ class VideoSkillRunV2(_ConversationModel):
     source_skill_run_id: str | None = None
     status: Literal["active", "superseded"] = "active"
     active_creative_direction_snapshot_id: str | None = None
+    public_skill: VideoSkillPublicDetailV2 | None = None
     created_at: datetime
     updated_at: datetime | None = None
 

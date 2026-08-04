@@ -23,7 +23,6 @@ from app.persistence.models import (
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
     AgentCanvasPromptContextSnapshotRow,
-    AgentCanvasSkillRunRow,
     AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
 )
@@ -116,25 +115,10 @@ class AgentCanvasWorkflowRepository:
                         )
                     )
                     conversation_id = f"conversation_{workflow_id}"
-                    skill_run_id = f"skill_run_{workflow_id}"
                     connection.execute(
                         insert(AgentCanvasConversationRow).values(
                             conversation_id=conversation_id,
                             workflow_id=workflow_id,
-                            created_at=now,
-                            updated_at=now,
-                        )
-                    )
-                    connection.execute(
-                        insert(AgentCanvasSkillRunRow).values(
-                            skill_run_id=skill_run_id,
-                            workflow_id=workflow_id,
-                            skill_id="platform-default",
-                            skill_version="1",
-                            source_skill_run_id=None,
-                            status="active",
-                            active_creative_direction_snapshot_id=None,
-                            idempotency_key=f"create-project:{idempotency_key}",
                             created_at=now,
                             updated_at=now,
                         )

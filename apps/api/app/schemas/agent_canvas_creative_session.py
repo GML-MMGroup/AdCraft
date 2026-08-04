@@ -227,6 +227,21 @@ class CreativeDirectionSnapshotV2(_CreativeSessionModel):
     created_at: datetime
 
 
+class StyleGuidanceContextV2(_CreativeSessionModel):
+    skill_run_id: str = Field(min_length=1, max_length=160)
+    skill_id: str = Field(min_length=1, max_length=160)
+    skill_version: str = Field(min_length=1, max_length=80)
+    package_digest: str = Field(min_length=1, max_length=160)
+    creative_direction_snapshot_id: str = Field(min_length=1, max_length=160)
+    global_guidance: str = Field(min_length=1, max_length=8_192)
+    role: str | None = Field(default=None, max_length=160)
+    role_guidance: str | None = Field(default=None, max_length=8_192)
+    role_guidance_path: str | None = Field(default=None, max_length=512)
+    role_guidance_digest: str | None = Field(default=None, max_length=160)
+    source: Literal["creative_direction_snapshot"] = "creative_direction_snapshot"
+    precedence: Literal["advisory"] = "advisory"
+
+
 class ProjectCreativeMemoryV2(_CreativeSessionModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     creative_goal: str = Field(default="", max_length=4_000)
