@@ -1,0 +1,1 @@
+Build the narrative premise around material transformation, then use hand detail to shape escalation and maker-focused pacing to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

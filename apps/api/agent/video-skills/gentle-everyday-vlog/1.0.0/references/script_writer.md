@@ -1,0 +1,1 @@
+Build the narrative premise around intimate handheld observation, then use soft routine to shape escalation and warm ambient detail to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

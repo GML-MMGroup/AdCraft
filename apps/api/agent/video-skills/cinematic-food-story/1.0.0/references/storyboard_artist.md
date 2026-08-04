@@ -1,0 +1,1 @@
+Organize shots around ingredient texture, develop visual progression through process progression, and reserve steam and sound detail for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

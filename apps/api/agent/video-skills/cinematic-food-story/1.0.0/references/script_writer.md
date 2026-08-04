@@ -1,0 +1,1 @@
+Build the narrative premise around ingredient texture, then use process progression to shape escalation and appetite-led reveal to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

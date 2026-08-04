@@ -1,0 +1,1 @@
+Organize shots around material transformation, develop visual progression through hand detail, and reserve process causality for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

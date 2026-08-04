@@ -1,0 +1,1 @@
+Construct spaces that express respectful observation through layout and environmental context through light, color, and material. Use authentic action to direct attention toward the advertised subject while preserving the stated location and product context.
