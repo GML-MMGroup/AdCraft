@@ -230,7 +230,6 @@ describe("useAgentCanvasChat", () => {
         mentioned_node_ids: ["node-script-1", "node-video-1"],
         mentioned_image_asset_ids: ["asset-image-1"],
         video_skill_run_id: null,
-        auto_continue: false,
       },
       expect.any(String),
     );

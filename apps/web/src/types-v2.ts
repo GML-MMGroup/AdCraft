@@ -2509,7 +2509,6 @@ export interface AgentCanvasChatMessageRequestV2 {
   mentioned_node_ids: string[];
   mentioned_image_asset_ids: string[];
   video_skill_run_id: string | null;
-  auto_continue: boolean;
 }
 
 export type GuidedDeliveryActionTypeV2 = "add_another_topic_node" | "skip_topic";

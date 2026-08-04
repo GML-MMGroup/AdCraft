@@ -370,7 +370,6 @@ export function useAgentCanvasChat({
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
         video_skill_run_id: null,
-        auto_continue: false,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {

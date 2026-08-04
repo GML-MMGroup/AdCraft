@@ -167,6 +167,12 @@ describe("Agent Canvas client", () => {
         return jsonResponse({ workflow_id: "workflow-1", asset }, { status: 201 });
       }
       if (url.endsWith("/chat/messages")) {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          text: "Create the campaign",
+          mentioned_node_ids: [],
+          mentioned_image_asset_ids: [],
+          video_skill_run_id: null,
+        });
         return jsonResponse({
           workflow_id: "workflow-1",
           conversation_id: "conversation-1",
@@ -215,7 +221,6 @@ describe("Agent Canvas client", () => {
       mentioned_node_ids: [],
       mentioned_image_asset_ids: [],
       video_skill_run_id: null,
-      auto_continue: false,
     }, "chat-key");
     const runAccepted = await v2Api.runAgentCanvas("workflow-1", {
       scope: "selected_nodes",
