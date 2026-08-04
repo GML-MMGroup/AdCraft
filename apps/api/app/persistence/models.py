@@ -644,11 +644,16 @@ class ModelDefaultRow(Base):
             "default_key IN ('agent', 'text', 'image', 'video', 'audio')",
             name="ck_model_defaults_key",
         ),
+        CheckConstraint(
+            "selection_mode IN ('automatic', 'explicit')",
+            name="ck_model_defaults_selection_mode",
+        ),
         CheckConstraint("revision > 0", name="ck_model_defaults_positive_revision"),
     )
 
     default_key: Mapped[str] = mapped_column(Text, primary_key=True)
     model_ref: Mapped[str] = mapped_column(ForeignKey("provider_models.model_ref"), nullable=False)
+    selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="explicit")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -879,7 +884,7 @@ class AgentCanvasActionReceiptRow(Base):
     action_id: Mapped[str | None] = mapped_column(Text)
     proposal_id: Mapped[str | None] = mapped_column(Text)
     proposal_option_id: Mapped[str | None] = mapped_column(Text)
-    proposal_generation_action: Mapped[str | None] = mapped_column(Text)
+    proposal_action: Mapped[str | None] = mapped_column(Text)
     receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -932,13 +937,7 @@ class AgentCanvasSkillRunRow(Base):
     skill_version: Mapped[str] = mapped_column(Text, nullable=False)
     source_skill_run_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
-    current_topic_id: Mapped[str | None] = mapped_column(Text)
-    deferred_topic_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    memory_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     active_creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
-    creation_mode_json: Mapped[str | None] = mapped_column(Text)
-    active_recipe_id: Mapped[str | None] = mapped_column(Text)
-    active_recipe_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -978,65 +977,46 @@ class AgentCanvasCreativeDirectionSnapshotRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class AgentCanvasPlanningTopicRow(Base):
-    __tablename__ = "agent_canvas_planning_topics"
+class AgentCanvasGuidanceSessionRow(Base):
+    __tablename__ = "agent_canvas_guidance_sessions"
 
-    skill_run_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_skill_runs.skill_run_id"), primary_key=True
-    )
-    topic_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    topic_kind: Mapped[str] = mapped_column(Text, nullable=False)
-    display_order: Mapped[int] = mapped_column(Integer, nullable=False)
-    required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(Text, nullable=False)
-    outcome: Mapped[str | None] = mapped_column(Text)
-    related_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
-
-
-class AgentCanvasProductionRecipeRow(Base):
-    __tablename__ = "agent_canvas_production_recipes"
-    __table_args__ = (
-        UniqueConstraint(
-            "recipe_id",
-            "revision",
-            name="uq_agent_canvas_production_recipe_revision",
-        ),
-        Index(
-            "ix_agent_canvas_production_recipe_workflow_revision",
-            "workflow_id",
-            "created_at",
-        ),
-    )
-
-    recipe_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[str] = mapped_column(Text, primary_key=True)
     workflow_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+        ForeignKey("agent_canvas_workflows.workflow_id"), unique=True, nullable=False
     )
-    conversation_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_conversations.conversation_id"), nullable=False
-    )
-    skill_run_id: Mapped[str | None] = mapped_column(
-        ForeignKey("agent_canvas_skill_runs.skill_run_id")
-    )
-    creation_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    guidance_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    creative_goal_json: Mapped[str] = mapped_column(Text, nullable=False)
+    element_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
     current_topic_id: Mapped[str | None] = mapped_column(Text)
-    stages_json: Mapped[str] = mapped_column(Text, nullable=False)
-    goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    deliverables_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    dependencies_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
-    recommended_next_topic_ids_json: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-        default="[]",
-    )
-    completion_criteria_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
-    anchor_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    active_proposal_id: Mapped[str | None] = mapped_column(Text)
+    active_style_skill_run_id: Mapped[str | None] = mapped_column(Text)
+    completion_json: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasGuidanceTopicRow(Base):
+    __tablename__ = "agent_canvas_guidance_topics"
+
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), primary_key=True
+    )
+    topic_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    topic_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    related_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    source_proposal_id: Mapped[str | None] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+# These mappings remain only until the adaptive-recipe callers are removed in the
+# clean-cut checkpoint. Migration 20260804_01 removes their physical tables.
 class AgentCanvasCreativeMemoryRow(Base):
     __tablename__ = "agent_canvas_creative_memory"
 
@@ -1093,8 +1073,8 @@ class AgentCanvasChatTurnRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     request_json: Mapped[str] = mapped_column(Text, nullable=False)
     creation_mode_json: Mapped[str | None] = mapped_column(Text)
-    recipe_id: Mapped[str | None] = mapped_column(Text)
-    recipe_revision: Mapped[int | None] = mapped_column(Integer)
+    guidance_decision_json: Mapped[str | None] = mapped_column(Text)
+    guidance_session_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
@@ -1182,6 +1162,8 @@ class AgentCanvasConceptProposalRow(Base):
     proposed_references_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
     availability: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    guidance_session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    guidance_session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -1242,7 +1224,7 @@ class AgentCanvasGuidedActionRow(Base):
     )
     action_type: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(Text, nullable=False)
-    expected_semantic_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    expected_session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
     action_json: Mapped[str] = mapped_column(Text, nullable=False)
     apply_idempotency_key: Mapped[str | None] = mapped_column(Text)
     apply_turn_id: Mapped[str | None] = mapped_column(ForeignKey("agent_canvas_chat_turns.turn_id"))

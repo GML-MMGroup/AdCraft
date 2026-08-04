@@ -25,7 +25,6 @@ from app.persistence.models import (
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
-    AgentCanvasPlanningTopicRow,
     AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
 )
@@ -1049,49 +1048,6 @@ class AgentCanvasCommandRepository:
                                 operation_id=operation.operation_id,
                                 node_id=node_id,
                                 status="queued",
-                            )
-                        elif operation_type == "update_topic_status":
-                            topic = (
-                                connection.execute(
-                                    select(AgentCanvasPlanningTopicRow).where(
-                                        AgentCanvasPlanningTopicRow.skill_run_id
-                                        == operation.skill_run_id,
-                                        AgentCanvasPlanningTopicRow.topic_id == operation.topic_id,
-                                    )
-                                )
-                                .mappings()
-                                .one_or_none()
-                            )
-                            if topic is None:
-                                raise _error(
-                                    "planning_topic_not_found",
-                                    "Planning topic was not found.",
-                                )
-                            related_node_ids = tuple(
-                                _resolve_node_ref(
-                                    connection,
-                                    plan.workflow_id,
-                                    reference,
-                                    resolved_nodes,
-                                )
-                                for reference in operation.related_nodes
-                            )
-                            connection.execute(
-                                update(AgentCanvasPlanningTopicRow)
-                                .where(
-                                    AgentCanvasPlanningTopicRow.skill_run_id
-                                    == operation.skill_run_id,
-                                    AgentCanvasPlanningTopicRow.topic_id == operation.topic_id,
-                                )
-                                .values(
-                                    status=operation.status,
-                                    outcome=f"agent_command:{operation.status}",
-                                    related_node_ids_json=_dump(related_node_ids),
-                                )
-                            )
-                            result = AgentOperationResultV2(
-                                operation_id=operation.operation_id,
-                                status="applied",
                             )
                         else:
                             raise _error(

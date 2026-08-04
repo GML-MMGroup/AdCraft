@@ -1,446 +1,5 @@
 {
   "$defs": {
-    "AdaptiveProductionCompletionCriteriaV2": {
-      "additionalProperties": false,
-      "properties": {
-        "accepted_omission_deliverable_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Accepted Omission Deliverable Ids",
-          "type": "array"
-        },
-        "required_deliverable_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Required Deliverable Ids",
-          "type": "array"
-        }
-      },
-      "title": "AdaptiveProductionCompletionCriteriaV2",
-      "type": "object"
-    },
-    "AdaptiveProductionDeliverableV2": {
-      "additionalProperties": false,
-      "properties": {
-        "deliverable_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Deliverable Id",
-          "type": "string"
-        },
-        "description": {
-          "maxLength": 4096,
-          "minLength": 1,
-          "title": "Description",
-          "type": "string"
-        },
-        "output_kind": {
-          "enum": [
-            "audio",
-            "editing",
-            "image",
-            "text",
-            "video"
-          ],
-          "title": "Output Kind",
-          "type": "string"
-        },
-        "related_asset_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Related Asset Ids",
-          "type": "array"
-        },
-        "related_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Related Node Ids",
-          "type": "array"
-        },
-        "required": {
-          "default": true,
-          "title": "Required",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "deliverable_id",
-        "description",
-        "output_kind"
-      ],
-      "title": "AdaptiveProductionDeliverableV2",
-      "type": "object"
-    },
-    "AdaptiveProductionDependencyV2": {
-      "additionalProperties": false,
-      "properties": {
-        "rationale": {
-          "maxLength": 2048,
-          "minLength": 1,
-          "title": "Rationale",
-          "type": "string"
-        },
-        "source_topic_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Source Topic Id",
-          "type": "string"
-        },
-        "target_topic_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Target Topic Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "rationale",
-        "source_topic_id",
-        "target_topic_id"
-      ],
-      "title": "AdaptiveProductionDependencyV2",
-      "type": "object"
-    },
-    "AdaptiveProductionRecipeDraftV2": {
-      "additionalProperties": false,
-      "properties": {
-        "anchor_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Anchor Digest",
-          "type": "string"
-        },
-        "completion_criteria": {
-          "$ref": "#/$defs/AdaptiveProductionCompletionCriteriaV2"
-        },
-        "current_topic_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Current Topic Id"
-        },
-        "deliverables": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionDeliverableV2"
-          },
-          "maxItems": 32,
-          "title": "Deliverables",
-          "type": "array"
-        },
-        "dependencies": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionDependencyV2"
-          },
-          "maxItems": 64,
-          "title": "Dependencies",
-          "type": "array"
-        },
-        "goal": {
-          "default": "",
-          "maxLength": 4096,
-          "title": "Goal",
-          "type": "string"
-        },
-        "recommended_next_topic_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 16,
-          "title": "Recommended Next Topic Ids",
-          "type": "array"
-        },
-        "stages": {
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionStageV2"
-          },
-          "maxItems": 16,
-          "minItems": 1,
-          "title": "Stages",
-          "type": "array"
-        }
-      },
-      "required": [
-        "anchor_digest",
-        "stages"
-      ],
-      "title": "AdaptiveProductionRecipeDraftV2",
-      "type": "object"
-    },
-    "AdaptiveProductionRecipeV2": {
-      "additionalProperties": false,
-      "properties": {
-        "anchor_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Anchor Digest",
-          "type": "string"
-        },
-        "completion_criteria": {
-          "$ref": "#/$defs/AdaptiveProductionCompletionCriteriaV2"
-        },
-        "conversation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Conversation Id",
-          "type": "string"
-        },
-        "created_at": {
-          "format": "date-time",
-          "title": "Created At",
-          "type": "string"
-        },
-        "creation_mode": {
-          "enum": [
-            "guided_production",
-            "ordinary_conversation",
-            "quick_media",
-            "targeted_authoring"
-          ],
-          "title": "Creation Mode",
-          "type": "string"
-        },
-        "current_topic_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Current Topic Id"
-        },
-        "deliverables": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionDeliverableV2"
-          },
-          "maxItems": 32,
-          "title": "Deliverables",
-          "type": "array"
-        },
-        "dependencies": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionDependencyV2"
-          },
-          "maxItems": 64,
-          "title": "Dependencies",
-          "type": "array"
-        },
-        "goal": {
-          "default": "",
-          "maxLength": 4096,
-          "title": "Goal",
-          "type": "string"
-        },
-        "recipe_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Recipe Id",
-          "type": "string"
-        },
-        "recommended_next_topic_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 16,
-          "title": "Recommended Next Topic Ids",
-          "type": "array"
-        },
-        "revision": {
-          "minimum": 1,
-          "title": "Revision",
-          "type": "integer"
-        },
-        "skill_run_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Skill Run Id"
-        },
-        "stages": {
-          "items": {
-            "$ref": "#/$defs/AdaptiveProductionStageV2"
-          },
-          "maxItems": 16,
-          "minItems": 1,
-          "title": "Stages",
-          "type": "array"
-        },
-        "updated_at": {
-          "format": "date-time",
-          "title": "Updated At",
-          "type": "string"
-        },
-        "workflow_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Workflow Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "anchor_digest",
-        "conversation_id",
-        "created_at",
-        "creation_mode",
-        "recipe_id",
-        "revision",
-        "stages",
-        "updated_at",
-        "workflow_id"
-      ],
-      "title": "AdaptiveProductionRecipeV2",
-      "type": "object"
-    },
-    "AdaptiveProductionStageV2": {
-      "additionalProperties": false,
-      "properties": {
-        "applicability": {
-          "enum": [
-            "not_required",
-            "optional",
-            "required"
-          ],
-          "title": "Applicability",
-          "type": "string"
-        },
-        "applicability_reason": {
-          "maxLength": 2048,
-          "minLength": 1,
-          "title": "Applicability Reason",
-          "type": "string"
-        },
-        "candidate_count": {
-          "maximum": 4,
-          "minimum": 1,
-          "title": "Candidate Count",
-          "type": "integer"
-        },
-        "objective": {
-          "maxLength": 4096,
-          "minLength": 1,
-          "title": "Objective",
-          "type": "string"
-        },
-        "proposal_mode": {
-          "enum": [
-            "choice_set",
-            "single_plan"
-          ],
-          "title": "Proposal Mode",
-          "type": "string"
-        },
-        "related_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Related Node Ids",
-          "type": "array"
-        },
-        "specialist_name": {
-          "enum": [
-            "bgm_director",
-            "character_designer",
-            "product_designer",
-            "prop_designer",
-            "quick_media_agent",
-            "scene_designer",
-            "script_writer",
-            "storyboard_artist",
-            "video_director"
-          ],
-          "title": "Specialist Name",
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "completed",
-            "not_required",
-            "pending",
-            "reopened",
-            "skipped",
-            "working"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "title": {
-          "maxLength": 256,
-          "minLength": 1,
-          "title": "Title",
-          "type": "string"
-        },
-        "topic_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Topic Id",
-          "type": "string"
-        },
-        "topic_kind": {
-          "enum": [
-            "audio",
-            "character",
-            "creative_direction",
-            "product",
-            "prop",
-            "scene",
-            "script",
-            "storyboard",
-            "video"
-          ],
-          "title": "Topic Kind",
-          "type": "string"
-        }
-      },
-      "required": [
-        "applicability",
-        "applicability_reason",
-        "candidate_count",
-        "objective",
-        "proposal_mode",
-        "specialist_name",
-        "status",
-        "title",
-        "topic_id",
-        "topic_kind"
-      ],
-      "title": "AdaptiveProductionStageV2",
-      "type": "object"
-    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -449,11 +8,6 @@
           "minLength": 1,
           "title": "Assistant Message",
           "type": "string"
-        },
-        "auto_continue_requested": {
-          "default": false,
-          "title": "Auto Continue Requested",
-          "type": "boolean"
         },
         "command_plan": {
           "anyOf": [
@@ -574,8 +128,7 @@
                 "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               "propertyName": "operation_type"
             },
@@ -603,9 +156,6 @@
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -675,8 +225,7 @@
                 "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               "propertyName": "operation_type"
             },
@@ -704,9 +253,6 @@
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -794,8 +340,7 @@
                 "materialize_sibling_draft": "#/$defs/AgentMaterializeSiblingDraftOperationV2",
                 "patch_binding": "#/$defs/AgentPatchBindingOperationV2",
                 "patch_editable_node": "#/$defs/AgentPatchEditableNodeOperationV2",
-                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2",
-                "update_topic_status": "#/$defs/AgentUpdateTopicStatusOperationV2"
+                "request_node_run": "#/$defs/AgentRequestNodeRunOperationV2"
               },
               "propertyName": "operation_type"
             },
@@ -823,9 +368,6 @@
               },
               {
                 "$ref": "#/$defs/AgentRequestNodeRunOperationV2"
-              },
-              {
-                "$ref": "#/$defs/AgentUpdateTopicStatusOperationV2"
               }
             ]
           },
@@ -2131,8 +1673,11 @@
                   "bgm_expert": "#/$defs/BgmExpertAgentContext",
                   "character_expert": "#/$defs/CharacterExpertAgentContext",
                   "conversation_summary": "#/$defs/ConversationSummaryAgentContext",
+                  "delegated_proposal_choice": "#/$defs/DelegatedProposalChoiceContextV2",
+                  "director_guidance": "#/$defs/DirectorGuidanceContextV2",
                   "director_turn": "#/$defs/DirectorTurnContextV2",
                   "front_desk_intent": "#/$defs/FrontDeskIntentAgentContext",
+                  "guidance_specialist": "#/$defs/GuidanceSpecialistContextV2",
                   "intent_contract": "#/$defs/IntentContractAgentContext",
                   "product_expert": "#/$defs/ProductExpertAgentContext",
                   "quick_media": "#/$defs/QuickMediaAgentContext",
@@ -2180,6 +1725,15 @@
                 },
                 {
                   "$ref": "#/$defs/DirectorTurnContextV2"
+                },
+                {
+                  "$ref": "#/$defs/DirectorGuidanceContextV2"
+                },
+                {
+                  "$ref": "#/$defs/GuidanceSpecialistContextV2"
+                },
+                {
+                  "$ref": "#/$defs/DelegatedProposalChoiceContextV2"
                 },
                 {
                   "$ref": "#/$defs/AgentCommandReplanContextV2"
@@ -2946,75 +2500,6 @@
         "tool_call_id"
       ],
       "title": "AgentToolResult",
-      "type": "object"
-    },
-    "AgentUpdateTopicStatusOperationV2": {
-      "additionalProperties": false,
-      "properties": {
-        "operation_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Operation Id",
-          "type": "string"
-        },
-        "operation_type": {
-          "const": "update_topic_status",
-          "default": "update_topic_status",
-          "title": "Operation Type",
-          "type": "string"
-        },
-        "related_nodes": {
-          "default": [],
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "node_id": "#/$defs/AgentNodeIdRefV2",
-                "operation_result": "#/$defs/AgentOperationResultRefV2"
-              },
-              "propertyName": "kind"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/AgentNodeIdRefV2"
-              },
-              {
-                "$ref": "#/$defs/AgentOperationResultRefV2"
-              }
-            ]
-          },
-          "maxItems": 32,
-          "title": "Related Nodes",
-          "type": "array"
-        },
-        "skill_run_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Skill Run Id",
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "not_required",
-            "resolved",
-            "skipped"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "topic_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Topic Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "operation_id",
-        "skill_run_id",
-        "status",
-        "topic_id"
-      ],
-      "title": "AgentUpdateTopicStatusOperationV2",
       "type": "object"
     },
     "BgmContentV2": {
@@ -4256,120 +3741,154 @@
       "title": "CreativeDirectionSnapshotV2",
       "type": "object"
     },
-    "CreativeSessionStateV2": {
+    "CreativeElementDecisionV2": {
       "additionalProperties": false,
       "properties": {
-        "active_recipe": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/AdaptiveProductionRecipeV2"
-            },
-            {
-              "type": "null"
-            }
+        "authority": {
+          "enum": [
+            "agent",
+            "user"
           ],
-          "default": null
+          "title": "Authority",
+          "type": "string"
         },
-        "creation_mode": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CreationModeDecisionV2"
-            },
-            {
-              "type": "null"
-            }
+        "element_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
           ],
-          "default": null
+          "title": "Element Kind",
+          "type": "string"
         },
-        "creative_direction_snapshot_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
           ],
-          "default": null,
-          "title": "Creative Direction Snapshot Id"
+          "title": "Presence",
+          "type": "string"
         },
-        "current_topic_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Current Topic Id"
-        },
-        "deferred_topic_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
+        "requirements": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
           },
-          "maxItems": 32,
-          "title": "Deferred Topic Ids",
+          "title": "Requirements",
+          "type": "object"
+        },
+        "source": {
+          "enum": [
+            "accepted_proposal",
+            "delegated_to_agent",
+            "explicit_user"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "authority",
+        "element_kind",
+        "presence",
+        "source"
+      ],
+      "title": "CreativeElementDecisionV2",
+      "type": "object"
+    },
+    "CreativeGoalV2": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery_scope": {
+          "enum": [
+            "draft",
+            "generated_media"
+          ],
+          "title": "Delivery Scope",
+          "type": "string"
+        },
+        "explicit_constraints": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Explicit Constraints",
+          "type": "object"
+        },
+        "requested_output": {
+          "enum": [
+            "audio",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Requested Output",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "delivery_scope",
+        "requested_output",
+        "summary"
+      ],
+      "title": "CreativeGoalV2",
+      "type": "object"
+    },
+    "DelegatedProposalChoiceContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "context_kind": {
+          "const": "delegated_proposal_choice",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "goal": {
+          "$ref": "#/$defs/CreativeGoalV2"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/DelegatedProposalOptionSummaryV2"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Options",
           "type": "array"
         },
-        "memory_revision": {
-          "minimum": 0,
-          "title": "Memory Revision",
+        "proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_revision": {
+          "minimum": 1,
+          "title": "Proposal Revision",
           "type": "integer"
         },
-        "readiness": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ProductionReadinessProjectionV2"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "skill_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Skill Id",
-          "type": "string"
-        },
-        "skill_run_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Skill Run Id",
-          "type": "string"
-        },
-        "skill_version": {
-          "maxLength": 80,
-          "minLength": 1,
-          "title": "Skill Version",
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "active",
-            "superseded"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "topics": {
+        "relevant_decisions": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/PlanningTopicProgressV2"
+            "$ref": "#/$defs/CreativeElementDecisionV2"
           },
-          "maxItems": 32,
-          "title": "Topics",
+          "maxItems": 16,
+          "title": "Relevant Decisions",
           "type": "array"
         },
-        "updated_at": {
-          "format": "date-time",
-          "title": "Updated At",
+        "style_summary": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Style Summary",
           "type": "string"
         },
         "workflow_id": {
@@ -4380,15 +3899,76 @@
         }
       },
       "required": [
-        "memory_revision",
-        "skill_id",
-        "skill_run_id",
-        "skill_version",
-        "status",
-        "updated_at",
+        "context_kind",
+        "goal",
+        "options",
+        "proposal_id",
+        "proposal_revision",
         "workflow_id"
       ],
-      "title": "CreativeSessionStateV2",
+      "title": "DelegatedProposalChoiceContextV2",
+      "type": "object"
+    },
+    "DelegatedProposalChoiceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "reason"
+      ],
+      "title": "DelegatedProposalChoiceV2",
+      "type": "object"
+    },
+    "DelegatedProposalOptionSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "displayed_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceImageReferenceV2"
+          },
+          "maxItems": 16,
+          "title": "Displayed References",
+          "type": "array"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "summary",
+        "title"
+      ],
+      "title": "DelegatedProposalOptionSummaryV2",
       "type": "object"
     },
     "DesignAssetContentV2": {
@@ -4434,6 +4014,150 @@
         "subject_identity"
       ],
       "title": "DesignAssetContentV2",
+      "type": "object"
+    },
+    "DirectorGuidanceContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceBindingSummaryV2"
+          },
+          "maxItems": 256,
+          "title": "Bindings",
+          "type": "array"
+        },
+        "context_kind": {
+          "const": "director_guidance",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "conversation_summary": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Conversation Summary",
+          "type": "string"
+        },
+        "element_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CreativeElementDecisionV2"
+          },
+          "maxItems": 32,
+          "title": "Element Decisions",
+          "type": "array"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeGoalV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "guidance_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedSessionStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceImageReferenceV2"
+          },
+          "maxItems": 16,
+          "title": "Image References",
+          "type": "array"
+        },
+        "mentioned_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Mentioned Node Ids",
+          "type": "array"
+        },
+        "model_capabilities": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Model Capabilities",
+          "type": "object"
+        },
+        "nodes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceNodeSummaryV2"
+          },
+          "maxItems": 128,
+          "title": "Nodes",
+          "type": "array"
+        },
+        "open_proposal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceProposalSummaryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "style": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceStyleSummaryV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "user_input": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Input",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "context_kind",
+        "conversation_id",
+        "user_input",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "DirectorGuidanceContextV2",
       "type": "object"
     },
     "DirectorTurnContextV2": {
@@ -4494,17 +4218,6 @@
           ],
           "default": null
         },
-        "creative_session": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CreativeSessionStateV2"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "explicit_input_summaries": {
           "default": [],
           "items": {
@@ -4513,6 +4226,17 @@
           "maxItems": 64,
           "title": "Explicit Input Summaries",
           "type": "array"
+        },
+        "guidance_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedSessionStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "mentioned_image_asset_ids": {
           "default": [],
@@ -5222,13 +4946,308 @@
       "title": "FrozenPlanningFacts",
       "type": "object"
     },
-    "GuidedDeliveryActionV2": {
+    "GuidanceBindingSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "input_role": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Input Role",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "target_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Target Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_id",
+        "input_role",
+        "required",
+        "source_id",
+        "target_node_id"
+      ],
+      "title": "GuidanceBindingSummaryV2",
+      "type": "object"
+    },
+    "GuidanceCompletionClaimV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Asset Ids",
+          "type": "array"
+        },
+        "node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Node Ids",
+          "type": "array"
+        },
+        "output_kind": {
+          "enum": [
+            "audio",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Output Kind",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "authoring_ready",
+            "delivery_ready"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "output_kind",
+        "reason",
+        "state"
+      ],
+      "title": "GuidanceCompletionClaimV2",
+      "type": "object"
+    },
+    "GuidanceCompletionProjectionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "authoring": {
+          "default": "not_ready",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Authoring",
+          "type": "string"
+        },
+        "delivery": {
+          "default": "not_ready",
+          "enum": [
+            "not_ready",
+            "ready"
+          ],
+          "title": "Delivery",
+          "type": "string"
+        },
+        "matching_asset_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Matching Asset Ids",
+          "type": "array"
+        },
+        "matching_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Matching Node Ids",
+          "type": "array"
+        }
+      },
+      "title": "GuidanceCompletionProjectionV2",
+      "type": "object"
+    },
+    "GuidanceImageReferenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "media_url": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Media Url",
+          "type": "string"
+        },
+        "semantic_purpose": {
+          "default": "",
+          "maxLength": 1024,
+          "title": "Semantic Purpose",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "display_name",
+        "media_url"
+      ],
+      "title": "GuidanceImageReferenceV2",
+      "type": "object"
+    },
+    "GuidanceIntentPatchV2": {
+      "additionalProperties": false,
+      "properties": {
+        "element_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CreativeElementDecisionV2"
+          },
+          "maxItems": 32,
+          "title": "Element Decisions",
+          "type": "array"
+        },
+        "goal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeGoalV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "GuidanceIntentPatchV2",
+      "type": "object"
+    },
+    "GuidanceNodeSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_type": {
+          "enum": [
+            "audio",
+            "editing",
+            "image",
+            "script",
+            "text",
+            "video"
+          ],
+          "title": "Node Type",
+          "type": "string"
+        },
+        "semantic_purpose": {
+          "default": "",
+          "maxLength": 1024,
+          "title": "Semantic Purpose",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "failed",
+            "ready",
+            "working"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_type",
+        "status",
+        "title"
+      ],
+      "title": "GuidanceNodeSummaryV2",
+      "type": "object"
+    },
+    "GuidanceProposalSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "option_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Option Summaries",
+          "type": "array"
+        },
+        "proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Proposal Kind",
+          "type": "string"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_id",
+        "proposal_kind",
+        "topic_id"
+      ],
+      "title": "GuidanceProposalSummaryV2",
+      "type": "object"
+    },
+    "GuidanceSessionActionV2": {
       "additionalProperties": false,
       "properties": {
         "action": {
           "enum": [
-            "add_another_topic_node",
-            "skip_topic"
+            "resume_guidance",
+            "stop_guidance"
           ],
           "title": "Action",
           "type": "string"
@@ -5249,9 +5268,9 @@
           "title": "Creating Turn Id",
           "type": "string"
         },
-        "expected_semantic_revision": {
+        "expected_session_revision": {
           "minimum": 1,
-          "title": "Expected Semantic Revision",
+          "title": "Expected Session Revision",
           "type": "integer"
         },
         "label": {
@@ -5261,90 +5280,16 @@
           "type": "string"
         },
         "logical_key": {
-          "default": "",
           "maxLength": 256,
+          "minLength": 1,
           "title": "Logical Key",
           "type": "string"
-        },
-        "manifest_revision": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Manifest Revision"
-        },
-        "node_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Node Id"
-        },
-        "ordered_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Ordered Node Ids",
-          "type": "array"
-        },
-        "proposal_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Proposal Id"
         },
         "reason": {
           "maxLength": 1024,
           "minLength": 1,
           "title": "Reason",
           "type": "string"
-        },
-        "recipe_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Recipe Id"
-        },
-        "recipe_revision": {
-          "anyOf": [
-            {
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Recipe Revision"
         },
         "state": {
           "enum": [
@@ -5356,19 +5301,6 @@
           ],
           "title": "State",
           "type": "string"
-        },
-        "topic_id": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Topic Id"
         },
         "workflow_id": {
           "maxLength": 160,
@@ -5382,13 +5314,416 @@
         "action_id",
         "confirmation_required",
         "creating_turn_id",
-        "expected_semantic_revision",
+        "expected_session_revision",
         "label",
+        "logical_key",
         "reason",
         "state",
         "workflow_id"
       ],
-      "title": "GuidedDeliveryActionV2",
+      "title": "GuidanceSessionActionV2",
+      "type": "object"
+    },
+    "GuidanceSpecialistContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_anchors": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Accepted Anchors",
+          "type": "array"
+        },
+        "candidate_count": {
+          "maximum": 4,
+          "minimum": 1,
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "context_kind": {
+          "const": "guidance_specialist",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "goal": {
+          "$ref": "#/$defs/CreativeGoalV2"
+        },
+        "image_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceImageReferenceV2"
+          },
+          "maxItems": 16,
+          "title": "Image References",
+          "type": "array"
+        },
+        "relevant_bindings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceBindingSummaryV2"
+          },
+          "maxItems": 64,
+          "title": "Relevant Bindings",
+          "type": "array"
+        },
+        "relevant_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CreativeElementDecisionV2"
+          },
+          "maxItems": 16,
+          "title": "Relevant Decisions",
+          "type": "array"
+        },
+        "relevant_nodes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceNodeSummaryV2"
+          },
+          "maxItems": 32,
+          "title": "Relevant Nodes",
+          "type": "array"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "style_excerpt": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Style Excerpt",
+          "type": "string"
+        },
+        "targeted_prompt_baseline": {
+          "anyOf": [
+            {
+              "maxLength": 32768,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Targeted Prompt Baseline"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "topic_kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Topic Kind",
+          "type": "string"
+        },
+        "topic_objective": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Topic Objective",
+          "type": "string"
+        },
+        "topic_title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Topic Title",
+          "type": "string"
+        },
+        "user_instruction": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "User Instruction",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "workflow_revision": {
+          "minimum": 1,
+          "title": "Workflow Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_count",
+        "context_kind",
+        "goal",
+        "specialist_name",
+        "topic_id",
+        "topic_kind",
+        "topic_objective",
+        "topic_title",
+        "user_instruction",
+        "workflow_id",
+        "workflow_revision"
+      ],
+      "title": "GuidanceSpecialistContextV2",
+      "type": "object"
+    },
+    "GuidanceStyleSummaryV2": {
+      "additionalProperties": false,
+      "properties": {
+        "skill_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Run Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "skill_id",
+        "skill_run_id",
+        "skill_version"
+      ],
+      "title": "GuidanceStyleSummaryV2",
+      "type": "object"
+    },
+    "GuidanceTopicStateV2": {
+      "additionalProperties": false,
+      "properties": {
+        "related_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Related Node Ids",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "deferred",
+            "excluded",
+            "proposed",
+            "selected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "topic_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "topic_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "creative_direction",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
+          ],
+          "title": "Topic Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "specialist_name",
+        "status",
+        "title",
+        "topic_id",
+        "topic_kind"
+      ],
+      "title": "GuidanceTopicStateV2",
+      "type": "object"
+    },
+    "GuidedSessionStateV2": {
+      "additionalProperties": false,
+      "properties": {
+        "active_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Proposal Id"
+        },
+        "active_style_skill_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active Style Skill Run Id"
+        },
+        "completion": {
+          "$ref": "#/$defs/GuidanceCompletionProjectionV2"
+        },
+        "current_topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Current Topic Id"
+        },
+        "element_decisions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CreativeElementDecisionV2"
+          },
+          "maxItems": 32,
+          "title": "Element Decisions",
+          "type": "array"
+        },
+        "goal": {
+          "$ref": "#/$defs/CreativeGoalV2"
+        },
+        "guidance_mode": {
+          "enum": [
+            "collaborative",
+            "delegated"
+          ],
+          "title": "Guidance Mode",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "active",
+            "completed",
+            "paused"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "topics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidanceTopicStateV2"
+          },
+          "maxItems": 64,
+          "title": "Topics",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "goal",
+        "guidance_mode",
+        "revision",
+        "session_id",
+        "status",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "GuidedSessionStateV2",
       "type": "object"
     },
     "IntentContractAgentContext": {
@@ -5608,6 +5943,181 @@
       "type": "object"
     },
     "JsonValue": {},
+    "NextGuidanceDecisionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "ask_clarification",
+            "finish_guidance",
+            "ordinary_reply",
+            "propose_topic"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "assistant_message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Assistant Message",
+          "type": "string"
+        },
+        "candidate_count": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Count"
+        },
+        "completion_claim": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceCompletionClaimV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "intent_patch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceIntentPatchV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "specialist_name": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm_director",
+                "character_designer",
+                "product_designer",
+                "prop_designer",
+                "quick_media_agent",
+                "scene_designer",
+                "script_writer",
+                "storyboard_artist",
+                "video_director"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specialist Name"
+        },
+        "suggested_next_topic_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "audio",
+              "character",
+              "creative_direction",
+              "product",
+              "prop",
+              "scene",
+              "script",
+              "storyboard",
+              "video"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Suggested Next Topic Kinds",
+          "type": "array"
+        },
+        "topic_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Topic Id"
+        },
+        "topic_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "audio",
+                "character",
+                "creative_direction",
+                "product",
+                "prop",
+                "scene",
+                "script",
+                "storyboard",
+                "video"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Topic Kind"
+        },
+        "topic_objective": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Topic Objective"
+        },
+        "topic_title": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Topic Title"
+        }
+      },
+      "required": [
+        "action",
+        "assistant_message",
+        "rationale"
+      ],
+      "title": "NextGuidanceDecisionV2",
+      "type": "object"
+    },
     "PlanningItemSummary": {
       "additionalProperties": false,
       "properties": {
@@ -5737,91 +6247,6 @@
       "title": "PlanningSlotSummary",
       "type": "object"
     },
-    "PlanningTopicProgressV2": {
-      "additionalProperties": false,
-      "properties": {
-        "display_order": {
-          "minimum": 0,
-          "title": "Display Order",
-          "type": "integer"
-        },
-        "outcome": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Outcome"
-        },
-        "related_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Related Node Ids",
-          "type": "array"
-        },
-        "required": {
-          "title": "Required",
-          "type": "boolean"
-        },
-        "specialist_name": {
-          "enum": [
-            "bgm_director",
-            "character_designer",
-            "product_designer",
-            "prop_designer",
-            "quick_media_agent",
-            "scene_designer",
-            "script_writer",
-            "storyboard_artist",
-            "video_director"
-          ],
-          "title": "Specialist Name",
-          "type": "string"
-        },
-        "status": {
-          "enum": [
-            "deferred",
-            "in_review",
-            "not_required",
-            "pending",
-            "resolved",
-            "skipped"
-          ],
-          "title": "Status",
-          "type": "string"
-        },
-        "topic_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Topic Id",
-          "type": "string"
-        },
-        "topic_kind": {
-          "maxLength": 80,
-          "minLength": 1,
-          "title": "Topic Kind",
-          "type": "string"
-        }
-      },
-      "required": [
-        "display_order",
-        "required",
-        "specialist_name",
-        "status",
-        "topic_id",
-        "topic_kind"
-      ],
-      "title": "PlanningTopicProgressV2",
-      "type": "object"
-    },
     "ProductExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -5911,88 +6336,6 @@
         "user_input"
       ],
       "title": "ProductExpertAgentContext",
-      "type": "object"
-    },
-    "ProductionCompletionProjectionV2": {
-      "additionalProperties": false,
-      "properties": {
-        "delivery": {
-          "enum": [
-            "failed",
-            "not_ready",
-            "partial",
-            "ready"
-          ],
-          "title": "Delivery",
-          "type": "string"
-        },
-        "generation": {
-          "enum": [
-            "complete",
-            "failed",
-            "in_progress",
-            "not_started",
-            "partial_failed"
-          ],
-          "title": "Generation",
-          "type": "string"
-        },
-        "planning": {
-          "enum": [
-            "complete",
-            "in_progress",
-            "not_started"
-          ],
-          "title": "Planning",
-          "type": "string"
-        }
-      },
-      "required": [
-        "delivery",
-        "generation",
-        "planning"
-      ],
-      "title": "ProductionCompletionProjectionV2",
-      "type": "object"
-    },
-    "ProductionReadinessProjectionV2": {
-      "additionalProperties": false,
-      "properties": {
-        "completion": {
-          "$ref": "#/$defs/ProductionCompletionProjectionV2"
-        },
-        "discussable_topic_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Discussable Topic Ids",
-          "type": "array"
-        },
-        "materializable_topic_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 32,
-          "title": "Materializable Topic Ids",
-          "type": "array"
-        },
-        "runnable_node_ids": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "maxItems": 128,
-          "title": "Runnable Node Ids",
-          "type": "array"
-        }
-      },
-      "required": [
-        "completion"
-      ],
-      "title": "ProductionReadinessProjectionV2",
       "type": "object"
     },
     "ProjectCreativeMemoryV2": {
@@ -6094,122 +6437,6 @@
         "workflow_id"
       ],
       "title": "ProjectCreativeMemoryV2",
-      "type": "object"
-    },
-    "ProposalActionRequestV2": {
-      "additionalProperties": false,
-      "properties": {
-        "accepted_references": {
-          "anyOf": [
-            {
-              "items": {
-                "$ref": "#/$defs/ProposedDraftReferenceV2"
-              },
-              "maxItems": 64,
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Accepted References"
-        },
-        "action": {
-          "enum": [
-            "archive",
-            "reopen",
-            "revise",
-            "select"
-          ],
-          "title": "Action",
-          "type": "string"
-        },
-        "generation_action": {
-          "anyOf": [
-            {
-              "enum": [
-                "draft_only",
-                "generate_now"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Generation Action"
-        },
-        "instruction": {
-          "anyOf": [
-            {
-              "maxLength": 8192,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Instruction"
-        },
-        "mutable_dimensions": {
-          "default": [],
-          "items": {
-            "enum": [
-              "audio",
-              "camera",
-              "composition",
-              "copy",
-              "lighting",
-              "other",
-              "pacing",
-              "style"
-            ],
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Mutable Dimensions",
-          "type": "array"
-        },
-        "option_id": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Option Id"
-        },
-        "position": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "number"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Position"
-        },
-        "replace_whole_concept": {
-          "default": false,
-          "title": "Replace Whole Concept",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "action"
-      ],
-      "title": "ProposalActionRequestV2",
       "type": "object"
     },
     "ProposalRevisionContextV2": {
@@ -6894,17 +7121,6 @@
           ],
           "default": null
         },
-        "creative_session": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CreativeSessionStateV2"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "current_topic_id": {
           "anyOf": [
             {
@@ -6926,6 +7142,17 @@
           "maxItems": 64,
           "title": "Explicit Input Summaries",
           "type": "array"
+        },
+        "guidance_session": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedSessionStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "operation": {
           "enum": [

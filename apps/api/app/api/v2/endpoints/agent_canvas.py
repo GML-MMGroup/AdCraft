@@ -99,7 +99,7 @@ from app.schemas.agent_canvas_conversation import (
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
 )
-from app.schemas.agent_canvas_creative_session import CreativeSessionStateV2
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_video_skills import (
     VideoSkillPublicDetailV2,
     VideoSkillSummaryListV2,
@@ -160,7 +160,6 @@ from app.services.agent_canvas_provider_prompts import (
     AgentCanvasProviderPromptCompiler,
     list_agent_canvas_prompt_registrations,
 )
-from app.services.agent_canvas_production_plan import AgentCanvasProductionPlanService
 from app.services.agent_canvas_references import AdReferenceBundleResolver
 from app.services.agent_canvas_projects import AgentCanvasProjectService
 from app.services.agent_canvas_runtime import (
@@ -401,6 +400,11 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                     if context.model_resolution is not None
                     else None
                 ),
+                "effective_parameters": (
+                    context.effective_parameters.effective
+                    if context.effective_parameters is not None
+                    else {}
+                ),
             },
         )
 
@@ -532,8 +536,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             )
         return GeneratedMediaPayload(
             content=path.read_bytes(),
-            mime_type={"video": "video/mp4", "audio": "audio/mpeg"}[media_type],
-            filename=f"{task.node_id}.{extension}",
+            mime_type=_provider_download_mime_type(media_type, path),
+            filename=f"{task.node_id}{path.suffix.lower() or '.' + extension}",
             metadata=descriptor,
         )
 
@@ -1442,16 +1446,7 @@ def get_chat_timeline(
             after_seq=after_seq,
             limit=limit,
         )
-        if timeline.creative_session is None:
-            return timeline
-        return timeline.model_copy(
-            update={
-                "creative_session": _creative_session_with_readiness(
-                    runtime,
-                    timeline.creative_session,
-                )
-            }
-        )
+        return timeline
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -1477,7 +1472,6 @@ def submit_chat_message(
             mentioned_node_ids=request.mentioned_node_ids,
             mentioned_image_asset_ids=request.mentioned_image_asset_ids,
             video_skill_run_id=request.video_skill_run_id,
-            auto_continue=request.auto_continue,
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:
@@ -1645,7 +1639,6 @@ def create_video_skill_run(
             workflow_id,
             skill_id=loaded.manifest.skill_id,
             skill_version=loaded.manifest.version,
-            recipe_topics=tuple(loaded.recipe["planning_topics"]),
             source_skill_run_id=request.source_skill_run_id,
             idempotency_key=idempotency_key,
         )
@@ -1654,7 +1647,7 @@ def create_video_skill_run(
             skill_run,
             loaded,
         )
-        return skill_run
+        return runtime.conversation_repository.get_skill_run(skill_run.skill_run_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -1689,15 +1682,14 @@ def get_video_skill(
 
 @router.get(
     "/workflows/{workflow_id}/creative-session",
-    response_model=CreativeSessionStateV2,
+    response_model=GuidedSessionStateV2,
 )
 def get_creative_session(
     workflow_id: str,
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
-) -> CreativeSessionStateV2:
+) -> GuidedSessionStateV2:
     try:
-        session = runtime.conversation_repository.get_creative_session(workflow_id)
-        return _creative_session_with_readiness(runtime, session)
+        return runtime.conversation_repository.get_guidance_session(workflow_id)
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
 
@@ -2038,6 +2030,10 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "mentioned_asset_not_found": 422,
         "mentioned_asset_media_type_unsupported": 422,
         "chat_turn_not_found": 404,
+        "guidance_session_not_found": 404,
+        "guidance_revision_conflict": 409,
+        "guidance_goal_required": 422,
+        "guidance_topic_conflict": 409,
         "proposal_not_found": 404,
         "proposal_not_pending": 409,
         "proposal_option_not_found": 422,
@@ -2083,23 +2079,19 @@ def _http_error(
     )
 
 
+def _provider_download_mime_type(media_type: str, path: Path | str) -> str:
+    """Keep canonical publication aligned with validated provider bytes."""
+
+    if media_type == "video":
+        return "video/mp4"
+    if media_type == "audio":
+        return "audio/wav" if Path(path).suffix.lower() == ".wav" else "audio/mpeg"
+    raise V2PersistenceError(
+        "provider_output_invalid",
+        "Provider output has an unsupported media type.",
+        stage="agent_canvas_provider_recovery",
+    )
+
+
 def _image_library_response(items) -> ImageLibraryListResponseV2:
     return ImageLibraryListResponseV2(items=tuple(item.model_dump(mode="json") for item in items))
-
-
-def _creative_session_with_readiness(
-    runtime: AgentCanvasRuntime,
-    session: CreativeSessionStateV2,
-) -> CreativeSessionStateV2:
-    """Project readiness from canonical workflow, runtime, and Asset facts."""
-
-    if session.active_recipe is None:
-        return session
-    workflow = runtime.workflows.get_workflow(session.workflow_id)
-    readiness = AgentCanvasProductionPlanService().readiness(
-        session.active_recipe,
-        workflow=workflow,
-        runtime=runtime.runtime_snapshots.get(session.workflow_id),
-        assets=runtime.assets.list_project_assets(session.workflow_id),
-    )
-    return session.model_copy(update={"readiness": readiness})

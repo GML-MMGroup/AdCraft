@@ -134,7 +134,7 @@ class VideoSkillRegistry:
                 "agent_skill_manifest_invalid",
                 "Video Skill recipe is invalid.",
             ) from error
-        if not isinstance(recipe, dict) or not isinstance(recipe.get("planning_topics"), list):
+        if not isinstance(recipe, dict):
             raise _skill_error("agent_skill_manifest_invalid", "Video Skill recipe is invalid.")
         return LoadedVideoSkillV2(
             manifest=manifest,

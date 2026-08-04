@@ -13,7 +13,7 @@ from app.schemas.agent_operation_contexts import (
     InteractionMessageSummary,
 )
 from app.schemas.agent_canvas_creative_session import (
-    CreativeSessionStateV2,
+    GuidedSessionStateV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
 )
@@ -121,7 +121,7 @@ class AgentLocalContextAssembler:
         mentioned_image_asset_ids: tuple[str, ...] = (),
         recent_messages: tuple[InteractionMessageSummary, ...] = (),
         video_skill_excerpt: str = "",
-        creative_session: CreativeSessionStateV2 | None = None,
+        guidance_session: GuidedSessionStateV2 | None = None,
         creative_memory: ProjectCreativeMemoryV2 | None = None,
     ) -> DirectorTurnContextV2:
         workflow = self._workflows.get_workflow(workflow_id)
@@ -176,7 +176,7 @@ class AgentLocalContextAssembler:
             video_skill_excerpt=video_skill_excerpt,
             explicit_input_summaries=tuple(summaries),
             candidate_summaries=tuple(candidate_summaries),
-            creative_session=creative_session,
+            guidance_session=guidance_session,
             creative_memory=creative_memory,
             resolved_image_targets=resolved_image_targets,
         )

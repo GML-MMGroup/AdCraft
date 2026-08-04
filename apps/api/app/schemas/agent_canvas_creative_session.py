@@ -32,7 +32,19 @@ CreationModeV2 = Literal[
     "quick_media",
     "guided_production",
 ]
-AdaptiveProductionTopicKindV2 = Literal[
+CreativeOutputKindV2 = Literal["text", "script", "image", "video", "audio"]
+CreativeDeliveryScopeV2 = Literal["draft", "generated_media"]
+CreativeElementKindV2 = Literal[
+    "product",
+    "character",
+    "prop",
+    "scene",
+    "script",
+    "storyboard",
+    "video",
+    "audio",
+]
+GuidanceTopicKindV2 = Literal[
     "creative_direction",
     "product",
     "prop",
@@ -42,20 +54,6 @@ AdaptiveProductionTopicKindV2 = Literal[
     "storyboard",
     "video",
     "audio",
-]
-TopicApplicabilityV2 = Literal["required", "optional", "not_required"]
-ProposalModeV2 = Literal["single_plan", "choice_set"]
-AdaptiveProductionStageStatusV2 = Literal[
-    "pending",
-    "working",
-    "completed",
-    "skipped",
-    "not_required",
-    "reopened",
-]
-GuidedDeliveryActionTypeV2 = Literal[
-    "add_another_topic_node",
-    "skip_topic",
 ]
 
 
@@ -70,72 +68,128 @@ class CreationModeDecisionV2(_CreativeSessionModel):
     target_asset_id: str | None = Field(default=None, max_length=160)
 
 
-class AdaptiveProductionStageV2(_CreativeSessionModel):
+class CreativeGoalV2(_CreativeSessionModel):
+    requested_output: CreativeOutputKindV2
+    delivery_scope: CreativeDeliveryScopeV2
+    summary: str = Field(min_length=1, max_length=4_096)
+    explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class CreativeElementDecisionV2(_CreativeSessionModel):
+    element_kind: CreativeElementKindV2
+    presence: Literal["include", "exclude", "unspecified"]
+    authority: Literal["user", "agent"]
+    requirements: dict[str, JsonValue] = Field(default_factory=dict)
+    source: Literal[
+        "explicit_user",
+        "accepted_proposal",
+        "delegated_to_agent",
+    ]
+
+
+class GuidanceTopicStateV2(_CreativeSessionModel):
     topic_id: str = Field(min_length=1, max_length=160)
-    topic_kind: AdaptiveProductionTopicKindV2
+    topic_kind: GuidanceTopicKindV2
     title: str = Field(min_length=1, max_length=256)
-    objective: str = Field(min_length=1, max_length=4_096)
-    applicability: TopicApplicabilityV2
-    applicability_reason: str = Field(min_length=1, max_length=2_048)
+    status: Literal["proposed", "selected", "deferred", "excluded"]
     specialist_name: AgentCanvasSpecialistNameV2
-    proposal_mode: ProposalModeV2
-    candidate_count: int = Field(ge=1, le=4)
-    status: AdaptiveProductionStageStatusV2
     related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-
-
-class AdaptiveProductionDeliverableV2(_CreativeSessionModel):
-    deliverable_id: str = Field(min_length=1, max_length=160)
-    output_kind: Literal["text", "image", "video", "audio", "editing"]
-    required: bool = True
-    description: str = Field(min_length=1, max_length=4_096)
-    related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    related_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
-
-
-class AdaptiveProductionDependencyV2(_CreativeSessionModel):
-    source_topic_id: str = Field(min_length=1, max_length=160)
-    target_topic_id: str = Field(min_length=1, max_length=160)
-    rationale: str = Field(min_length=1, max_length=2_048)
-
-
-class AdaptiveProductionCompletionCriteriaV2(_CreativeSessionModel):
-    required_deliverable_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    accepted_omission_deliverable_ids: tuple[str, ...] = Field(default=(), max_length=32)
-
-
-class AdaptiveProductionRecipeDraftV2(_CreativeSessionModel):
-    goal: str = Field(default="", max_length=4_096)
-    current_topic_id: str | None = Field(default=None, max_length=160)
-    stages: tuple[AdaptiveProductionStageV2, ...] = Field(min_length=1, max_length=16)
-    anchor_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    deliverables: tuple[AdaptiveProductionDeliverableV2, ...] = Field(default=(), max_length=32)
-    dependencies: tuple[AdaptiveProductionDependencyV2, ...] = Field(default=(), max_length=64)
-    recommended_next_topic_ids: tuple[str, ...] = Field(default=(), max_length=16)
-    completion_criteria: AdaptiveProductionCompletionCriteriaV2 = Field(
-        default_factory=AdaptiveProductionCompletionCriteriaV2
-    )
-
-
-class AdaptiveProductionRecipeV2(_CreativeSessionModel):
-    recipe_id: str = Field(min_length=1, max_length=160)
-    workflow_id: str = Field(min_length=1, max_length=160)
-    conversation_id: str = Field(min_length=1, max_length=160)
-    skill_run_id: str | None = Field(default=None, max_length=160)
+    source_proposal_id: str | None = Field(default=None, max_length=160)
     revision: int = Field(ge=1)
-    creation_mode: CreationModeV2
-    goal: str = Field(default="", max_length=4_096)
-    current_topic_id: str | None = Field(default=None, max_length=160)
-    stages: tuple[AdaptiveProductionStageV2, ...] = Field(min_length=1, max_length=16)
-    anchor_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    deliverables: tuple[AdaptiveProductionDeliverableV2, ...] = Field(default=(), max_length=32)
-    dependencies: tuple[AdaptiveProductionDependencyV2, ...] = Field(default=(), max_length=64)
-    recommended_next_topic_ids: tuple[str, ...] = Field(default=(), max_length=16)
-    completion_criteria: AdaptiveProductionCompletionCriteriaV2 = Field(
-        default_factory=AdaptiveProductionCompletionCriteriaV2
+
+
+class GuidanceCompletionProjectionV2(_CreativeSessionModel):
+    authoring: Literal["not_ready", "ready"] = "not_ready"
+    delivery: Literal["not_ready", "ready"] = "not_ready"
+    matching_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
+
+
+class GuidedSessionStateV2(_CreativeSessionModel):
+    session_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    status: Literal["active", "paused", "completed"]
+    guidance_mode: Literal["collaborative", "delegated"]
+    goal: CreativeGoalV2
+    element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
+        default=(),
+        max_length=32,
     )
-    created_at: datetime
+    current_topic_id: str | None = Field(default=None, max_length=160)
+    topics: tuple[GuidanceTopicStateV2, ...] = Field(default=(), max_length=64)
+    active_proposal_id: str | None = Field(default=None, max_length=160)
+    active_style_skill_run_id: str | None = Field(default=None, max_length=160)
+    completion: GuidanceCompletionProjectionV2 = Field(
+        default_factory=GuidanceCompletionProjectionV2
+    )
+    revision: int = Field(ge=1)
     updated_at: datetime
+
+
+class GuidanceIntentPatchV2(_CreativeSessionModel):
+    goal: CreativeGoalV2 | None = None
+    element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
+        default=(),
+        max_length=32,
+    )
+
+
+class GuidanceCompletionClaimV2(_CreativeSessionModel):
+    state: Literal["authoring_ready", "delivery_ready"]
+    output_kind: CreativeOutputKindV2
+    node_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    reason: str = Field(min_length=1, max_length=2_048)
+
+
+class NextGuidanceDecisionV2(_CreativeSessionModel):
+    action: Literal[
+        "ordinary_reply",
+        "ask_clarification",
+        "propose_topic",
+        "finish_guidance",
+    ]
+    assistant_message: str = Field(min_length=1, max_length=4_000)
+    rationale: str = Field(min_length=1, max_length=4_000)
+    topic_id: str | None = Field(default=None, max_length=160)
+    topic_kind: GuidanceTopicKindV2 | None = None
+    topic_title: str | None = Field(default=None, max_length=256)
+    topic_objective: str | None = Field(default=None, max_length=4_096)
+    specialist_name: AgentCanvasSpecialistNameV2 | None = None
+    candidate_count: int | None = Field(default=None, ge=1, le=4)
+    suggested_next_topic_kinds: tuple[GuidanceTopicKindV2, ...] = Field(
+        default=(),
+        max_length=8,
+    )
+    intent_patch: GuidanceIntentPatchV2 | None = None
+    completion_claim: GuidanceCompletionClaimV2 | None = None
+
+    @model_validator(mode="after")
+    def validate_action_shape(self) -> "NextGuidanceDecisionV2":
+        topic_values = (
+            self.topic_id,
+            self.topic_kind,
+            self.topic_title,
+            self.topic_objective,
+            self.specialist_name,
+            self.candidate_count,
+        )
+        if self.action == "propose_topic":
+            if any(value is None for value in topic_values):
+                raise ValueError("A topic proposal requires the complete topic shape.")
+        elif any(value is not None for value in topic_values):
+            raise ValueError("Only a topic proposal accepts topic fields.")
+        if self.action == "finish_guidance":
+            if self.completion_claim is None:
+                raise ValueError("Finishing guidance requires a completion claim.")
+        elif self.completion_claim is not None:
+            raise ValueError("Only finish_guidance accepts a completion claim.")
+        return self
+
+
+class DelegatedProposalChoiceV2(_CreativeSessionModel):
+    option_id: str = Field(min_length=1, max_length=160)
+    reason: str = Field(min_length=1, max_length=2_048)
 
 
 class ConceptDraftSpecV2(_CreativeSessionModel):
@@ -144,79 +198,17 @@ class ConceptDraftSpecV2(_CreativeSessionModel):
     prompt: str = Field(min_length=1, max_length=32_768)
 
 
-class GuidedDeliveryActionV2(_CreativeSessionModel):
+class GuidanceSessionActionV2(_CreativeSessionModel):
     action_id: str = Field(min_length=1, max_length=160)
-    logical_key: str = Field(default="", max_length=256)
-    action: GuidedDeliveryActionTypeV2
+    logical_key: str = Field(min_length=1, max_length=256)
+    action: Literal["stop_guidance", "resume_guidance"]
     state: Literal["pending", "applying", "applied", "superseded", "failed"]
     creating_turn_id: str = Field(min_length=1, max_length=160)
-    expected_semantic_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
     label: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
-    proposal_id: str | None = Field(default=None, max_length=160)
-    topic_id: str | None = Field(default=None, max_length=160)
-    recipe_id: str | None = Field(default=None, max_length=160)
-    recipe_revision: int | None = Field(default=None, ge=1)
-    node_id: str | None = Field(default=None, max_length=160)
-    ordered_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    manifest_revision: int | None = Field(default=None, ge=1)
     confirmation_required: bool
     reason: str = Field(min_length=1, max_length=1_024)
-
-    @model_validator(mode="after")
-    def assign_logical_key(self) -> "GuidedDeliveryActionV2":
-        if not self.logical_key:
-            source = self.topic_id or self.proposal_id or self.node_id or "session"
-            object.__setattr__(self, "logical_key", f"{self.action}:{source}")
-        return self
-
-
-class PlanningTopicProgressV2(_CreativeSessionModel):
-    topic_id: str = Field(min_length=1, max_length=160)
-    topic_kind: str = Field(min_length=1, max_length=80)
-    display_order: int = Field(ge=0)
-    required: bool
-    specialist_name: AgentCanvasSpecialistNameV2
-    status: Literal[
-        "pending",
-        "in_review",
-        "resolved",
-        "skipped",
-        "not_required",
-        "deferred",
-    ]
-    outcome: str | None = Field(default=None, max_length=160)
-    related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-
-
-class ProductionCompletionProjectionV2(_CreativeSessionModel):
-    planning: Literal["not_started", "in_progress", "complete"]
-    generation: Literal["not_started", "in_progress", "complete", "partial_failed", "failed"]
-    delivery: Literal["not_ready", "ready", "partial", "failed"]
-
-
-class ProductionReadinessProjectionV2(_CreativeSessionModel):
-    discussable_topic_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    materializable_topic_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    runnable_node_ids: tuple[str, ...] = Field(default=(), max_length=128)
-    completion: ProductionCompletionProjectionV2
-
-
-class CreativeSessionStateV2(_CreativeSessionModel):
-    skill_run_id: str = Field(min_length=1, max_length=160)
-    workflow_id: str = Field(min_length=1, max_length=160)
-    skill_id: str = Field(min_length=1, max_length=160)
-    skill_version: str = Field(min_length=1, max_length=80)
-    status: Literal["active", "superseded"]
-    creation_mode: CreationModeDecisionV2 | None = None
-    active_recipe: AdaptiveProductionRecipeV2 | None = None
-    readiness: ProductionReadinessProjectionV2 | None = None
-    creative_direction_snapshot_id: str | None = Field(default=None, max_length=160)
-    current_topic_id: str | None = Field(default=None, max_length=160)
-    topics: tuple[PlanningTopicProgressV2, ...] = Field(default=(), max_length=32)
-    deferred_topic_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    memory_revision: int = Field(ge=0)
-    updated_at: datetime
 
 
 class CreativeDirectionSnapshotV2(_CreativeSessionModel):

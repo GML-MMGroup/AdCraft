@@ -566,14 +566,6 @@ class AgentRequestNodeRunOperationV2(_AgentCommandOperationV2):
     node: AgentNodeRefV2
 
 
-class AgentUpdateTopicStatusOperationV2(_AgentCommandOperationV2):
-    operation_type: Literal["update_topic_status"] = "update_topic_status"
-    skill_run_id: str = Field(min_length=1, max_length=160)
-    topic_id: str = Field(min_length=1, max_length=160)
-    status: Literal["resolved", "skipped", "not_required"]
-    related_nodes: tuple[AgentNodeRefV2, ...] = Field(default=(), max_length=32)
-
-
 AgentCommandOperationDraftV2 = Annotated[
     AgentCreateDraftNodeOperationV2
     | AgentPatchEditableNodeOperationV2
@@ -582,8 +574,7 @@ AgentCommandOperationDraftV2 = Annotated[
     | AgentDeleteBindingOperationV2
     | AgentDeleteNodeOperationV2
     | AgentMaterializeSiblingDraftOperationV2
-    | AgentRequestNodeRunOperationV2
-    | AgentUpdateTopicStatusOperationV2,
+    | AgentRequestNodeRunOperationV2,
     Field(discriminator="operation_type"),
 ]
 
@@ -709,4 +700,3 @@ class AgentActionEnvelopeV2(_StrictModel):
     specialist_handoff: AgentCanvasSpecialistName | None = None
     proposal: ConceptProposalDraftV2 | None = None
     command_plan: AgentCommandPlanDraftV2 | None = None
-    auto_continue_requested: bool = False
