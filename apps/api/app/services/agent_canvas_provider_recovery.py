@@ -276,12 +276,15 @@ class ProviderTaskRecoveryService:
         error: Exception,
     ) -> None:
         now = self._clock()
+        current = self._runtime.get_provider_task(task.task_id)
+        if current.status in {"succeeded", "failed", "cancelled"}:
+            return
         detail = CanvasNodeErrorV2(
             code=getattr(error, "code", "provider_recovery_failed"),
             message=str(error),
             retryable=True,
         )
-        recovering = task.model_copy(
+        recovering = current.model_copy(
             update={
                 "status": "recovering",
                 "next_poll_at": now + timedelta(seconds=8),

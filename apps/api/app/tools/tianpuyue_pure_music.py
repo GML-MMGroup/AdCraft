@@ -92,6 +92,50 @@ def select_tianpuyue_instrumental_model(
     )
 
 
+def select_frozen_tianpuyue_instrumental_model(
+    provider_model_id: str,
+    duration_seconds: int,
+    settings: Settings,
+) -> TianpuyueInstrumentalModelSelection:
+    """Map a frozen catalog model ID to Tianpuyue's configured wire model."""
+
+    frozen_model_id = provider_model_id.strip()
+    model_config = {
+        "TemPolor-i3": (
+            str(settings.bgm_model or "").strip(),
+            TIANPUYUE_SHORT_DURATION_LIMIT_SECONDS,
+        ),
+        "TemPolor-i3.5": (
+            str(settings.bgm_long_model or "").strip(),
+            TIANPUYUE_LONG_DURATION_LIMIT_SECONDS,
+        ),
+    }.get(frozen_model_id)
+    if model_config is None:
+        raise TianpuyuePureMusicError(
+            "bgm_provider_model_unsupported",
+            "The frozen Tianpuyue BGM model is not supported.",
+            metadata={"frozen_provider_model_id": frozen_model_id},
+        )
+    model, duration_limit_seconds = model_config
+    if duration_seconds < 1 or duration_seconds > duration_limit_seconds:
+        raise TianpuyuePureMusicError(
+            "bgm_duration_unsupported",
+            "The frozen Tianpuyue BGM model does not support the requested duration.",
+            metadata={
+                "frozen_provider_model_id": frozen_model_id,
+                "requested_duration_seconds": duration_seconds,
+                "minimum_duration_seconds": 1,
+                "maximum_duration_seconds": duration_limit_seconds,
+            },
+        )
+    if not model:
+        raise MediaConfigurationError("Tianpuyue BGM model configuration is required.")
+    return TianpuyueInstrumentalModelSelection(
+        model=model,
+        duration_limit_seconds=duration_limit_seconds,
+    )
+
+
 def validate_tianpuyue_bgm_settings(settings: Settings) -> None:
     endpoint = str(settings.bgm_endpoint or "").strip()
     parsed = urlparse(endpoint)
@@ -155,8 +199,17 @@ class TianpuyuePureMusicAdapter:
                 stage="submit",
             )
         duration_seconds = _duration_seconds(bgm_plan.get("duration_seconds"))
+        frozen_provider_model_id = _frozen_provider_model_id(bgm_plan)
         try:
-            selection = select_tianpuyue_instrumental_model(duration_seconds, self._settings)
+            selection = (
+                select_frozen_tianpuyue_instrumental_model(
+                    frozen_provider_model_id,
+                    duration_seconds,
+                    self._settings,
+                )
+                if frozen_provider_model_id is not None
+                else select_tianpuyue_instrumental_model(duration_seconds, self._settings)
+            )
         except TianpuyuePureMusicError as exc:
             return self._failure(exc.code, str(exc), stage="submit", **exc.metadata)
         try:
@@ -218,6 +271,8 @@ class TianpuyuePureMusicAdapter:
             status="submitted",
             task_id=item_ids[0],
             model=selection.model,
+            frozen_provider_model_id=frozen_provider_model_id,
+            provider_wire_model=selection.model,
             requested_duration_seconds=duration_seconds,
             model_duration_limit_seconds=selection.duration_limit_seconds,
             request_id=envelope.request_id,
@@ -337,7 +392,7 @@ class TianpuyuePureMusicAdapter:
         metadata["audio_quality"] = "high" if _first_nonempty(record.audio_hi_url) else "standard"
         if not download_media:
             return self._asset(
-                status="submitted",
+                status="succeeded",
                 task_id=remote_task_id,
                 model=record.model,
                 **metadata,
@@ -766,6 +821,14 @@ def _duration_seconds(value: object) -> int:
     except (TypeError, ValueError):
         return 0
     return duration
+
+
+def _frozen_provider_model_id(bgm_plan: dict[str, Any]) -> str | None:
+    value = bgm_plan.get("provider_model_id")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 TIANPUYUE_PROMPT_MAX_CHARS = 1000
