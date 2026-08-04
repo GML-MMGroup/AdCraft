@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing silhouette through silhouette and fabric motion through surfaces and detail. Make functional features readable, and use editorial posing only where it strengthens the requested selling point.

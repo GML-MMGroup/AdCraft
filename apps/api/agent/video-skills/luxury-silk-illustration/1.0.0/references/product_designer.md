@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing flowing ornamental line through silhouette and silk material behavior through surfaces and detail. Make functional features readable, and use refined color fields only where it strengthens the requested selling point.
