@@ -7,11 +7,16 @@ metadata that authoring and runtime services can persist independently.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from app.persistence.errors import V2PersistenceError
 from app.persistence.provider_model_repository import ProviderModelRecord
 from app.schemas.agent_canvas import CanvasModelSummaryV2, CanvasNodeV2
+from app.services.automatic_model_routing import (
+    AutomaticModelRoutingService,
+    validate_audio_model_parameters,
+)
 from app.services.provider_model_catalog import ProviderModelCatalogService
 
 
@@ -41,14 +46,20 @@ class SelectedModelV1:
 class ModelSelectionService:
     """Validate canonical Canvas model choices against the SQLite catalog."""
 
-    def __init__(self, catalog: ProviderModelCatalogService) -> None:
+    def __init__(
+        self,
+        catalog: ProviderModelCatalogService,
+        automatic_routing: AutomaticModelRoutingService | None = None,
+    ) -> None:
         self._catalog = catalog
+        self._automatic_routing = automatic_routing or AutomaticModelRoutingService()
 
     def validate_authoring(self, node: CanvasNodeV2) -> SelectedModelV1 | None:
         return self.validate_selection(
             node_type=node.node_type,
             model_selection_mode=node.model_selection_mode,
             model_ref=node.model_ref,
+            parameters=node.parameters,
         )
 
     def validate_selection(
@@ -57,6 +68,7 @@ class ModelSelectionService:
         node_type: str,
         model_selection_mode: str,
         model_ref: str | None,
+        parameters: Mapping[str, object] | None = None,
     ) -> SelectedModelV1 | None:
         """Validate a persisted selection without requiring a complete Canvas Node."""
 
@@ -71,8 +83,11 @@ class ModelSelectionService:
             node_type=node_type,
             model_selection_mode=model_selection_mode,
             model_ref=model_ref,
+            parameters=parameters or {},
         )
         self._validate_node_capability(node_type, selected)
+        if node_type == "audio":
+            validate_audio_model_parameters(selected, parameters or {})
         return SelectedModelV1.from_record(selected)
 
     def summary_for(self, model_ref: str | None) -> CanvasModelSummaryV2 | None:
@@ -104,20 +119,41 @@ class ModelSelectionService:
         node_type: str,
         model_selection_mode: str,
         model_ref: str | None,
+        parameters: Mapping[str, object],
     ) -> ProviderModelRecord:
         if model_selection_mode == "explicit":
             if model_ref is None:
                 raise _model_error("model_selection_invalid", "A model reference is required.")
             return self._record(model_ref)
         default_key = "agent" if node_type == "script" else node_type
-        defaults = self._catalog.get_defaults()
-        model_ref = defaults.get(default_key)
-        if model_ref is None:
+        defaults = self._catalog.get_default_records()
+        default = defaults.get(default_key)
+        if default is None:
             raise _model_error(
                 "model_default_not_configured",
                 "No installation default is configured for this node type.",
             )
-        return self._record(model_ref)
+        preferred = self._record(default.model_ref)
+        if default.selection_mode != "automatic":
+            return preferred
+        if node_type != "audio":
+            raise _model_error(
+                "model_automatic_policy_unsupported",
+                "Automatic model routing is currently supported only for Audio Nodes.",
+                node_type=node_type,
+            )
+        if "duration_seconds" not in parameters:
+            return preferred
+        candidates = self._catalog.list_models(
+            provider_id=preferred.provider_id,
+            capability="audio",
+        )
+        return self._automatic_routing.resolve(
+            preferred=preferred,
+            node_type=node_type,
+            parameters=parameters,
+            candidates=candidates,
+        )
 
     def _record(self, model_ref: str) -> ProviderModelRecord:
         models = self._catalog.list_models(include_unavailable=True)

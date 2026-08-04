@@ -28,6 +28,7 @@ class ModelResolutionService:
             node_type=node.node_type,
             model_selection_mode=node.model_selection_mode,
             model_ref=node.model_ref,
+            parameters=node.parameters,
         )
 
     def resolve_selection(
@@ -36,6 +37,7 @@ class ModelResolutionService:
         node_type: str,
         model_selection_mode: str,
         model_ref: str | None,
+        parameters: dict[str, object] | None = None,
     ) -> ResolvedModelExecutionV1:
         """Resolve one frozen catalog selection without constructing a Canvas Node."""
 
@@ -43,6 +45,7 @@ class ModelResolutionService:
             node_type=node_type,
             model_selection_mode=model_selection_mode,
             model_ref=model_ref,
+            parameters=parameters,
         )
         if selected is None:
             raise V2PersistenceError(
