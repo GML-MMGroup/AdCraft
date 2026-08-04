@@ -49,6 +49,7 @@ runtime-data/
 # Local agent, skill, planning, and code-intelligence artifacts
 .superpowers/
 .codex/
+openspec/
 docs/superpowers/
 .codegraph/
 apps/*/.codegraph/
