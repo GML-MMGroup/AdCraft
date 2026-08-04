@@ -261,11 +261,12 @@
   box-shadow: 0 0 0 4px rgb(138 112 210 / 14%);
 }
 
-.agent-chat__recipe li.is-completed i {
+.agent-chat__recipe li.is-selected i {
   background: #4fa987;
 }
 
-.agent-chat__recipe li.is-skipped i {
+.agent-chat__recipe li.is-deferred i,
+.agent-chat__recipe li.is-excluded i {
   background: #a1a0ad;
 }
 

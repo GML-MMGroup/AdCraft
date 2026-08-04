@@ -42,9 +42,9 @@ export function projectChatEvents(
 
   events.forEach((event) => {
     const payload = event.payload ?? {};
-    if (event.event_type.startsWith("specialist_activity_")) {
+    if (event.event_type.startsWith("specialist_work_")) {
       const specialist = specialistValue(payload);
-      const turnId = stringValue(payload.turn_id);
+      const turnId = stringValue(payload.turn_id, event.turn_id ?? "");
       if (!specialist || !turnId) return;
       const key = stringValue(payload.activity_id, `${turnId}:${specialist}`);
       const previous = activities.get(key);

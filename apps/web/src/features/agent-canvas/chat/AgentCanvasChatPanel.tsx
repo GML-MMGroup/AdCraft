@@ -12,19 +12,16 @@ import {
 import type {
   AgentCanvasWorkflowV2,
   AgentCanvasContinuationV2,
-  AgentCanvasCreationModeV2,
   AgentActionReceiptV2,
-  AdaptiveProductionRecipeV2,
-  AdaptiveProductionStageV2,
-  CanvasPositionV2,
   CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
   ChatProposalCardV2,
   ConceptOptionV2,
-  GuidedDeliveryActionV2,
-  ProductionReadinessProjectionV2,
+  GuidanceSessionActionV2,
+  GuidedSessionStateV2,
+  ProposalActionDescriptorV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import {
@@ -39,7 +36,6 @@ export function AgentCanvasChatPanel({
   workflow,
   chatRevision,
   chatEvents,
-  proposalPosition,
   onFocusNode,
   onActionReceipt,
   onWorkflowRefresh,
@@ -47,7 +43,6 @@ export function AgentCanvasChatPanel({
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
   chatEvents: CanvasRuntimeEventV2[];
-  proposalPosition: CanvasPositionV2;
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
@@ -56,7 +51,6 @@ export function AgentCanvasChatPanel({
     workflow,
     chatRevision,
     chatEvents,
-    proposalPosition,
     onActionReceipt,
     onWorkflowRefresh,
   });
@@ -70,14 +64,9 @@ export function AgentCanvasChatPanel({
     [workflow.assets],
   );
   const currentTopic = useMemo(() => {
-    const session = chat.state.creativeSession;
+    const session = chat.state.guidanceSession;
     return session?.topics.find((topic) => topic.topic_id === session.current_topic_id) ?? null;
-  }, [chat.state.creativeSession]);
-  const currentRecipeStage = useMemo(() => {
-    const recipe = chat.state.recipe;
-    if (!recipe?.current_topic_id) return null;
-    return recipe.stages.find((stage) => stage.topic_id === recipe.current_topic_id) ?? null;
-  }, [chat.state.recipe]);
+  }, [chat.state.guidanceSession]);
   const activeContinuation = useMemo(
     () => chat.state.continuations.find((continuation) => (
       continuation.delivery_status === "queued"
@@ -135,10 +124,10 @@ export function AgentCanvasChatPanel({
               ? "Thinking"
               : activeContinuation
                 ? continuationLabel(activeContinuation)
-                : currentRecipeStage
-                  ? `${currentRecipeStage.title} · ${currentRecipeStage.status.replaceAll("_", " ")}`
                 : currentTopic
-                ? `${currentTopic.topic_kind.replaceAll("_", " ")} · ${currentTopic.status.replaceAll("_", " ")}`
+                ? `${currentTopic.title} · ${currentTopic.status.replaceAll("_", " ")}`
+                : chat.state.guidanceSession
+                  ? chat.state.guidanceSession.status.replaceAll("_", " ")
                 : "Ready"}
           </span>
         </div>
@@ -165,12 +154,8 @@ export function AgentCanvasChatPanel({
               .map((continuation) => (
                 <ContinuationActivityRow key={continuation.continuation_id} continuation={continuation} />
               ))}
-            {chat.state.creationMode || chat.state.recipe ? (
-              <ProductionRecipeProgress
-                creationMode={chat.state.creationMode}
-                recipe={chat.state.recipe}
-                readiness={chat.state.creativeSession?.readiness ?? null}
-              />
+            {chat.state.guidanceSession ? (
+              <GuidanceSessionProgress session={chat.state.guidanceSession} />
             ) : null}
             {chat.state.items.map((item) => {
               if (item.item_type === "message") {
@@ -230,7 +215,7 @@ export function AgentCanvasChatPanel({
                   pending={chat.state.actingProposalId === item.proposal.proposal_id}
                   onSelect={chat.actions.selectProposal}
                   onRevise={chat.actions.reviseProposal}
-                  onSetAvailability={chat.actions.setProposalAvailability}
+                  onApplyAction={chat.actions.applyProposalAction}
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
@@ -421,62 +406,37 @@ export function ContinuationActivityRow({
   );
 }
 
-function creationModeLabel(mode: AgentCanvasCreationModeV2 | null): string {
-  if (!mode) return "Production plan";
-  return mode
-    .split("_")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
-function stageStatusLabel(stage: AdaptiveProductionStageV2): string {
-  if (stage.status === "working") return "Working";
-  if (stage.status === "completed") return "Complete";
-  if (stage.status === "skipped") return "Skipped";
-  if (stage.status === "reopened") return "Reopened";
-  return "Pending";
-}
-
-export function ProductionRecipeProgress({
-  creationMode,
-  recipe,
-  readiness,
+export function GuidanceSessionProgress({
+  session,
 }: {
-  creationMode: AgentCanvasCreationModeV2 | null;
-  recipe: AdaptiveProductionRecipeV2 | null;
-  readiness: ProductionReadinessProjectionV2 | null;
+  session: GuidedSessionStateV2;
 }) {
-  const visibleStages = recipe?.stages.filter((stage) => stage.applicability !== "not_required") ?? [];
   return (
-    <section className="agent-chat__recipe" aria-label="Production plan">
+    <section className="agent-chat__recipe" aria-label="Guidance progress">
       <header>
-        <strong>{creationModeLabel(creationMode ?? recipe?.creation_mode ?? null)}</strong>
-        {recipe ? <span>Revision {recipe.revision}</span> : null}
+        <strong>{session.goal.summary}</strong>
+        <span>Revision {session.revision}</span>
       </header>
-      {visibleStages.length ? (
+      {session.topics.length ? (
         <ol>
-          {visibleStages.map((stage) => (
+          {session.topics.map((topic) => (
             <li
-              key={stage.topic_id}
-              className={`is-${stage.status}${stage.topic_id === recipe?.current_topic_id ? " is-current" : ""}`}
-              title={stage.objective}
+              key={topic.topic_id}
+              className={`is-${topic.status}${topic.topic_id === session.current_topic_id ? " is-current" : ""}`}
             >
               <i aria-hidden="true" />
-              <span>{stage.title}</span>
-              <small>{stageStatusLabel(stage)}</small>
+              <span>{topic.title}</span>
+              <small>{topic.status.replaceAll("_", " ")}</small>
             </li>
           ))}
         </ol>
       ) : (
-        <p>The agent is preparing a production plan.</p>
+        <p>The agent is preparing the next creative decision.</p>
       )}
-      {readiness ? (
-        <div className="agent-chat__completion" aria-label="Production completion">
-          <span>Planning: {readiness.completion.planning.replaceAll("_", " ")}</span>
-          <span>Generation: {readiness.completion.generation.replaceAll("_", " ")}</span>
-          <span>Delivery: {readiness.completion.delivery.replaceAll("_", " ")}</span>
-        </div>
-      ) : null}
+      <div className="agent-chat__completion" aria-label="Guidance completion">
+        <span>Authoring: {session.completion.authoring.replaceAll("_", " ")}</span>
+        <span>Delivery: {session.completion.delivery.replaceAll("_", " ")}</span>
+      </div>
     </section>
   );
 }
@@ -559,8 +519,8 @@ export function ActionReceiptCard({
           {receipt.run_queue_errors.map((error) => <li key={error}>{error}</li>)}
         </ul>
       ) : null}
-      {receipt.error ? <small>{receipt.error.message}</small> : null}
-      {receipt.continuation_turn_id || receipt.continuation_id ? (
+      {receipt.error_message ? <small>{receipt.error_message}</small> : null}
+      {receipt.continuation_turn_id ? (
         <small>Planning continues automatically</small>
       ) : null}
     </article>
@@ -572,30 +532,39 @@ export function ProposalCard({
   pending,
   onSelect,
   onRevise,
-  onSetAvailability,
+  onApplyAction,
   issue,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
   onSelect: (
     proposalId: string,
+    action: ProposalActionDescriptorV2,
     optionId: string,
-    generationAction: "draft_only" | "generate_now",
     acceptedReferences: ProposedDraftReferenceV2[],
   ) => Promise<void>;
-  onRevise: (proposalId: string, instruction: string) => Promise<void>;
-  onSetAvailability: (proposalId: string, action: "archive" | "reopen") => Promise<void>;
+  onRevise: (
+    proposalId: string,
+    action: ProposalActionDescriptorV2,
+    instruction: string,
+  ) => Promise<void>;
+  onApplyAction: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   issue?: string;
 }) {
   const [selected, setSelected] = useState<ConceptOptionV2 | null>(null);
-  const [selectionConfirmed, setSelectionConfirmed] = useState(false);
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
   const proposal = card.proposal;
-  const canSelect = proposal.availability === "open" && proposal.available_actions.includes("select");
-  const canRevise = proposal.availability === "open" && proposal.available_actions.includes("revise");
-  const canArchive = proposal.available_actions.includes("archive");
-  const canReopen = proposal.available_actions.includes("reopen");
+  const isOpen = proposal.availability === "open";
+  const selectAction = proposal.actions.find((action) => action.action === "select_option") ?? null;
+  const reviseAction = proposal.actions.find((action) => action.action === "revise_options") ?? null;
+  const directActions = proposal.actions.filter((action) => (
+    action.action === "defer_topic"
+    || action.action === "exclude_element"
+    || action.action === "delegate_choice"
+  ));
+  const canSelect = isOpen && Boolean(selectAction);
+  const canRevise = isOpen && Boolean(reviseAction);
   const availableReferences = proposal.proposed_references;
   const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
     proposal.proposed_references,
@@ -632,10 +601,7 @@ export function ProposalCard({
             key={option.option_id}
             className={selected?.option_id === option.option_id ? "is-selected" : ""}
             disabled={!canSelect || pending}
-            onClick={() => {
-              setSelected(option);
-              setSelectionConfirmed(false);
-            }}
+            onClick={() => setSelected(option)}
           >
             <strong>{option.title}</strong>
             <span>{option.summary_prompt}</span>
@@ -731,64 +697,61 @@ export function ProposalCard({
         <p className="agent-chat__proposal-history">
           Applied {proposal.application_count} {proposal.application_count === 1 ? "time" : "times"}
           {proposal.latest_application
-            ? ` · Last ${proposal.latest_application.generation_action === "generate_now" ? "generated" : "drafted"}`
+            ? ` · Last ${proposal.latest_application.action.replaceAll("_", " ")}`
             : ""}
         </p>
       ) : null}
-      {issue || proposal.availability === "unavailable" ? (
+      {issue ? (
         <p className="agent-chat__proposal-issue" role="status">
-          {issue ?? "This proposal is currently unavailable."}
+          {issue}
         </p>
       ) : null}
-      {canSelect || canRevise || canArchive || canReopen ? (
+      {isOpen && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
-          {canSelect && selected && !selectionConfirmed ? (
-            <button type="button" disabled={pending} onClick={() => setSelectionConfirmed(true)}>
-              Select
-            </button>
-          ) : canSelect && selected ? (
-            <>
-              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "draft_only", acceptedReferences)}>
-                Create draft
-              </button>
-              <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "generate_now", acceptedReferences)}>
-                Generate now
-              </button>
-            </>
-          ) : null}
-          {canRevise ? (
-            <button type="button" disabled={pending} title="Revise options" onClick={() => setRevising((current) => !current)}>
-              <EditIcon />Revise
-            </button>
-          ) : null}
-          {canArchive ? (
+          {canSelect && selected && selectAction ? (
             <button
               type="button"
-              aria-label="Archive proposal"
               disabled={pending}
-              onClick={() => void onSetAvailability(proposal.proposal_id, "archive")}
+              title={selectAction.reason}
+              onClick={() => void onSelect(
+                proposal.proposal_id,
+                selectAction,
+                selected.option_id,
+                acceptedReferences,
+              )}
             >
-              Archive
+              {selectAction.label}
             </button>
           ) : null}
-          {canReopen ? (
+          {canRevise && reviseAction ? (
             <button
               type="button"
-              aria-label="Reopen proposal"
               disabled={pending}
-              onClick={() => void onSetAvailability(proposal.proposal_id, "reopen")}
+              title={reviseAction.reason}
+              onClick={() => setRevising((current) => !current)}
             >
-              Reopen
+              <EditIcon />{reviseAction.label}
             </button>
           ) : null}
+          {isOpen ? directActions.map((action) => (
+            <button
+              type="button"
+              key={action.action_id}
+              disabled={pending}
+              title={action.reason}
+              onClick={() => void onApplyAction(proposal.proposal_id, action)}
+            >
+              {action.label}
+            </button>
+          )) : null}
         </div>
       ) : null}
-      {revising && canRevise ? (
+      {revising && canRevise && reviseAction ? (
         <form
           className="agent-chat__revision"
           onSubmit={(event) => {
             event.preventDefault();
-            void onRevise(proposal.proposal_id, revision);
+            void onRevise(proposal.proposal_id, reviseAction, revision);
             setRevision("");
             setRevising(false);
           }}
@@ -799,7 +762,13 @@ export function ProposalCard({
             placeholder="Describe the change"
             aria-label="Proposal revision"
           />
-          <button type="submit" disabled={!revision.trim() || pending}><SendIcon /></button>
+          <button
+            type="submit"
+            aria-label="Submit proposal revision"
+            disabled={!revision.trim() || pending}
+          >
+            <SendIcon />
+          </button>
         </form>
       ) : null}
     </article>
@@ -811,7 +780,7 @@ export function GuidedActionsCard({
   actingActionId,
   onApply,
 }: {
-  actions: GuidedDeliveryActionV2[];
+  actions: GuidanceSessionActionV2[];
   actingActionId: string | null;
   onApply: (actionId: string) => Promise<void>;
 }) {

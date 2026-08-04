@@ -57,15 +57,39 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
-  it("routes final authoring and conversation events without obsolete event aliases", () => {
+  it("routes progressive guidance and Draft publication events without obsolete aliases", () => {
     expect(runtimeEventPolicy(event("node_created"))).toMatchObject({
       refreshWorkflow: true,
       refreshChat: false,
       refreshRuntime: false,
     });
-    expect(runtimeEventPolicy(event("creative_proposal_resolved"))).toMatchObject({
+    expect(runtimeEventPolicy(event("proposal_action_applied"))).toMatchObject({
       refreshWorkflow: true,
       refreshChat: true,
+      refreshRuntime: false,
+    });
+    expect(runtimeEventPolicy(event("draft_node_created"))).toMatchObject({
+      refreshWorkflow: true,
+      refreshChat: true,
+      refreshRuntime: false,
+    });
+    for (const eventType of [
+      "guidance_decision_completed",
+      "specialist_work_started",
+      "specialist_work_completed",
+      "specialist_work_failed",
+      "proposal_created",
+      "guidance_state_updated",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshWorkflow: false,
+        refreshChat: true,
+        refreshRuntime: false,
+      });
+    }
+    expect(runtimeEventPolicy(event("creative_proposal_resolved"))).toMatchObject({
+      refreshWorkflow: false,
+      refreshChat: false,
       refreshRuntime: false,
     });
     expect(runtimeEventPolicy(event("canvas_variation_materialized"))).toMatchObject({

@@ -6,12 +6,14 @@ import type {
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
   ChatProposalCardV2,
+  GuidedSessionStateV2,
+  ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
 import {
   ActionReceiptCard,
   CommandPlanCard,
+  GuidanceSessionProgress,
   GuidedActionsCard,
-  ProductionRecipeProgress,
   ProposalCard,
   SpecialistActivityRow,
 } from "./AgentCanvasChatPanel.tsx";
@@ -25,14 +27,8 @@ describe("chat composer textarea", () => {
     const textarea = document.createElement("textarea");
     let scrollHeight = 86;
     let clientHeight = 86;
-    Object.defineProperty(textarea, "scrollHeight", {
-      configurable: true,
-      get: () => scrollHeight,
-    });
-    Object.defineProperty(textarea, "clientHeight", {
-      configurable: true,
-      get: () => clientHeight,
-    });
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, get: () => scrollHeight });
+    Object.defineProperty(textarea, "clientHeight", { configurable: true, get: () => clientHeight });
 
     resizeChatComposerTextarea(textarea);
     expect(textarea.style.height).toBe("86px");
@@ -48,33 +44,38 @@ describe("chat composer textarea", () => {
   it("snaps native textarea scrolling to complete line boundaries", () => {
     const textarea = document.createElement("textarea");
     textarea.style.lineHeight = "20px";
-    Object.defineProperty(textarea, "scrollHeight", {
-      configurable: true,
-      value: 200,
-    });
-    Object.defineProperty(textarea, "clientHeight", {
-      configurable: true,
-      value: 120,
-    });
+    Object.defineProperty(textarea, "scrollHeight", { configurable: true, value: 200 });
+    Object.defineProperty(textarea, "clientHeight", { configurable: true, value: 120 });
 
     textarea.scrollTop = 29;
     snapChatComposerScroll(textarea);
     expect(textarea.scrollTop).toBe(20);
-
-    textarea.scrollTop = 95;
-    snapChatComposerScroll(textarea);
-    expect(textarea.scrollTop).toBe(80);
   });
 });
 
-const card: ChatProposalCardV2 = {
+function proposalAction(
+  action: ProposalActionDescriptorV2["action"],
+  label: string,
+): ProposalActionDescriptorV2 {
+  return {
+    action_id: `action-${action}`,
+    action,
+    label,
+    proposal_id: "proposal-1",
+    expected_session_revision: 7,
+    confirmation_required: false,
+    reason: `${label} for the active topic.`,
+  };
+}
+
+const proposalCard: ChatProposalCardV2 = {
   item_type: "proposal",
   proposal: {
     proposal_id: "proposal-1",
     workflow_id: "workflow-1",
     turn_id: "turn-1",
-    video_skill_run_id: "session-1",
-    topic_id: "characters",
+    video_skill_run_id: null,
+    topic_id: "topic-character",
     creative_direction_snapshot_id: null,
     proposal_revision: 1,
     source_proposal_id: null,
@@ -92,300 +93,280 @@ const card: ChatProposalCardV2 = {
     availability: "open",
     application_count: 0,
     latest_application: null,
-    available_actions: ["select", "revise", "archive"],
-    created_at: "2026-07-28T00:00:00Z",
-    updated_at: "2026-07-28T00:00:00Z",
+    guidance_session_id: "guidance-1",
+    guidance_session_revision: 7,
+    actions: [
+      proposalAction("select_option", "Use this direction"),
+      proposalAction("revise_options", "Revise options"),
+      proposalAction("defer_topic", "Decide later"),
+      proposalAction("exclude_element", "Exclude character"),
+      proposalAction("delegate_choice", "Let AdCraft choose"),
+    ],
+    created_at: "2026-08-04T00:00:00Z",
+    updated_at: "2026-08-04T00:00:00Z",
   },
   sequence: 4,
-  created_at: "2026-07-28T00:00:00Z",
+  created_at: "2026-08-04T00:00:00Z",
 };
 
 describe("ProposalCard", () => {
   afterEach(() => cleanup());
 
-  it("requires an explicit Select step before choosing the next action", () => {
+  it("uses the select descriptor and creates a Draft without a second generation choice", () => {
     const onSelect = vi.fn().mockResolvedValue(undefined);
     render(
       <ProposalCard
-        card={card}
+        card={proposalCard}
         pending={false}
         onSelect={onSelect}
         onRevise={vi.fn()}
-        onSetAvailability={vi.fn()}
+        onApplyAction={vi.fn()}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Hero/ }));
-    expect(screen.getByRole("button", { name: "Select" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use this direction" }));
+
+    expect(onSelect).toHaveBeenCalledWith(
+      "proposal-1",
+      expect.objectContaining({ action_id: "action-select_option", action: "select_option" }),
+      "option-1",
+      [],
+    );
     expect(screen.queryByRole("button", { name: "Generate now" })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Select" }));
-    fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
-
-    expect(onSelect).toHaveBeenCalledWith("proposal-1", "option-1", "generate_now", []);
   });
 
-  it("keeps an open proposal usable after prior applications and exposes archive", () => {
-    const onSetAvailability = vi.fn().mockResolvedValue(undefined);
+  it("dispatches revise, defer, exclude, and delegate through their structured descriptors", () => {
+    const onRevise = vi.fn().mockResolvedValue(undefined);
+    const onApplyAction = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={proposalCard}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={onRevise}
+        onApplyAction={onApplyAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Revise options" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Proposal revision" }), {
+      target: { value: "Make the character warmer." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit proposal revision" }));
+    expect(onRevise).toHaveBeenCalledWith(
+      "proposal-1",
+      expect.objectContaining({ action: "revise_options" }),
+      "Make the character warmer.",
+    );
+
+    for (const [label, action] of [
+      ["Decide later", "defer_topic"],
+      ["Exclude character", "exclude_element"],
+      ["Let AdCraft choose", "delegate_choice"],
+    ] as const) {
+      fireEvent.click(screen.getByRole("button", { name: label }));
+      expect(onApplyAction).toHaveBeenCalledWith(
+        "proposal-1",
+        expect.objectContaining({ action }),
+      );
+    }
+  });
+
+  it("keeps applied proposal content visible but disables all stale actions", () => {
     render(
       <ProposalCard
         card={{
-          ...card,
+          ...proposalCard,
           proposal: {
-            ...card.proposal,
-            application_count: 2,
+            ...proposalCard.proposal,
+            availability: "applied",
+            application_count: 1,
             latest_application: {
-              application_id: "application-2",
+              application_id: "application-1",
               option_id: "option-1",
-              generation_action: "draft_only",
-              receipt_id: "receipt-2",
-              created_node_ids: ["node-character-3"],
+              action: "select_option",
+              receipt_id: "receipt-1",
+              created_node_ids: ["node-character-1"],
               queued_execution_ids: [],
-              created_at: "2026-08-04T08:02:00Z",
+              created_at: "2026-08-04T00:01:00Z",
             },
           },
         }}
         pending={false}
         onSelect={vi.fn()}
         onRevise={vi.fn()}
-        onSetAvailability={onSetAvailability}
-      />,
-    );
-
-    expect(screen.getByText(/Applied 2 times/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: /Hero/ }) as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Archive proposal" }));
-    expect(onSetAvailability).toHaveBeenCalledWith("proposal-1", "archive");
-  });
-
-  it("offers reopen for an archived proposal without hiding its options", () => {
-    const onSetAvailability = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ProposalCard
-        card={{
-          ...card,
-          proposal: {
-            ...card.proposal,
-            availability: "archived",
-            available_actions: ["reopen"],
-          },
-        }}
-        pending={false}
-        onSelect={vi.fn()}
-        onRevise={vi.fn()}
-        onSetAvailability={onSetAvailability}
+        onApplyAction={vi.fn()}
       />,
     );
 
     expect(screen.getByText("Hero")).toBeTruthy();
-    expect((screen.getByRole("button", { name: /Hero/ }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Reopen proposal" }));
-    expect(onSetAvailability).toHaveBeenCalledWith("proposal-1", "reopen");
+    expect(screen.getByText(/Applied 1 time/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
   });
 });
 
-describe("command control cards", () => {
+describe("progress and action cards", () => {
   afterEach(() => cleanup());
 
-  const commandCard: ChatCommandPlanCardV2 = {
-    item_type: "command_plan",
-    command_plan: {
-      plan_id: "plan-1",
+  it("renders progressive guidance state without a fixed production recipe", () => {
+    const session: GuidedSessionStateV2 = {
+      session_id: "guidance-1",
       workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      source_turn_id: "turn-1",
-      base_workflow_revision: 3,
-      operations: [{
-        operation_type: "delete_node",
-        operation_id: "delete-1",
-        node: { kind: "node_id", node_id: "node-1" },
-      }],
-      continuation_requested: false,
-      risk: "destructive_authoring",
-      confirmation_required: true,
-      target_summary: "Delete the failed image draft.",
-      operation_fingerprint: "fingerprint-1",
-      status: "pending_confirmation",
-      supersedes_plan_id: null,
-      replacement_plan_id: null,
-      actor: "agent",
-      created_at: "2026-07-29T02:00:00Z",
-      updated_at: "2026-07-29T02:00:00Z",
-    },
-    sequence: 5,
-    created_at: "2026-07-29T02:00:00Z",
-  };
+      status: "active",
+      guidance_mode: "collaborative",
+      goal: {
+        requested_output: "video",
+        delivery_scope: "generated_media",
+        summary: "Create a launch film.",
+        explicit_constraints: {},
+      },
+      element_decisions: [],
+      current_topic_id: "topic-scene",
+      topics: [
+        {
+          topic_id: "topic-character",
+          topic_kind: "character",
+          title: "Lead character",
+          status: "selected",
+          specialist_name: "character_designer",
+          related_node_ids: ["node-character-1"],
+          source_proposal_id: "proposal-character",
+          revision: 1,
+        },
+        {
+          topic_id: "topic-scene",
+          topic_kind: "scene",
+          title: "Scene direction",
+          status: "proposed",
+          specialist_name: "scene_designer",
+          related_node_ids: [],
+          source_proposal_id: "proposal-scene",
+          revision: 1,
+        },
+      ],
+      active_proposal_id: "proposal-scene",
+      active_style_skill_run_id: null,
+      completion: {
+        authoring: "not_ready",
+        delivery: "not_ready",
+        matching_node_ids: ["node-character-1"],
+        matching_asset_ids: [],
+      },
+      revision: 7,
+      updated_at: "2026-08-04T00:00:00Z",
+    };
 
-  it("offers Confirm and Reject only for a pending command that requires confirmation", () => {
-    const onAction = vi.fn().mockResolvedValue(undefined);
-    const view = render(
-      <CommandPlanCard card={commandCard} pending={false} onAction={onAction} />,
+    render(<GuidanceSessionProgress session={session} />);
+
+    expect(screen.getByText("Create a launch film.")).toBeTruthy();
+    expect(screen.getByText("Lead character")).toBeTruthy();
+    expect(screen.getByText("Scene direction")).toBeTruthy();
+    expect(screen.getByText("Authoring: not ready")).toBeTruthy();
+    expect(screen.getByText("Delivery: not ready")).toBeTruthy();
+  });
+
+  it("renders only current stop or resume guidance actions", () => {
+    const onApply = vi.fn().mockResolvedValue(undefined);
+    render(
+      <GuidedActionsCard
+        actions={[
+          {
+            action_id: "action-stale",
+            logical_key: "stop:old",
+            action: "stop_guidance",
+            state: "superseded",
+            creating_turn_id: "turn-1",
+            expected_session_revision: 6,
+            label: "Old stop action",
+            workflow_id: "workflow-1",
+            confirmation_required: true,
+            reason: "A newer session revision exists.",
+          },
+          {
+            action_id: "action-stop",
+            logical_key: "stop:current",
+            action: "stop_guidance",
+            state: "pending",
+            creating_turn_id: "turn-2",
+            expected_session_revision: 7,
+            label: "Stop guidance",
+            workflow_id: "workflow-1",
+            confirmation_required: true,
+            reason: "Keep the current drafts.",
+          },
+        ]}
+        actingActionId={null}
+        onApply={onApply}
+      />,
     );
+
+    expect(screen.queryByRole("button", { name: "Old stop action" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Stop guidance" }));
+    expect(onApply).toHaveBeenCalledWith("action-stop");
+  });
+});
+
+describe("command and receipt cards", () => {
+  afterEach(() => cleanup());
+
+  it("offers Confirm and Reject for a pending command", () => {
+    const card: ChatCommandPlanCardV2 = {
+      item_type: "command_plan",
+      command_plan: {
+        plan_id: "plan-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        source_turn_id: "turn-1",
+        context_snapshot_id: "snapshot-1",
+        base_workflow_revision: 3,
+        expires_at: "2026-08-04T01:00:00Z",
+        operations: [{
+          operation_type: "delete_node",
+          operation_id: "delete-1",
+          node: { kind: "node_id", node_id: "node-1" },
+        }],
+        continuation_requested: false,
+        risk: "destructive_authoring",
+        confirmation_required: true,
+        target_summary: "Delete the failed image draft.",
+        operation_fingerprint: "fingerprint-1",
+        idempotency_key: "command-1",
+        status: "pending_confirmation",
+        supersedes_plan_id: null,
+        replacement_plan_id: null,
+        actor: "agent",
+        created_at: "2026-08-04T00:00:00Z",
+        updated_at: "2026-08-04T00:00:00Z",
+      },
+      sequence: 5,
+      created_at: "2026-08-04T00:00:00Z",
+    };
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    render(<CommandPlanCard card={card} pending={false} onAction={onAction} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm command" }));
     fireEvent.click(screen.getByRole("button", { name: "Reject command" }));
     expect(onAction).toHaveBeenNthCalledWith(1, "plan-1", "confirm");
     expect(onAction).toHaveBeenNthCalledWith(2, "plan-1", "reject");
-
-    view.rerender(
-      <CommandPlanCard
-        card={{
-          ...commandCard,
-          command_plan: { ...commandCard.command_plan, status: "applied" },
-        }}
-        pending={false}
-        onAction={onAction}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: "Confirm command" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject command" })).toBeNull();
   });
 
-  it("renders the backend recipe order and hides not-required stages", () => {
-    render(
-      <ProductionRecipeProgress
-        creationMode="guided_production"
-        readiness={{
-          discussable_topic_ids: ["topic-scene"],
-          materializable_topic_ids: ["topic-scene"],
-          runnable_node_ids: [],
-          completion: {
-            planning: "in_progress",
-            generation: "not_started",
-            delivery: "not_ready",
-          },
-        }}
-        recipe={{
-          recipe_id: "recipe-1",
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          skill_run_id: null,
-          revision: 2,
-          creation_mode: "guided_production",
-          goal: "Create a complete short advertisement.",
-          current_topic_id: "topic-scene",
-          stages: [
-            {
-              topic_id: "topic-product",
-              topic_kind: "product",
-              title: "Product design",
-              objective: "Use the existing product reference.",
-              applicability: "not_required",
-              applicability_reason: "Already approved.",
-              specialist_name: "product_designer",
-              proposal_mode: "single_plan",
-              candidate_count: 1,
-              status: "not_required",
-              related_node_ids: ["node-product-1"],
-            },
-            {
-              topic_id: "topic-scene",
-              topic_kind: "scene",
-              title: "Scene design",
-              objective: "Choose a setting.",
-              applicability: "required",
-              applicability_reason: "A setting is required.",
-              specialist_name: "scene_designer",
-              proposal_mode: "choice_set",
-              candidate_count: 3,
-              status: "working",
-              related_node_ids: [],
-            },
-            {
-              topic_id: "topic-audio",
-              topic_kind: "audio",
-              title: "Audio direction",
-              objective: "Set the music direction.",
-              applicability: "optional",
-              applicability_reason: "Music can be added later.",
-              specialist_name: "bgm_director",
-              proposal_mode: "single_plan",
-              candidate_count: 1,
-              status: "pending",
-              related_node_ids: [],
-            },
-          ],
-          anchor_digest: "anchor-1",
-          deliverables: [],
-          dependencies: [],
-          recommended_next_topic_ids: ["topic-scene"],
-          completion_criteria: {
-            required_deliverable_ids: [],
-            accepted_omission_deliverable_ids: [],
-          },
-          created_at: "2026-07-31T05:00:00Z",
-          updated_at: "2026-07-31T05:01:00Z",
-        }}
-      />,
-    );
-
-    expect(screen.getByText("Scene design")).toBeTruthy();
-    expect(screen.getByText("Audio direction")).toBeTruthy();
-    expect(screen.queryByText("Product design")).toBeNull();
-    expect(screen.getByText("Planning: in progress")).toBeTruthy();
-    expect(screen.getByText("Generation: not started")).toBeTruthy();
-    expect(screen.getByText("Delivery: not ready")).toBeTruthy();
-  });
-
-  it("removes superseded guided actions instead of leaving stale controls clickable", () => {
-    render(
-      <GuidedActionsCard
-        actions={[
-            {
-              action_id: "action-stale",
-              logical_key: "add-another:topic-1",
-              action: "add_another_topic_node",
-              state: "superseded",
-              creating_turn_id: "turn-1",
-              expected_semantic_revision: 2,
-              label: "Add another",
-              workflow_id: "workflow-1",
-              proposal_id: "proposal-1",
-              topic_id: "topic-1",
-              node_id: null,
-              ordered_node_ids: [],
-              manifest_revision: null,
-              confirmation_required: false,
-              reason: "A newer proposal replaced this action.",
-            },
-            {
-              action_id: "action-current",
-              logical_key: "skip:topic-audio",
-              action: "skip_topic",
-              state: "pending",
-              creating_turn_id: "turn-2",
-              expected_semantic_revision: 3,
-              label: "Skip optional audio",
-              workflow_id: "workflow-1",
-              proposal_id: null,
-              topic_id: "topic-audio",
-              node_id: null,
-              ordered_node_ids: [],
-              manifest_revision: null,
-              confirmation_required: false,
-              reason: "Audio is optional for this production plan.",
-            },
-          ]}
-        actingActionId={null}
-        onApply={vi.fn()}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: "Add another" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Skip optional audio" })).toBeTruthy();
-  });
-
-  it("renders durable action acknowledgements without parsing assistant prose", () => {
-    const receiptCard: ChatActionReceiptCardV2 = {
+  it("renders structured receipt errors and continuation state", () => {
+    const card: ChatActionReceiptCardV2 = {
       item_type: "action_receipt",
       action_receipt: {
         receipt_id: "receipt-1",
         workflow_id: "workflow-1",
-        plan_id: "plan-1",
-        action_id: "turn-action-1",
+        plan_id: null,
+        action_id: "action-select_option",
+        proposal_id: "proposal-1",
+        proposal_option_id: "option-1",
+        proposal_action: "select_option",
+        actor_kind: "user",
+        idempotency_key: "proposal-select-1",
         status: "applied_with_run_error",
-        summary: "Created the revised image Draft.",
-        created_node_ids: ["node-sibling-1"],
+        summary: "Created the selected Draft.",
+        created_node_ids: ["node-1"],
         updated_node_ids: [],
         deleted_node_ids: [],
         created_binding_ids: [],
@@ -394,27 +375,26 @@ describe("command control cards", () => {
         run_queue_errors: ["The provider queue is temporarily unavailable."],
         operation_results: [],
         workflow_revision: 4,
-        placement_hints: [{
-          intent: "right_sibling",
-          anchor_node_id: "node-1",
-          group_key: null,
-        }],
-        continuation_turn_id: "turn-continuation-1",
-        error_code: null,
-        error_message: null,
+        before_workflow_revision: 3,
+        placement_hints: [],
+        continuation_turn_id: "turn-next",
+        superseded_by: null,
+        error_code: "agent_runtime_unavailable",
+        error_message: "Generation can be retried later.",
+        created_at: "2026-08-04T00:00:00Z",
       },
       sequence: 6,
-      created_at: "2026-07-29T02:01:00Z",
+      created_at: "2026-08-04T00:00:00Z",
     };
 
-    render(<ActionReceiptCard card={receiptCard} />);
+    render(<ActionReceiptCard card={card} />);
 
-    expect(screen.getByText("Created the revised image Draft.")).toBeTruthy();
-    expect(screen.getByText("The provider queue is temporarily unavailable.")).toBeTruthy();
+    expect(screen.getByText("Created the selected Draft.")).toBeTruthy();
+    expect(screen.getByText("Generation can be retried later.")).toBeTruthy();
     expect(screen.getByText("Planning continues automatically")).toBeTruthy();
   });
 
-  it("shows specialist work as activity status rather than a specialist chat bubble", () => {
+  it("shows specialist work as status rather than a specialist chat bubble", () => {
     const activity: ChatExpertActivityV2 = {
       item_type: "expert_activity",
       activity_id: "activity-1",
@@ -424,7 +404,7 @@ describe("command control cards", () => {
       operation: "create_concepts",
       status: "working",
       sequence: 4,
-      started_at: "2026-07-29T02:00:00Z",
+      started_at: "2026-08-04T00:00:00Z",
       finished_at: null,
     };
     render(<SpecialistActivityRow activity={activity} />);

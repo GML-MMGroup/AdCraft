@@ -34,6 +34,19 @@ const retiredClientMethods = [
   "pollProviderTask",
 ];
 
+const retiredGuidancePatterns = [
+  /creative_session/,
+  /AdaptiveProduction/,
+  /production_recipe_/,
+  /planning_topic_updated/,
+  /specialist_activity_/,
+  /creative_proposal_/,
+  /available_actions/,
+  /generation_action/,
+  /add_another_topic_node/,
+  /skip_topic/,
+];
+
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory)
     .flatMap((entry) => {
@@ -60,6 +73,9 @@ describe("Agent Canvas production route boundary", () => {
         ...retiredClientMethods
           .filter((method) => source.includes(method))
           .map((method) => `uses ${method}`),
+        ...retiredGuidancePatterns
+          .filter((pattern) => pattern.test(source))
+          .map((pattern) => `contains retired guidance contract ${pattern.source}`),
       ];
       return reasons.map((reason) => `${relativePath}: ${reason}`);
     });

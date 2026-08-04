@@ -1826,6 +1826,7 @@ export interface ProviderModelCapabilityV2 {
   available: boolean;
   unavailable_reason: string | null;
   supports_native_audio: boolean;
+  capability_revision: number;
 }
 
 export type ProviderModelCapabilityListV2 = ProviderModelCapabilityV2[];
@@ -1849,24 +1850,6 @@ export type SpecialistAgentNameV2 =
   | "video_director"
   | "bgm_director"
   | "quick_media_agent";
-
-export type PlanningTopicStatusV2 =
-  | "pending"
-  | "in_review"
-  | "resolved"
-  | "skipped"
-  | "not_required"
-  | "deferred";
-
-export interface PlanningTopicStateV2 {
-  topic_id: string;
-  skill_run_id: string;
-  topic_kind: string;
-  display_order: number;
-  status: PlanningTopicStatusV2;
-  related_node_ids: string[];
-  updated_at: string;
-}
 
 export interface ChatMessageV2 {
   item_type: "message";
@@ -1903,15 +1886,30 @@ export interface ConceptOptionV2 {
 export interface ProposalApplicationSummaryV2 {
   application_id: string;
   option_id: string;
-  generation_action: "draft_only" | "generate_now";
+  action: "select_option" | "delegate_choice";
   receipt_id: string;
   created_node_ids: string[];
   queued_execution_ids: string[];
   created_at: string;
 }
 
-export type ProposalAvailabilityV2 = "open" | "archived" | "unavailable";
-export type ProposalOperationV2 = "select" | "revise" | "archive" | "reopen";
+export type ProposalAvailabilityV2 = "open" | "applied" | "superseded";
+export type ProposalActionTypeV2 =
+  | "select_option"
+  | "revise_options"
+  | "defer_topic"
+  | "exclude_element"
+  | "delegate_choice";
+
+export interface ProposalActionDescriptorV2 {
+  action_id: string;
+  action: ProposalActionTypeV2;
+  label: string;
+  proposal_id: string;
+  expected_session_revision: number;
+  confirmation_required: boolean;
+  reason: string;
+}
 
 export interface ProposedDraftReferenceV2 {
   source_kind: "node" | "image_asset";
@@ -1943,7 +1941,9 @@ export interface ConceptProposalV2 {
   availability: ProposalAvailabilityV2;
   application_count: number;
   latest_application: ProposalApplicationSummaryV2 | null;
-  available_actions: ProposalOperationV2[];
+  guidance_session_id: string;
+  guidance_session_revision: number;
+  actions: ProposalActionDescriptorV2[];
   created_at: string;
   updated_at: string;
 }
@@ -2146,18 +2146,14 @@ export type AgentActionReceiptStatusV2 =
   | "superseded"
   | "failed";
 
-export interface AgentStructuredErrorV2 {
-  code: string;
-  message: string;
-  retryable: boolean | null;
-  stage: string | null;
-}
-
 export interface AgentActionReceiptV2 {
   receipt_id: string;
   workflow_id: string;
   plan_id: string | null;
   action_id: string | null;
+  proposal_id: string | null;
+  proposal_option_id: string | null;
+  proposal_action: ProposalActionTypeV2 | null;
   actor_kind: "agent" | "user" | "system";
   idempotency_key: string | null;
   status: AgentActionReceiptStatusV2;
@@ -2174,9 +2170,7 @@ export interface AgentActionReceiptV2 {
   before_workflow_revision: number | null;
   placement_hints: AgentPlacementHintV2[];
   continuation_turn_id: string | null;
-  continuation_id: string | null;
   superseded_by: string | null;
-  error: AgentStructuredErrorV2 | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
@@ -2215,11 +2209,9 @@ export interface ChatTimelineListResponseV2 {
 export interface AgentCanvasChatViewTimelineV2 {
   workflow_id: string;
   conversation_id: string | null;
-  creative_session: CreativeSessionStateV2 | null;
-  creation_mode: AgentCanvasCreationModeV2 | null;
-  recipe: AdaptiveProductionRecipeV2 | null;
+  guidanceSession: GuidedSessionStateV2 | null;
   continuations: AgentCanvasContinuationV2[];
-  current_session_actions: GuidedDeliveryActionV2[];
+  current_session_actions: GuidanceSessionActionV2[];
   items: ChatTimelineItemV2[];
   next_cursor: number;
 }
@@ -2231,7 +2223,6 @@ export interface ChatTurnAcceptedV2 {
   turn_id: string;
   status: "queued";
   events_cursor: number;
-  continuation: AgentCanvasContinuationV2 | null;
 }
 
 export interface EditingOutputSettingsV2 {
@@ -2512,35 +2503,9 @@ export interface AgentCanvasChatMessageRequestV2 {
   video_skill_run_id: string | null;
 }
 
-export type GuidedDeliveryActionTypeV2 = "add_another_topic_node" | "skip_topic";
+export type GuidanceOutputKindV2 = "text" | "script" | "image" | "video" | "audio";
 
-export interface GuidedDeliveryActionV2 {
-  action_id: string;
-  logical_key: string;
-  action: GuidedDeliveryActionTypeV2;
-  state: "pending" | "applying" | "applied" | "superseded" | "failed";
-  creating_turn_id: string;
-  expected_semantic_revision: number;
-  label: string;
-  workflow_id: string;
-  proposal_id: string | null;
-  topic_id: string | null;
-  node_id: string | null;
-  ordered_node_ids: string[];
-  manifest_revision: number | null;
-  recipe_id: string | null;
-  recipe_revision: number | null;
-  confirmation_required: boolean;
-  reason: string;
-}
-
-export type AgentCanvasCreationModeV2 =
-  | "ordinary_conversation"
-  | "targeted_authoring"
-  | "quick_media"
-  | "guided_production";
-
-export type AdaptiveProductionTopicKindV2 =
+export type GuidanceTopicKindV2 =
   | "creative_direction"
   | "product"
   | "prop"
@@ -2551,83 +2516,107 @@ export type AdaptiveProductionTopicKindV2 =
   | "video"
   | "audio";
 
-export type AdaptiveProductionStageApplicabilityV2 =
-  | "required"
-  | "optional"
-  | "not_required";
+export type AgentCanvasCreationModeV2 =
+  | "ordinary_conversation"
+  | "targeted_authoring"
+  | "quick_media"
+  | "guided_production";
 
-export type AdaptiveProductionStageStatusV2 =
-  | "pending"
-  | "working"
-  | "completed"
-  | "skipped"
-  | "not_required"
-  | "reopened";
+export interface CreationModeDecisionV2 {
+  mode: AgentCanvasCreationModeV2;
+  reason: string;
+  target_node_id: string | null;
+  target_asset_id: string | null;
+}
 
-export interface AdaptiveProductionStageV2 {
+export interface CreativeGoalV2 {
+  requested_output: GuidanceOutputKindV2;
+  delivery_scope: "draft" | "generated_media";
+  summary: string;
+  explicit_constraints: Record<string, unknown>;
+}
+
+export interface CreativeElementDecisionV2 {
+  element_kind: Exclude<GuidanceTopicKindV2, "creative_direction">;
+  presence: "include" | "exclude" | "unspecified";
+  authority: "user" | "agent";
+  requirements: Record<string, unknown>;
+  source: "explicit_user" | "accepted_proposal" | "delegated_to_agent";
+}
+
+export interface GuidanceTopicStateV2 {
   topic_id: string;
-  topic_kind: AdaptiveProductionTopicKindV2;
+  topic_kind: GuidanceTopicKindV2;
   title: string;
-  objective: string;
-  applicability: AdaptiveProductionStageApplicabilityV2;
-  applicability_reason: string;
+  status: "proposed" | "selected" | "deferred" | "excluded";
   specialist_name: SpecialistAgentNameV2;
-  proposal_mode: "single_plan" | "choice_set";
-  candidate_count: number;
-  status: AdaptiveProductionStageStatusV2;
   related_node_ids: string[];
-}
-
-export interface AdaptiveProductionDeliverableV2 {
-  deliverable_id: string;
-  output_kind: "text" | "image" | "video" | "audio" | "editing";
-  required: boolean;
-  description: string;
-  related_node_ids: string[];
-  related_asset_ids: string[];
-}
-
-export interface AdaptiveProductionDependencyV2 {
-  source_topic_id: string;
-  target_topic_id: string;
-  rationale: string;
-}
-
-export interface AdaptiveProductionCompletionCriteriaV2 {
-  required_deliverable_ids: string[];
-  accepted_omission_deliverable_ids: string[];
-}
-
-export interface AdaptiveProductionRecipeV2 {
-  recipe_id: string;
-  workflow_id: string;
-  conversation_id: string;
-  skill_run_id: string | null;
+  source_proposal_id: string | null;
   revision: number;
-  creation_mode: AgentCanvasCreationModeV2;
-  goal: string;
+}
+
+export interface GuidanceCompletionProjectionV2 {
+  authoring: "not_ready" | "ready";
+  delivery: "not_ready" | "ready";
+  matching_node_ids: string[];
+  matching_asset_ids: string[];
+}
+
+export interface GuidedSessionStateV2 {
+  session_id: string;
+  workflow_id: string;
+  status: "active" | "paused" | "completed";
+  guidance_mode: "collaborative" | "delegated";
+  goal: CreativeGoalV2;
+  element_decisions: CreativeElementDecisionV2[];
   current_topic_id: string | null;
-  stages: AdaptiveProductionStageV2[];
-  anchor_digest: string;
-  deliverables: AdaptiveProductionDeliverableV2[];
-  dependencies: AdaptiveProductionDependencyV2[];
-  recommended_next_topic_ids: string[];
-  completion_criteria: AdaptiveProductionCompletionCriteriaV2;
-  created_at: string;
+  topics: GuidanceTopicStateV2[];
+  active_proposal_id: string | null;
+  active_style_skill_run_id: string | null;
+  completion: GuidanceCompletionProjectionV2;
+  revision: number;
   updated_at: string;
 }
 
-export interface ProductionCompletionProjectionV2 {
-  planning: "not_started" | "in_progress" | "complete";
-  generation: "not_started" | "in_progress" | "complete" | "partial_failed" | "failed";
-  delivery: "not_ready" | "ready" | "partial" | "failed";
+export interface GuidanceIntentPatchV2 {
+  goal: CreativeGoalV2 | null;
+  element_decisions: CreativeElementDecisionV2[];
 }
 
-export interface ProductionReadinessProjectionV2 {
-  discussable_topic_ids: string[];
-  materializable_topic_ids: string[];
-  runnable_node_ids: string[];
-  completion: ProductionCompletionProjectionV2;
+export interface GuidanceCompletionClaimV2 {
+  state: "authoring_ready" | "delivery_ready";
+  output_kind: GuidanceOutputKindV2;
+  node_ids: string[];
+  asset_ids: string[];
+  reason: string;
+}
+
+export interface NextGuidanceDecisionV2 {
+  action: "ordinary_reply" | "ask_clarification" | "propose_topic" | "finish_guidance";
+  assistant_message: string;
+  rationale: string;
+  topic_id: string | null;
+  topic_kind: GuidanceTopicKindV2 | null;
+  topic_title: string | null;
+  topic_objective: string | null;
+  specialist_name: SpecialistAgentNameV2 | null;
+  candidate_count: number | null;
+  suggested_next_topic_kinds: GuidanceTopicKindV2[];
+  intent_patch: GuidanceIntentPatchV2 | null;
+  completion_claim: GuidanceCompletionClaimV2 | null;
+}
+
+export interface GuidanceSessionActionV2 {
+  action_id: string;
+  logical_key: string;
+  action: "stop_guidance" | "resume_guidance";
+  state: "pending" | "applying" | "applied" | "superseded" | "failed";
+  creating_turn_id: string;
+  expected_session_revision: number;
+  label: string;
+  workflow_id: string;
+  confirmation_required: boolean;
+  reason: string;
 }
 
 export type AgentContinuationDeliveryStatusV2 =
@@ -2635,7 +2624,8 @@ export type AgentContinuationDeliveryStatusV2 =
   | "leased"
   | "retry_wait"
   | "completed"
-  | "failed";
+  | "failed"
+  | "superseded";
 
 export interface AgentCanvasContinuationV2 {
   continuation_id: string;
@@ -2647,41 +2637,6 @@ export interface AgentCanvasContinuationV2 {
   max_attempts: number | null;
   last_error_code: string | null;
   last_error_message: string | null;
-}
-
-export interface CreativeSessionTopicV2 {
-  topic_id: string;
-  topic_kind: string;
-  display_order: number;
-  required: boolean;
-  specialist_name: SpecialistAgentNameV2;
-  status: PlanningTopicStatusV2;
-  outcome: string | null;
-  related_node_ids: string[];
-}
-
-export interface CreationModeDecisionV2 {
-  mode: AgentCanvasCreationModeV2;
-  reason: string;
-  target_node_id: string | null;
-  target_asset_id: string | null;
-}
-
-export interface CreativeSessionStateV2 {
-  skill_run_id: string;
-  workflow_id: string;
-  skill_id: string;
-  skill_version: string;
-  status: "active" | "superseded";
-  creation_mode: CreationModeDecisionV2 | null;
-  active_recipe: AdaptiveProductionRecipeV2 | null;
-  readiness: ProductionReadinessProjectionV2 | null;
-  creative_direction_snapshot_id: string | null;
-  current_topic_id: string | null;
-  topics: CreativeSessionTopicV2[];
-  deferred_topic_ids: string[];
-  memory_revision: number;
-  updated_at: string;
 }
 
 export interface AgentCanvasChatTimelineEntryV2 {
@@ -2708,9 +2663,9 @@ export interface AgentCanvasChatTimelineEntryV2 {
 export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
-  creative_session: CreativeSessionStateV2 | null;
+  guidance_session: GuidedSessionStateV2 | null;
   continuations: AgentCanvasContinuationV2[];
-  current_session_actions: GuidedDeliveryActionV2[];
+  current_session_actions: GuidanceSessionActionV2[];
   items: AgentCanvasChatTimelineEntryV2[];
   next_cursor: number;
 }
@@ -2725,7 +2680,8 @@ export interface AgentCanvasChatTurnV2 {
   error_code: string | null;
   error_message: string | null;
   creation_mode: CreationModeDecisionV2 | null;
-  recipe: AdaptiveProductionRecipeV2 | null;
+  guidance_decision: NextGuidanceDecisionV2 | null;
+  guidance_session_revision: number | null;
   continuation: AgentCanvasContinuationV2 | null;
   created_at: string;
   updated_at: string;
@@ -2733,34 +2689,22 @@ export interface AgentCanvasChatTurnV2 {
 
 export type AgentCanvasProposalActionRequestV2 =
   | {
-      action: "select";
+      action_id: string;
+      expected_session_revision: number;
+      action: "select_option";
       option_id: string;
-      generation_action: "draft_only" | "generate_now";
       accepted_references?: ProposedDraftReferenceV2[] | null;
-      position?: CanvasPositionV2 | null;
-      instruction?: null;
-      mutable_dimensions?: [];
-      replace_whole_concept?: false;
     }
   | {
-      action: "revise";
+      action_id: string;
+      expected_session_revision: number;
+      action: "revise_options";
       instruction: string;
-      option_id?: null;
-      generation_action?: null;
-      accepted_references?: null;
-      position?: null;
-      mutable_dimensions?: Array<"style" | "lighting" | "composition" | "camera" | "copy" | "pacing" | "audio" | "other">;
-      replace_whole_concept?: boolean;
     }
   | {
-      action: "archive" | "reopen";
-      option_id?: null;
-      generation_action?: null;
-      accepted_references?: null;
-      instruction?: null;
-      position?: null;
-      mutable_dimensions?: [];
-      replace_whole_concept?: false;
+      action_id: string;
+      expected_session_revision: number;
+      action: "defer_topic" | "exclude_element" | "delegate_choice";
     };
 
 export interface AgentCanvasCommandPlanActionRequestV2 {
@@ -2784,9 +2728,7 @@ export interface AgentCanvasVideoSkillRunV2 {
   skill_version: string;
   source_skill_run_id: string | null;
   status: "active" | "superseded";
-  current_topic_id: string | null;
-  deferred_topic_ids: string[];
-  memory_revision: number;
+  active_creative_direction_snapshot_id: string | null;
   created_at: string;
   updated_at: string | null;
 }

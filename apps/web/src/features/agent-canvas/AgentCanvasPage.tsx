@@ -528,15 +528,6 @@ export function AgentCanvasPage() {
     ? workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId) ?? null
     : null;
   const running = Boolean(live.state.runtime?.active_execution_id);
-  const proposalPreferredPosition = flowRef.current?.screenToFlowPosition({
-    x: window.innerWidth * 0.46,
-    y: window.innerHeight * 0.42,
-  }) ?? { x: 160, y: 120 };
-  const proposalPosition = findAvailableCanvasPosition(
-    workflow.nodes,
-    proposalPreferredPosition,
-  );
-
   return (
     <div className="agent-canvas-page">
       <div
@@ -747,7 +738,6 @@ export function AgentCanvasPage() {
         workflow={workflow}
         chatRevision={live.state.chatRevision}
         chatEvents={live.state.chatEvents}
-        proposalPosition={proposalPosition}
         onFocusNode={focusNode}
         onActionReceipt={placeReceiptNodes}
         onWorkflowRefresh={refreshWorkflow}

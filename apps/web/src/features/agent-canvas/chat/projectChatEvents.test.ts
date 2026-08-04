@@ -24,14 +24,14 @@ function event(
 describe("projectChatEvents", () => {
   it("turns specialist events into one activity row instead of chat bubbles", () => {
     const items = projectChatEvents([
-      event(1, "specialist_activity_started", {
+      event(1, "specialist_work_started", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
         display_name: "Character Designer",
         operation: "create_concepts",
       }),
-      event(2, "specialist_activity_completed", {
+      event(2, "specialist_work_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
@@ -46,6 +46,38 @@ describe("projectChatEvents", () => {
       display_name: "Character Designer",
       status: "completed",
     });
+  });
+
+  it("projects canonical specialist work events and ignores the retired alias", () => {
+    const items = projectChatEvents([
+      event(1, "specialist_activity_started", {
+        activity_id: "retired-activity",
+        turn_id: "turn-retired",
+        specialist: "scene_designer",
+      }),
+      event(2, "specialist_work_started", {
+        activity_id: "activity-2",
+        turn_id: "turn-2",
+        specialist_name: "scene_designer",
+        display_name: "Scene Designer",
+        operation: "create_concepts",
+      }),
+      event(3, "specialist_work_failed", {
+        activity_id: "activity-2",
+        turn_id: "turn-2",
+        specialist_name: "scene_designer",
+        display_name: "Scene Designer",
+        operation: "create_concepts",
+      }),
+    ]);
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        activity_id: "activity-2",
+        specialist: "scene_designer",
+        status: "failed",
+      }),
+    ]);
   });
 
   it("does not synthesize proposals from partial SSE payloads", () => {
