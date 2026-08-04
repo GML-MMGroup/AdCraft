@@ -621,6 +621,32 @@ class ProviderConnectionService:
     def list(self) -> tuple[ProviderConnectionSnapshot, ...]:
         return tuple(self.status(provider_id) for provider_id in self._registry.provider_ids)
 
+    def synchronize_metadata(self, *, updated_at: str | None = None) -> None:
+        """Persist the current secret-safe credential state without mutating credentials."""
+
+        settings = self._settings_loader()
+        synchronized_at = updated_at or self._clock().isoformat()
+        for provider_id in self._registry.provider_ids:
+            definition = self._registry.get(provider_id)
+            metadata = self._metadata_status(definition, settings)
+            connection_state = _connection_state_from_metadata(metadata)
+            try:
+                current = self._metadata_repository.get_connection(provider_id)
+            except ValueError:
+                current = None
+            if (
+                current is not None
+                and current.connection_state == connection_state
+                and current.credential_status == metadata
+            ):
+                continue
+            self._metadata_repository.upsert_connection(
+                provider_id=provider_id,
+                connection_state=connection_state,
+                credential_status=metadata,
+                updated_at=synchronized_at,
+            )
+
     def migrate_legacy_siliconflow_text_key(self) -> ProviderConnectionUpdateResult | None:
         """Copy a recognized legacy SiliconFlow text key exactly once without exposing it."""
 
