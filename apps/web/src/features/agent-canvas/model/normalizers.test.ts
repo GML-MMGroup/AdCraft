@@ -148,6 +148,21 @@ function validWorkflowPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("accepts the v2 role contract returned for newly created nodes", () => {
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      nodes: validWorkflowPayload().nodes.map((node) => ({
+        ...node,
+        role_contract_version: "ad-media-role-v2",
+      })),
+    });
+
+    expect(workflow.nodes.map((node) => node.role_contract_version)).toEqual([
+      "ad-media-role-v2",
+      "ad-media-role-v2",
+    ]);
+  });
+
   it("normalizes the frozen node and persisted binding contract", () => {
     const workflow = normalizeAgentCanvasWorkflowV2({
       ...validWorkflowPayload(),

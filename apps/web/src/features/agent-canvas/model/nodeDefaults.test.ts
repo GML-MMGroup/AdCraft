@@ -18,7 +18,7 @@ describe("Agent Canvas node defaults", () => {
     expect(createDefaultCanvasNodeRequest(nodeType, { x: 10, y: 20 })).toMatchObject({
       node_type: nodeType,
       creative_role: creativeRole,
-      role_contract_version: "ad-media-role-v1",
+      role_contract_version: "ad-media-role-v2",
       position: { x: 10, y: 20 },
     });
   });

@@ -4,7 +4,10 @@ import type {
   CanvasNodeCreateRequestV2,
   CanvasNodeTypeV2,
   CanvasPositionV2,
+  CanvasRoleContractVersionV2,
 } from "../../../types-v2.ts";
+
+export const AGENT_CANVAS_ROLE_CONTRACT_VERSION: CanvasRoleContractVersionV2 = "ad-media-role-v2";
 
 export const AGENT_CANVAS_NODE_LABELS: Record<CanvasNodeTypeV2, string> = {
   text: "Text",
@@ -44,7 +47,7 @@ export function createDefaultCanvasNodeRequest(
   return {
     node_type: nodeType,
     creative_role: DEFAULT_CREATIVE_ROLES[nodeType],
-    role_contract_version: "ad-media-role-v1",
+    role_contract_version: AGENT_CANVAS_ROLE_CONTRACT_VERSION,
     title: AGENT_CANVAS_NODE_LABELS[nodeType],
     summary_prompt: null,
     generation_prompt: ["script", "image", "video", "audio"].includes(nodeType)

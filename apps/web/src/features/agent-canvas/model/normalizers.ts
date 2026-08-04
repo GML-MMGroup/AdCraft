@@ -569,7 +569,10 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     creative_role: expectLiteral(record.creative_role, CANVAS_CREATIVE_ROLES, `${path}.creative_role`),
     role_contract_version: expectLiteral(
       record.role_contract_version,
-      new Set<CanvasNodeV2["role_contract_version"]>(["ad-media-role-v1"]),
+      new Set<CanvasNodeV2["role_contract_version"]>([
+        "ad-media-role-v1",
+        "ad-media-role-v2",
+      ]),
       `${path}.role_contract_version`,
     ),
     title: expectNonEmptyString(record.title, `${path}.title`),

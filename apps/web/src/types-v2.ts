@@ -1526,6 +1526,7 @@ export interface CanvasNodeErrorV2 {
 }
 
 export type CanvasModelSelectionModeV2 = "default" | "explicit";
+export type CanvasRoleContractVersionV2 = "ad-media-role-v1" | "ad-media-role-v2";
 
 export interface CanvasModelSummaryV2 {
   model_ref: string;
@@ -1566,7 +1567,7 @@ export interface CanvasNodeV2 {
   workflow_id: string;
   node_type: CanvasNodeTypeV2;
   creative_role: CanvasCreativeRoleV2;
-  role_contract_version: "ad-media-role-v1";
+  role_contract_version: CanvasRoleContractVersionV2;
   title: string;
   status: CanvasNodeStatusV2;
   summary_prompt: string | null;
@@ -2329,7 +2330,7 @@ export interface AgentCanvasProjectCreateRequestV2 {
 export interface CanvasNodeCreateRequestV2 {
   node_type: CanvasNodeTypeV2;
   creative_role: CanvasCreativeRoleV2;
-  role_contract_version?: "ad-media-role-v1";
+  role_contract_version?: CanvasRoleContractVersionV2;
   title: string;
   summary_prompt?: string | null;
   generation_prompt?: string | null;

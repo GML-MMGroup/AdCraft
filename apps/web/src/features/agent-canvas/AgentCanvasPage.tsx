@@ -54,6 +54,7 @@ import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
+  AGENT_CANVAS_ROLE_CONTRACT_VERSION,
   createDefaultCanvasNodeRequest,
   sourceAssetStructuredContent,
 } from "./model/nodeDefaults.ts";
@@ -429,7 +430,7 @@ export function AgentCanvasPage() {
         : selection.mediaType === "video"
           ? "general_video"
           : "general_audio",
-      role_contract_version: "ad-media-role-v1",
+      role_contract_version: AGENT_CANVAS_ROLE_CONTRACT_VERSION,
       title: selection.displayName,
       structured_content: sourceAssetStructuredContent(
         selection.mediaType,
