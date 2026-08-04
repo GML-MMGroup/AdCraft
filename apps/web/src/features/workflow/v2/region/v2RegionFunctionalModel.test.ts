@@ -94,6 +94,76 @@ describe("buildV2RegionFunctionalModel", () => {
     expect(slotView.hasUnselectedWorkingVersion).toBe(true);
   });
 
+  it("uses live runtime asset pointers while the workflow slot is still stale", () => {
+    const model = buildV2RegionFunctionalModel({
+      title: "Character Generation",
+      items: [
+        item({
+          item_id: "character-item",
+          node_id: "character-generation",
+          item_type: "character",
+          display_name: "Character",
+          status: "running",
+        }),
+      ],
+      slots: [
+        slot({
+          slot_id: "character-main-slot",
+          item_id: "character-item",
+          node_id: "character-generation",
+          slot_type: "character_main_image",
+          media_type: "image",
+          status: "waiting",
+          selected_asset_id: null,
+          selected_version_id: null,
+          current_working_asset_id: null,
+          current_working_version_id: null,
+        }),
+      ],
+      assetVersions: [
+        asset({
+          asset_id: "runtime-selected-asset",
+          version_id: "runtime-selected-version",
+          media_type: "image",
+          semantic_type: "character_main_image",
+          public_url: "/media/runtime-selected.jpg",
+        }),
+        asset({
+          asset_id: "runtime-working-asset",
+          version_id: "runtime-working-version",
+          media_type: "image",
+          semantic_type: "character_main_image",
+          public_url: "/media/runtime-working.jpg",
+        }),
+      ],
+      runtime: normalizeWorkflowRuntimeV2({
+        workflow_id: "workflow-1",
+        execution_status: "running",
+        slot_runtime: {
+          "character-main-slot": {
+            slot_id: "character-main-slot",
+            item_id: "character-item",
+            node_id: "character-generation",
+            status: "completed",
+            selected_asset_id: "runtime-selected-asset",
+            selected_version_id: "runtime-selected-version",
+            current_working_asset_id: "runtime-working-asset",
+            current_working_version_id: "runtime-working-version",
+          },
+        },
+      }),
+    });
+
+    const slotView = model.items[0].slots[0];
+    expect(slotView.runtimeStatus).toBe("completed");
+    expect(slotView.slot.selected_asset_id).toBe("runtime-selected-asset");
+    expect(slotView.slot.current_working_asset_id).toBe("runtime-working-asset");
+    expect(slotView.selectedAsset?.version_id).toBe("runtime-selected-version");
+    expect(slotView.workingAsset?.version_id).toBe("runtime-working-version");
+    expect(slotView.previewUrl).toBe("/media/runtime-working.jpg?v=runtime-working-version");
+    expect(slotView.hasUnselectedWorkingVersion).toBe(true);
+  });
+
   it("includes the canonical final video and maps domain failures to blocked or skipped", () => {
     const finalItem = item({
       item_id: "final-item",

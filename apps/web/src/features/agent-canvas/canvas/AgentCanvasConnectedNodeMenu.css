@@ -1,0 +1,103 @@
+.agent-canvas-connected-menu__backdrop {
+  position: fixed;
+  z-index: 56;
+  inset: 0;
+  border: 0;
+  background: transparent;
+}
+
+.agent-canvas-connected-menu {
+  position: fixed;
+  z-index: 57;
+  display: grid;
+  width: 216px;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-bg, #f7f7fb) 88%, transparent);
+  box-shadow: 0 18px 42px rgba(27, 29, 47, 0.22);
+  color: var(--text-primary, #22263b);
+  backdrop-filter: blur(18px) saturate(1.16);
+}
+
+.agent-canvas-connected-menu__eyebrow {
+  padding: 5px 8px 6px;
+  color: var(--text-muted, #73778c);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.agent-canvas-connected-menu__option {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-canvas-connected-menu__option > button {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.agent-canvas-connected-menu__option > button:hover,
+.agent-canvas-connected-menu__option > button:focus-visible {
+  background: rgba(117, 101, 181, 0.13);
+  outline: none;
+}
+
+.agent-canvas-connected-menu__option > button > svg {
+  width: 18px;
+  height: 18px;
+  color: #7565b5;
+}
+
+.agent-canvas-connected-menu__option > button > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.agent-canvas-connected-menu__option > select {
+  height: 28px;
+  margin: 0 8px 5px 45px;
+  padding: 0 6px;
+  border: 1px solid rgba(117, 101, 181, 0.22);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.agent-canvas-connected-menu strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-canvas-connected-menu small {
+  overflow: hidden;
+  color: var(--text-muted, #73778c);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.agent-canvas-connected-menu p {
+  margin: 2px 8px 8px;
+  color: var(--text-muted, #73778c);
+  font-size: 12px;
+  line-height: 1.45;
+}

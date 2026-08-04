@@ -6,6 +6,7 @@ import {
   workingVersionForSlot,
 } from "../../../../workflow-v2/selectors.ts";
 import { finalCompositionDisplayStatus } from "../../final-composition/v2FinalCompositionPolicy.ts";
+import { slotWithRuntimeAssetPointers } from "./v2RuntimeSlotOverlay.ts";
 
 export type V2RegionSlotDisplayRole = "main" | "multi_view" | "supplemental";
 
@@ -77,10 +78,11 @@ export function buildV2RegionFunctionalModel({
     .map((item) => {
       const itemSlots = [...(slotsByItemId.get(item.item_id) ?? [])].sort(compareRegionSlots);
       const slotViews = itemSlots.map((slot) => {
-        const selectedAsset = selectedAssetForSlot(slot, assets);
-        const workingAsset = workingVersionForSlot(slot, assets);
-        const previewAsset = workingAsset ?? selectedAsset;
         const runtimeRecord = runtime?.slot_runtime?.[slot.slot_id];
+        const displaySlot = slotWithRuntimeAssetPointers(slot, runtimeRecord);
+        const selectedAsset = selectedAssetForSlot(displaySlot, assets);
+        const workingAsset = workingVersionForSlot(displaySlot, assets);
+        const previewAsset = workingAsset ?? selectedAsset;
         const rawRuntimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeRecord?.status ?? slot.status;
         const runtimeMetadataErrorCode = stringMetadataValue(runtimeRecord?.metadata, "generation_error_code");
         const runtimeMetadataMessage = stringMetadataValue(runtimeRecord?.metadata, "generation_error_message");
@@ -90,8 +92,8 @@ export function buildV2RegionFunctionalModel({
           : rawRuntimeStatus;
 
         return {
-          slot,
-          displayRole: regionSlotDisplayRole(slot),
+          slot: displaySlot,
+          displayRole: regionSlotDisplayRole(displaySlot),
           runtimeStatus,
           runtimeErrorCode,
           runtimeMessage: runtimeRecord?.error?.message ?? runtimeMetadataMessage ?? runtimeRecord?.waiting_reason ?? null,

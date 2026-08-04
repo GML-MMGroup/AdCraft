@@ -1,22 +1,11 @@
 import { memo } from "react";
-import type { AdRequest, WorkflowEdge, WorkflowNode } from "../../../types";
+import type { AdRequest } from "../../../types";
 import { WorkflowCanvasNode } from "../canvas/WorkflowCanvasNode.tsx";
 import { areWorkflowCanvasNodePropsEqual } from "../canvas/WorkflowCanvasNodeModel.ts";
 import type { AssetLibraryUploadKind } from "../../../types.ts";
 
 export const DEBUG_LIST_PREVIEW_LIMIT = 12;
 export const LOCAL_REVISION_HISTORY_PREVIEW_LIMIT = 12;
-
-export const demoNodes: WorkflowNode[] = [
-  { id: "prompt", type: "text", title: "Prompt", description: "Describe product mood and target audience.", status: "idle" },
-  { id: "image-set", type: "image_generation", title: "Image Set", description: "Generate campaign frames and visual references.", status: "idle" },
-  { id: "video-preview", type: "preview", title: "Video Preview", description: "Review the generated cut and export.", status: "idle" },
-];
-
-export const demoEdges: WorkflowEdge[] = [
-  { source: "prompt", target: "image-set", label: "brief" },
-  { source: "image-set", target: "video-preview", label: "frames" },
-];
 
 export const nodeTypes = {
   workflowNode: memo(WorkflowCanvasNode, areWorkflowCanvasNodePropsEqual),

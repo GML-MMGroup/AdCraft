@@ -71,6 +71,7 @@ import {
 } from "../quality/qualityReviewViewModel";
 import { createV2WorkflowHydrationRequestGuard } from "./v2WorkflowHydrationRequestGuard.ts";
 import { createV2WorkflowApplicationRevisionGuard } from "./v2WorkflowApplicationRevisionGuard.ts";
+import { dispatchWorkflowDocumentCommand } from "../state/workflowDocumentCommands.ts";
 
 type StateSetter<T> = Dispatch<SetStateAction<T>>;
 
@@ -394,27 +395,26 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     const current = argsRef.current;
     const ids = nodeIds instanceof Set ? nodeIds : new Set(nodeIds);
     const nextPatch = patch.output_assets ? { ...patch, output_assets: dedupeAssets(patch.output_assets) } : patch;
-    current.setCanvasNodes((existing) => existing.map((node) => (ids.has(node.id) ? { ...node, ...nextPatch } : node)));
-    current.setFlowNodes((existing) =>
-      existing.map((node) => {
-        if (!ids.has(node.id)) return node;
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      {
+        type: "patch-nodes",
+        nodeIds: ids,
+        patch: nextPatch,
+        canvasDataPatch: (node) => {
         const outputAssets = nextPatch.output_assets ?? [];
         const hasOutputAssetPatch = nextPatch.output_assets !== undefined;
         return {
-          ...node,
-          data: {
-            ...node.data,
-            status: nextPatch.status ?? node.data.status,
-            version: nextPatch.version ?? node.data.version,
-            locked: nextPatch.locked ?? node.data.locked,
-            stale: nextPatch.stale ?? node.data.stale,
-            staleReason: nextPatch.stale_reason !== undefined ? nextPatch.stale_reason : node.data.staleReason,
-            contentPreview: textFromUnknown(nextPatch.output) || textFromUnknown(nextPatch.content) || node.data.contentPreview,
-            outputCount: hasOutputAssetPatch ? outputAssets.length : nextPatch.output ? 1 : node.data.outputCount,
-            previewAssets: hasOutputAssetPatch ? previewAssetsForCanvasNodeType(node.data.kind, outputAssets) : node.data.previewAssets,
-          },
+          contentPreview: textFromUnknown(nextPatch.output) || textFromUnknown(nextPatch.content) || node.data.contentPreview,
+          outputCount: hasOutputAssetPatch ? outputAssets.length : nextPatch.output ? 1 : node.data.outputCount,
+          previewAssets: hasOutputAssetPatch ? previewAssetsForCanvasNodeType(node.data.kind, outputAssets) : node.data.previewAssets,
         };
-      }),
+        },
+      },
     );
   }
 
@@ -457,9 +457,18 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
     const current = argsRef.current;
     if (!runs.length) return;
     const runByKey = createNodeRunMap(runs);
+    let flowNodeSource: CanvasNode[] | null = null;
+    let workflowNodesFromFlow: WorkflowNode[] = [];
 
-    current.setCanvasNodes((existing) =>
-      existing.map((node) => {
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      {
+        type: "transform-nodes",
+        transformWorkflowNode: (node, existing) => {
         const run = findNodeRunForWorkflowNode(node, runByKey, existing);
         if (!run) return node;
         const outputAssets = normalizeRunAssets(run.output_assets);
@@ -507,13 +516,13 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
             last_error: run.last_error,
           },
         };
-      }),
-    );
-
-    current.setFlowNodes((existing) => {
-      const currentWorkflowNodes = existing.map((item) => flowNodeToWorkflowNode(item));
-      return existing.map((node) => {
-        const run = findNodeRunForWorkflowNode(flowNodeToWorkflowNode(node), runByKey, currentWorkflowNodes);
+        },
+        transformCanvasNode: (node, existing) => {
+        if (flowNodeSource !== existing) {
+          flowNodeSource = existing;
+          workflowNodesFromFlow = existing.map((item) => flowNodeToWorkflowNode(item));
+        }
+        const run = findNodeRunForWorkflowNode(flowNodeToWorkflowNode(node), runByKey, workflowNodesFromFlow);
         if (!run) return node;
         const outputAssets = normalizeRunAssets(run.output_assets);
         const mergedOutputAssets = outputAssets.length ? dedupeAssets([...outputAssets, ...node.data.previewAssets]) : [];
@@ -536,8 +545,9 @@ export function useWorkflowGraphSyncController(args: WorkflowGraphSyncController
             staleReason: run.error ?? (isSuccessfulNodeStatus(run.status) ? null : node.data.staleReason),
           },
         };
-      });
-    });
+        },
+      },
+    );
   }
 
   const actionsRef = useRef<{

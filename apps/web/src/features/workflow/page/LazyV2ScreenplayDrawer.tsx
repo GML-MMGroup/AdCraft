@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { ScreenplayProductOption } from "../v2/screenplay/screenplayUiHelpers.ts";
 import type { V2ScreenplayController } from "../v2/screenplay/useV2ScreenplayController.ts";
 
-const V2ScreenplayDrawer = lazy(() => import("../v2/screenplay/V2ScreenplayDrawer.tsx")
+const V2ScreenplayDrawer = lazy(() => import("./screenplay-editor.tsx")
   .then((module) => ({ default: module.V2ScreenplayDrawer })));
 
 export function LazyV2ScreenplayDrawer({
