@@ -3,18 +3,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_operation_contexts import AgentCanvasSpecialistName
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
-    AdaptiveProductionRecipeV2,
     ConceptDraftSpecV2,
     CreationModeDecisionV2,
-    CreativeSessionStateV2,
-    GuidedDeliveryActionV2,
+    GuidanceSessionActionV2,
+    GuidedSessionStateV2,
+    NextGuidanceDecisionV2,
     ProposedDraftReferenceV2,
 )
 from app.schemas.agent_runtime import (
@@ -32,7 +32,6 @@ class ChatMessageRequestV2(_ConversationModel):
     mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
     mentioned_image_asset_ids: tuple[str, ...] = Field(default=(), max_length=16)
     video_skill_run_id: str | None = Field(default=None, max_length=160)
-    auto_continue: bool = False
 
 
 class ChatTurnAcceptedV2(_ConversationModel):
@@ -90,7 +89,8 @@ class ChatTurnV2(_ConversationModel):
     turn_kind: Literal["message", "proposal_action", "command_action", "guided_action"]
     request: dict[str, JsonValue]
     creation_mode: CreationModeDecisionV2 | None = None
-    recipe: AdaptiveProductionRecipeV2 | None = None
+    guidance_decision: NextGuidanceDecisionV2 | None = None
+    guidance_session_revision: int | None = Field(default=None, ge=1)
     continuation: ContinuationDeliveryV2 | None = None
     error_code: str | None = None
     error_message: str | None = None
@@ -123,9 +123,9 @@ class ChatTimelineEntryV2(_ConversationModel):
 class ChatTimelineListResponseV2(_ConversationModel):
     workflow_id: str
     conversation_id: str | None
-    creative_session: CreativeSessionStateV2 | None = None
+    guidance_session: GuidedSessionStateV2 | None = None
     continuations: tuple[ContinuationDeliveryV2, ...] = ()
-    current_session_actions: tuple[GuidedDeliveryActionV2, ...] = Field(
+    current_session_actions: tuple[GuidanceSessionActionV2, ...] = Field(
         default=(),
         max_length=2,
     )
@@ -177,7 +177,7 @@ class ConceptProposalCreateV2(_ConversationModel):
         default=(),
         max_length=64,
     )
-    recipe_topic_id: str | None = Field(default=None, max_length=160, exclude=True)
+    topic_id: str | None = Field(default=None, max_length=160)
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
     proposal_purpose: str | None = Field(default=None, max_length=160)
@@ -197,13 +197,73 @@ class ConceptProposalCreateV2(_ConversationModel):
         return self
 
 
-ProposalAvailabilityV2 = Literal["open", "archived", "unavailable"]
+ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]
+
+
+ProposalActionTypeV2 = Literal[
+    "select_option",
+    "revise_options",
+    "defer_topic",
+    "exclude_element",
+    "delegate_choice",
+]
+
+
+class ProposalActionDescriptorV2(_ConversationModel):
+    action_id: str = Field(min_length=1, max_length=160)
+    action: ProposalActionTypeV2
+    label: str = Field(min_length=1, max_length=160)
+    proposal_id: str = Field(min_length=1, max_length=160)
+    expected_session_revision: int = Field(ge=1)
+    confirmation_required: bool
+    reason: str = Field(min_length=1, max_length=1_024)
+
+
+class _ProposalActionBaseV2(_ConversationModel):
+    action_id: str = Field(min_length=1, max_length=160)
+    expected_session_revision: int = Field(ge=1)
+
+
+class SelectOptionActionV2(_ProposalActionBaseV2):
+    action: Literal["select_option"]
+    option_id: str = Field(min_length=1, max_length=160)
+    accepted_references: tuple[ProposedDraftReferenceV2, ...] = Field(
+        default=(),
+        max_length=64,
+    )
+
+
+class ReviseOptionsActionV2(_ProposalActionBaseV2):
+    action: Literal["revise_options"]
+    instruction: str = Field(min_length=1, max_length=8_192)
+
+
+class DeferTopicActionV2(_ProposalActionBaseV2):
+    action: Literal["defer_topic"]
+
+
+class ExcludeElementActionV2(_ProposalActionBaseV2):
+    action: Literal["exclude_element"]
+
+
+class DelegateChoiceActionV2(_ProposalActionBaseV2):
+    action: Literal["delegate_choice"]
+
+
+ProposalActionRequestV2 = Annotated[
+    SelectOptionActionV2
+    | ReviseOptionsActionV2
+    | DeferTopicActionV2
+    | ExcludeElementActionV2
+    | DelegateChoiceActionV2,
+    Field(discriminator="action"),
+]
 
 
 class ProposalApplicationSummaryV2(_ConversationModel):
     application_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
-    generation_action: Literal["draft_only", "generate_now"]
+    action: Literal["select_option", "delegate_choice"]
     receipt_id: str = Field(min_length=1, max_length=160)
     created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     queued_execution_ids: tuple[str, ...] = Field(default=(), max_length=32)
@@ -222,56 +282,11 @@ class ConceptProposalV2(ConceptProposalCreateV2):
     availability: ProposalAvailabilityV2 = "open"
     application_count: int = Field(default=0, ge=0)
     latest_application: ProposalApplicationSummaryV2 | None = None
-    available_actions: tuple[Literal["select", "revise", "archive", "reopen"], ...] = ()
+    guidance_session_id: str = Field(min_length=1, max_length=160)
+    guidance_session_revision: int = Field(ge=1)
+    actions: tuple[ProposalActionDescriptorV2, ...] = ()
     created_at: datetime
     updated_at: datetime
-
-
-class ProposalActionRequestV2(_ConversationModel):
-    action: Literal["select", "revise", "archive", "reopen"]
-    option_id: str | None = None
-    generation_action: Literal["draft_only", "generate_now"] | None = None
-    instruction: str | None = Field(default=None, max_length=8_192)
-    position: dict[str, float] | None = None
-    accepted_references: tuple[ProposedDraftReferenceV2, ...] | None = Field(
-        default=None,
-        max_length=64,
-    )
-    mutable_dimensions: tuple[
-        Literal[
-            "style",
-            "lighting",
-            "composition",
-            "camera",
-            "copy",
-            "pacing",
-            "audio",
-            "other",
-        ],
-        ...,
-    ] = Field(default=(), max_length=8)
-    replace_whole_concept: bool = False
-
-    @model_validator(mode="after")
-    def validate_action(self) -> "ProposalActionRequestV2":
-        if self.action == "select" and (not self.option_id or not self.generation_action):
-            raise ValueError("Selection requires option_id and generation_action.")
-        if self.action == "revise" and not self.instruction:
-            raise ValueError("Revision requires instruction.")
-        if self.action in {"archive", "reopen"} and any(
-            value is not None
-            for value in (
-                self.option_id,
-                self.generation_action,
-                self.instruction,
-                self.position,
-                self.accepted_references,
-                self.mutable_dimensions or None,
-                self.replace_whole_concept or None,
-            )
-        ):
-            raise ValueError("Archive and reopen do not accept selection or revision fields.")
-        return self
 
 
 class AgentCommandPlanActionRequestV2(_ConversationModel):
@@ -289,7 +304,7 @@ class AgentActionReceiptV2(_ConversationModel):
     action_id: str | None = Field(default=None, max_length=160)
     proposal_id: str | None = Field(default=None, max_length=160)
     proposal_option_id: str | None = Field(default=None, max_length=160)
-    proposal_generation_action: Literal["draft_only", "generate_now"] | None = None
+    proposal_action: ProposalActionTypeV2 | None = None
     actor_kind: Literal["agent", "user", "system"] = "system"
     idempotency_key: str | None = Field(default=None, max_length=256)
     status: Literal[
@@ -337,9 +352,7 @@ class VideoSkillRunV2(_ConversationModel):
     skill_version: str
     source_skill_run_id: str | None = None
     status: Literal["active", "superseded"] = "active"
-    current_topic_id: str | None = None
-    deferred_topic_ids: tuple[str, ...] = ()
-    memory_revision: int = Field(default=0, ge=0)
+    active_creative_direction_snapshot_id: str | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
