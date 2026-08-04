@@ -1,0 +1,1 @@
+Build the narrative premise around belief-led narration, then use symbolic imagery to shape escalation and brand resolution to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
