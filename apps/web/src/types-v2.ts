@@ -1659,7 +1659,8 @@ export interface AgentCanvasWorkflowV2 {
 }
 
 export interface AgentCanvasProjectCreateResponseV2 extends AgentCanvasWorkflowV2 {
-  creative_session_id: string;
+  active_style_skill_run_id: string;
+  guidance_session_id: string | null;
 }
 
 export interface ResolvedTextInputSnapshotV2 {

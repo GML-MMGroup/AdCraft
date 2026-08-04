@@ -71,7 +71,8 @@ describe("Agent Canvas client", () => {
         });
         return jsonResponse({
           ...emptyWorkflow,
-          creative_session_id: "session-1",
+          active_style_skill_run_id: "style-skill-run-1",
+          guidance_session_id: "guidance-session-1",
         }, { status: 201, etag: '"workflow-workflow-1-r1"' });
       }
       return jsonResponse(emptyWorkflow, { etag: '"workflow-workflow-1-r2"' });
@@ -84,7 +85,8 @@ describe("Agent Canvas client", () => {
     );
     const loaded = await v2Api.agentCanvasWorkflowWithEtag("workflow-1");
 
-    expect(created.value.creative_session_id).toBe("session-1");
+    expect(created.value.active_style_skill_run_id).toBe("style-skill-run-1");
+    expect(created.value.guidance_session_id).toBe("guidance-session-1");
     expect(created.etag).toBe('"workflow-workflow-1-r1"');
     expect(loaded.etag).toBe('"workflow-workflow-1-r2"');
     expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow-workflow-1-r2"');

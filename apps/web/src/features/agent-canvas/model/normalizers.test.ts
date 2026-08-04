@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeAgentCanvasChatTimelineV2,
+  normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
@@ -148,6 +149,23 @@ function validWorkflowPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("accepts optional and nullable guidance session ids in project creation responses", () => {
+    const response = {
+      ...validWorkflowPayload(),
+      active_style_skill_run_id: "style-skill-run-1",
+    };
+
+    expect(normalizeAgentCanvasProjectCreateResponseV2(response).guidance_session_id).toBeNull();
+    expect(normalizeAgentCanvasProjectCreateResponseV2({
+      ...response,
+      guidance_session_id: null,
+    }).guidance_session_id).toBeNull();
+    expect(normalizeAgentCanvasProjectCreateResponseV2({
+      ...response,
+      guidance_session_id: "",
+    }).guidance_session_id).toBe("");
+  });
+
   it("accepts the v2 role contract returned for newly created nodes", () => {
     const workflow = normalizeAgentCanvasWorkflowV2({
       ...validWorkflowPayload(),

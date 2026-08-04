@@ -766,13 +766,17 @@ export function normalizeAgentCanvasProjectCreateResponseV2(
 ): AgentCanvasProjectCreateResponseV2 {
   const record = expectRecord(value, path);
   const workflowPayload = { ...record };
-  delete workflowPayload.creative_session_id;
+  delete workflowPayload.active_style_skill_run_id;
+  delete workflowPayload.guidance_session_id;
   return {
     ...normalizeAgentCanvasWorkflowV2(workflowPayload, path),
-    creative_session_id: expectNonEmptyString(
-      record.creative_session_id,
-      `${path}.creative_session_id`,
+    active_style_skill_run_id: expectNonEmptyString(
+      record.active_style_skill_run_id,
+      `${path}.active_style_skill_run_id`,
     ),
+    guidance_session_id: record.guidance_session_id === undefined
+      ? null
+      : nullableString(record.guidance_session_id, `${path}.guidance_session_id`),
   };
 }
 
