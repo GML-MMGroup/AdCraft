@@ -1,0 +1,1 @@
+Shape an adaptable instrumental arc around material transformation and hand detail. Let texture and energy support process causality without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.

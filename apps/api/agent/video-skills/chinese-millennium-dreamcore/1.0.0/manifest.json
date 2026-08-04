@@ -1,0 +1,36 @@
+{
+  "skill_id": "chinese-millennium-dreamcore",
+  "version": "1.0.0",
+  "display_name": "Chinese Millennium Dreamcore",
+  "description": "An advertising treatment built around nostalgic digital texture, liminal familiarity, memory fragments, and saturated night color.",
+  "category": "experimental-graphic",
+  "tags": [
+    "experimental",
+    "graphic",
+    "compositing"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Chinese Millennium Dreamcore creative treatment."
+  },
+  "display_order": 440,
+  "files": {
+    "SKILL.md": "a499bd03f2a89f9015c95f6ed7b379db9cf8a6b5f1f8783cbba4225630c579ff",
+    "references/prop_designer.md": "c72cc4f32e89ca62c48e545283d43a636532db3e0bb139cc91caa3d85532b4e4",
+    "references/scene_designer.md": "f48849a6abc1e3055155e0cba5fbb7ba5470aa596bf220a60edd0d3dfcbb46cc",
+    "references/storyboard_artist.md": "e7d4df5a77c11d87c12ccf541438547276a315eab8c5a2a94b9e77466c83910c",
+    "references/video_director.md": "dbe8a388a4cc611b6b258668362d3d9791e1c9fd083bc776918bb096bd9b2600",
+    "references/quick_media_agent.md": "2ef6e91853ea9a62d99325ed951124157fc965e52485b12e99d9428eb3cbbd8a"
+  },
+  "role_guidance": {
+    "prop_designer": "references/prop_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md",
+    "quick_media_agent": "references/quick_media_agent.md"
+  }
+}

@@ -1,0 +1,1 @@
+Organize shots around nostalgic digital texture, develop visual progression through liminal familiarity, and reserve memory fragments for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

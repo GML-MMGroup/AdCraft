@@ -1,0 +1,34 @@
+{
+  "skill_id": "fashion-showcase-film",
+  "version": "1.0.0",
+  "display_name": "Fashion Showcase Film",
+  "description": "An advertising treatment built around silhouette, fabric motion, editorial posing, and runway-to-lifestyle framing.",
+  "category": "luxury-fashion",
+  "tags": [
+    "luxury",
+    "editorial",
+    "material"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Fashion Showcase Film creative treatment."
+  },
+  "display_order": 110,
+  "files": {
+    "SKILL.md": "973149f6726fdb6a32e741229669326ead7b0eec6094465f689da63beda78395",
+    "references/product_designer.md": "b0d1ce610cdbebb3629578fd7587d695377a1142bc76fb98b3bf73cc316d07cf",
+    "references/character_designer.md": "7f6ef13928d6f2e69ffa37b69b480a894bd99c16b17874c4193cd0a7fcaee908",
+    "references/scene_designer.md": "d90566c83f7fd28fadfb061acadaafd5c273a80963c31494bc0033c52812c096",
+    "references/video_director.md": "835297d06266488012a24d3679c76070973f42f5aadaf963e383c645ca534b48"
+  },
+  "role_guidance": {
+    "product_designer": "references/product_designer.md",
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "video_director": "references/video_director.md"
+  }
+}

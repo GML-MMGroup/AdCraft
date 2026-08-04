@@ -1,0 +1,1 @@
+Build the narrative premise around spatial suspense, then use controlled viewpoint to shape escalation and structural escalation to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

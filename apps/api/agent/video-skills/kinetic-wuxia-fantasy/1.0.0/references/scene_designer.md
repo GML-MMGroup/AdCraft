@@ -1,0 +1,1 @@
+Construct spaces that express readable action geography through layout and fabric and weapon motion through light, color, and material. Use poetic landscapes to direct attention toward the advertised subject while preserving the stated location and product context.

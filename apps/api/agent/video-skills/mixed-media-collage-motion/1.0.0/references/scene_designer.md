@@ -1,0 +1,1 @@
+Construct spaces that express cut-paper layers through layout and typography-aware rhythm without baked text through light, color, and material. Use tactile compositing to direct attention toward the advertised subject while preserving the stated location and product context.

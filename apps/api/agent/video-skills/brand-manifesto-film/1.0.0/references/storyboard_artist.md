@@ -1,0 +1,1 @@
+Organize shots around belief-led narration, develop visual progression through symbolic imagery, and reserve emotional escalation for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

@@ -1,0 +1,1 @@
+Direct camera and subject motion through silhouette and fabric motion, using editorial posing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

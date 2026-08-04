@@ -1,0 +1,1 @@
+Shape an adaptable instrumental arc around respectful observation and environmental context. Let texture and energy support authentic action without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.

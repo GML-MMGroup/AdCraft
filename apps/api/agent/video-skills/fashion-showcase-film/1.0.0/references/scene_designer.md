@@ -1,0 +1,1 @@
+Construct spaces that express silhouette through layout and fabric motion through light, color, and material. Use editorial posing to direct attention toward the advertised subject while preserving the stated location and product context.

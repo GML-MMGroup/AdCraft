@@ -1,0 +1,1 @@
+Construct spaces that express stage blocking through layout and chorus geometry through light, color, and material. Use spotlight glamour to direct attention toward the advertised subject while preserving the stated location and product context.

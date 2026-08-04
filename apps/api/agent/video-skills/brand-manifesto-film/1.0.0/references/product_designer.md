@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing belief-led narration through silhouette and symbolic imagery through surfaces and detail. Make functional features readable, and use emotional escalation only where it strengthens the requested selling point.

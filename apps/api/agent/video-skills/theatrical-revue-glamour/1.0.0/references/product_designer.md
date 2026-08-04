@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing stage blocking through silhouette and chorus geometry through surfaces and detail. Make functional features readable, and use spotlight glamour only where it strengthens the requested selling point.

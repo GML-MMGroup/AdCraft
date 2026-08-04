@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around rounded proportions and tactile soft materials. Use warm light to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

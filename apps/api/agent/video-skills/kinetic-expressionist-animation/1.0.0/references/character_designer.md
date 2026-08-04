@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around elastic drawing and expressive distortion. Use energetic staging to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

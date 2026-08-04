@@ -1,0 +1,36 @@
+{
+  "skill_id": "chinese-traditional-art-animation",
+  "version": "1.0.0",
+  "display_name": "Chinese Traditional Art Animation",
+  "description": "An advertising treatment built around ink, paper, cutout and decorative traditions, negative space, and poetic motion.",
+  "category": "animation-illustration",
+  "tags": [
+    "animation",
+    "illustration",
+    "motion"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Chinese Traditional Art Animation creative treatment."
+  },
+  "display_order": 360,
+  "files": {
+    "SKILL.md": "f61e0bc4f7e7d483af5e669e5f32b825b8616f8f32bfb3c1e896b74fe816b13c",
+    "references/character_designer.md": "63a06798c585dbdd9ce1737b60060aedffb74acab7269ff8959fbf5abd6a946a",
+    "references/scene_designer.md": "e7b1c4bf77905584829f4f37eb55d58eafa9fc1aa823f1d38a25a29740c1c316",
+    "references/storyboard_artist.md": "aa59f48adf676809b22e3e8a39dae0f10cde7a9e75f33162e6151233d881a8f7",
+    "references/video_director.md": "1bcbcbfa2c7d144a8eefe3060451a84646ed952bcdb65374dbb2635a8f788032",
+    "references/quick_media_agent.md": "c853f97e1f4f28b91c890c921dfa73be64d5454608438a45e37499a4478dc656"
+  },
+  "role_guidance": {
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md",
+    "quick_media_agent": "references/quick_media_agent.md"
+  }
+}

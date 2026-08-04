@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around stage blocking and chorus geometry. Use spotlight glamour to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

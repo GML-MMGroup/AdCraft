@@ -1,0 +1,34 @@
+{
+  "skill_id": "poetic-contemplative-cinema",
+  "version": "1.0.0",
+  "display_name": "Poetic Contemplative Cinema",
+  "description": "An advertising treatment built around time, texture, silence, environmental metaphor, and emotionally patient observation.",
+  "category": "cinematic-narrative",
+  "tags": [
+    "cinematic",
+    "narrative",
+    "composition"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Poetic Contemplative Cinema creative treatment."
+  },
+  "display_order": 230,
+  "files": {
+    "SKILL.md": "709b48bf64ad7f27a2b3a9ee6f807a18e893708e997d7136d678095937f9ed0d",
+    "references/script_writer.md": "4d814d8f07b57e164b6e6936d7eb37a4c801efb44475eafc0376078c68d1e9e7",
+    "references/scene_designer.md": "9cfc410467b2879eaa06158e048329be004822801a0217c40ab7c768aecb61b8",
+    "references/storyboard_artist.md": "9dd193bec84f4edd89f50aea6dfc30001ec5529c1c9caff998153f7908149018",
+    "references/video_director.md": "818c46c065a7e166d958e16c9eccb911f0de9bc6a3f07b960ad2a58293ea4d52"
+  },
+  "role_guidance": {
+    "script_writer": "references/script_writer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md"
+  }
+}

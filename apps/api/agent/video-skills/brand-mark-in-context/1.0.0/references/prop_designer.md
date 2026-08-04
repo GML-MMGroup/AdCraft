@@ -1,0 +1,1 @@
+Design supporting objects around brand-shape echoes and environmental integration, with a material hierarchy that reinforces reveal and recognition hierarchy. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.

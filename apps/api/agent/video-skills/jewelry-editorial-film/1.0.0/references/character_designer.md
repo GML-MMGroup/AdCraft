@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around macro detail and specular light. Use gesture-led display to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

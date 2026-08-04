@@ -1,0 +1,34 @@
+{
+  "skill_id": "kinetic-wuxia-fantasy",
+  "version": "1.0.0",
+  "display_name": "Kinetic Wuxia Fantasy",
+  "description": "An advertising treatment built around readable action geography, fabric and weapon motion, poetic landscapes, and rhythmic combat.",
+  "category": "cinematic-narrative",
+  "tags": [
+    "cinematic",
+    "narrative",
+    "composition"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Kinetic Wuxia Fantasy creative treatment."
+  },
+  "display_order": 270,
+  "files": {
+    "SKILL.md": "2480380bed581d005144c4085c2ecfaf98dfdf8b282ce3aec65f1d24b07112b6",
+    "references/script_writer.md": "2ae3c0488bdc1019f648c5b16d1af05253518caee8b18d3ddddd20f8f0d08f59",
+    "references/scene_designer.md": "ce3d4d1518d8de2aabf1f05f017143f6349d0858303b67d7e141e49e5d044963",
+    "references/storyboard_artist.md": "bb5a05051995cc1780b2e88af179d6c4333b3563f6b467c9b9094d2c7ec4ecab",
+    "references/video_director.md": "036860451f776d10eb7fe0a74216eedd4e1b39b3172a353ce5ed4f7abbd78887"
+  },
+  "role_guidance": {
+    "script_writer": "references/script_writer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md"
+  }
+}

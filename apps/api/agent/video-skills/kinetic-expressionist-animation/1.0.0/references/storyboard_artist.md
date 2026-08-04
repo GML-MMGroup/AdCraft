@@ -1,0 +1,1 @@
+Organize shots around elastic drawing, develop visual progression through expressive distortion, and reserve energetic staging for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

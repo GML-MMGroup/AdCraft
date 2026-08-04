@@ -1,0 +1,1 @@
+Construct spaces that express elastic drawing through layout and expressive distortion through light, color, and material. Use energetic staging to direct attention toward the advertised subject while preserving the stated location and product context.

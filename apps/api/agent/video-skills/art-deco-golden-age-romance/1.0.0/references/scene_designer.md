@@ -1,0 +1,1 @@
+Construct spaces that express geometric opulence through layout and jewel-tone contrast through light, color, and material. Use romantic decadence to direct attention toward the advertised subject while preserving the stated location and product context.

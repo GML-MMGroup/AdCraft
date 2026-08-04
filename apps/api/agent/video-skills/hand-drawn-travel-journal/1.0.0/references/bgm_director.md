@@ -1,0 +1,1 @@
+Shape an adaptable instrumental arc around drawn overlays and travel observation. Let texture and energy support location rhythm without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.

@@ -1,0 +1,1 @@
+Organize shots around drawn overlays, develop visual progression through travel observation, and reserve location rhythm for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

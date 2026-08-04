@@ -1,0 +1,1 @@
+Construct spaces that express vast scale through layout and sparse geometry through light, color, and material. Use atmospheric depth to direct attention toward the advertised subject while preserving the stated location and product context.

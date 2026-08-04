@@ -1,0 +1,36 @@
+{
+  "skill_id": "craft-process-film",
+  "version": "1.0.0",
+  "display_name": "Craft Process Film",
+  "description": "An advertising treatment built around material transformation, hand detail, process causality, and maker-focused pacing.",
+  "category": "lifestyle-documentary",
+  "tags": [
+    "lifestyle",
+    "documentary",
+    "observational"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Craft Process Film creative treatment."
+  },
+  "display_order": 550,
+  "files": {
+    "SKILL.md": "1942e865f56384e7a8071f11550f141d81e34d0a0a3c324fb552268efa3fc531",
+    "references/script_writer.md": "777a1c5230134a7506f48ab2195e3e814122590ce316fdf3312f8da9baf2200c",
+    "references/scene_designer.md": "5eeafef05b81b8d81c9f8963055bb82d587621e9c0162578c102414143183334",
+    "references/storyboard_artist.md": "5d00fcccb80e48df7e2423d50e1f4c22a31f8b1bae32c27ef9375deab1975da7",
+    "references/video_director.md": "fb6211a9dd82eed65cc4e6deb0ef9552d811cf37ea744d15d647844e5163ee2e",
+    "references/bgm_director.md": "d63f4a8febaafded841c4e002de7f193895f86150f974e29e390b762d3a36dcb"
+  },
+  "role_guidance": {
+    "script_writer": "references/script_writer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md",
+    "bgm_director": "references/bgm_director.md"
+  }
+}

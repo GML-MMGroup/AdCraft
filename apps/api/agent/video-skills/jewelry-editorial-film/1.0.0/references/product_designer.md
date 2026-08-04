@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing macro detail through silhouette and specular light through surfaces and detail. Make functional features readable, and use gesture-led display only where it strengthens the requested selling point.
