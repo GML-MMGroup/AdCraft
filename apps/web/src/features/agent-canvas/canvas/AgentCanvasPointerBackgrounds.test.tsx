@@ -22,6 +22,9 @@ describe("AgentCanvasPointerBackgrounds", () => {
     const pointerDot = pointerPattern?.querySelector("circle");
 
     expect(pointerBackground.classList.contains("agent-canvas-pointer-background")).toBe(true);
+    expect(baseBackground.style.getPropertyValue("--xy-background-pattern-color-props")).toBe(
+      "var(--agent-canvas-base-dot-color)",
+    );
     expect(pointerBackground.style.getPropertyValue("--xy-background-color-props")).toBe("transparent");
     expect(pointerPattern?.getAttribute("x")).toBe(basePattern?.getAttribute("x"));
     expect(pointerPattern?.getAttribute("y")).toBe(basePattern?.getAttribute("y"));

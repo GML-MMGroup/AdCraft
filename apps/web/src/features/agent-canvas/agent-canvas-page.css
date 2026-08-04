@@ -1,4 +1,5 @@
 .agent-canvas-page {
+  --agent-canvas-base-dot-color: rgb(81 85 108 / 24%);
   --agent-canvas-pointer-dot-color: rgb(104 77 202 / 94%);
 
   position: relative;
@@ -808,6 +809,7 @@
 }
 
 html[data-theme="dark"] .agent-canvas-page {
+  --agent-canvas-base-dot-color: rgb(142 146 164 / 20%);
   --agent-canvas-pointer-dot-color: rgb(201 187 255 / 100%);
 
   color: #ecedf5;

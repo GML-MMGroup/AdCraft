@@ -11,6 +11,7 @@ export function AgentCanvasPointerBackgrounds() {
         variant={BackgroundVariant.Dots}
         gap={AGENT_CANVAS_GRID_GAP}
         size={AGENT_CANVAS_GRID_DOT_SIZE}
+        color="var(--agent-canvas-base-dot-color)"
       />
       <Background
         id="agent-canvas-pointer-spotlight"

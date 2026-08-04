@@ -146,6 +146,11 @@ html[data-theme="dark"] .app-shell--cosmic .topbar {
   backdrop-filter: blur(22px) saturate(1.08);
 }
 
+html[data-theme="dark"] .brand-logo {
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 16px rgba(180, 220, 255, 0.72)) drop-shadow(0 0 28px rgba(202, 177, 255, 0.38));
+}
+
 html[data-theme="dark"] .floating-rail {
   border-color: var(--border-default);
   background: rgba(13, 15, 20, 0.92);

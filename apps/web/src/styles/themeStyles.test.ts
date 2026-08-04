@@ -111,6 +111,18 @@ describe("theme styles", () => {
     expect(focusBlock).toContain("outline: none");
   });
 
+  test("keeps the dark theme brand logo in its illuminated hover treatment", () => {
+    const themeStyles = source("styles/theme.css");
+    const brandBlock = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"] .brand-logo',
+    );
+
+    expect(brandBlock).toContain("transform: scale(1.06)");
+    expect(brandBlock).toContain("drop-shadow(0 0 16px rgba(180, 220, 255, 0.72))");
+    expect(brandBlock).toContain("drop-shadow(0 0 28px rgba(202, 177, 255, 0.38))");
+  });
+
   test("keeps non-critical theme rules out of the initial style entry", () => {
     expect(source("main.tsx")).not.toContain('import "./styles/theme.css"');
     expect(source("components/Layout.tsx")).toContain('import "../styles/theme.css"');
