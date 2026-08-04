@@ -1,0 +1,1 @@
+Design supporting objects around impossible scale and pop color, with a material hierarchy that reinforces visual metaphor. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.

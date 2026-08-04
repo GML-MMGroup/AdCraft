@@ -1,0 +1,1 @@
+Design supporting objects around scale contrast and macro optics, with a material hierarchy that reinforces handcrafted detail. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.

@@ -1,0 +1,1 @@
+Design supporting objects around nostalgic digital texture and liminal familiarity, with a material hierarchy that reinforces memory fragments. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.
