@@ -1,0 +1,1 @@
+Organize shots around luminous atmosphere, develop visual progression through weather detail, and reserve youthful longing for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

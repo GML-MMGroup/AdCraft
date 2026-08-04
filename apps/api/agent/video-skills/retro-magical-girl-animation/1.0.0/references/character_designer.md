@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around transformation grammar and symbolic props. Use pastel-neon contrast to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

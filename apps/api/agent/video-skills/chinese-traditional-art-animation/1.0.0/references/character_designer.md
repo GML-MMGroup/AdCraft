@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around ink and paper. Use cutout and decorative traditions to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

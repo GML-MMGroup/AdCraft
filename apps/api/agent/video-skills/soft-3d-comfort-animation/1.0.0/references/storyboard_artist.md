@@ -1,0 +1,1 @@
+Organize shots around rounded proportions, develop visual progression through tactile soft materials, and reserve warm light for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
