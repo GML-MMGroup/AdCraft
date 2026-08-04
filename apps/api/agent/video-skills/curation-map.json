@@ -1,0 +1,1035 @@
+{
+  "curation_version": "1",
+  "skills": [
+    {
+      "skill_id": "new-product-tvc-campaign",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "b0357655",
+          "source_title_en": "New Product TVC Campaign Source Treatment 1",
+          "source_sha256": "e6c55ca3bd974fda95d973142ae88b1554608e6da5b0285519d06346c7b095f1"
+        }
+      ],
+      "retained_methods": [
+        "campaign concept",
+        "premium product reveal",
+        "visual anchor",
+        "brand arc"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published New Product TVC Campaign as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted campaign concept, premium product reveal, visual anchor, and brand arc into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "industrial-product-commercial",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "67f5241d",
+          "source_title_en": "Industrial Product Commercial Source Treatment 1",
+          "source_sha256": "232653acb1258406123ea79d0c8a5e62a0d9b759f225e342e6228c98ece3adea"
+        },
+        {
+          "group_id": "product-display-d3631706",
+          "file_suffix": "5ef95e50",
+          "source_title_en": "Industrial Product Commercial Source Treatment 2",
+          "source_sha256": "232653acb1258406123ea79d0c8a5e62a0d9b759f225e342e6228c98ece3adea"
+        }
+      ],
+      "retained_methods": [
+        "engineering form",
+        "material precision",
+        "functional demonstration",
+        "controlled light"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from product-display-d3631706:5ef95e50."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Industrial Product Commercial as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted engineering form, material precision, functional demonstration, and controlled light into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "product-promotional-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "9d8ad994",
+          "source_title_en": "Product Promotional Film Source Treatment 1",
+          "source_sha256": "143678aabd60db3d39a56fc4ee6ee114ff9671f97a92051ffcae58f52dfda044"
+        }
+      ],
+      "retained_methods": [
+        "selling-point hierarchy",
+        "use context",
+        "benefit reveal",
+        "clean packshot logic"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Product Promotional Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted selling-point hierarchy, use context, benefit reveal, and clean packshot logic into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "brand-manifesto-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "822cc417",
+          "source_title_en": "Brand Manifesto Film Source Treatment 1",
+          "source_sha256": "bb862603a092f6bc321e30dd96abc51d1b64ca72535fb4e030da014a47f8342e"
+        }
+      ],
+      "retained_methods": [
+        "belief-led narration",
+        "symbolic imagery",
+        "emotional escalation",
+        "brand resolution"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Brand Manifesto Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted belief-led narration, symbolic imagery, emotional escalation, and brand resolution into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "one-take-commercial",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "5e2e6526",
+          "source_title_en": "One-Take Commercial Source Treatment 1",
+          "source_sha256": "0d30c86ffc40165e9d48a5f6eb5c47256f89f02db06825c5ec17cc1e7e90bae4"
+        }
+      ],
+      "retained_methods": [
+        "continuous spatial choreography",
+        "motivated transitions",
+        "reveal timing"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published One-Take Commercial as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted continuous spatial choreography, motivated transitions, and reveal timing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "beat-synced-camera-commercial",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "product-display-d3631706",
+          "file_suffix": "17ba1abd",
+          "source_title_en": "Beat-Synced Camera Commercial Source Treatment 1",
+          "source_sha256": "a536dd8d51da578c0e9ee7f88700d9108d9a96e3073d0bd74dcf0487d9a4e946"
+        }
+      ],
+      "retained_methods": [
+        "rhythmic camera accents",
+        "movement-to-cut coordination",
+        "visual impact beats"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Beat-Synced Camera Commercial as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted rhythmic camera accents, movement-to-cut coordination, and visual impact beats into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "fashion-showcase-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "8d9f62df",
+          "source_title_en": "Fashion Showcase Film Source Treatment 1",
+          "source_sha256": "20db85894fb926e65b980ce435df331a0c19435d008cf7731b7d4a66921ef157"
+        },
+        {
+          "group_id": "product-display-d3631706",
+          "file_suffix": "605bd29e",
+          "source_title_en": "Fashion Showcase Film Source Treatment 2",
+          "source_sha256": "20db85894fb926e65b980ce435df331a0c19435d008cf7731b7d4a66921ef157"
+        }
+      ],
+      "retained_methods": [
+        "silhouette",
+        "fabric motion",
+        "editorial posing",
+        "runway-to-lifestyle framing"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from product-display-d3631706:605bd29e."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Fashion Showcase Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted silhouette, fabric motion, editorial posing, and runway-to-lifestyle framing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "jewelry-editorial-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "product-display-d3631706",
+          "file_suffix": "aaaa04e4",
+          "source_title_en": "Jewelry Editorial Film Source Treatment 1",
+          "source_sha256": "49fb3fbae48558e583dfe9c523cd963b7f09a135cdec880b2fb2d60e8abdbf6c"
+        }
+      ],
+      "retained_methods": [
+        "macro detail",
+        "specular light",
+        "gesture-led display",
+        "intimate editorial pacing"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Jewelry Editorial Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted macro detail, specular light, gesture-led display, and intimate editorial pacing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "luxury-silk-illustration",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "9e288692",
+          "source_title_en": "Luxury Silk Illustration Source Treatment 1",
+          "source_sha256": "fbc8dc52663a1e0e6aae25b6be019826cdd38ed2caa57fa833ec7a56132770a7"
+        },
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "8ff96aa6",
+          "source_title_en": "Luxury Silk Illustration Source Treatment 2",
+          "source_sha256": "fbc8dc52663a1e0e6aae25b6be019826cdd38ed2caa57fa833ec7a56132770a7"
+        }
+      ],
+      "retained_methods": [
+        "flowing ornamental line",
+        "silk material behavior",
+        "refined color fields",
+        "tactile elegance"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from master-aesthetics-24334c00:8ff96aa6."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Luxury Silk Illustration as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted flowing ornamental line, silk material behavior, refined color fields, and tactile elegance into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "art-deco-golden-age-romance",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "466a4943",
+          "source_title_en": "Art Deco Golden-Age Romance Source Treatment 1",
+          "source_sha256": "fe5e8b16d74474639e6a20718f6be0e704019c1d924079da6a83090a5965c7c0"
+        }
+      ],
+      "retained_methods": [
+        "geometric opulence",
+        "jewel-tone contrast",
+        "romantic decadence",
+        "period spectacle"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Art Deco Golden-Age Romance as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted geometric opulence, jewel-tone contrast, romantic decadence, and period spectacle into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "theatrical-revue-glamour",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "9398133f",
+          "source_title_en": "Theatrical Revue Glamour Source Treatment 1",
+          "source_sha256": "aeeb0593711ded5269d4fe7f50469f12dfc0da1e0f532dcd41690644a25c0757"
+        },
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "039af474",
+          "source_title_en": "Theatrical Revue Glamour Source Treatment 2",
+          "source_sha256": "dde14afebfe0660b2b2e142ac56505a8a12a4fd778e9c655c8203c41f8e09369"
+        }
+      ],
+      "retained_methods": [
+        "stage blocking",
+        "chorus geometry",
+        "spotlight glamour",
+        "escalating theatrical reveal"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from master-aesthetics-24334c00:039af474."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Theatrical Revue Glamour as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted stage blocking, chorus geometry, spotlight glamour, and escalating theatrical reveal into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "symmetrical-storybook-cinema",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "e38d2b5d",
+          "source_title_en": "Symmetrical Storybook Cinema Source Treatment 1",
+          "source_sha256": "bfc6efdcdbbbcdb95dd7cba3d36baffcdaf06b09c7ccab4557fbeae21bbd0e41"
+        }
+      ],
+      "retained_methods": [
+        "axial framing",
+        "curated palettes",
+        "chapter-like staging",
+        "precise comic timing"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Symmetrical Storybook Cinema as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted axial framing, curated palettes, chapter-like staging, and precise comic timing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "controlled-psychological-thriller",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "d4dba100",
+          "source_title_en": "Controlled Psychological Thriller Source Treatment 1",
+          "source_sha256": "bc7f62df8562762b9658d314c9f42c2df8d2b681e8b0aded042909054f39ac7e"
+        }
+      ],
+      "retained_methods": [
+        "restrained tension",
+        "motivated darkness",
+        "exact blocking",
+        "procedural visual detail"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Controlled Psychological Thriller as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted restrained tension, motivated darkness, exact blocking, and procedural visual detail into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "poetic-contemplative-cinema",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "5e46724c",
+          "source_title_en": "Poetic Contemplative Cinema Source Treatment 1",
+          "source_sha256": "2293fdfbab8808e44b84a8c9b036da157d88d6f73f7d90094228346d0d38e1f7"
+        },
+        {
+          "group_id": "narrative-short-ed0d89eb",
+          "file_suffix": "13b02d55",
+          "source_title_en": "Poetic Contemplative Cinema Source Treatment 2",
+          "source_sha256": "80d143d689973d70d345c924b953e37c5e43503b9f49e88934722290a3c4ff87"
+        }
+      ],
+      "retained_methods": [
+        "time",
+        "texture",
+        "silence",
+        "environmental metaphor",
+        "emotionally patient observation"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from narrative-short-ed0d89eb:13b02d55."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Poetic Contemplative Cinema as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted time, texture, silence, environmental metaphor, and emotionally patient observation into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "monumental-minimalist-science-fiction",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "c4efa20e",
+          "source_title_en": "Monumental Minimalist Science Fiction Source Treatment 1",
+          "source_sha256": "7e5ba4eab51b4b71cbebc4654358cb4f720b9e60d77eca5f8db0694d0b2cfe54"
+        }
+      ],
+      "retained_methods": [
+        "vast scale",
+        "sparse geometry",
+        "atmospheric depth",
+        "human-to-environment contrast"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Monumental Minimalist Science Fiction as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted vast scale, sparse geometry, atmospheric depth, and human-to-environment contrast into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "lived-in-epic-cinema",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "3c5104cd",
+          "source_title_en": "Lived-In Epic Cinema Source Treatment 1",
+          "source_sha256": "a5649051596715f1924dadc00993e6c7a7cf1af3dfec3e16d619f1006d8896bd"
+        },
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "37cff73f",
+          "source_title_en": "Lived-In Epic Cinema Source Treatment 2",
+          "source_sha256": "e58c17dc146c7d6fbf56c76164a5d7b0468084f613789ba29d412f34d35f1732"
+        }
+      ],
+      "retained_methods": [
+        "weathered worlds",
+        "tactile production design",
+        "grounded spectacle",
+        "layered stakes"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from master-aesthetics-24334c00:37cff73f."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Lived-In Epic Cinema as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted weathered worlds, tactile production design, grounded spectacle, and layered stakes into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "geometric-suspense-cinema",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "fdd5f159",
+          "source_title_en": "Geometric Suspense Cinema Source Treatment 1",
+          "source_sha256": "5d198b519f23544649a52b413e7784c46fa0e41ec911ab6d48590bfa369a196a"
+        },
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "60f10966",
+          "source_title_en": "Geometric Suspense Cinema Source Treatment 2",
+          "source_sha256": "6b4de782938f2dfa45897cb30216c0c53aeff665852031bf0734e6e9f3cda434"
+        }
+      ],
+      "retained_methods": [
+        "spatial suspense",
+        "controlled viewpoint",
+        "visual motifs",
+        "structural escalation"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from master-aesthetics-24334c00:60f10966."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Geometric Suspense Cinema as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted spatial suspense, controlled viewpoint, visual motifs, and structural escalation into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "kinetic-wuxia-fantasy",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "bfc0f39b",
+          "source_title_en": "Kinetic Wuxia Fantasy Source Treatment 1",
+          "source_sha256": "ae7325b2ef32a7e1df7bb547e3a0ae568fdac4653458688decc8d35fc5a0a3c2"
+        },
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "3c98e088",
+          "source_title_en": "Kinetic Wuxia Fantasy Source Treatment 2",
+          "source_sha256": "299e5e73cbd8d039ad2652675350f25951a06a479203f05d9bed16c388f10b6f"
+        }
+      ],
+      "retained_methods": [
+        "readable action geography",
+        "fabric and weapon motion",
+        "poetic landscapes",
+        "rhythmic combat"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from master-aesthetics-24334c00:3c98e088."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Kinetic Wuxia Fantasy as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted readable action geography, fabric and weapon motion, poetic landscapes, and rhythmic combat into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "designer-toy-ip-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "9d714ba0",
+          "source_title_en": "Designer Toy IP Film Source Treatment 1",
+          "source_sha256": "46c18dac27a1d5c070339405f2a061d958498055a9a47813529077566f2bc0f8"
+        },
+        {
+          "group_id": "product-display-d3631706",
+          "file_suffix": "5eb37e2c",
+          "source_title_en": "Designer Toy IP Film Source Treatment 2",
+          "source_sha256": "46c18dac27a1d5c070339405f2a061d958498055a9a47813529077566f2bc0f8"
+        }
+      ],
+      "retained_methods": [
+        "collectible silhouette",
+        "signature accessories",
+        "material charm",
+        "world-building hooks"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from product-display-d3631706:5eb37e2c."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Designer Toy IP Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted collectible silhouette, signature accessories, material charm, and world-building hooks into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "soft-3d-comfort-animation",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "anime-games-3f3fafb8",
+          "file_suffix": "863765d4",
+          "source_title_en": "Soft 3D Comfort Animation Source Treatment 1",
+          "source_sha256": "2a5b28771b73b27321b3cb251a8e86b77fb038c4017b9d312aa70d95cc40e435"
+        }
+      ],
+      "retained_methods": [
+        "rounded proportions",
+        "tactile soft materials",
+        "warm light",
+        "gentle emotional action"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Soft 3D Comfort Animation as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted rounded proportions, tactile soft materials, warm light, and gentle emotional action into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "luminous-youth-anime",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "anime-games-3f3fafb8",
+          "file_suffix": "1c8483cc",
+          "source_title_en": "Luminous Youth Anime Source Treatment 1",
+          "source_sha256": "918aa54a985bc6806a5a3a8b1776b1e537fce3d208e17b9ee66f1c0a00fd7a53"
+        }
+      ],
+      "retained_methods": [
+        "luminous atmosphere",
+        "weather detail",
+        "youthful longing",
+        "sky and city transitions"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Luminous Youth Anime as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted luminous atmosphere, weather detail, youthful longing, and sky and city transitions into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "dream-reality-psychological-anime",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "364f1775",
+          "source_title_en": "Dream-Reality Psychological Anime Source Treatment 1",
+          "source_sha256": "bcc89bc2ee43aa616dc164be0fffca7ef12c76e5155138652dcda0f28c9ef0a1"
+        }
+      ],
+      "retained_methods": [
+        "subjective transitions",
+        "identity motifs",
+        "layered realities",
+        "graphic match cuts"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Dream-Reality Psychological Anime as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted subjective transitions, identity motifs, layered realities, and graphic match cuts into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "kinetic-expressionist-animation",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "63bbab72",
+          "source_title_en": "Kinetic Expressionist Animation Source Treatment 1",
+          "source_sha256": "38530c91c07af40663babeed2d2bc5961b5b5f3f556a38e77f0bf136e9402128"
+        }
+      ],
+      "retained_methods": [
+        "elastic drawing",
+        "expressive distortion",
+        "energetic staging",
+        "color-driven motion"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Kinetic Expressionist Animation as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted elastic drawing, expressive distortion, energetic staging, and color-driven motion into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "chinese-traditional-art-animation",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "master-aesthetics-24334c00",
+          "file_suffix": "438583a2",
+          "source_title_en": "Chinese Traditional Art Animation Source Treatment 1",
+          "source_sha256": "9d98a50acf102347b1ce0db28672479675f658a6d7a23adb801cfbb8be8b0ba9"
+        },
+        {
+          "group_id": "graphic-design-0ba229e5",
+          "file_suffix": "f45c995d",
+          "source_title_en": "Chinese Traditional Art Animation Source Treatment 2",
+          "source_sha256": "c6859cee81fb259823fe43b13bbc23afcafdc92df65bd43ccf9d10f9c792b05d"
+        }
+      ],
+      "retained_methods": [
+        "ink",
+        "paper",
+        "cutout and decorative traditions",
+        "negative space",
+        "poetic motion"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from graphic-design-0ba229e5:f45c995d."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Chinese Traditional Art Animation as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted ink, paper, cutout and decorative traditions, negative space, and poetic motion into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "retro-pixel-arcade",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "anime-games-3f3fafb8",
+          "file_suffix": "eea7dc45",
+          "source_title_en": "Retro Pixel Arcade Source Treatment 1",
+          "source_sha256": "7735f6dfb15dab961cc9ebf8b0da68ddb8440438de21ec9c938cf4ec6a847a65"
+        }
+      ],
+      "retained_methods": [
+        "limited pixel palette",
+        "sprite readability",
+        "arcade staging",
+        "rhythmic graphic effects"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Retro Pixel Arcade as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted limited pixel palette, sprite readability, arcade staging, and rhythmic graphic effects into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "retro-magical-girl-animation",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "anime-games-3f3fafb8",
+          "file_suffix": "342fbcb6",
+          "source_title_en": "Retro Magical-Girl Animation Source Treatment 1",
+          "source_sha256": "f433a4683f73a6e70d05383e8afb24ea38d23e5060f2401d7985365843c06675"
+        }
+      ],
+      "retained_methods": [
+        "transformation grammar",
+        "symbolic props",
+        "pastel-neon contrast",
+        "heroic reveal"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Retro Magical-Girl Animation as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted transformation grammar, symbolic props, pastel-neon contrast, and heroic reveal into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "mixed-media-collage-motion",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "graphic-design-0ba229e5",
+          "file_suffix": "a0502914",
+          "source_title_en": "Mixed-Media Collage Motion Source Treatment 1",
+          "source_sha256": "193e19cbeab8db01e9540d28676dbed310eaad91db69e3db03030a1488ce081c"
+        }
+      ],
+      "retained_methods": [
+        "cut-paper layers",
+        "typography-aware rhythm without baked text",
+        "tactile compositing"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Mixed-Media Collage Motion as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted cut-paper layers, typography-aware rhythm without baked text, and tactile compositing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "surreal-pop-concept-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "graphic-design-0ba229e5",
+          "file_suffix": "84b4ea30",
+          "source_title_en": "Surreal Pop Concept Film Source Treatment 1",
+          "source_sha256": "faa3054e26fdb3fa45dda44a97e79056cc4e02f54dee64f8db9715f2c2e60e4a"
+        }
+      ],
+      "retained_methods": [
+        "impossible scale",
+        "pop color",
+        "visual metaphor",
+        "bold object transformation"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Surreal Pop Concept Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted impossible scale, pop color, visual metaphor, and bold object transformation into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "brand-mark-in-context",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "commercial-ad-c00d84fc",
+          "file_suffix": "3a100894",
+          "source_title_en": "Brand Mark in Context Source Treatment 1",
+          "source_sha256": "a8d1037139611ea176ea14d5bb0e7dab29c8b061e1b5adacba1195f848d7b164"
+        },
+        {
+          "group_id": "graphic-design-0ba229e5",
+          "file_suffix": "940dce93",
+          "source_title_en": "Brand Mark in Context Source Treatment 2",
+          "source_sha256": "a8d1037139611ea176ea14d5bb0e7dab29c8b061e1b5adacba1195f848d7b164"
+        }
+      ],
+      "retained_methods": [
+        "brand-shape echoes",
+        "environmental integration",
+        "reveal and recognition hierarchy"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from graphic-design-0ba229e5:940dce93."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Brand Mark in Context as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted brand-shape echoes, environmental integration, and reveal and recognition hierarchy into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "chinese-millennium-dreamcore",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "narrative-short-ed0d89eb",
+          "file_suffix": "02e8a439",
+          "source_title_en": "Chinese Millennium Dreamcore Source Treatment 1",
+          "source_sha256": "dd8ea16b3d07d414d21a7d3530c549e5bc2fe298c72fbfa559123241e550c684"
+        }
+      ],
+      "retained_methods": [
+        "nostalgic digital texture",
+        "liminal familiarity",
+        "memory fragments",
+        "saturated night color"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Chinese Millennium Dreamcore as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted nostalgic digital texture, liminal familiarity, memory fragments, and saturated night color into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "miniature-world-cinema",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "narrative-short-ed0d89eb",
+          "file_suffix": "24552e8f",
+          "source_title_en": "Miniature World Cinema Source Treatment 1",
+          "source_sha256": "88c4e08b5cb729cbd55da879c9ee84b6d94a1e0adc02e7900b3b443bb3d7bcf8"
+        }
+      ],
+      "retained_methods": [
+        "scale contrast",
+        "macro optics",
+        "handcrafted detail",
+        "tiny-world action readability"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Miniature World Cinema as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted scale contrast, macro optics, handcrafted detail, and tiny-world action readability into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "hand-drawn-travel-journal",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "lifestyle-vlog-0bf2871b",
+          "file_suffix": "257c7ff8",
+          "source_title_en": "Hand-Drawn Travel Journal Source Treatment 1",
+          "source_sha256": "2101c7111f00342b3a612b80d602ae41dab6c3c934f0386e5ad11a9a1bc60f9e"
+        }
+      ],
+      "retained_methods": [
+        "drawn overlays",
+        "travel observation",
+        "location rhythm",
+        "scrapbook continuity"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Hand-Drawn Travel Journal as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted drawn overlays, travel observation, location rhythm, and scrapbook continuity into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "gentle-everyday-vlog",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "lifestyle-vlog-0bf2871b",
+          "file_suffix": "ac749db1",
+          "source_title_en": "Gentle Everyday Vlog Source Treatment 1",
+          "source_sha256": "2814d59aa6f3b3a54b71d599c3d874840530f1c94c11fea4881a1f8c1b3f0922"
+        },
+        {
+          "group_id": "lifestyle-vlog-0bf2871b",
+          "file_suffix": "121d9884",
+          "source_title_en": "Gentle Everyday Vlog Source Treatment 2",
+          "source_sha256": "ea3d08d1f3d76a354e06557ae98068a20ceae396df36daf0b709a6b4b69bce0c"
+        }
+      ],
+      "retained_methods": [
+        "intimate handheld observation",
+        "soft routine",
+        "natural gestures",
+        "warm ambient detail"
+      ],
+      "merged_duplicates": [
+        "Merged complementary evidence from lifestyle-vlog-0bf2871b:121d9884."
+      ],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Gentle Everyday Vlog as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted intimate handheld observation, soft routine, natural gestures, and warm ambient detail into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "cinematic-food-story",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "lifestyle-vlog-0bf2871b",
+          "file_suffix": "61b2abe7",
+          "source_title_en": "Cinematic Food Story Source Treatment 1",
+          "source_sha256": "08248d18d506142be5fc01437320365d0065d9086dba19f44ef90f6394ca2b6a"
+        }
+      ],
+      "retained_methods": [
+        "ingredient texture",
+        "process progression",
+        "steam and sound detail",
+        "appetite-led reveal"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Cinematic Food Story as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted ingredient texture, process progression, steam and sound detail, and appetite-led reveal into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "observational-human-documentary",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "narrative-short-ed0d89eb",
+          "file_suffix": "f9c6a4b1",
+          "source_title_en": "Observational Human Documentary Source Treatment 1",
+          "source_sha256": "4c298ed795882650369078363d54e0736e807dffa80ca2b5cfab1651c55e3b7e"
+        }
+      ],
+      "retained_methods": [
+        "respectful observation",
+        "environmental context",
+        "authentic action",
+        "restrained narration"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Observational Human Documentary as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted respectful observation, environmental context, authentic action, and restrained narration into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    },
+    {
+      "skill_id": "craft-process-film",
+      "version": "1.0.0",
+      "sources": [
+        {
+          "group_id": "narrative-short-ed0d89eb",
+          "file_suffix": "03591a78",
+          "source_title_en": "Craft Process Film Source Treatment 1",
+          "source_sha256": "1ce629fab5fd8cc8b3d59387e138761f014bed7782b73d404e5c46181553e09b"
+        }
+      ],
+      "retained_methods": [
+        "material transformation",
+        "hand detail",
+        "process causality",
+        "maker-focused pacing"
+      ],
+      "merged_duplicates": [],
+      "removed_runtime_constraints": [
+        "Removed fixed tool, provider, and model selection from source operations.",
+        "Removed fixed duration, format, resolution, and workflow-stage requirements."
+      ],
+      "naming_adaptation": "Published Craft Process Film as a neutral method-based title without named imitation.",
+      "commercial_adaptation": "Adapted material transformation, hand detail, process causality, and maker-focused pacing into advisory advertising craft without source workflow control.",
+      "review_status": "approved"
+    }
+  ]
+}
