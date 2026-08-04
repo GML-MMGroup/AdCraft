@@ -35,6 +35,7 @@
 
 ## 📰 News
 
+- **[2026-08-04]** ✨ Agent Canvas received a major upgrade, improving the interaction experience and introducing progressive AI-guided creation.
 - **[2026-XX-XX]** 🎉 AdCraft is now open-source!
 - **[2026-XX-XX]** 🚀 Released Video Cloning — deconstruct any reference ad and rebuild it with your own content.
 - **[2026-XX-XX]** ✨ Added multi-platform model support (Seedance, Kling, Vidu, and more).
@@ -73,6 +74,12 @@
 AdCraft is an **AI production platform built for advertising creation**. You don't design the production process in advance — you just describe what you need, and the system orchestrates the entire journey: **creative planning → script → product visuals → characters → scenes → storyboard → asset generation → editing → final cut.**
 
 It's not just a one-shot video generator. AdCraft organizes the whole ad-making process into an **editable creative workflow**. After generation, you can keep refining anything — a character, a scene, a shot, an image, a clip, or the entire ad — through canvas operations or natural conversation with AI.
+
+<div align="center">
+  <img src="./assets/home-page.png" alt="AdCraft Home Page" width="95%" />
+  <br/><br/>
+  <img src="./assets/demo.png" alt="AdCraft Agent Canvas Workflow" width="95%" />
+</div>
 
 ---
 
