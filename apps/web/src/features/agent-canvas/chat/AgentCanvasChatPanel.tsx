@@ -21,9 +21,10 @@ import type {
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
-  ChatGuidedActionsCardV2,
   ChatProposalCardV2,
   ConceptOptionV2,
+  GuidedDeliveryActionV2,
+  ProductionReadinessProjectionV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import {
@@ -87,8 +88,11 @@ export function AgentCanvasChatPanel({
   );
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}`;
-  }, [chat.state.items]);
+    const sessionActions = chat.state.currentSessionActions
+      .map((action) => `${action.action_id}:${action.state}`)
+      .join(",");
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${sessionActions}`;
+  }, [chat.state.currentSessionActions, chat.state.items]);
   const timelineScroll = useChatTimelineScroll({
     contentVersion: timelineContentVersion,
     resetKey: workflow.workflow_id,
@@ -151,7 +155,9 @@ export function AgentCanvasChatPanel({
             {chat.state.loading && !chat.state.items.length ? (
               <div className="agent-chat__empty">Loading conversation...</div>
             ) : null}
-            {!chat.state.loading && !chat.state.items.length ? (
+            {!chat.state.loading
+              && !chat.state.items.length
+              && !chat.state.currentSessionActions.length ? (
               <div className="agent-chat__empty">Describe the ad you want to build.</div>
             ) : null}
             {chat.state.continuations
@@ -163,6 +169,7 @@ export function AgentCanvasChatPanel({
               <ProductionRecipeProgress
                 creationMode={chat.state.creationMode}
                 recipe={chat.state.recipe}
+                readiness={chat.state.creativeSession?.readiness ?? null}
               />
             ) : null}
             {chat.state.items.map((item) => {
@@ -215,16 +222,6 @@ export function AgentCanvasChatPanel({
                   />
                 );
               }
-              if (item.item_type === "guided_actions") {
-                return (
-                  <GuidedActionsCard
-                    key={`guided-${item.source_entry_id}`}
-                    card={item}
-                    actingActionId={chat.state.actingGuidedActionId}
-                    onApply={chat.actions.applyGuidedAction}
-                  />
-                );
-              }
               if (item.item_type === "proposal_pointer") return null;
               return (
                 <ProposalCard
@@ -233,9 +230,18 @@ export function AgentCanvasChatPanel({
                   pending={chat.state.actingProposalId === item.proposal.proposal_id}
                   onSelect={chat.actions.selectProposal}
                   onRevise={chat.actions.reviseProposal}
+                  onSetAvailability={chat.actions.setProposalAvailability}
+                  issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
             })}
+            {chat.state.currentSessionActions.length ? (
+              <GuidedActionsCard
+                actions={chat.state.currentSessionActions}
+                actingActionId={chat.state.actingGuidedActionId}
+                onApply={chat.actions.applyGuidedAction}
+              />
+            ) : null}
           </div>
         </div>
         {timelineScroll.hasUnseenContent ? (
@@ -380,10 +386,10 @@ export function SpecialistActivityRow({
   activity: ChatExpertActivityV2;
 }) {
   const label = activity.status === "working"
-    ? `${activity.label} is working`
+    ? `${activity.display_name} is working`
     : activity.status === "completed"
-      ? `${activity.label} finished`
-      : `${activity.label} failed`;
+      ? `${activity.display_name} finished`
+      : `${activity.display_name} failed`;
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>
       <i aria-hidden="true" />
@@ -434,9 +440,11 @@ function stageStatusLabel(stage: AdaptiveProductionStageV2): string {
 export function ProductionRecipeProgress({
   creationMode,
   recipe,
+  readiness,
 }: {
   creationMode: AgentCanvasCreationModeV2 | null;
   recipe: AdaptiveProductionRecipeV2 | null;
+  readiness: ProductionReadinessProjectionV2 | null;
 }) {
   const visibleStages = recipe?.stages.filter((stage) => stage.applicability !== "not_required") ?? [];
   return (
@@ -462,6 +470,13 @@ export function ProductionRecipeProgress({
       ) : (
         <p>The agent is preparing a production plan.</p>
       )}
+      {readiness ? (
+        <div className="agent-chat__completion" aria-label="Production completion">
+          <span>Planning: {readiness.completion.planning.replaceAll("_", " ")}</span>
+          <span>Generation: {readiness.completion.generation.replaceAll("_", " ")}</span>
+          <span>Delivery: {readiness.completion.delivery.replaceAll("_", " ")}</span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -557,6 +572,8 @@ export function ProposalCard({
   pending,
   onSelect,
   onRevise,
+  onSetAvailability,
+  issue,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
@@ -567,12 +584,18 @@ export function ProposalCard({
     acceptedReferences: ProposedDraftReferenceV2[],
   ) => Promise<void>;
   onRevise: (proposalId: string, instruction: string) => Promise<void>;
+  onSetAvailability: (proposalId: string, action: "archive" | "reopen") => Promise<void>;
+  issue?: string;
 }) {
   const [selected, setSelected] = useState<ConceptOptionV2 | null>(null);
   const [selectionConfirmed, setSelectionConfirmed] = useState(false);
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
   const proposal = card.proposal;
+  const canSelect = proposal.availability === "open" && proposal.available_actions.includes("select");
+  const canRevise = proposal.availability === "open" && proposal.available_actions.includes("revise");
+  const canArchive = proposal.available_actions.includes("archive");
+  const canReopen = proposal.available_actions.includes("reopen");
   const availableReferences = proposal.proposed_references;
   const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
     proposal.proposed_references,
@@ -600,7 +623,7 @@ export function ProposalCard({
           .split("_")
           .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
           .join(" ")}</strong>
-        <span>{proposal.status}</span>
+        <span>{proposal.availability}</span>
       </header>
       <div className="agent-chat__options">
         {proposal.options.map((option) => (
@@ -608,7 +631,7 @@ export function ProposalCard({
             type="button"
             key={option.option_id}
             className={selected?.option_id === option.option_id ? "is-selected" : ""}
-            disabled={proposal.status !== "pending" || pending}
+            disabled={!canSelect || pending}
             onClick={() => {
               setSelected(option);
               setSelectionConfirmed(false);
@@ -619,7 +642,7 @@ export function ProposalCard({
           </button>
         ))}
       </div>
-      {acceptedReferences.length || proposal.status === "pending" ? (
+      {acceptedReferences.length || canSelect ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
             <strong>References</strong>
@@ -635,7 +658,7 @@ export function ProposalCard({
                 <input
                   type="checkbox"
                   checked={reference.required}
-                  disabled={pending || proposal.status !== "pending"}
+                  disabled={pending || !canSelect}
                   onChange={(event) => setAcceptedReferences((current) => current.map((item, itemIndex) => (
                     itemIndex === index ? { ...item, required: event.currentTarget.checked } : item
                   )))}
@@ -645,7 +668,7 @@ export function ProposalCard({
               <button
                 type="button"
                 aria-label={`Move ${reference.display_name} earlier`}
-                disabled={pending || proposal.status !== "pending" || index === 0}
+                disabled={pending || !canSelect || index === 0}
                 onClick={() => moveReference(index, -1)}
               >
                 <ChevronUpIcon />
@@ -653,7 +676,7 @@ export function ProposalCard({
               <button
                 type="button"
                 aria-label={`Move ${reference.display_name} later`}
-                disabled={pending || proposal.status !== "pending" || index === acceptedReferences.length - 1}
+                disabled={pending || !canSelect || index === acceptedReferences.length - 1}
                 onClick={() => moveReference(index, 1)}
               >
                 <ChevronDownIcon />
@@ -661,7 +684,7 @@ export function ProposalCard({
               <button
                 type="button"
                 aria-label={`Remove ${reference.display_name}`}
-                disabled={pending || proposal.status !== "pending"}
+                disabled={pending || !canSelect}
                 onClick={() => setAcceptedReferences((current) => withOrders(
                   current.filter((_item, itemIndex) => itemIndex !== index),
                 ))}
@@ -670,7 +693,7 @@ export function ProposalCard({
               </button>
             </div>
           ))}
-          {proposal.status === "pending" ? (
+          {canSelect ? (
             <select
               value=""
               aria-label="Add proposal reference"
@@ -704,13 +727,26 @@ export function ProposalCard({
           ) : null}
         </section>
       ) : null}
-      {proposal.status === "pending" ? (
+      {proposal.application_count > 0 ? (
+        <p className="agent-chat__proposal-history">
+          Applied {proposal.application_count} {proposal.application_count === 1 ? "time" : "times"}
+          {proposal.latest_application
+            ? ` · Last ${proposal.latest_application.generation_action === "generate_now" ? "generated" : "drafted"}`
+            : ""}
+        </p>
+      ) : null}
+      {issue || proposal.availability === "unavailable" ? (
+        <p className="agent-chat__proposal-issue" role="status">
+          {issue ?? "This proposal is currently unavailable."}
+        </p>
+      ) : null}
+      {canSelect || canRevise || canArchive || canReopen ? (
         <div className="agent-chat__proposal-actions">
-          {selected && !selectionConfirmed ? (
+          {canSelect && selected && !selectionConfirmed ? (
             <button type="button" disabled={pending} onClick={() => setSelectionConfirmed(true)}>
               Select
             </button>
-          ) : selected ? (
+          ) : canSelect && selected ? (
             <>
               <button type="button" disabled={pending} onClick={() => void onSelect(proposal.proposal_id, selected.option_id, "draft_only", acceptedReferences)}>
                 Create draft
@@ -720,12 +756,34 @@ export function ProposalCard({
               </button>
             </>
           ) : null}
-          <button type="button" disabled={pending} title="Revise options" onClick={() => setRevising((current) => !current)}>
-            <EditIcon />Revise
-          </button>
+          {canRevise ? (
+            <button type="button" disabled={pending} title="Revise options" onClick={() => setRevising((current) => !current)}>
+              <EditIcon />Revise
+            </button>
+          ) : null}
+          {canArchive ? (
+            <button
+              type="button"
+              aria-label="Archive proposal"
+              disabled={pending}
+              onClick={() => void onSetAvailability(proposal.proposal_id, "archive")}
+            >
+              Archive
+            </button>
+          ) : null}
+          {canReopen ? (
+            <button
+              type="button"
+              aria-label="Reopen proposal"
+              disabled={pending}
+              onClick={() => void onSetAvailability(proposal.proposal_id, "reopen")}
+            >
+              Reopen
+            </button>
+          ) : null}
         </div>
       ) : null}
-      {revising ? (
+      {revising && canRevise ? (
         <form
           className="agent-chat__revision"
           onSubmit={(event) => {
@@ -749,17 +807,19 @@ export function ProposalCard({
 }
 
 export function GuidedActionsCard({
-  card,
+  actions,
   actingActionId,
   onApply,
 }: {
-  card: ChatGuidedActionsCardV2;
+  actions: GuidedDeliveryActionV2[];
   actingActionId: string | null;
   onApply: (actionId: string) => Promise<void>;
 }) {
+  const visibleActions = actions.filter((action) => action.state !== "superseded");
+  if (!visibleActions.length) return null;
   return (
     <div className="agent-chat__guided-actions" aria-label="Suggested next actions">
-      {card.actions.filter((action) => action.state !== "superseded").map((action) => (
+      {visibleActions.map((action) => (
         <button
           type="button"
           key={action.action_id}

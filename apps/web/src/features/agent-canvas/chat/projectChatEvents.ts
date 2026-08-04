@@ -58,7 +58,10 @@ export function projectChatEvents(
         activity_id: key,
         turn_id: turnId,
         specialist,
-        label: stringValue(payload.label, specialistLabel(specialist)),
+        display_name: stringValue(
+          payload.display_name,
+          stringValue(payload.label, specialistLabel(specialist)),
+        ),
         operation: stringValue(payload.operation, "planning"),
         status,
         sequence: previous?.sequence ?? event.seq,

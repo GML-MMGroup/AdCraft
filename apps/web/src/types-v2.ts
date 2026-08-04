@@ -1895,6 +1895,19 @@ export interface ConceptOptionV2 {
   summary_prompt: string;
 }
 
+export interface ProposalApplicationSummaryV2 {
+  application_id: string;
+  option_id: string;
+  generation_action: "draft_only" | "generate_now";
+  receipt_id: string;
+  created_node_ids: string[];
+  queued_execution_ids: string[];
+  created_at: string;
+}
+
+export type ProposalAvailabilityV2 = "open" | "archived" | "unavailable";
+export type ProposalOperationV2 = "select" | "revise" | "archive" | "reopen";
+
 export interface ProposedDraftReferenceV2 {
   source_kind: "node" | "image_asset";
   source_id: string;
@@ -1917,11 +1930,15 @@ export interface ConceptProposalV2 {
   source_proposal_id: string | null;
   proposal_kind: "script" | "product" | "prop" | "character" | "scene" | "storyboard" | "video" | "bgm";
   specialist_name: SpecialistAgentNameV2;
-  status: "pending" | "selected" | "revised" | "skipped";
   options: ConceptOptionV2[];
   proposed_references: ProposedDraftReferenceV2[];
-  selected_option_id: string | null;
-  selection_actor: "user" | "agent" | null;
+  target_node_id: string | null;
+  target_node_revision: number | null;
+  proposal_purpose: string | null;
+  availability: ProposalAvailabilityV2;
+  application_count: number;
+  latest_application: ProposalApplicationSummaryV2 | null;
+  available_actions: ProposalOperationV2[];
   created_at: string;
   updated_at: string;
 }
@@ -1945,7 +1962,7 @@ export interface ChatExpertActivityV2 {
   activity_id: string;
   turn_id: string;
   specialist: SpecialistAgentNameV2;
-  label: string;
+  display_name: string;
   operation: string;
   status: "working" | "completed" | "failed";
   sequence: number;
@@ -2174,14 +2191,6 @@ export interface ChatActionReceiptCardV2 {
   created_at: string;
 }
 
-export interface ChatGuidedActionsCardV2 {
-  item_type: "guided_actions";
-  source_entry_id: string;
-  actions: GuidedDeliveryActionV2[];
-  sequence: number;
-  created_at: string;
-}
-
 export type ChatTimelineItemV2 =
   | ChatMessageV2
   | ChatArtifactCardV2
@@ -2189,8 +2198,7 @@ export type ChatTimelineItemV2 =
   | ChatProposalPointerV2
   | ChatExpertActivityV2
   | ChatCommandPlanCardV2
-  | ChatActionReceiptCardV2
-  | ChatGuidedActionsCardV2;
+  | ChatActionReceiptCardV2;
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
@@ -2206,6 +2214,7 @@ export interface AgentCanvasChatViewTimelineV2 {
   creation_mode: AgentCanvasCreationModeV2 | null;
   recipe: AdaptiveProductionRecipeV2 | null;
   continuations: AgentCanvasContinuationV2[];
+  current_session_actions: GuidedDeliveryActionV2[];
   items: ChatTimelineItemV2[];
   next_cursor: number;
 }
@@ -2499,14 +2508,11 @@ export interface AgentCanvasChatMessageRequestV2 {
   auto_continue: boolean;
 }
 
-export type GuidedDeliveryActionTypeV2 =
-  | "add_another_topic_node"
-  | "generate_node"
-  | "run_all_drafts"
-  | "skip_topic";
+export type GuidedDeliveryActionTypeV2 = "add_another_topic_node" | "skip_topic";
 
 export interface GuidedDeliveryActionV2 {
   action_id: string;
+  logical_key: string;
   action: GuidedDeliveryActionTypeV2;
   state: "pending" | "applying" | "applied" | "superseded" | "failed";
   creating_turn_id: string;
@@ -2568,6 +2574,26 @@ export interface AdaptiveProductionStageV2 {
   related_node_ids: string[];
 }
 
+export interface AdaptiveProductionDeliverableV2 {
+  deliverable_id: string;
+  output_kind: "text" | "image" | "video" | "audio" | "editing";
+  required: boolean;
+  description: string;
+  related_node_ids: string[];
+  related_asset_ids: string[];
+}
+
+export interface AdaptiveProductionDependencyV2 {
+  source_topic_id: string;
+  target_topic_id: string;
+  rationale: string;
+}
+
+export interface AdaptiveProductionCompletionCriteriaV2 {
+  required_deliverable_ids: string[];
+  accepted_omission_deliverable_ids: string[];
+}
+
 export interface AdaptiveProductionRecipeV2 {
   recipe_id: string;
   workflow_id: string;
@@ -2575,11 +2601,29 @@ export interface AdaptiveProductionRecipeV2 {
   skill_run_id: string | null;
   revision: number;
   creation_mode: AgentCanvasCreationModeV2;
+  goal: string;
   current_topic_id: string | null;
   stages: AdaptiveProductionStageV2[];
   anchor_digest: string;
+  deliverables: AdaptiveProductionDeliverableV2[];
+  dependencies: AdaptiveProductionDependencyV2[];
+  recommended_next_topic_ids: string[];
+  completion_criteria: AdaptiveProductionCompletionCriteriaV2;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProductionCompletionProjectionV2 {
+  planning: "not_started" | "in_progress" | "complete";
+  generation: "not_started" | "in_progress" | "complete" | "partial_failed" | "failed";
+  delivery: "not_ready" | "ready" | "partial" | "failed";
+}
+
+export interface ProductionReadinessProjectionV2 {
+  discussable_topic_ids: string[];
+  materializable_topic_ids: string[];
+  runnable_node_ids: string[];
+  completion: ProductionCompletionProjectionV2;
 }
 
 export type AgentContinuationDeliveryStatusV2 =
@@ -2627,6 +2671,7 @@ export interface CreativeSessionStateV2 {
   status: "active" | "superseded";
   creation_mode: CreationModeDecisionV2 | null;
   active_recipe: AdaptiveProductionRecipeV2 | null;
+  readiness: ProductionReadinessProjectionV2 | null;
   creative_direction_snapshot_id: string | null;
   current_topic_id: string | null;
   topics: CreativeSessionTopicV2[];
@@ -2653,7 +2698,6 @@ export interface AgentCanvasChatTimelineEntryV2 {
   metadata: Record<string, unknown>;
   command_plan: AgentCommandPlanV2 | null;
   action_receipt: AgentActionReceiptV2 | null;
-  guided_actions: GuidedDeliveryActionV2[];
   created_at: string;
 }
 
@@ -2661,9 +2705,8 @@ export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
   creative_session: CreativeSessionStateV2 | null;
-  creation_mode: AgentCanvasCreationModeV2 | null;
-  recipe: AdaptiveProductionRecipeV2 | null;
   continuations: AgentCanvasContinuationV2[];
+  current_session_actions: GuidedDeliveryActionV2[];
   items: AgentCanvasChatTimelineEntryV2[];
   next_cursor: number;
 }
@@ -2692,6 +2735,8 @@ export type AgentCanvasProposalActionRequestV2 =
       accepted_references?: ProposedDraftReferenceV2[] | null;
       position?: CanvasPositionV2 | null;
       instruction?: null;
+      mutable_dimensions?: [];
+      replace_whole_concept?: false;
     }
   | {
       action: "revise";
@@ -2700,14 +2745,18 @@ export type AgentCanvasProposalActionRequestV2 =
       generation_action?: null;
       accepted_references?: null;
       position?: null;
+      mutable_dimensions?: Array<"style" | "lighting" | "composition" | "camera" | "copy" | "pacing" | "audio" | "other">;
+      replace_whole_concept?: boolean;
     }
   | {
-      action: "skip";
+      action: "archive" | "reopen";
       option_id?: null;
       generation_action?: null;
       accepted_references?: null;
       instruction?: null;
       position?: null;
+      mutable_dimensions?: [];
+      replace_whole_concept?: false;
     };
 
 export interface AgentCanvasCommandPlanActionRequestV2 {

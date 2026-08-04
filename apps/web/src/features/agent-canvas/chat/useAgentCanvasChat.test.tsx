@@ -17,6 +17,11 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../../../api/v2Client.ts", () => ({
   v2Api: api,
+  isV2ApiError: (value: unknown) => Boolean(
+    value
+    && typeof value === "object"
+    && typeof (value as { code?: unknown }).code === "string",
+  ),
 }));
 
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
@@ -84,6 +89,9 @@ describe("useAgentCanvasChat", () => {
           skill_id: "video-ad",
           skill_version: "1",
           status: "active",
+          creation_mode: null,
+          active_recipe: null,
+          readiness: null,
           creative_direction_snapshot_id: null,
           current_topic_id: null,
           topics: [],
@@ -91,6 +99,10 @@ describe("useAgentCanvasChat", () => {
           memory_revision: 1,
           updated_at: "2026-07-28T10:00:00Z",
         },
+        creation_mode: null,
+        recipe: null,
+        continuations: [],
+        current_session_actions: [],
         items: [{
           item_type: "message",
           message_id: "message-old",
@@ -278,6 +290,7 @@ describe("useAgentCanvasChat", () => {
           target_asset_id: null,
         },
         active_recipe: null,
+        readiness: null,
         creative_direction_snapshot_id: null,
         current_topic_id: "characters",
         topics: [{
@@ -294,6 +307,25 @@ describe("useAgentCanvasChat", () => {
         memory_revision: 2,
         updated_at: "2026-07-30T08:00:00Z",
       },
+      current_session_actions: [{
+        action_id: "action-add-character",
+        logical_key: "add-another:characters",
+        action: "add_another_topic_node",
+        state: "pending",
+        creating_turn_id: "turn-1",
+        expected_semantic_revision: 3,
+        label: "Add another",
+        workflow_id: "workflow-1",
+        proposal_id: "proposal-1",
+        topic_id: "characters",
+        node_id: null,
+        ordered_node_ids: [],
+        manifest_revision: null,
+        recipe_id: null,
+        recipe_revision: null,
+        confirmation_required: false,
+        reason: "Create another character direction.",
+      }],
       items: [{
         item_type: "proposal_pointer",
         proposal_id: "proposal-1",
@@ -313,11 +345,15 @@ describe("useAgentCanvasChat", () => {
       source_proposal_id: null,
       proposal_kind: "character",
       specialist_name: "character_designer",
-      status: "pending",
       options: [{ option_id: "option-1", title: "Hero", summary_prompt: "Editorial lead" }],
       proposed_references: [],
-      selected_option_id: null,
-      selection_actor: null,
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      available_actions: ["select", "revise", "archive"],
       created_at: "2026-07-30T08:00:00Z",
       updated_at: "2026-07-30T08:00:00Z",
     });
@@ -343,6 +379,9 @@ describe("useAgentCanvasChat", () => {
     });
     expect(result.current.state.creationMode).toBe("ordinary_conversation");
     expect(result.current.state.recipe).toBeNull();
+    expect(result.current.state.currentSessionActions).toEqual([
+      expect.objectContaining({ action_id: "action-add-character" }),
+    ]);
   });
 
   it("validates proposal cardinality against the nested active recipe", async () => {
@@ -368,6 +407,7 @@ describe("useAgentCanvasChat", () => {
           skill_run_id: "session-1",
           revision: 1,
           creation_mode: "guided_production",
+          goal: "Create a complete short advertisement.",
           current_topic_id: "characters",
           stages: [{
             topic_id: "characters",
@@ -383,9 +423,17 @@ describe("useAgentCanvasChat", () => {
             related_node_ids: [],
           }],
           anchor_digest: "anchor-1",
+          deliverables: [],
+          dependencies: [],
+          recommended_next_topic_ids: ["characters"],
+          completion_criteria: {
+            required_deliverable_ids: [],
+            accepted_omission_deliverable_ids: [],
+          },
           created_at: "2026-07-31T05:00:00Z",
           updated_at: "2026-07-31T05:01:00Z",
         },
+        readiness: null,
         creative_direction_snapshot_id: null,
         current_topic_id: "characters",
         topics: [],
@@ -412,11 +460,15 @@ describe("useAgentCanvasChat", () => {
       source_proposal_id: null,
       proposal_kind: "character",
       specialist_name: "character_designer",
-      status: "pending",
       options: [{ option_id: "option-1", title: "Hero", summary_prompt: "Editorial lead" }],
       proposed_references: [],
-      selected_option_id: null,
-      selection_actor: null,
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      available_actions: ["select", "revise", "archive"],
       created_at: "2026-07-31T05:01:00Z",
       updated_at: "2026-07-31T05:01:00Z",
     });
@@ -552,7 +604,7 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.notice).toBe("No additional node was needed.");
   });
 
-  it("selects a proposal with a frozen generation action and accepted references", async () => {
+  it("uses a new idempotency key for every deliberate proposal application", async () => {
     api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
     api.actOnAgentCanvasProposal.mockResolvedValue({
       workflow_id: "workflow-1",
@@ -592,7 +644,7 @@ describe("useAgentCanvasChat", () => {
         "proposal-1",
         "option-1",
         "draft_only",
-        [{ ...reference, required: false }],
+        [reference],
       );
     });
 
@@ -611,6 +663,74 @@ describe("useAgentCanvasChat", () => {
     const firstKey = api.actOnAgentCanvasProposal.mock.calls[0]?.[3];
     const secondKey = api.actOnAgentCanvasProposal.mock.calls[1]?.[3];
     expect(firstKey).not.toBe(secondKey);
+  });
+
+  it("archives and reopens proposal cards through structured proposal actions", async () => {
+    api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
+    api.actOnAgentCanvasProposal.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: null,
+      turn_id: "turn-proposal-state-1",
+      status: "queued",
+      events_cursor: 7,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow("workflow-1"),
+      chatRevision: 0,
+      chatEvents: [],
+      proposalPosition: { x: 0, y: 0 },
+    }));
+
+    await act(async () => {
+      await result.current.actions.setProposalAvailability("proposal-1", "archive");
+    });
+    await act(async () => {
+      await result.current.actions.setProposalAvailability("proposal-1", "reopen");
+    });
+
+    expect(api.actOnAgentCanvasProposal).toHaveBeenNthCalledWith(
+      1,
+      "workflow-1",
+      "proposal-1",
+      { action: "archive" },
+      expect.stringContaining("proposal-archive"),
+    );
+    expect(api.actOnAgentCanvasProposal).toHaveBeenNthCalledWith(
+      2,
+      "workflow-1",
+      "proposal-1",
+      { action: "reopen" },
+      expect.stringContaining("proposal-reopen"),
+    );
+  });
+
+  it("keeps an unavailable proposal visible with its structured backend reason", async () => {
+    api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
+    api.actOnAgentCanvasProposal.mockRejectedValue({
+      code: "proposal_reference_unavailable",
+      message: "The selected reference is no longer available.",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow("workflow-1"),
+      chatRevision: 0,
+      chatEvents: [],
+      proposalPosition: { x: 0, y: 0 },
+    }));
+
+    await act(async () => {
+      await result.current.actions.selectProposal(
+        "proposal-1",
+        "option-1",
+        "draft_only",
+        [],
+      );
+    });
+
+    expect(result.current.state.proposalIssues["proposal-1"]).toBe(
+      "The selected reference is no longer available.",
+    );
+    expect(result.current.state.error).toBeNull();
   });
 
   it("applies guided actions by stable id rather than resubmitting the label", async () => {

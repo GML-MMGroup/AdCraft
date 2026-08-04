@@ -28,14 +28,14 @@ describe("projectChatEvents", () => {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
-        label: "Character Designer",
+        display_name: "Character Designer",
         operation: "create_concepts",
       }),
       event(2, "specialist_activity_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         specialist: "character_designer",
-        label: "Character Designer",
+        display_name: "Character Designer",
         operation: "create_concepts",
       }),
     ]);
@@ -43,7 +43,7 @@ describe("projectChatEvents", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       item_type: "expert_activity",
-      label: "Character Designer",
+      display_name: "Character Designer",
       status: "completed",
     });
   });

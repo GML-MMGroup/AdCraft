@@ -8,6 +8,9 @@ import type {
   AgentCanvasChatTimelineResponseV2,
   AgentCanvasChatViewTimelineV2,
   AdaptiveProductionRecipeV2,
+  AdaptiveProductionCompletionCriteriaV2,
+  AdaptiveProductionDeliverableV2,
+  AdaptiveProductionDependencyV2,
   AdaptiveProductionStageV2,
   AgentStructuredErrorV2,
   AgentCommandOperationV2,
@@ -75,6 +78,7 @@ import type {
   PlanningTopicStateV2,
   PlanningTopicStatusV2,
   ProposedDraftReferenceV2,
+  ProposalApplicationSummaryV2,
   ProjectAssetSummaryV2,
   ProjectAssetListResponseV2,
   ProjectAssetStatusV2,
@@ -85,6 +89,7 @@ import type {
   ResolvedMediaInputSnapshotV2,
   ResolvedTextInputSnapshotV2,
   GuidedDeliveryActionV2,
+  ProductionReadinessProjectionV2,
   SpecialistAgentNameV2,
   StorageAccessDescriptorV2,
 } from "../../../types-v2.ts";
@@ -177,8 +182,8 @@ const SPECIALIST_AGENT_NAMES = new Set<SpecialistAgentNameV2>([
 ]);
 const PLANNING_TOPIC_STATUSES = new Set<PlanningTopicStatusV2>(["pending", "in_review", "resolved", "skipped", "not_required", "deferred"]);
 const CHAT_MESSAGE_SPEAKERS = new Set<ChatMessageV2["speaker"]>(["user", "adcraft_video_agent"]);
-const CONCEPT_PROPOSAL_STATUSES = new Set<ConceptProposalV2["status"]>(["pending", "selected", "revised", "skipped"]);
-const PROPOSAL_SELECTION_ACTORS = new Set<NonNullable<ConceptProposalV2["selection_actor"]>>(["user", "agent"]);
+const PROPOSAL_AVAILABILITIES = new Set<ConceptProposalV2["availability"]>(["open", "archived", "unavailable"]);
+const PROPOSAL_OPERATIONS = new Set<ConceptProposalV2["available_actions"][number]>(["select", "revise", "archive", "reopen"]);
 const EXPERT_ACTIVITY_STATUSES = new Set<ChatExpertActivityV2["status"]>(["working", "completed", "failed"]);
 const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queued", "exporting", "completed", "failed", "cancelled"]);
 const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
@@ -1322,11 +1327,15 @@ export function normalizeConceptProposalV2(
       "source_proposal_id",
       "proposal_kind",
       "specialist_name",
-      "status",
       "options",
       "proposed_references",
-      "selected_option_id",
-      "selection_actor",
+      "target_node_id",
+      "target_node_revision",
+      "proposal_purpose",
+      "availability",
+      "application_count",
+      "latest_application",
+      "available_actions",
       "created_at",
       "updated_at",
     ],
@@ -1334,7 +1343,6 @@ export function normalizeConceptProposalV2(
   );
   const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeConceptOptionV2(item, `${path}.options[${index}]`));
   if (options.length < 1 || options.length > 4) fail(`${path}.options`, "expected between 1 and 4 options");
-  const selectionActor = record.selection_actor === undefined ? null : record.selection_actor === null ? null : expectLiteral(record.selection_actor, PROPOSAL_SELECTION_ACTORS, `${path}.selection_actor`);
   return {
     proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -1362,14 +1370,57 @@ export function normalizeConceptProposalV2(
       `${path}.proposal_kind`,
     ),
     specialist_name: expectLiteral(record.specialist_name, SPECIALIST_AGENT_NAMES, `${path}.specialist_name`),
-    status: expectLiteral(record.status, CONCEPT_PROPOSAL_STATUSES, `${path}.status`),
     options,
     proposed_references: expectArray(record.proposed_references ?? [], `${path}.proposed_references`)
       .map((item, index) => normalizeProposedDraftReferenceV2(item, `${path}.proposed_references[${index}]`)),
-    selected_option_id: nullableStringWithDefault(record.selected_option_id, `${path}.selected_option_id`),
-    selection_actor: selectionActor,
+    target_node_id: nullableStringWithDefault(record.target_node_id, `${path}.target_node_id`),
+    target_node_revision: record.target_node_revision === undefined || record.target_node_revision === null
+      ? null
+      : expectPositiveInteger(record.target_node_revision, `${path}.target_node_revision`),
+    proposal_purpose: nullableStringWithDefault(record.proposal_purpose, `${path}.proposal_purpose`),
+    availability: record.availability === undefined
+      ? "open"
+      : expectLiteral(record.availability, PROPOSAL_AVAILABILITIES, `${path}.availability`),
+    application_count: record.application_count === undefined
+      ? 0
+      : expectNonNegativeInteger(record.application_count, `${path}.application_count`),
+    latest_application: record.latest_application === undefined || record.latest_application === null
+      ? null
+      : normalizeProposalApplicationSummaryV2(record.latest_application, `${path}.latest_application`),
+    available_actions: expectArray(record.available_actions ?? [], `${path}.available_actions`).map((action, index) => (
+      expectLiteral(action, PROPOSAL_OPERATIONS, `${path}.available_actions[${index}]`)
+    )),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeProposalApplicationSummaryV2(
+  value: unknown,
+  path: string,
+): ProposalApplicationSummaryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "application_id",
+    "option_id",
+    "generation_action",
+    "receipt_id",
+    "created_node_ids",
+    "queued_execution_ids",
+    "created_at",
+  ], path);
+  return {
+    application_id: expectNonEmptyString(record.application_id, `${path}.application_id`),
+    option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
+    generation_action: expectLiteral(
+      record.generation_action,
+      new Set<ProposalApplicationSummaryV2["generation_action"]>(["draft_only", "generate_now"]),
+      `${path}.generation_action`,
+    ),
+    receipt_id: expectNonEmptyString(record.receipt_id, `${path}.receipt_id`),
+    created_node_ids: optionalStringArray(record.created_node_ids, `${path}.created_node_ids`, []),
+    queued_execution_ids: optionalStringArray(record.queued_execution_ids, `${path}.queued_execution_ids`, []),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
   };
 }
 
@@ -1422,13 +1473,13 @@ function normalizeChatProposalCardV2(value: unknown, path: string): ChatProposal
 
 function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpertActivityV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["item_type", "activity_id", "turn_id", "specialist", "label", "operation", "status", "sequence", "started_at", "finished_at"], path);
+  forbidUnknownFields(record, ["item_type", "activity_id", "turn_id", "specialist", "display_name", "operation", "status", "sequence", "started_at", "finished_at"], path);
   return {
     item_type: expectLiteral(record.item_type, new Set<ChatExpertActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
     activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     specialist: expectLiteral(record.specialist, SPECIALIST_AGENT_NAMES, `${path}.specialist`),
-    label: expectNonEmptyString(record.label, `${path}.label`),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
     operation: expectNonEmptyString(record.operation, `${path}.operation`),
     status: expectLiteral(record.status, EXPERT_ACTIVITY_STATUSES, `${path}.status`),
     sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
@@ -1931,17 +1982,6 @@ export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): 
       created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     };
   }
-  if (itemType === "guided_actions") {
-    forbidUnknownFields(record, ["item_type", "source_entry_id", "actions", "sequence", "created_at"], path);
-    return {
-      item_type: "guided_actions",
-      source_entry_id: expectNonEmptyString(record.source_entry_id, `${path}.source_entry_id`),
-      actions: expectArray(record.actions, `${path}.actions`)
-        .map((item, index) => normalizeGuidedDeliveryActionV2(item, `${path}.actions[${index}]`)),
-      sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
-      created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
-    };
-  }
   fail(`${path}.item_type`, "unsupported discriminator");
 }
 
@@ -1967,20 +2007,12 @@ export function normalizeAgentCanvasChatTimelineV2(
     workflow_id: persisted.workflow_id,
     conversation_id: persisted.conversation_id,
     creative_session: persisted.creative_session,
-    creation_mode: persisted.creation_mode,
-    recipe: persisted.recipe,
+    creation_mode: persisted.creative_session?.creation_mode?.mode ?? null,
+    recipe: persisted.creative_session?.active_recipe ?? null,
     continuations: persisted.continuations,
+    current_session_actions: persisted.current_session_actions,
     next_cursor: persisted.next_cursor,
     items: persisted.items.flatMap((entry): ChatTimelineItemV2[] => {
-      const guidedActions: ChatTimelineItemV2[] = entry.guided_actions.length
-        ? [{
-            item_type: "guided_actions",
-            source_entry_id: entry.entry_id,
-            actions: entry.guided_actions,
-            sequence: entry.sequence_no,
-            created_at: entry.created_at,
-          }]
-        : [];
       if (entry.entry_type === "message") {
         if (!entry.speaker) fail(`${path}.items`, "persisted message requires speaker");
         return [{
@@ -2002,7 +2034,7 @@ export function normalizeAgentCanvasChatTimelineV2(
             : null,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
-        }, ...guidedActions];
+        }];
       }
       if (entry.entry_type === "command_plan") {
         if (!entry.command_plan) fail(`${path}.items.command_plan`, "command plan entry requires a plan");
@@ -2011,7 +2043,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           command_plan: entry.command_plan,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
-        }, ...guidedActions];
+        }];
       }
       if (entry.entry_type === "action_receipt") {
         if (!entry.action_receipt) fail(`${path}.items.action_receipt`, "receipt entry requires a receipt");
@@ -2020,7 +2052,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           action_receipt: entry.action_receipt,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
-        }, ...guidedActions];
+        }];
       }
       if (entry.entry_type === "concept_proposal") {
         const proposalId = typeof entry.metadata.proposal_id === "string"
@@ -2032,7 +2064,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           proposal_id: proposalId,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
-        }, ...guidedActions];
+        }];
       }
       if (entry.entry_type === "expert_activity") {
         const specialist = expectLiteral(
@@ -2046,8 +2078,10 @@ export function normalizeAgentCanvasChatTimelineV2(
           new Set(["working", "completed", "failed"] as const),
           `${path}.items.metadata.status`,
         );
-        const label = typeof entry.metadata.label === "string"
-          ? entry.metadata.label
+        const displayName = typeof entry.metadata.display_name === "string"
+          ? entry.metadata.display_name
+          : typeof entry.metadata.label === "string"
+            ? entry.metadata.label
           : specialist.split("_").map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
         return [{
           item_type: "expert_activity",
@@ -2058,7 +2092,7 @@ export function normalizeAgentCanvasChatTimelineV2(
             ? entry.metadata.turn_id
             : entry.entry_id,
           specialist,
-          label,
+          display_name: displayName,
           operation: typeof entry.metadata.operation === "string"
             ? entry.metadata.operation
             : "planning",
@@ -2070,7 +2104,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           finished_at: typeof entry.metadata.finished_at === "string"
             ? entry.metadata.finished_at
             : status === "working" ? null : entry.created_at,
-        }, ...guidedActions];
+        }];
       }
       if (entry.entry_type === "planning_progress") {
         return [{
@@ -2084,9 +2118,9 @@ export function normalizeAgentCanvasChatTimelineV2(
           proposal_id: null,
           sequence: entry.sequence_no,
           created_at: entry.created_at,
-        }, ...guidedActions];
+        }];
       }
-      if (entry.entry_type !== "script_artifact") return guidedActions;
+      if (entry.entry_type !== "script_artifact") return [];
       const nodeId = typeof entry.metadata.script_node_id === "string"
         ? entry.metadata.script_node_id
         : typeof entry.metadata.node_id === "string"
@@ -2108,7 +2142,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           : null,
         sequence: entry.sequence_no,
         created_at: entry.created_at,
-      }, ...guidedActions];
+      }];
     }),
   };
 }
@@ -2519,6 +2553,7 @@ export function normalizeGuidedDeliveryActionV2(
     record,
     [
       "action_id",
+      "logical_key",
       "action",
       "state",
       "creating_turn_id",
@@ -2539,12 +2574,13 @@ export function normalizeGuidedDeliveryActionV2(
   );
   return {
     action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
+    logical_key: record.logical_key === undefined
+      ? ""
+      : expectString(record.logical_key, `${path}.logical_key`),
     action: expectLiteral(
       record.action,
       new Set<GuidedDeliveryActionV2["action"]>([
         "add_another_topic_node",
-        "generate_node",
-        "run_all_drafts",
         "skip_topic",
       ]),
       `${path}.action`,
@@ -2632,6 +2668,66 @@ function normalizeCreationModeDecisionV2(
   };
 }
 
+function normalizeProductionReadinessProjectionV2(
+  value: unknown,
+  path: string,
+): ProductionReadinessProjectionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "discussable_topic_ids",
+    "materializable_topic_ids",
+    "runnable_node_ids",
+    "completion",
+  ], path);
+  const completion = expectRecord(record.completion, `${path}.completion`);
+  forbidUnknownFields(completion, ["planning", "generation", "delivery"], `${path}.completion`);
+  return {
+    discussable_topic_ids: optionalStringArray(
+      record.discussable_topic_ids,
+      `${path}.discussable_topic_ids`,
+      [],
+    ),
+    materializable_topic_ids: optionalStringArray(
+      record.materializable_topic_ids,
+      `${path}.materializable_topic_ids`,
+      [],
+    ),
+    runnable_node_ids: optionalStringArray(record.runnable_node_ids, `${path}.runnable_node_ids`, []),
+    completion: {
+      planning: expectLiteral(
+        completion.planning,
+        new Set<ProductionReadinessProjectionV2["completion"]["planning"]>([
+          "not_started",
+          "in_progress",
+          "complete",
+        ]),
+        `${path}.completion.planning`,
+      ),
+      generation: expectLiteral(
+        completion.generation,
+        new Set<ProductionReadinessProjectionV2["completion"]["generation"]>([
+          "not_started",
+          "in_progress",
+          "complete",
+          "partial_failed",
+          "failed",
+        ]),
+        `${path}.completion.generation`,
+      ),
+      delivery: expectLiteral(
+        completion.delivery,
+        new Set<ProductionReadinessProjectionV2["completion"]["delivery"]>([
+          "not_ready",
+          "ready",
+          "partial",
+          "failed",
+        ]),
+        `${path}.completion.delivery`,
+      ),
+    },
+  };
+}
+
 function normalizeCreativeSessionStateV2(
   value: unknown,
   path: string,
@@ -2647,6 +2743,7 @@ function normalizeCreativeSessionStateV2(
       "status",
       "creation_mode",
       "active_recipe",
+      "readiness",
       "creative_direction_snapshot_id",
       "current_topic_id",
       "topics",
@@ -2668,6 +2765,9 @@ function normalizeCreativeSessionStateV2(
     active_recipe: record.active_recipe === undefined || record.active_recipe === null
       ? null
       : normalizeAdaptiveProductionRecipeV2(record.active_recipe, `${path}.active_recipe`),
+    readiness: record.readiness === undefined || record.readiness === null
+      ? null
+      : normalizeProductionReadinessProjectionV2(record.readiness, `${path}.readiness`),
     creative_direction_snapshot_id: nullableStringWithDefault(
       record.creative_direction_snapshot_id,
       `${path}.creative_direction_snapshot_id`,
@@ -2735,6 +2835,69 @@ function normalizeAdaptiveProductionStageV2(
   };
 }
 
+function normalizeAdaptiveProductionDeliverableV2(
+  value: unknown,
+  path: string,
+): AdaptiveProductionDeliverableV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "deliverable_id",
+    "output_kind",
+    "required",
+    "description",
+    "related_node_ids",
+    "related_asset_ids",
+  ], path);
+  return {
+    deliverable_id: expectNonEmptyString(record.deliverable_id, `${path}.deliverable_id`),
+    output_kind: expectLiteral(
+      record.output_kind,
+      new Set<AdaptiveProductionDeliverableV2["output_kind"]>(["text", "image", "video", "audio", "editing"]),
+      `${path}.output_kind`,
+    ),
+    required: record.required === undefined ? true : expectBoolean(record.required, `${path}.required`),
+    description: expectNonEmptyString(record.description, `${path}.description`),
+    related_node_ids: optionalStringArray(record.related_node_ids, `${path}.related_node_ids`, []),
+    related_asset_ids: optionalStringArray(record.related_asset_ids, `${path}.related_asset_ids`, []),
+  };
+}
+
+function normalizeAdaptiveProductionDependencyV2(
+  value: unknown,
+  path: string,
+): AdaptiveProductionDependencyV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["source_topic_id", "target_topic_id", "rationale"], path);
+  return {
+    source_topic_id: expectNonEmptyString(record.source_topic_id, `${path}.source_topic_id`),
+    target_topic_id: expectNonEmptyString(record.target_topic_id, `${path}.target_topic_id`),
+    rationale: expectNonEmptyString(record.rationale, `${path}.rationale`),
+  };
+}
+
+function normalizeAdaptiveProductionCompletionCriteriaV2(
+  value: unknown,
+  path: string,
+): AdaptiveProductionCompletionCriteriaV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "required_deliverable_ids",
+    "accepted_omission_deliverable_ids",
+  ], path);
+  return {
+    required_deliverable_ids: optionalStringArray(
+      record.required_deliverable_ids,
+      `${path}.required_deliverable_ids`,
+      [],
+    ),
+    accepted_omission_deliverable_ids: optionalStringArray(
+      record.accepted_omission_deliverable_ids,
+      `${path}.accepted_omission_deliverable_ids`,
+      [],
+    ),
+  };
+}
+
 function normalizeAdaptiveProductionRecipeV2(
   value: unknown,
   path: string,
@@ -2747,9 +2910,14 @@ function normalizeAdaptiveProductionRecipeV2(
     "skill_run_id",
     "revision",
     "creation_mode",
+    "goal",
     "current_topic_id",
     "stages",
     "anchor_digest",
+    "deliverables",
+    "dependencies",
+    "recommended_next_topic_ids",
+    "completion_criteria",
     "created_at",
     "updated_at",
   ], path);
@@ -2775,9 +2943,25 @@ function normalizeAdaptiveProductionRecipeV2(
     skill_run_id: nullableStringWithDefault(record.skill_run_id, `${path}.skill_run_id`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     creation_mode: creationMode,
+    goal: record.goal === undefined ? "" : expectString(record.goal, `${path}.goal`),
     current_topic_id: currentTopicId,
     stages,
     anchor_digest: expectNonEmptyString(record.anchor_digest, `${path}.anchor_digest`),
+    deliverables: expectArray(record.deliverables ?? [], `${path}.deliverables`).map((item, index) => (
+      normalizeAdaptiveProductionDeliverableV2(item, `${path}.deliverables[${index}]`)
+    )),
+    dependencies: expectArray(record.dependencies ?? [], `${path}.dependencies`).map((item, index) => (
+      normalizeAdaptiveProductionDependencyV2(item, `${path}.dependencies[${index}]`)
+    )),
+    recommended_next_topic_ids: optionalStringArray(
+      record.recommended_next_topic_ids,
+      `${path}.recommended_next_topic_ids`,
+      [],
+    ),
+    completion_criteria: normalizeAdaptiveProductionCompletionCriteriaV2(
+      record.completion_criteria ?? {},
+      `${path}.completion_criteria`,
+    ),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
@@ -2792,12 +2976,21 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     "workflow_id",
     "conversation_id",
     "creative_session",
-    "creation_mode",
-    "recipe",
     "continuations",
+    "current_session_actions",
     "items",
     "next_cursor",
   ], path);
+  const currentSessionActions = expectArray(
+    record.current_session_actions ?? [],
+    `${path}.current_session_actions`,
+  ).map((item, index) => normalizeGuidedDeliveryActionV2(
+    item,
+    `${path}.current_session_actions[${index}]`,
+  ));
+  if (currentSessionActions.length > 2) {
+    fail(`${path}.current_session_actions`, "expected at most 2 actions");
+  }
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     conversation_id: record.conversation_id === null
@@ -2806,15 +2999,10 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     creative_session: record.creative_session === undefined || record.creative_session === null
       ? null
       : normalizeCreativeSessionStateV2(record.creative_session, `${path}.creative_session`),
-    creation_mode: record.creation_mode === undefined || record.creation_mode === null
-      ? null
-      : expectLiteral(record.creation_mode, CREATION_MODES, `${path}.creation_mode`),
-    recipe: record.recipe === undefined || record.recipe === null
-      ? null
-      : normalizeAdaptiveProductionRecipeV2(record.recipe, `${path}.recipe`),
     continuations: expectArray(record.continuations ?? [], `${path}.continuations`)
       .map((item, index) => normalizeAgentCanvasContinuationV2(item, `${path}.continuations[${index}]`)),
-    items: expectArray(record.items, `${path}.items`).map((item, index) => {
+    current_session_actions: currentSessionActions,
+    items: expectArray(record.items ?? [], `${path}.items`).map((item, index) => {
       const itemPath = `${path}.items[${index}]`;
       const entry = expectRecord(item, itemPath);
       forbidUnknownFields(
@@ -2830,7 +3018,6 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
           "metadata",
           "command_plan",
           "action_receipt",
-          "guided_actions",
           "created_at",
         ],
         itemPath,
@@ -2868,8 +3055,6 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
         action_receipt: entry.action_receipt === null || entry.action_receipt === undefined
           ? null
           : normalizeAgentActionReceiptV2(entry.action_receipt, `${itemPath}.action_receipt`),
-        guided_actions: expectArray(entry.guided_actions ?? [], `${itemPath}.guided_actions`)
-          .map((item, index) => normalizeGuidedDeliveryActionV2(item, `${itemPath}.guided_actions[${index}]`)),
         created_at: expectIsoDateTimeString(entry.created_at, `${itemPath}.created_at`),
       };
     }),

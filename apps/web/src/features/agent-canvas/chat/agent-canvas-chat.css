@@ -280,6 +280,18 @@
   font-size: 9px;
 }
 
+.agent-chat__completion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgb(111 96 168 / 12%);
+  color: #737487;
+  font-size: 9px;
+  text-transform: capitalize;
+}
+
 [data-theme="dark"] .agent-chat__recipe {
   background: rgb(255 255 255 / 5%);
 }
@@ -542,6 +554,18 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 9px;
+}
+
+.agent-chat__proposal-history,
+.agent-chat__proposal-issue {
+  margin: 8px 0 0;
+  color: #756d8e;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.agent-chat__proposal-issue {
+  color: #9a5b67;
 }
 
 .agent-chat__proposal-actions button,

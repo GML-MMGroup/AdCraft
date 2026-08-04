@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 
 import { agentCanvasApi, isV2ApiError } from "../../../api/agentCanvasApi.ts";
 import { createOperationKey } from "../../../api/operationKey.ts";
@@ -13,6 +21,7 @@ import type {
   ChatMessageV2,
   ChatTimelineItemV2,
   CreativeSessionStateV2,
+  GuidedDeliveryActionV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
@@ -23,6 +32,30 @@ type SubmitDraft = {
   mentionedImageAssetIds: string[];
   idempotencyKey?: string;
 };
+
+const PROPOSAL_ACTION_ERROR_CODES = new Set([
+  "proposal_reference_unavailable",
+  "proposal_snapshot_unavailable",
+  "proposal_archived",
+  "idempotency_conflict",
+]);
+
+function handleProposalActionError(
+  proposalId: string,
+  error: unknown,
+  setIssues: Dispatch<SetStateAction<Record<string, string>>>,
+) {
+  if (
+    !isV2ApiError(error)
+    || !error.code
+    || !PROPOSAL_ACTION_ERROR_CODES.has(error.code)
+  ) return false;
+  setIssues((current) => ({
+    ...current,
+    [proposalId]: error.message,
+  }));
+  return true;
+}
 
 function mergeTimelineItems(
   persisted: ChatTimelineItemV2[],
@@ -38,7 +71,8 @@ function mergeTimelineItems(
     if (item.item_type === "command_plan") return `command:${item.command_plan.plan_id}`;
     if (item.item_type === "action_receipt") return `receipt:${item.action_receipt.receipt_id}`;
     if (item.item_type === "proposal_pointer") return `proposal:${item.proposal_id}`;
-    return `guided:${item.source_entry_id}`;
+    const exhaustiveItem: never = item;
+    return exhaustiveItem;
   };
   [...persisted, ...projected, ...optimistic].forEach((item) => {
     keys.set(keyFor(item), item);
@@ -66,6 +100,7 @@ export function useAgentCanvasChat({
   const [creativeSession, setCreativeSession] = useState<CreativeSessionStateV2 | null>(null);
   const [creationMode, setCreationMode] = useState<AgentCanvasCreationModeV2 | null>(null);
   const [recipe, setRecipe] = useState<AdaptiveProductionRecipeV2 | null>(null);
+  const [currentSessionActions, setCurrentSessionActions] = useState<GuidedDeliveryActionV2[]>([]);
   const [continuationsById, setContinuationsById] = useState<Record<string, AgentCanvasContinuationV2>>({});
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -74,10 +109,10 @@ export function useAgentCanvasChat({
   const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
   const [failedDraft, setFailedDraft] = useState<SubmitDraft | null>(null);
   const refreshGenerationRef = useRef(0);
   const workflowGenerationRef = useRef(0);
-  const actionKeysRef = useRef(new Map<string, string>());
   const pendingActionTurnIdsRef = useRef(new Set<string>());
   const pendingCommandPlanIdsRef = useRef(new Set<string>());
   const expectedReceiptIdsRef = useRef(new Set<string>());
@@ -134,6 +169,7 @@ export function useAgentCanvasChat({
       let nextCreativeSession: CreativeSessionStateV2 | null = null;
       let nextCreationMode: AgentCanvasCreationModeV2 | null = null;
       let nextRecipe: AdaptiveProductionRecipeV2 | null = null;
+      let nextCurrentSessionActions: GuidedDeliveryActionV2[] = [];
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
       let hasInvalidProposalCardinality = false;
       let cursor = 0;
@@ -147,6 +183,7 @@ export function useAgentCanvasChat({
           ?? null
         );
         nextRecipe = timelineRecipe;
+        nextCurrentSessionActions = timeline.current_session_actions ?? [];
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });
@@ -174,6 +211,7 @@ export function useAgentCanvasChat({
       setCreativeSession(nextCreativeSession);
       setCreationMode(nextCreationMode);
       setRecipe(nextRecipe);
+      setCurrentSessionActions(nextCurrentSessionActions);
       setContinuationsById(Object.fromEntries(nextContinuations));
       setPersistedItems(items);
       items.forEach((item) => {
@@ -224,7 +262,10 @@ export function useAgentCanvasChat({
 
   const handleStructuredActionError = useCallback((actionError: unknown): boolean => {
     if (!isV2ApiError(actionError)) return false;
-    if (actionError.code === "guided_action_stale") {
+    if (
+      actionError.code === "guided_action_stale"
+      || actionError.code === "guided_action_superseded"
+    ) {
       setNotice("This action is no longer current. The conversation was refreshed.");
       void refresh();
       return true;
@@ -267,6 +308,7 @@ export function useAgentCanvasChat({
     setCreativeSession(null);
     setCreationMode(null);
     setRecipe(null);
+    setCurrentSessionActions([]);
     setContinuationsById({});
     setLoading(false);
     setSending(false);
@@ -274,7 +316,6 @@ export function useAgentCanvasChat({
     setActingProposalId(null);
     setActingCommandPlanId(null);
     setActingGuidedActionId(null);
-    actionKeysRef.current.clear();
     pendingActionTurnIdsRef.current.clear();
     pendingCommandPlanIdsRef.current.clear();
     expectedReceiptIdsRef.current.clear();
@@ -282,6 +323,7 @@ export function useAgentCanvasChat({
     submittedDraftsByTurnIdRef.current.clear();
     setError(null);
     setNotice(null);
+    setProposalIssues({});
   }, [workflowId]);
 
   useEffect(() => {
@@ -297,14 +339,6 @@ export function useAgentCanvasChat({
       }
     });
   }, [chatEvents, refreshTurn]);
-
-  const actionKey = useCallback((identity: string, prefix: string) => {
-    const existing = actionKeysRef.current.get(identity);
-    if (existing) return existing;
-    const created = createOperationKey(prefix);
-    actionKeysRef.current.set(identity, created);
-    return created;
-  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 80);
@@ -378,6 +412,11 @@ export function useAgentCanvasChat({
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
+    setProposalIssues((current) => {
+      const next = { ...current };
+      delete next[proposalId];
+      return next;
+    });
     try {
       const request = {
         action: "select",
@@ -390,17 +429,16 @@ export function useAgentCanvasChat({
         workflowId,
         proposalId,
         request,
-        actionKey(
-          `proposal-select:${proposalId}:${JSON.stringify(request)}`,
-          "proposal-select",
-        ),
+        createOperationKey("proposal-select"),
       );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       trackAcceptedTurn(accepted);
       void refresh();
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
-        if (!handleStructuredActionError(actionError)) {
+        if (handleProposalActionError(proposalId, actionError, setProposalIssues)) {
+          // The proposal remains visible with its structured availability reason.
+        } else if (!handleStructuredActionError(actionError)) {
           setError(actionError instanceof Error ? actionError.message : "The proposal could not be selected.");
         }
       }
@@ -409,27 +447,31 @@ export function useAgentCanvasChat({
         setActingProposalId(null);
       }
     }
-  }, [actionKey, actingProposalId, handleStructuredActionError, proposalPosition, refresh, trackAcceptedTurn, workflowId]);
+  }, [actingProposalId, handleStructuredActionError, proposalPosition, refresh, trackAcceptedTurn, workflowId]);
 
   const reviseProposal = useCallback(async (proposalId: string, instruction: string) => {
     if (!workflowId || !instruction.trim() || actingProposalId) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
     setError(null);
+    setProposalIssues((current) => {
+      const next = { ...current };
+      delete next[proposalId];
+      return next;
+    });
     try {
       const accepted = await agentCanvasApi.actOnAgentCanvasProposal(workflowId, proposalId, {
         action: "revise",
         instruction: instruction.trim(),
-      }, actionKey(
-        `proposal-revise:${proposalId}:${instruction.trim()}`,
-        "proposal-revise",
-      ));
+      }, createOperationKey("proposal-revise"));
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       trackAcceptedTurn(accepted);
       void refresh();
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
-        if (!handleStructuredActionError(actionError)) {
+        if (handleProposalActionError(proposalId, actionError, setProposalIssues)) {
+          // The proposal remains visible with its structured availability reason.
+        } else if (!handleStructuredActionError(actionError)) {
           setError(actionError instanceof Error ? actionError.message : "The proposal could not be revised.");
         }
       }
@@ -438,7 +480,47 @@ export function useAgentCanvasChat({
         setActingProposalId(null);
       }
     }
-  }, [actionKey, actingProposalId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+  }, [actingProposalId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+
+  const setProposalAvailability = useCallback(async (
+    proposalId: string,
+    action: "archive" | "reopen",
+  ) => {
+    if (!workflowId || actingProposalId) return;
+    const workflowGeneration = workflowGenerationRef.current;
+    setActingProposalId(proposalId);
+    setError(null);
+    setProposalIssues((current) => {
+      const next = { ...current };
+      delete next[proposalId];
+      return next;
+    });
+    try {
+      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(
+        workflowId,
+        proposalId,
+        { action },
+        createOperationKey(`proposal-${action}`),
+      );
+      pendingActionTurnIdsRef.current.add(accepted.turn_id);
+      trackAcceptedTurn(accepted);
+      void refresh();
+    } catch (actionError) {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        if (handleProposalActionError(proposalId, actionError, setProposalIssues)) {
+          // The proposal remains visible with its structured availability reason.
+        } else if (!handleStructuredActionError(actionError)) {
+          setError(actionError instanceof Error
+            ? actionError.message
+            : `The proposal could not be ${action === "archive" ? "archived" : "reopened"}.`);
+        }
+      }
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingProposalId(null);
+      }
+    }
+  }, [actingProposalId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
   const actOnCommandPlan = useCallback(async (
     planId: string,
@@ -454,7 +536,7 @@ export function useAgentCanvasChat({
         workflowId,
         planId,
         { action },
-        actionKey(`command-${action}:${planId}`, `command-${action}`),
+        createOperationKey(`command-${action}`),
       );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       trackAcceptedTurn(accepted);
@@ -473,7 +555,7 @@ export function useAgentCanvasChat({
         setActingCommandPlanId(null);
       }
     }
-  }, [actionKey, actingCommandPlanId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+  }, [actingCommandPlanId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
   const applyGuidedAction = useCallback(async (actionId: string) => {
     if (!workflowId || actingGuidedActionId) return;
@@ -485,7 +567,7 @@ export function useAgentCanvasChat({
         workflowId,
         actionId,
         { confirmed: true },
-        actionKey(`guided-action:${actionId}`, "guided-action"),
+        createOperationKey("guided-action"),
       );
       pendingActionTurnIdsRef.current.add(actionId);
       trackAcceptedTurn(accepted);
@@ -503,7 +585,7 @@ export function useAgentCanvasChat({
         setActingGuidedActionId(null);
       }
     }
-  }, [actingGuidedActionId, actionKey, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+  }, [actingGuidedActionId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
   const projectedItems = useMemo(() => projectChatEvents(chatEvents), [chatEvents]);
   const items = useMemo(
@@ -517,6 +599,7 @@ export function useAgentCanvasChat({
       creativeSession,
       creationMode,
       recipe,
+      currentSessionActions,
       continuations: Object.values(continuationsById),
       loading,
       sending,
@@ -525,6 +608,7 @@ export function useAgentCanvasChat({
       actingGuidedActionId,
       error,
       notice,
+      proposalIssues,
       failedDraft,
     },
     actions: {
@@ -532,6 +616,7 @@ export function useAgentCanvasChat({
       submit,
       selectProposal,
       reviseProposal,
+      setProposalAvailability,
       actOnCommandPlan,
       applyGuidedAction,
       clearFailedDraft: () => setFailedDraft(null),

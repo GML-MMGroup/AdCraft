@@ -80,15 +80,19 @@ const card: ChatProposalCardV2 = {
     source_proposal_id: null,
     proposal_kind: "character",
     specialist_name: "character_designer",
-    status: "pending",
     options: [{
       option_id: "option-1",
       title: "Hero",
       summary_prompt: "A focused campaign hero",
     }],
     proposed_references: [],
-    selected_option_id: null,
-    selection_actor: null,
+    target_node_id: null,
+    target_node_revision: null,
+    proposal_purpose: null,
+    availability: "open",
+    application_count: 0,
+    latest_application: null,
+    available_actions: ["select", "revise", "archive"],
     created_at: "2026-07-28T00:00:00Z",
     updated_at: "2026-07-28T00:00:00Z",
   },
@@ -107,6 +111,7 @@ describe("ProposalCard", () => {
         pending={false}
         onSelect={onSelect}
         onRevise={vi.fn()}
+        onSetAvailability={vi.fn()}
       />,
     );
 
@@ -118,6 +123,64 @@ describe("ProposalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate now" }));
 
     expect(onSelect).toHaveBeenCalledWith("proposal-1", "option-1", "generate_now", []);
+  });
+
+  it("keeps an open proposal usable after prior applications and exposes archive", () => {
+    const onSetAvailability = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={{
+          ...card,
+          proposal: {
+            ...card.proposal,
+            application_count: 2,
+            latest_application: {
+              application_id: "application-2",
+              option_id: "option-1",
+              generation_action: "draft_only",
+              receipt_id: "receipt-2",
+              created_node_ids: ["node-character-3"],
+              queued_execution_ids: [],
+              created_at: "2026-08-04T08:02:00Z",
+            },
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onSetAvailability={onSetAvailability}
+      />,
+    );
+
+    expect(screen.getByText(/Applied 2 times/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Hero/ }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Archive proposal" }));
+    expect(onSetAvailability).toHaveBeenCalledWith("proposal-1", "archive");
+  });
+
+  it("offers reopen for an archived proposal without hiding its options", () => {
+    const onSetAvailability = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={{
+          ...card,
+          proposal: {
+            ...card.proposal,
+            availability: "archived",
+            available_actions: ["reopen"],
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onSetAvailability={onSetAvailability}
+      />,
+    );
+
+    expect(screen.getByText("Hero")).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Hero/ }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Reopen proposal" }));
+    expect(onSetAvailability).toHaveBeenCalledWith("proposal-1", "reopen");
   });
 });
 
@@ -182,6 +245,16 @@ describe("command control cards", () => {
     render(
       <ProductionRecipeProgress
         creationMode="guided_production"
+        readiness={{
+          discussable_topic_ids: ["topic-scene"],
+          materializable_topic_ids: ["topic-scene"],
+          runnable_node_ids: [],
+          completion: {
+            planning: "in_progress",
+            generation: "not_started",
+            delivery: "not_ready",
+          },
+        }}
         recipe={{
           recipe_id: "recipe-1",
           workflow_id: "workflow-1",
@@ -189,6 +262,7 @@ describe("command control cards", () => {
           skill_run_id: null,
           revision: 2,
           creation_mode: "guided_production",
+          goal: "Create a complete short advertisement.",
           current_topic_id: "topic-scene",
           stages: [
             {
@@ -232,6 +306,13 @@ describe("command control cards", () => {
             },
           ],
           anchor_digest: "anchor-1",
+          deliverables: [],
+          dependencies: [],
+          recommended_next_topic_ids: ["topic-scene"],
+          completion_criteria: {
+            required_deliverable_ids: [],
+            accepted_omission_deliverable_ids: [],
+          },
           created_at: "2026-07-31T05:00:00Z",
           updated_at: "2026-07-31T05:01:00Z",
         }}
@@ -241,19 +322,18 @@ describe("command control cards", () => {
     expect(screen.getByText("Scene design")).toBeTruthy();
     expect(screen.getByText("Audio direction")).toBeTruthy();
     expect(screen.queryByText("Product design")).toBeNull();
+    expect(screen.getByText("Planning: in progress")).toBeTruthy();
+    expect(screen.getByText("Generation: not started")).toBeTruthy();
+    expect(screen.getByText("Delivery: not ready")).toBeTruthy();
   });
 
   it("removes superseded guided actions instead of leaving stale controls clickable", () => {
     render(
       <GuidedActionsCard
-        card={{
-          item_type: "guided_actions",
-          source_entry_id: "entry-1",
-          sequence: 1,
-          created_at: "2026-07-31T05:00:00Z",
-          actions: [
+        actions={[
             {
               action_id: "action-stale",
+              logical_key: "add-another:topic-1",
               action: "add_another_topic_node",
               state: "superseded",
               creating_turn_id: "turn-1",
@@ -270,6 +350,7 @@ describe("command control cards", () => {
             },
             {
               action_id: "action-current",
+              logical_key: "skip:topic-audio",
               action: "skip_topic",
               state: "pending",
               creating_turn_id: "turn-2",
@@ -284,8 +365,7 @@ describe("command control cards", () => {
               confirmation_required: false,
               reason: "Audio is optional for this production plan.",
             },
-          ],
-        }}
+          ]}
         actingActionId={null}
         onApply={vi.fn()}
       />,
@@ -340,7 +420,7 @@ describe("command control cards", () => {
       activity_id: "activity-1",
       turn_id: "turn-1",
       specialist: "scene_designer",
-      label: "Scene Designer",
+      display_name: "Scene Designer",
       operation: "create_concepts",
       status: "working",
       sequence: 4,
