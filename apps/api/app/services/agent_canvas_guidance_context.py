@@ -8,6 +8,7 @@ from app.schemas.agent_canvas_conversation import ConceptProposalV2, VideoSkillR
 from app.schemas.agent_canvas_creative_session import (
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
+    StyleGuidanceContextV2,
 )
 from app.schemas.agent_operation_contexts import (
     DelegatedProposalChoiceContextV2,
@@ -36,6 +37,7 @@ class GuidanceContextBuilder:
         open_proposal: ConceptProposalV2 | None,
         style_run: VideoSkillRunV2 | None,
         style_summary: str,
+        style_guidance: StyleGuidanceContextV2 | None = None,
         mentioned_node_ids: tuple[str, ...],
         image_assets: tuple[ProjectAssetSummaryV2, ...],
         model_capabilities: dict[str, object] | None = None,
@@ -77,6 +79,7 @@ class GuidanceContextBuilder:
                 if style_run is not None
                 else None
             ),
+            style_guidance=style_guidance,
             mentioned_node_ids=mentioned_node_ids,
             image_references=tuple(_image_reference(asset) for asset in image_assets),
             model_capabilities=model_capabilities or {},
@@ -90,6 +93,7 @@ class GuidanceContextBuilder:
         session: GuidedSessionStateV2,
         user_instruction: str,
         style_excerpt: str,
+        style_guidance: StyleGuidanceContextV2 | None = None,
         accepted_anchors: tuple[str, ...],
         image_assets: tuple[ProjectAssetSummaryV2, ...],
         relevant_node_ids: tuple[str, ...] = (),
@@ -120,6 +124,7 @@ class GuidanceContextBuilder:
                 if item.element_kind in {decision.topic_kind, "product", "scene"}
             ),
             style_excerpt=style_excerpt,
+            style_guidance=style_guidance,
             accepted_anchors=accepted_anchors,
             image_references=tuple(_image_reference(asset) for asset in image_assets),
             relevant_nodes=tuple(_node_summary(node) for node in relevant_nodes),

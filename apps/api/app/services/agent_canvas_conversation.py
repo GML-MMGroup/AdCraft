@@ -44,12 +44,14 @@ from app.schemas.agent_canvas_conversation import (
     ConceptProposalCreateV2,
     ContinuationCommitV2,
     ProposalActionRequestV2,
+    VideoSkillRunV2,
 )
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
     DraftReferenceIntentV2,
     GuidanceSessionActionV2,
     SpecialistDraftV2,
+    StyleGuidanceContextV2,
     DelegatedProposalChoiceV2,
     NextGuidanceDecisionV2,
 )
@@ -91,6 +93,7 @@ from app.services.agent_canvas_guidance_decision import (
     GuidanceCompletionService,
     GuidanceDecisionValidator,
 )
+from app.services.agent_canvas_creative_direction import CreativeDirectionService
 
 
 @dataclass(frozen=True, slots=True)
@@ -575,6 +578,7 @@ class PiDirectorGateway:
             model_ref=None,
         )
         operation_timeout = _guidance_operation_timeout(operation)
+        style_lineage = _style_skill_lineage(context)
         request = AgentRunRequest(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
@@ -603,6 +607,7 @@ class PiDirectorGateway:
                     "catalog_revision": resolution.catalog_revision,
                     "provider_revision": resolution.credential_revision,
                 },
+                **({"style_skill_lineage": style_lineage} if style_lineage is not None else {}),
             },
         )
         result = self._durable_runner.run(
@@ -630,6 +635,21 @@ class ConceptProposalService:
 
 def _guidance_operation_timeout(operation: str) -> float:
     return 180.0 if operation == "resolve_creation_mode" else 300.0
+
+
+def _style_skill_lineage(context: object) -> dict[str, str | None] | None:
+    style_guidance = getattr(context, "style_guidance", None)
+    if not isinstance(style_guidance, StyleGuidanceContextV2):
+        return None
+    return {
+        "skill_run_id": style_guidance.skill_run_id,
+        "creative_direction_snapshot_id": style_guidance.creative_direction_snapshot_id,
+        "skill_id": style_guidance.skill_id,
+        "skill_version": style_guidance.skill_version,
+        "package_digest": style_guidance.package_digest,
+        "role": style_guidance.role or "director",
+        "role_guidance_digest": style_guidance.role_guidance_digest,
+    }
 
 
 class GuidanceSessionActionService:
@@ -1044,6 +1064,7 @@ class AgentConversationService:
         self._guidance_contexts = GuidanceContextBuilder()
         self._guidance_decisions = GuidanceDecisionValidator()
         self._guidance_completion = GuidanceCompletionService()
+        self._creative_direction = CreativeDirectionService()
 
     def submit_message(
         self,
@@ -1061,11 +1082,18 @@ class AgentConversationService:
                 workflow_id
             ).skill_run_id
         else:
-            skill_run = self._conversations.get_skill_run(video_skill_run_id)
+            try:
+                skill_run = self._conversations.get_skill_run(video_skill_run_id)
+            except V2PersistenceError as error:
+                raise V2PersistenceError(
+                    "style_skill_activation_conflict",
+                    "Style Skill Run is not active for this Workflow.",
+                    stage="agent_conversation_service",
+                ) from error
             if skill_run.workflow_id != workflow_id or skill_run.status != "active":
                 raise V2PersistenceError(
-                    "creative_session_conflict",
-                    "Creative session does not belong to this Workflow.",
+                    "style_skill_activation_conflict",
+                    "Style Skill Run is not active for this Workflow.",
                     stage="agent_conversation_service",
                 )
         if self._context_assembler is not None:
@@ -1211,6 +1239,42 @@ class AgentConversationService:
                 message="Agent turn could not be completed.",
             )
 
+    def _style_context_for_turn(
+        self,
+        turn: ChatTurnV2,
+        *,
+        role: str,
+    ) -> tuple[VideoSkillRunV2, StyleGuidanceContextV2]:
+        run_id = str(turn.request.get("video_skill_run_id") or "")
+        run = (
+            self._conversations.get_skill_run(run_id)
+            if run_id
+            else self._conversations.get_active_style_skill_run(turn.workflow_id)
+        )
+        if run.workflow_id != turn.workflow_id:
+            raise V2PersistenceError(
+                "style_skill_activation_conflict",
+                "Style Skill Run does not belong to this Workflow.",
+                stage="agent_conversation_service",
+            )
+        return run, self._resolve_style_context(run, role=role)
+
+    def _resolve_style_context(
+        self,
+        run: VideoSkillRunV2,
+        *,
+        role: str,
+    ) -> StyleGuidanceContextV2:
+        snapshot_id = run.active_creative_direction_snapshot_id
+        if snapshot_id is None:
+            raise V2PersistenceError(
+                "style_skill_snapshot_invalid",
+                "Style Skill Run has no active Creative Direction snapshot.",
+                stage="agent_conversation_service",
+            )
+        snapshot = self._conversations.get_creative_direction_snapshot(snapshot_id)
+        return self._creative_direction.resolve_style_context(snapshot, role)
+
     def _process_message_turn(
         self,
         turn_id: str,
@@ -1221,8 +1285,7 @@ class AgentConversationService:
         session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
         open_proposals = self._conversations.list_open_proposals(turn.workflow_id)
         open_proposal = open_proposals[0] if open_proposals else None
-        style_run = self._conversations.get_active_style_skill_run(turn.workflow_id)
-        style = self._video_skills.load(style_run.skill_id, style_run.skill_version)
+        style_run, director_style = self._style_context_for_turn(turn, role="director")
         memory = self._conversations.get_creative_memory(turn.workflow_id)
         mentioned_node_ids = tuple(
             str(item) for item in turn.request.get("mentioned_node_ids") or ()
@@ -1247,7 +1310,11 @@ class AgentConversationService:
             session=session,
             open_proposal=open_proposal,
             style_run=style_run,
-            style_summary=memory.approved_style_summary or style.instructions,
+            style_summary=(
+                memory.approved_style_summary
+                or (style_run.public_skill.summary if style_run.public_skill else "")
+            ),
+            style_guidance=director_style,
             mentioned_node_ids=mentioned_node_ids,
             image_assets=image_assets,
         )
@@ -1309,7 +1376,11 @@ class AgentConversationService:
                 decision=decision,
                 session=session,
                 user_instruction=str(turn.request.get("text") or ""),
-                style_excerpt=style.instructions,
+                style_excerpt=director_style.global_guidance,
+                style_guidance=self._resolve_style_context(
+                    style_run,
+                    role=str(decision.specialist_name),
+                ),
                 accepted_anchors=tuple(
                     node_id
                     for node_ids in memory.approved_node_ids.values()
@@ -1485,12 +1556,14 @@ class AgentConversationService:
             return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
         if action.action == "delegate_choice":
             memory = self._conversations.get_creative_memory(turn.workflow_id)
-            style_run = self._conversations.get_active_style_skill_run(turn.workflow_id)
-            style = self._video_skills.load(style_run.skill_id, style_run.skill_version)
+            style_run, _ = self._style_context_for_turn(turn, role="director")
             choice_context = self._guidance_contexts.build_delegated_choice(
                 proposal,
                 session=session,
-                style_summary=memory.approved_style_summary or style.instructions,
+                style_summary=(
+                    memory.approved_style_summary
+                    or (style_run.public_skill.summary if style_run.public_skill else "")
+                ),
             )
             choice = self._gateway.choose_delegated_proposal_option(
                 choice_context,

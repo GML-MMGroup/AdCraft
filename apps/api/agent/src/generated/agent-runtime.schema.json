@@ -4132,6 +4132,17 @@
           ],
           "default": null
         },
+        "style_guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleGuidanceContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "user_input": {
           "maxLength": 65536,
           "minLength": 1,
@@ -4279,6 +4290,17 @@
           "maxLength": 8192,
           "title": "Script Summary",
           "type": "string"
+        },
+        "style_guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleGuidanceContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "user_input": {
           "maxLength": 65536,
@@ -5406,6 +5428,17 @@
           "maxLength": 8192,
           "title": "Style Excerpt",
           "type": "string"
+        },
+        "style_guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleGuidanceContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "targeted_prompt_baseline": {
           "anyOf": [
@@ -7249,6 +7282,17 @@
           "title": "Specialist Name",
           "type": "string"
         },
+        "style_guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StyleGuidanceContextV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "target_node_id": {
           "anyOf": [
             {
@@ -7808,6 +7852,121 @@
         "message"
       ],
       "title": "StructuredViolation",
+      "type": "object"
+    },
+    "StyleGuidanceContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_direction_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Creative Direction Snapshot Id",
+          "type": "string"
+        },
+        "global_guidance": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Global Guidance",
+          "type": "string"
+        },
+        "package_digest": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "precedence": {
+          "const": "advisory",
+          "default": "advisory",
+          "title": "Precedence",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role"
+        },
+        "role_guidance": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Guidance"
+        },
+        "role_guidance_digest": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Guidance Digest"
+        },
+        "role_guidance_path": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Guidance Path"
+        },
+        "skill_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_run_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Run Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "source": {
+          "const": "creative_direction_snapshot",
+          "default": "creative_direction_snapshot",
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "creative_direction_snapshot_id",
+        "global_guidance",
+        "package_digest",
+        "skill_id",
+        "skill_run_id",
+        "skill_version"
+      ],
+      "title": "StyleGuidanceContextV2",
       "type": "object"
     },
     "TargetedRevisionAgentContext": {

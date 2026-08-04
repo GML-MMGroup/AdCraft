@@ -209,6 +209,7 @@ function canonicalPrompt(item: PromptRegistration): string {
     item.scope,
     "Use only the typed context supplied for this operation. Do not infer from sibling expert prompts, provider payloads, complete workflow documents, local paths, credentials, or media bytes.",
     "Preserve every frozen explicit user fact exactly. Values marked unspecified may be chosen only within the operation scope and must not be relabeled as user-explicit.",
+    "Apply instruction precedence in this order: explicit user instructions and technical settings, trusted internal Skill and role contracts, advisory style_guidance, then platform defaults.",
     `Return exactly the ${item.contract_name} contract by calling submit_structured_result. Do not emit JSON in Markdown or prose.`,
     "If Python rejects the first submission, repair only the reported structured violations and submit once more. A second rejection is terminal.",
   ].join("\n\n");

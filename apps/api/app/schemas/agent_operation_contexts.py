@@ -13,6 +13,7 @@ from app.schemas.agent_canvas_creative_session import (
     GuidedSessionStateV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
+    StyleGuidanceContextV2,
 )
 
 
@@ -325,6 +326,7 @@ class DirectorGuidanceContextV2(_PlanningContextModel):
     nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=128)
     bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=256)
     style: GuidanceStyleSummaryV2 | None = None
+    style_guidance: StyleGuidanceContextV2 | None = None
     mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
     image_references: tuple[GuidanceImageReferenceV2, ...] = Field(default=(), max_length=16)
     model_capabilities: dict[str, JsonValue] = Field(default_factory=dict)
@@ -344,6 +346,7 @@ class GuidanceSpecialistContextV2(_PlanningContextModel):
     goal: CreativeGoalV2
     relevant_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=16)
     style_excerpt: str = Field(default="", max_length=8_192)
+    style_guidance: StyleGuidanceContextV2 | None = None
     accepted_anchors: tuple[str, ...] = Field(default=(), max_length=32)
     image_references: tuple[GuidanceImageReferenceV2, ...] = Field(default=(), max_length=16)
     relevant_nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=32)
@@ -383,6 +386,7 @@ class DirectorTurnContextV2(_PlanningContextModel):
     )
     script_summary: str = Field(default="", max_length=8_192)
     video_skill_excerpt: str = Field(default="", max_length=8_192)
+    style_guidance: StyleGuidanceContextV2 | None = None
     explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
     candidate_summaries: tuple[str, ...] = Field(default=(), max_length=32)
     guidance_session: GuidedSessionStateV2 | None = None
@@ -478,6 +482,7 @@ class SpecialistContextV2(_PlanningContextModel):
     selected_option_id: str | None = Field(default=None, max_length=160)
     script_summary: str = Field(default="", max_length=8_192)
     video_skill_excerpt: str = Field(default="", max_length=8_192)
+    style_guidance: StyleGuidanceContextV2 | None = None
     explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
     guidance_session: GuidedSessionStateV2 | None = None
     creative_memory: ProjectCreativeMemoryV2 | None = None

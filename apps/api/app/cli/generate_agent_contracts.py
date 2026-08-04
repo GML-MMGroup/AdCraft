@@ -64,6 +64,7 @@ CONTRACT_MODELS = (
     agent_canvas_creative_session.NextGuidanceDecisionV2,
     agent_canvas_creative_session.DelegatedProposalChoiceV2,
     agent_canvas_creative_session.CreativeDirectionSnapshotV2,
+    agent_canvas_creative_session.StyleGuidanceContextV2,
     agent_canvas_creative_session.ProjectCreativeMemoryV2,
     agent_canvas_creative_session.ConceptDraftSpecV2,
     agent_canvas_creative_session.DraftReferenceIntentV2,

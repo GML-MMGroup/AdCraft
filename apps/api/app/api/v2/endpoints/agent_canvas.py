@@ -101,8 +101,8 @@ from app.schemas.agent_canvas_conversation import (
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_video_skills import (
+    VideoSkillCatalogResponseV2,
     VideoSkillPublicDetailV2,
-    VideoSkillSummaryListV2,
 )
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderModelCapabilityListV2,
@@ -172,7 +172,7 @@ from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
 from app.services.agent_canvas_context import AgentLocalContextAssembler
-from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_style_activation import StyleSkillActivationService
 from app.services.agent_canvas_conversation import (
     AgentConversationService,
     DeterministicDirectorGateway,
@@ -215,6 +215,7 @@ class AgentCanvasRuntime:
     layout: AgentCanvasLayoutService
     conversation_repository: AgentCanvasConversationRepository
     video_skills: VideoSkillRegistry
+    style_activation: StyleSkillActivationService
     ad_media_validation: AdMediaDraftValidationService
     event_repository: EventRepository
     runtime_repository: AgentCanvasRuntimeRepository
@@ -298,6 +299,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         event_repository,
     )
     video_skills = VideoSkillRegistry()
+    video_skills.validate_startup()
+    style_activation = StyleSkillActivationService(
+        workflow_repository,
+        conversation_repository,
+        video_skills,
+    )
     director_gateway = (
         DeterministicDirectorGateway()
         if settings.agent_runtime_mode == "fake"
@@ -719,7 +726,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             workflow_repository,
             asset_service,
             conversation_repository,
-            video_skills,
+            style_activation,
         ),
         workflows=workflow_repository,
         nodes=AgentCanvasNodeService(
@@ -748,6 +755,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         layout=AgentCanvasLayoutService(workflow_repository),
         conversation_repository=conversation_repository,
         video_skills=video_skills,
+        style_activation=style_activation,
         ad_media_validation=AdMediaDraftValidationService(role_registry),
         event_repository=event_repository,
         runtime_repository=runtime_repository,
@@ -784,6 +792,13 @@ def create_project(
     try:
         created = runtime.projects.create(request, idempotency_key=idempotency_key)
     except V2PersistenceError as error:
+        if error.code in {
+            "agent_skill_manifest_invalid",
+            "agent_skill_digest_mismatch",
+            "style_skill_context_budget_exceeded",
+            "style_skill_snapshot_invalid",
+        }:
+            raise _http_error(error.code, 422, str(error)) from error
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(created.workflow_id, created.revision)
     return created
@@ -1633,32 +1648,29 @@ def create_video_skill_run(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
-        runtime.workflows.get_workflow(workflow_id)
-        loaded = runtime.video_skills.load(request.skill_id, request.skill_version)
-        skill_run = runtime.conversation_repository.create_skill_run(
+        return runtime.style_activation.activate(
             workflow_id,
-            skill_id=loaded.manifest.skill_id,
-            skill_version=loaded.manifest.version,
-            source_skill_run_id=request.source_skill_run_id,
+            request,
             idempotency_key=idempotency_key,
         )
-        CreativeDirectionService().ensure_snapshot(
-            runtime.conversation_repository,
-            skill_run,
-            loaded,
-        )
-        return runtime.conversation_repository.get_skill_run(skill_run.skill_run_id)
     except V2PersistenceError as error:
+        if error.code in {
+            "agent_skill_manifest_invalid",
+            "agent_skill_digest_mismatch",
+            "style_skill_context_budget_exceeded",
+            "style_skill_snapshot_invalid",
+        }:
+            raise _http_error(error.code, 422, str(error)) from error
         raise _persistence_http_error(error) from error
 
 
-@router.get("/video-skills", response_model=VideoSkillSummaryListV2)
+@router.get("/video-skills", response_model=VideoSkillCatalogResponseV2)
 def list_video_skills(
     runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
     category: Annotated[str | None, Query(max_length=80)] = None,
     cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-) -> VideoSkillSummaryListV2:
+) -> VideoSkillCatalogResponseV2:
     try:
         return runtime.video_skills.list_public_catalog(
             category=category,
@@ -1971,6 +1983,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
         "idempotency_conflict": 409,
+        "style_skill_activation_conflict": 409,
+        "style_skill_snapshot_invalid": 422,
+        "style_skill_context_budget_exceeded": 422,
         "variation_source_not_ready": 409,
         "variation_source_media_type_unsupported": 422,
         "variation_model_incompatible": 409,
