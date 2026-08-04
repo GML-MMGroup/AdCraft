@@ -9,6 +9,7 @@ from app.schemas.workflow_v2 import (
     V2SpecialistPromptResult,
 )
 from app.schemas.workflow_v2_prompt_contracts import (
+    V2BgmPromptPlan,
     V2CharacterMainPromptPlan,
     V2CharacterThreeViewPromptPlan,
     V2ProductMainPromptPlan,
@@ -222,6 +223,29 @@ def prompt_contract_from_specialist_result(
             provider_duration_seconds=int(details.get("provider_duration_seconds") or 5),
             shot_cell_asset_ids=list(
                 details.get("shot_cell_asset_ids") or result.reference_asset_ids
+            ),
+        )
+    if slot_type == "bgm_audio":
+        details = {
+            **request.detail_prompts,
+            **result.detail_prompts,
+        }
+        duration_seconds = (
+            details.get("duration_seconds")
+            or request.director_context_summary.get("duration_seconds")
+            or 30
+        )
+        return V2BgmPromptPlan(
+            **_base_payload(request, result),
+            music_brief=str(
+                details.get("music_brief")
+                or result.specialist_prompt
+                or _provider_prompt(request, result)
+            ),
+            duration_seconds=float(duration_seconds),
+            pace=str(details.get("pace") or "moderate commercial pace"),
+            energy_curve=str(
+                details.get("energy_curve") or "restrained opening, confident build, clean resolve"
             ),
         )
     raise ValueError(f"Unsupported V2 prompt contract slot_type: {slot_type}")

@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
-
-from agno.team import Team
 
 from app.schemas.ad_workflow import (
     AdWorkflowGenerateRequest,
@@ -44,6 +42,11 @@ LEGACY_REFERENCE_NODE_IDS = {
     "bgm",
     "final-composition",
 }
+
+
+class WorkflowTeam(Protocol):
+    name: str | None
+    members: list[Any]
 
 
 def _format_timeline_time(seconds: int) -> str:
@@ -547,7 +550,7 @@ def _video_scene_prompt_input_asset_ids(
 
 def build_ad_workflow_graph(
     request: AdWorkflowGenerateRequest,
-    team: Team,
+    team: WorkflowTeam,
     data_dir: Path,
     workflow_id: str,
     media_provider: MediaProvider,

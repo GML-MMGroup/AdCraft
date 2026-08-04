@@ -17,7 +17,6 @@ from app.schemas.workflow_v2_style import (
     V2VisualStyleScopeAudit,
     V2VisualStyleScopeRepairOutput,
 )
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
@@ -256,30 +255,19 @@ class V2VisualStyleScopeService:
         if runtime is None:
             return None, None
         try:
-            rendered = V2HighRiskPromptRenderer().render(
-                prompt_id="v2.visual_style.scope_repair.v1",
-                context={
-                    "product_name": product_name or "Product",
-                    "raw_visual_style": original_contract.style_prompt,
-                    "identity_terms": terms,
-                },
-                identity={"path_kind": "normal"},
-            )
             result = runtime.run(
                 StructuredGenerationSpec(
                     stage_name="visual_style_scope_repair",
                     contract_name="V2VisualStyleScopeRepairOutput",
                     model_id=self._settings.llm_creative_model,
-                    system_prompt=rendered.prompt_text,
+                    system_prompt="",
                     input_payload={
                         "raw_visual_style": original_contract.style_prompt,
                         "product_name": product_name or "",
                         "product_identity_terms": terms,
                     },
                     output_model=V2VisualStyleScopeRepairOutput,
-                    trace_metadata={
-                        "prompt_registry_ref": rendered.prompt_registry_ref.model_dump(mode="json"),
-                    },
+                    trace_metadata={},
                 )
             )
             output = _repair_output(getattr(result, "output", result))
@@ -315,7 +303,10 @@ class V2VisualStyleScopeService:
     def _runtime_for_repair(self) -> StructuredGenerationRuntime | None:
         if self._structured_runtime is not None:
             return self._structured_runtime
-        if self._settings.agno_mock_mode or not (self._settings.llm_api_key or "").strip():
+        if (
+            self._settings.agent_runtime_mode == "fake"
+            or not (self._settings.llm_api_key or "").strip()
+        ):
             return None
         return StructuredGenerationRuntime(settings=self._settings)
 

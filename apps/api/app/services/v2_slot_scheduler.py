@@ -3,6 +3,7 @@ from copy import deepcopy
 from typing import Any
 
 from app.schemas.workflow_v2 import WorkflowItemV2, WorkflowNodeV2, WorkflowSlotV2, WorkflowV2
+from app.schemas.workflow_v2_composition import V2FinalCompositionInputSettlement
 from app.services.v2_main_to_multiview_consistency import (
     dependency_slot_ids_for_multiview,
     is_main_to_multiview_slot,
@@ -13,6 +14,7 @@ from app.services.v2_shot_reference_resolver import (
     V2ShotReferenceResolver,
     V2ShotReferenceResolverError,
 )
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_storyboard_defaults import shot_cell_slot_types
 
 
@@ -31,9 +33,11 @@ class V2SlotScheduler:
         *,
         asset_exists: Callable[[str], bool],
         shot_reference_resolver: V2ShotReferenceResolver | None = None,
+        simple_composition_plan_service: V2SimpleCompositionPlanService | None = None,
     ) -> None:
         self._asset_exists = asset_exists
         self._shot_reference_resolver = shot_reference_resolver
+        self._simple_composition_plan_service = simple_composition_plan_service
 
     def initial_slot_runtime(
         self,
@@ -326,6 +330,9 @@ class V2SlotScheduler:
         ]
 
     def final_inputs_ready(self, workflow: WorkflowV2) -> bool:
+        if self._simple_composition_plan_service is not None:
+            settlement = self.final_input_settlement(workflow)
+            return settlement.settled and bool(settlement.usable_video_slot_ids)
         storyboard_items = self.storyboard_items(workflow)
         if not storyboard_items:
             return False
@@ -335,7 +342,28 @@ class V2SlotScheduler:
                 return False
         return True
 
+    def final_input_settlement(
+        self,
+        workflow: WorkflowV2,
+    ) -> V2FinalCompositionInputSettlement:
+        if self._simple_composition_plan_service is None:
+            ready = self.final_inputs_ready(workflow)
+            return V2FinalCompositionInputSettlement(
+                settled=ready,
+                usable_video_slot_ids=[
+                    slot.slot_id for _item, slot in self.selected_shot_video_slots(workflow)
+                ],
+            )
+        return self._simple_composition_plan_service.inspect(workflow)
+
     def final_composition_dependency_error_code(self, workflow: WorkflowV2) -> str:
+        if self._simple_composition_plan_service is not None:
+            settlement = self.final_input_settlement(workflow)
+            if not settlement.settled:
+                return "composition_inputs_not_settled"
+            if not settlement.usable_video_slot_ids:
+                return "no_successful_video_segments"
+            return "final_composition_not_ready"
         storyboard_items = self.storyboard_items(workflow)
         if not storyboard_items:
             return "composition_input_missing"

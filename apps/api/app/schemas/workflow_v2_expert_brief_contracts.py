@@ -37,6 +37,30 @@ class V2ExpertBriefPlannerInput(BaseModel):
     specialist_handoffs: list[V2SpecialistHandoffContext] = Field(default_factory=list)
 
 
+class V2ProductExpertPlan(BaseModel):
+    product_briefs: list[V2ProductBrief] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class V2CharacterExpertPlan(BaseModel):
+    character_briefs: list[V2CharacterBrief] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class V2SceneExpertPlan(BaseModel):
+    scene_briefs: list[V2SceneBrief] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class V2BgmExpertPlan(BaseModel):
+    bgm_brief: V2BgmBrief
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class V2ExpertBriefPlannerOutput(BaseModel):
     script_brief_id: str
     script_version_id: str

@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
 
 
-ProviderCredentialConsumer = Literal["llm", "image", "video"]
+ProviderCredentialConsumer = Literal["llm", "text", "image", "video", "audio"]
 CredentialSource = Literal["project_dotenv", "process_environment", "unconfigured"]
 CredentialTestCapability = Literal["minimal_request", "unsupported"]
 

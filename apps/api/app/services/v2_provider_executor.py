@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 import hashlib
 from http.client import IncompleteRead, RemoteDisconnected
@@ -20,6 +20,10 @@ from app.schemas.workflow_v2 import (
     WorkflowMediaTypeV2,
     WorkflowSlotV2,
     WorkflowV2,
+)
+from app.schemas.seedance_inputs import (
+    SeedanceInputManifestAuditV1,
+    SeedanceInputManifestV1,
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_asset_store import V2AssetStoreService
@@ -54,11 +58,14 @@ from app.services.v2_runtime_prompt_governance import (
 )
 from app.tools.media_provider_factory import build_media_provider
 from app.tools.media_provider_protocol import (
+    DEFAULT_VIDEO_RATIO,
     SEEDANCE_SINGLE_TASK_DURATIONS_SECONDS,
     MediaApiError,
     MediaConfigurationError,
     MediaProvider,
 )
+from app.tools.media_response_parsing import _video_generation_task_id_from_response
+from app.tools.seedance_adapter import VolcengineSeedanceAdapter
 from app.tools.bgm_provider_factory import (
     bgm_provider_configuration_error,
     build_bgm_provider_adapter,
@@ -429,7 +436,10 @@ class V2ProviderExecutor:
                     error=exc,
                 )
             payload = apply_compiled_prompt_to_payload(payload, compiled_prompt)
-        elif not str(payload.get("provider_prompt") or "").strip():
+        elif (
+            slot.slot_type not in {"bgm_audio", "shot_video_segment"}
+            and not str(payload.get("provider_prompt") or "").strip()
+        ):
             return _prompt_governance_failure_result(
                 slot=slot,
                 payload=payload,
@@ -765,6 +775,119 @@ class V2ProviderExecutor:
                 error_code="provider_configuration_missing",
                 error_message=missing_message,
             )
+        if self._settings.media_mode.strip().lower() == "real":
+            prompt = str(
+                provider_payload.get("provider_prompt") or provider_payload.get("prompt") or ""
+            ).strip()
+            reference_assets = [
+                item
+                for item in provider_payload.get("reference_assets", [])
+                if isinstance(item, dict)
+            ]
+            reference_asset_ids = [
+                str(item)
+                for item in provider_payload.get("reference_asset_ids", [])
+                if str(item).strip()
+            ]
+            try:
+                if media_type == "image":
+                    provider = self._media_provider()
+                    image_request: dict[str, Any] = {
+                        "prompt": prompt,
+                        "slot_type": slot_type,
+                        "slot_id": str(provider_payload.get("node_id") or slot_type),
+                        "semantic_type": slot_type,
+                        "reference_assets": reference_assets,
+                        "submitted_reference_asset_ids": reference_asset_ids,
+                    }
+                    for field in ("provider_id", "provider_model_id"):
+                        if isinstance(value := provider_payload.get(field), str) and value.strip():
+                            image_request[field] = value.strip()
+                    output = provider.generate_v2_canonical_image(image_request, workflow_id)
+                elif media_type == "video":
+                    provider = self._media_provider()
+                    duration = int(provider_payload.get("duration_seconds") or 5)
+                    segment = {
+                        "order": 1,
+                        "scene_id": str(provider_payload.get("node_id") or "agent-canvas-node"),
+                        "prompt": prompt,
+                        "duration_seconds": duration,
+                        "input_assets": reference_assets,
+                        "input_asset_ids": reference_asset_ids,
+                    }
+                    if hasattr(provider, "submit_seedance_segment_task"):
+                        ratio = str(provider_payload.get("aspect_ratio") or DEFAULT_VIDEO_RATIO)
+                        resolution = str(
+                            provider_payload.get("resolution")
+                            or self._settings.video_generation_resolution
+                        )
+                        response = provider.submit_seedance_segment_task(  # type: ignore[attr-defined]
+                            segment,
+                            VolcengineSeedanceAdapter(self._settings),
+                            ratio,
+                            resolution,
+                        )
+                        output = {
+                            "provider": "volcengine-seedance-agent-canvas",
+                            "model": self._settings.video_generation_model,
+                            "segments": [
+                                {
+                                    **segment,
+                                    "status": response.get("status", "submitted"),
+                                    "task_id": _video_generation_task_id_from_response(response),
+                                }
+                            ],
+                        }
+                    else:
+                        output = provider.generate_storyboard_video(
+                            {
+                                **provider_payload,
+                                "provider_prompt": prompt,
+                                "duration_seconds": duration,
+                                "input_assets": reference_assets,
+                                "segments": [segment],
+                            },
+                            workflow_id,
+                        )
+                elif media_type == "audio":
+                    audio_payload = {
+                        **provider_payload,
+                        "provider_prompt": prompt,
+                        "prompt": prompt,
+                    }
+                    if (
+                        isinstance(
+                            provider_model_id := provider_payload.get("provider_model_id"), str
+                        )
+                        and provider_model_id.strip()
+                    ):
+                        audio_payload["model"] = provider_model_id.strip()
+                    output = self._generate_bgm_audio(audio_payload, workflow_id)
+                else:
+                    return V2ProviderResult(
+                        status="failed",
+                        media_type=media_type,
+                        error_code="provider_media_type_unsupported",
+                        error_message="Provider media type is unsupported.",
+                    )
+                return _result_from_provider_output(
+                    output,
+                    media_type=media_type,
+                    provider_payload=provider_payload,
+                    reference_asset_ids=reference_asset_ids,
+                )
+            except Exception as exc:  # noqa: BLE001 - provider errors become result state.
+                return V2ProviderResult(
+                    status="failed",
+                    media_type=media_type,
+                    provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                    reference_asset_ids=reference_asset_ids,
+                    error_code="provider_generation_failed",
+                    error_message=_bounded_provider_error_message(
+                        str(exc),
+                        _request_prompt_values((provider_payload,)),
+                    ),
+                )
         return self._placeholder_result(
             media_type=media_type,
             slot_type=slot_type,
@@ -772,6 +895,88 @@ class V2ProviderExecutor:
             provider_payload={**provider_payload, "workflow_id": workflow_id},
             reference_asset_ids=[],
         )
+
+    def execute_agent_canvas_seedance_video(
+        self,
+        *,
+        workflow_id: str,
+        node_id: str,
+        manifest: SeedanceInputManifestV1,
+        audit: SeedanceInputManifestAuditV1,
+    ) -> V2ProviderResult:
+        """Submit one already-validated Agent Canvas manifest to Seedance.
+
+        This path deliberately does not accept legacy segment dictionaries.  The
+        manifest carries every provider-visible input exactly once, while the
+        audit is the only durable payload snapshot.
+        """
+
+        missing_message = (
+            self._missing_real_config("video")
+            if self._settings.media_mode.strip().lower() == "real"
+            else None
+        )
+        provider_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
+        reference_asset_ids = [item.asset_id for item in manifest.media_inputs]
+        if missing_message and not self._settings.v2_provider_allow_fallback:
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+                error_code="provider_configuration_missing",
+                error_message=missing_message,
+            )
+        if self._settings.media_mode.strip().lower() != "real":
+            return self._placeholder_result(
+                media_type="video",
+                slot_type="agent_canvas_video",
+                provider="dev_placeholder_video",
+                provider_payload=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+            )
+        try:
+            provider = self._media_provider()
+            submit_manifest = getattr(provider, "submit_seedance_manifest_task", None)
+            if not callable(submit_manifest):
+                return V2ProviderResult(
+                    status="failed",
+                    media_type="video",
+                    provider_payload_snapshot=provider_payload,
+                    reference_asset_ids=reference_asset_ids,
+                    error_code="provider_reference_delivery_unavailable",
+                    error_message="The configured provider cannot submit a Seedance input manifest.",
+                )
+            response = submit_manifest(manifest, VolcengineSeedanceAdapter(self._settings))
+            task_id = _video_generation_task_id_from_response(response)
+            output = {
+                "provider": "volcengine-seedance-agent-canvas",
+                "model": manifest.model_id,
+                "segments": [
+                    {
+                        "order": 1,
+                        "scene_id": node_id,
+                        "status": response.get("status", "submitted"),
+                        "task_id": task_id,
+                        "duration_seconds": manifest.effective_duration_seconds,
+                    }
+                ],
+            }
+            return _result_from_provider_output(
+                output,
+                media_type="video",
+                provider_payload=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+            )
+        except Exception as exc:  # noqa: BLE001 - normalized below at the provider boundary.
+            return V2ProviderResult(
+                status="failed",
+                media_type="video",
+                provider_payload_snapshot=provider_payload,
+                reference_asset_ids=reference_asset_ids,
+                error_code="provider_generation_failed",
+                error_message=_bounded_provider_error_message(str(exc), ()),
+            )
 
     def poll_task(self, task: V2ProviderTask) -> V2ProviderResult:
         media_type = str(task.metadata.get("media_type") or "video")
@@ -854,6 +1059,115 @@ class V2ProviderExecutor:
             provider=task.provider,
             provider_model=task.provider_model,
             provider_payload_snapshot=task.provider_payload_snapshot,
+            metadata={"waiting_reason": "provider_task_still_running"},
+        )
+
+    def poll_minimal(
+        self,
+        *,
+        workflow_id: str,
+        media_type: WorkflowMediaTypeV2,
+        remote_task_id: str,
+        provider_payload: dict[str, Any],
+        result_descriptor: dict[str, Any],
+        download_media: bool,
+        output_relative_path: Path | None = None,
+    ) -> V2ProviderResult:
+        """Poll one node-native provider task without item or slot state."""
+
+        try:
+            if media_type == "audio":
+                asset = self._retrieve_bgm_audio_task_for_payload(
+                    remote_task_id=remote_task_id,
+                    workflow_id=workflow_id,
+                    provider_id=_result_descriptor_provider_id(
+                        result_descriptor,
+                        provider_payload,
+                    ),
+                    provider_payload=provider_payload,
+                    download_media=download_media,
+                )
+                if not download_media and str(asset.get("status") or "").lower() in {
+                    "succeeded",
+                    "completed",
+                }:
+                    return V2ProviderResult(
+                        status="completed",
+                        media_type="audio",
+                        remote_task_id=remote_task_id,
+                        provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                        metadata={"provider_asset": sanitize_context_for_llm_text(asset)},
+                    )
+                return _result_from_provider_asset(
+                    asset,
+                    media_type="audio",
+                    provider=str(result_descriptor.get("provider") or "configured_audio"),
+                    provider_model=str(
+                        result_descriptor.get("provider_model") or self._settings.bgm_model or ""
+                    ),
+                    provider_payload=provider_payload,
+                    reference_asset_ids=[],
+                )
+            provider = self._media_provider()
+            if media_type == "video" and hasattr(provider, "retrieve_storyboard_video_task"):
+                asset = provider.retrieve_storyboard_video_task(  # type: ignore[attr-defined]
+                    remote_task_id,
+                    workflow_id=workflow_id,
+                    source_assets=list(provider_payload.get("reference_asset_ids") or []),
+                    duration_seconds=int(provider_payload.get("duration_seconds") or 5),
+                    segment_order=1,
+                    scene_id=str(provider_payload.get("node_id") or "agent-canvas-node"),
+                    prompt=str(provider_payload.get("provider_prompt") or ""),
+                    resolution=str(
+                        provider_payload.get("resolution")
+                        or self._settings.video_generation_resolution
+                    ),
+                    ratio=str(provider_payload.get("aspect_ratio") or DEFAULT_VIDEO_RATIO),
+                    download_media=download_media,
+                    output_relative_path=output_relative_path,
+                )
+                if not download_media and str(asset.get("status") or "").lower() in {
+                    "succeeded",
+                    "completed",
+                }:
+                    return V2ProviderResult(
+                        status="completed",
+                        media_type="video",
+                        remote_task_id=remote_task_id,
+                        provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                        metadata={"provider_asset": sanitize_context_for_llm_text(asset)},
+                    )
+                return _result_from_provider_asset(
+                    asset,
+                    media_type="video",
+                    provider=str(
+                        result_descriptor.get("provider") or "volcengine-seedance-agent-canvas"
+                    ),
+                    provider_model=str(
+                        result_descriptor.get("provider_model")
+                        or self._settings.video_generation_model
+                    ),
+                    provider_payload=provider_payload,
+                    reference_asset_ids=list(provider_payload.get("reference_asset_ids") or []),
+                )
+        except Exception as exc:  # noqa: BLE001 - polling errors remain retryable.
+            return V2ProviderResult(
+                status="failed",
+                media_type=media_type,
+                remote_task_id=remote_task_id,
+                provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                error_code="provider_connection_error",
+                error_message=_bounded_provider_error_message(
+                    str(exc),
+                    _request_prompt_values((provider_payload,)),
+                ),
+                metadata={"retryable": True},
+            )
+        return V2ProviderResult(
+            status="waiting",
+            media_type=media_type,
+            remote_task_id=remote_task_id,
+            provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
             metadata={"waiting_reason": "provider_task_still_running"},
         )
 
@@ -1658,7 +1972,16 @@ class V2ProviderExecutor:
         workflow_id: str,
     ) -> dict[str, Any]:
         if self._uses_default_provider_factory:
-            adapter = build_bgm_provider_adapter(self._settings, self._data_dir)
+            resolved_provider_id = _resolved_bgm_provider_id(bgm_plan)
+            adapter = (
+                build_bgm_provider_adapter(
+                    self._settings,
+                    self._data_dir,
+                    resolved_provider_id=resolved_provider_id,
+                )
+                if resolved_provider_id is not None
+                else build_bgm_provider_adapter(self._settings, self._data_dir)
+            )
             asset = adapter.generate_bgm_audio(bgm_plan, workflow_id)
             return {
                 "provider": asset.get("provider") or self._settings.bgm_provider,
@@ -1676,35 +1999,60 @@ class V2ProviderExecutor:
         return provider.generate_bgm_audio(bgm_plan, workflow_id)  # type: ignore[attr-defined]
 
     def _retrieve_bgm_audio_task(self, task: V2ProviderTask) -> dict[str, Any]:
+        provider_payload = {
+            **task.provider_payload_snapshot,
+            **(
+                dict(task.metadata.get("provider_asset") or {})
+                if isinstance(task.metadata.get("provider_asset"), dict)
+                else {}
+            ),
+            "expired_remote_reconciliation": task.metadata.get("expired_remote_reconciliation"),
+        }
+        return self._retrieve_bgm_audio_task_for_payload(
+            remote_task_id=task.remote_task_id or "",
+            workflow_id=task.workflow_id,
+            provider_id=str(task.provider or "").strip() or None,
+            provider_payload=provider_payload,
+        )
+
+    def _retrieve_bgm_audio_task_for_payload(
+        self,
+        *,
+        remote_task_id: str,
+        workflow_id: str,
+        provider_id: str | None,
+        provider_payload: dict[str, Any],
+        download_media: bool = True,
+    ) -> dict[str, Any]:
         if self._uses_default_provider_factory:
-            adapter = build_bgm_provider_adapter(self._settings, self._data_dir)
-            provider_payload = {
-                **task.provider_payload_snapshot,
-                **(
-                    dict(task.metadata.get("provider_asset") or {})
-                    if isinstance(task.metadata.get("provider_asset"), dict)
-                    else {}
-                ),
-                "expired_remote_reconciliation": task.metadata.get("expired_remote_reconciliation"),
-            }
+            resolved_provider_id = provider_id or _resolved_bgm_provider_id(provider_payload)
+            adapter = (
+                build_bgm_provider_adapter(
+                    self._settings,
+                    self._data_dir,
+                    resolved_provider_id=resolved_provider_id,
+                )
+                if resolved_provider_id is not None
+                else build_bgm_provider_adapter(self._settings, self._data_dir)
+            )
             return adapter.retrieve_bgm_audio_task(
-                task.remote_task_id or "",
-                workflow_id=task.workflow_id,
+                remote_task_id,
+                workflow_id=workflow_id,
                 provider_payload=provider_payload,
-                download_media=True,
+                download_media=download_media,
             )
         provider = self._media_provider()
         if not hasattr(provider, "retrieve_bgm_audio_task"):
             return {
-                "asset_id": task.asset_id,
-                "task_id": task.remote_task_id,
+                "asset_id": "bgm-audio",
+                "task_id": remote_task_id,
                 "status": "submitted",
             }
         return provider.retrieve_bgm_audio_task(  # type: ignore[attr-defined]
-            task.remote_task_id or "",
-            workflow_id=task.workflow_id,
-            provider_payload=task.provider_payload_snapshot,
-            download_media=True,
+            remote_task_id,
+            workflow_id=workflow_id,
+            provider_payload=provider_payload,
+            download_media=download_media,
         )
 
     def _missing_real_config(self, media_type: str) -> str | None:
@@ -1850,6 +2198,27 @@ def _provider_output_reference_wire_audit(output: dict[str, Any]) -> dict[str, d
     if not isinstance(candidate, dict):
         return {}
     return {"reference_wire_audit": sanitize_context_for_llm_text(candidate)}
+
+
+def _resolved_bgm_provider_id(bgm_plan: Mapping[str, Any]) -> str | None:
+    value = bgm_plan.get("provider_id")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _result_descriptor_provider_id(
+    result_descriptor: Mapping[str, Any],
+    provider_payload: Mapping[str, Any],
+) -> str | None:
+    for value in (
+        result_descriptor.get("provider"),
+        provider_payload.get("provider_id"),
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _provider_id_for_slot(slot: WorkflowSlotV2, media_mode: str) -> str:

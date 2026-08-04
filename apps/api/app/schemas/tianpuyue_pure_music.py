@@ -13,7 +13,7 @@ class TianpuyueInstrumentalGenerateRequest(BaseModel):
 
     prompt: str = Field(min_length=1)
     model: str = Field(min_length=1)
-    callback_url: str | None = None
+    callback_url: str = Field(min_length=1)
 
 
 class TianpuyueInstrumentalGenerateData(BaseModel):

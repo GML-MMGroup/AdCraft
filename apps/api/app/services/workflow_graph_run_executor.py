@@ -268,7 +268,7 @@ class WorkflowCanvasExecutionService(
             WorkflowNodeRunRequest(
                 workflow_id=workflow_id,
                 node_type=node_id,
-                mode="mock" if self._settings.agno_mock_mode else "real",
+                mode="mock" if self._settings.agent_runtime_mode == "fake" else "real",
                 media_mode=self._settings.media_mode,
                 force_rerun=True,
                 revision=request.revision,

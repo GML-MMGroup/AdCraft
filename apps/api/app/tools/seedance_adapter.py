@@ -6,6 +6,7 @@ from urllib.parse import quote, urlparse
 
 from app.core.config import Settings
 from app.schemas.ad_workflow import SUPPORTED_VIDEO_ASPECT_RATIOS, SUPPORTED_VIDEO_RESOLUTIONS
+from app.schemas.seedance_inputs import SeedanceInputManifestV1, SeedanceMediaInputV1
 
 from app.tools.media_provider_protocol import (
     ARK_SEEDANCE_RESOLUTION,
@@ -61,6 +62,22 @@ class VolcengineSeedanceAdapter:
             "camera_fixed": bool(segment.get("camera_fixed", False)),
         }
 
+    def payload_for_manifest(self, manifest: SeedanceInputManifestV1) -> dict[str, Any]:
+        """Serialize the canonical Agent Canvas manifest without rediscovery."""
+
+        content: list[dict[str, Any]] = [{"type": "text", "text": manifest.prompt}]
+        content.extend(_seedance_manifest_content_item(item) for item in manifest.media_inputs)
+        return {
+            "model": manifest.model_id,
+            "content": content,
+            "resolution": _normalize_video_resolution(manifest.resolution),
+            "ratio": _normalize_video_ratio(manifest.aspect_ratio),
+            "duration": manifest.effective_duration_seconds,
+            "generate_audio": manifest.generate_audio,
+            "watermark": False,
+            "camera_fixed": False,
+        }
+
     def task_url(self, task_id: str) -> str:
         return _video_generation_task_url(
             self._settings.video_generation_endpoint or "",
@@ -102,6 +119,36 @@ def _seedance_image_content_items(input_assets: Any) -> list[dict[str, Any]]:
             }
         )
     return content_items
+
+
+def _seedance_manifest_content_item(item: SeedanceMediaInputV1) -> dict[str, Any]:
+    if item.provider_input_type == "data_url" and item.media_type != "image":
+        raise ValueError("provider_reference_delivery_unavailable")
+    if item.provider_input_type == "provider_file_id":
+        return {
+            "type": "provider_file_id",
+            "label": item.label,
+            "role": _seedance_wire_role(item),
+            "file_id": item.provider_input_value,
+        }
+    input_type = item.provider_input_type
+    if input_type == "provider_uploaded_url":
+        input_type = f"{item.media_type}_url"
+    if input_type == "data_url":
+        input_type = "image_url"
+    expected_type = f"{item.media_type}_url"
+    if input_type != expected_type:
+        raise ValueError("provider_reference_delivery_unavailable")
+    return {
+        "type": input_type,
+        "label": item.label,
+        "role": _seedance_wire_role(item),
+        input_type: {"url": item.provider_input_value},
+    }
+
+
+def _seedance_wire_role(item: SeedanceMediaInputV1) -> str:
+    return "reference_image" if item.media_type == "image" else item.input_role
 
 
 def _is_seedance_compatible_image_input(value: str) -> bool:

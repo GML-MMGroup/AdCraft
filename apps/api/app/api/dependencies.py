@@ -1,21 +1,26 @@
-from app.core.config import PROJECT_ROOT, get_settings
-from app.services.ad_workflow import AdWorkflowService
-from app.services.agent_conversations import AgentConversationService
+from collections.abc import Iterator
+
+from fastapi import Depends
+
+from app.core.config import PROJECT_ROOT, Settings, get_settings
+from app.persistence.database import create_v2_database
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.services.asset_library import AssetLibraryService
 from app.services.asset_reference_suggestions import AssetReferenceSuggestionService
 from app.services.assets import AssetService
-from app.services.chat_workflow import ChatWorkflowService
-from app.services.chat_workflow_stream import ChatWorkflowStreamService
 from app.services.canvas_runtime_events import CanvasRuntimeEventService, CanvasRuntimeService
 from app.services.front_desk import FrontDeskService
 from app.services.final_composition_timeline import FinalCompositionTimelineService
 from app.services.media_tasks import MediaTaskService
 from app.services.provider_identity_certification import IdentityCertificationRegistry
 from app.services.provider_credentials import (
+    CredentialSettingsError,
     DotenvCredentialStore,
+    LegacyVolcengineCredentialAdapter,
+    ProviderConnectionService,
     ProviderCredentialRegistry,
-    RuntimeCredentialService,
 )
+from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.video_editing import VideoEditingService
 from app.services.workflow_graph import WorkflowGraphService
 from app.services.workflow_input_resolver import WorkflowNodeInputResolver
@@ -28,16 +33,8 @@ from app.services.workflow_quality_review import WorkflowQualityReviewService
 from app.services.workflow_working_versions import WorkflowWorkingVersionService
 
 
-def get_ad_workflow_service() -> AdWorkflowService:
-    return AdWorkflowService(settings=get_settings())
-
-
 def get_front_desk_service() -> FrontDeskService:
     return FrontDeskService(settings=get_settings())
-
-
-def get_chat_workflow_service() -> ChatWorkflowService:
-    return ChatWorkflowService(settings=get_settings())
 
 
 def get_asset_service() -> AssetService:
@@ -52,20 +49,12 @@ def get_asset_reference_suggestion_service() -> AssetReferenceSuggestionService:
     return AssetReferenceSuggestionService(settings=get_settings())
 
 
-def get_chat_workflow_stream_service() -> ChatWorkflowStreamService:
-    return ChatWorkflowStreamService(settings=get_settings())
-
-
 def get_canvas_runtime_service() -> CanvasRuntimeService:
     return CanvasRuntimeService(settings=get_settings())
 
 
 def get_canvas_runtime_event_service() -> CanvasRuntimeEventService:
     return CanvasRuntimeEventService(data_dir=get_settings().media_data_dir)
-
-
-def get_agent_conversation_service() -> AgentConversationService:
-    return AgentConversationService(settings=get_settings())
 
 
 def get_video_editing_service() -> VideoEditingService:
@@ -120,13 +109,73 @@ def get_workflow_working_version_service() -> WorkflowWorkingVersionService:
     return WorkflowWorkingVersionService(settings=get_settings())
 
 
-def get_runtime_credential_service() -> RuntimeCredentialService:
+def get_runtime_credential_service() -> Iterator[LegacyVolcengineCredentialAdapter]:
+    """Keep the legacy Volcengine endpoint on the canonical mutation path."""
+
+    settings = get_settings()
+    database = create_v2_database(settings.media_data_dir)
+    try:
+        yield LegacyVolcengineCredentialAdapter(
+            _provider_connection_service(settings, ProviderModelRepository(database))
+        )
+    finally:
+        database.dispose()
+
+
+def get_provider_connection_service(
+    settings: Settings = Depends(get_settings),
+) -> Iterator[ProviderConnectionService]:
+    """Build the canonical local provider configuration service per request."""
+
+    database = create_v2_database(settings.media_data_dir)
+    service = _provider_connection_service(settings, ProviderModelRepository(database))
+    try:
+        yield service
+    finally:
+        database.dispose()
+
+
+def get_provider_model_catalog_service(
+    settings: Settings = Depends(get_settings),
+) -> Iterator[ProviderModelCatalogService]:
+    """Build catalog policy from SQLite and current local connection state."""
+
+    database = create_v2_database(settings.media_data_dir)
+    repository = ProviderModelRepository(database)
+    connection_service = _provider_connection_service(settings, repository)
+
+    def provider_available(provider_id: str) -> bool:
+        if provider_id == "fake":
+            return True
+        try:
+            return connection_service.status(provider_id).connection_state == "configured"
+        except CredentialSettingsError:
+            return False
+
+    service = ProviderModelCatalogService(repository, provider_available=provider_available)
+    try:
+        yield service
+    finally:
+        database.dispose()
+
+
+def _provider_connection_service(
+    settings: Settings,
+    repository: ProviderModelRepository,
+) -> ProviderConnectionService:
     registry = ProviderCredentialRegistry()
-    definition = registry.get("volcengine_ark")
-    return RuntimeCredentialService(
+    service = ProviderConnectionService(
         registry=registry,
         dotenv_store=DotenvCredentialStore(
             PROJECT_ROOT,
-            allowed_fields={binding.dotenv_field for binding in definition.bindings.values()},
+            allowed_fields={
+                binding.dotenv_field
+                for provider_id in registry.provider_ids
+                for binding in registry.get(provider_id).bindings.values()
+            },
         ),
+        metadata_repository=repository,
+        settings_loader=lambda: get_settings(),
     )
+    service.migrate_legacy_siliconflow_text_key()
+    return service

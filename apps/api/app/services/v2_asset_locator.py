@@ -3,7 +3,7 @@ from pathlib import Path
 from app.schemas.workflow_v2 import V2AssetLocatorResponse, WorkflowV2
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_workflow_assets import _display_name, _normalize_semantic_type
-from app.services.v2_workflow_store import V2WorkflowStore
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 
 
 class V2AssetLocatorError(RuntimeError):
@@ -15,11 +15,11 @@ class V2AssetLocatorError(RuntimeError):
 class V2AssetLocatorResolver:
     def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
-        self._workflow_store = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
         self._asset_store = V2AssetStoreService(data_dir)
 
     def resolve(self, workflow_id: str, locator: str) -> V2AssetLocatorResponse:
-        workflow = self._workflow_store.load_workflow(workflow_id)
+        workflow = self._authoring_runtime.read_model.assemble(workflow_id)
         kind, value = _parse_locator(locator)
         if kind == "slot":
             slot = _find_slot(workflow, value)

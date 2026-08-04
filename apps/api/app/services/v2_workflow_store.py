@@ -27,6 +27,13 @@ class V2WorkflowStore:
         self._data_dir = data_dir
 
     def load_workflow(self, workflow_id: str) -> WorkflowV2:
+        """Compatibility read of the operational JSON projection source."""
+
+        return self.read_projection_source(workflow_id)
+
+    def read_projection_source(self, workflow_id: str) -> WorkflowV2:
+        """Read the current JSON projection without treating it as authoring truth."""
+
         from app.services.workflow_v2 import WorkflowV2Error
 
         path = workflow_v2_path(self._data_dir, workflow_id)
@@ -37,7 +44,22 @@ class V2WorkflowStore:
             raise WorkflowV2Error("unsupported_workflow_schema_version")
         return _normalize_shot_primary_scenes(WorkflowV2.model_validate(payload))
 
+    def load_optional_projection_source(self, workflow_id: str) -> WorkflowV2 | None:
+        """Return an existing projection source without raising for an absent file."""
+
+        path = workflow_v2_path(self._data_dir, workflow_id)
+        if not path.is_file():
+            return None
+        return self.read_projection_source(workflow_id)
+
     def save_workflow(self, workflow: WorkflowV2) -> WorkflowV2:
+        """Deprecated projection-only compatibility writer for test and import setup."""
+
+        return self.write_projection_atomic(workflow)
+
+    def write_projection_atomic(self, workflow: WorkflowV2) -> WorkflowV2:
+        """Publish an operational projection atomically under the Workflow lock."""
+
         with v2_workflow_lock(self._data_dir, workflow.workflow_id):
             path = workflow_v2_path(self._data_dir, workflow.workflow_id)
             path.parent.mkdir(parents=True, exist_ok=True)

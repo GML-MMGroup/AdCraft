@@ -185,6 +185,25 @@ class V2ShotVideoPromptPlan(_PromptContractBase):
         return [item for item in [str(item).strip() for item in value] if item]
 
 
+class V2BgmPromptPlan(_SpecialistPromptContract):
+    slot_type: Literal["bgm_audio"] = "bgm_audio"
+    music_brief: str
+    duration_seconds: float = Field(gt=0, le=3_600)
+    instrumental_only: Literal[True] = True
+    no_vocals: Literal[True] = True
+    no_lyrics: Literal[True] = True
+    pace: str
+    energy_curve: str
+
+    @field_validator("music_brief", "pace", "energy_curve", mode="after")
+    @classmethod
+    def strip_music_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("field must not be empty")
+        return value
+
+
 V2PromptContractModel = (
     V2ProductMainPromptPlan
     | V2ProductMultiViewPromptPlan
@@ -194,6 +213,7 @@ V2PromptContractModel = (
     | V2SceneMultiViewPromptPlan
     | V2ShotCellPromptPlan
     | V2ShotVideoPromptPlan
+    | V2BgmPromptPlan
 )
 
 
@@ -283,6 +303,7 @@ _PROMPT_CONTRACT_MODELS: dict[str, type[BaseModel]] = {
     "shot_cell_3": V2ShotCellPromptPlan,
     "shot_cell_4": V2ShotCellPromptPlan,
     "shot_video_segment": V2ShotVideoPromptPlan,
+    "bgm_audio": V2BgmPromptPlan,
 }
 
 

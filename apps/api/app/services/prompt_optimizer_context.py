@@ -156,11 +156,19 @@ def _identity_model_id_for_optimizer(
             "scene-generation",
             "storyboard",
         }:
-            return settings.image_generation_model if not settings.agno_mock_mode else "mock-image"
+            return (
+                settings.image_generation_model
+                if not settings.agent_runtime_mode == "fake"
+                else "mock-image"
+            )
         if node_type == "storyboard-video-generation":
-            return settings.video_generation_model if not settings.agno_mock_mode else "mock-video"
+            return (
+                settings.video_generation_model
+                if not settings.agent_runtime_mode == "fake"
+                else "mock-video"
+            )
         if node_type == "bgm":
-            if settings.agno_mock_mode:
+            if settings.agent_runtime_mode == "fake":
                 return "mock-bgm"
             return settings.bgm_model or "configured-bgm"
         return "unknown"

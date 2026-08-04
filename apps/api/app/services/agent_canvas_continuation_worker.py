@@ -1,0 +1,160 @@
+"""Bounded worker for durable Agent Canvas continuation deliveries."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Protocol
+
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
+from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
+
+
+class _TurnResult(Protocol):
+    status: str
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True)
+class ContinuationWorkerCycle:
+    claimed: int
+    completed: int
+    retried: int
+    failed: int
+
+
+class AgentCanvasContinuationWorker:
+    """Claim and process one small continuation batch without sleeping."""
+
+    def __init__(
+        self,
+        outbox: AgentCanvasContinuationOutboxRepository,
+        *,
+        process_turn: Callable[[str], _TurnResult],
+        clock: Callable[[], datetime] | None = None,
+        worker_id: str,
+        batch_limit: int = 8,
+        lease_duration: timedelta = timedelta(seconds=90),
+        base_backoff: timedelta = timedelta(seconds=5),
+        maximum_backoff: timedelta = timedelta(minutes=5),
+        jitter: Callable[[int], timedelta] | None = None,
+        fail_turn: Callable[[str, str, str], object] | None = None,
+    ) -> None:
+        self._outbox = outbox
+        self._process_turn = process_turn
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+        self._worker_id = worker_id
+        self._batch_limit = batch_limit
+        self._lease_duration = lease_duration
+        self._base_backoff = base_backoff
+        self._maximum_backoff = maximum_backoff
+        self._jitter = jitter or (lambda _: timedelta(0))
+        self._fail_turn = fail_turn
+
+    def run_once(self) -> ContinuationWorkerCycle:
+        claimed = self._outbox.claim_due(
+            worker_id=self._worker_id,
+            now=self._clock(),
+            batch_limit=self._batch_limit,
+            lease_duration=self._lease_duration,
+        )
+        completed = 0
+        retried = 0
+        failed = 0
+        for delivery in claimed:
+            outcome = self._process_one(delivery)
+            completed += outcome == "completed"
+            retried += outcome == "retried"
+            failed += outcome == "failed"
+        return ContinuationWorkerCycle(
+            claimed=len(claimed),
+            completed=completed,
+            retried=retried,
+            failed=failed,
+        )
+
+    def _process_one(self, delivery: ContinuationDeliveryV2) -> str:
+        try:
+            turn = self._process_turn(delivery.continuation_turn_id)
+        except Exception as error:  # noqa: BLE001 - each delivery is isolated.
+            return self._record_failure(
+                delivery,
+                error_code="continuation_dispatch_failed",
+                error_message=str(error) or "Continuation dispatch failed.",
+            )
+
+        if turn.status == "completed":
+            self._outbox.complete(
+                delivery.continuation_id,
+                worker_id=self._worker_id,
+                lease_generation=delivery.lease_generation,
+                now=self._clock(),
+            )
+            return "completed"
+        if turn.status == "failed":
+            return self._record_terminal(
+                delivery,
+                error_code=getattr(turn, "error_code", None) or "continuation_dispatch_failed",
+                error_message=getattr(turn, "error_message", None) or "Continuation turn failed.",
+            )
+        return self._record_failure(
+            delivery,
+            error_code="continuation_dispatch_incomplete",
+            error_message="Continuation turn remains nonterminal.",
+        )
+
+    def _record_failure(
+        self,
+        delivery: ContinuationDeliveryV2,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> str:
+        next_attempt = delivery.attempt_count + 1
+        if next_attempt >= delivery.max_attempts:
+            return self._record_terminal(
+                delivery,
+                error_code="continuation_retry_exhausted",
+                error_message=error_message,
+            )
+        delay = min(
+            self._base_backoff * (2**delivery.attempt_count),
+            self._maximum_backoff,
+        )
+        self._outbox.schedule_retry(
+            delivery.continuation_id,
+            worker_id=self._worker_id,
+            lease_generation=delivery.lease_generation,
+            next_attempt_at=self._clock() + delay + self._jitter(next_attempt),
+            error_code=error_code,
+            error_message=error_message,
+            now=self._clock(),
+        )
+        return "retried"
+
+    def _record_terminal(
+        self,
+        delivery: ContinuationDeliveryV2,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> str:
+        self._outbox.fail(
+            delivery.continuation_id,
+            worker_id=self._worker_id,
+            lease_generation=delivery.lease_generation,
+            error_code=error_code,
+            error_message=error_message,
+            now=self._clock(),
+        )
+        if self._fail_turn is not None:
+            self._fail_turn(
+                delivery.continuation_turn_id,
+                error_code,
+                error_message[:1_024],
+            )
+        return "failed"

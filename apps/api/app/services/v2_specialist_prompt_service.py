@@ -8,14 +8,12 @@ from app.schemas.workflow_v2 import (
     V2SpecialistPromptResult,
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 from app.services.v2_prompt_contract_adapter import (
     is_prompt_contract_slot,
     prompt_contract_from_specialist_result,
     specialist_result_from_prompt_contract,
 )
 from app.services.v2_prompt_contract_quality import validate_prompt_contract
-from app.services.v2_skill_context import V2SkillContextService
 from app.services.v2_specialist_configs import V2SpecialistConfig, specialist_config_for
 from app.services.v2_specialist_llm_client import (
     V2SpecialistLLMClient,
@@ -27,7 +25,6 @@ from app.services.v2_specialist_ownership import (
     validate_specialist_owned_plan,
     validate_specialist_slot_target,
 )
-from app.services.v2_prompt_registry import V2PromptRegistry
 from app.services.v2_versioning import V2_SPECIALIST_MATERIALIZER_VERSION
 from app.schemas.workflow_v2_specialist_ownership import (
     V2SpecialistOwnedPlan,
@@ -49,7 +46,6 @@ class V2SpecialistPromptService:
     ) -> None:
         self._settings = settings or get_settings()
         self._llm_client = llm_client
-        self._skill_context = V2SkillContextService()
 
     def materialize(
         self,
@@ -59,7 +55,6 @@ class V2SpecialistPromptService:
             sanitize_context_for_llm_text(request.model_dump(mode="json"))
         )
         config = self._config_for_request(safe_request)
-        safe_request = _with_skill_context(safe_request, self._skill_context)
         if config.specialist == "composition_tool":
             result = _deterministic_specialist_result(
                 safe_request,
@@ -76,18 +71,24 @@ class V2SpecialistPromptService:
                 _validate_specialist_result(result)
                 return _with_result_provenance(result, safe_request, config)
             except V2SpecialistLLMClientError as exc:
-                if self._settings.v2_prompt_materializer_strict:
-                    raise V2SpecialistPromptError(
-                        "prompt_materialization_failed",
-                        f"{exc.code}: {exc}",
-                    ) from exc
-                result = _deterministic_specialist_result(
-                    safe_request,
-                    mode="fallback",
-                    warnings=[_warning(exc.code, str(exc))],
-                    model_id=None,
-                )
-                return _with_result_provenance(result, safe_request, config)
+                if (
+                    not self._settings.v2_prompt_materializer_strict
+                    and exc.code == "specialist_output_quality_failed"
+                ):
+                    return self.materialize_fallback(
+                        safe_request,
+                        warning={
+                            "code": "specialist_content_quality_fallback_used",
+                            "message": (
+                                "The specialist model output failed content quality "
+                                "validation; a deterministic slot-safe prompt was used."
+                            ),
+                        },
+                    )
+                raise V2SpecialistPromptError(
+                    "prompt_materialization_failed",
+                    f"{exc.code}: {exc}",
+                ) from exc
             except V2SpecialistPromptError:
                 raise
 
@@ -110,7 +111,6 @@ class V2SpecialistPromptService:
             sanitize_context_for_llm_text(request.model_dump(mode="json"))
         )
         config = self._config_for_request(safe_request)
-        safe_request = _with_skill_context(safe_request, self._skill_context)
         result = _deterministic_specialist_result(
             safe_request,
             mode="fallback",
@@ -123,29 +123,14 @@ class V2SpecialistPromptService:
         self,
         config: V2SpecialistConfig,
     ) -> tuple[V2PromptMaterializerMode, list[dict[str, Any]]]:
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             return "mock", []
-        if (
-            config.is_llm_specialist
-            and not config.model_id
-            and (
-                self._settings.llm_api_key
-                or self._settings.llm_base_url
-                or self._settings.v2_prompt_materializer_strict
-            )
-        ):
+        if config.is_llm_specialist and not config.model_id:
             raise V2SpecialistPromptError(
                 "specialist_model_not_configured",
                 f"{config.model_env_key or config.specialist} is not configured.",
             )
-        if self._real_specialist_available(config):
-            return "real", []
-        if self._settings.v2_prompt_materializer_strict:
-            raise V2SpecialistPromptError(
-                "prompt_materialization_failed",
-                "Real specialist prompt materializer is unavailable.",
-            )
-        return ("fallback", [_warning("real_specialist_unavailable")])
+        return "real", []
 
     def _config_for_request(
         self,
@@ -172,14 +157,6 @@ class V2SpecialistPromptService:
                 validation.error_message,
             )
         return config
-
-    def _real_specialist_available(self, config: V2SpecialistConfig) -> bool:
-        return bool(
-            config.is_llm_specialist
-            and self._settings.llm_api_key
-            and self._settings.llm_base_url
-            and config.model_id
-        )
 
     def _real_client(self) -> V2SpecialistLLMClient:
         if self._llm_client is None:
@@ -209,23 +186,6 @@ def _visual_style_prompt(request: V2SpecialistPromptRequest) -> str | None:
         return None
     normalized = style_prompt.strip()
     return normalized or None
-
-
-def _with_skill_context(
-    request: V2SpecialistPromptRequest,
-    skill_context_service: V2SkillContextService,
-) -> V2SpecialistPromptRequest:
-    if request.skill_context.get("skill_ids"):
-        return request
-    specialist = str(request.agent_route.get("specialist") or "")
-    slot_type = str(request.target.get("slot_type") or "")
-    media_type = str(request.target.get("media_type") or "")
-    context = skill_context_service.skill_context_for_specialist(
-        specialist=specialist,
-        slot_type=slot_type,
-        media_type=media_type,
-    )
-    return request.model_copy(update={"skill_context": context.model_dump(mode="json")})
 
 
 def _target_from_request(request: V2SpecialistPromptRequest) -> V2GenerationTarget:
@@ -309,38 +269,8 @@ def _materializer_prompt_provenance(
     request: V2SpecialistPromptRequest,
     config: V2SpecialistConfig,
 ) -> dict[str, Any]:
-    slot_type = str(request.target.get("slot_type") or "")
-    media_type = request.target.get("media_type")
-    media_type = media_type if isinstance(media_type, str) else None
-    render_result = V2HighRiskPromptRenderer().render(
-        prompt_id="v2.specialist.materializer.v1",
-        context={
-            "specialist": config.specialist,
-            "slot_type": slot_type,
-        },
-        identity={
-            "workflow_id": request.workflow_id,
-            "node_id": request.target.get("node_id"),
-            "item_id": request.target.get("item_id"),
-            "slot_id": request.target.get("slot_id"),
-            "slot_type": slot_type,
-            "media_type": media_type,
-            "specialist": config.specialist,
-            "path_kind": "normal",
-        },
-    )
-    lineage = V2PromptRegistry().lineage_for_render(render_result).model_dump(mode="json")
-    payload = {
-        "materializer_prompt_registry_ref": render_result.prompt_registry_ref.model_dump(
-            mode="json"
-        ),
-        "materializer_prompt_lineage": lineage,
-    }
-    if isinstance(render_result.metadata.get("prompt_content_profile"), dict):
-        payload["materializer_prompt_content_profile"] = render_result.metadata[
-            "prompt_content_profile"
-        ]
-    return sanitize_context_for_llm_text(payload)
+    del request, config
+    return {}
 
 
 def _owned_plan_for_result(
