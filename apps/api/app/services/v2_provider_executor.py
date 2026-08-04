@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 import hashlib
 from http.client import IncompleteRead, RemoteDisconnected
@@ -790,8 +790,8 @@ class V2ProviderExecutor:
                 if str(item).strip()
             ]
             try:
-                provider = self._media_provider()
                 if media_type == "image":
+                    provider = self._media_provider()
                     image_request: dict[str, Any] = {
                         "prompt": prompt,
                         "slot_type": slot_type,
@@ -805,6 +805,7 @@ class V2ProviderExecutor:
                             image_request[field] = value.strip()
                     output = provider.generate_v2_canonical_image(image_request, workflow_id)
                 elif media_type == "video":
+                    provider = self._media_provider()
                     duration = int(provider_payload.get("duration_seconds") or 5)
                     segment = {
                         "order": 1,
@@ -861,10 +862,7 @@ class V2ProviderExecutor:
                         and provider_model_id.strip()
                     ):
                         audio_payload["model"] = provider_model_id.strip()
-                    output = provider.generate_bgm_audio(
-                        audio_payload,
-                        workflow_id,
-                    )
+                    output = self._generate_bgm_audio(audio_payload, workflow_id)
                 else:
                     return V2ProviderResult(
                         status="failed",
@@ -1077,8 +1075,40 @@ class V2ProviderExecutor:
     ) -> V2ProviderResult:
         """Poll one node-native provider task without item or slot state."""
 
-        provider = self._media_provider()
         try:
+            if media_type == "audio":
+                asset = self._retrieve_bgm_audio_task_for_payload(
+                    remote_task_id=remote_task_id,
+                    workflow_id=workflow_id,
+                    provider_id=_result_descriptor_provider_id(
+                        result_descriptor,
+                        provider_payload,
+                    ),
+                    provider_payload=provider_payload,
+                    download_media=download_media,
+                )
+                if not download_media and str(asset.get("status") or "").lower() in {
+                    "succeeded",
+                    "completed",
+                }:
+                    return V2ProviderResult(
+                        status="completed",
+                        media_type="audio",
+                        remote_task_id=remote_task_id,
+                        provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
+                        metadata={"provider_asset": sanitize_context_for_llm_text(asset)},
+                    )
+                return _result_from_provider_asset(
+                    asset,
+                    media_type="audio",
+                    provider=str(result_descriptor.get("provider") or "configured_audio"),
+                    provider_model=str(
+                        result_descriptor.get("provider_model") or self._settings.bgm_model or ""
+                    ),
+                    provider_payload=provider_payload,
+                    reference_asset_ids=[],
+                )
+            provider = self._media_provider()
             if media_type == "video" and hasattr(provider, "retrieve_storyboard_video_task"):
                 asset = provider.retrieve_storyboard_video_task(  # type: ignore[attr-defined]
                     remote_task_id,
@@ -1119,34 +1149,6 @@ class V2ProviderExecutor:
                     ),
                     provider_payload=provider_payload,
                     reference_asset_ids=list(provider_payload.get("reference_asset_ids") or []),
-                )
-            if media_type == "audio" and hasattr(provider, "retrieve_bgm_audio_task"):
-                asset = provider.retrieve_bgm_audio_task(  # type: ignore[attr-defined]
-                    remote_task_id,
-                    workflow_id=workflow_id,
-                    provider_payload=provider_payload,
-                    download_media=download_media,
-                )
-                if not download_media and str(asset.get("status") or "").lower() in {
-                    "succeeded",
-                    "completed",
-                }:
-                    return V2ProviderResult(
-                        status="completed",
-                        media_type="audio",
-                        remote_task_id=remote_task_id,
-                        provider_payload_snapshot=sanitize_context_for_llm_text(provider_payload),
-                        metadata={"provider_asset": sanitize_context_for_llm_text(asset)},
-                    )
-                return _result_from_provider_asset(
-                    asset,
-                    media_type="audio",
-                    provider=str(result_descriptor.get("provider") or "configured_audio"),
-                    provider_model=str(
-                        result_descriptor.get("provider_model") or self._settings.bgm_model or ""
-                    ),
-                    provider_payload=provider_payload,
-                    reference_asset_ids=[],
                 )
         except Exception as exc:  # noqa: BLE001 - polling errors remain retryable.
             return V2ProviderResult(
@@ -1970,7 +1972,16 @@ class V2ProviderExecutor:
         workflow_id: str,
     ) -> dict[str, Any]:
         if self._uses_default_provider_factory:
-            adapter = build_bgm_provider_adapter(self._settings, self._data_dir)
+            resolved_provider_id = _resolved_bgm_provider_id(bgm_plan)
+            adapter = (
+                build_bgm_provider_adapter(
+                    self._settings,
+                    self._data_dir,
+                    resolved_provider_id=resolved_provider_id,
+                )
+                if resolved_provider_id is not None
+                else build_bgm_provider_adapter(self._settings, self._data_dir)
+            )
             asset = adapter.generate_bgm_audio(bgm_plan, workflow_id)
             return {
                 "provider": asset.get("provider") or self._settings.bgm_provider,
@@ -1988,35 +1999,60 @@ class V2ProviderExecutor:
         return provider.generate_bgm_audio(bgm_plan, workflow_id)  # type: ignore[attr-defined]
 
     def _retrieve_bgm_audio_task(self, task: V2ProviderTask) -> dict[str, Any]:
+        provider_payload = {
+            **task.provider_payload_snapshot,
+            **(
+                dict(task.metadata.get("provider_asset") or {})
+                if isinstance(task.metadata.get("provider_asset"), dict)
+                else {}
+            ),
+            "expired_remote_reconciliation": task.metadata.get("expired_remote_reconciliation"),
+        }
+        return self._retrieve_bgm_audio_task_for_payload(
+            remote_task_id=task.remote_task_id or "",
+            workflow_id=task.workflow_id,
+            provider_id=str(task.provider or "").strip() or None,
+            provider_payload=provider_payload,
+        )
+
+    def _retrieve_bgm_audio_task_for_payload(
+        self,
+        *,
+        remote_task_id: str,
+        workflow_id: str,
+        provider_id: str | None,
+        provider_payload: dict[str, Any],
+        download_media: bool = True,
+    ) -> dict[str, Any]:
         if self._uses_default_provider_factory:
-            adapter = build_bgm_provider_adapter(self._settings, self._data_dir)
-            provider_payload = {
-                **task.provider_payload_snapshot,
-                **(
-                    dict(task.metadata.get("provider_asset") or {})
-                    if isinstance(task.metadata.get("provider_asset"), dict)
-                    else {}
-                ),
-                "expired_remote_reconciliation": task.metadata.get("expired_remote_reconciliation"),
-            }
+            resolved_provider_id = provider_id or _resolved_bgm_provider_id(provider_payload)
+            adapter = (
+                build_bgm_provider_adapter(
+                    self._settings,
+                    self._data_dir,
+                    resolved_provider_id=resolved_provider_id,
+                )
+                if resolved_provider_id is not None
+                else build_bgm_provider_adapter(self._settings, self._data_dir)
+            )
             return adapter.retrieve_bgm_audio_task(
-                task.remote_task_id or "",
-                workflow_id=task.workflow_id,
+                remote_task_id,
+                workflow_id=workflow_id,
                 provider_payload=provider_payload,
-                download_media=True,
+                download_media=download_media,
             )
         provider = self._media_provider()
         if not hasattr(provider, "retrieve_bgm_audio_task"):
             return {
-                "asset_id": task.asset_id,
-                "task_id": task.remote_task_id,
+                "asset_id": "bgm-audio",
+                "task_id": remote_task_id,
                 "status": "submitted",
             }
         return provider.retrieve_bgm_audio_task(  # type: ignore[attr-defined]
-            task.remote_task_id or "",
-            workflow_id=task.workflow_id,
-            provider_payload=task.provider_payload_snapshot,
-            download_media=True,
+            remote_task_id,
+            workflow_id=workflow_id,
+            provider_payload=provider_payload,
+            download_media=download_media,
         )
 
     def _missing_real_config(self, media_type: str) -> str | None:
@@ -2162,6 +2198,27 @@ def _provider_output_reference_wire_audit(output: dict[str, Any]) -> dict[str, d
     if not isinstance(candidate, dict):
         return {}
     return {"reference_wire_audit": sanitize_context_for_llm_text(candidate)}
+
+
+def _resolved_bgm_provider_id(bgm_plan: Mapping[str, Any]) -> str | None:
+    value = bgm_plan.get("provider_id")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _result_descriptor_provider_id(
+    result_descriptor: Mapping[str, Any],
+    provider_payload: Mapping[str, Any],
+) -> str | None:
+    for value in (
+        result_descriptor.get("provider"),
+        provider_payload.get("provider_id"),
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _provider_id_for_slot(slot: WorkflowSlotV2, media_mode: str) -> str:
