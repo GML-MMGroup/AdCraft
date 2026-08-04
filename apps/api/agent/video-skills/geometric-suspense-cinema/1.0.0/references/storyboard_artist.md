@@ -1,0 +1,1 @@
+Organize shots around spatial suspense, develop visual progression through controlled viewpoint, and reserve visual motifs for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

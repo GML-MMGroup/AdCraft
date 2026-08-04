@@ -1,0 +1,1 @@
+Organize shots around restrained tension, develop visual progression through motivated darkness, and reserve exact blocking for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

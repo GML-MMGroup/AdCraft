@@ -1,0 +1,1 @@
+Organize shots around vast scale, develop visual progression through sparse geometry, and reserve atmospheric depth for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

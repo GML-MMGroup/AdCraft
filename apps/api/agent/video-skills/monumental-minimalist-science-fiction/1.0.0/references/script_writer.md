@@ -1,0 +1,1 @@
+Build the narrative premise around vast scale, then use sparse geometry to shape escalation and human-to-environment contrast to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

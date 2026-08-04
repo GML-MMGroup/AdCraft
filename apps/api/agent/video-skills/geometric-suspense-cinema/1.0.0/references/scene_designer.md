@@ -1,0 +1,1 @@
+Construct spaces that express spatial suspense through layout and controlled viewpoint through light, color, and material. Use visual motifs to direct attention toward the advertised subject while preserving the stated location and product context.

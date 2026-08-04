@@ -1,0 +1,1 @@
+Build the narrative premise around readable action geography, then use fabric and weapon motion to shape escalation and rhythmic combat to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

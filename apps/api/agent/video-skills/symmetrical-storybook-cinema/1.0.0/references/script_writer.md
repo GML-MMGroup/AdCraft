@@ -1,0 +1,1 @@
+Build the narrative premise around axial framing, then use curated palettes to shape escalation and precise comic timing to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.
