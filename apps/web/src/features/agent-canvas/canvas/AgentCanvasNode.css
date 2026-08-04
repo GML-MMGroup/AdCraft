@@ -522,8 +522,8 @@
 .react-flow__handle.agent-canvas-node__handle {
   z-index: 12;
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 18px;
+  height: 18px;
   place-items: center;
   border: 0;
   border-radius: 50%;
@@ -541,12 +541,13 @@
 
 .agent-canvas-node__handle-target {
   display: grid;
-  width: 18px;
-  height: 18px;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
   place-items: center;
-  border: 2px solid rgba(255, 255, 255, 0.95);
+  border: 2px solid rgba(176, 180, 192, 0.96);
   border-radius: 50%;
-  background: #777d95;
+  background: transparent;
   box-shadow: 0 2px 8px rgba(30, 33, 51, 0.26);
   color: #fff;
   cursor: crosshair;
@@ -555,17 +556,13 @@
 }
 
 .react-flow__handle.agent-canvas-node__handle--input {
-  left: -41px;
+  left: -27px;
   transform: translateY(-50%);
 }
 
 .react-flow__handle.agent-canvas-node__handle--output {
-  right: -41px;
+  right: -27px;
   transform: translateY(-50%);
-}
-
-.agent-canvas-node__handle--output .agent-canvas-node__handle-target {
-  background: var(--agent-node-accent, #777d95);
 }
 
 @keyframes agent-canvas-node-spin {
