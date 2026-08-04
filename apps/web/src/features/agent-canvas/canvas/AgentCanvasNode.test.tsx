@@ -291,14 +291,15 @@ describe("AgentCanvasNodeRenderer", () => {
   it("uses 40px connection hit targets with visible handles spaced from the node", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
-    const handleRule = css.match(/^\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const handleRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
     const targetRule = css.match(/^\.agent-canvas-node__handle-target\s*\{([\s\S]*?)\n\}/m)?.[1];
-    const inputRule = css.match(/^\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
-    const outputRule = css.match(/^\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const inputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const outputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(handleRule).toContain("width: 40px");
     expect(handleRule).toContain("height: 40px");
-    expect(handleRule).toContain("background: transparent");
+    expect(handleRule).toContain("border: 0");
+    expect(handleRule).toContain("background-color: transparent");
     expect(targetRule).toContain("width: 18px");
     expect(targetRule).toContain("height: 18px");
     expect(inputRule).toContain("left: -41px");

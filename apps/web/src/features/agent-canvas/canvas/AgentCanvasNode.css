@@ -519,7 +519,7 @@
   backdrop-filter: blur(8px);
 }
 
-.agent-canvas-node__handle {
+.react-flow__handle.agent-canvas-node__handle {
   z-index: 12;
   display: grid;
   width: 40px;
@@ -527,7 +527,7 @@
   place-items: center;
   border: 0;
   border-radius: 50%;
-  background: transparent;
+  background-color: transparent;
   cursor: crosshair;
 }
 
@@ -554,12 +554,12 @@
   transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
-.agent-canvas-node__handle--input {
+.react-flow__handle.agent-canvas-node__handle--input {
   left: -41px;
   transform: translateY(-50%);
 }
 
-.agent-canvas-node__handle--output {
+.react-flow__handle.agent-canvas-node__handle--output {
   right: -41px;
   transform: translateY(-50%);
 }
