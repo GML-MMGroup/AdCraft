@@ -41,9 +41,15 @@ def build_bgm_provider_adapter(
     settings: Settings,
     data_dir: Path,
     *,
+    resolved_provider_id: str | None = None,
     callback_base_url_resolver: CallbackBaseUrlResolver | None = None,
 ) -> BgmProviderAdapter:
-    provider = normalized_bgm_provider_id(settings)
+    configured_provider = normalized_bgm_provider_id(settings)
+    provider = str(resolved_provider_id or configured_provider).strip().lower()
+    if resolved_provider_id is not None and provider != configured_provider:
+        raise MediaConfigurationError(
+            "Resolved BGM provider does not match configured BGM_PROVIDER."
+        )
     if provider == "tianpuyue":
         validate_tianpuyue_bgm_settings(settings)
         resolver = callback_base_url_resolver or _tianpuyue_callback_resolver(
