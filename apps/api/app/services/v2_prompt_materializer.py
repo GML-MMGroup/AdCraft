@@ -10,6 +10,7 @@ from app.schemas.workflow_v2 import (
     WorkflowSlotV2,
     WorkflowV2,
 )
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.schemas.workflow_v2_prompt_contracts import (
     V2CanonicalProviderPayload,
     prompt_contract_name_for_slot,
@@ -38,7 +39,6 @@ from app.services.v2_specialist_prompt_service import (
     V2SpecialistPromptService,
 )
 from app.services.v2_specialist_prompt_sanitizer import V2SpecialistPromptSanitizer
-from app.services.v2_skill_context import V2SkillContextService
 from app.services.v2_storyboard_cell_prompts import (
     cell_prompt_record_for_slot,
     storyboard_cell_prompt_records,
@@ -126,7 +126,6 @@ class V2PromptMaterializer:
         specialist_service: V2SpecialistPromptService | None = None,
     ) -> None:
         self._specialist_service = specialist_service or V2SpecialistPromptService()
-        self._skill_context = V2SkillContextService()
         self._slot_context_assembler = V2SlotContextAssembler()
         self._provider_prompt_compiler = V2ProviderPromptCompiler()
         self._prompt_sanitizer = V2SpecialistPromptSanitizer()
@@ -161,11 +160,6 @@ class V2PromptMaterializer:
                     ]
                 )
             )
-        skill_context = self._skill_context.skill_context_for_specialist(
-            specialist=route.specialist,
-            slot_type=slot.slot_type,
-            media_type=slot.media_type,
-        )
         director_context_summary = (
             dict(handoff.get("hard_constraints", {}))
             if handoff
@@ -211,7 +205,7 @@ class V2PromptMaterializer:
                 "negative_prompt": slot.negative_prompt,
                 "negative_constraints": slot.negative_constraints,
             },
-            skill_context=skill_context.model_dump(mode="json"),
+            skill_context={},
             provider_capability_summary=dict(slot.provider_params),
         )
         if route.specialist == "composition_tool":
@@ -384,11 +378,6 @@ class V2PromptMaterializer:
             if slot.prompt_source == "user" or slot.manual_prompt_dirty
             else (slot.slot_prompt or _provider_prompt(item, slot, route))
         )
-        fallback_skill_context = self._skill_context.skill_context_for_specialist(
-            specialist=route.specialist,
-            slot_type=slot.slot_type,
-            media_type=slot.media_type,
-        )
         fallback_request = V2SpecialistPromptRequest(
             workflow_id=workflow.workflow_id,
             target=_target_payload(target, slot),
@@ -410,7 +399,7 @@ class V2PromptMaterializer:
                 "negative_prompt": slot.negative_prompt,
                 "negative_constraints": slot.negative_constraints,
             },
-            skill_context=fallback_skill_context.model_dump(mode="json"),
+            skill_context={},
             provider_capability_summary=dict(slot.provider_params),
         )
         warning = {
@@ -824,6 +813,28 @@ class V2PromptMaterializer:
         if slot.slot_type == "final_video":
             segment_ids = list(context.get("shot_video_segment_asset_ids", []))
             bgm_asset_id = context.get("bgm_asset_id") if workflow.audio_mode != "none" else None
+            simple_plan_payload = context.get("simple_composition_plan")
+            if isinstance(simple_plan_payload, dict):
+                simple_plan = V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+                reference_asset_ids = [source.asset_id for source in simple_plan.videos]
+                if simple_plan.bgm is not None:
+                    reference_asset_ids.append(simple_plan.bgm.asset_id)
+                return canonicalize(
+                    {
+                        **base_payload,
+                        "slot_prompt": slot.slot_prompt,
+                        "composition_tool": "local_composition_ffmpeg",
+                        "simple_composition_plan": simple_plan.model_dump(mode="json"),
+                        "shot_video_segment_asset_ids": segment_ids,
+                        "bgm_asset_id": bgm_asset_id,
+                        "reference_asset_ids": list(dict.fromkeys(reference_asset_ids)),
+                        "render_settings": {
+                            "provider": "local_composition_ffmpeg",
+                            "aspect_ratio": workflow.aspect_ratio,
+                            "audio_mode": workflow.audio_mode,
+                        },
+                    }
+                )
             canonical_timeline = context.get("canonical_timeline")
             if not isinstance(canonical_timeline, dict):
                 raise V2PromptMaterializationError(
@@ -1270,6 +1281,12 @@ def _provider_prompt(
         "quick_video_generator",
         "quick_audio_generator",
     }:
+        quick_media_plan = slot.metadata.get("quick_media_prompt_plan")
+        if isinstance(quick_media_plan, dict):
+            planned_prompt = str(quick_media_plan.get("provider_prompt") or "").strip()
+            planned_media_type = str(quick_media_plan.get("output_media_type") or "")
+            if planned_prompt and planned_media_type == slot.media_type:
+                return planned_prompt
         media_type = slot.media_type or "media"
         return f"Generate a standalone {media_type} asset: {slot.slot_prompt or item.item_prompt}"
     return slot.slot_prompt or item.item_prompt or item.shot_summary_prompt

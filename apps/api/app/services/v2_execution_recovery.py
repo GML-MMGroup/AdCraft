@@ -9,8 +9,8 @@ from app.services.v2_event_store import V2EventStore
 from app.services.v2_execution_service import V2ExecutionService
 from app.services.v2_provider_task_service import V2ProviderTaskService
 from app.services.v2_slot_scheduler import find_slot
+from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 from app.services.v2_workflow_lock import v2_workflow_lock
-from app.services.v2_workflow_store import V2WorkflowStore
 
 ACTIVE_RECOVERY_STATUSES = {"queued", "running", "waiting"}
 ACTIVE_PROVIDER_TASK_STATUSES = {"queued", "running", "waiting"}
@@ -59,7 +59,7 @@ class V2ExecutionRecoveryService:
     def __init__(self, data_dir: Path, *, stale_running_timeout_seconds: int) -> None:
         self._data_dir = data_dir
         self._timeout_seconds = stale_running_timeout_seconds
-        self._workflow_store = V2WorkflowStore(data_dir)
+        self._authoring_runtime = create_workflow_authoring_runtime(data_dir)
         self._events = V2EventStore(data_dir)
         self._executions = V2ExecutionService(data_dir)
         self._provider_tasks = V2ProviderTaskService(data_dir)
@@ -79,10 +79,10 @@ class V2ExecutionRecoveryService:
         *,
         trigger: RecoveryTrigger,
     ) -> V2ExecutionRecoveryResult:
-        workflow = self._workflow_store.load_workflow(workflow_id)
+        workflow = self._authoring_runtime.read_model.assemble(workflow_id)
         active_execution = self._executions.load_active(workflow_id, include_terminal=True)
         if active_execution is None:
-            return V2ExecutionRecoveryResult(workflow=workflow, trigger=trigger)
+            return self._recover_orphaned_slot_runtime(workflow, trigger=trigger)
         execution_id = str(active_execution.get("execution_id") or "")
         if not execution_id:
             return V2ExecutionRecoveryResult(workflow=workflow, trigger=trigger)
@@ -292,7 +292,7 @@ class V2ExecutionRecoveryService:
                 )
             )
 
-        self._workflow_store.save_workflow(workflow)
+        self._persist_operational_workflow(workflow)
         if recovered_slot_ids:
             pending_events.append(
                 (
@@ -404,6 +404,125 @@ class V2ExecutionRecoveryService:
             ],
         )
 
+    def _recover_orphaned_slot_runtime(
+        self,
+        workflow: WorkflowV2,
+        *,
+        trigger: RecoveryTrigger,
+    ) -> V2ExecutionRecoveryResult:
+        nonterminal_tasks = self._provider_tasks.list_nonterminal_tasks(workflow.workflow_id)
+        task_by_slot = {
+            task.slot_id: task
+            for task in nonterminal_tasks
+            if task.status in NONTERMINAL_PROVIDER_TASK_STATUSES
+        }
+        latest_activity = latest_runtime_activity_by_slot(
+            self._events.load_events(workflow.workflow_id)
+        )
+        now = utc_now().isoformat()
+        recovered_slot_ids: list[str] = []
+        transitioned_slot_ids: list[str] = []
+        pending_events: list[tuple[str, dict[str, Any]]] = []
+
+        for node in workflow.nodes:
+            for item in node.items:
+                if item.lifecycle_state != "active":
+                    continue
+                for slot in item.slots:
+                    if slot.status not in ACTIVE_RECOVERY_STATUSES:
+                        continue
+                    activity = latest_activity.get(slot.slot_id)
+                    if slot.selected_asset_id and slot.selected_version_id:
+                        slot.status = "completed"
+                        slot.metadata.pop("waiting_reason", None)
+                        transitioned_slot_ids.append(slot.slot_id)
+                        pending_events.append(
+                            (
+                                "runtime_snapshot_updated",
+                                {
+                                    "node_id": slot.node_id,
+                                    "item_id": slot.item_id,
+                                    "slot_id": slot.slot_id,
+                                    "asset_id": slot.selected_asset_id,
+                                    "version_id": slot.selected_version_id,
+                                    "payload": {
+                                        "status": "completed",
+                                        "recovered_from_selected_version": True,
+                                    },
+                                },
+                            )
+                        )
+                        continue
+                    task = task_by_slot.get(slot.slot_id)
+                    if task is not None:
+                        if slot.status != "waiting":
+                            slot.status = "waiting"
+                            transitioned_slot_ids.append(slot.slot_id)
+                        slot.metadata.update(
+                            {
+                                "provider_task_id": task.task_id,
+                                "remote_task_id": task.remote_task_id,
+                                "waiting_reason": "provider_task_pending",
+                            }
+                        )
+                        continue
+                    self._reset_stale_slot(
+                        slot,
+                        execution_id=None,
+                        activity=activity,
+                        now=now,
+                    )
+                    recovered_slot_ids.append(slot.slot_id)
+                    transitioned_slot_ids.append(slot.slot_id)
+                    pending_events.extend(
+                        [
+                            (
+                                "slot_recovered_ready",
+                                {
+                                    "node_id": slot.node_id,
+                                    "item_id": slot.item_id,
+                                    "slot_id": slot.slot_id,
+                                    "payload": {
+                                        "recoverable": True,
+                                        "recovery_reason": "orphaned_active_status",
+                                        "last_runtime_event_seq": (
+                                            activity.seq if activity else None
+                                        ),
+                                        "last_runtime_event_type": (
+                                            activity.event_type if activity else None
+                                        ),
+                                    },
+                                },
+                            ),
+                            (
+                                "runtime_snapshot_updated",
+                                {
+                                    "node_id": slot.node_id,
+                                    "item_id": slot.item_id,
+                                    "slot_id": slot.slot_id,
+                                    "payload": {
+                                        "status": "ready",
+                                        "recoverable": True,
+                                    },
+                                },
+                            ),
+                        ]
+                    )
+
+        if not transitioned_slot_ids:
+            return V2ExecutionRecoveryResult(workflow=workflow, trigger=trigger)
+
+        workflow = self._persist_operational_workflow(workflow)
+        for event_type, event_kwargs in pending_events:
+            self._events.append_event(workflow.workflow_id, event_type, **event_kwargs)
+        return V2ExecutionRecoveryResult(
+            workflow=workflow,
+            recovered_slot_ids=recovered_slot_ids,
+            trigger=trigger,
+            changed=True,
+            transitioned_slot_ids=transitioned_slot_ids,
+        )
+
     def _completed_active_slots(
         self,
         workflow: WorkflowV2,
@@ -466,7 +585,7 @@ class V2ExecutionRecoveryService:
         self,
         slot: WorkflowSlotV2,
         *,
-        execution_id: str,
+        execution_id: str | None,
         activity: WorkflowV2Event | None,
         now: str,
     ) -> None:
@@ -476,7 +595,10 @@ class V2ExecutionRecoveryService:
         slot.metadata.pop("remote_task_id", None)
         slot.metadata.pop("waiting_reason", None)
         slot.metadata["recoverable"] = True
-        slot.metadata["interrupted_execution_id"] = execution_id
+        if execution_id is not None:
+            slot.metadata["interrupted_execution_id"] = execution_id
+        else:
+            slot.metadata.pop("interrupted_execution_id", None)
         slot.metadata["interrupted_at"] = now
         slot.metadata["last_runtime_event_seq"] = activity.seq if activity else None
         slot.metadata["last_runtime_event_type"] = activity.event_type if activity else None
@@ -513,6 +635,15 @@ class V2ExecutionRecoveryService:
             list(dict.fromkeys(running)),
             list(dict.fromkeys(waiting)),
         )
+
+    def _persist_operational_workflow(self, workflow: WorkflowV2) -> WorkflowV2:
+        if workflow.semantic_revision_no is None:
+            raise RuntimeError("workflow_authoring_revision_missing")
+        self._authoring_runtime.projection.save_operational_overlay(
+            workflow,
+            expected_revision_no=workflow.semantic_revision_no,
+        )
+        return self._authoring_runtime.read_model.assemble(workflow.workflow_id)
 
     def _remaining_active_slot_ids(
         self,

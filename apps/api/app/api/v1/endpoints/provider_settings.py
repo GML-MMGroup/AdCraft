@@ -84,6 +84,7 @@ def _http_error(error: CredentialSettingsError) -> HTTPException:
 @router.get(
     "/volcengine",
     response_model=ProviderCredentialStatusResponse,
+    deprecated=True,
     responses={
         403: {"model": ProviderCredentialErrorResponse},
         500: {"model": ProviderCredentialErrorResponse},
@@ -102,6 +103,7 @@ def get_volcengine_credential_status(
 @router.put(
     "/volcengine",
     response_model=ProviderCredentialUpdateResponse,
+    deprecated=True,
     responses={
         403: {"model": ProviderCredentialErrorResponse},
         409: {"model": ProviderCredentialErrorResponse},
@@ -128,6 +130,7 @@ def update_volcengine_credentials(
 @router.post(
     "/volcengine/test",
     response_model=ProviderCredentialTestResponse,
+    deprecated=True,
     responses={
         403: {"model": ProviderCredentialErrorResponse},
         409: {"model": ProviderCredentialErrorResponse},

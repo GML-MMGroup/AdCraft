@@ -5,12 +5,18 @@ from __future__ import annotations
 from filelock import FileLock, Timeout
 
 from app.core.config import Settings
+from app.persistence.backup import ensure_pre_authoring_database_backup
+from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database, resolve_v2_database_path
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.persistence.schema import upgrade_v2_schema
 from app.schemas.v2_persistence import PersistenceBootstrapState
 from app.services.v2_event_import import V2EventImportService
+from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
+from app.services.v2_project_catalog_repair import V2ProjectCatalogRepairService
+from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 
 _LOCK_TIMEOUT_SECONDS = 5.0
 
@@ -41,16 +47,41 @@ class PersistenceBootstrapService:
     def _bootstrap_locked(self) -> PersistenceBootstrapState:
         database = create_v2_database(self._settings.media_data_dir)
         try:
+            database_backup = ensure_pre_authoring_database_backup(
+                self._settings.media_data_dir,
+                resolve_v2_database_path(self._settings.media_data_dir),
+            )
             schema_revision = upgrade_v2_schema(database)
-            repository = EventRepository(database)
+            event_repository = EventRepository(database)
+            project_catalog_repair_report = V2ProjectCatalogRepairService(
+                database,
+                event_repository,
+            ).repair_if_required()
             report = V2EventImportService(
                 self._settings.media_data_dir,
-                repository,
+                event_repository,
             ).import_if_required()
+            V2AssetMetadataImportService(
+                self._settings.media_data_dir,
+                V2AssetLibraryRepository(database),
+                event_repository,
+            ).import_if_required()
+            ProviderModelBootstrapService(
+                self._settings,
+                ProviderModelRepository(database),
+            ).bootstrap(now=_utc_now())
             return PersistenceBootstrapState(
                 database_path=resolve_v2_database_path(self._settings.media_data_dir),
                 schema_revision=schema_revision,
+                database_backup_status=database_backup.status,
                 data_migration_name=report.migration_name,
+                project_catalog_repair_report=project_catalog_repair_report,
             )
         finally:
             database.dispose()
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()

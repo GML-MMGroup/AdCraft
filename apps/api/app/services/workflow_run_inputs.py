@@ -194,7 +194,7 @@ class WorkflowRunInputBuilder:
         return graph_node_as_active_result(node)
 
     def _node_run_mode(self) -> str:
-        return "mock" if self._settings.agno_mock_mode else "real"
+        return "mock" if self._settings.agent_runtime_mode == "fake" else "real"
 
 
 _INPUT_CONTEXT_DEPENDENCIES: dict[str, tuple[tuple[str, str], ...]] = {

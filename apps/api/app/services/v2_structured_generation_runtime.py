@@ -1,28 +1,45 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Any, Generic, Literal, TypeVar
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
+import json
+from typing import Any, Generic, Literal, TypeVar, cast
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
+from app.persistence.agent_run_repository import (
+    AgentRunRepository,
+    AgentRunRepositoryError,
+    AgentRunRecord,
+)
+from app.persistence.database import create_v2_database
+from app.schemas.agent_operation_contexts import PlanningAgentContext
+from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunPolicy, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_high_risk_prompt_renderer import (
     V2HighRiskPromptRenderError,
     V2HighRiskPromptRenderer,
 )
+from app.services.v2_agent_event_projector import V2AgentEventProjector
+from app.services.v2_agent_request_identity import agent_request_identity
 from app.services.v2_prompt_registry import V2PromptRegistry
-from app.services.v2_runtime_prompt_packs import prompt_content_profile_metadata
-from app.services.v2_structured_llm import (
-    V2StructuredLLMClient,
-    V2StructuredLLMError,
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
+from app.services.pi_agent_runtime_client import (
+    PiAgentRuntimeClient,
+    PiAgentRuntimeError,
 )
+from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.v2_pi_agent_context import isolate_agent_input_payload
+from app.services.v2_pi_planning_session import AgentInvocation
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
 QualityValidator = Callable[[TOutput], None]
+OutputNormalizer = Callable[[TOutput], TOutput]
 RepairContextBuilder = Callable[[V2StructuredLLMError], dict[str, Any]]
 FallbackBuilder = Callable[[V2StructuredLLMError], TOutput]
 
@@ -73,17 +90,27 @@ class StructuredGenerationSpec(Generic[TOutput]):
     system_prompt: str
     input_payload: dict[str, Any]
     output_model: type[TOutput]
+    output_normalizer: OutputNormalizer[TOutput] | None = None
     quality_validator: QualityValidator[TOutput] | None = None
     repair_context_builder: RepairContextBuilder | None = None
     fallback_builder: FallbackBuilder[TOutput] | None = None
     trace_metadata: dict[str, Any] = field(default_factory=dict)
+    validation_profile: str | None = None
+    validation_context: dict[str, Any] = field(default_factory=dict)
     temperature: float = 0.3
+    agent_name: AgentName | None = None
+    operation: str | None = None
+    tool_mode: Literal["default", "structured_only"] = "default"
+    policy: AgentRunPolicy | None = None
+    invocation: AgentInvocation | None = None
+    agent_context: PlanningAgentContext | AgentRunContext | None = None
 
 
 @dataclass(frozen=True)
 class StructuredGenerationResult(Generic[TOutput]):
     output: TOutput
     mode: str
+    degraded: bool
     warnings: list[dict[str, Any]]
     trace_metadata: dict[str, Any]
     original_error_code: str | None = None
@@ -95,95 +122,271 @@ class StructuredGenerationRuntime:
         self,
         *,
         settings: Settings | None = None,
-        structured_llm: V2StructuredLLMClient | None = None,
+        agent_runtime_client: PiAgentRuntimeClient | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._structured_llm = structured_llm or V2StructuredLLMClient(self._settings)
+        self._agent_runtime_client = agent_runtime_client or PiAgentRuntimeClient(
+            base_url=self._settings.agent_runtime_base_url,
+            internal_token=self._settings.agent_runtime_internal_token or "",
+            protocol_version=self._settings.agent_runtime_protocol_version,
+            connect_timeout_seconds=self._settings.agent_runtime_connect_timeout_seconds,
+            read_timeout_seconds=self._settings.agent_runtime_read_timeout_seconds,
+            run_timeout_seconds=self._settings.agent_runtime_run_timeout_seconds,
+            max_event_bytes=self._settings.agent_runtime_max_event_bytes,
+            max_stream_bytes=self._settings.agent_runtime_max_stream_bytes,
+        )
 
     def run(self, spec: StructuredGenerationSpec[TOutput]) -> StructuredGenerationResult[TOutput]:
-        try:
-            output, warnings, call_metadata = self._generate_once(
-                spec,
-                spec.input_payload,
-                attempt_kind="initial",
-            )
-            return self._result(
-                spec,
-                output=output,
-                mode="llm",
-                warnings=warnings,
-                original_error=None,
-                call_metadata=call_metadata,
-            )
-        except V2StructuredLLMError as first_error:
-            if spec.fallback_builder is None:
-                raise self._runtime_error(spec, first_error) from first_error
-            return self._repair_or_fallback(spec, first_error)
+        return self._run_pi(spec)
 
-    def _repair_or_fallback(
+    def _run_pi(
+        self, spec: StructuredGenerationSpec[TOutput]
+    ) -> StructuredGenerationResult[TOutput]:
+        request = _agent_run_request(spec)
+        database = create_v2_database(self._settings.media_data_dir)
+        repository = AgentRunRepository(database)
+        lease_owner_id = f"python_{uuid4().hex}"
+        lease_duration = max(
+            60.0,
+            self._settings.agent_runtime_run_timeout_seconds * 2,
+        )
+        event_projector = V2AgentEventProjector(self._settings.media_data_dir)
+        persisted_sequences: set[int] = set()
+        lease_generation = 0
+
+        def persist_event(event: Any) -> None:
+            nonlocal lease_generation
+            if event.seq in persisted_sequences:
+                return
+            if event.event_type == "heartbeat":
+                renewed = repository.acquire_lease(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_duration_seconds=lease_duration,
+                )
+                lease_generation = renewed.lease_generation
+            repository.record_event_seq(
+                request.run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                seq=event.seq,
+            )
+            event_projector.consume(
+                event,
+                workflow_id=request.context.workflow_id,
+                model_id=spec.model_id,
+            )
+            persisted_sequences.add(event.seq)
+
+        try:
+            record, created = repository.create_or_load(
+                request,
+                lease_owner_id=lease_owner_id,
+                lease_duration_seconds=lease_duration,
+            )
+            lease_generation = record.lease_generation
+            if not created:
+                replay = self._existing_run_result(spec, record)
+                if replay is not None:
+                    return replay
+                now = datetime.now(timezone.utc)
+                if (
+                    record.lease_owner_id is not None
+                    and record.lease_expires_at is not None
+                    and record.lease_expires_at > now
+                ):
+                    raise StructuredGenerationRuntimeError(
+                        "agent_run_in_progress",
+                        "The matching Agent action is already running.",
+                        trace_metadata=self._trace_metadata(spec, None),
+                    )
+                record = repository.acquire_lease(
+                    record.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_duration_seconds=lease_duration,
+                )
+                lease_generation = record.lease_generation
+                request = request.model_copy(update={"run_id": record.run_id})
+                persisted_sequences.update(range(1, record.last_event_seq + 1))
+            outcome = self._agent_runtime_client.run(request, on_event=persist_event)
+            terminal = outcome.terminal_event
+            repository.finish(
+                request.run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                status={
+                    "run_completed": "completed",
+                    "run_failed": "failed",
+                    "run_cancelled": "cancelled",
+                }[terminal.event_type],
+                terminal_result=terminal.payload,
+                audit_metadata=(
+                    terminal.payload.get("audit")
+                    if isinstance(terminal.payload.get("audit"), dict)
+                    else {}
+                ),
+                safe_error_code=(
+                    str(terminal.payload.get("code") or "") or None
+                    if terminal.event_type != "run_completed"
+                    else None
+                ),
+            )
+            if terminal.event_type != "run_completed":
+                raise PiAgentRuntimeError(
+                    str(terminal.payload.get("code") or "agent_runtime_unavailable"),
+                    str(terminal.payload.get("message") or "Agent runtime failed."),
+                )
+            value = terminal.payload.get("value")
+            output = spec.output_model.model_validate(value)
+            output = self._validate_output(spec, output)
+        except StructuredGenerationRuntimeError:
+            raise
+        except AgentRunRepositoryError as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                lease_generation,
+                error,
+            )
+            raise StructuredGenerationRuntimeError(
+                error.code,
+                error.message,
+                trace_metadata=self._trace_metadata(spec, None),
+            ) from error
+        except (PiAgentRuntimeError, QualityValidationError, ValueError) as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                lease_generation,
+                error,
+            )
+            if isinstance(error, QualityValidationError):
+                normalized = V2StructuredLLMError(
+                    "structured_output_quality_failed",
+                    str(error),
+                    quality_error_code=error.code,
+                    quality_error_message=str(error),
+                    quality_error_details=error.details,
+                    failure_kind="content",
+                )
+            else:
+                normalized = V2StructuredLLMError(
+                    (
+                        error.code
+                        if isinstance(error, PiAgentRuntimeError)
+                        else "agent_structured_output_invalid"
+                    ),
+                    str(error),
+                    failure_kind="provider_terminal",
+                )
+            if spec.fallback_builder is None:
+                raise self._runtime_error(spec, normalized) from error
+            return self._fallback(
+                spec,
+                normalized,
+                attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
+            )
+        except Exception as error:
+            self._finish_failed_agent_run(
+                repository,
+                request.run_id,
+                lease_owner_id,
+                lease_generation,
+                error,
+            )
+            quality_code = getattr(error, "code", None)
+            if not isinstance(quality_code, str):
+                raise
+            normalized = V2StructuredLLMError(
+                "structured_output_quality_failed",
+                str(error),
+                quality_error_code=quality_code,
+                quality_error_message=str(error),
+                quality_error_details=(
+                    getattr(error, "details", None) or getattr(error, "repair_details", None)
+                ),
+                failure_kind="content",
+            )
+            if spec.fallback_builder is None:
+                raise self._runtime_error(spec, normalized) from error
+            return self._fallback(
+                spec,
+                normalized,
+                attempts=[self._attempt_diagnostic(spec, "initial", normalized)],
+            )
+        finally:
+            database.dispose()
+        return self._result(
+            spec,
+            output=output,
+            mode="pi",
+            warnings=[],
+            original_error=None,
+            call_metadata=None,
+        )
+
+    def _existing_run_result(
         self,
         spec: StructuredGenerationSpec[TOutput],
-        first_error: V2StructuredLLMError,
-    ) -> StructuredGenerationResult[TOutput]:
-        attempts = [self._attempt_diagnostic(spec, "initial", first_error)]
-        if first_error.failure_kind != "content":
-            return self._fallback(spec, first_error, attempts=attempts)
-        repair_context = self._repair_context(spec, first_error)
-        repair_prompt = _render_runtime_high_risk_prompt(
-            prompt_id="v2.repair.structured_generation.v1",
-            spec=spec,
-            path_kind="repair",
-            context={
-                "stage_name": spec.stage_name,
-                "contract_name": spec.contract_name,
-            },
-        )
-        repair_payload = sanitize_context_for_llm_text(
-            {
-                "repair": True,
-                "instruction": repair_prompt["prompt_text"],
-                "prompt_registry_ref": repair_prompt["prompt_registry_ref"],
-                "prompt_lineage": repair_prompt["prompt_lineage"],
-                "stage_name": spec.stage_name,
-                "contract_name": spec.contract_name,
-                "original_request": spec.input_payload,
-                "repair_context": repair_context,
-                "quality_repair_context": repair_context,
-                "validation_error_paths": list(repair_context.get("schema_error_paths") or []),
-            }
-        )
-        try:
-            output, warnings, call_metadata = self._generate_once(
+        record: AgentRunRecord,
+    ) -> StructuredGenerationResult[TOutput] | None:
+        if record.status == "completed":
+            value = (record.terminal_result or {}).get("value")
+            output = spec.output_model.model_validate(value)
+            output = self._validate_output(spec, output)
+            replay_spec = replace(
                 spec,
-                repair_payload,
-                attempt_kind="repair",
+                trace_metadata={
+                    **spec.trace_metadata,
+                    "agent_run_replayed": True,
+                    "agent_run_id": record.run_id,
+                },
             )
-            repair_warning = {
-                "code": "structured_generation_repair_used",
-                "stage_name": spec.stage_name,
-                "original_error_code": self._generic_error_code(first_error),
-            }
             return self._result(
-                spec,
+                replay_spec,
                 output=output,
-                mode="repair",
-                warnings=[*warnings, repair_warning],
-                original_error=first_error,
-                call_metadata=call_metadata,
+                mode="pi",
+                warnings=[],
+                original_error=None,
+                call_metadata=None,
             )
-        except V2StructuredLLMError as repair_error:
-            fallback_error = V2StructuredLLMError(
-                "structured_generation_repair_failed",
-                str(repair_error),
-                validation_error_paths=repair_error.validation_error_paths,
-                quality_error_code=repair_error.quality_error_code,
-                quality_error_message=repair_error.quality_error_message,
-                quality_error_details=repair_error.quality_error_details,
-                failure_kind=repair_error.failure_kind,
-                call_metadata=repair_error.call_metadata,
+        if record.status in {"failed", "cancelled"}:
+            raise StructuredGenerationRuntimeError(
+                record.safe_error_code or f"agent_run_{record.status}",
+                "The matching Agent action is already terminal.",
+                trace_metadata={
+                    **self._trace_metadata(spec, None),
+                    "agent_run_replayed": True,
+                    "agent_run_id": record.run_id,
+                },
             )
-            attempts.append(self._attempt_diagnostic(spec, "repair", repair_error))
-            return self._fallback(spec, fallback_error, attempts=attempts)
+        return None
+
+    @staticmethod
+    def _finish_failed_agent_run(
+        repository: AgentRunRepository,
+        run_id: str,
+        lease_owner_id: str,
+        lease_generation: int,
+        error: Exception,
+    ) -> None:
+        try:
+            record = repository.load(run_id)
+            if record.status in {"completed", "failed", "cancelled"}:
+                return
+            code = str(getattr(error, "code", None) or "agent_runtime_unavailable")
+            repository.finish(
+                run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                status="failed",
+                terminal_result={"code": code, "message": "Agent runtime failed."},
+                safe_error_code=code,
+            )
+        except Exception:
+            return
 
     def _fallback(
         self,
@@ -233,32 +436,6 @@ class StructuredGenerationRuntime:
             call_metadata=error.call_metadata,
         )
 
-    def _generate_once(
-        self,
-        spec: StructuredGenerationSpec[TOutput],
-        payload: dict[str, Any],
-        *,
-        attempt_kind: Literal["initial", "repair"],
-    ) -> tuple[TOutput, list[dict[str, Any]], V2StructuredLLMCallMetadata | None]:
-        result = self._structured_llm.generate(
-            model_id=spec.model_id,
-            system_prompt=spec.system_prompt,
-            user_payload=payload,
-            output_model=spec.output_model,
-            contract_name=spec.contract_name,
-            quality_validator=spec.quality_validator,
-            temperature=spec.temperature,
-            repair_on_failure=False,
-            stage_name=spec.stage_name,
-            attempt_kind=attempt_kind,
-        )
-        output = self._validate_output(spec, result.output)
-        return (
-            output,
-            sanitize_context_for_llm_text(result.warnings),
-            getattr(result, "call_metadata", None),
-        )
-
     def _validate_output(
         self,
         spec: StructuredGenerationSpec[TOutput],
@@ -266,28 +443,14 @@ class StructuredGenerationRuntime:
     ) -> TOutput:
         if not isinstance(output, spec.output_model):
             output = spec.output_model.model_validate(output.model_dump(mode="json"))
+        normalized = cast(TOutput, output)
+        if spec.output_normalizer is not None:
+            normalized = spec.output_normalizer(normalized)
+            if not isinstance(normalized, spec.output_model):
+                normalized = spec.output_model.model_validate(normalized.model_dump(mode="json"))
         if spec.quality_validator is not None:
-            spec.quality_validator(output)
-        return output
-
-    def _repair_context(
-        self,
-        spec: StructuredGenerationSpec[TOutput],
-        error: V2StructuredLLMError,
-    ) -> dict[str, Any]:
-        base = {
-            "stage_name": spec.stage_name,
-            "contract_name": spec.contract_name,
-            "schema_error_paths": list(error.validation_error_paths),
-            "quality_error_code": error.quality_error_code,
-            "quality_error_message": error.quality_error_message,
-            "quality_error_details": error.quality_error_details,
-            "error_code": self._generic_error_code(error),
-            "error_message": _safe_error_message(error),
-        }
-        if spec.repair_context_builder is not None:
-            base.update(spec.repair_context_builder(error))
-        return sanitize_context_for_llm_text(base)
+            spec.quality_validator(normalized)
+        return normalized
 
     def _result(
         self,
@@ -304,6 +467,7 @@ class StructuredGenerationRuntime:
         return StructuredGenerationResult(
             output=output,
             mode=mode,
+            degraded=mode == "fallback",
             warnings=sanitized_warnings,
             trace_metadata=self._trace_metadata(
                 spec,
@@ -389,13 +553,150 @@ class StructuredGenerationRuntime:
     def _generic_error_code(self, error: V2StructuredLLMError) -> str:
         if error.code == "structured_llm_unavailable":
             return "structured_generation_unavailable"
-        if error.code in {"structured_output_invalid_json", "structured_output_schema_invalid"}:
+        if error.code in {
+            "agent_structured_output_invalid",
+            "structured_output_invalid_json",
+            "structured_output_schema_invalid",
+        }:
             return "structured_generation_schema_failed"
         if error.code == "structured_output_quality_failed":
             return "structured_generation_quality_failed"
         if error.code == "structured_generation_repair_failed":
             return "structured_generation_repair_failed"
         return "structured_generation_unavailable"
+
+
+def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
+    payload = isolate_agent_input_payload(sanitize_context_for_llm_text(spec.input_payload))
+    workflow_id = str(spec.trace_metadata.get("workflow_id") or "") or None
+    timeout_seconds = (
+        spec.policy.timeout_seconds
+        if spec.policy is not None
+        else float(spec.trace_metadata.get("timeout_seconds", 120.0))
+    )
+    operation = spec.operation or _agent_operation(spec)
+    invocation = spec.invocation
+    agent_name = spec.agent_name or _agent_name_for_operation(operation)
+    context = spec.agent_context or AgentRunContext(
+        operation=operation,
+        user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
+        workflow_id=workflow_id,
+        input_payload=payload,
+        contract_schema=spec.output_model.model_json_schema(),
+    )
+    identity = None
+    action_id = str(spec.trace_metadata.get("action_id") or "").strip()
+    if invocation is None and action_id:
+        target = getattr(context, "target", None)
+        target_revision = (
+            target.expected_revision
+            if target is not None
+            else spec.trace_metadata.get("expected_target_revision")
+        )
+        identity = agent_request_identity(
+            conversation_id=(
+                getattr(context, "conversation_id", None)
+                or str(spec.trace_metadata.get("conversation_id") or "").strip()
+                or None
+            ),
+            action_id=action_id,
+            operation=operation,
+            target_revision=int(target_revision) if target_revision is not None else None,
+            normalized_input=context,
+        )
+    expected_target_revision = getattr(
+        getattr(context, "target", None), "expected_revision", None
+    ) or spec.trace_metadata.get("expected_target_revision")
+    run_id = (
+        invocation.run_id
+        if invocation
+        else identity.run_id
+        if identity is not None
+        else f"arun_{uuid4().hex}"
+    )
+    return AgentRunRequest(
+        run_id=run_id,
+        request_id=(
+            invocation.request_id
+            if invocation
+            else identity.request_id
+            if identity is not None
+            else f"req_{uuid4().hex}"
+        ),
+        **agent_run_envelope_fields(context),
+        parent_run_id=invocation.parent_run_id if invocation else None,
+        agent_name=agent_name,
+        operation=operation,
+        deadline_at=(
+            invocation.deadline_at
+            if invocation
+            else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+        ),
+        model_policy_id=(
+            invocation.model_policy_id if invocation else f"{agent_name}.{operation}.v1"
+        ),
+        contract_name=spec.contract_name,
+        validation_profile=spec.validation_profile,
+        validation_context=sanitize_context_for_llm_text(spec.validation_context),
+        context=context,
+        policy=(
+            AgentRunPolicy(timeout_seconds=invocation.timeout_seconds)
+            if invocation
+            else spec.policy or AgentRunPolicy(timeout_seconds=timeout_seconds)
+        ),
+        credential_ref="llm-default",
+        audit_metadata={
+            "stage_name": spec.stage_name,
+            "contract_name": spec.contract_name,
+            "workflow_id": workflow_id,
+            **({"tool_mode": spec.tool_mode} if spec.tool_mode != "default" else {}),
+            **(
+                {"expected_target_revision": int(expected_target_revision)}
+                if expected_target_revision is not None
+                else {}
+            ),
+            **({"request_identity_digest": identity.input_digest} if identity is not None else {}),
+        },
+        contract_schema=spec.output_model.model_json_schema(),
+    )
+
+
+def _agent_operation(spec: StructuredGenerationSpec[Any]) -> str:
+    if spec.stage_name != "specialist_materializer":
+        return spec.stage_name
+    if spec.contract_name.startswith("V2Product"):
+        return "product_prompt"
+    if spec.contract_name.startswith("V2Character"):
+        return "character_prompt"
+    if spec.contract_name.startswith("V2Scene"):
+        return "scene_prompt"
+    if spec.contract_name == "V2ShotCellPromptPlan":
+        return "storyboard_prompt"
+    if spec.contract_name == "V2ShotVideoPromptPlan":
+        return "shot_video_prompt"
+    if spec.contract_name == "V2BgmPromptPlan":
+        return "bgm_prompt"
+    return spec.stage_name
+
+
+def _agent_name_for_operation(operation: str) -> str:
+    if operation == "script_writer" or operation == "script_edit_normalization":
+        return "script_writer"
+    if operation == "product_prompt":
+        return "product_designer"
+    if operation == "character_prompt":
+        return "character_designer"
+    if operation == "scene_prompt":
+        return "scene_designer"
+    if operation in {"storyboard_detail", "storyboard_prompt"}:
+        return "storyboard_artist"
+    if operation == "shot_video_prompt":
+        return "video_director"
+    if operation == "bgm_prompt":
+        return "bgm_director"
+    if operation == "visual_style_scope_repair":
+        return "scene_designer"
+    return "director"
 
 
 def _with_output_warnings(output: TOutput, warnings: list[dict[str, Any]]) -> TOutput:
@@ -427,37 +728,8 @@ def _structured_prompt_lineage(
     *,
     path_kind: str | None = None,
 ) -> dict[str, Any]:
-    prompt_id = _structured_prompt_id(spec.stage_name)
-    if not prompt_id:
-        return {}
-    registry = V2PromptRegistry()
-    render_result = registry.render_result_for_prompt_id(
-        prompt_id=prompt_id,
-        rendered_prompt=spec.system_prompt,
-        render_context={
-            "input_payload": spec.input_payload,
-            "contract_name": spec.contract_name,
-            "stage_name": spec.stage_name,
-        },
-        workflow_id=str(metadata.get("workflow_id") or "") or None,
-        node_id=str(metadata.get("node_id") or "") or None,
-        item_id=str(metadata.get("item_id") or "") or None,
-        slot_id=str(metadata.get("slot_id") or "") or None,
-        slot_type=str(metadata.get("slot_type") or "") or None,
-        path_kind=path_kind or _path_kind_for_mode(metadata),
-    )
-    lineage = registry.lineage_for_render(render_result).model_dump(mode="json")
-    payload = {
-        "prompt_registry_ref": render_result.prompt_registry_ref.model_dump(mode="json"),
-        "prompt_lineage": lineage,
-    }
-    profile = prompt_content_profile_metadata(
-        prompt_id=prompt_id,
-        prompt_text=spec.system_prompt,
-    )
-    if profile is not None:
-        payload["prompt_content_profile"] = profile
-    return payload
+    del spec, metadata, path_kind
+    return {}
 
 
 def _render_runtime_high_risk_prompt(
@@ -492,26 +764,6 @@ def _render_runtime_high_risk_prompt(
         "prompt_registry_ref": render_result.prompt_registry_ref.model_dump(mode="json"),
         "prompt_lineage": lineage,
     }
-
-
-def _structured_prompt_id(stage_name: str) -> str | None:
-    if stage_name == "script_writer":
-        return "v2.script_writer.plan.v1"
-    if stage_name == "expert_brief_planner":
-        return "v2.expert_brief.plan.v1"
-    if stage_name == "storyboard_detail":
-        return "v2.storyboard.detail.v1"
-    if stage_name == "visual_style_scope_repair":
-        return "v2.visual_style.scope_repair.v1"
-    return None
-
-
-def _path_kind_for_mode(metadata: dict[str, Any]) -> str:
-    if metadata.get("error_code") == "structured_generation_repair_failed":
-        return "fallback"
-    if metadata.get("error_code"):
-        return "repair"
-    return "normal"
 
 
 def _path_kind_for_result_mode(mode: str) -> str:

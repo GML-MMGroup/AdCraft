@@ -8,7 +8,6 @@ from app.services.llm_context_sanitizer import (
     sanitize_context_for_llm_text,
     sanitize_context_for_llm_text_with_warnings,
 )
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
 
 SCRIPT_WRITER_REQUIRED_TOP_LEVEL_FIELDS = [
     "script_plan_version",
@@ -77,22 +76,6 @@ def script_writer_json_object_response_format() -> dict[str, Any]:
     return {"type": "json_object"}
 
 
-def script_writer_system_prompt() -> str:
-    return (
-        V2HighRiskPromptRenderer()
-        .render(
-            prompt_id="v2.script_writer.plan.v1",
-            context={
-                "required_top_level_fields": SCRIPT_WRITER_REQUIRED_TOP_LEVEL_FIELDS,
-                "canonical_id_fields": SCRIPT_WRITER_CANONICAL_ID_FIELDS,
-                "forbidden_alias_only_fields": SCRIPT_WRITER_FORBIDDEN_ALIAS_ONLY_FIELDS,
-            },
-            identity={"path_kind": "normal"},
-        )
-        .prompt_text
-    )
-
-
 def normalize_script_writer_output(payload: Any, *, model_id: str | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise TypeError("Script Writer output must be a JSON object.")
@@ -103,6 +86,7 @@ def normalize_script_writer_output(payload: Any, *, model_id: str | None) -> dic
 
     for list_key, canonical_id in _ALIASES:
         _map_id_alias(normalized.get(list_key), canonical_id)
+    _canonicalize_shot_references(normalized.get("shots"))
 
     normalized.setdefault("script_plan_version", 2)
     normalized["materializer_mode"] = "real"
@@ -181,6 +165,26 @@ def _map_id_alias(value: Any, canonical_id: str) -> None:
         if canonical_id not in item and isinstance(alias_value, str) and alias_value.strip():
             item[canonical_id] = alias_value.strip()
         item.pop("id", None)
+
+
+def _canonicalize_shot_references(value: Any) -> None:
+    if not isinstance(value, list):
+        return
+    for shot in value:
+        if not isinstance(shot, dict):
+            continue
+        scene_id = shot.get("scene_id")
+        product_ids = shot.get("product_ids", [])
+        character_ids = shot.get("character_ids", [])
+        if (
+            not isinstance(scene_id, str)
+            or not isinstance(product_ids, list)
+            or not isinstance(character_ids, list)
+            or not all(isinstance(item, str) for item in [*product_ids, *character_ids])
+        ):
+            continue
+        shot["scene_ids"] = [scene_id]
+        shot["reference_item_ids"] = list(dict.fromkeys([*product_ids, *character_ids, scene_id]))
 
 
 def _strip_strings(value: Any) -> Any:

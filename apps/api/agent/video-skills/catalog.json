@@ -1,0 +1,17 @@
+{
+  "catalog_version": "1",
+  "categories": [
+    {
+      "category_id": "commercial-craft",
+      "title": "Commercial Craft",
+      "display_order": 10
+    }
+  ],
+  "skills": [
+    {
+      "skill_id": "platform-default",
+      "version": "1.0.0",
+      "display_order": 10
+    }
+  ]
+}

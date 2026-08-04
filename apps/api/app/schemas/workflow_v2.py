@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.schemas.asset_library import AssetReference
 from app.schemas.assets import WorkflowAssetReference
 from app.schemas.front_desk import FrontDeskChatResponse
+from app.schemas.workflow_v2_composition import WorkflowV2CompositionCapabilities
 from app.schemas.workflow_v2_intent import V2FrontDeskPlanningSeed
 
 
@@ -291,6 +292,9 @@ class WorkflowRuntimeV2(BaseModel):
 class WorkflowV2(BaseModel):
     workflow_schema_version: Literal[2] = 2
     workflow_id: str
+    project_id: str | None = None
+    state_version: int | None = Field(default=None, ge=1)
+    semantic_revision_no: int | None = Field(default=None, ge=1)
     name: str
     description: str = ""
     prompt: str
@@ -376,6 +380,7 @@ class WorkflowV2NormalizedPlanningRequestView(BaseModel):
 class WorkflowV2PlanFromChatResponse(BaseModel):
     front_desk: FrontDeskChatResponse
     workflow: WorkflowV2 | None = None
+    project_id: str | None = None
     normalized_v2_request: WorkflowV2NormalizedPlanningRequestView | None = None
     status: str | None = None
     error_code: str | None = None
@@ -1137,12 +1142,20 @@ class WorkflowV2Event(BaseModel):
     seq: int
     event_type: str
     workflow_id: str
+    project_id: str | None = None
     execution_id: str | None = None
     node_id: str | None = None
+    binding_id: str | None = None
     item_id: str | None = None
     slot_id: str | None = None
     asset_id: str | None = None
     version_id: str | None = None
+    conversation_id: str | None = None
+    turn_id: str | None = None
+    action_id: str | None = None
+    transition_key: str | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
     created_at: str
     payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -1403,6 +1416,7 @@ class WorkflowV2TimelineResponse(BaseModel):
     available_sources: list["WorkflowV2TimelineSource"] = Field(default_factory=list)
     stale_clip_ids: list[str] = Field(default_factory=list)
     missing_source_clip_ids: list[str] = Field(default_factory=list)
+    composition_capabilities: WorkflowV2CompositionCapabilities | None = None
 
 
 class WorkflowV2TimelineUpdateRequest(BaseModel):
@@ -1439,13 +1453,27 @@ class WorkflowV2TimelineRenderResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class V2FinalCompositionFingerprint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal["v2-final-composition-fingerprint-v1"]
+    fingerprint: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    canonical_payload: dict[str, Any]
+
+
 class WorkflowV2TimelineRenderStartResponse(BaseModel):
     workflow_id: str
     render_id: str
-    status: Literal["queued"] = "queued"
+    status: Literal["queued", "running", "completed"] = "queued"
+    purpose: Literal["final"] = "final"
     timeline_id: str
     timeline_version: int
     events_cursor: int = Field(ge=0)
+    output_url: str | None = None
+    asset_id: str | None = None
+    version_id: str | None = None
+    reused: bool = False
+    composition_fingerprint: str | None = None
 
 
 class WorkflowV2TimelineRenderStateResponse(BaseModel):
@@ -1470,6 +1498,14 @@ class WorkflowV2TimelineRenderStateResponse(BaseModel):
     version_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    output_url: str | None = None
+    reused: bool = False
+    reused_from_render_id: str | None = None
+    reuse_kind: Literal["active_render", "completed_asset"] | None = None
+    composition_fingerprint: str | None = None
+    fingerprint_contract_version: str | None = None
+    source_action: Literal["global_run", "editor_export"] | None = None
+    select_result: bool | None = None
     created_at: str
     updated_at: str
 
