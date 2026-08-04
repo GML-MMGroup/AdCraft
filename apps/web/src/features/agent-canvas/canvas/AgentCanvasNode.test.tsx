@@ -95,6 +95,33 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
 afterEach(() => cleanup());
 
 describe("AgentCanvasNodeCard", () => {
+  it("uses a genuinely translucent glass surface for dark audio nodes", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const shellRule = css.match(
+      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const playerRule = css.match(
+      /:root\[data-theme="dark"\] \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const glassEdgeRule = css.match(
+      /:root\[data-theme="dark"\] \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const selectedRule = css.match(
+      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\.agent-canvas-node--selected\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(shellRule).toContain("background: transparent");
+    expect(shellRule).toContain("backdrop-filter: none");
+    expect(playerRule).toContain("isolation: auto");
+    expect(playerRule).toContain("background: rgba(255, 255, 255, 0.06)");
+    expect(playerRule).toContain("backdrop-filter: none");
+    expect(playerRule).not.toContain("gradient");
+    expect(glassEdgeRule).toContain("background: transparent");
+    expect(glassEdgeRule).not.toContain("gradient");
+    expect(selectedRule).toContain("0 0 0 3px rgba(185, 172, 216, 0.2)");
+  });
+
   it("anchors a visible unframed type icon on the card's top-left border", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
@@ -261,6 +288,47 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
+  it("uses larger connection handles centered on the node border", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const handleRule = css.match(/\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/)?.[1];
+    const inputRule = css.match(/\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/)?.[1];
+    const outputRule = css.match(/\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/)?.[1];
+
+    expect(handleRule).toContain("width: 24px");
+    expect(handleRule).toContain("height: 24px");
+    expect(inputRule).toContain("left: -12px");
+    expect(outputRule).toContain("right: -12px");
+  });
+
+  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
+    "renders %s node connection handles without plus glyphs",
+    (nodeType) => {
+      const data: AgentCanvasNodeData = { node: makeNode(nodeType) };
+      const { container } = render(
+        <ReactFlowProvider>
+          <AgentCanvasNodeRenderer
+            id={data.node.node_id}
+            data={data}
+            type="agentCanvas"
+            selected={false}
+            dragging={false}
+            draggable
+            selectable
+            deletable
+            isConnectable
+            zIndex={0}
+            positionAbsoluteX={0}
+            positionAbsoluteY={0}
+          />
+        </ReactFlowProvider>,
+      );
+
+      expect(container.querySelectorAll(".agent-canvas-node__handle")).toHaveLength(2);
+      expect(container.querySelectorAll(".agent-canvas-node__handle svg")).toHaveLength(0);
+    },
+  );
+
   it("renders connectable left and right handles", () => {
     const onOpenConnectedNodeMenu = vi.fn();
     const data: AgentCanvasNodeData = {

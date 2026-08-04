@@ -5,7 +5,6 @@ import {
   DocumentIcon,
   EditIcon,
   ImageIcon,
-  PlusIcon,
   UnmuteIcon,
   VideoIcon,
 } from "../../../icons.tsx";
@@ -264,7 +263,7 @@ export function AgentCanvasNodeRenderer({
           aria-label={`${label} node input`}
         >
           <span
-            className="agent-canvas-node__handle-plus"
+            className="agent-canvas-node__handle-target"
             role="button"
             tabIndex={0}
             aria-label={`Add an upstream node to ${label}`}
@@ -287,9 +286,7 @@ export function AgentCanvasNodeRenderer({
                 { x: bounds.left, y: bounds.top },
               );
             }}
-          >
-            <PlusIcon />
-          </span>
+          />
         </Handle>
       ) : null}
       <AgentCanvasNodeCard
@@ -309,7 +306,7 @@ export function AgentCanvasNodeRenderer({
           aria-label={`${label} node output`}
         >
           <span
-            className="agent-canvas-node__handle-plus"
+            className="agent-canvas-node__handle-target"
             role="button"
             tabIndex={0}
             aria-label={`Add a downstream node to ${label}`}
@@ -332,9 +329,7 @@ export function AgentCanvasNodeRenderer({
                 { x: bounds.right, y: bounds.top },
               );
             }}
-          >
-            <PlusIcon />
-          </span>
+          />
         </Handle>
       ) : null}
     </div>
