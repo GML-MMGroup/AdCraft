@@ -288,17 +288,21 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
-  it("uses larger connection handles centered on the node border", () => {
+  it("uses 40px connection hit targets with visible handles spaced from the node", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
-    const handleRule = css.match(/\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/)?.[1];
-    const inputRule = css.match(/\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/)?.[1];
-    const outputRule = css.match(/\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/)?.[1];
+    const handleRule = css.match(/^\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const targetRule = css.match(/^\.agent-canvas-node__handle-target\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const inputRule = css.match(/^\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const outputRule = css.match(/^\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(handleRule).toContain("width: 24px");
-    expect(handleRule).toContain("height: 24px");
-    expect(inputRule).toContain("left: -12px");
-    expect(outputRule).toContain("right: -12px");
+    expect(handleRule).toContain("width: 40px");
+    expect(handleRule).toContain("height: 40px");
+    expect(handleRule).toContain("background: transparent");
+    expect(targetRule).toContain("width: 28px");
+    expect(targetRule).toContain("height: 28px");
+    expect(inputRule).toContain("left: -26px");
+    expect(outputRule).toContain("right: -26px");
   });
 
   it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(

@@ -522,41 +522,47 @@
 .agent-canvas-node__handle {
   z-index: 12;
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: crosshair;
+}
+
+.agent-canvas-node__handle:hover .agent-canvas-node__handle-target,
+.agent-canvas-node__handle:focus-within .agent-canvas-node__handle-target {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--agent-node-accent, #777d95) 18%, transparent),
+    0 3px 10px rgba(30, 33, 51, 0.32);
+  transform: scale(1.08);
+}
+
+.agent-canvas-node__handle-target {
+  display: grid;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border: 2px solid rgba(255, 255, 255, 0.95);
   border-radius: 50%;
   background: #777d95;
   box-shadow: 0 2px 8px rgba(30, 33, 51, 0.26);
-  transition: box-shadow 140ms ease, transform 140ms ease;
-}
-
-.agent-canvas-node__handle:hover,
-.agent-canvas-node__handle:focus-within {
-  box-shadow:
-    0 0 0 4px color-mix(in srgb, var(--agent-node-accent, #777d95) 18%, transparent),
-    0 3px 10px rgba(30, 33, 51, 0.32);
-  transform: translateY(-50%) scale(1.08);
-}
-
-.agent-canvas-node__handle-target {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  border-radius: 50%;
   color: #fff;
   cursor: crosshair;
   outline: none;
+  transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
 .agent-canvas-node__handle--input {
-  left: -12px;
+  left: -26px;
 }
 
 .agent-canvas-node__handle--output {
-  right: -12px;
+  right: -26px;
+}
+
+.agent-canvas-node__handle--output .agent-canvas-node__handle-target {
   background: var(--agent-node-accent, #777d95);
 }
 
