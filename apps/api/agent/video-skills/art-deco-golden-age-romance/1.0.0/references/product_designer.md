@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing geometric opulence through silhouette and jewel-tone contrast through surfaces and detail. Make functional features readable, and use romantic decadence only where it strengthens the requested selling point.

@@ -1,0 +1,1 @@
+Construct spaces that express flowing ornamental line through layout and silk material behavior through light, color, and material. Use refined color fields to direct attention toward the advertised subject while preserving the stated location and product context.

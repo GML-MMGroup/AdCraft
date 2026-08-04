@@ -1,0 +1,1 @@
+Direct camera and subject motion through limited pixel palette and sprite readability, using arcade staging for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

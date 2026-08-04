@@ -1,0 +1,1 @@
+Direct camera and subject motion through vast scale and sparse geometry, using atmospheric depth for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

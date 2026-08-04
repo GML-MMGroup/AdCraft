@@ -1,0 +1,36 @@
+{
+  "skill_id": "retro-magical-girl-animation",
+  "version": "1.0.0",
+  "display_name": "Retro Magical-Girl Animation",
+  "description": "An advertising treatment built around transformation grammar, symbolic props, pastel-neon contrast, and heroic reveal.",
+  "category": "animation-illustration",
+  "tags": [
+    "animation",
+    "illustration",
+    "motion"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Retro Magical-Girl Animation creative treatment."
+  },
+  "display_order": 380,
+  "files": {
+    "SKILL.md": "5795473f32f181848b303caa9c5b786d4fc4b521cb407de9a86a9b52892edee3",
+    "references/character_designer.md": "e465f25257230be2f03dcaf337f8e1deb04ac3da2929f7050217ec5d614844db",
+    "references/scene_designer.md": "d16432dc3ebe90be43e9901ec3f79a0a53fd6428006efa7f83613ae861dea1fd",
+    "references/storyboard_artist.md": "352835b9c8e398ce3e8902cc5640828846aaa2df5b3fd1e330f0d409a941cb9f",
+    "references/video_director.md": "55af36cdbca3f1e69a34e9d9498916078ee4c2c11359eea7738dfcaf1948fb21",
+    "references/quick_media_agent.md": "1acb1f123bdff6c1e5566d099f903b4b5da32e0205cbd5b885782e1344c2e1d2"
+  },
+  "role_guidance": {
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md",
+    "quick_media_agent": "references/quick_media_agent.md"
+  }
+}

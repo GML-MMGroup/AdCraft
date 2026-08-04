@@ -1,0 +1,1 @@
+Organize shots around campaign concept, develop visual progression through premium product reveal, and reserve visual anchor for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

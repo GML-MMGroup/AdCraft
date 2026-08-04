@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around luminous atmosphere and weather detail. Use youthful longing to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

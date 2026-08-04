@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing rhythmic camera accents through silhouette and movement-to-cut coordination through surfaces and detail. Make functional features readable, and use visual impact beats only where it strengthens the requested selling point.

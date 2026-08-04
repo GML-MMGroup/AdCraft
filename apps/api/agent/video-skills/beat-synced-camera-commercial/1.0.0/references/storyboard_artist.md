@@ -1,0 +1,1 @@
+Organize shots around rhythmic camera accents, develop visual progression through movement-to-cut coordination, and reserve visual impact beats for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

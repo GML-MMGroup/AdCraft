@@ -1,0 +1,1 @@
+Organize shots around ink, develop visual progression through paper, and reserve cutout and decorative traditions for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

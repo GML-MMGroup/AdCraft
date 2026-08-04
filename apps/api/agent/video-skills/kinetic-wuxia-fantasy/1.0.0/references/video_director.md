@@ -1,0 +1,1 @@
+Direct camera and subject motion through readable action geography and fabric and weapon motion, using poetic landscapes for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

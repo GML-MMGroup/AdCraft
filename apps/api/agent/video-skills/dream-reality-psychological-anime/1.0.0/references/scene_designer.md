@@ -1,0 +1,1 @@
+Construct spaces that express subjective transitions through layout and identity motifs through light, color, and material. Use layered realities to direct attention toward the advertised subject while preserving the stated location and product context.

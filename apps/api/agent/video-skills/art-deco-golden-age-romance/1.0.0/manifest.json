@@ -1,0 +1,34 @@
+{
+  "skill_id": "art-deco-golden-age-romance",
+  "version": "1.0.0",
+  "display_name": "Art Deco Golden-Age Romance",
+  "description": "An advertising treatment built around geometric opulence, jewel-tone contrast, romantic decadence, and period spectacle.",
+  "category": "luxury-fashion",
+  "tags": [
+    "luxury",
+    "editorial",
+    "material"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Art Deco Golden-Age Romance creative treatment."
+  },
+  "display_order": 140,
+  "files": {
+    "SKILL.md": "5c4cd50cdc2f5cbdfb2b6a9939cd2d5f8131761f7cc17d72ceb8c0c6a474f4cb",
+    "references/product_designer.md": "c6f1ff7da28a6c02a67331e96a53ee4f8eb6eda7c5745907a151459fa7ea2656",
+    "references/character_designer.md": "52a2fc238e2741f159fa740f97bceac18f46f123e3eb3f5e396b40fdedbf1351",
+    "references/scene_designer.md": "411b02d0d90de171d13fb0fc6b93ee7900c2f3b8639bc98b1d847829701be388",
+    "references/video_director.md": "81da460a02fa316d4a8d511d617eff1d6bcc2569c6e51d07bfaa1b7d6183d6e7"
+  },
+  "role_guidance": {
+    "product_designer": "references/product_designer.md",
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "video_director": "references/video_director.md"
+  }
+}

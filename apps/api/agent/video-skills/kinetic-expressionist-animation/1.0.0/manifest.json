@@ -1,0 +1,36 @@
+{
+  "skill_id": "kinetic-expressionist-animation",
+  "version": "1.0.0",
+  "display_name": "Kinetic Expressionist Animation",
+  "description": "An advertising treatment built around elastic drawing, expressive distortion, energetic staging, and color-driven motion.",
+  "category": "animation-illustration",
+  "tags": [
+    "animation",
+    "illustration",
+    "motion"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Kinetic Expressionist Animation creative treatment."
+  },
+  "display_order": 350,
+  "files": {
+    "SKILL.md": "29823977ed940513939ccc8d910d2a62d2df5abb7111fdf0606db8048f538a0b",
+    "references/character_designer.md": "f5054291bc9b3e3ad553dc8b09d4ac01904dee10616a2c5699388d8dc3cca6b1",
+    "references/scene_designer.md": "205b40dec01c807066b7b1f797a8bece1f48d8091952c4eafb9501db8741b115",
+    "references/storyboard_artist.md": "b1c2e1a0d6b38ef7018baba4a524ca6dd4d121e1597d8928875345f0a357053f",
+    "references/video_director.md": "96fafe9e74be2a6cbab6f393346ffa2b17dacf6bf92ae18ae3ce7f4566b8c866",
+    "references/quick_media_agent.md": "8f94529e52e1f1dec32003e56b0f535edd680d07ac0b55f529da4e95cbd865a8"
+  },
+  "role_guidance": {
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md",
+    "quick_media_agent": "references/quick_media_agent.md"
+  }
+}

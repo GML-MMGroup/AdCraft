@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around geometric opulence and jewel-tone contrast. Use romantic decadence to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

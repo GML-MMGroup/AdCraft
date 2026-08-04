@@ -1,0 +1,1 @@
+Construct spaces that express limited pixel palette through layout and sprite readability through light, color, and material. Use arcade staging to direct attention toward the advertised subject while preserving the stated location and product context.

@@ -1,0 +1,1 @@
+Organize shots around respectful observation, develop visual progression through environmental context, and reserve authentic action for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

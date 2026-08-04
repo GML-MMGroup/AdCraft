@@ -1,0 +1,34 @@
+{
+  "skill_id": "controlled-psychological-thriller",
+  "version": "1.0.0",
+  "display_name": "Controlled Psychological Thriller",
+  "description": "An advertising treatment built around restrained tension, motivated darkness, exact blocking, and procedural visual detail.",
+  "category": "cinematic-narrative",
+  "tags": [
+    "cinematic",
+    "narrative",
+    "composition"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Controlled Psychological Thriller creative treatment."
+  },
+  "display_order": 220,
+  "files": {
+    "SKILL.md": "3c232fe651bcda1b1d2ac7eee38df66e9a4866ead658dfeff9a5619534fa3754",
+    "references/script_writer.md": "1cb0f28c2792961fa2955005a3161e1979375641b4b884833d5c2b9cf169ec05",
+    "references/scene_designer.md": "98ba8f36961a16c42e59ae5a849eb6ff5b5b2b6676616922c1da303202ba1803",
+    "references/storyboard_artist.md": "2df3602b054fd424d53aa15d23b27c458f8f3b294f40b930f80de3cb8d1a99b7",
+    "references/video_director.md": "9048f022a36aaf61eee053edc8d8ae8ba5ab58c2cbdb5d2e2da1f4d67e71129e"
+  },
+  "role_guidance": {
+    "script_writer": "references/script_writer.md",
+    "scene_designer": "references/scene_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md"
+  }
+}

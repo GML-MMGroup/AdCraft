@@ -1,0 +1,1 @@
+Build the narrative premise around restrained tension, then use motivated darkness to shape escalation and procedural visual detail to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

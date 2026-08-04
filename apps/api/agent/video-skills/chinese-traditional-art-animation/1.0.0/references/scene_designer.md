@@ -1,0 +1,1 @@
+Construct spaces that express ink through layout and paper through light, color, and material. Use cutout and decorative traditions to direct attention toward the advertised subject while preserving the stated location and product context.

@@ -1,0 +1,34 @@
+{
+  "skill_id": "theatrical-revue-glamour",
+  "version": "1.0.0",
+  "display_name": "Theatrical Revue Glamour",
+  "description": "An advertising treatment built around stage blocking, chorus geometry, spotlight glamour, and escalating theatrical reveal.",
+  "category": "luxury-fashion",
+  "tags": [
+    "luxury",
+    "editorial",
+    "material"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Theatrical Revue Glamour creative treatment."
+  },
+  "display_order": 150,
+  "files": {
+    "SKILL.md": "1020170cd87fb40b3d06b8708a40abdd845f516b1df970f10bf5436862197522",
+    "references/product_designer.md": "7c8cae563d89677aabb78306025c3c49c75bb551bdbb2efb6d32f4cbe05f66a9",
+    "references/character_designer.md": "56704c8d241ac0c786f2fd850fdeaaf38f158c756984c5e1d3f8c6fb63aec25f",
+    "references/scene_designer.md": "11669dc98f8a165f1c21d5c56c77b8db3d201b8fa784ab4f22067998d5f57f7c",
+    "references/video_director.md": "69dd36d4a0d3cff06184884ba49835cfa2c8ede193a9dbc527e40d5444102b80"
+  },
+  "role_guidance": {
+    "product_designer": "references/product_designer.md",
+    "character_designer": "references/character_designer.md",
+    "scene_designer": "references/scene_designer.md",
+    "video_director": "references/video_director.md"
+  }
+}

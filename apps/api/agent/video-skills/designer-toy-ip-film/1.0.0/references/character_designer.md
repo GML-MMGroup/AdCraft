@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around collectible silhouette and signature accessories. Use material charm to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

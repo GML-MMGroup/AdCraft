@@ -1,0 +1,34 @@
+{
+  "skill_id": "beat-synced-camera-commercial",
+  "version": "1.0.0",
+  "display_name": "Beat-Synced Camera Commercial",
+  "description": "An advertising treatment built around rhythmic camera accents, movement-to-cut coordination, and visual impact beats.",
+  "category": "commercial-craft",
+  "tags": [
+    "commercial",
+    "campaign",
+    "product"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Beat-Synced Camera Commercial creative treatment."
+  },
+  "display_order": 60,
+  "files": {
+    "SKILL.md": "106d495209880fbc46e65f1961ab6987aba12c31827e53af7bae786e02a3c8ee",
+    "references/script_writer.md": "4725d626ef610813bd394f21ad755788c082041ba92da853f4271a00645635f0",
+    "references/product_designer.md": "5c2b35926a798d10ae1c0fe0cbcfcbd546102e34c511e06bbfabbc0806b633d9",
+    "references/storyboard_artist.md": "397829128f455944daa210c160e5c033cc52c9702f55540cac31cee27fe6dc39",
+    "references/video_director.md": "c642503d79f8d7560f795251626c70e0c882251e1311ee40bbfb63ea9b8e0ab4"
+  },
+  "role_guidance": {
+    "script_writer": "references/script_writer.md",
+    "product_designer": "references/product_designer.md",
+    "storyboard_artist": "references/storyboard_artist.md",
+    "video_director": "references/video_director.md"
+  }
+}

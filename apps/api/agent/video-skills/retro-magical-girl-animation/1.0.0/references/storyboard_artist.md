@@ -1,0 +1,1 @@
+Organize shots around transformation grammar, develop visual progression through symbolic props, and reserve pastel-neon contrast for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

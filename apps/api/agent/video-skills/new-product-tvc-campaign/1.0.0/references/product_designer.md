@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing campaign concept through silhouette and premium product reveal through surfaces and detail. Make functional features readable, and use visual anchor only where it strengthens the requested selling point.

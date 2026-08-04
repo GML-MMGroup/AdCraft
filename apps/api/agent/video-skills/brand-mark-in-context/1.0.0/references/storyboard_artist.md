@@ -1,0 +1,1 @@
+Organize shots around brand-shape echoes, develop visual progression through environmental integration, and reserve reveal and recognition hierarchy for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

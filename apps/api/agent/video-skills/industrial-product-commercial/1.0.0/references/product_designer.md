@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing engineering form through silhouette and material precision through surfaces and detail. Make functional features readable, and use functional demonstration only where it strengthens the requested selling point.

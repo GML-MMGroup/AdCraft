@@ -1,0 +1,1 @@
+Construct spaces that express transformation grammar through layout and symbolic props through light, color, and material. Use pastel-neon contrast to direct attention toward the advertised subject while preserving the stated location and product context.

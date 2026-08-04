@@ -1,0 +1,1 @@
+Organize shots around continuous spatial choreography, develop visual progression through motivated transitions, and reserve reveal timing for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

@@ -1,0 +1,1 @@
+Direct camera and subject motion through cut-paper layers and typography-aware rhythm without baked text, using tactile compositing for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

@@ -1,0 +1,1 @@
+Construct spaces that express drawn overlays through layout and travel observation through light, color, and material. Use location rhythm to direct attention toward the advertised subject while preserving the stated location and product context.

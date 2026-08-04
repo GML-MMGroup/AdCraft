@@ -1,0 +1,1 @@
+Organize shots around scale contrast, develop visual progression through macro optics, and reserve handcrafted detail for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
