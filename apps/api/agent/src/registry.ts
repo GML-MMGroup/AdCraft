@@ -25,6 +25,7 @@ export interface OperationDescriptor {
   readonly optional_skills: ReadonlyArray<string>;
   readonly allowed_tools: ReadonlyArray<AgentToolName>;
   readonly max_skill_context_bytes: number;
+  readonly max_handoffs: number;
 }
 
 const definitions: ReadonlyArray<AgentDefinition> = [
@@ -87,6 +88,12 @@ export function getOperationDescriptor(
     optional_skills: Object.freeze(skills.optional),
     allowed_tools: Object.freeze(allowedTools(agentName, operation)),
     max_skill_context_bytes: 8_192,
+    max_handoffs:
+      agentName === "director" &&
+      (operation === "decide_next_guidance_step" ||
+        operation === "proposal_action")
+        ? 0
+        : definition.max_handoffs,
   });
 }
 
@@ -119,7 +126,11 @@ function skillsForOperation(
   operation: string,
 ): { required: string[]; optional: string[] } {
   if (agentName === "director") {
-    if (operation === "conversation_turn" || operation === "proposal_action") {
+    if (
+      operation === "conversation_turn" ||
+      operation === "decide_next_guidance_step" ||
+      operation === "proposal_action"
+    ) {
       return { required: [], optional: [] };
     }
     return {

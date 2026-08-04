@@ -163,7 +163,6 @@ export class PiModelAdapter implements AgentModelAdapter {
           .join("\n\n"),
         model,
         tools,
-        thinkingLevel: "off",
       },
       streamFn: (selectedModel, context, options) => {
         const streamOptions = {

@@ -4,6 +4,21 @@ export type RunBudgetCode =
   | "agent_run_budget_exceeded"
   | "agent_deadline_exceeded";
 
+const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
+  resolve_creation_mode: 180,
+  conversation_turn: 300,
+  decide_next_guidance_step: 300,
+  proposal_action: 300,
+  propose_concepts: 300,
+  revise_concepts: 300,
+  materialize_draft: 300,
+  direct_response: 300,
+};
+
+export function operationDeadlineSeconds(operation: string): number {
+  return OPERATION_DEADLINES_SECONDS[operation] ?? 300;
+}
+
 export class RunBudgetFailure extends Error {
   constructor(readonly code: RunBudgetCode) {
     super(code);

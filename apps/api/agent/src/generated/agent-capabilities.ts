@@ -27,7 +27,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "operations": [
         "command_replan",
         "conversation_turn",
-        "plan_production_recipe",
+        "decide_next_guidance_step",
         "proposal_action",
         "resolve_creation_mode"
       ],

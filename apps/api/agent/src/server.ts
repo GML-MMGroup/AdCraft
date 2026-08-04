@@ -13,7 +13,11 @@ import {
 import { EventBuffer, EventBufferOverflow } from "./event-buffer.js";
 import { loadRuntimeManifest } from "./manifest.js";
 import { validateAgentRunRequest } from "./protocol-validator.js";
-import { RunBudget, RunBudgetFailure } from "./run-budget.js";
+import {
+  operationDeadlineSeconds,
+  RunBudget,
+  RunBudgetFailure,
+} from "./run-budget.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -160,7 +164,8 @@ async function handleRun(
     max_turns: request.policy?.max_turns ?? 8,
     max_tool_calls: request.policy?.max_tool_calls ?? 16,
     max_handoffs: request.policy?.max_handoffs ?? 8,
-    timeout_seconds: request.policy?.timeout_seconds ?? 120,
+    timeout_seconds:
+      request.policy?.timeout_seconds ?? operationDeadlineSeconds(request.operation),
     max_input_bytes: request.policy?.max_input_bytes ?? 131_072,
     max_output_bytes: request.policy?.max_output_bytes ?? 262_144,
     max_event_bytes: request.policy?.max_event_bytes ?? 65_536,

@@ -14,8 +14,9 @@ from app.schemas.agent_runtime import (
     SpecialistDraft,
 )
 from app.schemas.agent_canvas_creative_session import (
-    AdaptiveProductionRecipeDraftV2,
     CreationModeDecisionV2,
+    DelegatedProposalChoiceV2,
+    NextGuidanceDecisionV2,
     SpecialistDraftV2,
 )
 from app.schemas.specialist_agents import SpecialistResult
@@ -54,7 +55,8 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         ConceptProposalDraftV2,
         SpecialistDraftV2,
         CreationModeDecisionV2,
-        AdaptiveProductionRecipeDraftV2,
+        NextGuidanceDecisionV2,
+        DelegatedProposalChoiceV2,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
