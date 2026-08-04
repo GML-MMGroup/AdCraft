@@ -139,6 +139,8 @@ class ProviderCapabilityService:
         self,
         node: CanvasNodeV2,
         capability: CanvasProviderModelCapabilityV2,
+        *,
+        normalizations: tuple[str, ...] = (),
     ) -> EffectiveMediaParameterSnapshotV2:
         """Normalize the saved Node parameters once for a selected model."""
 
@@ -148,7 +150,7 @@ class ProviderCapabilityService:
             if key not in _INTERNAL_NODE_PARAMETERS
         }
         effective = dict(requested)
-        normalizations: list[str] = []
+        applied_normalizations: list[str] = list(normalizations)
         if node.node_type == "video":
             requested_duration = requested.get("duration_seconds", 5)
             duration = _positive_integer_duration(requested_duration)
@@ -157,7 +159,7 @@ class ProviderCapabilityService:
                 maximum_duration = int(maximum)
                 if duration > maximum_duration:
                     duration = maximum_duration
-                    normalizations.append("duration_clamped_to_provider_limit")
+                    applied_normalizations.append("duration_clamped_to_provider_limit")
             effective["duration_seconds"] = duration
             requested_audio = bool(requested.get("generate_audio", False))
             if requested_audio and (
@@ -165,7 +167,7 @@ class ProviderCapabilityService:
                 or not capability.supports_native_audio
             ):
                 effective["generate_audio"] = False
-                normalizations.append("generate_audio_omitted_for_model_capability")
+                applied_normalizations.append("generate_audio_omitted_for_model_capability")
             elif "generate_audio" in capability.supported_parameters:
                 effective["generate_audio"] = requested_audio
             else:
@@ -173,7 +175,7 @@ class ProviderCapabilityService:
         return EffectiveMediaParameterSnapshotV2(
             requested=requested,
             effective=effective,
-            normalizations=tuple(normalizations),
+            normalizations=tuple(applied_normalizations),
             provider=capability.provider,
             model_id=capability.model_id,
             capability_revision=capability.capability_revision,

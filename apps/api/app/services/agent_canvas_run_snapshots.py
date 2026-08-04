@@ -12,6 +12,9 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasBindingSourceNodeV2, CanvasNodeV2
 from app.schemas.agent_canvas import ResolvedNodeInputManifestV2
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, NodeRunIntentSnapshotV2
+from app.services.agent_canvas_execution_parameters import (
+    AgentCanvasExecutionParameterResolver,
+)
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 
 
@@ -22,9 +25,11 @@ class AgentCanvasRunIntentSnapshotService:
         self,
         workflows: AgentCanvasWorkflowRepository,
         runtime: AgentCanvasRuntimeRepository,
+        execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
     ) -> None:
         self._workflows = workflows
         self._runtime = runtime
+        self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
 
     def freeze_members(
         self,
@@ -54,6 +59,7 @@ class AgentCanvasRunIntentSnapshotService:
                     "Execution member references a missing Node.",
                     stage="agent_canvas_run_snapshots",
                 )
+            frozen_node, normalizations = self._execution_parameters.freeze_node(node)
             bindings = tuple(
                 sorted(
                     (
@@ -91,22 +97,22 @@ class AgentCanvasRunIntentSnapshotService:
                 )
                 for binding in bindings
             )
-            structured_content_digest = _digest(node.structured_content)
+            structured_content_digest = _digest(frozen_node.structured_content)
             identity = {
-                "workflow_id": node.workflow_id,
+                "workflow_id": frozen_node.workflow_id,
                 "execution_id": execution_id,
                 "member_id": member.member_id,
-                "node_id": node.node_id,
-                "node_revision": node.revision,
-                "node_type": node.node_type,
-                "creative_role": node.creative_role,
-                "role_contract_version": node.role_contract_version,
-                "summary_prompt": node.summary_prompt,
-                "generation_prompt": node.generation_prompt,
+                "node_id": frozen_node.node_id,
+                "node_revision": frozen_node.revision,
+                "node_type": frozen_node.node_type,
+                "creative_role": frozen_node.creative_role,
+                "role_contract_version": frozen_node.role_contract_version,
+                "summary_prompt": frozen_node.summary_prompt,
+                "generation_prompt": frozen_node.generation_prompt,
                 "structured_content_digest": structured_content_digest,
-                "model_selection_mode": node.model_selection_mode,
-                "model_ref": node.model_ref,
-                "requested_parameters": node.parameters,
+                "model_selection_mode": frozen_node.model_selection_mode,
+                "model_ref": frozen_node.model_ref,
+                "requested_parameters": frozen_node.parameters,
                 "binding_snapshots": [item.model_dump(mode="json") for item in binding_snapshots],
             }
             snapshot = NodeRunIntentSnapshotV2(
@@ -117,7 +123,7 @@ class AgentCanvasRunIntentSnapshotService:
             )
             self._runtime.update_member(
                 execution_id,
-                node.node_id,
+                frozen_node.node_id,
                 state=member.state,
                 phase=member.phase,
                 provider_task_id=member.provider_task_id,
@@ -125,18 +131,23 @@ class AgentCanvasRunIntentSnapshotService:
                 now=now,
                 prompt_metadata={
                     **member.prompt_metadata,
-                    "frozen_node": node.model_dump(mode="json"),
+                    "frozen_node": frozen_node.model_dump(mode="json"),
+                    **(
+                        {"execution_parameter_normalizations": list(normalizations)}
+                        if normalizations
+                        else {}
+                    ),
                 },
                 run_intent_snapshot=snapshot,
                 event_type="run_intent_frozen",
                 event_payload={
                     "run_intent_snapshot_id": snapshot.snapshot_id,
-                    "node_id": node.node_id,
-                    "node_revision": node.revision,
+                    "node_id": frozen_node.node_id,
+                    "node_revision": frozen_node.revision,
                     "binding_ids": [item.binding_id for item in binding_snapshots],
                 },
             )
-            frozen.append(node)
+            frozen.append(frozen_node)
         return tuple(frozen)
 
     def resolve_inputs(

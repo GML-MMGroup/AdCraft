@@ -41,6 +41,9 @@ from app.services.agent_canvas_node_execution import (
     NodeExecutionDispatcher,
     NodeExecutionOutcome,
 )
+from app.services.agent_canvas_execution_parameters import (
+    AgentCanvasExecutionParameterResolver,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
 )
@@ -229,6 +232,7 @@ class DynamicCanvasScheduler:
         stage_trace_writer: StageTraceWriter | None = None,
         input_compiler: AgentCanvasResolvedInputCompiler | None = None,
         run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
+        execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
@@ -250,6 +254,7 @@ class DynamicCanvasScheduler:
         self._stage_trace_writer = stage_trace_writer
         self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(bindings)
         self._run_snapshots = run_snapshots
+        self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
         self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
@@ -438,6 +443,7 @@ class DynamicCanvasScheduler:
             if isinstance(frozen_node, dict)
             else self._workflows.get_node(workflow_id, node_id)
         )
+        node, derived_normalizations = self._execution_parameters.freeze_node(node)
         stored_manifest = member.resolved_input_manifest or member.prompt_metadata.get(
             "resolved_input_manifest"
         )
@@ -473,6 +479,14 @@ class DynamicCanvasScheduler:
         reference_bundle = None
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None
         prompt_metadata: dict[str, object] = dict(member.prompt_metadata)
+        execution_parameter_normalizations = prompt_metadata.get(
+            "execution_parameter_normalizations"
+        )
+        normalization_labels = (
+            tuple(str(item) for item in execution_parameter_normalizations)
+            if isinstance(execution_parameter_normalizations, list)
+            else derived_normalizations
+        )
         prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
         runtime_omissions = tuple(
             item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
@@ -498,7 +512,11 @@ class DynamicCanvasScheduler:
                 else node
             )
             capability = self._capabilities.resolve(selected_node, inputs)
-            effective_parameters = self._capabilities.effective_parameters(node, capability)
+            effective_parameters = self._capabilities.effective_parameters(
+                node,
+                capability,
+                normalizations=normalization_labels,
+            )
             prompt_metadata["effective_parameters"] = effective_parameters.model_dump(mode="json")
             if resolution is None:
                 model_id = capability.model_id
@@ -763,6 +781,8 @@ class DynamicCanvasScheduler:
                 expected_lease_generation=lease.generation,
             ):
                 self._runtime.complete_lease(lease, now=now)
+                return
+            self._runtime.complete_lease(lease, now=now)
             return
         asset_id = None
         if outcome.media is not None:

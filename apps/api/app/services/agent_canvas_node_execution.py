@@ -485,6 +485,8 @@ class MediaNodeExecutor:
             if context.effective_parameters is not None
             else context.node.parameters
         )
+        if context.node.semantic_role == "bgm":
+            _require_bgm_duration(effective_parameters)
         prompt = _saved_prompt(context)
         provider_payload: dict[str, Any] = {
             "provider_prompt": prompt,
@@ -637,6 +639,15 @@ class MediaNodeExecutor:
                 "Provider output path is outside managed storage.",
             )
         return resolved.read_bytes()
+
+
+def _require_bgm_duration(parameters: dict[str, object]) -> None:
+    duration = parameters.get("duration_seconds")
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
+        raise _error(
+            "model_parameter_unsupported",
+            "BGM execution requires a positive integer duration_seconds.",
+        )
 
 
 def _generated_media_identity(media_type: str, content: bytes) -> tuple[str, str]:
