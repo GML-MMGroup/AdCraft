@@ -74,10 +74,8 @@ class AgentCanvasProjectService:
             workflow_id=f"adwf_v2_{identity}",
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
-            initial_recipe_topics=tuple(initial_skill.recipe["planning_topics"]),
         )
-        creative_session = self._conversations.get_creative_session(workflow.workflow_id)
-        skill_run = self._conversations.get_skill_run(creative_session.skill_run_id)
+        skill_run = self._conversations.get_active_style_skill_run(workflow.workflow_id)
         CreativeDirectionService().ensure_snapshot(
             self._conversations,
             skill_run,
@@ -86,7 +84,8 @@ class AgentCanvasProjectService:
         return ProjectCreateResponseV2.model_validate(
             {
                 **workflow.model_dump(),
-                "creative_session_id": creative_session.skill_run_id,
+                "active_style_skill_run_id": skill_run.skill_run_id,
+                "guidance_session_id": None,
             }
         )
 

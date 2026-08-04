@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import cast
 from uuid import uuid4
@@ -24,7 +23,6 @@ from app.persistence.models import (
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
     AgentCanvasPromptContextSnapshotRow,
-    AgentCanvasPlanningTopicRow,
     AgentCanvasSkillRunRow,
     AgentCanvasVariationDraftRow,
     AgentCanvasWorkflowRow,
@@ -84,7 +82,6 @@ class AgentCanvasWorkflowRepository:
         workflow_id: str,
         idempotency_key: str,
         request_fingerprint: str,
-        initial_recipe_topics: tuple[Mapping[str, object], ...] = (),
     ) -> AgentCanvasWorkflowV2:
         """Atomically create one Project and its empty Agent Canvas workflow."""
 
@@ -119,7 +116,7 @@ class AgentCanvasWorkflowRepository:
                         )
                     )
                     conversation_id = f"conversation_{workflow_id}"
-                    skill_run_id = f"session_{workflow_id}"
+                    skill_run_id = f"skill_run_{workflow_id}"
                     connection.execute(
                         insert(AgentCanvasConversationRow).values(
                             conversation_id=conversation_id,
@@ -136,44 +133,12 @@ class AgentCanvasWorkflowRepository:
                             skill_version="1",
                             source_skill_run_id=None,
                             status="active",
-                            current_topic_id=(
-                                str(initial_recipe_topics[0]["topic_id"])
-                                if initial_recipe_topics
-                                else None
-                            ),
-                            deferred_topic_ids_json="[]",
-                            memory_revision=0,
                             active_creative_direction_snapshot_id=None,
                             idempotency_key=f"create-project:{idempotency_key}",
                             created_at=now,
                             updated_at=now,
                         )
                     )
-                    for display_order, topic in enumerate(initial_recipe_topics):
-                        topic_id = str(topic["topic_id"])
-                        connection.execute(
-                            insert(AgentCanvasPlanningTopicRow).values(
-                                skill_run_id=skill_run_id,
-                                topic_id=topic_id,
-                                topic_kind=str(
-                                    topic.get(
-                                        "topic_kind",
-                                        topic_id.rstrip("s") or "generic",
-                                    )
-                                ),
-                                display_order=display_order,
-                                required=bool(topic.get("required", False)),
-                                specialist_name=str(
-                                    topic.get(
-                                        "specialist_name",
-                                        topic.get("specialist", "script_writer"),
-                                    )
-                                ),
-                                status="pending",
-                                outcome=None,
-                                related_node_ids_json="[]",
-                            )
-                        )
                     connection.execute(
                         insert(AgentCanvasCreativeMemoryRow).values(
                             workflow_id=workflow_id,

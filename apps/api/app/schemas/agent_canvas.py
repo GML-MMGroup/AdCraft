@@ -473,7 +473,8 @@ class AgentCanvasWorkflowV2(_AgentCanvasModel):
 
 
 class ProjectCreateResponseV2(AgentCanvasWorkflowV2):
-    creative_session_id: str = Field(min_length=1)
+    active_style_skill_run_id: str = Field(min_length=1)
+    guidance_session_id: str | None = None
 
 
 class CanvasMutationResponseV2(_AgentCanvasModel):
