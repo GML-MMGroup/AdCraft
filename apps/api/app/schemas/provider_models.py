@@ -15,6 +15,7 @@ ModelAvailabilityV1 = Literal[
     "available", "unavailable", "unauthorized", "unsupported", "deprecated"
 ]
 ModelDefaultKeyV1 = Literal["agent", "text", "image", "video", "audio"]
+ModelDefaultModeV1 = Literal["automatic", "explicit"]
 
 
 def _normalize_secret(value: object) -> object:
@@ -129,13 +130,21 @@ class ProviderModelListResponseV1(BaseModel):
 
 class ModelDefaultsResponseV1(BaseModel):
     defaults: dict[ModelDefaultKeyV1, str]
+    modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1]
     revisions: dict[ModelDefaultKeyV1, int]
 
 
 class ModelDefaultsPatchRequestV1(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    defaults: dict[ModelDefaultKeyV1, str] = Field(min_length=1)
+    defaults: dict[ModelDefaultKeyV1, str] = Field(default_factory=dict)
+    modes: dict[ModelDefaultKeyV1, ModelDefaultModeV1] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_mutation(self) -> "ModelDefaultsPatchRequestV1":
+        if not self.defaults and not self.modes:
+            raise ValueError("At least one model default or mode must be supplied.")
+        return self
 
 
 class ProviderModelSyncResponseV1(BaseModel):

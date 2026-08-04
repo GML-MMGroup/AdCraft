@@ -21,6 +21,10 @@ from app.persistence.models import (
 
 
 _DEFAULT_KEYS = frozenset({"agent", "text", "image", "video", "audio"})
+_DEFAULT_SELECTION_MODES = frozenset({"automatic", "explicit"})
+_INITIAL_SELECTION_MODES = {
+    key: ("automatic" if key == "audio" else "explicit") for key in _DEFAULT_KEYS
+}
 _CAPABILITIES = frozenset({"agent", "text", "image", "video", "audio"})
 _AVAILABILITIES = frozenset(
     {"available", "unavailable", "unauthorized", "unsupported", "deprecated"}
@@ -58,6 +62,7 @@ class ModelDefaultRecord:
     model_ref: str
     revision: int
     updated_at: str
+    selection_mode: str = "explicit"
 
 
 @dataclass(frozen=True)
@@ -252,38 +257,50 @@ class ProviderModelRepository:
         self,
         values: Mapping[str, str],
         *,
+        modes: Mapping[str, str] | None = None,
         updated_at: str,
     ) -> dict[str, ModelDefaultRecord]:
-        if not values or not set(values).issubset(_DEFAULT_KEYS):
+        mode_updates = dict(modes or {})
+        affected_keys = set(values).union(mode_updates)
+        if not affected_keys or not affected_keys.issubset(_DEFAULT_KEYS):
             raise ValueError("model_default_update_invalid")
+        if not set(mode_updates.values()).issubset(_DEFAULT_SELECTION_MODES):
+            raise ValueError("model_default_mode_invalid")
         try:
             with self._database.engine.begin() as connection:
-                models = (
-                    connection.execute(
-                        select(ProviderModelRow.model_ref, ProviderModelRow.capability).where(
-                            ProviderModelRow.model_ref.in_(tuple(values.values()))
-                        )
-                    )
-                    .mappings()
-                    .all()
-                )
-                known = {str(row["model_ref"]): str(row["capability"]) for row in models}
+                known = _model_capabilities(connection, values.values())
                 if len(known) != len(set(values.values())):
                     raise ValueError("model_default_model_not_found")
                 for default_key, model_ref in values.items():
                     if not _default_accepts_capability(default_key, known[model_ref]):
                         raise ValueError("model_default_capability_invalid")
-                for default_key, model_ref in values.items():
-                    current = connection.execute(
-                        select(ModelDefaultRow.revision).where(
-                            ModelDefaultRow.default_key == default_key
+                current_rows = (
+                    connection.execute(
+                        _default_select().where(
+                            ModelDefaultRow.default_key.in_(tuple(affected_keys))
                         )
-                    ).scalar_one_or_none()
+                    )
+                    .mappings()
+                    .all()
+                )
+                current_by_key = {str(row["default_key"]): row for row in current_rows}
+                for default_key in affected_keys:
+                    current = current_by_key.get(default_key)
+                    if current is None and default_key not in values:
+                        raise ValueError("model_default_not_configured")
+                    model_ref = str(values.get(default_key) or current["model_ref"])
+                    selection_mode = mode_updates.get(
+                        default_key,
+                        str(current["selection_mode"])
+                        if current is not None
+                        else _INITIAL_SELECTION_MODES[default_key],
+                    )
                     if current is None:
                         connection.execute(
                             insert(ModelDefaultRow).values(
                                 default_key=default_key,
                                 model_ref=model_ref,
+                                selection_mode=selection_mode,
                                 revision=1,
                                 updated_at=updated_at,
                             )
@@ -294,13 +311,16 @@ class ProviderModelRepository:
                             .where(ModelDefaultRow.default_key == default_key)
                             .values(
                                 model_ref=model_ref,
-                                revision=int(current) + 1,
+                                selection_mode=selection_mode,
+                                revision=int(current["revision"]) + 1,
                                 updated_at=updated_at,
                             )
                         )
                 rows = (
                     connection.execute(
-                        _default_select().where(ModelDefaultRow.default_key.in_(tuple(values)))
+                        _default_select().where(
+                            ModelDefaultRow.default_key.in_(tuple(affected_keys))
+                        )
                     )
                     .mappings()
                     .all()
@@ -308,7 +328,7 @@ class ProviderModelRepository:
         except SQLAlchemyError as error:
             raise RuntimeError("provider_model_persistence_failed") from error
         result = {_default_from_row(row).default_key: _default_from_row(row) for row in rows}
-        return {key: result[key] for key in values}
+        return {key: result[key] for key in affected_keys}
 
     def get_defaults(self) -> dict[str, ModelDefaultRecord]:
         try:
@@ -413,6 +433,22 @@ def _default_accepts_capability(default_key: str, capability: str) -> bool:
     return default_key == capability
 
 
+def _model_capabilities(connection: Any, model_refs: Iterable[str]) -> dict[str, str]:
+    references = tuple(model_refs)
+    if not references:
+        return {}
+    rows = (
+        connection.execute(
+            select(ProviderModelRow.model_ref, ProviderModelRow.capability).where(
+                ProviderModelRow.model_ref.in_(references)
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return {str(row["model_ref"]): str(row["capability"]) for row in rows}
+
+
 def _required_string(values: Mapping[str, Any], key: str) -> str:
     value = values.get(key)
     if not isinstance(value, str) or not value:
@@ -466,6 +502,7 @@ def _default_select():
     return select(
         ModelDefaultRow.default_key,
         ModelDefaultRow.model_ref,
+        ModelDefaultRow.selection_mode,
         ModelDefaultRow.revision,
         ModelDefaultRow.updated_at,
     )
@@ -514,6 +551,7 @@ def _default_from_row(row: RowMapping) -> ModelDefaultRecord:
     return ModelDefaultRecord(
         default_key=str(row["default_key"]),
         model_ref=str(row["model_ref"]),
+        selection_mode=str(row["selection_mode"]),
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
     )

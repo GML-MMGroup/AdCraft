@@ -235,6 +235,7 @@ def get_model_defaults(
     records = service.get_default_records()
     return ModelDefaultsResponseV1(
         defaults={key: record.model_ref for key, record in records.items()},
+        modes={key: record.selection_mode for key, record in records.items()},
         revisions={key: record.revision for key, record in records.items()},
     )
 
@@ -250,7 +251,11 @@ def update_model_defaults(
     service: Annotated[ProviderModelCatalogService, Depends(get_provider_model_catalog_service)],
 ) -> ModelDefaultsResponseV1:
     try:
-        service.set_defaults(payload.defaults, now=datetime.now(timezone.utc).isoformat())
+        service.set_defaults(
+            payload.defaults,
+            modes=payload.modes,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
     except ValueError as error:
         raise HTTPException(
             status_code=409,
