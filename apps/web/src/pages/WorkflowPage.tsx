@@ -1,5 +1,5 @@
-import { WorkflowPage as WorkflowPageController } from "../features/workflow/WorkflowPageController";
+import { AgentCanvasPage } from "../features/agent-canvas/AgentCanvasPage.tsx";
 
 export function WorkflowPage() {
-  return <WorkflowPageController />;
+  return <AgentCanvasPage />;
 }

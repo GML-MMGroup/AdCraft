@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
+import "@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css";
 import type { TimelineEditor, TimelineState } from "@xzdarcy/react-timeline-editor";
 // Version 1.0.0 does not publish a declaration mapping for its working CJS runtime entry.
 // @ts-expect-error The root entry is not Node-compatible, but this artifact exports Timeline.

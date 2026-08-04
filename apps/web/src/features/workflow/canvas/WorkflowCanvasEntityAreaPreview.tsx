@@ -3,7 +3,7 @@ import { PlayIcon } from "../../../icons";
 import type { CanvasTargetReference, UploadedAsset } from "../../../types";
 import type { CanvasEntityArea, CanvasEntityAreaItem } from "../../../workflow/canvasEntityAreas.ts";
 import { mediaAssetOriginalPath, mediaAssetPosterPath, mediaAssetPreviewPath } from "../../../workflow/mediaPreview.ts";
-import { NodePreviewLoading } from "./WorkflowCanvasNodePreview.tsx";
+import { NodePreviewLoading } from "./NodePreviewLoading.tsx";
 
 function statusClass(value: string) {
   return value.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
@@ -45,7 +45,6 @@ export function CanvasEntityAreaPreview({
   return (
     <section className={`workflow-card-preview canvas-entity-area is-${area.kind} nodrag`} aria-label={area.title} data-node-id={area.nodeId}>
       <div className="canvas-entity-area-header">
-        <strong>{area.title}</strong>
         <span>{area.statusSummary}</span>
       </div>
       <div className="canvas-entity-track" role="list">

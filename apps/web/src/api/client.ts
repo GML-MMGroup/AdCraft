@@ -89,12 +89,18 @@ import {
 import type { CanvasRuntimeEventsResponse, CanvasRuntimeSnapshot } from "../workflow/canvasRuntime.ts";
 import { assertV1WorkflowId } from "./v1WorkflowGuard";
 import type {
-  VolcengineCredentialStatusResponse,
-  VolcengineCredentialTestRequest,
-  VolcengineCredentialTestResponse,
-  VolcengineCredentialUpdateRequest,
-  VolcengineCredentialUpdateResponse,
-} from "../apiSpace/volcengineCredentials";
+  ModelDefaultsPatchRequestV1,
+  ModelDefaultsResponseV1,
+  ProviderConnectionStatusV1,
+  ProviderCredentialTestRequestV1,
+  ProviderCredentialTestResponseV1,
+  ProviderCredentialUpdateRequestV1,
+  ProviderCredentialUpdateResponseV1,
+  ProviderListResponseV1,
+  ProviderModelListResponseV1,
+  ProviderModelQueryV1,
+  ProviderModelSyncResponseV1,
+} from "./providerRegistry";
 
 export class ApiError extends Error {
   status: number;
@@ -339,20 +345,53 @@ async function optionalRequest<T>(path: string, init?: RequestInit): Promise<T |
 export const api = {
   baseUrl: API_BASE_URL,
 
-  getVolcengineCredentialStatus() {
-    return request<VolcengineCredentialStatusResponse>("/settings/providers/volcengine");
+  listProviders() {
+    return request<ProviderListResponseV1>("/providers");
   },
 
-  updateVolcengineCredentials(requestBody: VolcengineCredentialUpdateRequest) {
-    return request<VolcengineCredentialUpdateResponse>("/settings/providers/volcengine", {
-      method: "PUT",
-      body: JSON.stringify(requestBody),
-    });
+  getProvider(providerId: string) {
+    return request<ProviderConnectionStatusV1>(`/providers/${encodeURIComponent(providerId)}`);
   },
 
-  testVolcengineCredential(requestBody: VolcengineCredentialTestRequest) {
-    return request<VolcengineCredentialTestResponse>("/settings/providers/volcengine/test", {
-      method: "POST",
+  updateProviderCredentials(providerId: string, requestBody: ProviderCredentialUpdateRequestV1) {
+    return request<ProviderCredentialUpdateResponseV1>(
+      `/providers/${encodeURIComponent(providerId)}/credentials`,
+      { method: "PUT", body: JSON.stringify(requestBody) },
+    );
+  },
+
+  testProviderCredential(providerId: string, requestBody: ProviderCredentialTestRequestV1) {
+    return request<ProviderCredentialTestResponseV1>(
+      `/providers/${encodeURIComponent(providerId)}/credentials/test`,
+      { method: "POST", body: JSON.stringify(requestBody) },
+    );
+  },
+
+  syncProviderModels(providerId: string) {
+    return request<ProviderModelSyncResponseV1>(
+      `/providers/${encodeURIComponent(providerId)}/models/sync`,
+      { method: "POST" },
+    );
+  },
+
+  listProviderModels(query: ProviderModelQueryV1 = {}) {
+    const params = new URLSearchParams();
+    if (query.provider) params.set("provider", query.provider);
+    if (query.capability) params.set("capability", query.capability);
+    if (query.node_type) params.set("node_type", query.node_type);
+    if (query.purpose) params.set("purpose", query.purpose);
+    if (query.include_unavailable) params.set("include_unavailable", "true");
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return request<ProviderModelListResponseV1>(`/models${suffix}`);
+  },
+
+  getModelDefaults() {
+    return request<ModelDefaultsResponseV1>("/model-defaults");
+  },
+
+  patchModelDefaults(requestBody: ModelDefaultsPatchRequestV1) {
+    return request<ModelDefaultsResponseV1>("/model-defaults", {
+      method: "PATCH",
       body: JSON.stringify(requestBody),
     });
   },

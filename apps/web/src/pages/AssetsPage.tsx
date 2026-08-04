@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from "react-dom";
 import { v2Api } from "../api/v2Client.ts";
 import { PageHeader } from "../components/Layout.tsx";
+import { DeferredVideo } from "../components/media/DeferredVideo.tsx";
 import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "../icons.tsx";
 import {
   splitAssetLibraryTags,
@@ -12,6 +13,7 @@ import {
 import { useRecommendedCatalog } from "../features/assets/useRecommendedCatalog.ts";
 import { useV2AssetLibrary } from "../features/assets/useV2AssetLibrary.ts";
 import type { V2AssetLibraryCategory, V2AssetLibraryEntityDetail, V2AssetLibraryEntitySummary, V2AssetLibraryScope } from "../types-v2.ts";
+import "./assets.css";
 
 type AssetPageScope = V2AssetLibraryScope;
 
@@ -223,9 +225,16 @@ function AssetEntityCard({
   onSelect: (trigger: HTMLButtonElement) => void;
 }) {
   const previewUrl = v2AssetPreviewUrl(entity);
+  const previewMember = entity.preview_member;
   return (
     <button ref={buttonRef} className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.display_name}`} onClick={(event) => onSelect(event.currentTarget)}>
-      <AssetCardMedia url={previewUrl} mediaType={entity.preview_member?.media_type} label={entity.display_name} />
+      <AssetCardMedia
+        url={previewUrl}
+        videoUrl={previewMember?.public_url ?? previewUrl}
+        posterUrl={previewMember?.thumbnail_url ?? entity.preview_url ?? null}
+        mediaType={previewMember?.media_type}
+        label={entity.display_name}
+      />
       <span className="v2-asset-entity-card-title">{entity.display_name}</span>
     </button>
   );
@@ -297,9 +306,21 @@ export function AssetEntityViewerFallback({
   );
 }
 
-function AssetCardMedia({ url, mediaType, label }: { url: string | null; mediaType?: string | null; label: string }) {
+function AssetCardMedia({
+  url,
+  videoUrl,
+  posterUrl,
+  mediaType,
+  label,
+}: {
+  url: string | null;
+  videoUrl: string | null;
+  posterUrl: string | null;
+  mediaType?: string | null;
+  label: string;
+}) {
   if (!url) return <span className="v2-asset-media is-empty">{label.slice(0, 1).toUpperCase()}</span>;
-  if (mediaType === "video") return <video className="v2-asset-media is-card" src={url} preload="metadata" muted playsInline />;
+  if (mediaType === "video" && videoUrl) return <DeferredVideo className="v2-asset-media is-card" src={videoUrl} poster={posterUrl ?? undefined} muted playsInline />;
   if (mediaType === "audio") return <span className="v2-asset-media is-empty">Audio</span>;
   return <img className="v2-asset-media is-card" src={url} alt={label} loading="lazy" decoding="async" />;
 }

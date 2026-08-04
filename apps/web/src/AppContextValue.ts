@@ -3,7 +3,7 @@ import type {
   ProjectSessionState,
   SavedWorkflowProject,
 } from "./projects/newProject";
-import type { ProjectV2Summary } from "./types-v2";
+import type { AgentCanvasWorkflowV2, ProjectV2Summary } from "./types-v2";
 import type {
   AssetLibraryEntitySummary,
   AssetUploadOptions,
@@ -15,13 +15,12 @@ import type {
 } from "./types";
 
 export interface AppContextValue {
-  apiOnline: boolean | null;
-  apiMessage: string;
   assets: UploadedAsset[];
   selectedAssets: UploadedAsset[];
   promptLibraryEntities: AssetLibraryEntitySummary[];
   messages: FrontDeskMessage[];
   workflow: WorkflowGraph | null;
+  agentCanvasWorkflow: AgentCanvasWorkflowV2 | null;
   nodeCatalog: NodeCatalogItem[];
   nodeRuns: NodeRunResult[];
   savedProjects: ProjectV2Summary[];
@@ -30,13 +29,13 @@ export interface AppContextValue {
   activeProjectId: string | null;
   workspaceHydrated: boolean;
   workspaceRestoreError: string | null;
-  storageWarning: string | null;
   busy: boolean;
   setMessages: Dispatch<SetStateAction<FrontDeskMessage[]>>;
   setPromptLibraryEntities: Dispatch<SetStateAction<AssetLibraryEntitySummary[]>>;
   setWorkflow: Dispatch<SetStateAction<WorkflowGraph | null>>;
+  setAgentCanvasWorkflow: Dispatch<SetStateAction<AgentCanvasWorkflowV2 | null>>;
   saveProject: (state?: ProjectSessionState) => SavedWorkflowProject | null;
-  startNewProject: () => void;
+  startNewProject: () => Promise<boolean>;
   openProject: (projectId: string) => Promise<boolean>;
   moveProjectToTrash: (projectId: string) => Promise<boolean>;
   restoreTrashedProject: (projectId: string) => Promise<boolean>;

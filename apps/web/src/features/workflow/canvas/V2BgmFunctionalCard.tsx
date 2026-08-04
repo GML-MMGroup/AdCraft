@@ -65,7 +65,6 @@ export function V2BgmFunctionalCard({
         }}
       >
         <span className="v2-bgm-card-heading">
-          <strong>{item.title || "Background music"}</strong>
           <span>{isGenerating ? "Generating" : generationDisabled ? "Disabled" : item.runtimeStatus}</span>
         </span>
         <span>{item.prompt || "Edit the soundtrack prompt"}</span>

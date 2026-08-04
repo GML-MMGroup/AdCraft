@@ -85,7 +85,6 @@ export function V2RegionCardPreview({
   if (!region.items.length) {
     return (
       <div className="workflow-card-preview v2-region-card-preview is-empty">
-        <strong>{title}</strong>
         <span>Waiting for V2 items</span>
         {isRunning ? <NodePreviewLoading type="generic" /> : null}
       </div>

@@ -1,9 +1,52 @@
 import type {
+  AgentCanvasChatMessageRequestV2,
+  AgentCanvasChatViewTimelineV2,
+  AgentCanvasCommandPlanActionRequestV2,
+  AgentCanvasChatTurnV2,
+  AgentCanvasImageLibraryListResponseV2,
+  AgentCanvasGuidedActionApplyRequestV2,
+  AgentCanvasProjectCreateResponseV2,
+  AgentCanvasProjectCreateRequestV2,
+  AgentCanvasProposalActionRequestV2,
+  AgentCanvasVideoSkillRunCreateRequestV2,
+  AgentCanvasVideoSkillRunV2,
+  AgentCanvasWorkflowV2,
   AssetOwnerResponseV2,
+  CanvasBindingCreateRequestV2,
+  CanvasBindingMutationResponseV2,
+  CanvasBindingPatchRequestV2,
+  CanvasConnectedNodeCreateRequestV2,
+  CanvasConnectedNodeCreateResponseV2,
+  CanvasConnectionPolicyV2,
+  CanvasLayoutPatchRequestV2,
+  CanvasLayoutPatchResponseV2,
+  CanvasMutationResponseV2,
+  CanvasNodeCreateRequestV2,
+  CanvasNodePatchRequestV2,
+  CanvasNodeV2,
+  ConceptProposalV2,
+  CanvasVariationDraftResponseV2,
+  CanvasVariationDraftUpsertV2,
+  CanvasVariationMaterializeRequestV2,
+  CanvasVariationMaterializeResponseV2,
+  CanvasRunAcceptedV2,
+  CanvasRunCancelRequestV2,
+  CanvasRunCancelResponseV2,
+  CanvasRunRequestV2,
+  CanvasRuntimeEventsResponseV2,
+  CanvasRuntimeSnapshotV2,
+  ChatTurnAcceptedV2,
+  EditingExportAcceptedV2,
+  EditingExportCancelResponseV2,
+  EditingExportRequestV2,
   ProjectV2,
   ProjectV2ListResponse,
   ProjectV2Status,
   ProjectV2UpdateRequest,
+  ProjectAssetListResponseV2,
+  ProjectAssetUploadResponseV2,
+  ProviderModelCapabilityListV2,
+  SaveAgentCanvasImageToLibraryRequestV2,
   ProviderTaskV2,
   SlotVersionsResponseV2,
   V2AddSlotReferenceRequest,
@@ -106,6 +149,33 @@ import {
   normalizeWorkflowAssetListResponseV2,
   normalizeWorkflowAssetVersionsResponseV2,
 } from "./v2Normalizers.ts";
+import {
+  normalizeAgentCanvasChatTurnV2,
+  normalizeAgentCanvasChatTimelineV2,
+  normalizeAgentCanvasImageLibraryListResponseV2,
+  normalizeAgentCanvasProjectCreateResponseV2,
+  normalizeAgentCanvasVideoSkillRunV2,
+  normalizeAgentCanvasWorkflowV2,
+  normalizeCanvasMutationResponseV2,
+  normalizeCanvasBindingMutationResponseV2,
+  normalizeCanvasConnectedNodeCreateResponseV2,
+  normalizeCanvasConnectionPolicyV2,
+  normalizeCanvasLayoutPatchResponseV2,
+  normalizeCanvasNodeV2,
+  normalizeCanvasVariationDraftResponseV2,
+  normalizeCanvasVariationMaterializeResponseV2,
+  normalizeCanvasRunAcceptedV2,
+  normalizeCanvasRunCancelResponseV2,
+  normalizeCanvasRuntimeEventsResponseV2,
+  normalizeCanvasRuntimeSnapshotV2,
+  normalizeChatTurnAcceptedV2,
+  normalizeConceptProposalV2,
+  normalizeEditingExportAcceptedV2,
+  normalizeEditingExportCancelResponseV2,
+  normalizeProjectAssetListResponseV2,
+  normalizeProjectAssetUploadResponseV2,
+  normalizeProviderModelCapabilityListV2,
+} from "../features/agent-canvas/model/normalizers.ts";
 import { v2EtagStore, type V2AuthoringResource } from "./v2EtagStore.ts";
 
 const API_V2_BASE = "/api/v2";
@@ -278,9 +348,17 @@ export function v2AuthoringPreconditionTarget(path: string, method: string): V2P
   const workflowId = decodeURIComponent(workflow[1] ?? "");
   const suffix = workflow[2] ?? "";
   if (
-    suffix === "/run"
+    suffix === "/layout"
+    || suffix === "/run"
+    || suffix === "/runs"
     || suffix === "/chat-target"
+    || suffix.startsWith("/chat/")
+    || suffix === "/skill-runs"
+    || suffix === "/assets/upload"
     || /\/(?:generate|regenerate)$/.test(suffix)
+    || /\/runs\/[^/]+\/cancel$/.test(suffix)
+    || /\/nodes\/[^/]+\/export$/.test(suffix)
+    || /\/nodes\/[^/]+\/exports\/[^/]+\/cancel$/.test(suffix)
     || suffix === "/final-composition/render"
     || /\/provider-tasks(?:\/|$)/.test(suffix)
     || /\/executions\/[^/]+\/(?:resume|cancel)$/.test(suffix)
@@ -378,7 +456,510 @@ async function requestV2GlobalRun<T>(
   return normalize(response.payload);
 }
 
+function idempotencyHeaders(idempotencyKey: string): Headers {
+  const headers = new Headers();
+  headers.set("Idempotency-Key", idempotencyKey);
+  return headers;
+}
+
 export const v2Api = {
+  createAgentCanvasProject(
+    request: AgentCanvasProjectCreateRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<AgentCanvasProjectCreateResponseV2>> {
+    return requestV2WithEtag(
+      "/projects",
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeAgentCanvasProjectCreateResponseV2,
+    );
+  },
+
+  agentCanvasWorkflowWithEtag(
+    workflowId: string,
+  ): Promise<V2EtaggedResponse<AgentCanvasWorkflowV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}`,
+      {},
+      normalizeAgentCanvasWorkflowV2,
+    );
+  },
+
+  agentCanvasNode(workflowId: string, nodeId: string): Promise<CanvasNodeV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
+      {},
+      normalizeCanvasNodeV2,
+    );
+  },
+
+  patchAgentCanvasLayout(
+    workflowId: string,
+    request: CanvasLayoutPatchRequestV2,
+  ): Promise<CanvasLayoutPatchResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/layout`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasLayoutPatchResponseV2,
+    );
+  },
+
+  createAgentCanvasNode(
+    workflowId: string,
+    request: CanvasNodeCreateRequestV2,
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeCanvasMutationResponseV2,
+    );
+  },
+
+  patchAgentCanvasNode(
+    workflowId: string,
+    nodeId: string,
+    request: CanvasNodePatchRequestV2,
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
+      { method: "PATCH", body: JSON.stringify(request) },
+      normalizeCanvasMutationResponseV2,
+    );
+  },
+
+  saveAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+    request: CanvasVariationDraftUpsertV2,
+  ): Promise<CanvasVariationDraftResponseV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
+      {
+        method: "PUT",
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasVariationDraftResponseV2,
+    ).then((response) => response.value);
+  },
+
+  discardAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+  ): Promise<void> {
+    return requestV2WithEtag<void>(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft`,
+      { method: "DELETE" },
+    ).then(() => undefined);
+  },
+
+  materializeAgentCanvasVariationDraft(
+    workflowId: string,
+    nodeId: string,
+    request: CanvasVariationMaterializeRequestV2,
+    idempotencyKey: string,
+  ): Promise<CanvasVariationMaterializeResponseV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/variation-draft/materialize`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasVariationMaterializeResponseV2,
+    ).then((response) => response.value);
+  },
+
+  deleteAgentCanvasNode(
+    workflowId: string,
+    nodeId: string,
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}`,
+      { method: "DELETE" },
+      normalizeCanvasMutationResponseV2,
+    );
+  },
+
+  createAgentCanvasBinding(
+    workflowId: string,
+    request: CanvasBindingCreateRequestV2,
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/bindings`,
+      { method: "POST", body: JSON.stringify(request) },
+      normalizeCanvasMutationResponseV2,
+    );
+  },
+
+  agentCanvasConnectionPolicy(): Promise<CanvasConnectionPolicyV2> {
+    return requestV2(
+      "/canvas/connection-policy",
+      {},
+      normalizeCanvasConnectionPolicyV2,
+    );
+  },
+
+  createAgentCanvasConnectedNode(
+    workflowId: string,
+    request: CanvasConnectedNodeCreateRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<CanvasConnectedNodeCreateResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/connected-nodes`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasConnectedNodeCreateResponseV2,
+    );
+  },
+
+  patchAgentCanvasBinding(
+    workflowId: string,
+    bindingId: string,
+    request: CanvasBindingPatchRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2EtaggedResponse<CanvasBindingMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/bindings/${encodeURIComponent(bindingId)}`,
+      {
+        method: "PATCH",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasBindingMutationResponseV2,
+    );
+  },
+
+  deleteAgentCanvasBinding(
+    workflowId: string,
+    bindingId: string,
+  ): Promise<V2EtaggedResponse<CanvasMutationResponseV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/bindings/${encodeURIComponent(bindingId)}`,
+      { method: "DELETE" },
+      normalizeCanvasMutationResponseV2,
+    );
+  },
+
+  uploadAgentCanvasAsset(
+    workflowId: string,
+    formData: FormData,
+    idempotencyKey: string,
+  ): Promise<ProjectAssetUploadResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/assets/upload`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: formData,
+      },
+      normalizeProjectAssetUploadResponseV2,
+    );
+  },
+
+  listAgentCanvasProjectAssets(workflowId: string): Promise<ProjectAssetListResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/assets`,
+      {},
+      normalizeProjectAssetListResponseV2,
+    );
+  },
+
+  listAgentCanvasMyAssets(category?: string | null): Promise<AgentCanvasImageLibraryListResponseV2> {
+    const query = category ? `?category=${encodeURIComponent(category)}` : "";
+    return requestV2(
+      `/assets/mine${query}`,
+      {},
+      normalizeAgentCanvasImageLibraryListResponseV2,
+    );
+  },
+
+  listAgentCanvasRecommendedAssets(category?: string | null): Promise<AgentCanvasImageLibraryListResponseV2> {
+    const query = category ? `?category=${encodeURIComponent(category)}` : "";
+    return requestV2(
+      `/assets/recommended${query}`,
+      {},
+      normalizeAgentCanvasImageLibraryListResponseV2,
+    );
+  },
+
+  saveAgentCanvasImageToLibrary(
+    assetId: string,
+    request: SaveAgentCanvasImageToLibraryRequestV2,
+    idempotencyKey: string,
+  ): Promise<V2AssetLibraryEntityDetail> {
+    return requestV2(
+      `/assets/${encodeURIComponent(assetId)}/save-to-library`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeV2AssetLibraryEntityDetail,
+    );
+  },
+
+  deleteAgentCanvasAsset(assetId: string): Promise<void> {
+    return requestV2(`/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
+  },
+
+  agentCanvasChatTimeline(
+    workflowId: string,
+    afterSeq = 0,
+    limit = 100,
+  ): Promise<AgentCanvasChatViewTimelineV2> {
+    const query = new URLSearchParams({
+      after_seq: String(afterSeq),
+      limit: String(limit),
+    });
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
+      {},
+      normalizeAgentCanvasChatTimelineV2,
+    );
+  },
+
+  submitAgentCanvasChatMessage(
+    workflowId: string,
+    request: AgentCanvasChatMessageRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/messages`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+    );
+  },
+
+  agentCanvasChatTurn(workflowId: string, turnId: string): Promise<AgentCanvasChatTurnV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/turns/${encodeURIComponent(turnId)}`,
+      {},
+      normalizeAgentCanvasChatTurnV2,
+    );
+  },
+
+  agentCanvasProposal(
+    workflowId: string,
+    proposalId: string,
+  ): Promise<ConceptProposalV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/proposals/${encodeURIComponent(proposalId)}`,
+      {},
+      normalizeConceptProposalV2,
+    );
+  },
+
+  actOnAgentCanvasProposal(
+    workflowId: string,
+    proposalId: string,
+    request: AgentCanvasProposalActionRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/proposals/${encodeURIComponent(proposalId)}/actions`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
+  },
+
+  actOnAgentCanvasCommandPlan(
+    workflowId: string,
+    planId: string,
+    request: AgentCanvasCommandPlanActionRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/command-plans/${encodeURIComponent(planId)}/actions`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
+  },
+
+  applyAgentCanvasGuidedAction(
+    workflowId: string,
+    actionId: string,
+    request: AgentCanvasGuidedActionApplyRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/guided-actions/${encodeURIComponent(actionId)}/apply`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+      {
+        captureAuthoringEtag: false,
+        explicitAuthoringPrecondition: {
+          resource: "workflow",
+          id: workflowId,
+        },
+      },
+    ).then((response) => response.value);
+  },
+
+  createAgentCanvasVideoSkillRun(
+    workflowId: string,
+    request: AgentCanvasVideoSkillRunCreateRequestV2,
+    idempotencyKey: string,
+  ): Promise<AgentCanvasVideoSkillRunV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/skill-runs`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeAgentCanvasVideoSkillRunV2,
+    );
+  },
+
+  runAgentCanvas(
+    workflowId: string,
+    request: CanvasRunRequestV2,
+    idempotencyKey: string,
+  ): Promise<CanvasRunAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/runs`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasRunAcceptedV2,
+    );
+  },
+
+  cancelAgentCanvasRun(
+    workflowId: string,
+    executionId: string,
+    request: CanvasRunCancelRequestV2,
+  ): Promise<CanvasRunCancelResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/runs/${encodeURIComponent(executionId)}/cancel`,
+      {
+        method: "POST",
+        body: JSON.stringify(request),
+      },
+      normalizeCanvasRunCancelResponseV2,
+    );
+  },
+
+  agentCanvasRuntime(workflowId: string): Promise<CanvasRuntimeSnapshotV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/runtime`,
+      {},
+      normalizeCanvasRuntimeSnapshotV2,
+    );
+  },
+
+  agentCanvasEvents(
+    workflowId: string,
+    afterSeq = 0,
+    limit = 200,
+    signal?: AbortSignal,
+  ): Promise<CanvasRuntimeEventsResponseV2> {
+    const query = new URLSearchParams({
+      after_seq: String(afterSeq),
+      limit: String(limit),
+    });
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/events?${query.toString()}`,
+      { signal },
+      normalizeCanvasRuntimeEventsResponseV2,
+    );
+  },
+
+  openAgentCanvasEventStream(workflowId: string, afterSeq = 0): EventSource {
+    return new EventSource(
+      `${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/events/stream?after_seq=${encodeURIComponent(String(afterSeq))}`,
+    );
+  },
+
+  agentCanvasProviderCapabilities(filters: {
+    output_type?: string;
+    input_types?: string[];
+    include_unavailable?: boolean;
+  } = {}): Promise<ProviderModelCapabilityListV2> {
+    const query = new URLSearchParams();
+    if (filters.output_type) query.set("output_type", filters.output_type);
+    if (filters.input_types?.length) query.set("input_types", filters.input_types.join(","));
+    if (filters.include_unavailable) query.set("include_unavailable", "true");
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return requestV2(
+      `/provider-models/capabilities${suffix}`,
+      {},
+      normalizeProviderModelCapabilityListV2,
+    );
+  },
+
+  exportAgentCanvasEditingNode(
+    workflowId: string,
+    nodeId: string,
+    request: EditingExportRequestV2,
+    idempotencyKey: string,
+  ): Promise<EditingExportAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/export`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeEditingExportAcceptedV2,
+    );
+  },
+
+  cancelAgentCanvasEditingExport(
+    workflowId: string,
+    nodeId: string,
+    exportId: string,
+  ): Promise<EditingExportCancelResponseV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/nodes/${encodeURIComponent(nodeId)}/exports/${encodeURIComponent(exportId)}/cancel`,
+      {
+        method: "POST",
+      },
+      normalizeEditingExportCancelResponseV2,
+    );
+  },
+
   uploadInputAssets(formData: FormData): Promise<V2InputAssetUploadResponse> {
     return requestV2(`/input-assets/upload`, { method: "POST", body: formData }, normalizeV2InputAssetUploadResponse);
   },
@@ -452,13 +1033,16 @@ export const v2Api = {
     );
   },
 
-  listAssetLibraryEntities(request: V2AssetLibraryListRequest): Promise<V2AssetLibraryListResponse> {
+  listAssetLibraryEntities(
+    request: V2AssetLibraryListRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<V2AssetLibraryListResponse> {
     const query = new URLSearchParams({ scope: request.scope });
     if (request.category) query.set("category", request.category);
     if (request.search?.trim()) query.set("search", request.search.trim());
     if (request.cursor) query.set("cursor", request.cursor);
     if (request.limit) query.set("limit", String(request.limit));
-    return requestV2(`/asset-library/entities?${query.toString()}`, {}, normalizeV2AssetLibraryListResponse);
+    return requestV2(`/asset-library/entities?${query.toString()}`, { signal: options.signal }, normalizeV2AssetLibraryListResponse);
   },
 
   assetLibraryEntity(entityId: string): Promise<V2AssetLibraryEntityDetail> {
@@ -557,8 +1141,8 @@ export const v2Api = {
     );
   },
 
-  async events(workflowId: string, afterSeq = 0): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
-    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, {}, (value) => {
+  async events(workflowId: string, afterSeq = 0, signal?: AbortSignal): Promise<{ events: WorkflowRuntimeEventV2[]; next_after_seq: number }> {
+    return requestV2(`/workflows/${encodeURIComponent(workflowId)}/events?after_seq=${encodeURIComponent(String(afterSeq))}`, { signal }, (value) => {
       const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
       const events = Array.isArray(record.events) ? record.events.map(normalizeWorkflowRuntimeEventV2) : [];
       const next = typeof record.next_after_seq === "number" ? record.next_after_seq : events.at(-1)?.seq ?? afterSeq;
@@ -570,11 +1154,15 @@ export const v2Api = {
     return new EventSource(`${API_V2_BASE}/workflows/${encodeURIComponent(workflowId)}/events/stream?after_seq=${encodeURIComponent(String(afterSeq))}`);
   },
 
-  listWorkflowAssets(workflowId: string, filters: V2WorkflowAssetFilters = {}): Promise<WorkflowAssetListResponseV2> {
+  listWorkflowAssets(
+    workflowId: string,
+    filters: V2WorkflowAssetFilters = {},
+    options: { signal?: AbortSignal } = {},
+  ): Promise<WorkflowAssetListResponseV2> {
     const query = v2WorkflowAssetFilterQuery(filters);
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/assets${query}`,
-      {},
+      { signal: options.signal },
       normalizeWorkflowAssetListResponseV2,
     );
   },

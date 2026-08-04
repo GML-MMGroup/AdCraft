@@ -5,11 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
-const styles = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
+const homeSource = readFileSync(
+  resolve(process.cwd(), "src/pages/HomePage.tsx"),
+  "utf8",
+);
 const originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 
-vi.mock("../AppContextValue", () => ({
-  useApp: () => ({ startNewProject }),
+vi.mock("../app/useHealth", () => ({
+  useHealth: () => ({ startNewProject }),
 }));
 
 type IntersectionCallback = IntersectionObserverCallback;
@@ -56,6 +60,7 @@ describe("HomePage motion", () => {
   beforeEach(() => {
     startNewProject.mockReset();
     IntersectionObserverMock.instances = [];
+    document.documentElement.dataset.theme = "light";
     vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
   });
 
@@ -81,8 +86,8 @@ describe("HomePage motion", () => {
     );
 
     expect(lines.map((line) => line.textContent)).toEqual([
-      "One Sentence",
-      "Becomes an",
+      "ONE SENTENCE",
+      "BECOMES AN",
       "Ad film.",
     ]);
 
@@ -101,7 +106,8 @@ describe("HomePage motion", () => {
     expect(
       characters.at(-1)?.style.getPropertyValue("--home-character-delay"),
     ).toBe("892ms");
-    expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(8);
+    expect(lines[2]?.querySelectorAll(".home-product-hero__glyph")).toHaveLength(8);
+    expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
   });
 
   it("starts the hero motion only after fonts and two paint frames are ready", async () => {
@@ -234,10 +240,19 @@ describe("HomePage motion", () => {
 
   it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
     expect(styles).toMatch(
+      /\.home-product-hero__character\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*translate3d\(0,\s*0,\s*0\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
+    );
+    expect(styles).toMatch(
       /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__character\s*\{[^}]*animation:[^;}]*home-hero-character-wave/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*12px,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
+      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*0,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
     );
     expect(styles).not.toMatch(/home-hero-line-wave/);
     expect(styles).not.toMatch(
@@ -252,5 +267,21 @@ describe("HomePage motion", () => {
     expect(styles).toMatch(
       /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
     );
+  });
+
+  it("does not mount an animated cosmic layer over the shared static background", () => {
+    document.documentElement.dataset.theme = "dark";
+    const view = render(<HomePage navigate={vi.fn()} />);
+
+    expect(
+      view.container.querySelectorAll(".home-cosmic-scene"),
+    ).toHaveLength(0);
+    expect(homeSource).not.toContain("HomeCosmicScene");
+    expect(homeSource).not.toContain("home-cosmic");
+  });
+
+  it("does not load a WebGL renderer for the static Home background", () => {
+    expect(homeSource).not.toMatch(/from\s+["']three["']/);
+    expect(homeSource).not.toContain("homeCosmicRenderer");
   });
 });

@@ -1,9 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
-import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
-import { useApp } from "../AppContextValue";
+import { AssetsIcon, FolderIcon, HomeIcon, MoonIcon, SunIcon, TrashIcon, TutorialIcon } from "../icons";
+import { useHealth } from "../app/useHealth";
+import { useTheme } from "../theme/useTheme";
+import "../styles/theme.css";
 import {
   v2AuthoringConflictStore,
   type V2AuthoringConflict,
@@ -20,19 +22,20 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
   { route: "trash", label: "Trash", icon: <TrashIcon /> },
 ];
 
-const V2WorkflowRevisionControl = lazy(() => import("./V2WorkflowRevisionControl"));
-
 interface LayoutProps {
   children: ReactNode;
+  workflowControls?: ReactNode;
 }
 
-export function Layout({ children }: LayoutProps) {
+export function Layout({ children, workflowControls }: LayoutProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
   const [resolvingConflict, setResolvingConflict] = useState(false);
-  const { apiOnline, apiMessage, storageWarning } = useApp();
+  const { apiOnline, apiMessage, storageWarning } = useHealth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const isWorkflowRoute = useMatch("/workflow/*") !== null;
 
   useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
 
@@ -80,7 +83,10 @@ export function Layout({ children }: LayoutProps) {
         ))}
       </nav>
 
-      <div className="app-shell" id="app">
+      <div
+        className={`app-shell${isWorkflowRoute ? "" : " app-shell--cosmic"}`}
+        id="app"
+      >
         <header className="topbar">
           <Link className="brand" to="/" aria-label="AdCraft home" onClick={closeAccountMenu}>
             <picture className="brand-picture">
@@ -104,9 +110,16 @@ export function Layout({ children }: LayoutProps) {
             </div>
           ) : null}
           <div className="top-actions">
-            {location.pathname.startsWith("/workflow") ? (
-              <Suspense fallback={null}><V2WorkflowRevisionControl /></Suspense>
-            ) : null}
+            {workflowControls}
+            <button
+              className="icon-btn theme-toggle"
+              type="button"
+              aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              onClick={toggleTheme}
+            >
+              {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            </button>
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>Tutorial</span>
@@ -133,6 +146,14 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
     </>
+  );
+}
+
+export function LayoutRoute() {
+  return (
+    <Layout>
+      <Outlet />
+    </Layout>
   );
 }
 

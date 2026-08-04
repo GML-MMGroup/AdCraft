@@ -57,7 +57,6 @@ import {
   mapWorkflowNodes,
   mergeBackendEdge,
   portColor,
-  syncWorkflowNodePositions,
   validateConnection,
 } from "../canvas/workflowCanvasModel.ts";
 import type { CanvasEdge, CanvasNode } from "../types.ts";
@@ -68,6 +67,11 @@ import {
   toWorkflowEdges,
   toWorkflowGraphPayload,
 } from "./workflowGraphPayloadModel.ts";
+import {
+  dispatchWorkflowDocumentCommand,
+  projectWorkflowPositionCommand,
+  type WorkflowPositionProjection,
+} from "../state/workflowDocumentCommands.ts";
 import { formatPromptOptimizerError } from "../runtime/workflowExecutionViewModel.ts";
 import {
   buildNodePromptPatch,
@@ -82,6 +86,32 @@ import type { SaveCanvasOptions, WorkflowGraphMutationControllerArgs } from "./w
 
 export function useWorkflowGraphMutationController(args: WorkflowGraphMutationControllerArgs) {
   const argsRef = useRef(args);
+  const positionProjectionRef = useRef<{
+    renderedCanvasNodes: WorkflowNode[];
+    renderedFlowNodes: CanvasNode[];
+    projection: WorkflowPositionProjection;
+  }>({
+    renderedCanvasNodes: args.canvasNodes,
+    renderedFlowNodes: args.flowNodes,
+    projection: {
+      canvasNodes: args.canvasNodes,
+      flowNodes: args.flowNodes,
+    },
+  });
+
+  if (
+    positionProjectionRef.current.renderedCanvasNodes !== args.canvasNodes
+    || positionProjectionRef.current.renderedFlowNodes !== args.flowNodes
+  ) {
+    positionProjectionRef.current = {
+      renderedCanvasNodes: args.canvasNodes,
+      renderedFlowNodes: args.flowNodes,
+      projection: {
+        canvasNodes: args.canvasNodes,
+        flowNodes: args.flowNodes,
+      },
+    };
+  }
 
   useEffect(() => {
     argsRef.current = args;
@@ -636,11 +666,30 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
   function autoLayout() {
     const current = argsRef.current;
     current.captureCanvasHistory();
-    const ordered = layoutNodes(current.flowNodes, current.flowEdges);
-    const positionedCanvasNodes = syncWorkflowNodePositions(current.canvasNodes, ordered);
-    current.setFlowNodes(ordered);
-    current.setCanvasNodes(positionedCanvasNodes);
-    current.persistNodePositionSnapshot(positionedCanvasNodes, { flowNodes: ordered });
+    const ordered = layoutNodes(
+      positionProjectionRef.current.projection.flowNodes,
+      current.flowEdges,
+    );
+    const command = {
+      type: "set-node-positions" as const,
+      positions: new Map(ordered.map((node) => [node.id, node.position])),
+    };
+    const projection = projectWorkflowPositionCommand(
+      positionProjectionRef.current.projection,
+      command,
+    );
+    positionProjectionRef.current.projection = projection;
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      command,
+    );
+    current.persistNodePositionSnapshot(projection.canvasNodes, {
+      flowNodes: projection.flowNodes,
+    });
     current.setStatus("Canvas arranged by DAG");
     window.setTimeout(() => current.reactFlow?.fitView({ padding: DEFAULT_LAYOUT_VIEWPORT_PADDING }), 0);
   }
@@ -648,11 +697,27 @@ export function useWorkflowGraphMutationController(args: WorkflowGraphMutationCo
   function persistNodePosition(node: CanvasNode) {
     const current = argsRef.current;
     current.captureCanvasHistory();
-    const nextCanvasNodes = current.canvasNodes.map((item) => (item.id === node.id ? { ...item, position: node.position } : item));
-    const nextFlowNodes = current.flowNodes.map((item) => (item.id === node.id ? { ...item, position: node.position } : item));
-    current.setCanvasNodes(nextCanvasNodes);
-    current.setFlowNodes(nextFlowNodes);
-    current.persistNodePositionSnapshot(nextCanvasNodes, { flowNodes: nextFlowNodes });
+    const command = {
+      type: "move-node" as const,
+      nodeId: node.id,
+      position: node.position,
+    };
+    const projection = projectWorkflowPositionCommand(
+      positionProjectionRef.current.projection,
+      command,
+    );
+    positionProjectionRef.current.projection = projection;
+    dispatchWorkflowDocumentCommand(
+      {
+        setWorkflow: current.setWorkflow,
+        setCanvasNodes: current.setCanvasNodes,
+        setFlowNodes: current.setFlowNodes,
+      },
+      command,
+    );
+    current.persistNodePositionSnapshot(projection.canvasNodes, {
+      flowNodes: projection.flowNodes,
+    });
     current.setStatus("Position save queued");
   }
 
