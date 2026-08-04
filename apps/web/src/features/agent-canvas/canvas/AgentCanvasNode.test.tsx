@@ -112,11 +112,11 @@ describe("AgentCanvasNodeCard", () => {
     expect(markerRule).not.toContain("box-shadow");
   });
 
-  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
+  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "editing"])(
     "renders a lightweight %s card with a border-aligned type marker and no title",
     (nodeType) => {
       const node = makeNode(nodeType);
-      const asset = nodeType === "image" || nodeType === "video" || nodeType === "audio"
+      const asset = nodeType === "image" || nodeType === "video"
         ? makeAsset(nodeType)
         : nodeType === "editing"
           ? makeAsset("video")
@@ -131,6 +131,15 @@ describe("AgentCanvasNodeCard", () => {
       expect(screen.getByText("Draft")).toBeTruthy();
     },
   );
+
+  it("uses the glass player title instead of audio artwork or a status pill", () => {
+    const node = makeNode("audio");
+    render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);
+
+    expect(screen.getByText("No audio yet")).toBeTruthy();
+    expect(screen.queryByText("Draft")).toBeNull();
+    expect(screen.queryByLabelText("audio node")).toBeNull();
+  });
 
   it("never offers Run for a text node", () => {
     render(<AgentCanvasNodeCard node={makeNode("text")} onRun={vi.fn()} />);
@@ -153,7 +162,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByText("Waiting for upstream")).toBeTruthy();
   });
 
-  it.each<CanvasNodeTypeV2>(["script", "image", "video", "audio", "editing"])(
+  it.each<CanvasNodeTypeV2>(["script", "image", "video", "editing"])(
     "keeps %s actions in the inline composer instead of the card corner",
     (nodeType) => {
       const status = nodeType === "editing" ? "ready" : "draft";
@@ -298,36 +307,40 @@ describe("AgentCanvasNodeRenderer", () => {
     );
   });
 
-  it("renders the selected node workbench directly below the node shell", () => {
-    const data = {
-      node: makeNode("image"),
-      asset: makeAsset("image"),
-      renderWorkbench: () => <div aria-label="Image node workbench">Prompt controls</div>,
-    } as AgentCanvasNodeData & {
-      renderWorkbench: () => JSX.Element;
-    };
+  it.each(["image", "audio"] as const)(
+    "renders the selected %s node workbench directly below the node shell",
+    (nodeType) => {
+      const workbenchLabel = `${nodeType === "image" ? "Image" : "Audio"} node workbench`;
+      const data = {
+        node: makeNode(nodeType),
+        asset: makeAsset(nodeType),
+        renderWorkbench: () => <div aria-label={workbenchLabel}>Prompt controls</div>,
+      } as AgentCanvasNodeData & {
+        renderWorkbench: () => JSX.Element;
+      };
 
-    render(
-      <ReactFlowProvider>
-        <AgentCanvasNodeRenderer
-          id={data.node.node_id}
-          data={data}
-          type="agentCanvas"
-          selected
-          dragging={false}
-          draggable
-          selectable
-          deletable
-          isConnectable
-          zIndex={0}
-          positionAbsoluteX={0}
-          positionAbsoluteY={0}
-        />
-      </ReactFlowProvider>,
-    );
+      render(
+        <ReactFlowProvider>
+          <AgentCanvasNodeRenderer
+            id={data.node.node_id}
+            data={data}
+            type="agentCanvas"
+            selected
+            dragging={false}
+            draggable
+            selectable
+            deletable
+            isConnectable
+            zIndex={0}
+            positionAbsoluteX={0}
+            positionAbsoluteY={0}
+          />
+        </ReactFlowProvider>,
+      );
 
-    expect(screen.getByLabelText("Image node workbench")).toBeTruthy();
-  });
+      expect(screen.getByLabelText(workbenchLabel)).toBeTruthy();
+    },
+  );
 
   it("centers the inline workbench beneath its card", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");

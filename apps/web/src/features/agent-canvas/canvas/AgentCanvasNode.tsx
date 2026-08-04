@@ -16,6 +16,7 @@ import type {
   NodeRuntimeV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
+import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -161,26 +162,11 @@ function MediaSurface({
   );
 }
 
-function AudioSurface({ asset }: { asset?: ProjectAssetSummaryV2 | null }) {
-  return (
-    <div className="agent-canvas-node__audio" role="img" aria-label={asset?.display_name || "Audio output"}>
-      <span className="agent-canvas-node__audio-disc" aria-hidden="true">
-        <span />
-      </span>
-      <span className="agent-canvas-node__waveform" aria-hidden="true">
-        {Array.from({ length: 23 }, (_, index) => <i key={index} />)}
-      </span>
-      {asset?.duration_seconds != null ? (
-        <span className="agent-canvas-node__duration">{Math.round(asset.duration_seconds)}s</span>
-      ) : null}
-    </div>
-  );
-}
-
 function NodeSurface({
   node,
   asset,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset">) {
+  status,
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset"> & { status: CanvasNodeStatusV2 }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <div className={`agent-canvas-node__copy agent-canvas-node__copy--${node.node_type}`}>
@@ -189,7 +175,9 @@ function NodeSurface({
       </div>
     );
   }
-  if (node.node_type === "audio") return <AudioSurface asset={asset} />;
+  if (node.node_type === "audio") {
+    return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
+  }
   return <MediaSurface node={node} asset={asset} />;
 }
 
@@ -217,18 +205,20 @@ export function AgentCanvasNodeCard({
       data-node-status={status}
       aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
     >
-      <span
-        className="agent-canvas-node__type-marker"
-        role="img"
-        aria-label={typeMarkerLabel(node, label)}
-        title={`${label} node`}
-      >
-        <img src={typeMarkerImage(node.node_type)} alt="" draggable={false} />
-      </span>
+      {node.node_type !== "audio" ? (
+        <span
+          className="agent-canvas-node__type-marker"
+          role="img"
+          aria-label={typeMarkerLabel(node, label)}
+          title={`${label} node`}
+        >
+          <img src={typeMarkerImage(node.node_type)} alt="" draggable={false} />
+        </span>
+      ) : null}
 
       <div className="agent-canvas-node__surface">
-        <NodeSurface node={node} asset={asset} />
-        {status === "working" ? (
+        <NodeSurface node={node} asset={asset} status={status} />
+        {status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
@@ -241,13 +231,15 @@ export function AgentCanvasNodeCard({
         ) : null}
       </div>
 
-      <span
-        className={`agent-canvas-node__status agent-canvas-node__status--${status}${blockedByUpstream ? " agent-canvas-node__status--blocked" : ""}`}
-        title={blockedByUpstream ? "Waiting for required upstream nodes." : undefined}
-      >
-        <i aria-hidden="true" />
-        {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
-      </span>
+      {node.node_type !== "audio" ? (
+        <span
+          className={`agent-canvas-node__status agent-canvas-node__status--${status}${blockedByUpstream ? " agent-canvas-node__status--blocked" : ""}`}
+          title={blockedByUpstream ? "Waiting for required upstream nodes." : undefined}
+        >
+          <i aria-hidden="true" />
+          {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
+        </span>
+      ) : null}
 
     </article>
   );

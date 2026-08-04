@@ -178,6 +178,22 @@ export function PauseIcon(props: IconProps) {
   );
 }
 
+export function RewindIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M11.2 6.2 4.5 12l6.7 5.8V6.2Zm8.3 0L12.8 12l6.7 5.8V6.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function FastForwardIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m12.8 6.2 6.7 5.8-6.7 5.8V6.2Zm-8.3 0 6.7 5.8-6.7 5.8V6.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function MuteIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
