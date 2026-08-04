@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -288,31 +288,22 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
-  it("uses 18px connection hit targets with 12px hollow handles spaced from the node", () => {
+  it("leaves connection point geometry to the default React Flow handles", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const handleRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
-    const targetRule = css.match(/^\.agent-canvas-node__handle-target\s*\{([\s\S]*?)\n\}/m)?.[1];
     const inputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
     const outputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(handleRule).toContain("width: 18px");
-    expect(handleRule).toContain("height: 18px");
-    expect(handleRule).toContain("border: 0");
-    expect(handleRule).toContain("background-color: transparent");
-    expect(targetRule).toContain("box-sizing: border-box");
-    expect(targetRule).toContain("width: 12px");
-    expect(targetRule).toContain("height: 12px");
-    expect(targetRule).toContain("background: transparent");
-    expect(inputRule).toContain("left: -27px");
-    expect(inputRule).toContain("transform: translateY(-50%)");
-    expect(outputRule).toContain("right: -27px");
-    expect(outputRule).toContain("transform: translateY(-50%)");
-    expect(css).not.toMatch(/\.agent-canvas-node__handle--output \.agent-canvas-node__handle-target\s*\{/);
+    expect(handleRule).toContain("z-index: 12");
+    expect(handleRule).not.toMatch(/\b(?:width|height|border|background(?:-color)?|display|place-items):/);
+    expect(inputRule).toBeUndefined();
+    expect(outputRule).toBeUndefined();
+    expect(css).not.toContain(".agent-canvas-node__handle-target");
   });
 
   it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
-    "renders %s node connection handles without plus glyphs",
+    "renders %s node with only the default connection handles",
     (nodeType) => {
       const data: AgentCanvasNodeData = { node: makeNode(nodeType) };
       const { container } = render(
@@ -335,17 +326,15 @@ describe("AgentCanvasNodeRenderer", () => {
       );
 
       expect(container.querySelectorAll(".agent-canvas-node__handle")).toHaveLength(2);
-      expect(container.querySelectorAll(".agent-canvas-node__handle svg")).toHaveLength(0);
+      expect(container.querySelectorAll(".agent-canvas-node__handle-target")).toHaveLength(0);
     },
   );
 
   it("renders connectable left and right handles", () => {
-    const onOpenConnectedNodeMenu = vi.fn();
     const data: AgentCanvasNodeData = {
       node: makeNode("image"),
       asset: makeAsset("image"),
       onRun: vi.fn(),
-      onOpenConnectedNodeMenu,
     };
 
     render(
@@ -367,22 +356,10 @@ describe("AgentCanvasNodeRenderer", () => {
       </ReactFlowProvider>,
     );
 
-    expect(screen.getByLabelText("Image node input")).toBeTruthy();
-    expect(screen.getByLabelText("Image node output")).toBeTruthy();
-
-    fireEvent.click(screen.getByLabelText("Add an upstream node to Image"));
-    expect(onOpenConnectedNodeMenu).toHaveBeenCalledWith(
-      data.node.node_id,
-      "upstream",
-      expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
-    );
-
-    fireEvent.click(screen.getByLabelText("Add a downstream node to Image"));
-    expect(onOpenConnectedNodeMenu).toHaveBeenCalledWith(
-      data.node.node_id,
-      "downstream",
-      expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
-    );
+    expect(screen.getByLabelText("Image node input").classList).toContain("react-flow__handle-left");
+    expect(screen.getByLabelText("Image node output").classList).toContain("react-flow__handle-right");
+    expect(screen.queryByLabelText("Add an upstream node to Image")).toBeNull();
+    expect(screen.queryByLabelText("Add a downstream node to Image")).toBeNull();
   });
 
   it.each(["image", "audio"] as const)(
