@@ -670,6 +670,7 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
     record,
     [
       "asset_id",
+      "version_id",
       "project_id",
       "workflow_id",
       "media_type",
@@ -692,6 +693,8 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
       "provider",
       "model_id",
       "prompt_provenance",
+      "actual_media_facts",
+      "generation_provenance",
       "quality_metadata",
       "created_at",
     ],
@@ -699,6 +702,7 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
   );
   return {
     asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    version_id: record.version_id === undefined ? null : nullableString(record.version_id, `${path}.version_id`),
     project_id: record.project_id === undefined ? null : nullableString(record.project_id, `${path}.project_id`),
     workflow_id: record.workflow_id === undefined ? null : nullableString(record.workflow_id, `${path}.workflow_id`),
     media_type: expectLiteral(record.media_type, ASSET_MEDIA_TYPES, `${path}.media_type`),
@@ -725,6 +729,8 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
     provider: record.provider === undefined ? null : nullableString(record.provider, `${path}.provider`),
     model_id: record.model_id === undefined ? null : nullableString(record.model_id, `${path}.model_id`),
     prompt_provenance: optionalUnknownRecord(record.prompt_provenance, `${path}.prompt_provenance`, {}),
+    actual_media_facts: optionalUnknownRecord(record.actual_media_facts, `${path}.actual_media_facts`, {}),
+    generation_provenance: optionalUnknownRecord(record.generation_provenance, `${path}.generation_provenance`, {}),
     quality_metadata: optionalUnknownRecord(record.quality_metadata, `${path}.quality_metadata`, {}),
     created_at: record.created_at === undefined || record.created_at === null
       ? null

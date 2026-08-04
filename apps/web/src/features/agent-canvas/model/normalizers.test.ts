@@ -1536,6 +1536,33 @@ describe("Agent Canvas normalizers", () => {
     expect(() => normalizeProjectAssetSummaryV2({ ...validAsset, media_url: "/tmp/private.png" })).toThrowError(/media_url/i);
   });
 
+  it("accepts canonical asset version and generation metadata from workflow reads", () => {
+    const asset = normalizeProjectAssetSummaryV2({
+      ...validWorkflowPayload().assets[0],
+      version_id: "version-asset-output-1",
+      actual_media_facts: {
+        width: 1024,
+        height: 1024,
+        mime_type: "image/png",
+      },
+      generation_provenance: {
+        input_manifest_id: "manifest-1",
+        node_revision: 5,
+      },
+    });
+
+    expect(asset.version_id).toBe("version-asset-output-1");
+    expect(asset.actual_media_facts).toEqual({
+      width: 1024,
+      height: 1024,
+      mime_type: "image/png",
+    });
+    expect(asset.generation_provenance).toEqual({
+      input_manifest_id: "manifest-1",
+      node_revision: 5,
+    });
+  });
+
   it("validates media access descriptors and source identity", () => {
     const nodeSnapshot = {
       snapshot_type: "media",

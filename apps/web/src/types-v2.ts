@@ -1617,6 +1617,7 @@ export interface CanvasBindingV2 {
 
 export interface ProjectAssetSummaryV2 {
   asset_id: string;
+  version_id: string | null;
   project_id: string | null;
   workflow_id: string | null;
   media_type: AgentCanvasAssetMediaTypeV2;
@@ -1639,6 +1640,8 @@ export interface ProjectAssetSummaryV2 {
   provider: string | null;
   model_id: string | null;
   prompt_provenance: Record<string, unknown>;
+  actual_media_facts: Record<string, unknown>;
+  generation_provenance: Record<string, unknown>;
   quality_metadata: Record<string, unknown>;
   created_at: string | null;
 }
