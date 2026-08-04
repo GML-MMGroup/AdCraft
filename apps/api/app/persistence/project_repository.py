@@ -13,8 +13,10 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
-from app.persistence.models import ProjectRow
+from app.persistence.models import AgentCanvasWorkflowRow, ProjectRow
 from app.schemas.workflow_v2_projects import (
+    ProjectCatalogRecord,
+    ProjectCatalogRecordPage,
     ProjectCreate,
     ProjectRecord,
     ProjectRecordPage,
@@ -125,6 +127,72 @@ class ProjectRepository:
             last = items[-1]
             next_cursor = _encode_cursor(last.updated_at, last.project_id)
         return ProjectRecordPage(items=items, next_cursor=next_cursor)
+
+    def get_catalog(self, project_id: str) -> ProjectCatalogRecord:
+        """Return a Project joined to its owning Agent Canvas Workflow."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        _project_catalog_select().where(ProjectRow.project_id == project_id)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        if row is None:
+            raise _not_found_error()
+        return _project_catalog_from_row(row)
+
+    def list_catalog(
+        self,
+        *,
+        status: ProjectStatusV2 = "active",
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> ProjectCatalogRecordPage:
+        """List only Projects with an owning Agent Canvas Workflow."""
+
+        if not 1 <= limit <= 100:
+            raise V2PersistenceError(
+                "project_page_invalid",
+                "Project page bounds are invalid.",
+                stage="project_repository",
+            )
+        cursor_values = _decode_cursor(cursor) if cursor is not None else None
+        try:
+            with self._database.engine.connect() as connection:
+                query = _project_catalog_select().where(ProjectRow.status == status)
+                if cursor_values is not None:
+                    cursor_updated_at, cursor_project_id = cursor_values
+                    query = query.where(
+                        or_(
+                            ProjectRow.updated_at < cursor_updated_at,
+                            and_(
+                                ProjectRow.updated_at == cursor_updated_at,
+                                ProjectRow.project_id > cursor_project_id,
+                            ),
+                        )
+                    )
+                rows = (
+                    connection.execute(
+                        query.order_by(
+                            ProjectRow.updated_at.desc(), ProjectRow.project_id.asc()
+                        ).limit(limit + 1)
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        items = tuple(_project_catalog_from_row(row) for row in rows[:limit])
+        next_cursor = None
+        if len(rows) > limit:
+            last = items[-1]
+            next_cursor = _encode_cursor(last.updated_at, last.project_id)
+        return ProjectCatalogRecordPage(items=items, next_cursor=next_cursor)
 
     def update(
         self,
@@ -255,6 +323,17 @@ def _project_select():
     )
 
 
+def _project_catalog_select():
+    return (
+        _project_select()
+        .add_columns(AgentCanvasWorkflowRow.workflow_id)
+        .join(
+            AgentCanvasWorkflowRow,
+            AgentCanvasWorkflowRow.project_id == ProjectRow.project_id,
+        )
+    )
+
+
 def _get_project_in_transaction(connection: Connection, project_id: str) -> RowMapping:
     row = (
         connection.execute(_project_select().where(ProjectRow.project_id == project_id))
@@ -278,6 +357,13 @@ def _project_from_row(row: RowMapping) -> ProjectRecord:
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
         deleted_at=_optional_string(row["deleted_at"]),
+    )
+
+
+def _project_catalog_from_row(row: RowMapping) -> ProjectCatalogRecord:
+    return ProjectCatalogRecord(
+        **_project_from_row(row).model_dump(),
+        workflow_id=str(row["workflow_id"]),
     )
 
 

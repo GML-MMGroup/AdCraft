@@ -72,7 +72,7 @@ class V2ScriptPersistenceAdapter:
                     character_ids=shot.character_ids,
                     scene_ids=shot.scene_ids,
                     reference_item_ids=list(
-                        dict.fromkeys([*shot.product_ids, *shot.character_ids, *shot.scene_ids])
+                        dict.fromkeys([*shot.product_ids, *shot.character_ids])
                     ),
                     description=shot.description,
                     dialogue=[],

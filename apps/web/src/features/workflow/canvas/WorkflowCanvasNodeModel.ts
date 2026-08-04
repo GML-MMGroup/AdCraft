@@ -25,12 +25,15 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
   return (
     previous.selected === next.selected &&
     previousData.title === nextData.title &&
+    previousData.description === nextData.description &&
     previousData.status === nextData.status &&
     previousData.nodeId === nextData.nodeId &&
+    previousData.nodeType === nextData.nodeType &&
     previousData.kind === nextData.kind &&
     previousData.family === nextData.family &&
     previousData.category === nextData.category &&
     previousData.contentPreview === nextData.contentPreview &&
+    previousData.outputCount === nextData.outputCount &&
     previousData.version === nextData.version &&
     previousData.locked === nextData.locked &&
     previousData.stale === nextData.stale &&
@@ -41,6 +44,10 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
     previousData.candidateWarningCount === nextData.candidateWarningCount &&
     previousData.pendingVisibleCandidateCount === nextData.pendingVisibleCandidateCount &&
     previousData.isV2Region === nextData.isV2Region &&
+    previousData.projectId === nextData.projectId &&
+    previousData.workflowId === nextData.workflowId &&
+    previousData.v2Runtime === nextData.v2Runtime &&
+    previousData.v2AudioMode === nextData.v2AudioMode &&
     sameV2Items(previousData.v2Items ?? [], nextData.v2Items ?? []) &&
     sameV2Slots(previousData.v2Slots ?? [], nextData.v2Slots ?? []) &&
     sameV2AssetVersionList(previousData.v2AssetVersions ?? [], nextData.v2AssetVersions ?? []) &&
@@ -53,6 +60,7 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
 	    previousData.onOpenScreenplay === nextData.onOpenScreenplay &&
 	    previousData.onOpenV2SlotEditor === nextData.onOpenV2SlotEditor &&
 	    previousData.onOpenV2StoryboardPrompt === nextData.onOpenV2StoryboardPrompt &&
+	    previousData.onOpenV2StoryboardVideoPreview === nextData.onOpenV2StoryboardVideoPreview &&
 	    previousData.onChangeV2SlotPrompt === nextData.onChangeV2SlotPrompt &&
     previousData.onChangeV2SlotNegativePrompt === nextData.onChangeV2SlotNegativePrompt &&
     previousData.onUploadV2SlotReference === nextData.onUploadV2SlotReference &&
@@ -64,6 +72,7 @@ export function areWorkflowCanvasNodePropsEqual(previous: NodeProps<CanvasNode>,
 	    previousData.onSubmitV2SlotPrompt === nextData.onSubmitV2SlotPrompt &&
     previousData.onSelectV2SlotVersion === nextData.onSelectV2SlotVersion &&
     previousData.onDiscardV2SlotWorkingVersion === nextData.onDiscardV2SlotWorkingVersion &&
+    previousData.onLoadV2SlotVersions === nextData.onLoadV2SlotVersions &&
     previousData.onOpenMedia === nextData.onOpenMedia &&
     previousData.onSelectDynamicItem === nextData.onSelectDynamicItem &&
     sameAssetList(previousData.previewAssets, nextData.previewAssets) &&

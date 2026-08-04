@@ -7,6 +7,7 @@ from app.schemas.workflow_v2 import WorkflowItemV2, WorkflowSlotV2, WorkflowV2
 from app.schemas.workflow_v2_screenplay import (
     V2LinkedContextSummary,
     V2ScriptPlanV2,
+    V2ScriptShotV2,
     V2ScriptStructuralDiff,
 )
 from app.services.v2_shot_reference_planner import reference_dependency_slot_ids
@@ -517,7 +518,7 @@ def _new_storyboard_item(
             slot_type="shot_video_segment",
             media_type="video",
             status="blocked",
-            prompt=shot.visual_prompt,
+            prompt=_storyboard_video_prompt(shot, provider_duration),
             dependency_slot_ids=[
                 f"{shot.shot_id}:{slot_type}" for slot_type in shot_cell_slot_types()
             ],
@@ -552,7 +553,7 @@ def _new_storyboard_item(
                     }
                     for slot_type in shot_cell_slot_types()
                 },
-                "video_provider_prompt": shot.visual_prompt,
+                "video_provider_prompt": _storyboard_video_prompt(shot, provider_duration),
                 "storyboard_content": shot.description,
                 "dialogue": _dialogue_text(shot),
                 "audio_description": "Natural ambient sound appropriate to the action.",
@@ -581,6 +582,14 @@ def _new_storyboard_item(
                 "primary_scene_item_id": shot.scene_id,
             },
         )
+    )
+
+
+def _storyboard_video_prompt(shot: V2ScriptShotV2, provider_duration: int) -> str:
+    return (
+        f"Create one {provider_duration} second video segment. "
+        "Use deliberate camera framing and movement to reveal the action. "
+        f"{shot.visual_prompt}"
     )
 
 
@@ -625,7 +634,8 @@ def _scene_system_prompt(scene: Any) -> str:
 
 def _storyboard_slot_prompt(shot: Any, slot_type: str) -> str:
     if slot_type == "shot_video_segment":
-        return shot.visual_prompt
+        provider_duration = 5 if shot.duration_seconds <= 7 else 10
+        return _storyboard_video_prompt(shot, provider_duration)
     cell_number = slot_type.rsplit("_", 1)[-1]
     return (
         f"{shot.description} Storyboard cell {cell_number} for shot {shot.shot_index}. "

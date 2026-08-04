@@ -1,0 +1,36 @@
+{
+  "name": "@adcraft/pi-agent-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "patch-package",
+    "start": "tsx src/main.ts",
+    "build": "tsc",
+    "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
+    "generate:manifest": "npm run generate:capabilities && tsx scripts/generate-runtime-manifest.ts",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "verify:skills": "tsx scripts/verify-skills.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.81.1",
+    "@earendil-works/pi-ai": "0.81.1",
+    "@earendil-works/pi-coding-agent": "0.81.1",
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "patch-package": "^8.0.0",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3",
+    "vitest": "3.2.7"
+  },
+  "overrides": {
+    "protobufjs": "7.6.5"
+  }
+}

@@ -8,7 +8,6 @@ from app.services.v2_specialist_ownership import ownership_scope_for
 class V2SpecialistConfig:
     specialist: str
     display_name: str
-    system_prompt: str
     allowed_slot_types: frozenset[str]
     model_id: str | None = None
     profile_id: str = ""
@@ -34,18 +33,6 @@ class V2SpecialistConfig:
         return False
 
 
-REQUIRED_OUTPUT_KEYS = (
-    "summary_prompt",
-    "specialist_prompt",
-    "detail_prompts",
-    "provider_prompt",
-    "negative_prompt",
-    "negative_constraints",
-    "reference_asset_ids",
-    "warnings",
-)
-
-
 def specialist_config_for(
     specialist: str,
     settings: Settings,
@@ -62,7 +49,6 @@ def specialist_config_for(
         specialist=config.specialist,
         profile_version=config.profile_version,
         display_name=config.display_name,
-        system_prompt=config.system_prompt,
         model_id=model_id,
         model_env_key=model_env_key,
         allowed_node_types=frozenset(scope.node_types),
@@ -139,22 +125,6 @@ def specialist_model_env_key_for(specialist: str) -> str | None:
     }.get(specialist)
 
 
-def required_json_contract_prompt() -> str:
-    keys = "\n".join(f"- {key}" for key in REQUIRED_OUTPUT_KEYS)
-    return (
-        "Return one JSON object only. Do not return markdown. Do not wrap JSON in "
-        "code fences. The JSON object must include these keys:\n"
-        f"{keys}\n"
-        "Do not invent asset ids. Preserve provided reference asset ids unless a "
-        "controlled warning explains why an id is omitted. Generate exactly one "
-        "provider_prompt for the target slot. Do not ask follow-up questions."
-    )
-
-
-def _system_prompt(role: str, rules: str) -> str:
-    return f"{role}\n\n{required_json_contract_prompt()}\n\n{rules}"
-
-
 _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
     "product_designer": V2SpecialistConfig(
         specialist="product_designer",
@@ -162,13 +132,6 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
         model_id="",
         allowed_slot_types=frozenset({"product_main_image", "product_multi_view_grid"}),
         skill_pack_ids=("product_info_extraction", "selling_point_extraction"),
-        system_prompt=_system_prompt(
-            "You are the Product Designer for an advertising generation workflow.",
-            "Refine product prompts while preserving product identity, packaging, label, "
-            "logo, shape, color, and brand-readable details. Use strict reference mode "
-            "when product reference assets are provided. For product_multi_view_grid, "
-            "create one multi-view product prompt using the selected product main image.",
-        ),
     ),
     "character_designer": V2SpecialistConfig(
         specialist="character_designer",
@@ -179,12 +142,6 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
             "character_spec_extraction",
             "character_prompt_expansion",
             "character_turnaround_prompt",
-        ),
-        system_prompt=_system_prompt(
-            "You are the Character Designer for an advertising generation workflow.",
-            "Preserve wardrobe, silhouette, age, expression, identity, and style. For "
-            "character_three_view, create one three-view prompt using the selected "
-            "character main image. Do not create Face ID or avatar requirements.",
         ),
     ),
     "scene_designer": V2SpecialistConfig(
@@ -197,12 +154,6 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
             "pure_scene_prompt_expansion",
             "multi_view_scene_prompt",
         ),
-        system_prompt=_system_prompt(
-            "You are the Scene Designer for an advertising generation workflow.",
-            "Refine scene prompts around spatial layout, lighting, props, camera "
-            "readability, and visual style. For scene_multi_view_grid, create one "
-            "four-view scene prompt. Do not confuse scene grids with storyboard cells.",
-        ),
     ),
     "storyboard_artist": V2SpecialistConfig(
         specialist="storyboard_artist",
@@ -214,13 +165,6 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
             "storyboard_image_prompt_generation",
             "visual_continuity_check",
         ),
-        system_prompt=_system_prompt(
-            "You are the Storyboard Artist for an advertising generation workflow.",
-            "Produce one complete prompt for one single image. Preserve same-shot "
-            "continuity using the shared context and logical cell role. Do not include "
-            "sibling cell full prompts. Do not request grids, collages, split images, "
-            "multi-frame images, or combined cell descriptions.",
-        ),
     ),
     "video_director": V2SpecialistConfig(
         specialist="video_director",
@@ -228,13 +172,6 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
         model_id="",
         allowed_slot_types=frozenset({"shot_video_segment"}),
         skill_pack_ids=("storyboard_video_prompt_generation",),
-        system_prompt=_system_prompt(
-            "You are the Video Director for storyboard video segments.",
-            "Produce one video prompt for one shot video segment. Use selected same-shot "
-            "cell assets as references. Include motion, timing, camera movement, "
-            "transition, dialogue, audio description, voice style, and negative "
-            "constraints when provided. Do not produce a full-ad video prompt.",
-        ),
     ),
     "sound_director": V2SpecialistConfig(
         specialist="sound_director",
@@ -242,53 +179,29 @@ _SPECIALIST_CONFIGS: dict[str, V2SpecialistConfig] = {
         model_id="",
         allowed_slot_types=frozenset({"bgm_audio"}),
         skill_pack_ids=("bgm_prompt_generation", "mood_and_duration_matching"),
-        system_prompt=_system_prompt(
-            "You are the Sound Director for background music generation.",
-            "Produce one music generation prompt. Respect workflow duration, ad tone, "
-            "brand emotion, and audio mode. Do not add sound effects or voiceover "
-            "requirements unless the slot schema provides them.",
-        ),
     ),
     "composition_tool": V2SpecialistConfig(
         specialist="composition_tool",
         display_name="Composition Tool",
         model_id="",
         allowed_slot_types=frozenset({"final_video"}),
-        system_prompt=_system_prompt(
-            "You are a deterministic final composition tool planner.",
-            "Return composition metadata only. Do not create a media provider prompt "
-            "for text-to-video generation. The backend timeline and local composition "
-            "tool assemble the final ad.",
-        ),
     ),
     "quick_image_generator": V2SpecialistConfig(
         specialist="quick_image_generator",
         display_name="Quick Image Generator",
         model_id="",
         allowed_slot_types=frozenset({"free_output"}),
-        system_prompt=_system_prompt(
-            "You lightly clean prompts for standalone free image generation.",
-            "Do not infer product, character, or scene ownership from media type alone.",
-        ),
     ),
     "quick_video_generator": V2SpecialistConfig(
         specialist="quick_video_generator",
         display_name="Quick Video Generator",
         model_id="",
         allowed_slot_types=frozenset({"free_output"}),
-        system_prompt=_system_prompt(
-            "You lightly clean prompts for standalone free video generation.",
-            "Do not infer product, character, or scene ownership from media type alone.",
-        ),
     ),
     "quick_audio_generator": V2SpecialistConfig(
         specialist="quick_audio_generator",
         display_name="Quick Audio Generator",
         model_id="",
         allowed_slot_types=frozenset({"free_output"}),
-        system_prompt=_system_prompt(
-            "You lightly clean prompts for standalone free audio generation.",
-            "Do not infer product, character, or scene ownership from media type alone.",
-        ),
     ),
 }

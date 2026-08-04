@@ -76,7 +76,7 @@ class V2ProductionAcceptancePreflight:
 
     def _agent_configured(self) -> bool:
         return bool(
-            not self._settings.agno_mock_mode
+            not self._settings.agent_runtime_mode == "fake"
             and self._settings.llm_api_key
             and self._settings.llm_base_url
             and self._settings.llm_script_model

@@ -5,7 +5,6 @@ description = "Production backend for AdCraft, a multi-agent advertising workflo
 readme = "README.md"
 requires-python = ">=3.10.12"
 dependencies = [
-    "agno>=2.6.9",
     "alembic>=1.13,<2",
     "fastapi>=0.136.3",
     "filelock>=3.30.2",
@@ -21,6 +20,7 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.15.15",
 ]
 

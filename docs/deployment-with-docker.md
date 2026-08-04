@@ -35,7 +35,7 @@ The address printed at the end has the form `http://127.0.0.1:<port>`. `127.0.0.
 4. Wait while the launcher checks the system, prepares its runtime, builds AdCraft, and starts the web and API services. The first run can take longer than later runs.
 5. When it reports success, open the printed `http://127.0.0.1:<port>` URL. The launcher normally opens a browser for you; if it does not, copy the displayed URL into a browser on the same computer.
 
-Expected outcome: both services become healthy and AdCraft opens locally. Docker Desktop must run in **Linux containers** mode. The person deploying is responsible for complying with the applicable Docker Desktop licensing terms.
+Expected outcome: Agent, API, and Web become healthy and AdCraft opens locally. Docker Desktop must run in **Linux containers** mode. The person deploying is responsible for complying with the applicable Docker Desktop licensing terms.
 
 ## Deploy on Linux
 
@@ -66,8 +66,9 @@ Do not run the one-click launcher and the commands below at the same time. Keep 
 
 ### What This Deployment Creates
 
-Docker runs two services:
+Docker runs three services:
 
+- `agent`: an internal Agent Runtime. It is not published to the computer or the network.
 - `api`: the backend on the internal Docker network.
 - `web`: the browser interface, published only on `127.0.0.1`.
 
@@ -149,9 +150,10 @@ if not exist runtime-data\deployment.env (
   >>runtime-data\deployment.env echo ADCRAFT_UID=0
   >>runtime-data\deployment.env echo ADCRAFT_GID=0
 )
+powershell -NoProfile -Command "$p='runtime-data\deployment.env'; if (-not (Select-String -Quiet -Path $p -Pattern '^ADCRAFT_AGENT_RUNTIME_TOKEN=')) { $b=New-Object byte[] 32; $r=[Security.Cryptography.RandomNumberGenerator]::Create(); try { $r.GetBytes($b) } finally { $r.Dispose() }; [IO.File]::AppendAllText($p, 'ADCRAFT_AGENT_RUNTIME_TOKEN='+(-join ($b | ForEach-Object { $_.ToString('x2') }))+[Environment]::NewLine) }"
 ```
 
-The last three commands create `runtime-data/deployment.env` with the port and Windows container user settings. If you chose a port other than `8080`, replace `8080` in the first of those three commands before you run it.
+The commands create `runtime-data/deployment.env` with the port, Windows container user settings, and a private internal Agent Runtime token. If you chose a port other than `8080`, replace `8080` in the first command before you run it. Keep this file private.
 
 ### Linux Terminal
 
@@ -164,8 +166,11 @@ mkdir -p runtime-data/api
 chmod 700 runtime-data runtime-data/api
 if [ ! -f runtime-data/deployment.env ]; then
   printf 'ADCRAFT_PORT=8080\nADCRAFT_UID=%s\nADCRAFT_GID=%s\n' "$(id -u)" "$(id -g)" > runtime-data/deployment.env
-  chmod 600 runtime-data/deployment.env
 fi
+if ! grep -q '^ADCRAFT_AGENT_RUNTIME_TOKEN=' runtime-data/deployment.env; then
+  printf 'ADCRAFT_AGENT_RUNTIME_TOKEN=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')" >> runtime-data/deployment.env
+fi
+chmod 600 runtime-data/deployment.env
 ```
 
 If you chose another port, change `ADCRAFT_PORT=8080` before running the command. Do not copy either `.env.example` file over an existing `.env` file.
@@ -234,7 +239,7 @@ Linux terminal:
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-Wait until both `api` and `web` show `healthy`. On the first startup, the API becomes healthy before the web service starts.
+Wait until `agent`, `api`, and `web` all show `healthy`. On the first startup, the Agent Runtime becomes healthy before the API, then the web service starts.
 
 ### 7. Open AdCraft and Add API Keys
 
@@ -253,7 +258,7 @@ Run all commands from the project folder. Substitute the Linux `sudo docker` for
 | Task | Windows Command Prompt | Linux terminal |
 | --- | --- | --- |
 | View status | `docker compose --env-file runtime-data\deployment.env -f compose.yaml ps` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps` |
-| Read recent logs | `docker compose --env-file runtime-data\deployment.env -f compose.yaml logs --tail=100 api web` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml logs --tail=100 api web` |
+| Read recent logs | `docker compose --env-file runtime-data\deployment.env -f compose.yaml logs --tail=100 agent api web` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml logs --tail=100 agent api web` |
 | Rebuild after replacing project code | `docker compose --env-file runtime-data\deployment.env -f compose.yaml up -d --build --remove-orphans` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml up -d --build --remove-orphans` |
 | Stop containers but keep data | `docker compose --env-file runtime-data\deployment.env -f compose.yaml down` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml down` |
 
@@ -267,7 +272,7 @@ Do not use `down -v`, and do not delete `runtime-data/`, unless you intentionall
 | `docker compose` is unknown. | Install or update the Docker Compose plugin using Docker's official instructions, then open a new terminal. |
 | `failed to fetch anonymous token`, `EOF`, DNS, or registry timeout. | This is a Docker network/proxy problem, not an AdCraft API-key problem. Correct the Docker Desktop or Linux Docker proxy/DNS path, restart Docker, and retry the build. |
 | `port is already allocated`. | Stop the program using the selected port, or edit `ADCRAFT_PORT` in `runtime-data/deployment.env` to another free port from `8080` to `8179`, then run the start command again. |
-| `api` or `web` is `exited` or `unhealthy`. | Run the logs command above. Keep API keys out of any log excerpt you share. Fix the first reported error, then rerun the rebuild/start command. |
+| `agent`, `api`, or `web` is `exited` or `unhealthy`. | Run the logs command above. Keep API keys and `runtime-data/deployment.env` out of any log excerpt you share. Fix the first reported error, then rerun the rebuild/start command. |
 | A rebuild succeeds but the browser still shows old content. | Refresh the browser without cache, then check `docker compose ... ps` and logs to confirm the new containers are running. |
 
 This manual route remains local-only: the web port is bound to `127.0.0.1`. Do not expose it to the network by changing Compose settings unless you have separately designed authentication, TLS, firewall rules, and data protection.
@@ -288,7 +293,7 @@ Run these from the project folder when AdCraft has already been deployed.
 | What you want to do | Windows PowerShell | Linux terminal | What to expect |
 | --- | --- | --- | --- |
 | Check status | `.\\scripts\\status-windows.ps1` | `bash scripts/status-linux.sh` | The local URL plus API and web health status. |
-| Read recent logs | `.\\scripts\\logs-windows.ps1` | `bash scripts/logs-linux.sh` | Up to 100 recent API and web log lines. Do not post log lines that contain sensitive information. |
+| Read recent logs | `.\\scripts\\logs-windows.ps1` | `bash scripts/logs-linux.sh` | Up to 100 recent Agent, API, and web log lines. Do not post log lines that contain sensitive information. |
 | Stop AdCraft | `.\\scripts\\stop-windows.ps1` | `bash scripts/stop-linux.sh` | Stops the containers while keeping configuration, runtime data, images, and volumes. |
 | Start it again or update after replacing project files | Right-click `scripts\\deploy-windows.cmd` and choose **Run as administrator** | `bash scripts/deploy-linux.sh` | Reuses the saved local configuration and prints the local URL again. |
 

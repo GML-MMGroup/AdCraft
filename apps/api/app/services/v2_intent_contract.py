@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from math import ceil
 import re
 from typing import Any
@@ -9,6 +10,10 @@ import unicodedata
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
+from app.schemas.agent_operation_contexts import (
+    FrozenPlanningFacts,
+    IntentContractAgentContext,
+)
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.schemas.workflow_v2_intent import (
     V2FrontDeskPlanningSeed,
@@ -36,7 +41,8 @@ from app.services.v2_planning_seed import (
     canonicalize_v2_planning_seed,
     merge_v2_planning_seed_constraints,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_pi_planning_session import V2PiPlanningSession
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_storyboard_planning import (
     V2_MAX_SHOT_DURATION_SECONDS,
     V2_MAX_STORYBOARD_SHOT_COUNT,
@@ -57,6 +63,14 @@ _ENGLISH_COUNTS = {
     "nine": 9,
     "ten": 10,
 }
+
+
+def _bounded_context_summary(value: dict[str, Any]) -> str:
+    return json.dumps(
+        sanitize_context_for_llm_text(value),
+        ensure_ascii=False,
+        sort_keys=True,
+    )[:16_384]
 
 
 class V2IntentPlannerError(RuntimeError):
@@ -134,10 +148,7 @@ class V2IntentPlanner:
         self._validator = validator or V2IntentValidator()
         self._repairer = repairer or V2IntentRepairer()
         self._fallback_builder = fallback_builder or V2IntentFallbackBuilder()
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=self._settings,
-            structured_llm=V2StructuredLLMClient(self._settings),
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
 
     def plan(
         self,
@@ -147,6 +158,8 @@ class V2IntentPlanner:
         explicit_constraints: V2ExplicitConstraints,
         workflow_id_seed: str | None = None,
         planning_seed: V2FrontDeskPlanningSeed | None = None,
+        planning_session: V2PiPlanningSession | None = None,
+        frozen_facts: FrozenPlanningFacts | None = None,
     ) -> V2IntentPlanningOutcome:
         seed_warnings: list[dict[str, str]] = []
         if planning_seed is not None:
@@ -158,7 +171,7 @@ class V2IntentPlanner:
                 planning_seed,
             )
         _raise_if_intent_clarification_required(request, explicit_constraints)
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             intent = self._deterministic_plan(request, explicit_constraints, planning_seed)
             return self._validate_repair_or_fallback(
                 intent,
@@ -169,17 +182,40 @@ class V2IntentPlanner:
                 initial_warnings=seed_warnings,
             )
 
+        payload = _intent_planner_payload(
+            request=request,
+            normalized_request=normalized_request,
+            explicit_constraints=explicit_constraints,
+        )
+        invocation = (
+            planning_session.child(
+                agent_name="front_desk",
+                operation="intent_contract_planner",
+                logical_key="intent",
+            )
+            if planning_session
+            else None
+        )
+        agent_context = (
+            IntentContractAgentContext(
+                context_kind="intent_contract",
+                user_input=request.prompt,
+                workflow_id=planning_session.workflow_id,
+                frozen_facts=frozen_facts or FrozenPlanningFacts(),
+                ad_request_summary=_bounded_context_summary(payload),
+            )
+            if planning_session
+            else None
+        )
         spec = StructuredGenerationSpec[V2IntentPlan](
             stage_name="intent_contract_planner",
             contract_name="V2IntentPlan",
             model_id=self._settings.llm_creative_model,
-            system_prompt=_intent_planner_system_prompt(),
-            input_payload=_intent_planner_payload(
-                request=request,
-                normalized_request=normalized_request,
-                explicit_constraints=explicit_constraints,
-            ),
+            system_prompt="",
+            input_payload=payload,
             output_model=V2IntentPlan,
+            invocation=invocation,
+            agent_context=agent_context,
             quality_validator=lambda intent: self._raise_if_invalid(
                 intent,
                 request=request,
@@ -1317,18 +1353,6 @@ def _scene_display_name(kind: str) -> str:
     if kind == "product_lifestyle":
         return "Product Lifestyle Scene"
     return f"{kind.replace('_', ' ').title()} Scene"
-
-
-def _intent_planner_system_prompt() -> str:
-    return (
-        "You are the V2 Intent Contract Planner. Return one JSON object matching V2IntentPlan. "
-        "Preserve explicit user constraints for product, characters, scenes, storyboard shot count, "
-        "duration, aspect ratio, and audio. Every core fact must include source provenance: "
-        "source, source_span, confidence, and reason. System fields and schema keys must be English. "
-        "Use concise English snake_case scene kinds matching ^[a-z][a-z0-9_]{0,63}$. "
-        "Keep setting_type and time_of_day as separate technical facets. "
-        "The user prompt may be Chinese or any other language."
-    )
 
 
 def _intent_planner_payload(

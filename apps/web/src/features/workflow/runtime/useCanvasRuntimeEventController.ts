@@ -4,21 +4,13 @@ import { dispatchAssetLibraryUploadEvent, normalizeMediaStatus } from "../../../
 import type { WorkflowRuntimeEventV2, WorkflowV2 } from "../../../types-v2.ts";
 import type { AgentConversationEvent, FinalCompositionTimelineResponse, MediaStatus, NodeRunResult, UploadedAsset, WorkflowGraph, WorkflowRevisionState } from "../../../types.ts";
 import { isVisibleAgent } from "../../../workflow/agentConversations.ts";
-import {
-  chatCanvasRefreshHints,
-  isChatCanvasActionRuntimeEvent,
-  isChatCanvasPromptRuntimeEvent,
-  isChatCanvasRevisionRuntimeEvent,
-} from "../../../workflow/chatCanvasActions.ts";
+import { chatCanvasRefreshHints } from "../../../workflow/chatCanvasActions.ts";
 import {
   applyCanvasRuntimeEvent,
   applyCanvasRuntimeSnapshot,
   canvasRuntimeEdgeSourceNodeIds,
   canvasRuntimeNodeStatusMap,
   initialCanvasRuntimeStore,
-  isCanvasRuntimeAssetLibraryEvent,
-  isCanvasRuntimeCandidateEvent,
-  isCanvasRuntimeTimelineEvent,
   normalizeCanvasRuntimeCandidatePayload,
   normalizeCanvasRuntimeEvent,
   type CanvasRuntimeCandidatePayload,
@@ -30,23 +22,13 @@ import {
 import { localRevisionStateKey, pendingVisibleRevisionCandidates } from "../../../workflow/localRevision.ts";
 import { shouldApplyWorkflowScopedResult } from "../../../workflow/sessionGuards.ts";
 import { isV2WorkflowId } from "../../../workflow-v2/pageAdapter.ts";
-import { isV2SynchronizationEvent } from "../../../workflow-v2/runtime.ts";
 import { frontDeskConversationId } from "../copilot/agentConversationPanelModel.ts";
 import { assetLibraryRefreshDetailFromEvent, patchAssetLibraryState } from "../assets/dynamicItemAssetModel.ts";
 import { assetTypeFromSemanticType, latestLocalRevisionPromptMetadata, localRevisionTargetsMatch, revisionMatchesCanvasCandidate } from "../assets/localRevisionViewModel.ts";
 import type { CanvasCandidateSummaryState, LocalRevisionCardState } from "../assets/useWorkflowAssetOperations.ts";
-import {
-  V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES,
-  V2_SLOT_VERSION_REFRESH_EVENT_TYPES,
-  V2_WORKFLOW_REFRESH_EVENT_TYPES,
-  v2EventRefreshHints,
-  v2EventShouldRefreshAssets,
-  v2EventShouldRefreshProviderTasks,
-  v2EventShouldRefreshRuntime,
-  v2RuntimeEventSlotId,
-} from "./v2RuntimeEventModel.ts";
 import { useCanvasRuntimeSubscription } from "./useCanvasRuntimeSubscription.ts";
 import { stringFromUnknown } from "./resolvedInputsViewModel.ts";
+import { routeCanvasRuntimeEvent, routeV2RuntimeEvents } from "./runtimeEventRouter.ts";
 import {
   canvasRuntimeEventHandlers,
   type PendingScopedWorkflowRefresh,
@@ -90,10 +72,6 @@ export type CanvasRuntimeEventControllerArgs = {
   onRefreshSelectedResolvedInputs: (nodeId: string, options?: { force?: boolean }) => Promise<unknown>;
   onRefreshWorkflowGraph: (workflowId: string) => Promise<unknown>;
   onRefreshMediaStatus: (workflowId: string) => Promise<MediaStatus | null>;
-  onRefreshV2WorkflowGraph: (
-    workflowId: string,
-    options?: { refreshRuntime?: boolean; refreshAssets?: boolean },
-  ) => Promise<WorkflowV2 | null>;
   onRefreshV2AssetsAndRetryMissing: (workflowId: string, reason: string, workflow?: WorkflowV2 | null) => Promise<unknown>;
   onLoadV2SlotVersions: (slotId: string) => Promise<unknown> | void;
   onLoadLocalAssetHistory: (workflowId: string, nodeId: string, asset: UploadedAsset) => Promise<unknown>;
@@ -567,18 +545,19 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
     applyCanvasRuntimeStoreState(nextStore);
     const nodeId = event.node_id ?? null;
 
-    if (canvasRuntimeEventHandlers.isNodeStatusRuntimeEvent(event.event_type)) {
+    const effect = routeCanvasRuntimeEvent(event);
+    if (effect.kind === "node_status") {
       argsRef.current.onPatchNodeStatus(nodeId, event.status ?? nextStore.nodeRuntimeById[nodeId ?? ""]?.status);
       return;
     }
 
-    if (event.event_type === "node_output_updated" || event.event_type === "node_assets_updated") {
+    if (effect.kind === "node_refresh") {
       if (!nodeId) return;
       queueScopedWorkflowRefresh(workflowId, { nodeIds: [nodeId], resolvedInputNodeIds: [nodeId] });
       return;
     }
 
-    if (event.event_type === "media_status_changed") {
+    if (effect.kind === "media_status") {
       const nextMediaStatus = normalizeMediaStatus(event.payload?.media_status ?? event.payload);
       if (nextMediaStatus) {
         argsRef.current.setMediaStatus(nextMediaStatus);
@@ -589,47 +568,47 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
       return;
     }
 
-    if (event.event_type === "graph_updated") {
+    if (effect.kind === "graph_refresh") {
       queueScopedWorkflowRefresh(workflowId, { graph: true });
       return;
     }
 
-    if (event.event_type === "resolved_inputs_updated") {
+    if (effect.kind === "resolved_inputs_refresh") {
       queueScopedWorkflowRefresh(workflowId, { resolvedInputNodeIds: [nodeId] });
       return;
     }
 
-    if (isChatCanvasActionRuntimeEvent(event.event_type) || event.event_type === "chat_action_created" || event.event_type === "chat_action_applied" || event.event_type === "chat_action_rejected" || event.event_type === "chat_action_failed") {
+    if (effect.kind === "conversation_action") {
       await handleCanvasRuntimeChatActionEvent(workflowId, event);
       return;
     }
 
-    if (isChatCanvasPromptRuntimeEvent(event.event_type) || event.event_type === "node_prompt_updated" || event.event_type === "item_prompt_updated") {
+    if (effect.kind === "conversation_prompt") {
       await handleCanvasRuntimePromptEvent(workflowId, event);
       return;
     }
 
-    if (isChatCanvasRevisionRuntimeEvent(event.event_type) || event.event_type === "revision_started" || event.event_type === "revision_waiting" || event.event_type === "revision_completed" || event.event_type === "revision_failed") {
+    if (effect.kind === "conversation_revision") {
       await handleCanvasRuntimeRevisionEvent(workflowId, event);
       return;
     }
 
-    if (isCanvasRuntimeAssetLibraryEvent(event.event_type)) {
+    if (effect.kind === "asset_library") {
       await handleCanvasRuntimeAssetLibraryEvent(workflowId, event);
       return;
     }
 
-    if (isCanvasRuntimeCandidateEvent(event.event_type) || event.event_type === "candidate_created") {
+    if (effect.kind === "candidate") {
       await handleCanvasRuntimeCandidateEvent(workflowId, event);
       return;
     }
 
-    if (isCanvasRuntimeTimelineEvent(event.event_type) || event.event_type === "timeline_updated" || event.event_type === "timeline_clip_stale" || event.event_type === "final_render_started" || event.event_type === "final_render_completed" || event.event_type === "final_render_failed") {
+    if (effect.kind === "final_composition") {
       await handleFinalCompositionTimelineRuntimeEvent(workflowId, event);
       return;
     }
 
-    if (event.event_type === "execution_completed" || event.event_type === "execution_partial_failed" || event.event_type === "execution_failed" || event.event_type === "execution_cancelled") {
+    if (effect.kind === "execution_terminal") {
       queueScopedWorkflowRefresh(workflowId, {
         graph: true,
         mediaStatus: true,
@@ -638,7 +617,7 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
       return;
     }
 
-    if (event.event_type === "snapshot_required") {
+    if (effect.kind === "snapshot") {
       await canvasRuntimeSubscription.loadSnapshot(workflowId);
     }
   }, [
@@ -655,109 +634,65 @@ export function useCanvasRuntimeEventController(args: CanvasRuntimeEventControll
 
   const applyV2RuntimeEventsToPage = useCallback((events: WorkflowRuntimeEventV2[]) => {
     if (!events.length) return;
-    const workflowId = events.find((event) => event.workflow_id)?.workflow_id;
-    const finalCompositionEvents = events.filter((event) =>
-      event.event_type === "final_timeline_created" ||
-      event.event_type === "final_timeline_updated" ||
-      V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES.has(event.event_type),
-    );
-    if (workflowId && finalCompositionEvents.length) {
+    const effects = routeV2RuntimeEvents(events);
+    const workflowId = effects.workflowId;
+    if (workflowId && effects.finalCompositionEvents.length) {
       window.dispatchEvent(new CustomEvent("v2-final-composition-events", {
         detail: {
           workflowId,
-          events: finalCompositionEvents,
-          eventTypes: finalCompositionEvents.map((event) => event.event_type),
+          events: effects.finalCompositionEvents,
+          eventTypes: effects.finalCompositionEvents.map((event) => event.event_type),
         },
       }));
     }
-    const runtimeEvents = events.filter((event) => !isV2SynchronizationEvent(event.event_type));
-    const latestExecutionEvent = [...events].reverse().find((event) =>
-      [
-        "execution_queued",
-        "execution_started",
-        "execution_waiting",
-        "execution_completed",
-        "execution_partial_failed",
-        "execution_failed",
-        "execution_cancelled",
-      ].includes(event.event_type),
-    );
-    if (latestExecutionEvent) {
-      const executionId = stringFromUnknown(latestExecutionEvent.payload?.execution_id ?? latestExecutionEvent.payload?.active_execution_id);
-      if (executionId) argsRef.current.setActiveExecutionId(executionId);
-      if (latestExecutionEvent.event_type === "execution_completed") {
-        argsRef.current.setExecutionPollingState("completed");
-        argsRef.current.setWorkflowRunning(false);
-        argsRef.current.setStatus("Workflow V2 run complete");
-      } else if (latestExecutionEvent.event_type === "execution_partial_failed") {
-        argsRef.current.setExecutionPollingState("failed");
-        argsRef.current.setWorkflowRunning(false);
-        argsRef.current.setStatus("Workflow V2 run partially failed");
-      } else if (latestExecutionEvent.event_type === "execution_failed" || latestExecutionEvent.event_type === "execution_cancelled") {
-        argsRef.current.setExecutionPollingState("failed");
-        argsRef.current.setWorkflowRunning(false);
-        argsRef.current.setStatus(latestExecutionEvent.event_type === "execution_cancelled" ? "Workflow V2 run cancelled" : "Workflow V2 run failed");
-      } else if (latestExecutionEvent.event_type === "execution_waiting") {
-        argsRef.current.setExecutionPollingState("polling");
-        argsRef.current.setWorkflowRunning(true);
-        argsRef.current.setStatus("Workflow V2 run waiting for media");
-      } else {
-        argsRef.current.setExecutionPollingState("polling");
-        argsRef.current.setWorkflowRunning(true);
-      }
+    if (effects.execution) {
+      if (effects.execution.executionId) argsRef.current.setActiveExecutionId(effects.execution.executionId);
+      argsRef.current.setExecutionPollingState(effects.execution.pollingState);
+      argsRef.current.setWorkflowRunning(effects.execution.workflowRunning);
+      if (effects.execution.status) argsRef.current.setStatus(effects.execution.status);
     }
-    const shouldRefreshRuntime = runtimeEvents.some(v2EventShouldRefreshRuntime);
-    const shouldRefreshWorkflow = runtimeEvents.some((event) =>
-      V2_WORKFLOW_REFRESH_EVENT_TYPES.has(event.event_type) ||
-      v2EventRefreshHints(event).some((hint) => hint === "workflow" || hint === "slot_versions"),
-    );
-    const shouldRefreshAssets = runtimeEvents.some(v2EventShouldRefreshAssets);
-    if (workflowId && (shouldRefreshRuntime || shouldRefreshWorkflow || shouldRefreshAssets)) {
+    if (workflowId && (effects.refreshRuntime || effects.refreshAssets)) {
       void (async () => {
-        if (shouldRefreshRuntime) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
-        const refreshedWorkflow = shouldRefreshWorkflow
-          ? await argsRef.current.onRefreshV2WorkflowGraph(workflowId, { refreshRuntime: false })
-          : null;
-        if (shouldRefreshAssets) {
-          await argsRef.current.onRefreshV2AssetsAndRetryMissing(workflowId, "runtime-event", refreshedWorkflow ?? argsRef.current.getWorkflowV2());
+        if (effects.refreshRuntime) await argsRef.current.v2Runtime.syncSnapshot(workflowId);
+        if (effects.refreshAssets) {
+          await argsRef.current.onRefreshV2AssetsAndRetryMissing(
+            workflowId,
+            "runtime-event",
+            argsRef.current.getWorkflowV2(),
+          );
         }
       })();
     }
-    const versionRefreshSlotIds = new Set(
-      events
-        .filter((event) =>
-          V2_SLOT_VERSION_REFRESH_EVENT_TYPES.has(event.event_type) ||
-          v2EventRefreshHints(event).includes("slot_versions"),
-        )
-        .map(v2RuntimeEventSlotId)
-        .filter((slotId): slotId is string => Boolean(slotId)),
-    );
-    versionRefreshSlotIds.forEach((slotId) => {
-      if (argsRef.current.getV2SlotVersionsById()[slotId] || slotId === argsRef.current.getActiveV2SlotId()) {
+    if (workflowId && effects.deferredRevision) {
+      argsRef.current.setStatus(effects.deferredRevision.candidateStatus);
+      void argsRef.current.onRefreshV2AssetsAndRetryMissing(
+        workflowId,
+        "execution-result-revision-deferred",
+        argsRef.current.getWorkflowV2(),
+      );
+    }
+    effects.slotVersionSlotIds.forEach((slotId) => {
+      if (
+        effects.deferredRevision?.slotIds.includes(slotId) ||
+        argsRef.current.getV2SlotVersionsById()[slotId] ||
+        slotId === argsRef.current.getActiveV2SlotId()
+      ) {
         void argsRef.current.onLoadV2SlotVersions(slotId);
       }
     });
-    const providerTaskRefreshSlotIds = new Set(
-      events
-        .filter(v2EventShouldRefreshProviderTasks)
-        .map(v2RuntimeEventSlotId)
-        .filter((slotId): slotId is string => Boolean(slotId)),
-    );
-    if (providerTaskRefreshSlotIds.size) {
+    if (effects.providerTaskSlotIds.length) {
       argsRef.current.setV2ProviderTaskRefreshKeyBySlotId((current) => {
         const next = { ...current };
-        providerTaskRefreshSlotIds.forEach((slotId) => {
+        effects.providerTaskSlotIds.forEach((slotId) => {
           next[slotId] = (next[slotId] ?? 0) + 1;
         });
         return next;
       });
     }
-    const resolvedInputRefreshNodeIds = new Set(
-      events
-        .filter((event) => event.event_type === "resolved_inputs_updated" || event.event_type === "slot_selected_version_updated" || v2EventRefreshHints(event).includes("resolved_inputs"))
-        .map((event) => event.node_id ?? (event.slot_id ? argsRef.current.v2Runtime.slotNodeId(event.slot_id) : null))
-        .filter((nodeId): nodeId is string => Boolean(nodeId)),
-    );
+    const resolvedInputRefreshNodeIds = new Set([
+      ...effects.resolvedInputNodeIds,
+      ...effects.resolvedInputSlotIds.map((slotId) => argsRef.current.v2Runtime.slotNodeId(slotId)).filter((nodeId): nodeId is string => Boolean(nodeId)),
+    ]);
     resolvedInputRefreshNodeIds.forEach((nodeId) => {
       if (nodeId === argsRef.current.selectedNodeIdRef.current) void argsRef.current.onRefreshSelectedResolvedInputs(nodeId, { force: true });
     });

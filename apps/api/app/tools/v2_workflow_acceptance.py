@@ -20,7 +20,7 @@ def main() -> None:
     settings = get_settings()
     settings = replace(
         settings,
-        agno_mock_mode=True,
+        agent_runtime_mode="fake",
         media_data_dir=Path(args.data_dir) if args.data_dir else settings.media_data_dir,
     )
     report = V2WorkflowAcceptanceRunner(settings).run_fixture(args.fixture)

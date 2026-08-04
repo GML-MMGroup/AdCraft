@@ -16,7 +16,8 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "types": ["node", "vite/client"]
   },
-  "include": ["src"]
+  "include": ["src", "vite.config.ts", "vitest.config.ts", "mediaCachePolicy.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

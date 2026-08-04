@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import json
 from typing import Any
 
 from app.core.config import Settings, get_settings
+from app.schemas.agent_operation_contexts import (
+    BgmExpertAgentContext,
+    CharacterExpertAgentContext,
+    FrozenPlanningFacts,
+    PlanningItemSummary,
+    PlanningReferenceSummary,
+    PlanningSlotSummary,
+    ProductExpertAgentContext,
+    SceneExpertAgentContext,
+)
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.schemas.workflow_v2_expert_brief_contracts import (
+    V2BgmExpertPlan,
+    V2CharacterExpertPlan,
     V2ExpertBriefInputAssetDescriptor,
     V2ExpertBriefPlannerInput,
     V2ExpertBriefPlannerOutput,
+    V2ProductExpertPlan,
+    V2SceneExpertPlan,
 )
 from app.schemas.workflow_v2_planning import (
     V2BgmBrief,
@@ -21,9 +37,9 @@ from app.schemas.workflow_v2_planning import (
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_expert_brief_quality import (
+    V2ExpertBriefQualityError,
     V2ExpertBriefQualityService,
 )
-from app.services.v2_skill_context import V2SkillContextService
 from app.services.v2_specialist_asset_prompt_quality import (
     V2SpecialistAssetPromptQualityError,
     V2SpecialistAssetPromptQualityValidator,
@@ -35,9 +51,9 @@ from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
-from app.services.v2_high_risk_prompt_renderer import V2HighRiskPromptRenderer
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_script_persistence import V2ScriptPersistenceAdapter
+from app.services.v2_pi_planning_session import V2PiPlanningSession
 from app.services.v2_versioning import V2_EXPERT_BRIEF_BUILDER_VERSION
 from app.schemas.workflow_v2_screenplay import (
     V2ScriptPlanV2,
@@ -60,14 +76,9 @@ class V2ExpertBriefPlanner:
         specialist_quality: V2SpecialistAssetPromptQualityValidator | None = None,
     ) -> None:
         self._settings = settings or get_settings()
-        self._skill_context = V2SkillContextService()
         self._quality = quality or V2ExpertBriefQualityService()
         self._specialist_quality = specialist_quality or V2SpecialistAssetPromptQualityValidator()
-        self._structured_llm = V2StructuredLLMClient(self._settings)
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=self._settings,
-            structured_llm=self._structured_llm,
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=self._settings)
 
     def plan_briefs(
         self,
@@ -78,9 +89,11 @@ class V2ExpertBriefPlanner:
         normalized_request: dict[str, Any] | None = None,
         force_mock: bool = False,
         specialist_handoffs: list[V2SpecialistHandoffContext] | None = None,
+        planning_session: V2PiPlanningSession | None = None,
+        frozen_facts: FrozenPlanningFacts | None = None,
     ) -> V2ExpertBriefPlan:
         script_plan = _canonical_script_plan(script_plan)
-        if force_mock or self._settings.agno_mock_mode:
+        if force_mock or self._settings.agent_runtime_mode == "fake":
             plan = self._deterministic_plan(script_plan, request)
             self._validate_plan(plan, script_plan=script_plan, request=request)
             return _with_specialist_quality_audit(
@@ -97,6 +110,8 @@ class V2ExpertBriefPlanner:
             input_asset_descriptors=input_asset_descriptors,
             normalized_request=normalized_request,
             specialist_handoffs=specialist_handoffs or [],
+            planning_session=planning_session or V2PiPlanningSession.start(workflow_id=workflow_id),
+            frozen_facts=frozen_facts or FrozenPlanningFacts(),
         )
 
     def _real_plan(
@@ -108,6 +123,8 @@ class V2ExpertBriefPlanner:
         input_asset_descriptors: list[dict[str, Any] | V2ExpertBriefInputAssetDescriptor],
         normalized_request: dict[str, Any] | None,
         specialist_handoffs: list[V2SpecialistHandoffContext],
+        planning_session: V2PiPlanningSession,
+        frozen_facts: FrozenPlanningFacts,
     ) -> V2ExpertBriefPlan:
         planner_input = V2ExpertBriefPlannerInput(
             workflow_id=workflow_id,
@@ -119,47 +136,64 @@ class V2ExpertBriefPlanner:
             normalized_request=normalized_request or {},
             specialist_handoffs=specialist_handoffs,
         )
-        spec = StructuredGenerationSpec[V2ExpertBriefPlannerOutput](
-            stage_name="expert_brief_planner",
-            contract_name="V2ExpertBriefPlannerOutput",
-            model_id=self._settings.llm_creative_model,
-            system_prompt=_system_prompt(),
-            input_payload=_planner_payload(planner_input),
-            output_model=V2ExpertBriefPlannerOutput,
-            quality_validator=lambda output: self._validate_plan(
-                output.to_plan(),
-                script_plan=script_plan,
-                request=request,
-            ),
-            repair_context_builder=_expert_brief_repair_context,
-            fallback_builder=lambda error: _output_from_plan(
-                self._fallback_plan(
-                    script_plan,
-                    request,
-                    original_error=error,
-                )
-            ),
-            trace_metadata={"workflow_id": workflow_id},
-            temperature=0.35,
+        deterministic = self._deterministic_plan(script_plan, request)
+        specs = self._expert_specs(
+            planner_input,
+            deterministic=deterministic,
+            planning_session=planning_session,
+            frozen_facts=frozen_facts,
         )
+        results: dict[str, Any] = {}
         try:
-            result = self._structured_runtime.run(spec)
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {
+                    operation: executor.submit(self._structured_runtime.run, spec)
+                    for operation, spec in specs.items()
+                }
+                for operation, future in futures.items():
+                    results[operation] = future.result(
+                        timeout=planning_session.require_model_budget()
+                    )
         except StructuredGenerationRuntimeError as exc:
             raise V2ExpertBriefPlannerError(
                 _planner_runtime_error_code(exc),
                 str(exc),
             ) from exc
-        plan = result.output.to_plan()
-        self._validate_plan(plan, script_plan=script_plan, request=request)
-        violations = _specialist_violations_from_quality_errors(result.sanitized_quality_errors)
+        plan = _aggregate_expert_results(
+            script_plan,
+            deterministic,
+            results,
+        )
+        fallback_used = any(result.mode == "fallback" for result in results.values())
+        try:
+            self._validate_plan(plan, script_plan=script_plan, request=request)
+        except (V2ExpertBriefQualityError, V2SpecialistAssetPromptQualityError) as exc:
+            if not fallback_used:
+                raise
+            raise V2ExpertBriefPlannerError(
+                (
+                    "specialist_asset_prompt_fallback_failed"
+                    if isinstance(exc, V2SpecialistAssetPromptQualityError)
+                    else "expert_brief_fallback_failed"
+                ),
+                "Deterministic expert brief fallback failed validation.",
+            ) from exc
+        violations = [
+            violation
+            for result in results.values()
+            for violation in _specialist_violations_from_quality_errors(
+                result.sanitized_quality_errors
+            )
+        ]
+        repair_used = any(result.mode == "repair" for result in results.values())
         plan = _with_specialist_quality_audit(
             plan,
-            status=_specialist_audit_status(result.mode),
-            repair_used=result.mode == "repair",
-            fallback_used=result.mode == "fallback",
+            status=("fallback_used" if fallback_used else "repaired" if repair_used else "passed"),
+            repair_used=repair_used,
+            fallback_used=fallback_used,
             violations=violations,
         )
-        if result.mode == "repair" and violations:
+        if repair_used and violations:
             plan = _append_warning(
                 plan,
                 {
@@ -169,6 +203,195 @@ class V2ExpertBriefPlanner:
                 },
             )
         return plan
+
+    def _expert_specs(
+        self,
+        planner_input: V2ExpertBriefPlannerInput,
+        *,
+        deterministic: V2ExpertBriefPlan,
+        planning_session: V2PiPlanningSession,
+        frozen_facts: FrozenPlanningFacts,
+    ) -> dict[str, StructuredGenerationSpec[Any]]:
+        script_plan = planner_input.script_plan
+        request = planner_input.request
+        references = _planning_reference_summaries(planner_input.input_asset_descriptors)
+        style_scope = _bounded_json(
+            request.metadata.get("visual_style_contract")
+            or {"visual_style": request.visual_style or script_plan.visual_style},
+            limit=8_192,
+        )
+        common = {
+            "user_input": request.prompt,
+            "workflow_id": planning_session.workflow_id,
+            "frozen_facts": frozen_facts,
+            "reference_summaries": references,
+            "style_scope": style_scope,
+        }
+        product_context = ProductExpertAgentContext(
+            context_kind="product_expert",
+            screenplay_slice=_bounded_json(
+                {
+                    "product_beats": script_plan.product_beats,
+                    "shots": [shot.model_dump(mode="json") for shot in script_plan.shots],
+                }
+            ),
+            item_inventory=_product_item_inventory(script_plan, request),
+            slot_contracts=_slot_contracts(("product_main_image", "product_multi_view_grid")),
+            **common,
+        )
+        character_context = CharacterExpertAgentContext(
+            context_kind="character_expert",
+            screenplay_slice=_bounded_json(
+                {
+                    "characters": [
+                        character.model_dump(mode="json") for character in script_plan.characters
+                    ],
+                    "shots": [shot.model_dump(mode="json") for shot in script_plan.shots],
+                }
+            ),
+            item_inventory=tuple(
+                PlanningItemSummary(
+                    item_id=character.character_id,
+                    item_type="character",
+                    display_name=character.display_name,
+                    description=character.description,
+                )
+                for character in script_plan.characters
+            ),
+            slot_contracts=_slot_contracts(("character_main_image", "character_three_view")),
+            **common,
+        )
+        scene_context = SceneExpertAgentContext(
+            context_kind="scene_expert",
+            screenplay_slice=_bounded_json(
+                {
+                    "scenes": [scene.model_dump(mode="json") for scene in script_plan.scenes],
+                    "locations": [
+                        location.model_dump(mode="json")
+                        for location in _script_locations(script_plan)
+                    ],
+                    "shots": [shot.model_dump(mode="json") for shot in script_plan.shots],
+                }
+            ),
+            item_inventory=tuple(
+                PlanningItemSummary(
+                    item_id=location.location_id,
+                    item_type="scene",
+                    display_name=location.display_name,
+                    description=location.description,
+                )
+                for location in _script_locations(script_plan)
+            ),
+            slot_contracts=_slot_contracts(("scene_main_image", "scene_multi_view_grid")),
+            **common,
+        )
+        bgm_context = BgmExpertAgentContext(
+            context_kind="bgm_expert",
+            screenplay_slice=_bounded_json(
+                {
+                    "title": script_plan.script_title,
+                    "tone": script_plan.tone,
+                    "duration_seconds": script_plan.duration_seconds,
+                    "shots": [
+                        {
+                            "shot_id": shot.shot_id,
+                            "shot_index": shot.shot_index,
+                            "duration_seconds": shot.duration_seconds,
+                            "description": shot.description,
+                        }
+                        for shot in script_plan.shots
+                    ],
+                }
+            ),
+            item_inventory=(
+                PlanningItemSummary(
+                    item_id="bgm-1",
+                    item_type="bgm",
+                    display_name="BGM",
+                ),
+            ),
+            slot_contracts=_slot_contracts(("bgm_audio",)),
+            music_constraints=(
+                "instrumental only",
+                "no vocals",
+                "no lyrics",
+                f"duration {script_plan.duration_seconds} seconds",
+            ),
+            **common,
+        )
+        payloads = {
+            "product_expert_brief": product_context.model_dump(mode="json"),
+            "character_expert_brief": character_context.model_dump(mode="json"),
+            "scene_expert_brief": scene_context.model_dump(mode="json"),
+            "bgm_expert_brief": bgm_context.model_dump(mode="json"),
+        }
+
+        def spec(
+            *,
+            operation: str,
+            agent_name: str,
+            output_model: type[Any],
+            context: Any,
+            fallback_output: Any,
+        ) -> StructuredGenerationSpec[Any]:
+            return StructuredGenerationSpec(
+                stage_name=operation,
+                operation=operation,
+                agent_name=agent_name,  # type: ignore[arg-type]
+                contract_name=output_model.__name__,
+                model_id=self._settings.llm_creative_model,
+                system_prompt="",
+                input_payload=payloads[operation],
+                output_model=output_model,
+                invocation=planning_session.child(
+                    agent_name=agent_name,  # type: ignore[arg-type]
+                    operation=operation,
+                    logical_key=operation,
+                ),
+                agent_context=context,
+                quality_validator=lambda output: self._validate_plan(
+                    _plan_with_component(deterministic, operation, output),
+                    script_plan=script_plan,
+                    request=request,
+                ),
+                repair_context_builder=_expert_brief_repair_context,
+                fallback_builder=lambda _error: fallback_output,
+                trace_metadata={"workflow_id": planning_session.workflow_id},
+                temperature=0.35,
+            )
+
+        return {
+            "product_expert_brief": spec(
+                operation="product_expert_brief",
+                agent_name="product_designer",
+                output_model=V2ProductExpertPlan,
+                context=product_context,
+                fallback_output=V2ProductExpertPlan(product_briefs=deterministic.product_briefs),
+            ),
+            "character_expert_brief": spec(
+                operation="character_expert_brief",
+                agent_name="character_designer",
+                output_model=V2CharacterExpertPlan,
+                context=character_context,
+                fallback_output=V2CharacterExpertPlan(
+                    character_briefs=deterministic.character_briefs
+                ),
+            ),
+            "scene_expert_brief": spec(
+                operation="scene_expert_brief",
+                agent_name="scene_designer",
+                output_model=V2SceneExpertPlan,
+                context=scene_context,
+                fallback_output=V2SceneExpertPlan(scene_briefs=deterministic.scene_briefs),
+            ),
+            "bgm_expert_brief": spec(
+                operation="bgm_expert_brief",
+                agent_name="bgm_director",
+                output_model=V2BgmExpertPlan,
+                context=bgm_context,
+                fallback_output=V2BgmExpertPlan(bgm_brief=deterministic.bgm_brief),
+            ),
+        }
 
     def _deterministic_plan(
         self,
@@ -463,14 +686,10 @@ class V2ExpertBriefPlanner:
         slot_type: str,
         media_type: str,
     ) -> dict[str, object]:
-        context = self._skill_context.skill_context_for_specialist(
-            specialist=specialist,
-            slot_type=slot_type,
-            media_type=media_type,
-        )
+        del specialist, slot_type, media_type
         return {
-            "source_skill_ids": context.skill_ids,
-            "source_skill_paths": context.source_paths,
+            "source_skill_ids": [],
+            "source_skill_paths": [],
             "brief_builder_version": V2_EXPERT_BRIEF_BUILDER_VERSION,
         }
 
@@ -579,6 +798,157 @@ def _planner_payload(planner_input: V2ExpertBriefPlannerInput) -> dict[str, Any]
     )
 
 
+def _bounded_json(value: Any, *, limit: int = 32_768) -> str:
+    return json.dumps(
+        sanitize_context_for_llm_text(value),
+        ensure_ascii=False,
+        sort_keys=True,
+    )[:limit]
+
+
+def _planning_reference_summaries(
+    descriptors: list[V2ExpertBriefInputAssetDescriptor],
+) -> tuple[PlanningReferenceSummary, ...]:
+    return tuple(
+        PlanningReferenceSummary(
+            asset_id=descriptor.asset_id,
+            version_id=descriptor.version_id,
+            semantic_type=descriptor.semantic_type or "generic_reference",
+            display_name=descriptor.display_name or "",
+            media_type=(
+                descriptor.media_type
+                if descriptor.media_type in {"image", "video", "audio", "text"}
+                else None
+            ),
+        )
+        for descriptor in descriptors
+    )
+
+
+def _product_item_inventory(
+    script_plan: V2ScriptPlanV2,
+    request: WorkflowV2PlanFromPromptRequest,
+) -> tuple[PlanningItemSummary, ...]:
+    product_ids = [
+        str(item)
+        for item in script_plan.metadata.get("creative_inventory_product_ids", [])
+        if str(item).strip()
+    ]
+    return (
+        PlanningItemSummary(
+            item_id=product_ids[0] if product_ids else "product-1",
+            item_type="product",
+            display_name=request.product_name or "Product",
+            description="; ".join(script_plan.product_beats[:3]),
+        ),
+    )
+
+
+def _slot_contracts(slot_types: tuple[str, ...]) -> tuple[PlanningSlotSummary, ...]:
+    return tuple(
+        PlanningSlotSummary(
+            slot_id=f"planning:{slot_type}",
+            slot_type=slot_type,
+        )
+        for slot_type in slot_types
+    )
+
+
+def _plan_with_component(
+    base: V2ExpertBriefPlan,
+    operation: str,
+    output: Any,
+) -> V2ExpertBriefPlan:
+    if operation == "product_expert_brief":
+        return base.model_copy(update={"product_briefs": output.product_briefs}, deep=True)
+    if operation == "character_expert_brief":
+        return base.model_copy(update={"character_briefs": output.character_briefs}, deep=True)
+    if operation == "scene_expert_brief":
+        return base.model_copy(update={"scene_briefs": output.scene_briefs}, deep=True)
+    if operation == "bgm_expert_brief":
+        return base.model_copy(update={"bgm_brief": output.bgm_brief}, deep=True)
+    raise ValueError("expert planning operation is not registered")
+
+
+def _aggregate_expert_results(
+    script_plan: V2ScriptPlanV2,
+    deterministic: V2ExpertBriefPlan,
+    results: dict[str, Any],
+) -> V2ExpertBriefPlan:
+    product = results["product_expert_brief"].output
+    character = results["character_expert_brief"].output
+    scene = results["scene_expert_brief"].output
+    bgm = results["bgm_expert_brief"].output
+    degraded_stages = [
+        operation for operation, result in results.items() if result.mode == "fallback"
+    ]
+    degraded_reason_codes = list(
+        dict.fromkeys(
+            result.original_error_code
+            for result in results.values()
+            if result.mode == "fallback" and result.original_error_code
+        )
+    )
+    warnings = _dedupe_warning_dicts(
+        [
+            *deterministic.warnings,
+            *(warning for result in results.values() for warning in result.warnings),
+            *(
+                warning
+                for output in (product, character, scene, bgm)
+                for warning in output.warnings
+            ),
+        ]
+    )
+    if degraded_stages:
+        warnings.append(
+            {
+                "code": "expert_brief_planner_fallback_used",
+                "message": "One or more expert planning stages used deterministic fallback.",
+                "failed_stage": degraded_stages[0],
+                "degraded_stages": degraded_stages,
+                "original_error_code": _compatibility_expert_error_code(
+                    degraded_reason_codes[0] if degraded_reason_codes else None
+                ),
+            }
+        )
+    return V2ExpertBriefPlan(
+        script_brief_id=script_plan.script_brief_id,
+        script_version_id=script_plan.script_version_id,
+        product_briefs=product.product_briefs,
+        character_briefs=character.character_briefs,
+        scene_briefs=scene.scene_briefs,
+        bgm_brief=bgm.bgm_brief,
+        metadata={
+            **deterministic.metadata,
+            "planning_degraded": bool(degraded_stages),
+            "degraded_stages": degraded_stages,
+            "degraded_reason_codes": degraded_reason_codes,
+        },
+        warnings=warnings,
+    )
+
+
+def _compatibility_expert_error_code(code: str | None) -> str:
+    if code and (code.startswith("agent_") or code.startswith("structured_generation_")):
+        return "expert_brief_llm_call_failed"
+    return code or "expert_brief_llm_call_failed"
+
+
+def _dedupe_warning_dicts(
+    warnings: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    deduplicated: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for warning in warnings:
+        key = json.dumps(warning, ensure_ascii=False, sort_keys=True)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduplicated.append(warning)
+    return deduplicated
+
+
 def _canonical_script_plan(
     script_plan: V2ScriptPlan | V2ScriptPlanV2,
 ) -> V2ScriptPlanV2:
@@ -593,27 +963,6 @@ def _canonical_script_plan(
             "script_plan_unavailable",
             "Expert brief planning requires a canonical version-2 screenplay.",
         ) from exc
-
-
-def _system_prompt() -> str:
-    return (
-        V2HighRiskPromptRenderer()
-        .render(
-            prompt_id="v2.expert_brief.plan.v1",
-            context={
-                "inventory_constraints": {
-                    "product_count": 1,
-                    "character_count": "requested",
-                    "scene_count": "requested",
-                    "shot_count": "requested",
-                    "duration_seconds": "requested",
-                    "aspect_ratio": "requested",
-                }
-            },
-            identity={"path_kind": "normal"},
-        )
-        .prompt_text
-    )
 
 
 def _planner_runtime_error_code(exc: StructuredGenerationRuntimeError) -> str:

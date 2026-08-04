@@ -32,6 +32,10 @@ export function v2AssetPreviewUrl(entity: Pick<V2AssetLibraryEntitySummary, "pre
   return member?.thumbnail_url || member?.public_url || null;
 }
 
+export function v2AssetMediaUrl(member: V2AssetLibraryMember | null | undefined): string | null {
+  return member?.public_url || null;
+}
+
 export function v2AssetSelectionKey(selection: V2AssetReferenceSelection | V2AssetVersionReferenceSelection): string {
   return selection.selection_type === "entity"
     ? `entity:${selection.entity_id}`

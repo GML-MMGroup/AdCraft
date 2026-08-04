@@ -278,10 +278,10 @@ choose_port() {
   local saved_port="" port
 
   if [[ -f "$STATE_FILE" ]]; then
-    read_state_file
-    export ADCRAFT_PORT ADCRAFT_UID ADCRAFT_GID
+    read_state_file true
+    export ADCRAFT_PORT ADCRAFT_UID ADCRAFT_GID ADCRAFT_AGENT_RUNTIME_TOKEN
     saved_port="$ADCRAFT_PORT"
-    if [[ -n "$(compose ps -q web 2>/dev/null || true)" ]]; then
+    if [[ -n "$ADCRAFT_AGENT_RUNTIME_TOKEN" && -n "$(compose ps -q web 2>/dev/null || true)" ]]; then
       printf '%s\n' "$saved_port"
       return
     fi
@@ -300,12 +300,23 @@ choose_port() {
   die "8080–8179 均被占用，无法发布 AdCraft Web 端口。"
 }
 
+generate_agent_runtime_token() {
+  local token
+  token="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+  [[ "$token" =~ ^[0-9a-f]{64}$ ]] || die "无法生成 Agent 内部令牌。"
+  printf '%s\n' "$token"
+}
+
 write_state() {
-  local port="$1" deploy_uid="$2" deploy_gid="$3" temp_file
+  local port="$1" deploy_uid="$2" deploy_gid="$3" token temp_file
+  token="${ADCRAFT_AGENT_RUNTIME_TOKEN:-}"
+  if [[ ! "$token" =~ ^[0-9a-f]{64}$ ]]; then
+    token="$(generate_agent_runtime_token)"
+  fi
   temp_file="$(mktemp "$PROJECT_ROOT/runtime-data/.deployment.env.XXXXXX")"
   chmod 600 "$temp_file"
-  printf 'ADCRAFT_PORT=%s\nADCRAFT_UID=%s\nADCRAFT_GID=%s\n' \
-    "$port" "$deploy_uid" "$deploy_gid" > "$temp_file"
+  printf 'ADCRAFT_PORT=%s\nADCRAFT_UID=%s\nADCRAFT_GID=%s\nADCRAFT_AGENT_RUNTIME_TOKEN=%s\n' \
+    "$port" "$deploy_uid" "$deploy_gid" "$token" > "$temp_file"
   mv "$temp_file" "$STATE_FILE"
   if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
     as_root "无法将 deployment.env 交还给原始用户。" \
@@ -361,7 +372,7 @@ main() {
     die "容器启动失败。"
   fi
 
-  info "等待 Web/API 健康，最长 120 秒……"
+  info "等待 Agent/API/Web 健康，最长 120 秒……"
   if ! wait_for_services; then
     show_recent_logs
     die "服务未在 120 秒内达到健康状态。"

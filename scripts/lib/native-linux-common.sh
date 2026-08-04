@@ -5,17 +5,22 @@ set -Eeuo pipefail
 NATIVE_COMMON_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 NATIVE_PROJECT_ROOT="$(cd -- "$NATIVE_COMMON_DIR/../.." && pwd)"
 NATIVE_API_DIR="$NATIVE_PROJECT_ROOT/apps/api"
+NATIVE_AGENT_DIR="$NATIVE_API_DIR/agent"
 NATIVE_WEB_DIR="$NATIVE_PROJECT_ROOT/apps/web"
 NATIVE_RUNTIME_DIR="$NATIVE_PROJECT_ROOT/runtime-data/native"
 NATIVE_API_DATA_DIR="$NATIVE_PROJECT_ROOT/runtime-data/api"
 NATIVE_STATE_FILE="$NATIVE_RUNTIME_DIR/native.env"
 NATIVE_API_PID_FILE="$NATIVE_RUNTIME_DIR/api.pid"
+NATIVE_AGENT_PID_FILE="$NATIVE_RUNTIME_DIR/agent.pid"
 NATIVE_WEB_PID_FILE="$NATIVE_RUNTIME_DIR/web.pid"
 NATIVE_API_LOG_FILE="$NATIVE_RUNTIME_DIR/api.log"
+NATIVE_AGENT_LOG_FILE="$NATIVE_RUNTIME_DIR/agent.log"
 NATIVE_WEB_LOG_FILE="$NATIVE_RUNTIME_DIR/web.log"
 
 NATIVE_API_PORT=""
+NATIVE_AGENT_PORT=""
 NATIVE_WEB_PORT=""
+NATIVE_AGENT_RUNTIME_TOKEN=""
 
 native_info() {
   printf '[AdCraft] %s\n' "$*"
@@ -38,6 +43,10 @@ native_validate_project() {
     || native_die "缺少 apps/api/pyproject.toml，请从完整的 AdCraft 项目中运行脚本。"
   [[ -f "$NATIVE_API_DIR/.env.example" ]] \
     || native_die "缺少 apps/api/.env.example。"
+  [[ -f "$NATIVE_AGENT_DIR/package.json" ]] \
+    || native_die "缺少 apps/api/agent/package.json。"
+  [[ -f "$NATIVE_AGENT_DIR/package-lock.json" ]] \
+    || native_die "缺少 apps/api/agent/package-lock.json。"
   [[ -f "$NATIVE_WEB_DIR/package.json" ]] \
     || native_die "缺少 apps/web/package.json。"
   [[ -f "$NATIVE_WEB_DIR/package-lock.json" ]] \
@@ -109,10 +118,10 @@ native_verify_ffmpeg() {
     || native_die "ffmpeg 和 ffprobe 主版本不一致：$ffmpeg_version / $ffprobe_version。"
 
   LC_ALL=C ffmpeg -hide_banner -encoders 2>/dev/null \
-    | grep -Eq '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+(libx264|libopenh264)([[:space:]]|$)' \
+    | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+(libx264|libopenh264)([[:space:]]|$)' >/dev/null \
     || native_die "FFmpeg 缺少允许的 H.264 编码器（libx264 或 libopenh264）。"
   LC_ALL=C ffmpeg -hide_banner -encoders 2>/dev/null \
-    | grep -Eq '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)' \
+    | grep -E '^[[:space:]]*[.A-Z]{2,7}[[:space:]]+aac([[:space:]]|$)' >/dev/null \
     || native_die "FFmpeg 缺少 AAC 编码器。"
   native_info "已验证 FFmpeg 工具链：ffmpeg $ffmpeg_version，ffprobe $ffprobe_version。"
 }
@@ -174,38 +183,57 @@ native_write_state() {
   local temporary_file
   temporary_file="$(mktemp "$NATIVE_RUNTIME_DIR/.native.env.XXXXXX")" \
     || native_die "无法创建原生运行状态文件。"
-  printf 'ADCRAFT_NATIVE_API_PORT=%s\nADCRAFT_NATIVE_WEB_PORT=%s\n' \
-    "$NATIVE_API_PORT" "$NATIVE_WEB_PORT" > "$temporary_file"
+  NATIVE_AGENT_RUNTIME_TOKEN="$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')"
+  [[ "$NATIVE_AGENT_RUNTIME_TOKEN" =~ ^[0-9a-f]{64}$ ]] \
+    || native_die "无法生成 Agent 内部令牌。"
+  printf 'ADCRAFT_NATIVE_API_PORT=%s\nADCRAFT_NATIVE_AGENT_PORT=%s\nADCRAFT_NATIVE_WEB_PORT=%s\nADCRAFT_NATIVE_AGENT_RUNTIME_TOKEN=%s\n' \
+    "$NATIVE_API_PORT" "$NATIVE_AGENT_PORT" "$NATIVE_WEB_PORT" "$NATIVE_AGENT_RUNTIME_TOKEN" > "$temporary_file"
   chmod 600 "$temporary_file"
   mv -f "$temporary_file" "$NATIVE_STATE_FILE"
 }
 
 native_load_state() {
-  local line key value seen_api=0 seen_web=0
+  local line key value seen_api=0 seen_agent=0 seen_web=0 seen_agent_token=0
   [[ -f "$NATIVE_STATE_FILE" ]] \
     || native_die "缺少 runtime-data/native/native.env，请先运行 scripts/deploy-native-linux.sh。"
   NATIVE_API_PORT=""
+  NATIVE_AGENT_PORT=""
   NATIVE_WEB_PORT=""
+  NATIVE_AGENT_RUNTIME_TOKEN=""
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" =~ ^(ADCRAFT_NATIVE_API_PORT|ADCRAFT_NATIVE_WEB_PORT)=([0-9]+)$ ]] \
-      || native_die "native.env 格式无效。"
+    [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]] || native_die "native.env 格式无效。"
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
       ADCRAFT_NATIVE_API_PORT)
+        [[ "$value" =~ ^[0-9]+$ ]] || native_die "native.env 格式无效。"
         (( seen_api == 0 )) || native_die "native.env 包含重复 API 端口。"
         NATIVE_API_PORT="$value"
         seen_api=1
         ;;
+      ADCRAFT_NATIVE_AGENT_PORT)
+        [[ "$value" =~ ^[0-9]+$ ]] || native_die "native.env 格式无效。"
+        (( seen_agent == 0 )) || native_die "native.env 包含重复 Agent 端口。"
+        NATIVE_AGENT_PORT="$value"
+        seen_agent=1
+        ;;
       ADCRAFT_NATIVE_WEB_PORT)
+        [[ "$value" =~ ^[0-9]+$ ]] || native_die "native.env 格式无效。"
         (( seen_web == 0 )) || native_die "native.env 包含重复 Web 端口。"
         NATIVE_WEB_PORT="$value"
         seen_web=1
         ;;
+      ADCRAFT_NATIVE_AGENT_RUNTIME_TOKEN)
+        [[ "$value" =~ ^[0-9a-f]{64}$ ]] || native_die "native.env 中的 Agent 内部令牌无效。"
+        (( seen_agent_token == 0 )) || native_die "native.env 包含重复 Agent 内部令牌。"
+        NATIVE_AGENT_RUNTIME_TOKEN="$value"
+        seen_agent_token=1
+        ;;
+      *) native_die "native.env 包含未知字段。" ;;
     esac
   done < "$NATIVE_STATE_FILE"
-  (( seen_api && seen_web )) || native_die "native.env 缺少端口字段。"
-  native_validate_port "$NATIVE_API_PORT" && native_validate_port "$NATIVE_WEB_PORT" \
+  (( seen_api && seen_agent && seen_web && seen_agent_token )) || native_die "native.env 缺少字段；请重新运行 scripts/deploy-native-linux.sh。"
+  native_validate_port "$NATIVE_API_PORT" && native_validate_port "$NATIVE_AGENT_PORT" && native_validate_port "$NATIVE_WEB_PORT" \
     || native_die "native.env 中的端口无效。"
 }
 
@@ -217,15 +245,24 @@ native_api_health_url() {
   printf 'http://127.0.0.1:%s/api/v1/health\n' "$NATIVE_API_PORT"
 }
 
+native_agent_health_url() {
+  printf 'http://127.0.0.1:%s/internal/v1/health\n' "$NATIVE_AGENT_PORT"
+}
+
 native_wait_for_url() {
   local label="$1"
   local url="$2"
+  local token="${3:-}"
+  local -a curl_arguments=(--fail --silent --show-error --max-time 3)
+  if [[ -n "$token" ]]; then
+    curl_arguments+=(-H "Authorization: Bearer $token")
+  fi
   local deadline=$((SECONDS + 90))
   local frames=('|' '/' '-' '\\')
   local frame_index=0
   local elapsed
   while (( SECONDS < deadline )); do
-    if curl --fail --silent --show-error --max-time 3 "$url" >/dev/null 2>&1; then
+    if curl "${curl_arguments[@]}" "$url" >/dev/null 2>&1; then
       printf '\r[AdCraft] [%s] 服务已就绪。                    \n' "$label"
       return 0
     fi

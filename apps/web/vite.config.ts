@@ -29,6 +29,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("vite/preload-helper")) {
+            return "vite-runtime";
+          }
           if (
             id.includes("node_modules/react") ||
             id.includes("node_modules/react-dom") ||
@@ -41,33 +44,6 @@ export default defineConfig({
           }
           if (id.includes("node_modules/@xzdarcy/react-timeline-editor")) {
             return "timeline-editor";
-          }
-          if (
-            id.includes("/src/AppContextValue") ||
-            id.includes("/src/icons") ||
-            id.includes("/src/api/client") ||
-            id.includes("/src/api/workflowNormalizers") ||
-            id.includes("/src/projects/") ||
-            id.includes("/src/storage/") ||
-            id.includes("/src/workflow/sessionGuards") ||
-            id.includes("/src/workflow/videoPosterCache") ||
-            id.includes("/src/workflowShared") ||
-            id.includes("/src/workflowSchema")
-          ) {
-            return "app-core";
-          }
-          if (
-            id.includes("/src/features/workflow/v2/screenplay/V2Screenplay") ||
-            id.includes("/src/features/workflow/v2/screenplay/screenplayUiHelpers")
-          ) {
-            return "screenplay-editor";
-          }
-          if (
-            (id.includes("/src/features/workflow/")
-              && !id.includes("/src/features/workflow/final-composition/"))
-            || id.includes("/src/workflow-v2/")
-          ) {
-            return "workflow";
           }
           return undefined;
         },
@@ -89,7 +65,7 @@ export default defineConfig({
       ignored: ["**/node_modules/**", "**/dist/**"],
     },
     proxy: {
-      "/api": {
+      "^/api(?=/|\\?|$)": {
         target: BACKEND_ORIGIN,
         changeOrigin: true,
         configure: configureApiMetadataProxy,

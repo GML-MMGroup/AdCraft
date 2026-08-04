@@ -7,4 +7,4 @@ source "$SCRIPT_DIR/lib/linux-common.sh"
 validate_project
 load_state
 select_docker || die "Docker Compose v2 不可用。"
-compose logs --tail=100 api web
+compose logs --tail=100 agent api web

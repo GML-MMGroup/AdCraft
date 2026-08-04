@@ -20,6 +20,7 @@ from filelock import FileLock, Timeout
 from dotenv import dotenv_values
 
 from app.core.config import DEFAULT_LOCAL_SETTINGS_ALLOWED_ORIGINS, Settings, get_settings
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.provider_settings import (
     CredentialTestCapability,
     ProviderCredentialConsumer,
@@ -82,9 +83,25 @@ class ProviderCredentialDefinition:
     provider_id: str
     bindings: Mapping[ProviderCredentialConsumer, ConsumerCredentialBinding]
     allowed_test_origins: tuple[str, ...]
+    display_name: str
+    capability_consumers: Mapping[str, ProviderCredentialConsumer]
 
     def binding(self, consumer: ProviderCredentialConsumer) -> ConsumerCredentialBinding:
         return self.bindings[consumer]
+
+    def binding_for_capability(self, capability: str) -> ConsumerCredentialBinding:
+        try:
+            return self.bindings[self.capability_consumers[capability]]
+        except KeyError as exc:
+            raise CredentialSettingsError(
+                code="credential_capability_not_supported",
+                message="The requested credential capability is not supported.",
+                status_code=422,
+            ) from exc
+
+    @property
+    def capabilities(self) -> tuple[str, ...]:
+        return tuple(self.capability_consumers)
 
 
 class ProviderCredentialRegistry:
@@ -94,7 +111,11 @@ class ProviderCredentialRegistry:
         self,
         definitions: tuple[ProviderCredentialDefinition, ...] | None = None,
     ) -> None:
-        provider_definitions = definitions or (_volcengine_ark_definition(),)
+        provider_definitions = definitions or (
+            _siliconflow_definition(),
+            _tianpuyue_definition(),
+            _volcengine_ark_definition(),
+        )
         self._definitions = MappingProxyType(
             {definition.provider_id: definition for definition in provider_definitions}
         )
@@ -108,6 +129,10 @@ class ProviderCredentialRegistry:
                 message="The requested credential provider is not supported.",
                 status_code=404,
             ) from exc
+
+    @property
+    def provider_ids(self) -> tuple[str, ...]:
+        return tuple(sorted(self._definitions))
 
 
 def normalize_credential_value(value: str) -> str:
@@ -215,7 +240,7 @@ class DotenvCredentialStore:
         finally:
             self._process_lock.release()
 
-    def replace_values(self, values: Mapping[str, str]) -> DotenvSnapshot:
+    def replace_values(self, values: Mapping[str, str | None]) -> DotenvSnapshot:
         self._validate_values(values)
         with self.locked():
             snapshot = self.snapshot()
@@ -231,7 +256,7 @@ class DotenvCredentialStore:
                 return
             self._atomic_write(snapshot.content, mode=snapshot.mode or 0o600)
 
-    def _validate_values(self, values: Mapping[str, str]) -> None:
+    def _validate_values(self, values: Mapping[str, str | None]) -> None:
         if not values:
             raise CredentialSettingsError(
                 code="credential_update_invalid",
@@ -246,7 +271,8 @@ class DotenvCredentialStore:
                 status_code=422,
             )
         for value in values.values():
-            normalize_credential_value(value)
+            if value is not None:
+                normalize_credential_value(value)
 
     def _atomic_write(self, content: bytes, *, mode: int) -> None:
         self._project_root.mkdir(parents=True, exist_ok=True)
@@ -280,7 +306,7 @@ def _process_lock_for(project_root: Path) -> threading.RLock:
         return lock
 
 
-def _replace_dotenv_values(content: str, values: Mapping[str, str]) -> str:
+def _replace_dotenv_values(content: str, values: Mapping[str, str | None]) -> str:
     lines = content.splitlines(keepends=True)
     output: list[str] = []
     replaced_fields: set[str] = set()
@@ -292,14 +318,17 @@ def _replace_dotenv_values(content: str, values: Mapping[str, str]) -> str:
             continue
         if field in replaced_fields:
             continue
+        if values[field] is None:
+            replaced_fields.add(field)
+            continue
         line_ending = "\r\n" if line.endswith("\r\n") else "\n"
-        output.append(_dotenv_assignment(field, values[field], line_ending))
+        output.append(_dotenv_assignment(field, values[field] or "", line_ending))
         replaced_fields.add(field)
 
     if output and not output[-1].endswith(("\n", "\r")):
         output[-1] = f"{output[-1]}\n"
     for field, value in values.items():
-        if field not in replaced_fields:
+        if field not in replaced_fields and value is not None:
             output.append(_dotenv_assignment(field, value, "\n"))
     return "".join(output)
 
@@ -338,13 +367,16 @@ class RuntimeSettingsReloader:
 
     def apply(
         self,
-        values: Mapping[str, str],
+        values: Mapping[str, str | None],
         bindings: Iterable[ConsumerCredentialBinding],
     ) -> Settings:
         bindings_by_field = {binding.dotenv_field: binding for binding in bindings}
         _validate_runtime_values(values, bindings_by_field)
         for field, value in values.items():
-            os.environ[field] = value
+            if value is None:
+                os.environ.pop(field, None)
+            else:
+                os.environ[field] = value
         self._cache_clear()
         refreshed_settings = self._settings_loader()
         for field, value in values.items():
@@ -368,7 +400,7 @@ class RuntimeSettingsReloader:
 
 
 def _validate_runtime_values(
-    values: Mapping[str, str],
+    values: Mapping[str, str | None],
     bindings_by_field: Mapping[str, ConsumerCredentialBinding],
 ) -> None:
     if not values or set(values).difference(bindings_by_field):
@@ -527,6 +559,351 @@ class RuntimeCredentialService:
                 message="Credential values could not be restored after a failed update.",
                 status_code=500,
             ) from restoration_error
+
+
+@dataclass(frozen=True)
+class ProviderCredentialCapabilitySnapshot:
+    configured: bool
+    fingerprint: str | None
+    source: str
+    test_capability: CredentialTestCapability
+    masked_api_key: str | None = None
+
+
+@dataclass(frozen=True)
+class ProviderConnectionSnapshot:
+    provider_id: str
+    display_name: str
+    capabilities: tuple[str, ...]
+    connection_state: str
+    credentials: Mapping[str, ProviderCredentialCapabilitySnapshot]
+    credential_revision: int
+    updated_at: datetime | None
+
+
+@dataclass(frozen=True)
+class ProviderConnectionUpdateResult:
+    provider: ProviderConnectionSnapshot
+    updated_capabilities: tuple[str, ...]
+    cleared_capabilities: tuple[str, ...]
+    applied_at: datetime
+
+
+@dataclass(frozen=True)
+class ProviderConnectionTestResult:
+    provider_id: str
+    capability: str
+    model_ref: str | None
+
+
+class ProviderConnectionService:
+    """Coordinates secret-store mutations with secret-safe SQLite metadata."""
+
+    def __init__(
+        self,
+        *,
+        registry: ProviderCredentialRegistry,
+        dotenv_store: DotenvCredentialStore,
+        metadata_repository: ProviderModelRepository,
+        settings_loader: Callable[[], Settings] = get_settings,
+        reloader: RuntimeSettingsReloader | None = None,
+        tester: VolcengineArkConnectionTester | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._registry = registry
+        self._dotenv_store = dotenv_store
+        self._metadata_repository = metadata_repository
+        self._settings_loader = settings_loader
+        self._reloader = reloader or RuntimeSettingsReloader()
+        self._tester = tester or VolcengineArkConnectionTester()
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+
+    def list(self) -> tuple[ProviderConnectionSnapshot, ...]:
+        return tuple(self.status(provider_id) for provider_id in self._registry.provider_ids)
+
+    def synchronize_metadata(self, *, updated_at: str | None = None) -> None:
+        """Persist the current secret-safe credential state without mutating credentials."""
+
+        settings = self._settings_loader()
+        synchronized_at = updated_at or self._clock().isoformat()
+        for provider_id in self._registry.provider_ids:
+            definition = self._registry.get(provider_id)
+            metadata = self._metadata_status(definition, settings)
+            connection_state = _connection_state_from_metadata(metadata)
+            try:
+                current = self._metadata_repository.get_connection(provider_id)
+            except ValueError:
+                current = None
+            if (
+                current is not None
+                and current.connection_state == connection_state
+                and current.credential_status == metadata
+            ):
+                continue
+            self._metadata_repository.upsert_connection(
+                provider_id=provider_id,
+                connection_state=connection_state,
+                credential_status=metadata,
+                updated_at=synchronized_at,
+            )
+
+    def migrate_legacy_siliconflow_text_key(self) -> ProviderConnectionUpdateResult | None:
+        """Copy a recognized legacy SiliconFlow text key exactly once without exposing it."""
+
+        settings = self._settings_loader()
+        if (
+            settings.siliconflow_api_key
+            or not settings.llm_api_key
+            or not _is_siliconflow_base_url(settings.llm_base_url)
+        ):
+            return None
+        stored = self._dotenv_store.values(("SILICONFLOW_API_KEY",))["SILICONFLOW_API_KEY"]
+        if stored:
+            return None
+        return self.update(
+            "siliconflow",
+            api_keys={"text": settings.llm_api_key},
+        )
+
+    def status(self, provider_id: str) -> ProviderConnectionSnapshot:
+        definition = self._registry.get(provider_id)
+        settings = self._settings_loader()
+        credential_status = self._credential_status(definition, settings)
+        try:
+            persisted = self._metadata_repository.get_connection(provider_id)
+        except ValueError:
+            return ProviderConnectionSnapshot(
+                provider_id=provider_id,
+                display_name=definition.display_name,
+                capabilities=definition.capabilities,
+                connection_state=_connection_state(credential_status),
+                credentials=credential_status,
+                credential_revision=0,
+                updated_at=None,
+            )
+        return ProviderConnectionSnapshot(
+            provider_id=provider_id,
+            display_name=definition.display_name,
+            capabilities=definition.capabilities,
+            connection_state=persisted.connection_state,
+            credentials=credential_status,
+            credential_revision=persisted.credential_revision,
+            updated_at=_parse_timestamp(persisted.updated_at),
+        )
+
+    def update(
+        self,
+        provider_id: str,
+        *,
+        api_keys: Mapping[str, str],
+        clear_capabilities: Iterable[str] = (),
+    ) -> ProviderConnectionUpdateResult:
+        definition = self._registry.get(provider_id)
+        cleared = tuple(dict.fromkeys(clear_capabilities))
+        if set(api_keys).intersection(cleared):
+            raise CredentialSettingsError(
+                code="credential_update_invalid",
+                message="Credential capabilities cannot be set and cleared together.",
+                status_code=422,
+            )
+        requested = tuple(dict.fromkeys((*api_keys, *cleared)))
+        if not requested:
+            raise CredentialSettingsError(
+                code="credential_update_invalid",
+                message="At least one credential capability must be supplied.",
+                status_code=422,
+            )
+        try:
+            bindings = tuple(
+                definition.binding_for_capability(capability) for capability in requested
+            )
+        except CredentialSettingsError:
+            raise
+        values_by_field: dict[str, str | None] = {}
+        for capability, credential in api_keys.items():
+            values_by_field[definition.binding_for_capability(capability).dotenv_field] = (
+                normalize_credential_value(credential)
+            )
+        for capability in cleared:
+            values_by_field[definition.binding_for_capability(capability).dotenv_field] = None
+
+        with self._dotenv_store.locked():
+            dotenv_snapshot = self._dotenv_store.snapshot()
+            environment_snapshot = self._reloader.snapshot(bindings)
+            try:
+                self._dotenv_store.replace_values(values_by_field)
+                refreshed_settings = self._reloader.apply(values_by_field, bindings)
+                metadata = self._metadata_status(definition, refreshed_settings)
+                persisted = self._metadata_repository.upsert_connection(
+                    provider_id=provider_id,
+                    connection_state=_connection_state_from_metadata(metadata),
+                    credential_status=metadata,
+                    updated_at=self._clock().isoformat(),
+                )
+            except CredentialSettingsError:
+                self._restore(dotenv_snapshot, environment_snapshot)
+                raise
+            except Exception as exc:
+                self._restore(dotenv_snapshot, environment_snapshot)
+                raise CredentialSettingsError(
+                    code="credential_persistence_failed",
+                    message="Credential values could not be saved.",
+                    status_code=500,
+                ) from exc
+
+        snapshots = self._credential_status(definition, refreshed_settings)
+        provider = ProviderConnectionSnapshot(
+            provider_id=provider_id,
+            display_name=definition.display_name,
+            capabilities=definition.capabilities,
+            connection_state=persisted.connection_state,
+            credentials=snapshots,
+            credential_revision=persisted.credential_revision,
+            updated_at=_parse_timestamp(persisted.updated_at),
+        )
+        return ProviderConnectionUpdateResult(
+            provider=provider,
+            updated_capabilities=tuple(api_keys),
+            cleared_capabilities=cleared,
+            applied_at=self._clock(),
+        )
+
+    def test(
+        self,
+        provider_id: str,
+        *,
+        capability: str,
+        candidate: str | None = None,
+        model_ref: str | None = None,
+    ) -> ProviderConnectionTestResult:
+        definition = self._registry.get(provider_id)
+        binding = definition.binding_for_capability(capability)
+        self._tester.test(
+            definition=definition,
+            consumer=binding.consumer,
+            candidate=normalize_credential_value(candidate) if candidate is not None else None,
+            settings=self._settings_loader(),
+        )
+        return ProviderConnectionTestResult(
+            provider_id=provider_id,
+            capability=capability,
+            model_ref=model_ref,
+        )
+
+    def _credential_status(
+        self,
+        definition: ProviderCredentialDefinition,
+        settings: Settings,
+    ) -> dict[str, ProviderCredentialCapabilitySnapshot]:
+        dotenv_values_by_field = self._dotenv_store.values(
+            binding.dotenv_field for binding in definition.bindings.values()
+        )
+        snapshots: dict[str, ProviderCredentialCapabilitySnapshot] = {}
+        for capability in definition.capabilities:
+            binding = definition.binding_for_capability(capability)
+            value = getattr(settings, binding.settings_field)
+            dotenv_value = dotenv_values_by_field[binding.dotenv_field]
+            source = "unconfigured"
+            if value:
+                source = "project_dotenv" if dotenv_value == value else "process_environment"
+            snapshots[capability] = ProviderCredentialCapabilitySnapshot(
+                configured=bool(value),
+                fingerprint=(
+                    ProviderModelRepository.credential_fingerprint(
+                        provider_id=definition.provider_id,
+                        capability=capability,
+                        credential=value,
+                    )
+                    if value
+                    else None
+                ),
+                source=source,
+                test_capability=binding.test_capability,
+                masked_api_key=mask_credential_value(value) if value else None,
+            )
+        return snapshots
+
+    def _metadata_status(
+        self,
+        definition: ProviderCredentialDefinition,
+        settings: Settings,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {}
+        for capability, status in self._credential_status(definition, settings).items():
+            result[capability] = {
+                "configured": status.configured,
+                "fingerprint": status.fingerprint,
+                "source": status.source,
+                "test_capability": status.test_capability,
+            }
+        return result
+
+    def _restore(
+        self,
+        dotenv_snapshot: DotenvSnapshot,
+        environment_snapshot: ManagedEnvironmentSnapshot,
+    ) -> None:
+        try:
+            self._dotenv_store.restore(dotenv_snapshot)
+            self._reloader.restore(environment_snapshot)
+        except Exception as exc:
+            raise CredentialSettingsError(
+                code="credential_runtime_reload_failed",
+                message="Credential values could not be restored after a failed update.",
+                status_code=500,
+            ) from exc
+
+
+class LegacyVolcengineCredentialAdapter:
+    """Expose the temporary Volcengine API contract over the canonical service."""
+
+    def __init__(self, service: ProviderConnectionService) -> None:
+        self._service = service
+
+    def status(self, provider_id: str) -> VolcengineCredentialSetStatus:
+        return _legacy_volcengine_status(self._service.status(provider_id))
+
+    def update(
+        self,
+        provider_id: str,
+        candidates: Mapping[ProviderCredentialConsumer, str],
+    ) -> CredentialUpdateResult:
+        canonical = {"llm": "text", "image": "image", "video": "video"}
+        if not set(candidates).issubset(canonical):
+            raise CredentialSettingsError(
+                code="credential_update_invalid",
+                message="The credential update contains an unsupported consumer.",
+                status_code=422,
+            )
+        result = self._service.update(
+            provider_id,
+            api_keys={canonical[consumer]: value for consumer, value in candidates.items()},
+        )
+        return CredentialUpdateResult(
+            credentials=_legacy_volcengine_status(result.provider),
+            updated_consumers=tuple(candidates),
+            applied_at=result.applied_at,
+        )
+
+    def test(
+        self,
+        provider_id: str,
+        consumer: ProviderCredentialConsumer,
+        candidate: str | None = None,
+    ) -> CredentialTestResult:
+        canonical = {"llm": "text", "image": "image", "video": "video"}
+        if consumer not in canonical:
+            raise CredentialSettingsError(
+                code="credential_update_invalid",
+                message="The credential consumer is not supported.",
+                status_code=422,
+            )
+        result = self._service.test(
+            provider_id,
+            capability=canonical[consumer],
+            candidate=candidate,
+        )
+        return CredentialTestResult(accepted=True, model_id=result.model_ref)
 
 
 def _ordered_update_values(
@@ -780,4 +1157,106 @@ def _volcengine_ark_definition() -> ProviderCredentialDefinition:
         provider_id="volcengine_ark",
         bindings=bindings,
         allowed_test_origins=("https://ark.cn-beijing.volces.com",),
+        display_name="Volcengine Ark",
+        capability_consumers=MappingProxyType({"text": "llm", "image": "image", "video": "video"}),
+    )
+
+
+def _siliconflow_definition() -> ProviderCredentialDefinition:
+    bindings: Mapping[ProviderCredentialConsumer, ConsumerCredentialBinding] = MappingProxyType(
+        {
+            "text": ConsumerCredentialBinding(
+                consumer="text",
+                dotenv_field="SILICONFLOW_API_KEY",
+                settings_field="siliconflow_api_key",
+                endpoint_field="siliconflow_base_url",
+                test_capability="minimal_request",
+            ),
+        }
+    )
+    return ProviderCredentialDefinition(
+        provider_id="siliconflow",
+        bindings=bindings,
+        allowed_test_origins=("https://api.siliconflow.cn",),
+        display_name="SiliconFlow",
+        capability_consumers=MappingProxyType({"text": "text"}),
+    )
+
+
+def _tianpuyue_definition() -> ProviderCredentialDefinition:
+    bindings: Mapping[ProviderCredentialConsumer, ConsumerCredentialBinding] = MappingProxyType(
+        {
+            "audio": ConsumerCredentialBinding(
+                consumer="audio",
+                dotenv_field="BGM_API_KEY",
+                settings_field="bgm_api_key",
+                endpoint_field="bgm_endpoint",
+                test_capability="unsupported",
+            ),
+        }
+    )
+    return ProviderCredentialDefinition(
+        provider_id="tianpuyue",
+        bindings=bindings,
+        allowed_test_origins=("https://api.tianpuyue.cn",),
+        display_name="Tianpuyue",
+        capability_consumers=MappingProxyType({"audio": "audio"}),
+    )
+
+
+def _connection_state(
+    statuses: Mapping[str, ProviderCredentialCapabilitySnapshot],
+) -> str:
+    return (
+        "configured" if any(status.configured for status in statuses.values()) else "unconfigured"
+    )
+
+
+def _connection_state_from_metadata(metadata: Mapping[str, object]) -> str:
+    return (
+        "configured"
+        if any(
+            isinstance(value, Mapping) and value.get("configured") is True
+            for value in metadata.values()
+        )
+        else "unconfigured"
+    )
+
+
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _is_siliconflow_base_url(value: str | None) -> bool:
+    if not value:
+        return False
+    try:
+        return urlsplit(value).hostname == "api.siliconflow.cn"
+    except ValueError:
+        return False
+
+
+def _legacy_volcengine_status(
+    snapshot: ProviderConnectionSnapshot,
+) -> VolcengineCredentialSetStatus:
+    if snapshot.provider_id != "volcengine_ark":
+        raise CredentialSettingsError(
+            code="credential_provider_not_supported",
+            message="The requested credential provider is not supported.",
+            status_code=404,
+        )
+
+    def status(capability: str) -> ProviderCredentialConsumerStatus:
+        item = snapshot.credentials[capability]
+        return ProviderCredentialConsumerStatus(
+            configured=item.configured,
+            masked_api_key=item.masked_api_key,
+            source=item.source,  # type: ignore[arg-type]
+            test_capability=item.test_capability,
+        )
+
+    return VolcengineCredentialSetStatus(
+        llm=status("text"),
+        image=status("image"),
+        video=status("video"),
     )

@@ -84,6 +84,7 @@ export type WorkflowNodeData = {
   v2Slots?: WorkflowSlotV2[];
   v2AssetVersions?: AssetVersionV2[];
   v2Runtime?: WorkflowRuntimeV2;
+  v2AudioMode?: string | null;
   v2SlotRuntimeStatusById?: Record<string, string>;
   v2OpenSlotId?: string | null;
   v2OpenStoryboardItemId?: string | null;

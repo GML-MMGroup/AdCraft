@@ -29,7 +29,7 @@ def main() -> None:
     settings = get_settings()
     settings = replace(
         settings,
-        agno_mock_mode=args.mode == "mock",
+        agent_runtime_mode="fake" if args.mode == "mock" else "real",
         media_data_dir=Path(args.data_dir) if args.data_dir else settings.media_data_dir,
     )
     report = V2PromptEvalRunner(settings).run_fixture(

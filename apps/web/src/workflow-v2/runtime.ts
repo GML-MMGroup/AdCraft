@@ -196,6 +196,7 @@ function withRuntimeRecords(store: WorkflowRuntimeStoreV2, event: WorkflowRuntim
 
 export function applyWorkflowRuntimeSnapshotV2(current: WorkflowRuntimeStoreV2, snapshot: Partial<WorkflowRuntimeV2> | null | undefined): WorkflowRuntimeStoreV2 {
   if (!snapshot) return current;
+  if (typeof snapshot.events_cursor === "number" && snapshot.events_cursor < current.lastEventSeq) return current;
   const snapshotSlotNodeIds = slotRuntimeIdentityMap(snapshot.slot_runtime, "node_id");
   const snapshotSlotItemIds = slotRuntimeIdentityMap(snapshot.slot_runtime, "item_id");
   const slotRuntimeById = snapshot.slot_runtime ?? {};
@@ -204,7 +205,7 @@ export function applyWorkflowRuntimeSnapshotV2(current: WorkflowRuntimeStoreV2, 
   return {
     ...current,
     connectionState: "connected",
-    lastEventSeq: typeof snapshot.events_cursor === "number" ? snapshot.events_cursor : current.lastEventSeq,
+    lastEventSeq: typeof snapshot.events_cursor === "number" ? Math.max(current.lastEventSeq, snapshot.events_cursor) : current.lastEventSeq,
     activeExecutionId: snapshot.active_execution_id ?? current.activeExecutionId,
     executionStatus: snapshot.execution_status ?? current.executionStatus,
     runningSlotIds: snapshot.running_slot_ids ?? [],

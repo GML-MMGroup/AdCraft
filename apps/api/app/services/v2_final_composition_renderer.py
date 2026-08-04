@@ -2,7 +2,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
 from typing import Any
 from uuid import uuid4
@@ -17,6 +19,7 @@ from app.schemas.workflow_v2 import (
     WorkflowV2Timeline,
     WorkflowV2TimelineRenderSettings,
 )
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_data_boundary import validate_v2_data_path, validate_v2_relative_path
 from app.services.v2_asset_store import V2AssetStoreService
@@ -52,6 +55,8 @@ class V2MediaProbeResult:
     video_codec: str | None = None
     audio_codec: str | None = None
     has_audio: bool = False
+    sample_aspect_ratio: str | None = None
+    rotation_degrees: int = 0
     error: str | None = None
 
     @classmethod
@@ -74,6 +79,8 @@ class V2MediaProbeResult:
             video_codec=_string(payload.get("video_codec")),
             audio_codec=_string(payload.get("audio_codec")),
             has_audio=bool(payload.get("has_audio")),
+            sample_aspect_ratio=_string(payload.get("sample_aspect_ratio")),
+            rotation_degrees=_int_or_none(payload.get("rotation_degrees")) or 0,
             error=_string(payload.get("error")),
         )
 
@@ -139,6 +146,8 @@ class V2MediaProbe:
             video_codec=_string(video_stream.get("codec_name")),
             audio_codec=_string(audio_stream.get("codec_name")),
             has_audio=bool(audio_stream),
+            sample_aspect_ratio=_string(video_stream.get("sample_aspect_ratio")),
+            rotation_degrees=_rotation_degrees(video_stream),
         )
 
 
@@ -168,11 +177,24 @@ class V2FinalCompositionRenderer:
         provider_payload: dict[str, Any],
     ) -> V2ProviderResult:
         payload = sanitize_context_for_llm_text(provider_payload)
-        if isinstance(payload.get("canonical_timeline"), dict):
-            if self._settings.media_mode.strip().lower() == "mock":
-                return self._render_legacy(workflow, item, slot, payload)
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        if mode == "simple_sequence":
+            return self._render_simple_sequence(workflow, item, slot, payload)
+        if mode == "timeline_editor":
+            if not isinstance(payload.get("canonical_timeline"), dict):
+                return self._failure(
+                    payload,
+                    [],
+                    code="v2_timeline_invalid_clip",
+                    message="Timeline editor rendering requires a canonical timeline.",
+                )
             return self._render_canonical_timeline(workflow, item, slot, payload)
-        return self._render_legacy(workflow, item, slot, payload)
+        return self._failure(
+            payload,
+            [],
+            code="v2_final_composition_render_mode_invalid",
+            message="Configured Final Composition render mode is unsupported.",
+        )
 
     def _render_canonical_timeline(
         self,
@@ -447,6 +469,596 @@ class V2FinalCompositionRenderer:
             reference_asset_ids=list(dict.fromkeys(source_asset_ids)),
             metadata=metadata,
         )
+
+    def _render_simple_sequence(
+        self,
+        workflow: WorkflowV2,
+        item: WorkflowItemV2,
+        slot: WorkflowSlotV2,
+        payload: dict[str, Any],
+    ) -> V2ProviderResult:
+        del item
+        raw_plan = payload.get("simple_composition_plan")
+        if slot.slot_type != "final_video":
+            return self._failure(
+                payload,
+                [],
+                code="final_composition_not_llm_generation",
+                message=f"Final composition renderer only supports final_video, got {slot.slot_type}.",
+            )
+        try:
+            plan = V2SimpleCompositionPlan.model_validate(raw_plan)
+        except ValueError as exc:
+            return self._failure(
+                payload,
+                [],
+                code="composition_inputs_not_settled",
+                message="Simple Final Composition requires a valid immutable input plan.",
+                metadata={"validation_error": _truncate(str(exc))},
+            )
+        if plan.workflow_id != workflow.workflow_id:
+            return self._failure(
+                payload,
+                [],
+                code="composition_inputs_not_settled",
+                message="Simple Final Composition plan belongs to another workflow.",
+            )
+        try:
+            capabilities = self._toolchain.require_profile(
+                profile_id=PROFILE_ID,
+                requires_subtitles=False,
+            )
+        except V2MediaToolchainCapabilityError as exc:
+            return self._failure(payload, [], code=exc.code, message=str(exc))
+        codec = capabilities.selected_video_encoder
+        if not codec:
+            return self._failure(
+                payload,
+                [],
+                code="v2_media_toolchain_unsupported",
+                message="Final composition requires an available video encoder.",
+            )
+
+        render_id = _safe_render_id(payload.get("render_id")) or f"render_{uuid4().hex[:12]}"
+        output_rel = (
+            Path("v2")
+            / "runs"
+            / workflow.workflow_id
+            / "composition"
+            / render_id
+            / "final-ad-video.mp4"
+        )
+        output_path = validate_v2_data_path(
+            self._data_dir,
+            self._data_dir / output_rel,
+            operation="v2-final-composition-render",
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self._settings.media_mode.strip().lower() == "mock":
+            return self._render_mock_simple_sequence(
+                workflow,
+                plan,
+                payload,
+                output_rel=output_rel,
+                output_path=output_path,
+                codec=codec,
+            )
+
+        resolved_videos: list[tuple[Any, WorkflowAssetVersionV2, Path, V2MediaProbeResult]] = []
+        missing_shot_ids = list(plan.missing_shot_ids)
+        warnings: list[dict[str, Any]] = []
+        for source in plan.videos:
+            resolved = self._resolve_asset(source.asset_id, source.version_id)
+            if resolved is None:
+                missing_shot_ids.append(source.shot_id)
+                warnings.append(
+                    {
+                        "code": "composition_probe_failed",
+                        "shot_id": source.shot_id,
+                        "message": "Pinned video source is unavailable.",
+                    }
+                )
+                continue
+            record, path = resolved
+            probe = self._probe_result(path, "video")
+            if (
+                probe.error
+                or not probe.video_codec
+                or not probe.width
+                or not probe.height
+                or not probe.duration_seconds
+            ):
+                missing_shot_ids.append(source.shot_id)
+                warnings.append(
+                    {
+                        "code": "composition_probe_failed",
+                        "shot_id": source.shot_id,
+                        "message": "Pinned video source could not be probed.",
+                    }
+                )
+                continue
+            resolved_videos.append((source, record, path, probe))
+        if not resolved_videos:
+            return self._failure(
+                payload,
+                [source.asset_id for source in plan.videos],
+                code="composition_probe_failed",
+                message="No playable storyboard video segments are available.",
+                metadata={
+                    "missing_shot_ids": list(dict.fromkeys(missing_shot_ids)),
+                    "warnings": warnings,
+                },
+            )
+
+        reference_probe = resolved_videos[0][3]
+        width, height = _display_geometry(reference_probe)
+        fps = reference_probe.fps or 24.0
+        include_audio = workflow.audio_mode != "none"
+        normalized_paths: list[Path] = []
+        source_has_audio = any(probe.has_audio for *_rest, probe in resolved_videos)
+        for index, (source, _record, source_path, probe) in enumerate(
+            resolved_videos,
+            start=1,
+        ):
+            if _display_geometry(probe) != (width, height) or (
+                probe.fps is not None and abs(probe.fps - fps) > 0.01
+            ):
+                warnings.append(
+                    {
+                        "code": "shot_format_normalized",
+                        "shot_id": source.shot_id,
+                        "message": "Shot media format was normalized to the sequence reference.",
+                    }
+                )
+            normalized_path = output_path.parent / f"normalized-{index:04d}.mp4"
+            video_filter = ",".join(
+                [
+                    f"scale={width}:{height}:force_original_aspect_ratio=increase",
+                    f"crop={width}:{height}",
+                    "setsar=1",
+                    f"fps={fps:.6f}",
+                    "format=yuv420p",
+                ]
+            )
+            args = [
+                self._settings.ffmpeg_path,
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                source_path.as_posix(),
+            ]
+            if include_audio and not probe.has_audio:
+                args.extend(
+                    [
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "anullsrc=channel_layout=stereo:sample_rate=48000",
+                    ]
+                )
+            args.extend(
+                [
+                    "-map",
+                    "0:v:0",
+                    "-vf",
+                    video_filter,
+                    *self._video_codec_args(codec),
+                    "-metadata:s:v:0",
+                    "rotate=0",
+                ]
+            )
+            if not include_audio:
+                args.append("-an")
+            elif probe.has_audio:
+                args.extend(
+                    [
+                        "-map",
+                        "0:a:0",
+                        "-c:a",
+                        capabilities.audio_encoder or "aac",
+                        "-ar",
+                        "48000",
+                        "-ac",
+                        "2",
+                        "-shortest",
+                    ]
+                )
+            else:
+                args.extend(
+                    [
+                        "-map",
+                        "1:a:0",
+                        "-c:a",
+                        capabilities.audio_encoder or "aac",
+                        "-ar",
+                        "48000",
+                        "-ac",
+                        "2",
+                        "-t",
+                        f"{probe.duration_seconds:.6f}",
+                        "-shortest",
+                    ]
+                )
+            args.append(normalized_path.as_posix())
+            completed = self._run_ffmpeg(args)
+            if completed is None:
+                return self._failure(
+                    payload,
+                    [entry[1].asset_id for entry in resolved_videos],
+                    code="composition_normalize_failed",
+                    message="Configured FFmpeg executable was not found.",
+                    metadata={"shot_id": source.shot_id},
+                )
+            if completed.returncode != 0 or not normalized_path.is_file():
+                return self._failure(
+                    payload,
+                    [entry[1].asset_id for entry in resolved_videos],
+                    code="composition_normalize_failed",
+                    message="A storyboard video segment could not be normalized.",
+                    metadata={
+                        "shot_id": source.shot_id,
+                        "stderr": _truncate(completed.stderr),
+                    },
+                )
+            normalized_paths.append(normalized_path)
+
+        concat_list = output_path.parent / "concat-list.txt"
+        concat_list.write_text(
+            "".join(f"file '{_escape_concat_path(path)}'\n" for path in normalized_paths),
+            encoding="utf-8",
+        )
+        joined_path = output_path.parent / "joined.mp4"
+        concat_args = [
+            self._settings.ffmpeg_path,
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            concat_list.as_posix(),
+            "-c",
+            "copy",
+            joined_path.as_posix(),
+        ]
+        completed = self._run_ffmpeg(concat_args)
+        if completed is None:
+            return self._failure(
+                payload,
+                [entry[1].asset_id for entry in resolved_videos],
+                code="composition_concat_failed",
+                message="Configured FFmpeg executable was not found.",
+            )
+        if completed.returncode != 0 or not joined_path.is_file():
+            return self._failure(
+                payload,
+                [entry[1].asset_id for entry in resolved_videos],
+                code="composition_concat_failed",
+                message="Normalized storyboard segments could not be concatenated.",
+                metadata={"stderr": _truncate(completed.stderr)},
+            )
+
+        joined_probe = self._probe_result(joined_path, "video")
+        joined_duration = joined_probe.duration_seconds or sum(
+            float(probe.duration_seconds or 0) for *_rest, probe in resolved_videos
+        )
+        temporary_output = output_path.with_suffix(".part.mp4")
+        bgm_status = plan.bgm_status
+        gain_db: float | None = None
+        bgm_is_available = False
+        if workflow.audio_mode != "none" and plan.bgm is None and bgm_status == "unavailable":
+            warnings.append(
+                {
+                    "code": "composition_audio_missing_soft",
+                    "message": "Selected BGM is unavailable; composition continued without it.",
+                }
+            )
+        if plan.bgm is not None and workflow.audio_mode != "none":
+            bgm_resolved = self._resolve_asset(plan.bgm.asset_id, plan.bgm.version_id)
+            bgm_probe = (
+                self._probe_result(bgm_resolved[1], "audio") if bgm_resolved is not None else None
+            )
+            if (
+                bgm_resolved is None
+                or bgm_probe is None
+                or bgm_probe.error
+                or not bgm_probe.has_audio
+            ):
+                bgm_status = "unavailable"
+                warnings.append(
+                    {
+                        "code": "composition_audio_missing_soft",
+                        "message": "Selected BGM is unavailable; composition continued without it.",
+                    }
+                )
+            else:
+                bgm_is_available = True
+                bgm_status = "available"
+                gain_db = (
+                    self._settings.final_composition_bgm_gain_db_with_source
+                    if source_has_audio
+                    else self._settings.final_composition_bgm_gain_db_without_source
+                )
+                fade_duration = min(
+                    self._settings.final_composition_bgm_fade_out_seconds,
+                    joined_duration,
+                )
+                fade_start = max(0.0, joined_duration - fade_duration)
+                filter_complex = _simple_bgm_mix_filter(
+                    joined_duration=joined_duration,
+                    gain_db=gain_db,
+                    fade_start=fade_start,
+                    fade_duration=fade_duration,
+                    legacy_amix=False,
+                )
+                mix_args = [
+                    self._settings.ffmpeg_path,
+                    "-y",
+                    "-loglevel",
+                    "error",
+                    "-i",
+                    joined_path.as_posix(),
+                    "-stream_loop",
+                    "-1",
+                    "-i",
+                    bgm_resolved[1].as_posix(),
+                    "-filter_complex",
+                    filter_complex,
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "[aout]",
+                    "-c:v",
+                    "copy",
+                    "-c:a",
+                    capabilities.audio_encoder or "aac",
+                    "-ar",
+                    "48000",
+                    "-ac",
+                    "2",
+                    "-t",
+                    f"{joined_duration:.6f}",
+                    temporary_output.as_posix(),
+                ]
+                completed = self._run_ffmpeg(mix_args)
+                if (
+                    completed is not None
+                    and completed.returncode != 0
+                    and "Option 'normalize' not found" in (completed.stderr or "")
+                ):
+                    temporary_output.unlink(missing_ok=True)
+                    legacy_mix_args = list(mix_args)
+                    legacy_mix_args[legacy_mix_args.index("-filter_complex") + 1] = (
+                        _simple_bgm_mix_filter(
+                            joined_duration=joined_duration,
+                            gain_db=gain_db,
+                            fade_start=fade_start,
+                            fade_duration=fade_duration,
+                            legacy_amix=True,
+                        )
+                    )
+                    completed = self._run_ffmpeg(legacy_mix_args)
+                if completed is None:
+                    return self._failure(
+                        payload,
+                        [entry[1].asset_id for entry in resolved_videos],
+                        code="composition_audio_mix_failed",
+                        message="Configured FFmpeg executable was not found.",
+                    )
+                if completed.returncode != 0 or not temporary_output.is_file():
+                    return self._failure(
+                        payload,
+                        [entry[1].asset_id for entry in resolved_videos],
+                        code="composition_audio_mix_failed",
+                        message="Background music could not be mixed into the final video.",
+                        metadata={"stderr": _truncate(completed.stderr)},
+                    )
+        if not bgm_is_available:
+            try:
+                shutil.copyfile(joined_path, temporary_output)
+            except OSError as exc:
+                return self._failure(
+                    payload,
+                    [entry[1].asset_id for entry in resolved_videos],
+                    code="composition_output_invalid",
+                    message="Final composition output could not be prepared for publication.",
+                    metadata={"error": _truncate(str(exc))},
+                )
+
+        output_probe = self._probe_result(temporary_output, "video")
+        expected_audio = include_audio
+        if not self._valid_simple_output(
+            output_path=temporary_output,
+            probe=output_probe,
+            width=width,
+            height=height,
+            fps=fps,
+            expected_audio=expected_audio,
+        ):
+            return self._failure(
+                payload,
+                [entry[1].asset_id for entry in resolved_videos],
+                code="composition_output_invalid",
+                message="Simple Final Composition did not produce a valid playable output.",
+                metadata={
+                    "width": output_probe.width,
+                    "height": output_probe.height,
+                    "fps": output_probe.fps,
+                    "sample_aspect_ratio": output_probe.sample_aspect_ratio,
+                    "has_audio": output_probe.has_audio,
+                },
+            )
+        os.replace(temporary_output, output_path)
+
+        included_shot_ids = [entry[0].shot_id for entry in resolved_videos]
+        source_asset_versions = [
+            {"asset_id": entry[1].asset_id, "version_id": entry[1].version_id}
+            for entry in resolved_videos
+        ]
+        metadata = {
+            "provider": FINAL_COMPOSITION_PROVIDER,
+            "composition_provider": FINAL_COMPOSITION_PROVIDER,
+            "composition_tool": FINAL_COMPOSITION_PROVIDER,
+            "render_mode": "simple_sequence",
+            "composition_source": "storyboard_shot_order",
+            "timeline_controls_applied": False,
+            "included_shot_ids": included_shot_ids,
+            "missing_shot_ids": list(dict.fromkeys(missing_shot_ids)),
+            "source_asset_versions": source_asset_versions,
+            "reused_previous_selections": [
+                entry[0].shot_id for entry in resolved_videos if entry[0].reused_previous_selection
+            ],
+            "bgm_status": bgm_status,
+            "bgm_asset_id": plan.bgm.asset_id if plan.bgm is not None else None,
+            "bgm_version_id": plan.bgm.version_id if plan.bgm is not None else None,
+            "bgm_gain_db": gain_db,
+            "bgm_looped_or_trimmed": bgm_is_available,
+            "has_audio": output_probe.has_audio,
+            "audio_mode": workflow.audio_mode,
+            "output_width": output_probe.width,
+            "output_height": output_probe.height,
+            "output_fps": output_probe.fps,
+            "output_sample_aspect_ratio": output_probe.sample_aspect_ratio,
+            "actual_video_codec": output_probe.video_codec,
+            "actual_audio_codec": output_probe.audio_codec if output_probe.has_audio else None,
+            "reference_width": width,
+            "reference_height": height,
+            "reference_fps": fps,
+            "warnings": warnings,
+            "toolchain_profile": capabilities.profile_id,
+            "selected_video_encoder": codec,
+        }
+        reference_asset_ids = [entry[1].asset_id for entry in resolved_videos]
+        if plan.bgm is not None:
+            reference_asset_ids.append(plan.bgm.asset_id)
+        return V2ProviderResult(
+            status="completed",
+            media_type="video",
+            local_file_path=output_rel.as_posix(),
+            provider=FINAL_COMPOSITION_PROVIDER,
+            provider_model=f"ffmpeg:{codec}",
+            provider_payload_snapshot=payload,
+            reference_asset_ids=list(dict.fromkeys(reference_asset_ids)),
+            metadata=metadata,
+        )
+
+    def _render_mock_simple_sequence(
+        self,
+        workflow: WorkflowV2,
+        plan: V2SimpleCompositionPlan,
+        payload: dict[str, Any],
+        *,
+        output_rel: Path,
+        output_path: Path,
+        codec: str,
+    ) -> V2ProviderResult:
+        width, height = _resolution(workflow.aspect_ratio)
+        duration = min(max(float(workflow.duration_seconds), 0.2), 1.0)
+        temporary_output = output_path.with_suffix(".part.mp4")
+        include_audio = workflow.audio_mode != "none"
+        args = self._mock_ffmpeg_args(
+            output_path=temporary_output,
+            codec=codec,
+            include_audio=include_audio,
+            duration_seconds=duration,
+            width=width,
+            height=height,
+        )
+        completed = self._run_ffmpeg(args)
+        if completed is None or completed.returncode != 0 or not temporary_output.is_file():
+            return self._failure(
+                payload,
+                [source.asset_id for source in plan.videos],
+                code="composition_normalize_failed",
+                message="Mock Final Composition could not create synthetic output.",
+                metadata={"stderr": _truncate(completed.stderr) if completed is not None else None},
+            )
+        output_probe = self._probe_result(temporary_output, "video")
+        if output_probe.error or not output_probe.video_codec:
+            return self._failure(
+                payload,
+                [source.asset_id for source in plan.videos],
+                code="composition_output_invalid",
+                message="Mock Final Composition output is not playable.",
+            )
+        os.replace(temporary_output, output_path)
+        warnings = []
+        if workflow.audio_mode != "none" and plan.bgm is None and plan.bgm_status == "unavailable":
+            warnings.append(
+                {
+                    "code": "composition_audio_missing_soft",
+                    "message": "Selected BGM is unavailable; composition continued without it.",
+                }
+            )
+        metadata = {
+            "provider": FINAL_COMPOSITION_PROVIDER,
+            "composition_provider": FINAL_COMPOSITION_PROVIDER,
+            "composition_tool": FINAL_COMPOSITION_PROVIDER,
+            "render_mode": "simple_sequence",
+            "composition_source": "storyboard_shot_order",
+            "timeline_controls_applied": False,
+            "included_shot_ids": [source.shot_id for source in plan.videos],
+            "missing_shot_ids": plan.missing_shot_ids,
+            "source_asset_versions": [
+                {"asset_id": source.asset_id, "version_id": source.version_id}
+                for source in plan.videos
+            ],
+            "bgm_status": plan.bgm_status,
+            "bgm_gain_db": None,
+            "bgm_looped_or_trimmed": False,
+            "has_audio": output_probe.has_audio,
+            "audio_mode": workflow.audio_mode,
+            "output_width": output_probe.width,
+            "output_height": output_probe.height,
+            "output_fps": output_probe.fps,
+            "output_sample_aspect_ratio": output_probe.sample_aspect_ratio,
+            "warnings": warnings,
+        }
+        return V2ProviderResult(
+            status="completed",
+            media_type="video",
+            local_file_path=output_rel.as_posix(),
+            provider=FINAL_COMPOSITION_PROVIDER,
+            provider_model=f"ffmpeg:{codec}",
+            provider_payload_snapshot=payload,
+            reference_asset_ids=[source.asset_id for source in plan.videos],
+            metadata=metadata,
+        )
+
+    def _run_ffmpeg(
+        self,
+        args: list[str],
+    ) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return self._runner(args, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return None
+
+    @staticmethod
+    def _valid_simple_output(
+        *,
+        output_path: Path,
+        probe: V2MediaProbeResult,
+        width: int,
+        height: int,
+        fps: float,
+        expected_audio: bool,
+    ) -> bool:
+        if not output_path.is_file() or output_path.stat().st_size <= 0:
+            return False
+        if probe.error or not probe.video_codec:
+            return False
+        if (probe.width, probe.height) != (width, height):
+            return False
+        if probe.fps is None or abs(probe.fps - fps) > 0.01:
+            return False
+        if probe.sample_aspect_ratio not in {None, "1:1"}:
+            return False
+        return not expected_audio or probe.has_audio
 
     def _render_legacy(
         self,
@@ -1215,6 +1827,31 @@ def _probe_duration(
     return None
 
 
+def _rotation_degrees(video_stream: dict[str, Any]) -> int:
+    side_data = video_stream.get("side_data_list")
+    if isinstance(side_data, list):
+        for entry in side_data:
+            if not isinstance(entry, dict):
+                continue
+            rotation = _int_or_none(entry.get("rotation"))
+            if rotation is not None:
+                return rotation % 360
+    tags = video_stream.get("tags")
+    if isinstance(tags, dict):
+        rotation = _int_or_none(tags.get("rotate"))
+        if rotation is not None:
+            return rotation % 360
+    return 0
+
+
+def _display_geometry(probe: V2MediaProbeResult) -> tuple[int, int]:
+    width = int(probe.width or 0)
+    height = int(probe.height or 0)
+    if probe.rotation_degrees % 180:
+        return height, width
+    return width, height
+
+
 def _frame_rate(value: object) -> float | None:
     if not isinstance(value, str) or not value.strip() or value == "0/0":
         return None
@@ -1259,6 +1896,34 @@ def _encoder_missing(stderr: str | None) -> bool:
 
 def _escape_concat_path(path: Path) -> str:
     return path.as_posix().replace("'", r"'\''")
+
+
+def _simple_bgm_mix_filter(
+    *,
+    joined_duration: float,
+    gain_db: float,
+    fade_start: float,
+    fade_duration: float,
+    legacy_amix: bool,
+) -> str:
+    source_chain = ""
+    source_label = "[0:a]"
+    bgm_gain = f"volume={gain_db:.3f}dB"
+    amix_options = "inputs=2:duration=first:dropout_transition=0"
+    if legacy_amix:
+        source_chain = "[0:a]volume=2.0[source];"
+        source_label = "[source]"
+        bgm_gain += ",volume=2.0"
+    else:
+        amix_options += ":normalize=0"
+    return (
+        f"{source_chain}"
+        f"[1:a]atrim=duration={joined_duration:.6f},"
+        f"asetpts=PTS-STARTPTS,{bgm_gain},"
+        f"afade=t=out:st={fade_start:.6f}:d={fade_duration:.6f}[bgm];"
+        f"{source_label}[bgm]amix={amix_options},"
+        "alimiter=limit=0.95[aout]"
+    )
 
 
 def _truncate(value: str | None, limit: int = 2000) -> str | None:

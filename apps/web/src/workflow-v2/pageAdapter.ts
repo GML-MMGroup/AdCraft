@@ -48,6 +48,9 @@ export function workflowV2ToWorkflowGraph(workflow: WorkflowV2): WorkflowGraph {
   const graphNodes = normalizeLegacyStoryboardUpstreamDefaultPositions(workflow.nodes);
   return {
     workflow_id: workflow.workflow_id,
+    project_id: workflow.project_id,
+    state_version: workflow.state_version,
+    semantic_revision_no: workflow.semantic_revision_no,
     name: workflow.name,
     description: workflow.description,
     status: aggregateWorkflowStatus(workflow),

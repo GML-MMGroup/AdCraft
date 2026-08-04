@@ -1,5 +1,6 @@
 import type { AssetVersionV2, WorkflowItemV2, WorkflowRuntimeV2, WorkflowSlotV2 } from "../../../types-v2.ts";
 import { assetByAssetId, selectedAssetForSlot, workingVersionForSlot } from "../../../workflow-v2/selectors.ts";
+import { slotWithRuntimeAssetPointers } from "../v2/region/v2RuntimeSlotOverlay.ts";
 
 export type V2RegionPreviewSlot = {
   slot: WorkflowSlotV2;
@@ -46,10 +47,12 @@ export function buildV2RegionPreviewModel({
   const previewItems = renderableItems.map((item) => {
     const renderableSlots = slotsByItemId.get(item.item_id) ?? [];
     const previewSlots = renderableSlots.map((slot) => {
-      const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtime?.slot_runtime?.[slot.slot_id]?.status ?? slot.status;
+      const runtimeSlot = runtime?.slot_runtime?.[slot.slot_id];
+      const displaySlot = slotWithRuntimeAssetPointers(slot, runtimeSlot);
+      const runtimeStatus = slotRuntimeStatusById[slot.slot_id] ?? runtimeSlot?.status ?? slot.status;
       return {
-        slot,
-        asset: selectedAssetForSlot(slot, assets) ?? workingVersionForSlot(slot, assets),
+        slot: displaySlot,
+        asset: workingVersionForSlot(displaySlot, assets) ?? selectedAssetForSlot(displaySlot, assets),
         runtimeStatus,
       };
     });

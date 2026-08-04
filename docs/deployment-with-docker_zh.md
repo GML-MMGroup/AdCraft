@@ -35,7 +35,7 @@
 4. 等待启动器检查系统、准备运行环境、构建 AdCraft 并启动 Web 与 API 服务。首次运行通常比之后运行更久。
 5. 成功后，打开打印出的 `http://127.0.0.1:<port>` URL。启动器通常会自动打开浏览器；若没有，请在同一台计算机的浏览器中粘贴显示的 URL。
 
-预期结果：两个服务均变为健康状态，AdCraft 在本机打开。Docker Desktop 必须处于 **Linux containers** 模式。部署者负责确认并遵守适用的 Docker Desktop 许可条款。
+预期结果：Agent、API 和 Web 均变为健康状态，AdCraft 在本机打开。Docker Desktop 必须处于 **Linux containers** 模式。部署者负责确认并遵守适用的 Docker Desktop 许可条款。
 
 ## 在 Linux 上部署
 
@@ -66,8 +66,9 @@ Docker 部署只发布一个本机网页端口，后端 API 保留在 Docker 内
 
 ### 本部署会创建什么
 
-Docker 会运行两个服务：
+Docker 会运行三个服务：
 
+- `agent`：内部 Agent Runtime，不会发布到本机或网络。
 - `api`：后端，仅在 Docker 内部网络中提供服务。
 - `web`：浏览器界面，只发布到 `127.0.0.1`。
 
@@ -149,9 +150,10 @@ if not exist runtime-data\deployment.env (
   >>runtime-data\deployment.env echo ADCRAFT_UID=0
   >>runtime-data\deployment.env echo ADCRAFT_GID=0
 )
+powershell -NoProfile -Command "$p='runtime-data\deployment.env'; if (-not (Select-String -Quiet -Path $p -Pattern '^ADCRAFT_AGENT_RUNTIME_TOKEN=')) { $b=New-Object byte[] 32; $r=[Security.Cryptography.RandomNumberGenerator]::Create(); try { $r.GetBytes($b) } finally { $r.Dispose() }; [IO.File]::AppendAllText($p, 'ADCRAFT_AGENT_RUNTIME_TOKEN='+(-join ($b | ForEach-Object { $_.ToString('x2') }))+[Environment]::NewLine) }"
 ```
 
-最后三条命令会创建 `runtime-data/deployment.env`，其中保存端口和 Windows 容器用户设置。若选择的不是 `8080`，请在运行前将三条命令中第一条的 `8080` 改为所选端口。
+这些命令会创建 `runtime-data/deployment.env`，其中保存端口、Windows 容器用户设置和私有的 Agent Runtime 内部令牌。若选择的不是 `8080`，请在运行前将第一条命令中的 `8080` 改为所选端口。请保持该文件私密。
 
 ### Linux 终端
 
@@ -164,8 +166,11 @@ mkdir -p runtime-data/api
 chmod 700 runtime-data runtime-data/api
 if [ ! -f runtime-data/deployment.env ]; then
   printf 'ADCRAFT_PORT=8080\nADCRAFT_UID=%s\nADCRAFT_GID=%s\n' "$(id -u)" "$(id -g)" > runtime-data/deployment.env
-  chmod 600 runtime-data/deployment.env
 fi
+if ! grep -q '^ADCRAFT_AGENT_RUNTIME_TOKEN=' runtime-data/deployment.env; then
+  printf 'ADCRAFT_AGENT_RUNTIME_TOKEN=%s\n' "$(od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]')" >> runtime-data/deployment.env
+fi
+chmod 600 runtime-data/deployment.env
 ```
 
 若选择其他端口，请在运行前将 `ADCRAFT_PORT=8080` 改为所选端口。不要用任一 `.env.example` 覆盖已存在的 `.env` 文件。
@@ -234,7 +239,7 @@ Linux 终端：
 sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps
 ```
 
-请等待 `api` 和 `web` 都显示为 `healthy`。首次启动时，API 会先变为健康状态，之后 Web 才启动。
+请等待 `agent`、`api` 和 `web` 都显示为 `healthy`。首次启动时，Agent Runtime 先就绪，之后是 API，再启动 Web。
 
 ### 7. 打开 AdCraft 并添加 API 密钥
 
@@ -253,7 +258,7 @@ http://127.0.0.1:8080
 | 操作 | Windows 命令提示符 | Linux 终端 |
 | --- | --- | --- |
 | 查看状态 | `docker compose --env-file runtime-data\deployment.env -f compose.yaml ps` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml ps` |
-| 查看近期日志 | `docker compose --env-file runtime-data\deployment.env -f compose.yaml logs --tail=100 api web` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml logs --tail=100 api web` |
+| 查看近期日志 | `docker compose --env-file runtime-data\deployment.env -f compose.yaml logs --tail=100 agent api web` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml logs --tail=100 agent api web` |
 | 替换项目代码后重新构建 | `docker compose --env-file runtime-data\deployment.env -f compose.yaml up -d --build --remove-orphans` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml up -d --build --remove-orphans` |
 | 停止容器但保留数据 | `docker compose --env-file runtime-data\deployment.env -f compose.yaml down` | `sudo docker compose --env-file runtime-data/deployment.env -f compose.yaml down` |
 
@@ -267,7 +272,7 @@ http://127.0.0.1:8080
 | 找不到 `docker compose`。 | 按 Docker 官方教程安装或更新 Docker Compose 插件，然后重新打开终端。 |
 | 出现 `failed to fetch anonymous token`、`EOF`、DNS 或镜像仓库超时。 | 这是 Docker 网络/代理问题，不是 AdCraft API 密钥问题。修复 Docker Desktop 或 Linux Docker 的代理/DNS 路径，重启 Docker 后再重新构建。 |
 | 出现 `port is already allocated`。 | 停止占用所选端口的程序，或将 `runtime-data/deployment.env` 中的 `ADCRAFT_PORT` 改为 `8080` 到 `8179` 内另一个空闲端口，然后再次执行启动命令。 |
-| `api` 或 `web` 为 `exited` 或 `unhealthy`。 | 运行上表中的日志命令。分享日志时务必去除 API 密钥。修复最先报告的错误后，重新执行重新构建/启动命令。 |
+| `agent`、`api` 或 `web` 为 `exited` 或 `unhealthy`。 | 运行上表中的日志命令。分享日志时务必去除 API 密钥和 `runtime-data/deployment.env`。修复最先报告的错误后，重新执行重新构建/启动命令。 |
 | 构建成功但浏览器仍显示旧页面。 | 强制刷新浏览器缓存，然后通过 `docker compose ... ps` 和日志确认新容器正在运行。 |
 
 该手动部署路径仍然只允许本机访问：Web 端口绑定到 `127.0.0.1`。除非已经单独设计认证、TLS、防火墙规则和数据保护方案，否则不要通过修改 Compose 配置将其暴露到网络。
@@ -288,7 +293,7 @@ http://127.0.0.1:8080
 | 要执行的操作 | Windows PowerShell | Linux 终端 | 预期结果 |
 | --- | --- | --- | --- |
 | 检查状态 | `.\\scripts\\status-windows.ps1` | `bash scripts/status-linux.sh` | 显示本地 URL、API 健康状态和 Web 健康状态。 |
-| 查看近期日志 | `.\\scripts\\logs-windows.ps1` | `bash scripts/logs-linux.sh` | 显示最多 100 行近期 API 与 Web 日志。不要发布含敏感信息的日志。 |
+| 查看近期日志 | `.\\scripts\\logs-windows.ps1` | `bash scripts/logs-linux.sh` | 显示最多 100 行近期 Agent、API 与 Web 日志。不要发布含敏感信息的日志。 |
 | 停止 AdCraft | `.\\scripts\\stop-windows.ps1` | `bash scripts/stop-linux.sh` | 停止容器，同时保留配置、运行数据、镜像和卷。 |
 | 再次启动，或替换项目文件后更新 | 右键 `scripts\\deploy-windows.cmd` 并选择 **Run as administrator** | `bash scripts/deploy-linux.sh` | 重用已保存的本地配置，并再次打印本地 URL。 |
 

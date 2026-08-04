@@ -156,6 +156,88 @@ class V2AssetStoreService:
             return WorkflowAssetVersionV2.model_validate(payload)
         return None
 
+    def asset_content_sha256(self, asset_id: str, version_id: str) -> str:
+        if self._sqlite_metadata_active():
+            version = self._repository.find_version(asset_id=asset_id, version_id=version_id)
+            if version is not None and version.sha256:
+                return _prefixed_sha256(version.sha256)
+        record = self.load_asset_version(asset_id, version_id)
+        if record is None:
+            raise V2PersistenceError(
+                "asset_version_not_found",
+                "Asset version was not found.",
+                stage="v2_asset_store",
+            )
+        stored_hash = _first_string(record.metadata, "content_sha256", "sha256")
+        if stored_hash:
+            return _prefixed_sha256(stored_hash)
+        path = validate_v2_data_path(
+            self._data_dir,
+            record.file_path,
+            operation="v2-asset-content-sha256",
+        )
+        if not path.is_file():
+            raise V2PersistenceError(
+                "asset_file_not_found",
+                "Asset version media file was not found.",
+                stage="v2_asset_store",
+            )
+        return f"sha256:{_sha256(path)}"
+
+    def list_asset_versions_for_slot(
+        self,
+        *,
+        workflow_id: str,
+        slot_id: str,
+    ) -> list[WorkflowAssetVersionV2]:
+        if self._sqlite_metadata_active():
+            return [
+                _workflow_asset_version_from_metadata(version.metadata)
+                for version in self._repository.list_versions_for_slot(
+                    workflow_id=workflow_id,
+                    slot_id=slot_id,
+                )
+            ]
+        metadata_root = self._asset_root / "metadata"
+        if not metadata_root.exists():
+            return []
+        records: list[WorkflowAssetVersionV2] = []
+        for path in sorted(metadata_root.glob("*/*.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("workflow_id") == workflow_id and payload.get("slot_id") == slot_id:
+                records.append(WorkflowAssetVersionV2.model_validate(payload))
+        return records
+
+    def mark_asset_version_unavailable(
+        self,
+        *,
+        asset_id: str,
+        version_id: str,
+        reason: str,
+    ) -> None:
+        if self._sqlite_metadata_active():
+            self._repository.mark_version_unavailable(
+                asset_id=asset_id,
+                version_id=version_id,
+                reason=reason,
+            )
+            return
+        record = self.load_asset_version(asset_id, version_id)
+        if record is None:
+            return
+        self.save_asset_version(
+            record.model_copy(
+                update={
+                    "metadata": {
+                        **record.metadata,
+                        "availability_status": "unavailable",
+                        "unavailable_reason": reason,
+                    }
+                },
+                deep=True,
+            )
+        )
+
     def asset_exists(self, asset_id: str) -> bool:
         if self._sqlite_metadata_active():
             record = self.find_asset_version(asset_id=asset_id)
@@ -411,6 +493,11 @@ def _first_string(payload: dict[str, Any], *keys: str) -> str:
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return ""
+
+
+def _prefixed_sha256(value: str) -> str:
+    normalized = value.removeprefix("sha256:")
+    return f"sha256:{normalized}"
 
 
 def _external_file_path(data_dir: Path, asset_id: str, asset: dict[str, Any]) -> str:

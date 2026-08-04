@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import type { RouteName } from "../types";
-import { AssetsIcon, FolderIcon, HomeIcon, TrashIcon, TutorialIcon } from "../icons";
-import { useApp } from "../AppContextValue";
+import { AssetsIcon, FolderIcon, HomeIcon, MoonIcon, SunIcon, TrashIcon, TutorialIcon } from "../icons";
+import { useHealth } from "../app/useHealth";
+import { useTheme } from "../theme/useTheme";
+import "../styles/theme.css";
+import {
+  v2AuthoringConflictStore,
+  type V2AuthoringConflict,
+} from "../api/v2AuthoringConflictStore";
+import {
+  V2_AUTHORING_CONFLICT_RESOLVED_EVENT,
+  type V2AuthoringConflictResolution,
+} from "../api/v2AuthoringConflictEvents.ts";
 
 const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; icon: ReactNode }> = [
   { route: "home", label: "Home", icon: <HomeIcon /> },
@@ -14,13 +24,38 @@ const navItems: Array<{ route: Exclude<RouteName, "api-space">; label: string; i
 
 interface LayoutProps {
   children: ReactNode;
+  workflowControls?: ReactNode;
 }
 
-export function Layout({ children }: LayoutProps) {
+export function Layout({ children, workflowControls }: LayoutProps) {
   const [accountOpen, setAccountOpen] = useState(false);
-  const { apiOnline, apiMessage, storageWarning } = useApp();
+  const [authoringConflict, setAuthoringConflict] = useState<V2AuthoringConflict | null>(() => v2AuthoringConflictStore.current());
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+  const { apiOnline, apiMessage, storageWarning } = useHealth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const isWorkflowRoute = useMatch("/workflow/*") !== null;
+
+  useEffect(() => v2AuthoringConflictStore.subscribe(setAuthoringConflict), []);
+
+  async function resolveConflict(action: "retry" | "discard") {
+    if (!authoringConflict) return;
+    setResolvingConflict(true);
+    try {
+      await v2AuthoringConflictStore[action]();
+      const resolution: V2AuthoringConflictResolution = {
+        target: authoringConflict.target,
+        operationPath: authoringConflict.operationPath,
+        action,
+      };
+      window.dispatchEvent(new CustomEvent(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, {
+        detail: resolution,
+      }));
+    } finally {
+      setResolvingConflict(false);
+    }
+  }
 
   function closeAccountMenu() {
     setAccountOpen(false);
@@ -48,7 +83,10 @@ export function Layout({ children }: LayoutProps) {
         ))}
       </nav>
 
-      <div className="app-shell" id="app">
+      <div
+        className={`app-shell${isWorkflowRoute ? "" : " app-shell--cosmic"}`}
+        id="app"
+      >
         <header className="topbar">
           <Link className="brand" to="/" aria-label="AdCraft home" onClick={closeAccountMenu}>
             <picture className="brand-picture">
@@ -64,7 +102,24 @@ export function Layout({ children }: LayoutProps) {
               {storageWarning}
             </div>
           ) : null}
+          {authoringConflict ? (
+            <div className="authoring-conflict" role="alert">
+              <span>{authoringConflict.message} Keep the local draft, then retry or discard it.</span>
+              <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict("retry")}>Retry</button>
+              <button type="button" disabled={resolvingConflict} onClick={() => void resolveConflict("discard")}>Discard</button>
+            </div>
+          ) : null}
           <div className="top-actions">
+            {workflowControls}
+            <button
+              className="icon-btn theme-toggle"
+              type="button"
+              aria-label={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              title={theme === "light" ? "Switch to dark theme" : "Switch to light theme"}
+              onClick={toggleTheme}
+            >
+              {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            </button>
             <Link className="ghost-btn" to="/?guide=1" onClick={closeAccountMenu}>
               <TutorialIcon />
               <span>Tutorial</span>
@@ -91,6 +146,14 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
     </>
+  );
+}
+
+export function LayoutRoute() {
+  return (
+    <Layout>
+      <Outlet />
+    </Layout>
   );
 }
 

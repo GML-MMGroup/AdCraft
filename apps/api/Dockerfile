@@ -59,6 +59,7 @@ COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY app ./app
+COPY agent/video-skills ./agent/video-skills
 COPY scripts ./scripts
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini

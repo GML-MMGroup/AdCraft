@@ -5,6 +5,12 @@ from hashlib import sha1
 from typing import Any
 
 from app.core.config import Settings
+from app.schemas.agent_operation_contexts import (
+    FrozenPlanningFacts,
+    PlanningItemSummary,
+    PlanningReferenceSummary,
+    ScriptWriterAgentContext,
+)
 from app.schemas.workflow_v2 import WorkflowV2PlanFromPromptRequest
 from app.schemas.workflow_v2_planning import (
     V2ScriptCharacter,
@@ -18,18 +24,18 @@ from app.schemas.workflow_v2_screenplay import (
 )
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_screenplay_renderer import V2ScreenplayRenderer
-from app.services.v2_skill_context import V2SkillContext, V2SkillContextService
 from app.services.v2_script_writer_output import (
     script_writer_output_schema,
-    script_writer_system_prompt,
 )
 from app.services.v2_structured_generation_runtime import (
     StructuredGenerationRuntime,
     StructuredGenerationRuntimeError,
     StructuredGenerationSpec,
 )
-from app.services.v2_structured_llm import V2StructuredLLMClient, V2StructuredLLMError
+from app.services.v2_structured_generation_errors import V2StructuredLLMError
 from app.services.v2_generation_integrity import planning_constraints_from_metadata
+from app.services.v2_creative_inventory import creative_inventory_from_metadata
+from app.services.v2_pi_planning_session import V2PiPlanningSession
 from app.services.v2_versioning import V2_SCRIPT_WRITER_VERSION
 
 
@@ -53,15 +59,63 @@ class V2ScriptWriterQualityError(V2ScriptWriterError):
         self.repair_details = {"failures": failures}
 
 
+def _bounded_context_summary(value: dict[str, Any]) -> str:
+    return json.dumps(
+        sanitize_context_for_llm_text(value),
+        ensure_ascii=False,
+        sort_keys=True,
+    )[:16_384]
+
+
+def _planning_reference_summaries(
+    descriptors: list[dict[str, Any]],
+) -> tuple[PlanningReferenceSummary, ...]:
+    summaries: list[PlanningReferenceSummary] = []
+    for descriptor in descriptors:
+        asset_id = str(descriptor.get("asset_id") or "").strip()
+        semantic_type = str(descriptor.get("semantic_type") or "").strip()
+        if not asset_id or not semantic_type:
+            continue
+        media_type = descriptor.get("media_type")
+        summaries.append(
+            PlanningReferenceSummary(
+                asset_id=asset_id,
+                version_id=str(descriptor.get("version_id") or "") or None,
+                semantic_type=semantic_type,
+                display_name=str(descriptor.get("display_name") or ""),
+                media_type=(
+                    media_type if media_type in {"image", "video", "audio", "text"} else None
+                ),
+            )
+        )
+    return tuple(summaries)
+
+
+def _planning_item_inventory(
+    metadata: dict[str, Any],
+) -> tuple[PlanningItemSummary, ...]:
+    inventory = creative_inventory_from_metadata(metadata)
+    if inventory is None:
+        return ()
+    return tuple(
+        PlanningItemSummary(
+            item_id=item.item_id,
+            item_type=item_type,
+            display_name=item.display_name,
+        )
+        for item_type, items in (
+            ("product", inventory.products),
+            ("character", inventory.characters),
+            ("scene", inventory.scenes),
+        )
+        for item in items
+    )
+
+
 class V2ScriptWriterService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._skill_context = V2SkillContextService()
-        self._structured_llm = V2StructuredLLMClient(settings)
-        self._structured_runtime = StructuredGenerationRuntime(
-            settings=settings,
-            structured_llm=self._structured_llm,
-        )
+        self._structured_runtime = StructuredGenerationRuntime(settings=settings)
 
     def write_script(
         self,
@@ -71,24 +125,23 @@ class V2ScriptWriterService:
         input_asset_descriptors: list[dict[str, Any]],
         normalized_request: dict[str, Any] | None = None,
         force_mock: bool = False,
+        planning_session: V2PiPlanningSession | None = None,
+        frozen_facts: FrozenPlanningFacts | None = None,
     ) -> V2ScriptPlanV2:
         request_model = _coerce_request(request)
-        skill_context = self._skill_context.skill_context_for_script_writer()
         payload = self._build_llm_input(
             workflow_id=workflow_id,
             request=request_model,
             input_asset_descriptors=input_asset_descriptors,
             normalized_request=normalized_request,
-            skill_context=skill_context,
         )
-        if force_mock or self._settings.agno_mock_mode:
+        if force_mock or self._settings.agent_runtime_mode == "fake":
             return _with_script_writer_metadata(
                 _mock_script_plan(
                     workflow_id=workflow_id,
                     request=request_model,
                     input_asset_descriptors=payload["input_asset_descriptors"],
                 ),
-                skill_context,
             )
         if not self._settings.llm_api_key or not self._settings.llm_base_url:
             raise V2ScriptWriterError(
@@ -96,13 +149,39 @@ class V2ScriptWriterService:
                 "LLM API key and base URL are required for V2 Script Writer real mode.",
             )
         try:
+            invocation = (
+                planning_session.child(
+                    agent_name="script_writer",
+                    operation="script_writer",
+                    logical_key="script",
+                )
+                if planning_session
+                else None
+            )
+            agent_context = (
+                ScriptWriterAgentContext(
+                    context_kind="script_writer",
+                    user_input=request_model.prompt,
+                    workflow_id=planning_session.workflow_id,
+                    frozen_facts=frozen_facts or FrozenPlanningFacts(),
+                    reference_summaries=_planning_reference_summaries(
+                        payload["input_asset_descriptors"]
+                    ),
+                    ad_request_summary=_bounded_context_summary(payload),
+                    item_inventory=_planning_item_inventory(request_model.metadata),
+                )
+                if planning_session
+                else None
+            )
             spec = StructuredGenerationSpec[V2ScriptPlanV2](
                 stage_name="script_writer",
                 contract_name="V2ScriptPlanV2",
                 model_id=self._settings.llm_script_model,
-                system_prompt=script_writer_system_prompt(),
+                system_prompt="",
                 input_payload=payload,
                 output_model=V2ScriptPlanV2,
+                invocation=invocation,
+                agent_context=agent_context,
                 quality_validator=lambda plan: _validate_script_plan_quality(
                     _render_screenplay(plan),
                     request_model,
@@ -125,7 +204,6 @@ class V2ScriptWriterService:
                 quality_notes.append("script_writer_fallback_used")
             return _with_script_writer_metadata(
                 result.output,
-                skill_context,
                 quality_notes=quality_notes,
                 warnings=result.warnings,
             )
@@ -143,7 +221,6 @@ class V2ScriptWriterService:
         original_error_code: str,
     ) -> V2ScriptPlanV2:
         request_model = _coerce_request(request)
-        skill_context = self._skill_context.skill_context_for_script_writer()
         error = V2StructuredLLMError(
             original_error_code,
             "Script reconciliation required deterministic fallback.",
@@ -158,7 +235,6 @@ class V2ScriptWriterService:
         _validate_script_plan_quality(plan, request_model)
         return _with_script_writer_metadata(
             plan,
-            skill_context,
             quality_notes=["script_writer_fallback_used"],
             warnings=[
                 {
@@ -176,32 +252,29 @@ class V2ScriptWriterService:
         workflow_id: str,
     ) -> V2EditableScriptDocument:
         current_document = _editable_document_from_script(selected_script)
-        if self._settings.agno_mock_mode:
+        if self._settings.agent_runtime_mode == "fake":
             payload = current_document.model_dump(mode="python")
             payload["scenes"][0]["shots"][0]["description"] = instruction
             return V2EditableScriptDocument.model_validate(payload)
         try:
-            result = self._structured_llm.generate(
-                model_id=self._settings.llm_script_model,
-                system_prompt=(
-                    "Normalize one user screenplay edit into a complete V2EditableScriptDocument. "
-                    "Preserve every unchanged canonical ID and structure. Use client_key only for new "
-                    "entities. Do not return script_text, markdown, explanations, workflow metadata, "
-                    "provider payloads, or media data."
-                ),
-                user_payload={
-                    "workflow_id": workflow_id,
-                    "selected_script_version_id": selected_script.script_version_id,
-                    "instruction": instruction,
-                    "current_document": current_document.model_dump(mode="json"),
-                },
-                output_model=V2EditableScriptDocument,
-                contract_name="V2EditableScriptDocument",
-                temperature=0.2,
-                repair_on_failure=True,
-                stage_name="script_edit_normalization",
+            result = self._structured_runtime.run(
+                StructuredGenerationSpec[V2EditableScriptDocument](
+                    stage_name="script_edit_normalization",
+                    contract_name="V2EditableScriptDocument",
+                    model_id=self._settings.llm_script_model,
+                    system_prompt="",
+                    input_payload={
+                        "workflow_id": workflow_id,
+                        "selected_script_version_id": selected_script.script_version_id,
+                        "instruction": instruction,
+                        "current_document": current_document.model_dump(mode="json"),
+                    },
+                    output_model=V2EditableScriptDocument,
+                    trace_metadata={"workflow_id": workflow_id},
+                    temperature=0.2,
+                )
             )
-            return V2EditableScriptDocument.model_validate(result.output)
+            return result.output
         except Exception as exc:
             raise V2ScriptWriterError(
                 "script_edit_normalization_failed",
@@ -215,7 +288,6 @@ class V2ScriptWriterService:
         request: WorkflowV2PlanFromPromptRequest,
         input_asset_descriptors: list[dict[str, Any]],
         normalized_request: dict[str, Any] | None,
-        skill_context: V2SkillContext,
     ) -> dict[str, Any]:
         payload = {
             "workflow_id": workflow_id,
@@ -227,13 +299,11 @@ class V2ScriptWriterService:
             "input_asset_descriptors": [
                 _lightweight_asset_descriptor(descriptor) for descriptor in input_asset_descriptors
             ],
-            "skill_context": skill_context.model_dump(mode="json"),
             "output_requirements": {
                 "script_plan_version": 2,
                 "must_include_scene_and_shot_structure": True,
                 "must_not_template_raw_prompt": True,
                 "must_not_include_media_bytes_or_data_urls": True,
-                "must_use_skill_context": skill_context.skill_ids,
                 "system_language": "English",
                 "user_visible_content_language": "May follow user prompt language",
                 "visual_style_contract": request.metadata.get("visual_style_contract", {}),
@@ -794,7 +864,6 @@ def _script_profile(request: WorkflowV2PlanFromPromptRequest) -> dict[str, str]:
 
 def _with_script_writer_metadata(
     plan: V2ScriptPlanV2,
-    skill_context: V2SkillContext,
     *,
     quality_notes: list[str] | None = None,
     warnings: list[dict[str, Any]] | None = None,
@@ -810,9 +879,9 @@ def _with_script_writer_metadata(
     merged_warnings = [*plan.warnings, *(warnings or [])]
     return plan.model_copy(
         update={
-            "selected_skill_ids": list(skill_context.skill_ids),
-            "selected_skill_paths": list(skill_context.source_paths),
-            "skill_context_warnings": list(skill_context.warnings),
+            "selected_skill_ids": [],
+            "selected_skill_paths": [],
+            "skill_context_warnings": [],
             "quality_notes": _dedupe_strings(merged_quality_notes),
             "materializer_version": V2_SCRIPT_WRITER_VERSION,
             "warnings": _dedupe_warnings(merged_warnings),

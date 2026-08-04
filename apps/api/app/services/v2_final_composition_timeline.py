@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from app.core.config import Settings
 from app.schemas.workflow_v2 import (
     V2ProviderResult,
+    V2FinalCompositionFingerprint,
     WorkflowAssetVersionV2,
     WorkflowItemV2,
     WorkflowSlotV2,
@@ -33,8 +34,11 @@ from app.schemas.workflow_v2 import (
     WorkflowV2TimelineUpdateRequest,
     WorkflowV2TimelineUpdateResponse,
 )
+from app.schemas.workflow_v2_composition import (
+    V2SimpleCompositionPlan,
+    WorkflowV2CompositionCapabilities,
+)
 from app.services.agent_trace import utc_now
-from app.services.media_paths import public_url_for_path
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.services.v2_final_composition_renderer import (
@@ -43,7 +47,16 @@ from app.services.v2_final_composition_renderer import (
     V2MediaProbe,
     V2MediaProbeResult,
 )
+from app.services.v2_final_composition_fingerprint import (
+    V2FinalCompositionFingerprintError,
+    V2FinalCompositionFingerprintService,
+)
+from app.services.v2_final_composition_publication import (
+    V2FinalCompositionPublicationError,
+    V2FinalCompositionPublicationService,
+)
 from app.services.v2_runtime_events import V2RuntimeEventService
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_workflow_assets import V2WorkflowAssetError, V2WorkflowAssetService
 from app.services.v2_workflow_authoring import create_workflow_authoring_runtime
 from app.schemas.workflow_v2_authoring import WorkflowRevisionChangeSource
@@ -88,6 +101,15 @@ class V2FinalCompositionTimelineService:
                 settings=renderer_settings,
             )
         )
+        self._simple_plan_service = V2SimpleCompositionPlanService(self._data_dir)
+        self._fingerprints = V2FinalCompositionFingerprintService(
+            self._data_dir,
+            settings,
+        )
+        self._publication = V2FinalCompositionPublicationService(
+            settings,
+            asset_store=self._asset_store,
+        )
 
     def get_timeline(self, workflow_id: str) -> WorkflowV2TimelineResponse:
         workflow, item, _slot, timeline, source = self.load_or_create_and_reconcile(workflow_id)
@@ -96,8 +118,10 @@ class V2FinalCompositionTimelineService:
     def load_or_create_and_reconcile(
         self,
         workflow_id: str,
+        *,
+        workflow_override: WorkflowV2 | None = None,
     ) -> tuple[WorkflowV2, WorkflowItemV2, WorkflowSlotV2, WorkflowV2Timeline, str]:
-        workflow = self._load_workflow(workflow_id)
+        workflow = workflow_override or self._load_workflow(workflow_id)
         item, slot = self._final_item_and_slot(workflow)
         saved = self._load_timeline(workflow_id)
         source_hash = self._source_selection_hash(workflow)
@@ -147,8 +171,9 @@ class V2FinalCompositionTimelineService:
         else:
             timeline = saved
         if self._project_compatibility_timeline(item, timeline):
-            workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
-            item, slot = self._final_item_and_slot(workflow)
+            if workflow_override is None:
+                workflow = self._commit_semantic_workflow(workflow, source="timeline_edit")
+                item, slot = self._final_item_and_slot(workflow)
         return workflow, item, slot, timeline, source
 
     def project_compatibility_timeline(
@@ -157,6 +182,69 @@ class V2FinalCompositionTimelineService:
         timeline: WorkflowV2Timeline,
     ) -> bool:
         return self._project_compatibility_timeline(item, timeline)
+
+    def select_published_result(
+        self,
+        *,
+        workflow: WorkflowV2,
+        item: WorkflowItemV2,
+        slot: WorkflowSlotV2,
+        record: WorkflowAssetVersionV2,
+        source_action: str,
+    ) -> WorkflowV2:
+        previous = (slot.selected_asset_id, slot.selected_version_id)
+        self._publication.apply_relations(
+            workflow=workflow,
+            item=item,
+            slot=slot,
+            record=record,
+            source_action=source_action,
+            select_result=True,
+        )
+        if previous == (slot.selected_asset_id, slot.selected_version_id):
+            return workflow
+        return self._commit_semantic_workflow(
+            workflow,
+            source="selected_version_change",
+        )
+
+    def reconcile_pending_publications(self, workflow_id: str) -> list[WorkflowAssetVersionV2]:
+        workflow = self._load_workflow(workflow_id)
+        item, slot = self._final_item_and_slot(workflow)
+        recovered = self._publication.reconcile_pending(
+            workflow=workflow,
+            item=item,
+            slot=slot,
+        )
+        changed = False
+        for record in recovered:
+            previous = (
+                slot.current_working_asset_id,
+                slot.current_working_version_id,
+                slot.selected_asset_id,
+                slot.selected_version_id,
+            )
+            self._publication.apply_relations(
+                workflow=workflow,
+                item=item,
+                slot=slot,
+                record=record,
+                source_action=str(record.metadata.get("source_action") or "editor_export"),
+                select_result=bool(record.metadata.get("select_result", True)),
+            )
+            current = (
+                slot.current_working_asset_id,
+                slot.current_working_version_id,
+                slot.selected_asset_id,
+                slot.selected_version_id,
+            )
+            changed = changed or current != previous
+        if changed:
+            self._commit_semantic_workflow(
+                workflow,
+                source="selected_version_change",
+            )
+        return recovered
 
     def save_timeline(
         self,
@@ -205,9 +293,25 @@ class V2FinalCompositionTimelineService:
         *,
         render_id: str | None = None,
         emit_lifecycle_events: bool = True,
+        simple_plan_override: V2SimpleCompositionPlan | None = None,
+        enforce_current_timeline_version: bool = True,
+        composition_fingerprint: V2FinalCompositionFingerprint | None = None,
+        source_action: str = "editor_export",
+        select_result: bool = True,
     ) -> WorkflowV2TimelineRenderResponse:
-        workflow, item, slot, timeline, _source = self.load_or_create_and_reconcile(workflow_id)
-        if (
+        if simple_plan_override is not None and not enforce_current_timeline_version:
+            workflow = self._load_workflow(workflow_id)
+            item, slot = self._final_item_and_slot(workflow)
+            timeline = self._load_timeline(workflow_id)
+            if timeline is None:
+                raise V2FinalCompositionTimelineError(
+                    "v2_timeline_not_found",
+                    "The accepted Final Composition timeline is unavailable.",
+                    status_code=500,
+                )
+        else:
+            workflow, item, slot, timeline, _source = self.load_or_create_and_reconcile(workflow_id)
+        if enforce_current_timeline_version and (
             request.timeline_id != timeline.timeline_id
             or request.timeline_version != timeline.version
         ):
@@ -218,11 +322,48 @@ class V2FinalCompositionTimelineService:
             )
         self._validate_timeline(workflow_id, timeline)
         resolved_render_id = render_id or f"render_{uuid4().hex[:12]}"
+        simple_plan = simple_plan_override
+        if (
+            self._settings.final_composition_render_mode.strip().lower() == "simple_sequence"
+            and simple_plan is None
+        ):
+            simple_plan = self._simple_plan_service.build(workflow)
         provider_payload = self._provider_payload(
             timeline,
             request.render_settings.model_dump(mode="json"),
+            simple_plan=simple_plan,
         )
         provider_payload["render_id"] = resolved_render_id
+        provider_payload["accepted_timeline"] = {
+            "timeline_id": request.timeline_id,
+            "timeline_version": request.timeline_version,
+        }
+        if composition_fingerprint is None:
+            try:
+                composition_fingerprint = self._fingerprints.build_for_composition(
+                    workflow_id=workflow_id,
+                    slot_id=slot.slot_id,
+                    timeline=timeline,
+                    render_settings=request.render_settings,
+                    render_mode=self._settings.final_composition_render_mode.strip().lower(),
+                    audio_mode=workflow.audio_mode,
+                    simple_plan=simple_plan,
+                )
+            except V2FinalCompositionFingerprintError as exc:
+                raise V2FinalCompositionTimelineError(
+                    "v2_final_composition_fingerprint_invalid",
+                    str(exc),
+                    status_code=500,
+                ) from exc
+        provider_payload.update(
+            {
+                "composition_fingerprint": composition_fingerprint.fingerprint,
+                "fingerprint_contract_version": composition_fingerprint.contract_version,
+                "composition_fingerprint_payload": composition_fingerprint.canonical_payload,
+                "source_action": source_action,
+                "select_result": select_result,
+            }
+        )
         if emit_lifecycle_events:
             self._events.append_event(
                 workflow_id,
@@ -257,19 +398,52 @@ class V2FinalCompositionTimelineService:
                 "Timeline render did not create an output file.",
                 status_code=400,
             )
-        record = self._register_final_asset_version(
-            workflow,
-            item,
-            slot,
-            timeline,
-            resolved_render_id,
-            provider_payload,
-            result,
-        )
-        workflow = self._commit_semantic_workflow(
-            workflow,
-            source="selected_version_change",
-        )
+        workflow = self._load_workflow(workflow_id)
+        item, slot = self._final_item_and_slot(workflow)
+        try:
+            record = self._publication.publish(
+                workflow=workflow,
+                item=item,
+                slot=slot,
+                source_path=output_path,
+                composition_fingerprint=composition_fingerprint.fingerprint,
+                fingerprint_payload=composition_fingerprint.canonical_payload,
+                fingerprint_contract_version=composition_fingerprint.contract_version,
+                source_action=source_action,
+                select_result=select_result,
+                source_render_id=resolved_render_id,
+                provider_payload=provider_payload,
+                result_metadata=result.metadata,
+                reference_asset_ids=result.reference_asset_ids,
+            )
+            if select_result:
+                workflow = self.select_published_result(
+                    workflow=workflow,
+                    item=item,
+                    slot=slot,
+                    record=record,
+                    source_action=source_action,
+                )
+            else:
+                self._publication.apply_relations(
+                    workflow=workflow,
+                    item=item,
+                    slot=slot,
+                    record=record,
+                    source_action=source_action,
+                    select_result=False,
+                )
+        except V2FinalCompositionPublicationError as exc:
+            raise V2FinalCompositionTimelineError(
+                exc.code,
+                str(exc),
+                status_code=500,
+            ) from exc
+        if not select_result:
+            workflow = self._commit_semantic_workflow(
+                workflow,
+                source="selected_version_change",
+            )
         self._emit_render_completed(workflow, item, slot, timeline, resolved_render_id, record)
         return WorkflowV2TimelineRenderResponse(
             workflow_id=workflow_id,
@@ -294,7 +468,12 @@ class V2FinalCompositionTimelineService:
         if not result.local_file_path:
             return result
         target_relative = (
-            Path("v2") / "runs" / workflow_id / "composition" / render_id / "final-ad-video.mp4"
+            Path("v2")
+            / "runs"
+            / workflow_id
+            / "composition"
+            / render_id
+            / "final-ad-video.mp4.part"
         )
         if result.local_file_path == target_relative.as_posix():
             return result
@@ -809,7 +988,23 @@ class V2FinalCompositionTimelineService:
         self,
         timeline: WorkflowV2Timeline,
         render_settings: dict[str, Any],
+        *,
+        simple_plan: V2SimpleCompositionPlan | None,
     ) -> dict[str, Any]:
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        if mode == "simple_sequence":
+            if simple_plan is None:
+                raise V2FinalCompositionTimelineError(
+                    "v2_simple_composition_plan_invalid",
+                    "Simple Final Composition requires a valid immutable input plan.",
+                    status_code=500,
+                )
+            return {
+                "composition_tool": "local_composition_ffmpeg",
+                "simple_composition_plan": simple_plan.model_dump(mode="json"),
+                "render_mode": "simple_sequence",
+                "render_settings": dict(render_settings),
+            }
         track_order = {track.track_id: track.order for track in timeline.tracks}
         timeline_clips: list[dict[str, Any]] = []
         for index, clip in enumerate(
@@ -853,111 +1048,6 @@ class V2FinalCompositionTimelineService:
             },
             "bgm_asset_id": bgm_asset_id,
         }
-
-    def _register_final_asset_version(
-        self,
-        workflow: WorkflowV2,
-        item: WorkflowItemV2,
-        slot: WorkflowSlotV2,
-        timeline: WorkflowV2Timeline,
-        render_id: str,
-        provider_payload: dict[str, Any],
-        result: V2ProviderResult,
-    ) -> WorkflowAssetVersionV2:
-        previous_asset_id = slot.selected_asset_id
-        previous_version_id = slot.selected_version_id
-        asset_id = previous_asset_id or "asset_final_composition_1_final_video"
-        version_id = f"ver_{render_id}"
-        source_clip_ids = [clip.clip_id for clip in timeline.clips if clip.clip_type == "video"]
-        source_asset_ids = [
-            str(clip.source_asset_id) for clip in timeline.clips if clip.source_asset_id
-        ]
-        source_version_ids = [
-            str(clip.source_version_id) for clip in timeline.clips if clip.source_version_id
-        ]
-        metadata = {
-            **result.metadata,
-            "timeline_id": timeline.timeline_id,
-            "timeline_version": timeline.version,
-            "render_id": render_id,
-            "source_clip_ids": source_clip_ids,
-            "source_asset_ids": source_asset_ids,
-            "source_version_ids": source_version_ids,
-            "duration_seconds": timeline.duration_seconds,
-            "resolution": timeline.resolution,
-            "fps": timeline.fps,
-            "audio_mix_strategy": result.metadata.get("audio_mix_strategy"),
-            "render_output_path": result.local_file_path,
-            "renderer_render_mode": result.metadata.get("render_mode"),
-            "render_mode": "timeline_render",
-        }
-        record = self._asset_store.save_asset_version(
-            WorkflowAssetVersionV2(
-                asset_id=asset_id,
-                version_id=version_id,
-                media_type="video",
-                source_type="derived",
-                file_path=str(result.local_file_path),
-                public_url=public_url_for_path(result.local_file_path),
-                workflow_id=workflow.workflow_id,
-                node_id=FINAL_NODE_ID,
-                item_id=item.item_id,
-                slot_id=slot.slot_id,
-                semantic_type=FINAL_SLOT_TYPE,
-                provider_payload_snapshot=provider_payload,
-                reference_asset_ids=result.reference_asset_ids,
-                created_at=utc_now().isoformat(),
-                created_by="v2-final-composition-timeline",
-                metadata=metadata,
-            )
-        )
-        if previous_asset_id and previous_version_id:
-            slot.history_version_ids = list(
-                dict.fromkeys([*slot.history_version_ids, previous_version_id])
-            )
-            self._asset_store.create_relation(
-                relation_type="history_version_for_slot",
-                source_asset_id=previous_asset_id,
-                target_workflow_id=workflow.workflow_id,
-                target_node_id=slot.node_id,
-                target_item_id=slot.item_id,
-                target_slot_id=slot.slot_id,
-                metadata={"version_id": previous_version_id, "source_action": "timeline_render"},
-            )
-        self._asset_store.delete_slot_relations(
-            target_workflow_id=workflow.workflow_id,
-            target_slot_id=slot.slot_id,
-            relation_type="working_version_for_slot",
-        )
-        self._asset_store.delete_slot_relations(
-            target_workflow_id=workflow.workflow_id,
-            target_slot_id=slot.slot_id,
-            relation_type="selected_for_slot",
-        )
-        self._asset_store.create_relation(
-            relation_type="working_version_for_slot",
-            source_asset_id=record.asset_id,
-            target_workflow_id=workflow.workflow_id,
-            target_node_id=slot.node_id,
-            target_item_id=slot.item_id,
-            target_slot_id=slot.slot_id,
-            metadata={"version_id": record.version_id, "source_action": "timeline_render"},
-        )
-        self._asset_store.create_relation(
-            relation_type="selected_for_slot",
-            source_asset_id=record.asset_id,
-            target_workflow_id=workflow.workflow_id,
-            target_node_id=slot.node_id,
-            target_item_id=slot.item_id,
-            target_slot_id=slot.slot_id,
-            metadata={"version_id": record.version_id, "source_action": "timeline_render"},
-        )
-        slot.current_working_asset_id = record.asset_id
-        slot.current_working_version_id = record.version_id
-        slot.selected_asset_id = record.asset_id
-        slot.selected_version_id = record.version_id
-        slot.status = "completed"
-        return record
 
     def _emit_timeline_updated(
         self,
@@ -1089,6 +1179,17 @@ class V2FinalCompositionTimelineService:
             available_sources=self._available_sources(workflow),
             stale_clip_ids=self._stale_clip_ids(workflow, timeline),
             missing_source_clip_ids=self._missing_source_clip_ids(workflow.workflow_id, timeline),
+            composition_capabilities=self._composition_capabilities(),
+        )
+
+    def _composition_capabilities(self) -> WorkflowV2CompositionCapabilities:
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        timeline_controls = mode == "timeline_editor"
+        return WorkflowV2CompositionCapabilities(
+            render_mode=mode,  # type: ignore[arg-type]
+            supports_timeline_controls=timeline_controls,
+            supports_shot_reorder=timeline_controls,
+            supports_bgm_volume_edit=timeline_controls,
         )
 
     def _runtime_snapshot(self, workflow: WorkflowV2) -> WorkflowV2RuntimeSnapshot:

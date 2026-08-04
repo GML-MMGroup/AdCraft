@@ -12,7 +12,6 @@ import type {
   ResolvedNodeInputs,
   UploadedAsset,
   WorkflowGraph,
-  WorkflowEdge,
   WorkflowNode,
   WorkflowNodeVersion,
   WorkflowRunResponse,
@@ -40,8 +39,6 @@ export type SaveCanvasOptions = {
 export type WorkflowGraphMutationControllerArgs = {
   workflow: WorkflowGraph | null | undefined;
   workflowId: string;
-  demoNodes: WorkflowNode[];
-  demoEdges: WorkflowEdge[];
   canvasNodes: WorkflowNode[];
   flowNodes: CanvasNode[];
   flowEdges: CanvasEdge[];

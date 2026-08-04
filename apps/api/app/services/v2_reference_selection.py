@@ -153,7 +153,12 @@ class V2ReferenceSelectionService:
 
     def is_binding(self, workflow_id: str, binding_id: str) -> bool:
         binding = self._repository.get_binding(binding_id)
-        return binding is not None and binding.workflow_id == workflow_id
+        return (
+            binding is not None
+            and binding.workflow_id == workflow_id
+            and binding.binding_type == "reference_for_slot"
+            and binding.target_slot_id is not None
+        )
 
     def remove(
         self,

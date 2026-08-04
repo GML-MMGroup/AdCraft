@@ -799,6 +799,9 @@ export interface WorkflowEdge {
 
 export interface WorkflowGraph {
   workflow_id: string;
+  project_id?: string;
+  state_version?: number;
+  semantic_revision_no?: number;
   name?: string;
   description?: string;
   version?: number;

@@ -83,7 +83,7 @@ class V2ScriptShotV2(BaseModel):
     def validate_reference_union(self) -> "V2ScriptShotV2":
         expected_non_scene = list(dict.fromkeys([*self.product_ids, *self.character_ids]))
         actual_non_scene = [
-            item_id for item_id in self.reference_item_ids if not item_id.startswith("scene-")
+            item_id for item_id in self.reference_item_ids if item_id != self.scene_id
         ]
         if actual_non_scene != expected_non_scene:
             raise ValueError("reference_item_ids must equal the canonical reference union")

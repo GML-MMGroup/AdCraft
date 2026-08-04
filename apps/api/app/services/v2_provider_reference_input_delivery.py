@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import base64
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -12,12 +13,14 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_asset_library import AssetBindingV2, AssetVersionMetadataV2
+from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
 from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_data_boundary import validate_v2_relative_path
 
 PROVIDER_REFERENCE_ERROR_DELIVERY_FAILED = "v2_provider_reference_delivery_failed"
+CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE = "provider_reference_delivery_unavailable"
 PROVIDER_REFERENCE_ERROR_URL_INVALID = "v2_provider_reference_url_invalid"
 PROVIDER_REFERENCE_ERROR_FILE_MISSING = "v2_provider_reference_file_missing"
 PROVIDER_REFERENCE_ERROR_UNSUPPORTED = "v2_provider_reference_delivery_unsupported"
@@ -28,10 +31,38 @@ PROVIDER_REFERENCE_DELIVERY_MODES: dict[str, set[str]] = {
     "volcengine-seedream": {"provider_file_id", "provider_uploaded_url", "image_url", "data_url"},
     "real_image_provider": {"provider_file_id", "provider_uploaded_url", "image_url", "data_url"},
     "real-image-provider": {"provider_file_id", "provider_uploaded_url", "image_url", "data_url"},
-    "volcengine_seedance": {"provider_uploaded_url", "image_url", "data_url"},
-    "volcengine-seedance": {"provider_uploaded_url", "image_url", "data_url"},
-    "real_video_provider": {"provider_uploaded_url", "image_url", "data_url"},
-    "real-video-provider": {"provider_uploaded_url", "image_url", "data_url"},
+    "volcengine_seedance": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
+    "volcengine-seedance": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
+    "real_video_provider": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
+    "real-video-provider": {
+        "provider_file_id",
+        "provider_uploaded_url",
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+    },
     "dev_placeholder_image": {"image_url", "data_url"},
     "dev-placeholder-image": {"image_url", "data_url"},
     "dev_placeholder_video": {"image_url", "data_url"},
@@ -45,14 +76,25 @@ class V2DeliveredProviderReference(BaseModel):
     slot_id: str | None = None
     role: str | None = None
     semantic_type: str | None = None
+    binding_id: str | None = None
+    input_role: str | None = None
+    source_semantic_role: str | None = None
+    required: bool = True
+    display_order: int = Field(default=0, ge=0)
     media_type: str
     mime_type: str
     provider_input_type: Literal[
-        "image_url", "data_url", "provider_file_id", "provider_uploaded_url"
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+        "provider_file_id",
+        "provider_uploaded_url",
     ]
-    provider_input_value: str
+    provider_input_value: str = Field(exclude=True, repr=False)
     source: Literal["public_url", "local_file", "provider_upload"]
     delivery_status: Literal["ready"] = "ready"
+    checksum: str | None = None
     byte_count: int | None = None
 
     def provider_asset(self) -> dict[str, Any]:
@@ -62,6 +104,11 @@ class V2DeliveredProviderReference(BaseModel):
             "slot_id": self.slot_id,
             "role": self.role,
             "semantic_type": self.semantic_type,
+            "binding_id": self.binding_id,
+            "input_role": self.input_role,
+            "source_semantic_role": self.source_semantic_role,
+            "required": self.required,
+            "display_order": self.display_order,
             "media_type": self.media_type,
             "mime_type": self.mime_type,
             "model_input_type": self.provider_input_type,
@@ -70,6 +117,7 @@ class V2DeliveredProviderReference(BaseModel):
             "provider_input_value": self.provider_input_value,
             "source": self.source,
             "delivery_status": self.delivery_status,
+            "checksum": self.checksum,
             "byte_count": self.byte_count,
         }
 
@@ -89,6 +137,7 @@ class V2ProviderReferenceWireAudit(BaseModel):
 class V2ReferenceInputDeliveryFailure(BaseModel):
     asset_id: str
     slot_id: str
+    binding_id: str | None = None
     code: str
     message: str
     reason: str
@@ -102,6 +151,7 @@ class V2DeliveredReferenceSet(BaseModel):
     requested_reference_asset_ids: list[str] = Field(default_factory=list)
     references: list[V2DeliveredProviderReference] = Field(default_factory=list)
     failures: list[V2ReferenceInputDeliveryFailure] = Field(default_factory=list)
+    omitted_optional_inputs: list[V2ReferenceInputDeliveryFailure] = Field(default_factory=list)
 
     @property
     def delivered_reference_asset_ids(self) -> list[str]:
@@ -128,14 +178,28 @@ class V2DeliveredReferenceSet(BaseModel):
                     "slot_id": reference.slot_id,
                     "role": reference.role,
                     "semantic_type": reference.semantic_type,
+                    "binding_id": reference.binding_id,
+                    "input_role": reference.input_role,
+                    "source_semantic_role": reference.source_semantic_role,
+                    "required": reference.required,
+                    "display_order": reference.display_order,
                     "provider_input_type": reference.provider_input_type,
                     "source": reference.source,
+                    "checksum": reference.checksum,
                     "byte_count": reference.byte_count,
                 }
                 for reference in self.references
             ],
             "omitted_payload": True,
             "warnings": [],
+            "omitted_optional_inputs": [
+                {
+                    "asset_id": failure.asset_id,
+                    "code": failure.code,
+                    "reason": failure.reason,
+                }
+                for failure in self.omitted_optional_inputs
+            ],
         }
 
     def provider_assets(self) -> list[dict[str, Any]]:
@@ -149,6 +213,16 @@ class V2DeliveredReferenceSet(BaseModel):
         raise V2ProviderReferenceDeliveryError(
             code=code,
             message=first.message,
+            failures=list(self.failures),
+            audit=self.audit,
+        )
+
+    def raise_for_canvas_failures(self) -> None:
+        if not self.failures:
+            return
+        raise V2ProviderReferenceDeliveryError(
+            code=CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE,
+            message="A required bound asset cannot be delivered to the provider.",
             failures=list(self.failures),
             audit=self.audit,
         )
@@ -244,6 +318,117 @@ class V2ProviderReferenceInputDeliveryService:
             requested_reference_asset_ids=requested,
             references=references,
             failures=failures,
+        )
+
+    def deliver_canvas_inputs(
+        self,
+        *,
+        provider: str,
+        inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+        target_media_type: str | None = None,
+        model_id: str | None = None,
+        capability_context: dict[str, object] | None = None,
+    ) -> V2DeliveredReferenceSet:
+        """Deliver explicit Canvas media bindings in persisted input order."""
+
+        del target_media_type, model_id, capability_context
+        delivery_modes = _delivery_modes_for_provider(provider)
+        references: list[V2DeliveredProviderReference] = []
+        failures: list[V2ReferenceInputDeliveryFailure] = []
+        optional_omissions: list[V2ReferenceInputDeliveryFailure] = []
+        for input_snapshot in sorted(
+            inputs,
+            key=lambda item: (item.display_order, item.binding_id or ""),
+        ):
+            version = self._asset_library.find_version(asset_id=input_snapshot.asset_id)
+            delivered = (
+                _canvas_delivery_failure(input_snapshot, "asset_metadata_missing")
+                if version is None
+                else self._deliver_canvas_version(input_snapshot, version, delivery_modes)
+            )
+            if isinstance(delivered, V2ReferenceInputDeliveryFailure):
+                (failures if input_snapshot.required else optional_omissions).append(delivered)
+                continue
+            references.append(delivered)
+        return V2DeliveredReferenceSet(
+            requested_reference_asset_ids=[item.asset_id for item in inputs],
+            references=references,
+            failures=failures,
+            omitted_optional_inputs=optional_omissions,
+        )
+
+    def _deliver_canvas_version(
+        self,
+        input_snapshot: ResolvedMediaInputSnapshotV2,
+        version: AssetVersionMetadataV2,
+        delivery_modes: set[str],
+    ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
+        metadata = version.metadata if isinstance(version.metadata, dict) else {}
+        provider_file_id = _first_mapping_string(
+            metadata, "provider_file_id", "file_id", "ark_file_id"
+        )
+        if provider_file_id and "provider_file_id" in delivery_modes:
+            return _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type="provider_file_id",
+                input_value=provider_file_id,
+                source="provider_upload",
+            )
+        provider_url = _first_mapping_string(
+            metadata,
+            "provider_uploaded_url",
+            "provider_url",
+            "ark_uploaded_url",
+            "uploaded_url",
+        )
+        if (
+            provider_url
+            and "provider_uploaded_url" in delivery_modes
+            and is_provider_compatible_public_url(provider_url)
+        ):
+            return _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type="provider_uploaded_url",
+                input_value=provider_url,
+                source="provider_upload",
+            )
+        public_url = (
+            _first_mapping_string(metadata, "public_url")
+            or input_snapshot.access_descriptor.media_url
+        )
+        url_input_type = f"{input_snapshot.media_type}_url"
+        if (
+            public_url
+            and url_input_type in delivery_modes
+            and is_provider_compatible_public_url(public_url)
+        ):
+            return _canvas_delivered(
+                input_snapshot,
+                version,
+                input_type=url_input_type,  # type: ignore[arg-type]
+                input_value=public_url,
+                source="public_url",
+            )
+        if input_snapshot.media_type != "image":
+            return _canvas_delivery_failure(input_snapshot, "media_requires_remote_transport")
+        if "data_url" not in delivery_modes:
+            return _canvas_delivery_failure(input_snapshot, "image_data_url_unsupported")
+        path = self._data_dir / version.storage_key
+        if not path.is_file():
+            return _canvas_delivery_failure(input_snapshot, "local_file_missing")
+        value = f"data:{version.mime_type};base64,{base64.b64encode(path.read_bytes()).decode()}"
+        byte_count = len(value.encode())
+        if byte_count > self._settings.v2_provider_reference_max_data_url_bytes:
+            return _canvas_delivery_failure(input_snapshot, "image_data_url_too_large")
+        return _canvas_delivered(
+            input_snapshot,
+            version,
+            input_type="data_url",
+            input_value=value,
+            source="local_file",
+            byte_count=byte_count,
         )
 
     def _reference_records_for_slot(
@@ -451,7 +636,14 @@ def is_provider_compatible_model_input(value: str) -> bool:
 def _delivered_reference(
     record: WorkflowAssetVersionV2,
     *,
-    input_type: Literal["image_url", "data_url", "provider_file_id", "provider_uploaded_url"],
+    input_type: Literal[
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+        "provider_file_id",
+        "provider_uploaded_url",
+    ],
     input_value: str,
     source: Literal["public_url", "local_file", "provider_upload"],
     byte_count: int | None = None,
@@ -467,8 +659,70 @@ def _delivered_reference(
         provider_input_type=input_type,
         provider_input_value=input_value,
         source=source,
+        checksum=str(record.metadata.get("checksum") or "") or None,
         byte_count=byte_count,
     )
+
+
+def _canvas_delivered(
+    input_snapshot: ResolvedMediaInputSnapshotV2,
+    version: AssetVersionMetadataV2,
+    *,
+    input_type: Literal[
+        "image_url",
+        "video_url",
+        "audio_url",
+        "data_url",
+        "provider_file_id",
+        "provider_uploaded_url",
+    ],
+    input_value: str,
+    source: Literal["public_url", "local_file", "provider_upload"],
+    byte_count: int | None = None,
+) -> V2DeliveredProviderReference:
+    return V2DeliveredProviderReference(
+        asset_id=input_snapshot.asset_id,
+        version_id=version.version_id,
+        slot_id=None,
+        role=input_snapshot.input_role,
+        semantic_type=None,
+        binding_id=input_snapshot.binding_id,
+        input_role=input_snapshot.input_role,
+        source_semantic_role=input_snapshot.source_semantic_role,
+        required=input_snapshot.required,
+        display_order=input_snapshot.display_order,
+        media_type=input_snapshot.media_type,
+        mime_type=version.mime_type,
+        provider_input_type=input_type,
+        provider_input_value=input_value,
+        source=source,
+        checksum=version.sha256,
+        byte_count=byte_count,
+    )
+
+
+def _canvas_delivery_failure(
+    input_snapshot: ResolvedMediaInputSnapshotV2,
+    reason: str,
+) -> V2ReferenceInputDeliveryFailure:
+    return V2ReferenceInputDeliveryFailure(
+        asset_id=input_snapshot.asset_id,
+        slot_id=input_snapshot.source_node_id or input_snapshot.asset_id,
+        binding_id=input_snapshot.binding_id,
+        code=CANVAS_PROVIDER_REFERENCE_DELIVERY_UNAVAILABLE,
+        message="Bound media cannot be delivered to the configured provider.",
+        reason=reason,
+        workflow_id=None,
+        node_id=input_snapshot.source_node_id,
+    )
+
+
+def _first_mapping_string(metadata: dict[str, object], *keys: str) -> str | None:
+    for key in keys:
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _failure(

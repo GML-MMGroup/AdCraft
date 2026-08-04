@@ -96,6 +96,7 @@ export function sameV2Slots(left: WorkflowSlotV2[] = [], right: WorkflowSlotV2[]
       slot.required === other.required &&
       slot.status === other.status &&
       slot.selected_asset_id === other.selected_asset_id &&
+      slot.selected_version_id === other.selected_version_id &&
       slot.current_working_asset_id === other.current_working_asset_id &&
       slot.current_working_version_id === other.current_working_version_id &&
       slot.slot_prompt === other.slot_prompt &&

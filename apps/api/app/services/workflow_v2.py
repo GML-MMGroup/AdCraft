@@ -14,6 +14,9 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.project_repository import ProjectRepository
+from app.persistence.v2_agent_conversation_repository import (
+    V2AgentConversationRepository,
+)
 from app.persistence.workflow_authoring_repository import WorkflowAuthoringRepository
 from app.schemas.ad_workflow import AdWorkflowGenerateRequest
 from app.schemas.front_desk import FrontDeskChatRequest, FrontDeskChatResponse
@@ -78,10 +81,22 @@ from app.schemas.workflow_v2_provider_results import (
     V2ProviderExecutionContext,
     V2ProviderResultManifest,
 )
+from app.schemas.v2_agent_conversations import (
+    V2AgentConversationCreate,
+    V2AgentMessageCreate,
+)
 from app.services.agent_trace import V2AgentTraceWriter, utc_now
 from app.services.front_desk import FrontDeskError, FrontDeskService
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_agent_router import V2AgentRouteError, V2AgentRouter
+from app.services.v2_agent_interaction_service import (
+    V2AgentInteractionError,
+    V2AgentInteractionService,
+)
+from app.services.v2_agent_target_resolver import (
+    V2AgentTargetResolutionError,
+    V2AgentTargetResolver,
+)
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_creative_inventory import (
     apply_creative_inventory_to_expert_brief_plan,
@@ -94,6 +109,9 @@ from app.services.v2_creative_inventory_reconciler import (
 )
 from app.services.v2_data_boundary import V2DataBoundaryError, validate_v2_relative_path
 from app.services.v2_execution_service import TERMINAL_EXECUTION_STATUSES, V2ExecutionService
+from app.services.v2_execution_result_publication import (
+    V2ExecutionResultPublicationService,
+)
 from app.services.v2_execution_recovery import V2ExecutionRecoveryService
 from app.services.v2_expert_brief_planner import (
     V2ExpertBriefPlanner,
@@ -119,6 +137,15 @@ from app.services.v2_intent_contract import (
     V2IntentValidator,
     validation_summary,
 )
+from app.services.v2_pi_planning_session import (
+    V2PiPlanningSession,
+    freeze_explicit_planning_facts,
+    merge_planning_degradation,
+)
+from app.services.v2_quick_media_agent_service import (
+    V2QuickMediaAgentError,
+    V2QuickMediaAgentService,
+)
 from app.services.v2_linked_context import V2LinkedContextSynchronizer
 from app.services.v2_provider_executor import V2ProviderExecutor
 from app.services.v2_provider_result_committer import (
@@ -139,6 +166,7 @@ from app.services.v2_script_plan_reconciler import reconcile_script_plan
 from app.services.v2_script_versions import V2ScriptVersionError, V2ScriptVersionService
 from app.services.v2_script_writer import V2ScriptWriterError, V2ScriptWriterService
 from app.services.v2_slot_scheduler import V2SlotScheduler
+from app.services.v2_simple_composition_plan import V2SimpleCompositionPlanService
 from app.services.v2_shot_reference_planner import (
     reference_dependency_slot_ids,
     resolve_storyboard_shot_references,
@@ -363,6 +391,7 @@ class _SchedulerRunResult:
     waiting_slot_ids: list[str] = field(default_factory=list)
     created_item_ids: list[str] = field(default_factory=list)
     created_slot_ids: list[str] = field(default_factory=list)
+    candidate_workflow: WorkflowV2 | None = field(default=None, repr=False)
 
 
 class WorkflowV2Service:
@@ -407,11 +436,13 @@ class WorkflowV2Service:
         self._storyboard_director = V2StoryboardDirector(settings)
         self._final_composition = V2FinalCompositionService()
         self._agent_router = V2AgentRouter()
+        self._agent_target_resolver = V2AgentTargetResolver(settings)
         self._provider_executor = V2ProviderExecutor(
             settings=settings,
             data_dir=self._data_dir,
         )
         self._execution_service = V2ExecutionService(self._data_dir)
+        self._execution_result_publication = V2ExecutionResultPublicationService(self._data_dir)
         self._execution_recovery = V2ExecutionRecoveryService(
             self._data_dir,
             stale_running_timeout_seconds=settings.v2_stale_running_timeout_seconds,
@@ -431,6 +462,10 @@ class WorkflowV2Service:
         self._slot_scheduler = V2SlotScheduler(
             asset_exists=self._asset_store.asset_exists,
             shot_reference_resolver=V2ShotReferenceResolver(self._data_dir),
+            simple_composition_plan_service=V2SimpleCompositionPlanService(
+                self._data_dir,
+                asset_store=self._asset_store,
+            ),
         )
         self._execution_context = threading.local()
         self._event_context = threading.local()
@@ -444,12 +479,20 @@ class WorkflowV2Service:
             provider_executor=self._provider_executor,
             task_store=self._provider_task_store,
         )
+        self._agent_interaction = V2AgentInteractionService(
+            settings,
+            domain=self,
+            target_resolver=self._agent_target_resolver,
+            conversation_context_source=V2AgentConversationRepository(self._authoring_database),
+        )
+        self._quick_media_agent = V2QuickMediaAgentService(settings)
 
     def plan_from_prompt(
         self,
         request: WorkflowV2PlanFromPromptRequest,
         *,
         planning_seed: V2FrontDeskPlanningSeed | None = None,
+        planning_session: V2PiPlanningSession | None = None,
     ) -> WorkflowV2 | WorkflowV2PlanningClarificationResponse:
         self._asset_store.ensure_directories()
         normalized_request = (
@@ -457,7 +500,10 @@ class WorkflowV2Service:
             if isinstance(request.metadata.get("front_desk_ad_request"), dict)
             else None
         )
-        workflow_id = f"adwf_v2_{uuid4().hex[:12]}"
+        workflow_id = (
+            planning_session.workflow_id if planning_session else f"adwf_v2_{uuid4().hex[:12]}"
+        )
+        planning_session = planning_session or V2PiPlanningSession.start(workflow_id=workflow_id)
         input_assets = self._resolve_input_asset_locators(request.input_asset_locators)
         if not request.product_name and any(
             record.semantic_type == "product_reference" for record in input_assets
@@ -467,10 +513,13 @@ class WorkflowV2Service:
             request,
             normalized_request=normalized_request,
         )
+        frozen_facts = freeze_explicit_planning_facts(explicit_constraints)
         planner_kwargs: dict[str, Any] = {
             "normalized_request": normalized_request,
             "explicit_constraints": explicit_constraints,
             "workflow_id_seed": workflow_id,
+            "planning_session": planning_session,
+            "frozen_facts": frozen_facts,
         }
         if planning_seed is not None:
             planner_kwargs["planning_seed"] = planning_seed
@@ -503,6 +552,7 @@ class WorkflowV2Service:
                 )
             raise WorkflowV2Error(exc.code, str(exc), details=details) from exc
 
+        explicit_constraints = intent_outcome.explicit_constraints
         try:
             reconciliation = self._creative_inventory_reconciler.reconcile(
                 request,
@@ -633,6 +683,8 @@ class WorkflowV2Service:
                 workflow_id=workflow_id,
                 input_asset_descriptors=input_asset_descriptors,
                 normalized_request=planning_normalized_request,
+                planning_session=planning_session,
+                frozen_facts=frozen_facts,
             )
         except V2ScriptWriterError as exc:
             raise WorkflowV2Error(exc.code, str(exc)) from exc
@@ -725,16 +777,16 @@ class WorkflowV2Service:
         degraded_metadata: dict[str, Any] = {}
         if script_reconciliation.audit.fallback_used:
             degraded_metadata = {
-                "planning_degraded": True,
                 "fallback_stage": "script_writer",
                 "original_error_code": script_reconciliation.audit.original_error_code,
-                "repaired_violation_codes": list(
-                    dict.fromkeys(
-                        [
-                            *repaired_validation_codes,
-                            *script_reconciliation.audit.repair_codes,
-                        ]
-                    )
+                **merge_planning_degradation(
+                    {},
+                    stage="script_writer",
+                    reason_codes=[script_reconciliation.audit.original_error_code],
+                    repaired_violation_codes=[
+                        *repaired_validation_codes,
+                        *script_reconciliation.audit.repair_codes,
+                    ],
                 ),
             }
         now = utc_now().isoformat()
@@ -801,6 +853,8 @@ class WorkflowV2Service:
                 input_asset_descriptors=input_asset_descriptors,
                 normalized_request=planning_normalized_request,
                 specialist_handoffs=specialist_handoffs,
+                planning_session=planning_session,
+                frozen_facts=frozen_facts,
             )
         except V2ExpertBriefPlannerError as exc:
             raise WorkflowV2Error(exc.code, str(exc)) from exc
@@ -870,6 +924,10 @@ class WorkflowV2Service:
             script_reconciliation=script_reconciliation.audit.model_dump(mode="json"),
         )
         planner_warnings = _planner_warnings(expert_brief_plan)
+        expert_degraded_metadata = _expert_degraded_metadata(
+            expert_brief_plan,
+            current_metadata=workflow.metadata,
+        )
         workflow = workflow.model_copy(
             update={
                 "nodes": self._planner.build_default_nodes(
@@ -884,6 +942,7 @@ class WorkflowV2Service:
                     "expert_brief_plan": expert_brief_plan.model_dump(mode="json"),
                     "specialist_quality_audit": dict(expert_brief_plan.specialist_quality_audit),
                     "planner_warnings": planner_warnings,
+                    **expert_degraded_metadata,
                     **intent_metadata,
                 },
                 "updated_at": utc_now().isoformat(),
@@ -952,10 +1011,22 @@ class WorkflowV2Service:
     ) -> WorkflowV2PlanFromChatResponse:
         service = front_desk_service or FrontDeskService(self._settings)
         v2_chat_request = request.model_copy(update={"workflow_schema_version": 2})
+        planning_session = V2PiPlanningSession.start(workflow_id=f"adwf_v2_{uuid4().hex[:12]}")
         try:
-            front_desk = service.chat(v2_chat_request)
+            front_desk = (
+                service.chat(
+                    v2_chat_request,
+                    planning_session=planning_session,
+                )
+                if front_desk_service is None
+                else service.chat(v2_chat_request)
+            )
         except FrontDeskError as exc:
-            raise WorkflowV2Error("front_desk_failed", str(exc)) from exc
+            raise WorkflowV2Error(
+                exc.code,
+                str(exc),
+                details={"retryable": exc.retryable},
+            ) from exc
         except Exception as exc:
             raise WorkflowV2Error("front_desk_failed", str(exc)) from exc
 
@@ -978,7 +1049,11 @@ class WorkflowV2Service:
             v2_request,
             planning_seed=planning_seed,
         )
-        workflow = self.plan_from_prompt(v2_request, planning_seed=planning_seed)
+        workflow = self.plan_from_prompt(
+            v2_request,
+            planning_seed=planning_seed,
+            planning_session=planning_session,
+        )
         if isinstance(workflow, WorkflowV2PlanningClarificationResponse):
             return WorkflowV2PlanFromChatResponse(
                 front_desk=_front_desk_clarification_response(front_desk, workflow),
@@ -990,11 +1065,60 @@ class WorkflowV2Service:
                 details=workflow.details,
                 suggested_actions=workflow.suggested_actions,
             )
+        self._bind_planning_conversation(workflow.workflow_id, v2_chat_request)
         return WorkflowV2PlanFromChatResponse(
             front_desk=front_desk,
             workflow=workflow,
             project_id=workflow.project_id,
             normalized_v2_request=normalized_v2_request,
+        )
+
+    def _bind_planning_conversation(
+        self,
+        workflow_id: str,
+        request: FrontDeskChatRequest,
+    ) -> None:
+        conversation_id = request.metadata.get("conversation_id")
+        if not isinstance(conversation_id, str) or not conversation_id.strip():
+            return
+        conversation_id = conversation_id.strip()
+        request_id = request.metadata.get("request_id")
+        safe_request_id = (
+            request_id.strip()
+            if isinstance(request_id, str) and request_id.strip()
+            else uuid4().hex
+        )
+        repository = V2AgentConversationRepository(self._authoring_database)
+        conversation = repository.create_conversation(
+            V2AgentConversationCreate(
+                conversation_id=conversation_id,
+                workflow_id=workflow_id,
+                title="Planning conversation",
+            )
+        )
+        message = repository.append_message(
+            V2AgentMessageCreate(
+                message_id=f"message_plan_{safe_request_id[:120]}",
+                conversation_id=conversation.conversation_id,
+                role="user",
+                content=request.message,
+            )
+        )
+        self._append_event(
+            workflow_id,
+            "agent_conversation_created",
+            payload={"conversation_id": conversation.conversation_id},
+        )
+        self._append_event(
+            workflow_id,
+            "agent_message_created",
+            payload={
+                "conversation_id": conversation.conversation_id,
+                "message_id": message.message_id,
+                "role": "user",
+                "sequence_no": message.sequence_no,
+                "source": "plan_from_chat",
+            },
         )
 
     def _append_planning_trace(
@@ -1459,6 +1583,7 @@ class WorkflowV2Service:
                 waiting_slot_ids=result.waiting_slot_ids,
                 failed_slot_ids=result.failed_slot_ids,
             )
+            terminal_candidate_workflow = workflow.model_copy(deep=True)
             workflow = self._persist_operational_workflow(workflow)
             final_state = (
                 self._sync_execution_state_from_workflow(
@@ -1475,9 +1600,11 @@ class WorkflowV2Service:
                     },
                     status_override=execution_status,
                     clear_terminal_active=False,
+                    terminal_candidate_workflow=terminal_candidate_workflow,
                 )
                 or state
             )
+            workflow = self.get_workflow(workflow_id)
             self._write_execution_record(
                 workflow_id,
                 mode=source_action,
@@ -1598,6 +1725,9 @@ class WorkflowV2Service:
             "created_at": now,
             "updated_at": now,
             "events_cursor": self._runtime_events.events_cursor(workflow.workflow_id),
+            "authoring_base_state_version": workflow.state_version,
+            "authoring_base_revision_no": workflow.semantic_revision_no,
+            "pending_selections": {},
             "metadata": {
                 "shot_reference_selections": _execution_shot_reference_selections(workflow),
             },
@@ -2030,6 +2160,19 @@ class WorkflowV2Service:
             source_action="slot_generate",
         )
 
+    def generate_agent_candidate(
+        self,
+        workflow_id: str,
+        slot_id: str,
+    ) -> WorkflowV2RunResponse:
+        return self._run_single_slot(
+            workflow_id,
+            slot_id,
+            mode="slot_generate",
+            source_action="chat_revise_and_generate",
+            preflight_source_action="slot_generate",
+        )
+
     def regenerate_slot(self, workflow_id: str, slot_id: str) -> WorkflowV2RunResponse:
         return self._run_single_slot(
             workflow_id,
@@ -2045,10 +2188,11 @@ class WorkflowV2Service:
         *,
         mode: str,
         source_action: str,
+        preflight_source_action: str | None = None,
     ) -> WorkflowV2RunResponse:
         workflow = self._preflight_visual_style_scope(
             workflow_id,
-            source=source_action,  # type: ignore[arg-type]
+            source=preflight_source_action or source_action,  # type: ignore[arg-type]
         )
         target = self._find_slot(workflow, slot_id)
         if target is None:
@@ -2390,6 +2534,13 @@ class WorkflowV2Service:
         workflow = self.get_workflow(workflow_id)
         if request.target.target_type == "node" and request.target.node_id == "script":
             return self._chat_script_action(workflow, request)
+        if request.target.target_type != "free_node" and not (
+            request.target.locator and request.target.locator.startswith("free_node:")
+        ):
+            try:
+                return self._agent_interaction.execute_chat_action(workflow_id, request)
+            except V2AgentInteractionError as exc:
+                raise WorkflowV2Error(exc.code, str(exc)) from exc
         action_mode = _resolve_chat_action_mode(request)
         if action_mode == "clarification_required":
             raise WorkflowV2Error(
@@ -2555,6 +2706,74 @@ class WorkflowV2Service:
         )
         return response
 
+    def apply_agent_prompt_revision(
+        self,
+        workflow_id: str,
+        slot_id: str,
+        *,
+        revised_prompt: str,
+        negative_prompt: str | None,
+        expected_revision: int,
+    ) -> WorkflowV2:
+        workflow = self.get_workflow(workflow_id)
+        if workflow.state_version != expected_revision:
+            raise WorkflowV2Error(
+                "workflow_state_conflict",
+                "The workflow changed before this Agent action could be applied.",
+            )
+        slot = self._find_slot(workflow, slot_id)
+        if slot is None:
+            raise WorkflowV2Error("slot_not_found")
+        slot.slot_prompt = revised_prompt
+        slot.user_prompt = revised_prompt
+        if negative_prompt is not None:
+            slot.negative_prompt = negative_prompt
+        slot.prompt_source = "user"
+        slot.manual_prompt_dirty = True
+        workflow = self._commit_semantic_workflow(workflow, source="prompt_edit")
+        self._append_event(
+            workflow_id,
+            "slot_prompt_updated",
+            node_id=slot.node_id,
+            item_id=slot.item_id,
+            slot_id=slot.slot_id,
+            payload={
+                "slot_prompt": revised_prompt,
+                "negative_prompt": negative_prompt,
+                "source_action": "agent_chat_action",
+            },
+        )
+        return workflow
+
+    def append_agent_interaction_event(
+        self,
+        workflow_id: str,
+        event_type: str,
+        *,
+        node_id: str,
+        item_id: str,
+        slot_id: str,
+        asset_id: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        self._append_event(
+            workflow_id,
+            event_type,
+            node_id=node_id,
+            item_id=item_id,
+            slot_id=slot_id,
+            asset_id=asset_id,
+            payload=payload or {},
+        )
+
+    def write_agent_interaction_audit(
+        self,
+        workflow_id: str,
+        action_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self._write_chat_action_audit(workflow_id, action_id, payload)
+
     def _chat_script_action(
         self,
         workflow: WorkflowV2,
@@ -2644,28 +2863,8 @@ class WorkflowV2Service:
         request: WorkflowV2ChatActionRequest,
     ) -> tuple[V2GenerationTarget, WorkflowItemV2 | None, WorkflowSlotV2 | None]:
         target = request.target
-        if target.locator:
+        if target.locator and target.locator.startswith("free_node:"):
             target = _target_from_locator(target.locator, target)
-        if target.target_type == "slot":
-            chat_request = WorkflowV2ChatTargetRequest(
-                target={
-                    "target_type": "slot",
-                    "workflow_id": workflow.workflow_id,
-                    "slot_id": target.slot_id,
-                },
-                instruction=request.message,
-            )
-            return self._resolve_chat_target(workflow, chat_request)
-        if target.target_type == "asset":
-            chat_request = WorkflowV2ChatTargetRequest(
-                target={
-                    "target_type": "asset",
-                    "workflow_id": workflow.workflow_id,
-                    "asset_id": target.asset_id,
-                },
-                instruction=request.message,
-            )
-            return self._resolve_chat_target(workflow, chat_request)
         if target.target_type == "free_node":
             if not target.node_id:
                 raise WorkflowV2Error("free_node_not_found")
@@ -2695,7 +2894,34 @@ class WorkflowV2Service:
                 item,
                 slot,
             )
-        raise WorkflowV2Error("target_type_not_supported")
+        try:
+            resolved = self._agent_target_resolver.resolve(
+                workflow.workflow_id,
+                target,
+            )
+        except V2AgentTargetResolutionError as exc:
+            raise WorkflowV2Error(exc.code, str(exc)) from exc
+        item = self._find_item(workflow, resolved.node_id, resolved.item_id)
+        slot = self._find_slot(workflow, resolved.slot_id)
+        if item is None or slot is None:
+            raise WorkflowV2Error("agent_target_not_found")
+        node = _node_by_id(workflow, resolved.node_id)
+        return (
+            V2GenerationTarget(
+                workflow_id=workflow.workflow_id,
+                target_type=resolved.target_type,
+                node_id=resolved.node_id,
+                node_type=node.node_type if node is not None else resolved.node_id,
+                item_id=resolved.item_id,
+                item_type=item.item_type,
+                slot_id=resolved.slot_id,
+                slot_type=resolved.slot_type,
+                asset_id=resolved.asset_id,
+                media_type=slot.media_type,
+            ),
+            item,
+            slot,
+        )
 
     def _write_chat_action_audit(
         self,
@@ -3065,7 +3291,20 @@ class WorkflowV2Service:
         slot = _slot_by_type(item, "free_output")
         if slot is None:
             raise WorkflowV2Error("slot_not_found")
+        try:
+            quick_media_plan = self._quick_media_agent.plan(
+                workflow_id=workflow_id,
+                node_id=node_id,
+                request=request,
+            )
+        except V2QuickMediaAgentError as exc:
+            raise WorkflowV2Error(exc.code, str(exc)) from exc
         slot.media_type = request.output_media_type
+        slot.slot_prompt = quick_media_plan.provider_prompt
+        slot.negative_prompt = quick_media_plan.negative_prompt
+        slot.prompt_source = "agent"
+        slot.manual_prompt_dirty = False
+        slot.metadata["quick_media_prompt_plan"] = quick_media_plan.model_dump(mode="json")
         executed_slot_ids: list[str] = []
         provider_calls: list[dict[str, Any]] = []
         slot_transitions: list[dict[str, Any]] = []
@@ -3456,7 +3695,9 @@ class WorkflowV2Service:
                 workflow,
                 updated_task,
             )
-            workflow = self._persist_operational_workflow(workflow)
+            workflow = self._persist_operational_workflow(
+                scheduler_result.candidate_workflow or workflow
+            )
         elif result.status == "waiting":
             self._append_provider_task_event(
                 workflow,
@@ -3480,7 +3721,9 @@ class WorkflowV2Service:
                 extra_completed_slot_ids=scheduler_result.executed_slot_ids,
                 extra_waiting_slot_ids=scheduler_result.waiting_slot_ids,
                 extra_failed_slot_ids=scheduler_result.failed_slot_ids,
+                terminal_candidate_workflow=scheduler_result.candidate_workflow,
             )
+            workflow = self.get_workflow(workflow_id)
         safe_result = result.model_copy(update={"asset_bytes": None})
         provider_call_summaries = _provider_call_summaries(scheduler_result.provider_calls)
         return V2ProviderTaskPollResponse(
@@ -3595,6 +3838,7 @@ class WorkflowV2Service:
                 workflow,
                 updated_task.execution_id,
                 extra_completed_slot_ids=scheduler_result.executed_slot_ids,
+                publish_terminal_results=False,
             )
         return result
 
@@ -3674,6 +3918,10 @@ class WorkflowV2Service:
                 committed_selection is not None
                 and committed_selection.selected_asset_id
                 and committed_selection.selected_version_id
+                and not self._execution_result_publication.uses_pending_publication(
+                    workflow.workflow_id,
+                    task.execution_id,
+                )
             ):
                 workflow = self._commit_semantic_workflow(
                     workflow,
@@ -3717,6 +3965,7 @@ class WorkflowV2Service:
                     workflow,
                     updated_task.execution_id,
                     extra_completed_slot_ids=scheduler_result.executed_slot_ids,
+                    publish_terminal_results=False,
                 )
             if updated_task.asset_id and updated_task.version_id:
                 self._provider_result_committer.mark_committed(
@@ -3830,6 +4079,7 @@ class WorkflowV2Service:
                 result.waiting_slot_ids.extend(scheduler_result.waiting_slot_ids)
                 result.failed_slot_ids.extend(scheduler_result.failed_slot_ids)
                 workflow = self.get_workflow(workflow_id)
+                candidate_workflow = scheduler_result.candidate_workflow
                 for completed_execution_id in {
                     task.execution_id for task in completed_tasks if task.execution_id
                 }:
@@ -3839,6 +4089,7 @@ class WorkflowV2Service:
                         extra_completed_slot_ids=scheduler_result.executed_slot_ids,
                         extra_waiting_slot_ids=scheduler_result.waiting_slot_ids,
                         extra_failed_slot_ids=scheduler_result.failed_slot_ids,
+                        terminal_candidate_workflow=candidate_workflow,
                     )
         finally:
             self._execution_context.execution_id = previous_execution_id
@@ -4200,12 +4451,17 @@ class WorkflowV2Service:
     ) -> _SchedulerRunResult:
         if not tasks:
             return _SchedulerRunResult()
+        source_task = tasks[0]
+        if source_task.execution_id:
+            workflow = self._execution_result_publication.apply_pending_selections(
+                workflow,
+                source_task.execution_id,
+            )
         result = self._run_missing_slot_scheduler(
             workflow,
             source_action="provider_task_resume",
             include_failed_slots=False,
         )
-        source_task = tasks[0]
         source_task_ids = [task.task_id for task in tasks]
         source_slot_ids = [task.slot_id for task in tasks]
         execution_status = _execution_status_from_slots(
@@ -4280,6 +4536,9 @@ class WorkflowV2Service:
             "slot_type": task.metadata.get("slot_type"),
             "media_type": task.metadata.get("media_type"),
             "provider_result_id": task.metadata.get("provider_result_id"),
+            "poll_count": task.poll_count,
+            "attempt_count": task.attempt_count,
+            "retry_count": task.retry_count,
         }
         if result is not None:
             payload.update(
@@ -4316,6 +4575,8 @@ class WorkflowV2Service:
         metadata_updates: dict[str, Any] | None = None,
         status_override: str | None = None,
         clear_terminal_active: bool = True,
+        publish_terminal_results: bool = True,
+        terminal_candidate_workflow: WorkflowV2 | None = None,
     ) -> dict[str, Any] | None:
         state = self._execution_service.load_state(workflow.workflow_id, execution_id)
         if state is None:
@@ -4344,6 +4605,39 @@ class WorkflowV2Service:
                 status = "completed"
         if status_override:
             status = status_override
+        if not publish_terminal_results and status in {"completed", "partial_failed"}:
+            status = "running"
+        if (
+            publish_terminal_results
+            and status in {"completed", "partial_failed"}
+            and self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            )
+        ):
+            runtime_source = terminal_candidate_workflow or workflow
+            workflow = self._execution_result_publication.publish_terminal(
+                workflow_id=workflow.workflow_id,
+                execution_id=execution_id,
+                candidate_workflow=runtime_source,
+            )
+            self._workflow_projection.save_operational_overlay(
+                runtime_source,
+                expected_revision_no=workflow.semantic_revision_no or 0,
+            )
+            workflow = self.get_workflow(workflow.workflow_id)
+            snapshot = self._runtime_events.runtime_snapshot(
+                workflow,
+                active_execution=state,
+                provider_tasks=self._provider_task_store.list_tasks(workflow.workflow_id),
+            )
+            state = (
+                self._execution_service.load_state(
+                    workflow.workflow_id,
+                    execution_id,
+                )
+                or state
+            )
         metadata = {
             **dict(state.get("metadata") or {}),
             **dict(metadata_updates or {}),
@@ -4501,6 +4795,7 @@ class WorkflowV2Service:
 
         current = self.get_workflow(workflow.workflow_id)
         changed = self._merge_uncommitted_scheduler_slot_results(workflow, current)
+        changed = self._merge_default_final_timeline(workflow, current) or changed
         for slot_id in dict.fromkeys(slot_ids):
             generated_slot = self._find_slot(workflow, slot_id)
             current_slot = self._find_slot(current, slot_id)
@@ -4527,6 +4822,35 @@ class WorkflowV2Service:
         self._refresh_workflow_state(current)
         self._commit_semantic_workflow(current, source=source)
         return self._persist_operational_workflow(current)
+
+    def _merge_default_final_timeline(
+        self,
+        generated_workflow: WorkflowV2,
+        current_workflow: WorkflowV2,
+    ) -> bool:
+        """Retain a newly built default timeline without replacing user authoring."""
+
+        generated_item = self._find_item(
+            generated_workflow,
+            "final-composition",
+            "final-composition-1",
+        )
+        current_item = self._find_item(
+            current_workflow,
+            "final-composition",
+            "final-composition-1",
+        )
+        if (
+            generated_item is None
+            or current_item is None
+            or not generated_item.timeline_clips
+            or current_item.timeline_clips
+        ):
+            return False
+        generated_copy = generated_item.model_copy(deep=True)
+        current_item.timeline_plan = generated_copy.timeline_plan
+        current_item.timeline_clips = generated_copy.timeline_clips
+        return True
 
     def _preflight_visual_style_scope(
         self,
@@ -4727,9 +5051,68 @@ class WorkflowV2Service:
                     continue
                 if submitted:
                     continue
+                settlement = self._slot_scheduler.final_input_settlement(workflow)
+                settled_blocked_input = False
+                for slot_id in settlement.permanently_blocked_slot_ids:
+                    slot = self._find_slot(workflow, slot_id)
+                    if slot is None or slot.status == "skipped":
+                        continue
+                    slot.metadata["skipped_reason"] = "upstream_dependency_failed"
+                    self._transition_slot(
+                        workflow,
+                        slot,
+                        "skipped",
+                        result.slot_transitions,
+                        event_type="slot_generation_skipped",
+                        payload={
+                            "status": "skipped",
+                            "skipped_reason": "upstream_dependency_failed",
+                            "slot_type": slot.slot_type,
+                            "media_type": slot.media_type,
+                        },
+                    )
+                    settled_blocked_input = True
+                if settled_blocked_input:
+                    continue
+                if settlement.settled and not settlement.usable_video_slot_ids:
+                    final_item = self._slot_scheduler.final_composition_item(workflow)
+                    final_slot = (
+                        next(
+                            (slot for slot in final_item.slots if is_final_composition_slot(slot)),
+                            None,
+                        )
+                        if final_item is not None
+                        else None
+                    )
+                    if final_slot is not None and final_slot.status not in {
+                        "completed",
+                        "failed",
+                        "skipped",
+                    }:
+                        final_slot.metadata["skipped_reason"] = "no_successful_video_segments"
+                        self._transition_slot(
+                            workflow,
+                            final_slot,
+                            "skipped",
+                            result.slot_transitions,
+                            event_type="slot_generation_skipped",
+                            payload={
+                                "status": "skipped",
+                                "skipped_reason": "no_successful_video_segments",
+                                "slot_type": final_slot.slot_type,
+                                "media_type": final_slot.media_type,
+                            },
+                        )
+                        continue
                 break
         self._refresh_workflow_state(workflow)
-        if result.executed_slot_ids:
+        if (
+            result.executed_slot_ids
+            and not self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            )
+        ):
             committed = self._commit_selected_slot_results(
                 workflow,
                 result.executed_slot_ids,
@@ -4749,6 +5132,7 @@ class WorkflowV2Service:
                 ]
             )
         )
+        result.candidate_workflow = workflow.model_copy(deep=True)
         return result
 
     def _drain_started_scheduler_futures(
@@ -4869,15 +5253,33 @@ class WorkflowV2Service:
                     "v2_provider_result_manifest_invalid",
                     "Provider result target no longer exists in the workflow.",
                 )
-            self._commit_slot_execution_result_locked(
-                current_workflow,
-                current_item,
-                current_slot,
-                execution_result,
-                scheduler_result,
-                source_action=source_action,
-                mark_manifest_committed=mark_manifest_committed,
-            )
+            try:
+                self._commit_slot_execution_result_locked(
+                    current_workflow,
+                    current_item,
+                    current_slot,
+                    execution_result,
+                    scheduler_result,
+                    source_action=source_action,
+                    mark_manifest_committed=mark_manifest_committed,
+                )
+            except V2GenerationPipelineError:
+                self._overwrite_workflow_model(workflow, current_workflow)
+                raise
+            execution_id = execution_result.job.execution_id
+            if (
+                execution_id
+                and execution_result.job.select_generated
+                and current_slot.selected_asset_id
+                and current_slot.selected_version_id
+            ):
+                self._execution_result_publication.record_pending_selection(
+                    current_workflow.workflow_id,
+                    execution_id,
+                    slot_id=current_slot.slot_id,
+                    asset_id=current_slot.selected_asset_id,
+                    version_id=current_slot.selected_version_id,
+                )
             self._overwrite_workflow_model(workflow, current_workflow)
 
     def _merge_uncommitted_scheduler_slot_results(
@@ -5256,9 +5658,13 @@ class WorkflowV2Service:
                 finally:
                     self._execution_context.execution_id = previous_execution_id
                 recovered_slot_ids.append(slot.slot_id)
-                recovered_slot_ids_by_execution.setdefault(manifest.execution_id, []).append(
-                    slot.slot_id
-                )
+                if self._execution_result_publication.uses_pending_publication(
+                    current_workflow.workflow_id,
+                    manifest.execution_id,
+                ):
+                    recovered_slot_ids_by_execution.setdefault(manifest.execution_id, []).append(
+                        slot.slot_id
+                    )
                 committed_manifest = self._provider_result_store.load_manifest(
                     workflow_id=manifest.workflow_id,
                     execution_id=manifest.execution_id,
@@ -5284,16 +5690,25 @@ class WorkflowV2Service:
                         },
                     )
             if recovered_slot_ids:
-                current_workflow = self._commit_selected_slot_results(
-                    current_workflow,
-                    recovered_slot_ids,
-                    source="execution_result",
-                )
                 for execution_id, completed_slot_ids in recovered_slot_ids_by_execution.items():
                     self._sync_execution_state_from_workflow(
                         current_workflow,
                         execution_id,
                         extra_completed_slot_ids=completed_slot_ids,
+                    )
+                unowned_slot_ids = [
+                    slot_id
+                    for slot_id in recovered_slot_ids
+                    if all(
+                        slot_id not in execution_slot_ids
+                        for execution_slot_ids in recovered_slot_ids_by_execution.values()
+                    )
+                ]
+                if unowned_slot_ids:
+                    current_workflow = self._commit_selected_slot_results(
+                        current_workflow,
+                        unowned_slot_ids,
+                        source="execution_result",
                     )
             self._overwrite_workflow_model(workflow, current_workflow)
         return recovered_slot_ids
@@ -5308,6 +5723,7 @@ class WorkflowV2Service:
         workflow: WorkflowV2,
         result: _SchedulerRunResult,
     ) -> None:
+        execution_id = getattr(self._execution_context, "execution_id", None)
         self._refresh_workflow_state(workflow)
         if self._visual_reference_bundles_complete(workflow):
             new_items, new_slots = self._ensure_storyboard_shots(workflow)
@@ -5322,7 +5738,14 @@ class WorkflowV2Service:
             selected_shot_slot_ids = [
                 slot.slot_id for _item, slot in self._selected_shot_video_slots(workflow)
             ]
-            if selected_shot_slot_ids and (final_slot is None or not final_slot.selected_asset_id):
+            if (
+                not self._execution_result_publication.uses_pending_publication(
+                    workflow.workflow_id,
+                    execution_id,
+                )
+                and selected_shot_slot_ids
+                and (final_slot is None or not final_slot.selected_asset_id)
+            ):
                 committed = self._commit_selected_slot_results(
                     workflow,
                     selected_shot_slot_ids,
@@ -5335,7 +5758,12 @@ class WorkflowV2Service:
             # The timeline renderer loads its source workflow through the
             # authoring read model. Persist a newly unlocked final-composition
             # item before the scheduler can submit its final-video slot.
-            if new_items or new_slots:
+            if (
+                new_items or new_slots
+            ) and not self._execution_result_publication.uses_pending_publication(
+                workflow.workflow_id,
+                execution_id,
+            ):
                 committed = self._commit_semantic_then_operational(
                     workflow,
                     source="structure_edit",
@@ -5536,7 +5964,10 @@ class WorkflowV2Service:
         if not execution_id:
             active = self._execution_service.load_active(workflow.workflow_id)
             execution_id = active.get("execution_id") if active else None
-        if execution_id:
+        if self._execution_result_publication.uses_pending_publication(
+            workflow.workflow_id,
+            str(execution_id) if execution_id else None,
+        ):
             self._execution_service.update_slot_runtime(
                 workflow.workflow_id,
                 str(execution_id),
@@ -5612,6 +6043,22 @@ class WorkflowV2Service:
         version_id: str,
         source_action: str,
     ) -> WorkflowAssetRelationV2:
+        execution_id = getattr(self._execution_context, "execution_id", None)
+        if execution_id:
+            self._execution_result_publication.record_pending_selection(
+                workflow.workflow_id,
+                str(execution_id),
+                slot_id=slot.slot_id,
+                asset_id=asset_id,
+                version_id=version_id,
+            )
+            working = self._asset_store.list_relations(
+                target_workflow_id=workflow.workflow_id,
+                target_slot_id=slot.slot_id,
+                relation_type="working_version_for_slot",
+            )
+            if working:
+                return working[-1]
         self._asset_store.delete_slot_relations(
             target_workflow_id=workflow.workflow_id,
             target_slot_id=slot.slot_id,
@@ -6775,6 +7222,33 @@ def _planner_warnings(expert_brief_plan: Any) -> list[dict[str, Any]]:
             }
         )
     return warnings
+
+
+def _expert_degraded_metadata(
+    expert_brief_plan: Any,
+    *,
+    current_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    expert_metadata = getattr(expert_brief_plan, "metadata", {}) or {}
+    if not expert_metadata.get("planning_degraded"):
+        return {}
+    return merge_planning_degradation(
+        current_metadata,
+        stage=(
+            str(current_metadata["fallback_stage"])
+            if current_metadata.get("fallback_stage")
+            else None
+        ),
+        stages=list(expert_metadata.get("degraded_stages") or []),
+        reason_codes=[
+            *(
+                [str(current_metadata["original_error_code"])]
+                if current_metadata.get("original_error_code")
+                else []
+            ),
+            *list(expert_metadata.get("degraded_reason_codes") or []),
+        ],
+    )
 
 
 def _normalized_v2_request_view(

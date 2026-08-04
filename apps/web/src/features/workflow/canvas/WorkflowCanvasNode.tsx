@@ -138,6 +138,13 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<CanvasNode>
   const nodeRunning = isNodeRunning(data.status);
   const entityAreaClassName = isCanvasEntityAreaNode(data.kind) ? " is-entity-area-node" : "";
   const v2RegionClassName = data.isV2Region ? " is-v2-region-node" : "";
+  const surfaceClassName = ["Image", "Video", "Preview"].includes(data.family)
+    ? " is-media-surface"
+    : data.family === "Audio"
+      ? " is-audio-surface"
+      : data.family === "Text"
+        ? " is-text-surface"
+        : "";
   const updateNodeInternals = useUpdateNodeInternals();
 
   useEffect(() => {
@@ -164,7 +171,15 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<CanvasNode>
   }, [data.isV2Region, id, updateNodeInternals]);
 
   return (
-    <div ref={cardRef} className={`workflow-card planned${entityAreaClassName}${v2RegionClassName} ${selected ? "is-selected" : ""} type-${statusClass(data.kind)} family-${data.family.toLowerCase()}`}>
+    <div ref={cardRef} className={`workflow-card planned${entityAreaClassName}${v2RegionClassName}${surfaceClassName} ${selected ? "is-selected" : ""} type-${statusClass(data.kind)} family-${data.family.toLowerCase()}`}>
+      {nodeTypeIcon ? (
+        <span className="workflow-node-type-marker" aria-label={`${nodeTypeIcon.label} node type`} title={`${nodeTypeIcon.label} node type`}>
+          <img src={nodeTypeIcon.src} alt="" />
+        </span>
+      ) : (
+        <span className={`workflow-node-type-marker workflow-node-type-fallback type-${accentType}`}>{data.category}</span>
+      )}
+      <span className="workflow-node-drag-rail" aria-hidden="true" />
       <div className="workflow-port-stack workflow-port-stack-left">
         {inputPorts.map((port) => (
           <div className="workflow-port-row input" key={port.id}>
@@ -180,27 +195,16 @@ export function WorkflowCanvasNode({ id, data, selected }: NodeProps<CanvasNode>
           </div>
         ))}
       </div>
-      <div className="workflow-card-identity">
-        <div className="workflow-card-top">
-          {nodeTypeIcon ? (
-            <span className="workflow-node-type-icon" aria-label={`${nodeTypeIcon.label} node type`} title={`${nodeTypeIcon.label} node type`}>
-              <img src={nodeTypeIcon.src} alt="" />
-            </span>
-          ) : (
-            <span className={`workflow-node-type-fallback type-${accentType}`}>{data.category}</span>
-          )}
+      <div className="workflow-card-surface">
+        <NodeCardPreview data={data} onOpenMedia={data.onOpenMedia} onSelectDynamicItem={data.onSelectDynamicItem} isRunning={nodeRunning} runningById={data.runningDynamicItemById} />
+        <div className="node-status-row">
+          {visibleNodeStatus(data.status) ? <span className={`status-pill ${visibleNodeStatus(data.status)}`}>{visibleNodeStatus(data.status)}</span> : null}
+          <NodeQualityBadge summary={data.qualitySummary} />
+          {data.candidateCount ? <span className="state-chip candidate">candidate {data.candidateCount}</span> : null}
+          {data.candidateWarningCount ? <span className="state-chip warning">review {data.candidateWarningCount}</span> : null}
+          {data.version ? <span className="state-chip">v{data.version}</span> : null}
+          {data.locked ? <span className="state-chip locked">lock</span> : null}
         </div>
-        <h3>{data.title}</h3>
-      </div>
-      <span className="workflow-card-identity-divider" aria-hidden="true" />
-      <NodeCardPreview data={data} onOpenMedia={data.onOpenMedia} onSelectDynamicItem={data.onSelectDynamicItem} isRunning={nodeRunning} runningById={data.runningDynamicItemById} />
-      <div className="node-status-row">
-        {visibleNodeStatus(data.status) ? <span className={`status-pill ${visibleNodeStatus(data.status)}`}>{visibleNodeStatus(data.status)}</span> : null}
-        <NodeQualityBadge summary={data.qualitySummary} />
-        {data.candidateCount ? <span className="state-chip candidate">candidate {data.candidateCount}</span> : null}
-        {data.candidateWarningCount ? <span className="state-chip warning">review {data.candidateWarningCount}</span> : null}
-        {data.version ? <span className="state-chip">v{data.version}</span> : null}
-        {data.locked ? <span className="state-chip locked">lock</span> : null}
       </div>
       <div className="workflow-port-stack workflow-port-stack-right">
         {outputPorts.map((port) => (

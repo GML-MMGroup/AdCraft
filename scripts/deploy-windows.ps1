@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 . (Join-Path $PSScriptRoot 'windows-common.ps1')
@@ -100,7 +100,7 @@ try {
     Invoke-AdCraftCompose @('build')
     Write-AdCraftInfo '启动 AdCraft……'
     Invoke-AdCraftCompose @('up','-d','--remove-orphans')
-    Write-AdCraftInfo '等待 Web/API 健康，最长 120 秒……'
+    Write-AdCraftInfo '等待 Agent/API/Web 健康，最长 120 秒……'
     Wait-AdCraftServices
     $url = Get-AdCraftUrl
     Write-AdCraftInfo "部署成功：$url"

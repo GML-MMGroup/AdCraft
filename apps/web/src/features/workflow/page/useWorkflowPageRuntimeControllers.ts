@@ -1,4 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { v2Api } from "../../../api/v2Client.ts";
+import { v2EtagStore } from "../../../api/v2EtagStore.ts";
 import { LOCAL_WORKFLOW_ID } from "./workflowSnapshotModel.ts";
 import { useCanvasRuntimeEventController } from "../runtime/useCanvasRuntimeEventController.ts";
 import { useV2RuntimeController } from "../runtime/useV2RuntimeController.ts";
@@ -14,10 +16,16 @@ import { finalCompositionErrorMessage } from "../runtime/workflowExecutionViewMo
 import { firstVisibleWorkflowNodeId, isUserVisibleWorkflowNode } from "../../../workflow/visibility.ts";
 import { mapWorkflowEdges, mapWorkflowNodes } from "../canvas/workflowCanvasModel.ts";
 import type { CanvasNode } from "../types.ts";
-
-// Adapter value bag used while the page model is being decomposed into stable controllers.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type WorkflowPageRuntimeControllersArgs = Record<string, any>;
+import type { WorkflowGraph } from "../../../types.ts";
+import { workflowV2ToWorkflowGraph } from "../../../workflow-v2/pageAdapter.ts";
+import {
+  createV2AuthoringRuntimeEventPolicy,
+  createWorkflowRevisionRefreshCoalescer,
+  shouldApplyRuntimeWorkflowRead,
+  shouldApplyWorkflowRevisionRead,
+} from "../runtime/v2AuthoringRuntimeEventPolicy.ts";
+import { dispatchWorkflowDocumentCommand } from "../state/workflowDocumentCommands.ts";
+import type { WorkflowPageRuntimeControllersArgs } from "./workflowPageContracts.ts";
 
 const ACTIVE_V2_EXECUTION_STATUSES = new Set(["queued", "running", "waiting", "pending", "processing", "in_progress"]);
 const TERMINAL_V2_EXECUTION_STATUSES = new Set(["completed", "complete", "success", "succeeded", "failed", "error", "cancelled", "canceled", "partial_failed", "timeout", "timed_out", "done", "finish", "finished"]);
@@ -42,81 +50,133 @@ function hasActiveV2Runtime(runtime: {
 }
 
 export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeControllersArgs) {
+  const argsRef = useRef(args);
+  argsRef.current = args;
+  const currentWorkflowRevisionRef = useRef<WorkflowGraph | null>(null);
+  if (
+    !currentWorkflowRevisionRef.current
+    || currentWorkflowRevisionRef.current.workflow_id !== args.workflow?.workflow_id
+    || shouldApplyRuntimeWorkflowRead(args.workflow, currentWorkflowRevisionRef.current)
+  ) {
+    currentWorkflowRevisionRef.current = args.workflow ?? null;
+  }
+  const applyWorkflowGraph = (graph: WorkflowGraph) => {
+    const currentArgs = argsRef.current;
+    currentArgs.document.setWorkflow(graph);
+    currentArgs.document.syncWorkflowAdRequest(graph);
+    currentArgs.document.setCanvasNodes(graph.nodes);
+    currentArgs.document.setWorkflowVariables(graph.variables ?? []);
+    currentArgs.document.setFlowNodes((current: CanvasNode[]) => {
+      const nextFlowNodes = mapWorkflowNodes(graph.nodes, currentArgs.document.nodeRunByType, current);
+      currentArgs.document.setFlowEdges(mapWorkflowEdges(graph.edges, nextFlowNodes));
+      return nextFlowNodes;
+    });
+    currentArgs.document.setSelectedNodeId((current: string | null) =>
+      current && graph.nodes.some((node) => node.id === current && isUserVisibleWorkflowNode(node))
+        ? current
+        : firstVisibleWorkflowNodeId(graph.nodes),
+    );
+    currentArgs.document.setSavedAt(graph.updated_at ?? new Date().toISOString());
+  };
+  const applyRuntimeWorkflowRead = async (
+    workflowId: string,
+    options: { captureValidatedEtag: boolean; reason: string },
+  ) => {
+    const baselineEtag = options.captureValidatedEtag
+      ? v2EtagStore.getWorkflow(workflowId)
+      : null;
+    const latest = await v2Api.workflowWithEtagWithoutCapture(workflowId);
+    const currentArgs = argsRef.current;
+    const shouldApply = options.captureValidatedEtag
+      ? shouldApplyWorkflowRevisionRead(latest.value, currentWorkflowRevisionRef.current, {
+          requestedWorkflowId: workflowId,
+          activeWorkflowId: currentArgs.canvasEvents.activeWorkflowIdRef.current,
+          baselineEtag,
+          currentEtag: v2EtagStore.getWorkflow(workflowId),
+        })
+      : shouldApplyWorkflowScopedResult(workflowId, currentArgs.canvasEvents.activeWorkflowIdRef.current)
+        && shouldApplyRuntimeWorkflowRead(latest.value, currentWorkflowRevisionRef.current);
+    if (!shouldApply) return;
+    const graph = workflowV2ToWorkflowGraph(latest.value);
+    currentWorkflowRevisionRef.current = graph;
+    applyWorkflowGraph(graph);
+    if (options.captureValidatedEtag && latest.etag) {
+      v2EtagStore.set("workflow", workflowId, latest.etag);
+    }
+    await currentArgs.canvasEvents.onRefreshV2AssetsAndRetryMissing(
+      workflowId,
+      options.reason,
+      latest.value,
+    );
+  };
+  const authoringWorkflowRefreshRef = useRef<ReturnType<typeof createWorkflowRevisionRefreshCoalescer> | null>(null);
+  if (!authoringWorkflowRefreshRef.current) {
+    authoringWorkflowRefreshRef.current = createWorkflowRevisionRefreshCoalescer(async (workflowId) => {
+      try {
+        await applyRuntimeWorkflowRead(workflowId, {
+          captureValidatedEtag: true,
+          reason: "workflow-revision-created",
+        });
+      } catch {
+        // Runtime recovery continues through future events and polling.
+      }
+    });
+  }
+  const runtimeWorkflowRefreshRef = useRef<ReturnType<typeof createWorkflowRevisionRefreshCoalescer> | null>(null);
+  if (!runtimeWorkflowRefreshRef.current) {
+    runtimeWorkflowRefreshRef.current = createWorkflowRevisionRefreshCoalescer(async (workflowId) => {
+      try {
+        await applyRuntimeWorkflowRead(workflowId, {
+          captureValidatedEtag: false,
+          reason: "runtime-synchronization",
+        });
+      } catch {
+        // Runtime recovery continues through future events and polling.
+      }
+    });
+  }
   const canvasRuntimeEvents = useCanvasRuntimeEventController({
     localWorkflowId: LOCAL_WORKFLOW_ID,
-    activeWorkflowIdRef: args.activeWorkflowIdRef,
-    selectedNodeIdRef: args.selectedNodeIdRef,
+    ...args.canvasEvents,
     getActiveConversationId: () => args.activeConversationId,
     getRevisionHistoryTarget: () => args.revisionHistoryTarget,
     getV2SlotVersionsById: () => args.v2SlotVersionsById,
     getActiveV2SlotId: () => args.v2SlotMicroEdit.state.openSlotId,
     getWorkflowV2: () => args.workflowV2Model.workflowV2,
-    currentWorkflowIsV2: args.currentWorkflowIsV2,
     v2Runtime: {
       syncSnapshot: async (requestWorkflowId: string) => {
-        await args.v2RuntimeRef.current?.syncSnapshot(requestWorkflowId);
+        await args.refs.v2Runtime.current?.syncSnapshot(requestWorkflowId);
       },
-      slotNodeId: (slotId: string) => args.v2RuntimeRef.current?.store.slotNodeIds[slotId] ?? null,
+      slotNodeId: (slotId: string) => args.refs.v2Runtime.current?.store.slotNodeIds[slotId] ?? null,
     },
-    setActiveExecutionId: args.setActiveExecutionId,
-    setExecutionPollingState: args.setExecutionPollingState,
-    setWorkflowRunning: args.setWorkflowRunning,
-    setStatus: args.setStatus,
-    setRunningNodeIds: args.setRunningNodeIds,
-    setMediaStatus: args.setMediaStatus,
-    setCanvasCandidateSummaryByNodeId: args.setCanvasCandidateSummaryByNodeId,
-    setLocalRevisionByKey: args.setLocalRevisionByKey,
-    setQualityOverrideRevisionId: args.setQualityOverrideRevisionId,
-    setV2ProviderTaskRefreshKeyBySlotId: args.setV2ProviderTaskRefreshKeyBySlotId,
-    setSelectedNodeRun: args.setSelectedNodeRun,
-    onApplySnapshotGraph: (graph) => {
-      args.setWorkflow(graph);
-      args.syncWorkflowAdRequest(graph);
-      args.setCanvasNodes(graph.nodes);
-      args.setWorkflowVariables(graph.variables ?? []);
-      args.setFlowNodes((current: CanvasNode[]) => {
-        const nextFlowNodes = mapWorkflowNodes(graph.nodes, args.nodeRunByType, current);
-        args.setFlowEdges(mapWorkflowEdges(graph.edges, nextFlowNodes));
-        return nextFlowNodes;
-      });
-      args.setSelectedNodeId((current: string | null) =>
-        current && graph.nodes.some((node) => node.id === current && isUserVisibleWorkflowNode(node))
-          ? current
-          : firstVisibleWorkflowNodeId(graph.nodes),
-      );
-      args.setSavedAt(graph.updated_at ?? new Date().toISOString());
-    },
-    onApplyMediaStatusToCanvas: args.applyMediaStatusToCanvas,
+    onApplySnapshotGraph: applyWorkflowGraph,
     onPatchNodeStatus: (nodeId, nextStatus) => {
       if (!nodeId || !nextStatus) return;
-      args.setCanvasNodes((current: Array<{ id: string; status?: string }>) => current.map((node) => (node.id === nodeId ? { ...node, status: nextStatus } : node)));
-      args.setFlowNodes((current: Array<{ id: string; data: Record<string, unknown> }>) => current.map((node) => (node.id === nodeId ? { ...node, data: { ...node.data, status: nextStatus } } : node)));
+      const currentArgs = argsRef.current;
+      dispatchWorkflowDocumentCommand(
+        {
+          setWorkflow: currentArgs.document.setWorkflow,
+          setCanvasNodes: currentArgs.document.setCanvasNodes,
+          setFlowNodes: currentArgs.document.setFlowNodes,
+        },
+        {
+          type: "patch-nodes",
+          nodeIds: [nodeId],
+          patch: { status: nextStatus },
+        },
+      );
     },
-    onApplyNodeRunsToCanvas: args.applyNodeRunsToCanvas,
-    onClearNodeDebugCache: args.clearNodeDebugCache,
-    onRefreshSelectedResolvedInputs: args.refreshSelectedResolvedInputs,
-    onRefreshWorkflowGraph: args.refreshWorkflowGraph,
-    onRefreshMediaStatus: args.refreshMediaStatus,
-    onRefreshV2WorkflowGraph: args.refreshV2WorkflowGraph,
-    onRefreshV2AssetsAndRetryMissing: args.refreshV2AssetsAndRetryMissing,
-    onLoadV2SlotVersions: (slotId) => args.v2SlotOperationsRef.current?.actions.loadV2SlotVersions(slotId),
-    onLoadLocalAssetHistory: (workflowId, nodeId, asset) => args.localRevisionOperationsRef.current?.actions.loadLocalAssetHistory(workflowId, nodeId, asset) ?? Promise.resolve(null),
-    onApplyLocalRevisionState: (key, revision) => args.localRevisionOperationsRef.current?.actions.applyLocalRevisionState(key, revision),
-    onUpdateLocalRevisionCardState: (key, patch) => args.localRevisionOperationsRef.current?.actions.updateLocalRevisionCardState(key, patch),
-    onNoteAffected: args.noteAffected,
-    onTimelineLoadStarted: args.timelineLoadStarted,
-    onTimelineLoadFailed: args.timelineLoadFailed,
-    onApplyFinalCompositionTimelineResponse: args.applyFinalCompositionTimelineResponse,
-    onMarkTimelineEventDirty: args.markTimelineEventDirty,
-    onTimelineRenderStarted: args.timelineRenderStarted,
-    onTimelineRenderFailed: args.timelineRenderFailed,
-    onTimelineRenderFinished: args.timelineRenderFinished,
+    onRefreshWorkflowGraph: (workflowId) => {
+      if (!argsRef.current.canvasEvents.currentWorkflowIsV2()) {
+        return argsRef.current.document.refreshWorkflowGraph(workflowId);
+      }
+      return runtimeWorkflowRefreshRef.current?.request(workflowId) ?? Promise.resolve();
+    },
+    onLoadV2SlotVersions: (slotId) => args.refs.v2SlotOperations.current?.actions.loadV2SlotVersions(slotId),
+    onLoadLocalAssetHistory: (workflowId, nodeId, asset) => args.refs.localRevisionOperations.current?.actions.loadLocalAssetHistory(workflowId, nodeId, asset) ?? Promise.resolve(null),
+    onApplyLocalRevisionState: (key, revision) => args.refs.localRevisionOperations.current?.actions.applyLocalRevisionState(key, revision),
+    onUpdateLocalRevisionCardState: (key, patch) => args.refs.localRevisionOperations.current?.actions.updateLocalRevisionCardState(key, patch),
     finalCompositionErrorMessage,
-    onAppendConversationEventForConversation: args.appendConversationEventForConversation,
-    onHandleAgentConversationEvents: args.handleAgentConversationEvents,
-    onHandleNodePromptUpdatedEvent: args.handleNodePromptUpdatedEvent,
-    onHandleItemPromptUpdatedEvent: args.handleItemPromptUpdatedEvent,
-    onHandleRevisionConversationEvent: args.handleRevisionConversationEvent,
   });
 
   const v2Runtime = useV2RuntimeController({
@@ -124,25 +184,35 @@ export function useWorkflowPageRuntimeControllers(args: WorkflowPageRuntimeContr
     runtime: args.workflowV2Model.workflowV2?.runtime,
     enabled: Boolean(args.workflowV2Model.isV2 && args.workflow?.workflow_id && args.workflow.workflow_id !== LOCAL_WORKFLOW_ID),
     onEvents: async (eventWorkflowId, events) => {
-      if (!shouldApplyWorkflowScopedResult(eventWorkflowId, args.activeWorkflowIdRef.current)) return;
+      if (!shouldApplyWorkflowScopedResult(eventWorkflowId, args.canvasEvents.activeWorkflowIdRef.current)) return;
+      const authoringRuntimeEventPolicy = createV2AuthoringRuntimeEventPolicy(events);
       canvasRuntimeEvents.actions.applyV2RuntimeEventsToPage(events);
-      await args.screenplayActionsRef.current?.handleRuntimeEvents(events);
+      if (authoringRuntimeEventPolicy.shouldRefreshAuthoringWorkflow) {
+        await authoringWorkflowRefreshRef.current?.request(eventWorkflowId);
+      } else if (authoringRuntimeEventPolicy.shouldRefreshRuntimeWorkflow) {
+        await runtimeWorkflowRefreshRef.current?.request(eventWorkflowId);
+      }
+      await args.refs.screenplayActions.current?.handleRuntimeEvents(events);
     },
     onSnapshot: (snapshotWorkflowId, runtime) => {
-      if (!shouldApplyWorkflowScopedResult(snapshotWorkflowId, args.activeWorkflowIdRef.current)) return;
+      if (!shouldApplyWorkflowScopedResult(snapshotWorkflowId, args.canvasEvents.activeWorkflowIdRef.current)) return;
       const hasActiveRuntime = hasActiveV2Runtime(runtime);
-      if (runtime.active_execution_id) args.setActiveExecutionId(runtime.active_execution_id);
-      args.setWorkflowRunning(hasActiveRuntime);
-      args.setExecutionPollingState(hasActiveRuntime ? "polling" : "idle");
+      if (runtime.active_execution_id) args.canvasEvents.setActiveExecutionId(runtime.active_execution_id);
+      args.canvasEvents.setWorkflowRunning(hasActiveRuntime);
+      args.canvasEvents.setExecutionPollingState(hasActiveRuntime ? "polling" : "idle");
     },
   });
-  args.v2RuntimeRef.current = v2Runtime;
+  args.refs.v2Runtime.current = v2Runtime;
 
   const v2ObservableRunActions = useV2ObservableRunActions({
     workflowId: args.workflowV2Model.isV2 ? args.workflow?.workflow_id : null,
     refreshRuntime: (requestWorkflowId) => v2Runtime.syncSnapshot(requestWorkflowId),
     refreshAssets: async (requestWorkflowId, response) => {
-      await args.refreshV2AssetsAndRetryMissing(requestWorkflowId, "run-started", response.workflow ?? args.workflowV2Model.workflowV2);
+      await args.canvasEvents.onRefreshV2AssetsAndRetryMissing(
+        requestWorkflowId,
+        "run-started",
+        response.workflow ?? args.workflowV2Model.workflowV2,
+      );
     },
     appendRuntimeEvent: (event) => canvasRuntimeEvents.actions.applyV2RuntimeEventsToPage([event]),
   });

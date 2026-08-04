@@ -8,6 +8,7 @@ apps/web/.vite/
 apps/web/coverage/
 
 # Frontend local docs, tests, and agent workspace files
+/docs/
 apps/web/.codex/
 apps/web/docs/
 apps/web/frontend
@@ -29,6 +30,7 @@ apps/*/.env.*
 # Python backend local runtime
 apps/api/.venv/
 apps/api/data/
+data/
 
 # Local caches and generated indexes
 .pytest_cache/
@@ -47,6 +49,7 @@ runtime-data/
 # Local agent, skill, planning, and code-intelligence artifacts
 .superpowers/
 .codex/
+openspec/
 docs/superpowers/
 .codegraph/
 apps/*/.codegraph/

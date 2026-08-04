@@ -10,14 +10,13 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import create_v2_database, resolve_v2_database_path
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.persistence.project_repository import ProjectRepository
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.persistence.schema import upgrade_v2_schema
-from app.persistence.workflow_authoring_repository import WorkflowAuthoringRepository
 from app.schemas.v2_persistence import PersistenceBootstrapState
 from app.services.v2_event_import import V2EventImportService
 from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
-from app.services.v2_workflow_authoring_import import WorkflowAuthoringImportService
-from app.services.v2_workflow_authoring_projector import WorkflowAuthoringProjector
+from app.services.v2_project_catalog_repair import V2ProjectCatalogRepairService
+from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 
 _LOCK_TIMEOUT_SECONDS = 5.0
 
@@ -54,34 +53,35 @@ class PersistenceBootstrapService:
             )
             schema_revision = upgrade_v2_schema(database)
             event_repository = EventRepository(database)
+            project_catalog_repair_report = V2ProjectCatalogRepairService(
+                database,
+                event_repository,
+            ).repair_if_required()
             report = V2EventImportService(
                 self._settings.media_data_dir,
                 event_repository,
             ).import_if_required()
-            project_repository = ProjectRepository(database)
-            authoring_repository = WorkflowAuthoringRepository(
-                database,
-                project_repository,
-                event_repository,
-            )
-            authoring_report = WorkflowAuthoringImportService(
-                self._settings.media_data_dir,
-                project_repository,
-                authoring_repository,
-                WorkflowAuthoringProjector(),
-            ).import_all()
             V2AssetMetadataImportService(
                 self._settings.media_data_dir,
                 V2AssetLibraryRepository(database),
                 event_repository,
             ).import_if_required()
+            ProviderModelBootstrapService(
+                self._settings,
+                ProviderModelRepository(database),
+            ).bootstrap(now=_utc_now())
             return PersistenceBootstrapState(
                 database_path=resolve_v2_database_path(self._settings.media_data_dir),
                 schema_revision=schema_revision,
                 database_backup_status=database_backup.status,
                 data_migration_name=report.migration_name,
-                workflow_imported_count=authoring_report.imported_count,
-                workflow_quarantined_count=authoring_report.quarantined_count,
+                project_catalog_repair_report=project_catalog_repair_report,
             )
         finally:
             database.dispose()
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()

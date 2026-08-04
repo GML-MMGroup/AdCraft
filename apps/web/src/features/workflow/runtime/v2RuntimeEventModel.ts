@@ -60,6 +60,7 @@ const V2_RUNTIME_REFRESH_EVENT_TYPES = new Set([
   "provider_execution_waiting",
   "provider_execution_completed",
   "provider_execution_failed",
+  ...V2_FINAL_RENDER_LIFECYCLE_EVENT_TYPES,
   ...V2_SLOT_OPERATION_REFRESH_EVENTS,
 ]);
 

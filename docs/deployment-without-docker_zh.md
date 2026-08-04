@@ -102,9 +102,9 @@ Linux 检查规则与 Windows 相同：Node 必须是 v22；FFmpeg 和 ffprobe �
 
 ## 第 2 步：一键启动 AdCraft
 
-首次启动会自动创建缺失的 .env、安装后端和前端依赖、启动两个服务，并在终端打印本地网页地址。不要关闭终端，直到看到“原生部署成功”。
+首次启动会自动创建缺失的 .env、安装后端、内部 Agent Runtime 和前端依赖、启动三个本地服务，并在终端打印本地网页地址。不要关闭终端，直到看到“原生部署成功”。
 
-启动过程会显示 [1/6] 到 [6/6] 的阶段。第 3/6、4/6 阶段会显示依赖下载和安装输出；第 5/6、6/6 阶段会持续显示转圈和已等待秒数。看到这些内容表示程序仍在工作。
+启动过程会显示 [1/8] 到 [8/8] 的阶段。第 3/8 到 5/8 阶段会显示依赖下载和安装输出；第 6/8 到 8/8 阶段会持续显示转圈和已等待秒数。看到这些内容表示程序仍在工作。
 
 ### Linux
 
@@ -130,6 +130,7 @@ Linux 检查规则与 Windows 相同：Node 必须是 v22；FFmpeg 和 ffprobe �
 默认地址：
 
     API:  http://127.0.0.1:8000
+    Agent Runtime: http://127.0.0.1:8765（内部服务；不要在浏览器打开或暴露它）
     网页: http://127.0.0.1:5189
 
 成功后浏览器通常会自动打开网页；若没有自动打开，请复制“网页”地址到同一台计算机的浏览器。进入网页后，在 API Space 中填写服务商 API 密钥。
@@ -140,11 +141,12 @@ Linux 检查规则与 Windows 相同：Node 必须是 v22；FFmpeg 和 ffprobe �
 
 Linux：
 
-    ADCRAFT_NATIVE_API_PORT=8001 ADCRAFT_NATIVE_WEB_PORT=5190 bash scripts/deploy-native-linux.sh
+    ADCRAFT_NATIVE_API_PORT=8001 ADCRAFT_NATIVE_AGENT_PORT=8766 ADCRAFT_NATIVE_WEB_PORT=5190 bash scripts/deploy-native-linux.sh
 
 Windows PowerShell：
 
     $env:ADCRAFT_NATIVE_API_PORT = '8001'
+    $env:ADCRAFT_NATIVE_AGENT_PORT = '8766'
     $env:ADCRAFT_NATIVE_WEB_PORT = '5190'
     .\scripts\deploy-native-windows.cmd
 
@@ -152,11 +154,11 @@ Windows PowerShell：
 
 ### AdCraft 已运行后更换端口
 
-前端启动时会读取后端 API 端口；后端启动时会读取可信网页来源。因此不要只修改一个正在运行的服务的端口。请设置两个所需端口变量后重新运行原生启动器；它只会停止自己启动的原生 API 和网页进程，再启动端口互相匹配的一对服务。它会保留 .env、runtime-data、.venv、node_modules 和已保存的 API 密钥。
+前端启动时会读取后端 API 端口；后端启动时会读取可信网页来源和 Agent Runtime 地址。因此不要只修改一个正在运行的服务的端口。请设置所需端口变量后重新运行原生启动器；它只会停止自己启动的原生进程，再启动端口互相匹配的 Agent/API/Web 服务组。它会保留 .env、runtime-data、.venv、node_modules 和已保存的 API 密钥。
 
 ## 一键启动失败时：手动分步启动
 
-以下步骤只在一键启动报错且需要定位问题时使用。不要在已经成功运行一键启动器的同时再执行这些命令。以下手动命令使用默认端口 8000 和 5189；需要更换端口时，请优先使用上面的一键启动命令，它会同时同步前端代理和凭据接口的本机来源限制。
+以下步骤只在一键启动报错且需要定位问题时使用。不要在已经成功运行一键启动器的同时再执行这些命令。以下手动命令使用 API 端口 8000、内部 Agent 端口 8765 和网页端口 5189；需要更换端口时，请优先使用上面的一键启动命令，它会同时同步前端代理、Agent Runtime 和凭据接口的本机来源限制。
 
 ### 1. 在 AdCraft 根目录创建本地配置
 
@@ -164,24 +166,46 @@ Linux：
 
     if [ ! -f apps/api/.env ]; then cp apps/api/.env.example apps/api/.env; chmod 600 apps/api/.env; fi
     if [ ! -f apps/web/.env ]; then cp apps/web/.env.example apps/web/.env; chmod 600 apps/web/.env; fi
-    mkdir -p runtime-data/api
-    chmod 700 runtime-data runtime-data/api
+    mkdir -p runtime-data/api runtime-data/native
+    chmod 700 runtime-data runtime-data/api runtime-data/native
+    umask 077; od -An -N32 -tx1 /dev/urandom | tr -d '[:space:]' > runtime-data/native/agent-runtime-token
 
 Windows PowerShell：
 
     if (-not (Test-Path apps/api/.env)) { Copy-Item apps/api/.env.example apps/api/.env }
     if (-not (Test-Path apps/web/.env)) { Copy-Item apps/web/.env.example apps/web/.env }
-    New-Item -ItemType Directory -Force runtime-data/api | Out-Null
+    New-Item -ItemType Directory -Force runtime-data/api, runtime-data/native | Out-Null
+    $bytes = New-Object byte[] 32; $rng = [Security.Cryptography.RandomNumberGenerator]::Create(); try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }; [IO.File]::WriteAllText('runtime-data\native\agent-runtime-token', (-join ($bytes | ForEach-Object { $_.ToString('x2') })), [Text.UTF8Encoding]::new($false))
 
 已有 .env 可能保存了 API 密钥，不要覆盖它。
 
-### 2. 在第一个终端启动后端
+### 2. 在第一个终端启动 Agent Runtime
+
+Linux：在 AdCraft 根目录执行：
+
+    cd apps/api/agent
+    npm ci --progress=true
+    TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
+    AGENT_RUNTIME_HOST=127.0.0.1 AGENT_RUNTIME_PORT=8765 AGENT_RUNTIME_PYTHON_BASE_URL=http://127.0.0.1:8000 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" node --import tsx src/main.ts
+
+Windows PowerShell：在 AdCraft 根目录执行：
+
+    Set-Location apps/api/agent
+    npm ci --progress=true
+    $token = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
+    $env:AGENT_RUNTIME_HOST = '127.0.0.1'; $env:AGENT_RUNTIME_PORT = '8765'; $env:AGENT_RUNTIME_PYTHON_BASE_URL = 'http://127.0.0.1:8000'; $env:AGENT_RUNTIME_INTERNAL_TOKEN = $token
+    node --import tsx src/main.ts
+
+保持第一个终端运行。
+
+### 3. 在第二个终端启动后端
 
 Linux：在 AdCraft 根目录执行：
 
     cd apps/api
     uv sync
-    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
+    TOKEN="$(cat ../../runtime-data/native/agent-runtime-token)"
+    MEDIA_DATA_DIR="$(cd ../.. && pwd)/runtime-data/api" FFMPEG_PATH="$(command -v ffmpeg)" FFPROBE_PATH="$(command -v ffprobe)" AGENT_RUNTIME_BASE_URL=http://127.0.0.1:8765 AGENT_RUNTIME_INTERNAL_TOKEN="$TOKEN" uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
 Windows PowerShell：在 AdCraft 根目录执行：
 
@@ -190,11 +214,13 @@ Windows PowerShell：在 AdCraft 根目录执行：
     $env:MEDIA_DATA_DIR = Join-Path (Resolve-Path ../..) 'runtime-data\api'
     $env:FFMPEG_PATH = (Get-Command ffmpeg).Source
     $env:FFPROBE_PATH = (Get-Command ffprobe).Source
+    $env:AGENT_RUNTIME_BASE_URL = 'http://127.0.0.1:8765'
+    $env:AGENT_RUNTIME_INTERNAL_TOKEN = (Get-Content ..\..\runtime-data\native\agent-runtime-token -Raw).Trim()
     uv run uvicorn main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
-保持第一个终端运行。浏览器打开 http://127.0.0.1:8000/api/v1/health；能看到正常响应后再继续。
+保持第二个终端运行。浏览器打开 http://127.0.0.1:8000/api/v1/health；能看到正常响应后再继续。
 
-### 3. 在第二个终端启动网页
+### 4. 在第三个终端启动网页
 
 重新打开一个终端，并先回到 AdCraft 根目录。
 

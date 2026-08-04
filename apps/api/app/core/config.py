@@ -76,13 +76,23 @@ def _read_csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
 class Settings:
     app_name: str = "AdCraft"
     app_version: str = "1.0.0"
-    agno_mock_mode: bool = False
     v2_production_acceptance_enabled: bool = False
     v2_prompt_materializer_strict: bool = False
     v2_provider_allow_fallback: bool = False
+    agent_runtime_mode: str = "real"
+    agent_runtime_base_url: str = "http://127.0.0.1:8765"
+    agent_runtime_internal_token: str | None = None
+    agent_runtime_protocol_version: str = "1"
+    agent_runtime_connect_timeout_seconds: float = 5.0
+    agent_runtime_read_timeout_seconds: float = 30.0
+    agent_runtime_run_timeout_seconds: float = 120.0
+    agent_runtime_max_event_bytes: int = 65_536
+    agent_runtime_max_stream_bytes: int = 1_048_576
     llm_provider: str = "OpenAI Compatible"
     llm_api_key: str | None = None
     llm_base_url: str | None = None
+    siliconflow_api_key: str | None = None
+    siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     llm_transient_retry_delay_seconds: float = 2.0
     llm_front_desk_model: str = "doubao-seed-2-0-mini-260428"
     llm_team_model: str = "doubao-seed-2-0-mini-260428"
@@ -125,6 +135,7 @@ class Settings:
     bgm_generation_version: str = "v5.0"
     bgm_model: str | None = "TemPolor i3"
     bgm_long_model: str | None = "TemPolor i3.5"
+    bgm_callback_mode: str = "auto"
     bgm_callback_base_url: str | None = None
     bgm_query_endpoint: str | None = None
     bgm_timeout_seconds: int = 60
@@ -135,6 +146,10 @@ class Settings:
     ffmpeg_path: str = "ffmpeg"
     ffprobe_path: str = "ffprobe"
     final_composition_subtitle_font_path: str | None = None
+    final_composition_render_mode: str = "simple_sequence"
+    final_composition_bgm_gain_db_with_source: float = -18.0
+    final_composition_bgm_gain_db_without_source: float = -10.0
+    final_composition_bgm_fade_out_seconds: float = 0.5
     ffmpeg_capability_timeout_seconds: int = 10
     ffmpeg_video_codec: str | None = None
     ffmpeg_allowed_video_encoders: str = "libx264,libopenh264"
@@ -148,6 +163,7 @@ class Settings:
     provider_failure_cooldown_threshold: int = 3
     provider_cooldown_seconds: int = 300
     v2_stale_running_timeout_seconds: int = 900
+    v2_require_authoring_if_match: bool = False
     v2_max_parallel_image_jobs: int = 4
     v2_max_parallel_video_jobs: int = 1
     v2_max_parallel_audio_jobs: int = 1
@@ -172,7 +188,6 @@ class Settings:
         return cls(
             app_name=os.getenv("APP_NAME", cls.app_name),
             app_version=os.getenv("APP_VERSION", cls.app_version),
-            agno_mock_mode=_read_bool("AGNO_MOCK_MODE", cls.agno_mock_mode),
             v2_production_acceptance_enabled=_read_bool(
                 "V2_PRODUCTION_ACCEPTANCE_ENABLED",
                 cls.v2_production_acceptance_enabled,
@@ -185,9 +200,41 @@ class Settings:
                 "V2_PROVIDER_ALLOW_FALLBACK",
                 cls.v2_provider_allow_fallback,
             ),
+            agent_runtime_mode=os.getenv("AGENT_RUNTIME_MODE", cls.agent_runtime_mode),
+            agent_runtime_base_url=os.getenv("AGENT_RUNTIME_BASE_URL", cls.agent_runtime_base_url),
+            agent_runtime_internal_token=os.getenv("AGENT_RUNTIME_INTERNAL_TOKEN") or None,
+            agent_runtime_protocol_version=os.getenv(
+                "AGENT_RUNTIME_PROTOCOL_VERSION",
+                cls.agent_runtime_protocol_version,
+            ),
+            agent_runtime_connect_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_CONNECT_TIMEOUT_SECONDS",
+                cls.agent_runtime_connect_timeout_seconds,
+            ),
+            agent_runtime_read_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_READ_TIMEOUT_SECONDS",
+                cls.agent_runtime_read_timeout_seconds,
+            ),
+            agent_runtime_run_timeout_seconds=_read_float(
+                "AGENT_RUNTIME_RUN_TIMEOUT_SECONDS",
+                cls.agent_runtime_run_timeout_seconds,
+            ),
+            agent_runtime_max_event_bytes=_read_int(
+                "AGENT_RUNTIME_MAX_EVENT_BYTES",
+                cls.agent_runtime_max_event_bytes,
+            ),
+            agent_runtime_max_stream_bytes=_read_int(
+                "AGENT_RUNTIME_MAX_STREAM_BYTES",
+                cls.agent_runtime_max_stream_bytes,
+            ),
             llm_provider=os.getenv("LLM_PROVIDER", cls.llm_provider),
             llm_api_key=os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY") or None,
             llm_base_url=os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_BASE_URL") or None,
+            siliconflow_api_key=os.getenv("SILICONFLOW_API_KEY") or None,
+            siliconflow_base_url=os.getenv(
+                "SILICONFLOW_BASE_URL",
+                cls.siliconflow_base_url,
+            ),
             llm_transient_retry_delay_seconds=_read_float(
                 "LLM_TRANSIENT_RETRY_DELAY_SECONDS",
                 cls.llm_transient_retry_delay_seconds,
@@ -267,6 +314,7 @@ class Settings:
             bgm_generation_version=os.getenv("BGM_GENERATION_VERSION", cls.bgm_generation_version),
             bgm_model=os.getenv("BGM_MODEL") or cls.bgm_model,
             bgm_long_model=os.getenv("BGM_LONG_MODEL") or cls.bgm_long_model,
+            bgm_callback_mode=os.getenv("BGM_CALLBACK_MODE", cls.bgm_callback_mode),
             bgm_callback_base_url=os.getenv("BGM_CALLBACK_BASE_URL") or None,
             bgm_query_endpoint=os.getenv("BGM_QUERY_ENDPOINT") or None,
             bgm_timeout_seconds=_read_int("BGM_TIMEOUT_SECONDS", cls.bgm_timeout_seconds),
@@ -278,6 +326,22 @@ class Settings:
             ffprobe_path=os.getenv("FFPROBE_PATH", cls.ffprobe_path),
             final_composition_subtitle_font_path=(
                 os.getenv("FINAL_COMPOSITION_SUBTITLE_FONT_PATH") or None
+            ),
+            final_composition_render_mode=os.getenv(
+                "FINAL_COMPOSITION_RENDER_MODE",
+                cls.final_composition_render_mode,
+            ),
+            final_composition_bgm_gain_db_with_source=_read_float(
+                "FINAL_COMPOSITION_BGM_GAIN_DB_WITH_SOURCE",
+                cls.final_composition_bgm_gain_db_with_source,
+            ),
+            final_composition_bgm_gain_db_without_source=_read_float(
+                "FINAL_COMPOSITION_BGM_GAIN_DB_WITHOUT_SOURCE",
+                cls.final_composition_bgm_gain_db_without_source,
+            ),
+            final_composition_bgm_fade_out_seconds=_read_float(
+                "FINAL_COMPOSITION_BGM_FADE_OUT_SECONDS",
+                cls.final_composition_bgm_fade_out_seconds,
             ),
             ffmpeg_capability_timeout_seconds=_read_int(
                 "FFMPEG_CAPABILITY_TIMEOUT_SECONDS",
@@ -351,6 +415,10 @@ class Settings:
             v2_provider_task_poll_interval_seconds=_read_int(
                 "V2_PROVIDER_TASK_POLL_INTERVAL_SECONDS",
                 cls.v2_provider_task_poll_interval_seconds,
+            ),
+            v2_require_authoring_if_match=_read_bool(
+                "V2_REQUIRE_AUTHORING_IF_MATCH",
+                cls.v2_require_authoring_if_match,
             ),
             v2_provider_task_max_concurrent_polls=_read_int(
                 "V2_PROVIDER_TASK_MAX_CONCURRENT_POLLS",

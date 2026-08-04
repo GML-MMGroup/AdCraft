@@ -315,8 +315,14 @@ def _validate_prompt_not_empty(
 ) -> None:
     if prompt.strip():
         return
+    if slot.slot_type == "bgm_audio":
+        code = "bgm_prompt_empty"
+    elif slot.slot_type == "shot_video_segment":
+        code = "v2_video_prompt_empty"
+    else:
+        code = "v2_provider_prompt_empty"
     raise V2PromptGovernanceError(
-        "v2_provider_prompt_empty",
+        code,
         "V2 provider prompt is empty after compilation.",
         metadata=_error_metadata(slot, payload),
     )

@@ -35,6 +35,23 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
+export function SunIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 2.8v2.5M12 18.7v2.5M2.8 12h2.5M18.7 12h2.5M5.5 5.5l1.8 1.8m9.4 9.4 1.8 1.8m0-13-1.8 1.8m-9.4 9.4-1.8 1.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M19.2 15.3A7.8 7.8 0 0 1 8.7 4.8 7.8 7.8 0 1 0 19.2 15.3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
 export function ChevronDownIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
@@ -51,10 +68,35 @@ export function ChevronUpIcon(props: IconProps) {
   );
 }
 
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m14.5 7-5 5 5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m9.5 7 5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function CloseIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
       <path d="m7 7 10 10M17 7 7 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function EditIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m5.2 18.8 1-4.2L15.5 5.3a1.8 1.8 0 0 1 2.6 0l.6.6a1.8 1.8 0 0 1 0 2.6l-9.3 9.3-4.2 1Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m13.8 7 3.2 3.2M5.2 18.8l3.1-3.1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -71,6 +113,14 @@ export function UploadIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
       <path d="M12 15V4m0 0 4 4m-4-4-4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M12 4v11m0 0 4-4m-4 4-4-4M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -116,6 +166,56 @@ export function PlayIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
       <path d="M8 5.8v12.4L18 12 8 5.8Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function PauseIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M7.5 5.5h3.8v13H7.5v-13Zm5.2 0h3.8v13h-3.8v-13Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function RewindIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M11.2 6.2 4.5 12l6.7 5.8V6.2Zm8.3 0L12.8 12l6.7 5.8V6.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function FastForwardIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m12.8 6.2 6.7 5.8-6.7 5.8V6.2Zm-8.3 0 6.7 5.8-6.7 5.8V6.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function MuteIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M5 9.3h3.7l4.6-3.7v12.8l-4.6-3.7H5V9.3Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="m16.2 9.2 3.3 5.6m0-5.6-3.3 5.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function UnmuteIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="M5 9.3h3.7l4.6-3.7v12.8l-4.6-3.7H5V9.3Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M16.1 9a4.2 4.2 0 0 1 0 6m2.2-8.3a7.3 7.3 0 0 1 0 10.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function ConfirmIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+      <path d="m5.5 12.4 4.1 4.1 8.9-8.9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

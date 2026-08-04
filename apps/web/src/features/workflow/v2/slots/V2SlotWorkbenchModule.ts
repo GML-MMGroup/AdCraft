@@ -17,6 +17,15 @@ import {
 } from "../../../../workflow-v2/slotControls.ts";
 import { slotDraftHasPromptChanges, useSlotMicroEdit } from "./useSlotMicroEdit.ts";
 
+const V2_AUTHORING_DRAFT_DISCARDED_EVENT = "v2-authoring-draft-discarded";
+const V2_AUTHORING_CONFLICT_RESOLVED_EVENT = "v2-authoring-conflict-resolved";
+
+type V2AuthoringConflictResolution = {
+  target: { resource: "project" | "workflow"; id: string };
+  operationPath: string;
+  action: "retry" | "discard";
+};
+
 export type V2SlotAction =
   | { type: "open"; slotId: string }
   | { type: "change_prompt"; slotId: string; prompt: string }
@@ -94,10 +103,45 @@ async function ensureV2SlotDraftReferences(args: V2SlotWorkbenchModuleArgs, slot
 export function useV2SlotWorkbenchModule(args: V2SlotWorkbenchModuleArgs): V2SlotWorkbenchModule {
   const microEdit = useSlotMicroEdit();
   const rebaseSlotDrafts = microEdit.rebaseSlots;
+  const discardSlotDraft = microEdit.discardDraft;
 
   useEffect(() => {
     rebaseSlotDrafts(args.slots);
   }, [args.slots, rebaseSlotDrafts]);
+
+  useEffect(() => {
+    function discardConflictDraft(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.target.resource !== "workflow" || resolution.target.id !== args.workflowId) return;
+      const match = resolution.operationPath.match(/\/slots\/([^/]+)\//);
+      const slotId = match?.[1] ? decodeURIComponent(match[1]) : null;
+      if (!slotId) return;
+      void v2Api.workflow(args.workflowId).then((latest) => {
+        const slot = latest.slots.find((candidate) => candidate.slot_id === slotId);
+        if (slot) discardSlotDraft(slot);
+      }).catch(() => {});
+    }
+
+    window.addEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_DRAFT_DISCARDED_EVENT, discardConflictDraft as EventListener);
+  }, [args.workflowId, discardSlotDraft]);
+
+  useEffect(() => {
+    function reconcileSlotDraftAfterRetry(event: Event) {
+      const resolution = (event as CustomEvent<V2AuthoringConflictResolution>).detail;
+      if (resolution?.action !== "retry" || resolution.target.resource !== "workflow" || resolution.target.id !== args.workflowId) return;
+      const match = resolution.operationPath.match(/\/slots\/([^/]+)\//);
+      const slotId = match?.[1] ? decodeURIComponent(match[1]) : null;
+      if (!slotId) return;
+      void v2Api.workflow(args.workflowId).then((latest) => {
+        const slot = latest.slots.find((candidate) => candidate.slot_id === slotId);
+        if (slot) discardSlotDraft(slot);
+      }).catch(() => {});
+    }
+
+    window.addEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reconcileSlotDraftAfterRetry as EventListener);
+    return () => window.removeEventListener(V2_AUTHORING_CONFLICT_RESOLVED_EVENT, reconcileSlotDraftAfterRetry as EventListener);
+  }, [args.workflowId, discardSlotDraft]);
 
   const refreshSlot = useCallback(async (slotId: string) => {
     if (!args.workflowId) return;

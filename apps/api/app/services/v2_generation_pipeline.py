@@ -11,12 +11,15 @@ from app.core.config import Settings, get_settings
 from app.schemas.workflow_v2 import (
     V2GenerationPlan,
     V2GenerationTarget,
+    V2FinalCompositionFingerprint,
     V2ProviderResult,
     V2ProviderTask,
     V2SlotExecutionJob,
     V2SlotExecutionResult,
     WorkflowAssetRelationV2,
     WorkflowAssetVersionV2,
+    WorkflowV2Timeline,
+    WorkflowV2TimelineRenderSettings,
     WorkflowV2ChatTargetRequest,
     WorkflowItemV2,
     WorkflowSlotV2,
@@ -25,11 +28,20 @@ from app.schemas.workflow_v2 import (
 )
 from app.schemas.workflow_v2_provider_results import V2ProviderExecutionContext
 from app.schemas.workflow_v2_screenplay import V2GenerationLineage
+from app.schemas.workflow_v2_composition import V2SimpleCompositionPlan
 from app.services.llm_context_sanitizer import sanitize_context_for_llm_text
 from app.services.v2_agent_router import V2AgentRouteError, V2AgentRouter
 from app.services.v2_asset_store import V2AssetStoreService
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.services.v2_final_composition_timeline import V2FinalCompositionTimelineService
+from app.services.v2_final_composition_fingerprint import (
+    V2FinalCompositionFingerprintError,
+    V2FinalCompositionFingerprintService,
+)
+from app.services.v2_final_composition_publication import (
+    V2FinalCompositionPublicationError,
+    V2FinalCompositionPublicationService,
+)
 from app.services.v2_media_quality_gate import V2MediaQualityGate, detect_media_format
 from app.services.v2_generation_lineage import build_generation_lineage
 from app.services.v2_item_identity_specs import asset_identity_metadata, slot_identity_metadata
@@ -65,6 +77,10 @@ from app.services.v2_shot_reference_resolver import (
     V2ResolvedShotReferences,
     V2ShotReferenceResolver,
     V2ShotReferenceResolverError,
+)
+from app.services.v2_simple_composition_plan import (
+    V2SimpleCompositionPlanError,
+    V2SimpleCompositionPlanService,
 )
 from app.services.v2_storyboard_namespace import (
     V2StoryboardNamespaceError,
@@ -248,6 +264,18 @@ class V2GenerationPipeline:
         self._final_timeline_service = V2FinalCompositionTimelineService(
             replace(self._settings, media_data_dir=data_dir)
         )
+        self._simple_composition_plan_service = V2SimpleCompositionPlanService(
+            data_dir,
+            asset_store=asset_store,
+        )
+        self._final_composition_fingerprints = V2FinalCompositionFingerprintService(
+            data_dir,
+            replace(self._settings, media_data_dir=data_dir),
+        )
+        self._final_composition_publication = V2FinalCompositionPublicationService(
+            replace(self._settings, media_data_dir=data_dir),
+            asset_store=asset_store,
+        )
 
     def input_fingerprint(
         self,
@@ -356,6 +384,7 @@ class V2GenerationPipeline:
             V2AgentRouteError,
             V2PromptMaterializationError,
             V2PromptGovernanceError,
+            V2SimpleCompositionPlanError,
             V2StoryboardNamespaceError,
         ) as exc:
             self._fail_slot(
@@ -854,6 +883,7 @@ class V2GenerationPipeline:
         except (
             V2AgentRouteError,
             V2PromptMaterializationError,
+            V2SimpleCompositionPlanError,
             V2StoryboardNamespaceError,
         ) as exc:
             provider_result = V2ProviderResult(
@@ -1577,7 +1607,7 @@ class V2GenerationPipeline:
             ),
         )
         context = self._context_for_slot(workflow, item, slot)
-        self._attach_canonical_final_timeline_context(workflow, item, context, slot)
+        self._attach_final_composition_context(workflow, item, context, slot)
         _apply_reference_bundle_to_context(context, bundle)
         handoff_payload: dict[str, Any] | None = None
         if _uses_canonical_specialist_handoff(slot):
@@ -1638,6 +1668,27 @@ class V2GenerationPipeline:
                 metadata=exc.metadata,
             ) from exc
         provider_payload = apply_compiled_prompt_to_payload(provider_payload, compiled_prompt)
+        if slot.slot_type == "final_video":
+            try:
+                fingerprint = self._final_composition_fingerprint(
+                    workflow,
+                    slot,
+                    provider_payload,
+                )
+            except V2FinalCompositionFingerprintError as exc:
+                raise V2GenerationPipelineError(
+                    "v2_final_composition_fingerprint_invalid",
+                    str(exc),
+                ) from exc
+            provider_payload.update(
+                {
+                    "composition_fingerprint": fingerprint.fingerprint,
+                    "fingerprint_contract_version": fingerprint.contract_version,
+                    "composition_fingerprint_payload": fingerprint.canonical_payload,
+                    "source_action": source_action or "global_run",
+                    "select_result": True,
+                }
+            )
         if shot_references is not None:
             provider_payload["shot_reference_snapshot"] = _initial_shot_reference_snapshot(
                 shot_references
@@ -1663,6 +1714,48 @@ class V2GenerationPipeline:
             provider_payload=provider_payload,
             reference_asset_ids=materialized.reference_asset_ids,
             reference_audit=sanitized_audit,
+        )
+
+    def _final_composition_fingerprint(
+        self,
+        workflow: WorkflowV2,
+        slot: WorkflowSlotV2,
+        provider_payload: dict[str, Any],
+    ) -> V2FinalCompositionFingerprint:
+        fingerprint_workflow = workflow.model_copy(deep=True)
+        _stored_workflow, _item, _final_slot, timeline, _source = (
+            self._final_timeline_service.load_or_create_and_reconcile(
+                workflow.workflow_id,
+                workflow_override=fingerprint_workflow,
+            )
+        )
+        simple_plan_payload = provider_payload.get("simple_composition_plan")
+        simple_plan = (
+            V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+            if isinstance(simple_plan_payload, dict)
+            else None
+        )
+        canonical_timeline = provider_payload.get("canonical_timeline")
+        if isinstance(canonical_timeline, dict):
+            timeline = WorkflowV2Timeline.model_validate(canonical_timeline)
+        raw_render_settings = provider_payload.get("render_settings")
+        allowed_render_settings = {
+            key: value
+            for key, value in (
+                raw_render_settings.items() if isinstance(raw_render_settings, dict) else ()
+            )
+            if key in {"video_codec", "audio_codec", "video_bitrate", "audio_bitrate"}
+        }
+        return self._final_composition_fingerprints.build_for_composition(
+            workflow_id=workflow.workflow_id,
+            slot_id=slot.slot_id,
+            timeline=timeline,
+            render_settings=WorkflowV2TimelineRenderSettings.model_validate(
+                allowed_render_settings
+            ),
+            render_mode=self._settings.final_composition_render_mode.strip().lower(),
+            audio_mode=workflow.audio_mode,
+            simple_plan=simple_plan,
         )
 
     def _prepare_shot_references(
@@ -1773,6 +1866,12 @@ class V2GenerationPipeline:
                 "slot_id": slot.slot_id,
             },
         }
+        simple_plan_payload = provider_payload.get("simple_composition_plan")
+        if isinstance(simple_plan_payload, dict):
+            simple_plan = V2SimpleCompositionPlan.model_validate(simple_plan_payload)
+            provider_payload["simple_composition_plan"] = simple_plan.model_copy(
+                update={"created_from_execution_id": execution_id}
+            ).model_dump(mode="json")
         materialized_prompt = plan.materialized_prompt.model_copy(
             update={"provider_payload": provider_payload},
             deep=True,
@@ -1835,7 +1934,7 @@ class V2GenerationPipeline:
             generation_mode="chat_revise_and_generate",
         )
         context = self._context_for_slot(workflow, revision_item, revision_slot)
-        self._attach_canonical_final_timeline_context(
+        self._attach_final_composition_context(
             workflow,
             revision_item,
             context,
@@ -1874,6 +1973,57 @@ class V2GenerationPipeline:
         asset_id: str | None = None,
         version_id: str | None = None,
     ) -> WorkflowAssetVersionV2:
+        if slot.slot_type == "final_video" and isinstance(
+            provider_payload.get("composition_fingerprint"),
+            str,
+        ):
+            source_path = self._final_composition_source_path(
+                workflow,
+                provider_payload,
+                provider_result,
+            )
+            item = next(
+                (
+                    candidate
+                    for node in workflow.nodes
+                    for candidate in node.items
+                    if candidate.item_id == slot.item_id
+                ),
+                None,
+            )
+            if item is None:
+                raise V2GenerationPipelineError(
+                    "v2_final_composition_publish_failed",
+                    "Final composition item was not found.",
+                )
+            try:
+                return self._final_composition_publication.publish(
+                    workflow=workflow,
+                    item=item,
+                    slot=slot,
+                    source_path=source_path,
+                    composition_fingerprint=str(provider_payload["composition_fingerprint"]),
+                    fingerprint_payload=dict(
+                        provider_payload.get("composition_fingerprint_payload") or {}
+                    ),
+                    fingerprint_contract_version=str(
+                        provider_payload.get("fingerprint_contract_version") or ""
+                    ),
+                    source_action=str(provider_payload.get("source_action") or "global_run"),
+                    select_result=bool(provider_payload.get("select_result", True)),
+                    source_render_id=(
+                        str(provider_payload["render_id"])
+                        if provider_payload.get("render_id")
+                        else None
+                    ),
+                    provider_payload=provider_payload,
+                    result_metadata=provider_result.metadata,
+                    reference_asset_ids=list(
+                        provider_result.reference_asset_ids or plan.reference_asset_ids
+                    ),
+                )
+            except V2FinalCompositionPublicationError as exc:
+                raise V2GenerationPipelineError(exc.code, str(exc)) from exc
         version_id = version_id or f"ver_{uuid4().hex[:12]}"
         asset_id = (
             asset_id or f"{workflow.workflow_id}_{slot.slot_id.replace(':', '_')}_{version_id}"
@@ -2025,9 +2175,53 @@ class V2GenerationPipeline:
                 **_detected_media_metadata(quality_result),
                 "quality_gate_result": quality_result,
                 "quality_gate_warnings": list(quality_result.get("warnings") or []),
+                "composition_fingerprint": provider_payload.get("composition_fingerprint"),
+                "fingerprint_contract_version": provider_payload.get(
+                    "fingerprint_contract_version"
+                ),
+                "composition_fingerprint_payload": provider_payload.get(
+                    "composition_fingerprint_payload"
+                ),
+                "source_action": provider_payload.get("source_action"),
+                "select_result": provider_payload.get("select_result"),
             },
         )
         return self._asset_store.save_asset_version(record)
+
+    def _final_composition_source_path(
+        self,
+        workflow: WorkflowV2,
+        provider_payload: dict[str, Any],
+        provider_result: V2ProviderResult,
+    ) -> Path:
+        if provider_result.local_file_path:
+            source_path = Path(provider_result.local_file_path)
+            return source_path if source_path.is_absolute() else self._data_dir / source_path
+        if provider_result.asset_bytes is None:
+            raise V2GenerationPipelineError(
+                "provider_output_missing",
+                "Final composition result did not include asset bytes or a local file path.",
+            )
+        fingerprint = str(provider_payload["composition_fingerprint"]).removeprefix("sha256:")
+        render_id = str(provider_payload.get("render_id") or f"global_{fingerprint[:24]}")
+        relative_path = (
+            Path("v2")
+            / "runs"
+            / workflow.workflow_id
+            / "composition"
+            / render_id
+            / "final-ad-video.mp4.part"
+        )
+        source_path = validate_v2_data_path(
+            self._data_dir,
+            self._data_dir / relative_path,
+            operation="v2-final-composition-stage-bytes",
+        )
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = source_path.with_name(f".{source_path.name}.tmp")
+        temporary.write_bytes(provider_result.asset_bytes)
+        temporary.replace(source_path)
+        return source_path
 
     def _shot_reference_snapshot_metadata(
         self,
@@ -2475,6 +2669,28 @@ class V2GenerationPipeline:
             ]
         return context
 
+    def _attach_final_composition_context(
+        self,
+        workflow: WorkflowV2,
+        item: WorkflowItemV2,
+        context: dict[str, Any],
+        slot: WorkflowSlotV2,
+    ) -> None:
+        if slot.slot_type != "final_video":
+            return
+        mode = self._settings.final_composition_render_mode.strip().lower()
+        if mode == "simple_sequence":
+            plan = self._simple_composition_plan_service.build(workflow)
+            context["simple_composition_plan"] = plan.model_dump(mode="json")
+            return
+        if mode == "timeline_editor":
+            self._attach_canonical_final_timeline_context(workflow, item, context, slot)
+            return
+        raise V2GenerationPipelineError(
+            "v2_final_composition_render_mode_invalid",
+            "Configured Final Composition render mode is unsupported.",
+        )
+
     def _attach_canonical_final_timeline_context(
         self,
         workflow: WorkflowV2,
@@ -2485,7 +2701,10 @@ class V2GenerationPipeline:
         if slot.slot_type != "final_video":
             return
         _stored_workflow, _item, _final_slot, timeline, _source = (
-            self._final_timeline_service.load_or_create_and_reconcile(workflow.workflow_id)
+            self._final_timeline_service.load_or_create_and_reconcile(
+                workflow.workflow_id,
+                workflow_override=workflow,
+            )
         )
         self._final_timeline_service.project_compatibility_timeline(item, timeline)
         context["canonical_timeline"] = timeline.model_dump(mode="json")

@@ -23,6 +23,7 @@ from app.schemas.tianpuyue_pure_music import (
     TianpuyueInstrumentalQueryRequest,
     TianpuyueInstrumentalQueryResponse,
 )
+from app.services.tianpuyue_callback_lease import TianpuyueCallbackLeaseError
 from app.services.v2_data_boundary import validate_v2_data_path
 from app.tools.media_provider_protocol import MediaConfigurationError
 
@@ -91,6 +92,50 @@ def select_tianpuyue_instrumental_model(
     )
 
 
+def select_frozen_tianpuyue_instrumental_model(
+    provider_model_id: str,
+    duration_seconds: int,
+    settings: Settings,
+) -> TianpuyueInstrumentalModelSelection:
+    """Map a frozen catalog model ID to Tianpuyue's configured wire model."""
+
+    frozen_model_id = provider_model_id.strip()
+    model_config = {
+        "TemPolor-i3": (
+            str(settings.bgm_model or "").strip(),
+            TIANPUYUE_SHORT_DURATION_LIMIT_SECONDS,
+        ),
+        "TemPolor-i3.5": (
+            str(settings.bgm_long_model or "").strip(),
+            TIANPUYUE_LONG_DURATION_LIMIT_SECONDS,
+        ),
+    }.get(frozen_model_id)
+    if model_config is None:
+        raise TianpuyuePureMusicError(
+            "bgm_provider_model_unsupported",
+            "The frozen Tianpuyue BGM model is not supported.",
+            metadata={"frozen_provider_model_id": frozen_model_id},
+        )
+    model, duration_limit_seconds = model_config
+    if duration_seconds < 1 or duration_seconds > duration_limit_seconds:
+        raise TianpuyuePureMusicError(
+            "bgm_duration_unsupported",
+            "The frozen Tianpuyue BGM model does not support the requested duration.",
+            metadata={
+                "frozen_provider_model_id": frozen_model_id,
+                "requested_duration_seconds": duration_seconds,
+                "minimum_duration_seconds": 1,
+                "maximum_duration_seconds": duration_limit_seconds,
+            },
+        )
+    if not model:
+        raise MediaConfigurationError("Tianpuyue BGM model configuration is required.")
+    return TianpuyueInstrumentalModelSelection(
+        model=model,
+        duration_limit_seconds=duration_limit_seconds,
+    )
+
+
 def validate_tianpuyue_bgm_settings(settings: Settings) -> None:
     endpoint = str(settings.bgm_endpoint or "").strip()
     parsed = urlparse(endpoint)
@@ -114,11 +159,24 @@ class TianpuyuePureMusicAdapter:
         *,
         client: httpx.Client | None = None,
         callback_id_factory: Callable[[], str] | None = None,
+        callback_base_url_resolver: Callable[[], str] | None = None,
         audio_probe: Callable[[Path], dict[str, Any]] | None = None,
     ) -> None:
         self._settings = settings
         self._data_dir = data_dir
         self._validate_settings()
+        mode = str(settings.bgm_callback_mode or "").strip().lower()
+        if callback_base_url_resolver is None:
+            if mode != "manual":
+                raise MediaConfigurationError(
+                    "Automatic Tianpuyue callbacks must be built through the BGM provider factory."
+                )
+
+            def resolve_manual_callback_base_url() -> str:
+                return str(settings.bgm_callback_base_url or "")
+
+            callback_base_url_resolver = resolve_manual_callback_base_url
+        self._callback_base_url_resolver = callback_base_url_resolver
         self._client = client or httpx.Client(timeout=settings.bgm_timeout_seconds)
         self._owns_client = client is None
         self._callback_id_factory = callback_id_factory or _new_callback_id
@@ -141,11 +199,28 @@ class TianpuyuePureMusicAdapter:
                 stage="submit",
             )
         duration_seconds = _duration_seconds(bgm_plan.get("duration_seconds"))
+        frozen_provider_model_id = _frozen_provider_model_id(bgm_plan)
         try:
-            selection = select_tianpuyue_instrumental_model(duration_seconds, self._settings)
+            selection = (
+                select_frozen_tianpuyue_instrumental_model(
+                    frozen_provider_model_id,
+                    duration_seconds,
+                    self._settings,
+                )
+                if frozen_provider_model_id is not None
+                else select_tianpuyue_instrumental_model(duration_seconds, self._settings)
+            )
         except TianpuyuePureMusicError as exc:
             return self._failure(exc.code, str(exc), stage="submit", **exc.metadata)
-        callback_id, callback_url = self._callback_details(workflow_id)
+        try:
+            callback_id, callback_url = self._callback_details(workflow_id)
+        except TianpuyueCallbackLeaseError as exc:
+            return self._failure(
+                exc.code,
+                str(exc),
+                stage="callback_lease",
+                retryable=exc.retryable,
+            )
         request_body = TianpuyueInstrumentalGenerateRequest(
             prompt=_instrumental_prompt(prompt, duration_seconds),
             model=selection.model,
@@ -196,6 +271,8 @@ class TianpuyuePureMusicAdapter:
             status="submitted",
             task_id=item_ids[0],
             model=selection.model,
+            frozen_provider_model_id=frozen_provider_model_id,
+            provider_wire_model=selection.model,
             requested_duration_seconds=duration_seconds,
             model_duration_limit_seconds=selection.duration_limit_seconds,
             request_id=envelope.request_id,
@@ -315,7 +392,7 @@ class TianpuyuePureMusicAdapter:
         metadata["audio_quality"] = "high" if _first_nonempty(record.audio_hi_url) else "standard"
         if not download_media:
             return self._asset(
-                status="submitted",
+                status="succeeded",
                 task_id=remote_task_id,
                 model=record.model,
                 **metadata,
@@ -330,23 +407,25 @@ class TianpuyuePureMusicAdapter:
     def _validate_settings(self) -> None:
         validate_tianpuyue_bgm_settings(self._settings)
 
-    def _callback_details(self, workflow_id: str) -> tuple[str | None, str | None]:
-        base_url = str(self._settings.bgm_callback_base_url or "").strip()
+    def _callback_details(self, workflow_id: str) -> tuple[str, str]:
+        base_url = str(self._callback_base_url_resolver() or "").strip()
         if not base_url:
-            return None, None
+            raise MediaConfigurationError(
+                "Tianpuyue callback base URL resolver returned an empty URL."
+            )
         parsed = urlparse(base_url)
         if parsed.scheme != "https" or not parsed.netloc:
-            raise MediaConfigurationError("BGM_CALLBACK_BASE_URL must be an absolute HTTPS URL.")
+            raise MediaConfigurationError(
+                "Tianpuyue callback base URL must be an absolute HTTPS URL."
+            )
         callback_id = str(self._callback_id_factory()).strip()
         if not callback_id:
             raise MediaConfigurationError("BGM callback id factory returned an empty id.")
-        return (
-            callback_id,
-            (
-                f"{base_url.rstrip('/')}/api/v2/provider-callbacks/tianpuyue/"
-                f"instrumental/{workflow_id}/{callback_id}"
-            ),
+        callback_url = (
+            f"{base_url.rstrip('/')}/api/v2/provider-callbacks/tianpuyue/"
+            f"instrumental/{workflow_id}/{callback_id}"
         )
+        return callback_id, callback_url
 
     def _post_json(
         self,
@@ -744,12 +823,39 @@ def _duration_seconds(value: object) -> int:
     return duration
 
 
+def _frozen_provider_model_id(bgm_plan: dict[str, Any]) -> str | None:
+    value = bgm_plan.get("provider_model_id")
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+TIANPUYUE_PROMPT_MAX_CHARS = 1000
+
+
 def _instrumental_prompt(prompt: str, duration_seconds: int) -> str:
-    return (
-        f"{prompt.strip()}\n\n"
+    suffix = (
         f"Target duration: {duration_seconds} seconds. Instrumental only: no vocals, no lyrics, "
         "no narration, no spoken dialogue, and no sound effects."
     )
+    separator = "\n\n"
+    creative_prompt = prompt.strip()
+    creative_limit = TIANPUYUE_PROMPT_MAX_CHARS - len(separator) - len(suffix)
+    if len(creative_prompt) > creative_limit:
+        creative_prompt = _truncate_prompt(creative_prompt, creative_limit)
+    return f"{creative_prompt}{separator}{suffix}"
+
+
+def _truncate_prompt(prompt: str, limit: int) -> str:
+    candidate = prompt[:limit].rstrip()
+    sentence_end = max(candidate.rfind(". "), candidate.rfind("! "), candidate.rfind("? "))
+    if sentence_end >= limit // 2:
+        return candidate[: sentence_end + 1].rstrip()
+    word_end = candidate.rfind(" ")
+    if word_end >= limit // 2:
+        return candidate[:word_end].rstrip()
+    return candidate
 
 
 def _endpoint(base_url: str | None, path: str) -> str:

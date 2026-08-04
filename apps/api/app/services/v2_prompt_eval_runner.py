@@ -347,7 +347,10 @@ class V2PromptEvalRunner:
         profile_id: str,
         mode: V2PromptEvalMode,
     ) -> "_EvalContext":
-        settings = replace(self._settings, agno_mock_mode=mode == "mock")
+        settings = replace(
+            self._settings,
+            agent_runtime_mode="fake" if mode == "mock" else "real",
+        )
         profile = self._profile(profile_id)
         ad_payload = fixture.ad_request.model_dump(mode="json")
         if profile.prompt_suffix:
@@ -417,7 +420,7 @@ class V2PromptEvalRunner:
             workflow=workflow_copy,
             script_plan=script_plan,
             expert_plan=expert_plan,
-            settings=replace(self._settings, agno_mock_mode=True),
+            settings=replace(self._settings, agent_runtime_mode="fake"),
             input_asset_descriptors=descriptors if isinstance(descriptors, list) else [],
         )
 

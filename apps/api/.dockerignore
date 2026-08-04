@@ -8,3 +8,6 @@ __pycache__
 .ruff_cache
 data
 *.log
+agent/node_modules
+agent/dist
+agent/tests
