@@ -2,32 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_conversation import ConceptProposalV2
 from app.schemas.agent_canvas_creative_session import (
-    AgentCanvasSpecialistNameV2,
     GuidanceCompletionClaimV2,
     GuidanceCompletionProjectionV2,
-    GuidanceTopicKindV2,
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
 )
-
-
-TOPIC_SPECIALIST: Mapping[GuidanceTopicKindV2, AgentCanvasSpecialistNameV2] = {
-    "creative_direction": "script_writer",
-    "product": "product_designer",
-    "prop": "prop_designer",
-    "character": "character_designer",
-    "scene": "scene_designer",
-    "script": "script_writer",
-    "storyboard": "storyboard_artist",
-    "video": "video_director",
-    "audio": "bgm_director",
-}
+from app.services.agent_canvas_guidance_ownership import TOPIC_SPECIALIST
 
 
 class GuidanceDecisionValidator:

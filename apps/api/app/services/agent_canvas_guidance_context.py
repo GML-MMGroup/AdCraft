@@ -21,6 +21,7 @@ from app.schemas.agent_operation_contexts import (
     GuidanceSpecialistContextV2,
     GuidanceStyleSummaryV2,
 )
+from app.services.agent_canvas_guidance_ownership import topic_ownership_projection
 
 
 class GuidanceContextBuilder:
@@ -52,6 +53,7 @@ class GuidanceContextBuilder:
             conversation_id=conversation_id,
             user_input=user_input,
             conversation_summary=conversation_summary,
+            topic_ownership=topic_ownership_projection(),
             goal=session.goal if session else None,
             element_decisions=session.element_decisions if session else (),
             guidance_session=session,
