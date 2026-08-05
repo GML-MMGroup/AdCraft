@@ -39,6 +39,7 @@ function workflow(workflowId = "workflow-1"): AgentCanvasWorkflowV2 {
     nodes: [],
     bindings: [],
     assets: [],
+    active_style_skill: null,
   };
 }
 
@@ -188,6 +189,46 @@ describe("useAgentCanvasChat", () => {
       expect.any(String),
     );
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-1");
+  });
+
+  it("sends the active Workflow Style Skill Run with Director messages", async () => {
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: "message-2",
+      turn_id: "turn-2",
+      status: "queued",
+      events_cursor: 5,
+    });
+    const activeWorkflow = workflow();
+    activeWorkflow.active_style_skill = {
+      skill_run_id: "style-run-2",
+      skill_id: "cinematic-poetic-realism",
+      skill_version: "1.0.0",
+      title: "Cinematic Poetic Realism",
+      summary: "A restrained cinematic treatment.",
+      category: "cinematic-narrative",
+      creative_direction_snapshot_id: "direction-2",
+    };
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: activeWorkflow,
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Create the next treatment.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+      });
+    });
+
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith(
+      "workflow-1",
+      expect.objectContaining({ video_skill_run_id: "style-run-2" }),
+      expect.any(String),
+    );
   });
 
   it("hydrates the durable guidance session, actions, and proposal card", async () => {

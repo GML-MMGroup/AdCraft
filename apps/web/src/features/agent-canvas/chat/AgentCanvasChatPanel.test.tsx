@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ChatActionReceiptCardV2,
+  AgentCanvasWorkflowV2,
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
   ChatProposalCardV2,
@@ -11,6 +12,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   ActionReceiptCard,
+  AgentCanvasChatPanel,
   CommandPlanCard,
   GuidanceSessionProgress,
   GuidedActionsCard,
@@ -410,5 +412,54 @@ describe("command and receipt cards", () => {
     render(<SpecialistActivityRow activity={activity} />);
 
     expect(screen.getByText("Scene Designer is working")).toBeTruthy();
+  });
+});
+
+describe("AgentCanvasChatPanel Style integration", () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("places the persistent Workflow Style control beside composer tools", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      workflow_id: "workflow-1",
+      conversation_id: null,
+      items: [],
+      next_cursor: 0,
+    }), { headers: { "Content-Type": "application/json" } })));
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 1,
+      layout_revision: 1,
+      nodes: [],
+      bindings: [],
+      assets: [],
+      active_style_skill: {
+        skill_run_id: "style-run-1",
+        skill_id: "platform-default",
+        skill_version: "1.0.0",
+        title: "Platform Default",
+        summary: "Balanced commercial video direction.",
+        category: "commercial-craft",
+        creative_direction_snapshot_id: "direction-1",
+      },
+    };
+
+    render(
+      <AgentCanvasChatPanel
+        workflow={workflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+        onWorkflowRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Style: Platform Default" })).toBeTruthy();
   });
 });

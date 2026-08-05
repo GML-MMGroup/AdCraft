@@ -38,6 +38,8 @@ export const agentCanvasApi = {
   actOnAgentCanvasProposal: v2Api.actOnAgentCanvasProposal,
   actOnAgentCanvasCommandPlan: v2Api.actOnAgentCanvasCommandPlan,
   applyAgentCanvasGuidedAction: v2Api.applyAgentCanvasGuidedAction,
+  listVideoSkills: v2Api.listVideoSkills,
+  getVideoSkill: v2Api.getVideoSkill,
   createAgentCanvasVideoSkillRun: v2Api.createAgentCanvasVideoSkillRun,
   runAgentCanvas: v2Api.runAgentCanvas,
   cancelAgentCanvasRun: v2Api.cancelAgentCanvasRun,

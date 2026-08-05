@@ -9,6 +9,7 @@ import type {
   AgentCanvasChatViewTimelineV2,
   AgentCommandOperationV2,
   AgentCommandPlanV2,
+  ActiveStyleSkillSummaryV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasVideoSkillRunV2,
   AgentCommandBindingKindV2,
@@ -91,6 +92,10 @@ import type {
   ProposalActionDescriptorV2,
   SpecialistAgentNameV2,
   StorageAccessDescriptorV2,
+  VideoSkillCatalogResponseV2,
+  VideoSkillCategoryV2,
+  VideoSkillPreviewV2,
+  VideoSkillPublicDetailV2,
 } from "../../../types-v2.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -354,6 +359,16 @@ function nullableBrowserSafeUrl(value: unknown, path: string) {
   if (value === null) return null;
   const result = expectNonEmptyString(value, path);
   if (!result.startsWith("/api/") && !result.startsWith("https://") && !result.startsWith("http://")) {
+    fail(path, "expected browser-safe URL");
+  }
+  return result;
+}
+
+function nullablePublicPreviewUrl(value: unknown, path: string) {
+  if (value === null) return null;
+  const result = expectNonEmptyString(value, path);
+  const isSameOriginPath = result.startsWith("/") && !result.startsWith("//");
+  if (!isSameOriginPath && !result.startsWith("https://") && !result.startsWith("http://")) {
     fail(path, "expected browser-safe URL");
   }
   return result;
@@ -729,9 +744,136 @@ export function normalizeProjectAssetSummaryV2(value: unknown, path = "asset"): 
   };
 }
 
+function normalizeVideoSkillPreviewV2(value: unknown, path: string): VideoSkillPreviewV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["kind", "summary", "media_url"], path);
+  return {
+    kind: expectLiteral(
+      record.kind,
+      new Set<VideoSkillPreviewV2["kind"]>(["none", "image", "video"]),
+      `${path}.kind`,
+    ),
+    summary: nullableStringWithDefault(record.summary, `${path}.summary`),
+    media_url: nullablePublicPreviewUrl(record.media_url ?? null, `${path}.media_url`),
+  };
+}
+
+function normalizeVideoSkillCategoryV2(value: unknown, path: string): VideoSkillCategoryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["category_id", "title", "display_order"], path);
+  return {
+    category_id: expectNonEmptyString(record.category_id, `${path}.category_id`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+  };
+}
+
+export function normalizeVideoSkillPublicDetailV2(
+  value: unknown,
+  path = "videoSkill",
+): VideoSkillPublicDetailV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "skill_id",
+      "version",
+      "title",
+      "summary",
+      "category",
+      "tags",
+      "supported_use_cases",
+      "preview",
+      "display_order",
+    ],
+    path,
+  );
+  return {
+    skill_id: expectNonEmptyString(record.skill_id, `${path}.skill_id`),
+    version: expectNonEmptyString(record.version, `${path}.version`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    summary: expectNonEmptyString(record.summary, `${path}.summary`),
+    category: expectNonEmptyString(record.category, `${path}.category`),
+    tags: optionalStringArray(record.tags, `${path}.tags`),
+    supported_use_cases: optionalStringArray(
+      record.supported_use_cases,
+      `${path}.supported_use_cases`,
+    ),
+    preview: record.preview === undefined || record.preview === null
+      ? null
+      : normalizeVideoSkillPreviewV2(record.preview, `${path}.preview`),
+    display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+  };
+}
+
+export function normalizeVideoSkillCatalogResponseV2(
+  value: unknown,
+  path = "videoSkillCatalog",
+): VideoSkillCatalogResponseV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["catalog_version", "categories", "items", "next_cursor"], path);
+  return {
+    catalog_version: expectNonEmptyString(record.catalog_version, `${path}.catalog_version`),
+    categories: expectArray(record.categories, `${path}.categories`).map((item, index) => (
+      normalizeVideoSkillCategoryV2(item, `${path}.categories[${index}]`)
+    )),
+    items: expectArray(record.items, `${path}.items`).map((item, index) => (
+      normalizeVideoSkillPublicDetailV2(item, `${path}.items[${index}]`)
+    )),
+    next_cursor: nullableStringWithDefault(record.next_cursor, `${path}.next_cursor`),
+  };
+}
+
+function normalizeActiveStyleSkillSummaryV2(
+  value: unknown,
+  path: string,
+): ActiveStyleSkillSummaryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "skill_run_id",
+      "skill_id",
+      "skill_version",
+      "title",
+      "summary",
+      "category",
+      "creative_direction_snapshot_id",
+    ],
+    path,
+  );
+  return {
+    skill_run_id: expectNonEmptyString(record.skill_run_id, `${path}.skill_run_id`),
+    skill_id: expectNonEmptyString(record.skill_id, `${path}.skill_id`),
+    skill_version: expectNonEmptyString(record.skill_version, `${path}.skill_version`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    summary: expectNonEmptyString(record.summary, `${path}.summary`),
+    category: expectNonEmptyString(record.category, `${path}.category`),
+    creative_direction_snapshot_id: expectNonEmptyString(
+      record.creative_direction_snapshot_id,
+      `${path}.creative_direction_snapshot_id`,
+    ),
+  };
+}
+
 export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"): AgentCanvasWorkflowV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["workflow_id", "project_id", "workflow_schema_version", "canvas_model", "revision", "layout_revision", "nodes", "bindings", "assets"], path);
+  forbidUnknownFields(
+    record,
+    [
+      "workflow_id",
+      "project_id",
+      "workflow_schema_version",
+      "canvas_model",
+      "revision",
+      "layout_revision",
+      "nodes",
+      "bindings",
+      "assets",
+      "active_style_skill",
+    ],
+    path,
+  );
   const schemaVersion = expectInteger(record.workflow_schema_version, `${path}.workflow_schema_version`);
   if (schemaVersion !== 2) fail(`${path}.workflow_schema_version`, "expected 2");
   const canvasModel = expectString(record.canvas_model, `${path}.canvas_model`);
@@ -748,6 +890,9 @@ export function normalizeAgentCanvasWorkflowV2(value: unknown, path = "workflow"
     nodes: expectArray(record.nodes, `${path}.nodes`).map((item, index) => normalizeCanvasNodeV2(item, `${path}.nodes[${index}]`)),
     bindings: expectArray(record.bindings, `${path}.bindings`).map((item, index) => normalizeCanvasBindingV2(item, `${path}.bindings[${index}]`)),
     assets: expectArray(record.assets, `${path}.assets`).map((item, index) => normalizeProjectAssetSummaryV2(item, `${path}.assets[${index}]`)),
+    active_style_skill: record.active_style_skill === undefined || record.active_style_skill === null
+      ? null
+      : normalizeActiveStyleSkillSummaryV2(record.active_style_skill, `${path}.active_style_skill`),
   };
 }
 
@@ -3081,6 +3226,7 @@ export function normalizeAgentCanvasVideoSkillRunV2(
       "source_skill_run_id",
       "status",
       "active_creative_direction_snapshot_id",
+      "public_skill",
       "created_at",
       "updated_at",
     ],
@@ -3103,6 +3249,9 @@ export function normalizeAgentCanvasVideoSkillRunV2(
       record.active_creative_direction_snapshot_id,
       `${path}.active_creative_direction_snapshot_id`,
     ),
+    public_skill: record.public_skill === undefined || record.public_skill === null
+      ? null
+      : normalizeVideoSkillPublicDetailV2(record.public_skill, `${path}.public_skill`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
     updated_at: record.updated_at === undefined || record.updated_at === null
       ? null
