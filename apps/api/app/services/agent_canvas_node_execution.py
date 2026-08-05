@@ -369,15 +369,14 @@ class MediaNodeExecutor:
         )
         delivery = None
         if media_inputs:
+            if context.model_resolution is None:
+                raise _error(
+                    "model_resolution_missing",
+                    "Media reference delivery requires a frozen model resolution.",
+                )
             delivery = self._reference_delivery.deliver_canvas_inputs(
-                provider=_provider_delivery_id(context.node.node_type, context.provider_id),
+                model_resolution=context.model_resolution,
                 inputs=media_inputs,
-                target_media_type=context.node.node_type,
-                model_id=context.model_id,
-                capability_context={
-                    "provider_id": context.provider_id or "",
-                    "semantic_role": context.node.semantic_role,
-                },
             )
             try:
                 delivery.raise_for_canvas_failures()
@@ -915,18 +914,6 @@ def _delivery_failure_identity(
         "required": source.required if source is not None else True,
         "reason": failure.reason,
     }
-
-
-def _seedance_provider_id(provider_id: str | None) -> str:
-    return "volcengine-seedance" if provider_id in {None, "volcengine", "fake"} else provider_id
-
-
-def _provider_delivery_id(media_type: str, provider_id: str | None) -> str:
-    if media_type == "video":
-        return _seedance_provider_id(provider_id)
-    if media_type == "image" and provider_id in {None, "volcengine", "fake"}:
-        return "volcengine-seedream"
-    return provider_id or f"real_{media_type}_provider"
 
 
 def _seedance_checksum(asset_id: str, version_id: str | None) -> str:

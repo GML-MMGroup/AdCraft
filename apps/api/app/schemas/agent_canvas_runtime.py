@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -246,6 +246,38 @@ class ResolvedModelExecutionV1(_RuntimeModel):
         if self.credential_capability is None:
             self.credential_capability = self.capability
         return self
+
+
+ProviderReferenceMediaTypeV1 = Literal["text", "image", "video", "audio"]
+
+
+class ProviderReferenceDeliveryContextV1(_RuntimeModel):
+    """Secret-free frozen provider input delivery policy for one attempt."""
+
+    provider_id: str = Field(min_length=1, max_length=80)
+    provider_model_id: str = Field(min_length=1, max_length=320)
+    provider_protocol: str = Field(min_length=1, max_length=80)
+    target_capability: Literal["image", "video", "audio"]
+    accepted_input_types: tuple[ProviderReferenceMediaTypeV1, ...]
+    reference_limits: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_reference_limits(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        reference_limits = value.get("reference_limits", {})
+        if not isinstance(reference_limits, dict):
+            return value
+        allowed = {"image", "video", "audio"}
+        if any(key not in allowed for key in reference_limits):
+            raise ValueError("Reference limits contain an unsupported media type.")
+        if any(
+            isinstance(limit, bool) or not isinstance(limit, int) or limit < 0
+            for limit in reference_limits.values()
+        ):
+            raise ValueError("Reference limits must be non-negative integers.")
+        return value
 
 
 class CanvasRunCancelRequestV2(_RuntimeModel):
