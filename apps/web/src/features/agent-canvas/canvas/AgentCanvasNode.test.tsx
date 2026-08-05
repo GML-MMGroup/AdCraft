@@ -17,6 +17,16 @@ import {
   type AgentCanvasNodeData,
 } from "./AgentCanvasNode.tsx";
 
+const updateNodeInternals = vi.hoisted(() => vi.fn());
+
+vi.mock("@xyflow/react", async () => {
+  const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
+  return {
+    ...actual,
+    useUpdateNodeInternals: () => updateNodeInternals,
+  };
+});
+
 function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draft"): CanvasNodeV2 {
   return {
     node_id: `${nodeType}-node`,
@@ -92,7 +102,10 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
   };
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  updateNodeInternals.mockClear();
+});
 
 describe("AgentCanvasNodeCard", () => {
   it("uses a genuinely translucent glass surface for dark audio nodes", () => {
@@ -255,13 +268,14 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
   });
 
-  it("renders image and video outputs with the same full-bleed media surface", () => {
+  it("contains complete image outputs while keeping video frames full-bleed", () => {
     const imageView = render(
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,
     );
     const image = screen.getByRole("img", { name: "image output" });
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);
-    expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+    expect(image.classList.contains("agent-canvas-node__media--contain")).toBe(true);
+    expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(false);
 
     imageView.unmount();
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
@@ -270,6 +284,75 @@ describe("AgentCanvasNodeCard", () => {
     expect(video.getAttribute("src")).toBe("/media/video-output");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+  });
+
+  it("sizes an image node shell from the generated asset dimensions", () => {
+    const data: AgentCanvasNodeData = {
+      node: makeNode("image", "ready"),
+      asset: { ...makeAsset("image"), width: 1920, height: 1080 },
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    expect(shell?.style.width).toBe("360px");
+    expect(shell?.style.height).toBe("203px");
+  });
+
+  it("falls back to the loaded image dimensions when asset metadata is missing", () => {
+    const data: AgentCanvasNodeData = {
+      node: makeNode("image", "ready"),
+      asset: { ...makeAsset("image"), width: null, height: null },
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    const image = screen.getByRole("img", { name: "image output" });
+    expect(shell?.style.width).toBe("272px");
+    expect(shell?.style.height).toBe("184px");
+
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 1080 });
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 1920 });
+    fireEvent.load(image);
+
+    expect(shell?.style.width).toBe("203px");
+    expect(shell?.style.height).toBe("360px");
+    expect(updateNodeInternals).toHaveBeenLastCalledWith("image-node");
   });
 
   it("opens a generated video from its play control without bubbling to the node click surface", () => {

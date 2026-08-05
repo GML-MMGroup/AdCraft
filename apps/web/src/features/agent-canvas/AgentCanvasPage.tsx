@@ -51,6 +51,10 @@ import {
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvas/canvasGraphModel.ts";
+import {
+  AGENT_CANVAS_NODE_HORIZONTAL_GAP,
+  agentCanvasNodePlacementSize,
+} from "./canvas/nodeGeometry.ts";
 import { connectionRuleForPair } from "./canvas/connectionPolicy.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
@@ -401,7 +405,14 @@ export function AgentCanvasPage() {
     const defaultPosition = instance
       ? instance.screenToFlowPosition({ x: window.innerWidth * 0.48, y: window.innerHeight * 0.46 })
       : { x: 120, y: 120 };
-    const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition ?? defaultPosition);
+    const position = findAvailableCanvasPosition(
+      workflow.nodes,
+      preferredPosition ?? defaultPosition,
+      {
+        assets: workflow.assets,
+        candidateNodeType: nodeType,
+      },
+    );
     setSurfaceError(null);
     setAddMenuOpen(false);
     setContextMenu(null);
@@ -439,7 +450,11 @@ export function AgentCanvasPage() {
     const preferredPosition = instance
       ? instance.screenToFlowPosition({ x: window.innerWidth * 0.5, y: window.innerHeight * 0.5 })
       : { x: 180, y: 160 };
-    const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition);
+    const position = findAvailableCanvasPosition(workflow.nodes, preferredPosition, {
+      assets: workflow.assets,
+      candidateNodeType: selection.mediaType,
+      candidateDimensions: { width: selection.width, height: selection.height },
+    });
     await createCanvasNode({
       node_type: selection.mediaType,
       creative_role: selection.mediaType === "image"
@@ -466,11 +481,24 @@ export function AgentCanvasPage() {
     if (!workflow || !connectedNodeMenu) return;
     const anchor = workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId);
     if (!anchor) return;
+    const anchorAsset = anchor.output_asset_id
+      ? workflow.assets.find((asset) => asset.asset_id === anchor.output_asset_id) ?? null
+      : null;
+    const anchorSize = agentCanvasNodePlacementSize(
+      anchor.node_type,
+      anchorAsset ? { width: anchorAsset.width, height: anchorAsset.height } : null,
+    );
+    const candidateSize = agentCanvasNodePlacementSize(nodeType);
     const preferred = {
-      x: anchor.position.x + (connectedNodeMenu.direction === "downstream" ? 340 : -340),
+      x: connectedNodeMenu.direction === "downstream"
+        ? anchor.position.x + anchorSize.width + AGENT_CANVAS_NODE_HORIZONTAL_GAP
+        : anchor.position.x - candidateSize.width - AGENT_CANVAS_NODE_HORIZONTAL_GAP,
       y: anchor.position.y,
     };
-    const position = findAvailableCanvasPosition(workflow.nodes, preferred);
+    const position = findAvailableCanvasPosition(workflow.nodes, preferred, {
+      assets: workflow.assets,
+      candidateNodeType: nodeType,
+    });
     const targetNodeId = connectedNodeMenu.direction === "downstream"
       ? null
       : anchor.node_id;

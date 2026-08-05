@@ -8,6 +8,7 @@
 .agent-canvas-node {
   --agent-node-accent: #8b7fc8;
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: visible;
@@ -93,6 +94,12 @@
 
 .agent-canvas-node__media--cover {
   object-fit: cover;
+  object-position: center;
+}
+
+.agent-canvas-node__media--contain {
+  background: #e4e6ec;
+  object-fit: contain;
   object-position: center;
 }
 
@@ -659,4 +666,8 @@
 
 :root[data-theme="dark"] .agent-canvas-node__copy p {
   color: #eef0f8;
+}
+
+:root[data-theme="dark"] .agent-canvas-node__media--contain {
+  background: #171920;
 }

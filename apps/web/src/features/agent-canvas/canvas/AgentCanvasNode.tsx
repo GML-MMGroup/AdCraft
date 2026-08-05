@@ -1,5 +1,11 @@
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import type { ReactNode } from "react";
+import {
+  Handle,
+  Position,
+  useUpdateNodeInternals,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 
 import {
   DocumentIcon,
@@ -17,6 +23,11 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
+import {
+  agentCanvasNodeSize,
+  validAgentCanvasMediaDimensions,
+  type AgentCanvasMediaDimensions,
+} from "./nodeGeometry.ts";
 import "./AgentCanvasNode.css";
 
 const NODE_TYPE_LABELS: Record<CanvasNodeTypeV2, string> = {
@@ -73,6 +84,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   runtime?: NodeRuntimeV2 | null;
   selected?: boolean;
   disabled?: boolean;
+  onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
 }
 
 function firstString(record: Record<string, unknown>, keys: string[]) {
@@ -124,14 +136,17 @@ function typeMarkerImage(nodeType: CanvasNodeTypeV2): string {
   return "/imgs/text.webp";
 }
 
+/* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- Image load only reports intrinsic media dimensions; the image remains non-interactive. */
 function MediaSurface({
   node,
   asset,
   onOpenVideoPreview,
+  onMediaDimensionsResolved,
 }: {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
   onOpenVideoPreview?: AgentCanvasNodeCallbacks["onOpenVideoPreview"];
+  onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
 }) {
   const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
@@ -168,12 +183,18 @@ function MediaSurface({
 
   return mediaUrl ? (
     <img
-      className="agent-canvas-node__media agent-canvas-node__media--cover"
+      className={`agent-canvas-node__media agent-canvas-node__media--${node.node_type === "image" ? "contain" : "cover"}`}
       src={mediaUrl}
       alt={asset?.display_name || `${NODE_TYPE_LABELS[node.node_type]} output`}
       draggable={false}
       loading="lazy"
       decoding="async"
+      onLoad={(event) => {
+        const { naturalWidth, naturalHeight } = event.currentTarget;
+        if (naturalWidth > 0 && naturalHeight > 0) {
+          onMediaDimensionsResolved?.({ width: naturalWidth, height: naturalHeight });
+        }
+      }}
     />
   ) : (
     <div className="agent-canvas-node__media-placeholder" aria-label={`${NODE_TYPE_LABELS[node.node_type]} preview unavailable`}>
@@ -181,13 +202,15 @@ function MediaSurface({
     </div>
   );
 }
+/* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
 
 function NodeSurface({
   node,
   asset,
   status,
   onOpenVideoPreview,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview"> & { status: CanvasNodeStatusV2 }) {
+  onMediaDimensionsResolved,
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved"> & { status: CanvasNodeStatusV2 }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <div className={`agent-canvas-node__copy agent-canvas-node__copy--${node.node_type}`}>
@@ -199,7 +222,14 @@ function NodeSurface({
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
   }
-  return <MediaSurface node={node} asset={asset} onOpenVideoPreview={onOpenVideoPreview} />;
+  return (
+    <MediaSurface
+      node={node}
+      asset={asset}
+      onOpenVideoPreview={onOpenVideoPreview}
+      onMediaDimensionsResolved={onMediaDimensionsResolved}
+    />
+  );
 }
 
 export function AgentCanvasNodeCard({
@@ -208,6 +238,7 @@ export function AgentCanvasNodeCard({
   runtime,
   selected = false,
   onOpenVideoPreview,
+  onMediaDimensionsResolved,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
@@ -244,6 +275,7 @@ export function AgentCanvasNodeCard({
           asset={asset}
           status={status}
           onOpenVideoPreview={onOpenVideoPreview}
+          onMediaDimensionsResolved={onMediaDimensionsResolved}
         />
         {status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
@@ -273,14 +305,33 @@ export function AgentCanvasNodeCard({
 }
 
 export function AgentCanvasNodeRenderer({
+  id,
   data,
   selected,
   isConnectable,
 }: NodeProps<AgentCanvasFlowNode>) {
+  const updateNodeInternals = useUpdateNodeInternals();
+  const [intrinsicDimensions, setIntrinsicDimensions] = useState<(
+    AgentCanvasMediaDimensions & { assetId: string | null }
+  ) | null>(null);
   const label = semanticNodeLabel(data.node);
   const workbench = data.renderWorkbench?.(data.node);
+  const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
+    ? { width: data.asset.width, height: data.asset.height }
+    : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
+      ? intrinsicDimensions
+      : null;
+  const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
+
+  useLayoutEffect(() => {
+    updateNodeInternals(id);
+  }, [id, nodeSize.height, nodeSize.width, updateNodeInternals]);
+
   return (
-    <div className="agent-canvas-node-shell">
+    <div
+      className="agent-canvas-node-shell"
+      style={{ width: nodeSize.width, height: nodeSize.height }}
+    >
       {data.showInputHandle !== false ? (
         <Handle
           id="input"
@@ -297,6 +348,13 @@ export function AgentCanvasNodeRenderer({
         runtime={data.runtime}
         selected={selected}
         onOpenVideoPreview={data.onOpenVideoPreview}
+        onMediaDimensionsResolved={validAgentCanvasMediaDimensions(data.asset)
+          ? undefined
+          : ({ width, height }) => setIntrinsicDimensions({
+              assetId: data.asset?.asset_id ?? null,
+              width,
+              height,
+            })}
       />
       {workbench ? <div className="agent-canvas-node-workbench-anchor nodrag nopan nowheel">{workbench}</div> : null}
       {data.showOutputHandle !== false ? (
