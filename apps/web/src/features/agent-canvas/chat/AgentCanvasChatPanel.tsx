@@ -29,6 +29,7 @@ import {
   snapChatComposerScroll,
 } from "./chatComposerTextarea.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
+import { AgentCanvasStyleSelector } from "./AgentCanvasStyleSelector.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import "./agent-canvas-chat.css";
 
@@ -306,15 +307,22 @@ export function AgentCanvasChatPanel({
           }}
         />
         <div className="agent-chat__composer-actions">
-          <button
-            type="button"
-            className={mentionOpen ? "is-active" : ""}
-            aria-label="Mention node or image asset"
-            title="Mention node or image asset"
-            onClick={() => setMentionOpen((current) => !current)}
-          >
-            @
-          </button>
+          <div className="agent-chat__composer-tools">
+            <button
+              type="button"
+              className={mentionOpen ? "is-active" : ""}
+              aria-label="Mention node or image asset"
+              title="Mention node or image asset"
+              onClick={() => setMentionOpen((current) => !current)}
+            >
+              @
+            </button>
+            <AgentCanvasStyleSelector
+              workflowId={workflow.workflow_id}
+              activeStyle={workflow.active_style_skill}
+              onWorkflowRefresh={() => onWorkflowRefresh?.()}
+            />
+          </div>
           <button
             type="button"
             className="agent-chat__send"

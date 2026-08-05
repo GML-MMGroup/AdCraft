@@ -621,6 +621,57 @@ describe("Agent Canvas client", () => {
   });
 });
 
+describe("Agent Canvas Video Style catalog client", () => {
+  it("lists catalog entries with backend filters and reads public Skill details", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://frontend.test");
+      expect(init?.method).toBeUndefined();
+      if (url.pathname.endsWith("/video-skills/platform-default")) {
+        return jsonResponse({
+          skill_id: "platform-default",
+          version: "1.0.0",
+          title: "Platform Default",
+          summary: "Balanced commercial video direction.",
+          category: "commercial-craft",
+          tags: ["commercial"],
+          supported_use_cases: ["general advertising"],
+          preview: { kind: "none", summary: null, media_url: null },
+          display_order: 10,
+        });
+      }
+      expect(url.pathname).toBe("/api/v2/video-skills");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        category: "commercial-craft",
+        cursor: "Mg",
+        limit: "40",
+      });
+      return jsonResponse({
+        catalog_version: "1",
+        categories: [{
+          category_id: "commercial-craft",
+          title: "Commercial Craft",
+          display_order: 10,
+        }],
+        items: [],
+        next_cursor: null,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const catalog = await v2Api.listVideoSkills({
+      category: "commercial-craft",
+      cursor: "Mg",
+      limit: 40,
+    });
+    const detail = await v2Api.getVideoSkill("platform-default");
+
+    expect(catalog.catalog_version).toBe("1");
+    expect(catalog.categories[0]?.title).toBe("Commercial Craft");
+    expect(detail.title).toBe("Platform Default");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 function jsonResponse(
   payload: unknown,
   options: { status?: number; etag?: string } = {},

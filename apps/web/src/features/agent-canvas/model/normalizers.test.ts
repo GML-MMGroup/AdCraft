@@ -26,6 +26,8 @@ import {
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
   normalizeResolvedTextInputSnapshotV2,
+  normalizeVideoSkillCatalogResponseV2,
+  normalizeVideoSkillPublicDetailV2,
 } from "./normalizers.ts";
 
 function validWorkflowPayload() {
@@ -517,7 +519,18 @@ describe("Agent Canvas normalizers", () => {
   });
 
   it("normalizes a complete canonical workflow payload", () => {
-    const workflow = normalizeAgentCanvasWorkflowV2(validWorkflowPayload());
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      active_style_skill: {
+        skill_run_id: "style-run-1",
+        skill_id: "platform-default",
+        skill_version: "1.0.0",
+        title: "Platform Default",
+        summary: "Balanced commercial video direction.",
+        category: "commercial-craft",
+        creative_direction_snapshot_id: "direction-1",
+      },
+    });
 
     expect(workflow.canvas_model).toBe("agent_canvas_v1");
     expect(workflow.revision).toBe(7);
@@ -525,6 +538,84 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.nodes).toHaveLength(2);
     expect(workflow.bindings[1]?.source.kind).toBe("image_asset");
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
+    expect(workflow.active_style_skill).toMatchObject({
+      skill_run_id: "style-run-1",
+      title: "Platform Default",
+    });
+  });
+
+
+  it("normalizes the public video Style catalog without exposing private Skill content", () => {
+    const catalog = normalizeVideoSkillCatalogResponseV2({
+      catalog_version: "1",
+      categories: [{
+        category_id: "commercial-craft",
+        title: "Commercial Craft",
+        display_order: 10,
+      }],
+      items: [{
+        skill_id: "platform-default",
+        version: "1.0.0",
+        title: "Platform Default",
+        summary: "Balanced commercial video direction.",
+        category: "commercial-craft",
+        tags: ["commercial", "balanced"],
+        supported_use_cases: ["general advertising"],
+        preview: { kind: "none", summary: null, media_url: null },
+        display_order: 10,
+      }],
+      next_cursor: "Mg",
+    });
+
+    expect(catalog.categories[0]).toEqual({
+      category_id: "commercial-craft",
+      title: "Commercial Craft",
+      display_order: 10,
+    });
+    expect(catalog.items[0]).toMatchObject({
+      skill_id: "platform-default",
+      preview: { kind: "none" },
+    });
+    expect(catalog.next_cursor).toBe("Mg");
+    expect(() => normalizeVideoSkillPublicDetailV2({
+      ...catalog.items[0],
+      skill_body: "private prompt content",
+    })).toThrowError(/unknown field/i);
+  });
+
+  it("normalizes public Style metadata returned with an activated Skill Run", () => {
+    const publicSkill = {
+      skill_id: "cinematic-poetic-realism",
+      version: "1.0.0",
+      title: "Cinematic Poetic Realism",
+      summary: "A restrained cinematic treatment.",
+      category: "cinematic-narrative",
+      tags: ["cinematic"],
+      supported_use_cases: ["brand film"],
+      preview: {
+        kind: "image",
+        summary: "Public visual preview.",
+        media_url: "/assets/previews/style.jpg",
+      },
+      display_order: 20,
+    };
+    const skillRun = normalizeAgentCanvasVideoSkillRunV2({
+      skill_run_id: "style-run-2",
+      workflow_id: "workflow-1",
+      skill_id: publicSkill.skill_id,
+      skill_version: publicSkill.version,
+      source_skill_run_id: "style-run-1",
+      status: "active",
+      active_creative_direction_snapshot_id: "direction-2",
+      public_skill: publicSkill,
+      created_at: "2026-08-05T01:00:00Z",
+      updated_at: "2026-08-05T01:00:01Z",
+    });
+
+    expect(skillRun.public_skill).toMatchObject({
+      skill_id: "cinematic-poetic-realism",
+      preview: { kind: "image" },
+    });
   });
 
   it("accepts final Project Asset provenance without exposing storage implementation details to callers", () => {

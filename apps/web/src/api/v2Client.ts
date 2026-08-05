@@ -10,6 +10,8 @@ import type {
   AgentCanvasProposalActionRequestV2,
   AgentCanvasVideoSkillRunCreateRequestV2,
   AgentCanvasVideoSkillRunV2,
+  VideoSkillCatalogResponseV2,
+  VideoSkillPublicDetailV2,
   AgentCanvasWorkflowV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
@@ -155,6 +157,8 @@ import {
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
+  normalizeVideoSkillCatalogResponseV2,
+  normalizeVideoSkillPublicDetailV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeCanvasMutationResponseV2,
   normalizeCanvasBindingMutationResponseV2,
@@ -832,6 +836,31 @@ export const v2Api = {
         },
       },
     ).then((response) => response.value);
+  },
+
+  listVideoSkills(filters: {
+    category?: string;
+    cursor?: string;
+    limit?: number;
+  } = {}): Promise<VideoSkillCatalogResponseV2> {
+    const query = new URLSearchParams();
+    if (filters.category) query.set("category", filters.category);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return requestV2(
+      `/video-skills${suffix}`,
+      {},
+      normalizeVideoSkillCatalogResponseV2,
+    );
+  },
+
+  getVideoSkill(skillId: string): Promise<VideoSkillPublicDetailV2> {
+    return requestV2(
+      `/video-skills/${encodeURIComponent(skillId)}`,
+      {},
+      normalizeVideoSkillPublicDetailV2,
+    );
   },
 
   createAgentCanvasVideoSkillRun(

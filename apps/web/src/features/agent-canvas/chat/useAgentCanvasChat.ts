@@ -139,6 +139,7 @@ export function useAgentCanvasChat({
   const deliveredReceiptIdsRef = useRef(new Set<string>());
   const submittedDraftsByTurnIdRef = useRef(new Map<string, SubmitDraft>());
   const workflowId = workflow?.workflow_id ?? null;
+  const activeVideoSkillRunId = workflow?.active_style_skill?.skill_run_id ?? null;
 
   const upsertContinuation = useCallback((continuation: AgentCanvasContinuationV2) => {
     setContinuationsById((current) => ({
@@ -396,7 +397,7 @@ export function useAgentCanvasChat({
         text: draft.text.trim(),
         mentioned_node_ids: draft.mentionedNodeIds,
         mentioned_image_asset_ids: draft.mentionedImageAssetIds,
-        video_skill_run_id: null,
+        video_skill_run_id: activeVideoSkillRunId,
       }, idempotencyKey);
       if (workflowGeneration !== workflowGenerationRef.current) return false;
       if (accepted.message_id) {
@@ -426,7 +427,7 @@ export function useAgentCanvasChat({
         setSending(false);
       }
     }
-  }, [trackAcceptedTurn, workflowId]);
+  }, [activeVideoSkillRunId, trackAcceptedTurn, workflowId]);
 
   const selectProposal = useCallback(async (
     proposalId: string,

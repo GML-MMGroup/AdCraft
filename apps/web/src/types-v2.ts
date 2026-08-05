@@ -1646,6 +1646,50 @@ export interface ProjectAssetSummaryV2 {
   created_at: string | null;
 }
 
+export interface VideoSkillPreviewV2 {
+  kind: "none" | "image" | "video";
+  summary: string | null;
+  media_url: string | null;
+}
+
+export interface VideoSkillCategoryV2 {
+  category_id: string;
+  title: string;
+  display_order: number;
+}
+
+export interface VideoSkillPublicDetailV2 {
+  skill_id: string;
+  version: string;
+  title: string;
+  summary: string;
+  category: string;
+  tags: string[];
+  supported_use_cases: string[];
+  preview: VideoSkillPreviewV2 | null;
+  display_order: number;
+}
+
+export interface VideoSkillSummaryListV2 {
+  items: VideoSkillPublicDetailV2[];
+  next_cursor: string | null;
+}
+
+export interface VideoSkillCatalogResponseV2 extends VideoSkillSummaryListV2 {
+  catalog_version: string;
+  categories: VideoSkillCategoryV2[];
+}
+
+export interface ActiveStyleSkillSummaryV2 {
+  skill_run_id: string;
+  skill_id: string;
+  skill_version: string;
+  title: string;
+  summary: string;
+  category: string;
+  creative_direction_snapshot_id: string;
+}
+
 export interface AgentCanvasWorkflowV2 {
   workflow_id: string;
   project_id: string;
@@ -1656,6 +1700,7 @@ export interface AgentCanvasWorkflowV2 {
   nodes: CanvasNodeV2[];
   bindings: CanvasBindingV2[];
   assets: ProjectAssetSummaryV2[];
+  active_style_skill: ActiveStyleSkillSummaryV2 | null;
 }
 
 export interface AgentCanvasProjectCreateResponseV2 extends AgentCanvasWorkflowV2 {
@@ -2729,6 +2774,7 @@ export interface AgentCanvasVideoSkillRunV2 {
   source_skill_run_id: string | null;
   status: "active" | "superseded";
   active_creative_direction_snapshot_id: string | null;
+  public_skill: VideoSkillPublicDetailV2 | null;
   created_at: string;
   updated_at: string | null;
 }
