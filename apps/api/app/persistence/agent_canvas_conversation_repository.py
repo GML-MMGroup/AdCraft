@@ -3303,6 +3303,38 @@ class AgentCanvasConversationRepository:
             ) from error
         return tuple(_expert_activity(row) for row in rows)
 
+    def list_working_activities_with_terminal_turns(
+        self,
+    ) -> tuple[tuple[ExpertActivityV2, ChatTurnV2], ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = connection.execute(
+                    select(
+                        AgentCanvasExpertActivityRow.activity_id,
+                        AgentCanvasChatTurnRow.turn_id,
+                    )
+                    .join(
+                        AgentCanvasChatTurnRow,
+                        AgentCanvasChatTurnRow.turn_id == AgentCanvasExpertActivityRow.turn_id,
+                    )
+                    .where(
+                        AgentCanvasExpertActivityRow.status == "working",
+                        AgentCanvasChatTurnRow.status.in_(("completed", "failed")),
+                    )
+                    .order_by(AgentCanvasExpertActivityRow.created_at.asc())
+                ).all()
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        return tuple(
+            (
+                self.get_expert_activity(str(row.activity_id)),
+                self.get_turn(str(row.turn_id)),
+            )
+            for row in rows
+        )
+
     def record_expert_activity(
         self,
         turn_id: str,
@@ -3726,12 +3758,23 @@ def _creative_direction_snapshot(
 
 
 def _expert_activity(row: RowMapping) -> ExpertActivityV2:
+    display_name = str(row["display_name"]).strip() or {
+        "script_writer": "Script Writer",
+        "product_designer": "Product Designer",
+        "prop_designer": "Prop Designer",
+        "character_designer": "Character Designer",
+        "scene_designer": "Scene Designer",
+        "storyboard_artist": "Storyboard Artist",
+        "video_director": "Video Director",
+        "bgm_director": "BGM Director",
+        "quick_media_agent": "Quick Media Agent",
+    }.get(str(row["specialist_name"]), "Specialist")
     return ExpertActivityV2(
         activity_id=str(row["activity_id"]),
         workflow_id=str(row["workflow_id"]),
         turn_id=str(row["turn_id"]),
         specialist_name=cast(str, row["specialist_name"]),
-        display_name=str(row["display_name"]),
+        display_name=display_name,
         operation=cast(str, row["operation"]),
         status=cast(str, row["status"]),
         error_code=str(row["error_code"]) if row["error_code"] else None,
