@@ -2502,6 +2502,77 @@
       "title": "AgentToolResult",
       "type": "object"
     },
+    "BgmAudioSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "bgm",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "audio",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/BgmContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "BgmAudioSpecialistDraftV2",
+      "type": "object"
+    },
     "BgmContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -3321,6 +3392,77 @@
         "user_input"
       ],
       "title": "CharacterExpertAgentContext",
+      "type": "object"
+    },
+    "CharacterImageSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "character",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "image",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/DesignAssetContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "CharacterImageSpecialistDraftV2",
       "type": "object"
     },
     "ConceptDraftSpecV2": {
@@ -4143,6 +4285,15 @@
           ],
           "default": null
         },
+        "topic_ownership": {
+          "items": {
+            "$ref": "#/$defs/GuidanceTopicOwnershipV2"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Topic Ownership",
+          "type": "array"
+        },
         "user_input": {
           "maxLength": 65536,
           "minLength": 1,
@@ -4164,6 +4315,7 @@
       "required": [
         "context_kind",
         "conversation_id",
+        "topic_ownership",
         "user_input",
         "workflow_id",
         "workflow_revision"
@@ -5547,6 +5699,47 @@
       "title": "GuidanceStyleSummaryV2",
       "type": "object"
     },
+    "GuidanceTopicOwnershipV2": {
+      "additionalProperties": false,
+      "properties": {
+        "specialist_name": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "quick_media_agent",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Specialist Name",
+          "type": "string"
+        },
+        "topic_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "creative_direction",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video"
+          ],
+          "title": "Topic Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "specialist_name",
+        "topic_kind"
+      ],
+      "title": "GuidanceTopicOwnershipV2",
+      "type": "object"
+    },
     "GuidanceTopicStateV2": {
       "additionalProperties": false,
       "properties": {
@@ -6371,6 +6564,77 @@
       "title": "ProductExpertAgentContext",
       "type": "object"
     },
+    "ProductImageSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "product",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "image",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/DesignAssetContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "ProductImageSpecialistDraftV2",
+      "type": "object"
+    },
     "ProjectCreativeMemoryV2": {
       "additionalProperties": false,
       "properties": {
@@ -6470,6 +6734,77 @@
         "workflow_id"
       ],
       "title": "ProjectCreativeMemoryV2",
+      "type": "object"
+    },
+    "PropImageSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "prop",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "image",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/DesignAssetContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "PropImageSpecialistDraftV2",
       "type": "object"
     },
     "ProposalRevisionContextV2": {
@@ -7035,6 +7370,162 @@
       "title": "SceneExpertAgentContext",
       "type": "object"
     },
+    "SceneImageSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "scene",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "image",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/SceneDesignBoardContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "SceneImageSpecialistDraftV2",
+      "type": "object"
+    },
+    "ScriptDraftContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "title": "ScriptDraftContentV2",
+      "type": "object"
+    },
+    "ScriptSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "script",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "default": null,
+          "title": "Generation Prompt",
+          "type": "null"
+        },
+        "node_type": {
+          "const": "script",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/ScriptDraftContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "ScriptSpecialistDraftV2",
+      "type": "object"
+    },
     "ScriptWriterAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -7246,6 +7737,12 @@
           "default": "",
           "maxLength": 8192,
           "title": "Script Summary",
+          "type": "string"
+        },
+        "selected_option_draft_prompt": {
+          "default": "",
+          "maxLength": 32768,
+          "title": "Selected Option Draft Prompt",
           "type": "string"
         },
         "selected_option_id": {
@@ -7745,6 +8242,77 @@
         "style"
       ],
       "title": "StoryboardGridContentV2",
+      "type": "object"
+    },
+    "StoryboardImageSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "storyboard_sequence",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "image",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/StoryboardGridContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "StoryboardImageSpecialistDraftV2",
       "type": "object"
     },
     "StoryboardPanelV2": {
@@ -8787,6 +9355,77 @@
         "storyboard_content"
       ],
       "title": "VideoSegmentContentV2",
+      "type": "object"
+    },
+    "VideoSpecialistDraftV2": {
+      "additionalProperties": false,
+      "properties": {
+        "creative_role": {
+          "const": "storyboard_video",
+          "title": "Creative Role",
+          "type": "string"
+        },
+        "generation_prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Generation Prompt",
+          "type": "string"
+        },
+        "node_type": {
+          "const": "video",
+          "title": "Node Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "reference_intents": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftReferenceIntentV2"
+          },
+          "maxItems": 64,
+          "title": "Reference Intents",
+          "type": "array"
+        },
+        "structured_content": {
+          "$ref": "#/$defs/VideoSegmentContentV2"
+        },
+        "summary_prompt": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "creative_role",
+        "generation_prompt",
+        "node_type",
+        "structured_content",
+        "summary_prompt",
+        "title"
+      ],
+      "title": "VideoSpecialistDraftV2",
       "type": "object"
     },
     "VisualStyleContractV2": {

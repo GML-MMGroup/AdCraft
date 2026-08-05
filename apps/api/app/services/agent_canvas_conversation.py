@@ -7,10 +7,11 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import logging
 from typing import Literal, Protocol, cast
 from uuid import uuid4
 
-from pydantic import TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
@@ -47,10 +48,20 @@ from app.schemas.agent_canvas_conversation import (
     VideoSkillRunV2,
 )
 from app.schemas.agent_canvas_creative_session import (
+    BgmAudioSpecialistDraftV2,
+    CharacterImageSpecialistDraftV2,
     CreationModeDecisionV2,
     DraftReferenceIntentV2,
+    GuidedSessionStateV2,
     GuidanceSessionActionV2,
+    ProductImageSpecialistDraftV2,
+    PropImageSpecialistDraftV2,
+    ProjectCreativeMemoryV2,
+    SceneImageSpecialistDraftV2,
+    ScriptSpecialistDraftV2,
     SpecialistDraftV2,
+    StoryboardImageSpecialistDraftV2,
+    VideoSpecialistDraftV2,
     StyleGuidanceContextV2,
     DelegatedProposalChoiceV2,
     NextGuidanceDecisionV2,
@@ -93,7 +104,11 @@ from app.services.agent_canvas_guidance_decision import (
     GuidanceCompletionService,
     GuidanceDecisionValidator,
 )
+from app.services.agent_canvas_guidance_ownership import GuidanceOwnerResolver
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -516,11 +531,12 @@ class PiDirectorGateway:
                 "agent_specialist_operation_unsupported",
                 "The requested Specialist operation is not supported.",
             )
+        contract = _specialist_draft_contract(context.specialist_name)
         value, _ = self._run(
             agent_name=context.specialist_name,
             operation=context.operation,
             context=context,
-            contract=SpecialistDraftV2,
+            contract=contract,
             max_handoffs=0,
             parent_run_id=parent_run_id,
             identity_fields={
@@ -531,7 +547,8 @@ class PiDirectorGateway:
                 "selected_option_id": context.selected_option_id or "",
             },
         )
-        return SpecialistDraftV2.model_validate(value)
+        concrete_draft = contract.model_validate(value)
+        return SpecialistDraftV2.model_validate(concrete_draft.model_dump(mode="json"))
 
     def replan(
         self,
@@ -1062,6 +1079,7 @@ class AgentConversationService:
             connection_policy=connection_policy,
         )
         self._guidance_contexts = GuidanceContextBuilder()
+        self._guidance_owners = GuidanceOwnerResolver()
         self._guidance_decisions = GuidanceDecisionValidator()
         self._guidance_completion = GuidanceCompletionService()
         self._creative_direction = CreativeDirectionService()
@@ -1318,12 +1336,20 @@ class AgentConversationService:
             mentioned_node_ids=mentioned_node_ids,
             image_assets=image_assets,
         )
-        decision = self._gateway.decide_next_guidance_step(
+        supplied_decision = self._gateway.decide_next_guidance_step(
             director_context,
             turn_id=turn_id,
         )
+        owner_resolution = self._guidance_owners.resolve(supplied_decision)
+        if owner_resolution.corrected:
+            logger.info(
+                "guidance_specialist_owner_normalized topic_kind=%s supplied=%s resolved=%s",
+                owner_resolution.decision.topic_kind,
+                owner_resolution.supplied_specialist_name,
+                owner_resolution.resolved_specialist_name,
+            )
         decision = self._guidance_decisions.validate(
-            decision,
+            owner_resolution.decision,
             session=session,
             workflow=workflow,
             resolved_targets=mentioned_node_ids,
@@ -1678,10 +1704,35 @@ class AgentConversationService:
         return self._conversations.get_turn(turn_id)
 
     def recover_pending_turns(self) -> tuple[ChatTurnV2, ...]:
+        self._reconcile_terminal_expert_activities()
         return tuple(
             self.process_turn(turn_id)
             for turn_id in self._conversations.list_recoverable_turn_ids()
         )
+
+    def _reconcile_terminal_expert_activities(self) -> None:
+        for activity, turn in self._conversations.list_working_activities_with_terminal_turns():
+            error_code = (
+                turn.error_code
+                if turn.status == "failed" and turn.error_code
+                else "expert_activity_terminal_reconciled"
+            )
+            error_message = (
+                turn.error_message
+                if turn.status == "failed" and turn.error_message
+                else "Expert activity was reconciled after its owning turn terminated."
+            )
+            try:
+                self._conversations.transition_expert_activity(
+                    activity.activity_id,
+                    status="failed",
+                    error_code=error_code,
+                    error_message=error_message,
+                    event_details={"reconciled_from_turn_status": turn.status},
+                )
+            except V2PersistenceError as error:
+                if error.code != "expert_activity_terminal":
+                    raise
 
     def get_timeline(
         self,
@@ -1744,6 +1795,18 @@ class AgentConversationService:
                     stage="agent_conversation_service",
                 )
             workflow = self._workflows.get_workflow(turn.workflow_id)
+            session = self._conversations.get_guidance_session(turn.workflow_id)
+            memory = self._conversations.get_creative_memory(turn.workflow_id)
+            _, style_guidance = self._style_context_for_turn(
+                turn,
+                role=proposal.specialist_name,
+            )
+            if option.draft_spec is None:
+                raise V2PersistenceError(
+                    "specialist_draft_invalid",
+                    "The selected Proposal option has no private Draft Prompt.",
+                    stage="agent_conversation_service",
+                )
             draft = materialize(
                 SpecialistContextV2(
                     context_kind="specialist_handoff",
@@ -1755,7 +1818,22 @@ class AgentConversationService:
                         turn.request.get("instruction") or "Apply the selected option."
                     ),
                     selected_option_summary=option.summary_prompt,
+                    selected_option_draft_prompt=option.draft_spec.prompt,
                     selected_option_id=option.option_id,
+                    style_guidance=style_guidance,
+                    explicit_input_summaries=_materialization_input_summaries(
+                        session,
+                        proposal.specialist_name,
+                    ),
+                    guidance_session=session,
+                    creative_memory=_materialization_memory_projection(
+                        memory,
+                        proposal.specialist_name,
+                    ),
+                    approved_anchor_summaries=_materialization_anchor_summaries(
+                        memory,
+                        proposal.specialist_name,
+                    ),
                     reference_allowlist=tuple(
                         reference.source_id for reference in proposal.proposed_references
                     ),
@@ -1763,6 +1841,14 @@ class AgentConversationService:
                 turn_id=turn.turn_id,
             )
             SpecialistDraftValidationService().validate(proposal, draft)
+        except PiAgentRuntimeError as error:
+            self._conversations.transition_expert_activity(
+                activity.activity_id,
+                status="failed",
+                error_code=error.code,
+                error_message=error.message,
+            )
+            raise
         except V2PersistenceError as error:
             self._conversations.transition_expert_activity(
                 activity.activity_id,
@@ -2012,6 +2098,25 @@ def _proposal_kind_for_specialist(specialist_name: str) -> str:
     }[specialist_name]
 
 
+def _specialist_draft_contract(specialist_name: str) -> type[BaseModel]:
+    contract = {
+        "script_writer": ScriptSpecialistDraftV2,
+        "product_designer": ProductImageSpecialistDraftV2,
+        "prop_designer": PropImageSpecialistDraftV2,
+        "character_designer": CharacterImageSpecialistDraftV2,
+        "scene_designer": SceneImageSpecialistDraftV2,
+        "storyboard_artist": StoryboardImageSpecialistDraftV2,
+        "video_director": VideoSpecialistDraftV2,
+        "bgm_director": BgmAudioSpecialistDraftV2,
+    }.get(specialist_name)
+    if contract is None:
+        raise PiAgentRuntimeError(
+            "specialist_draft_contract_unresolved",
+            "The fixed Specialist Draft contract could not be resolved.",
+        )
+    return contract
+
+
 def _semantic_role_for_proposal(proposal_kind: str) -> str:
     return {
         "script": "script",
@@ -2023,6 +2128,79 @@ def _semantic_role_for_proposal(proposal_kind: str) -> str:
         "video": "storyboard_video",
         "bgm": "bgm",
     }[proposal_kind]
+
+
+def _materialization_memory_projection(
+    memory: ProjectCreativeMemoryV2,
+    specialist_name: str,
+) -> ProjectCreativeMemoryV2:
+    if specialist_name != "product_designer":
+        return memory
+    approved_node_ids = {
+        role: node_ids
+        for role, node_ids in memory.approved_node_ids.items()
+        if role in {"product", "creative_direction"}
+    }
+    return memory.model_copy(
+        update={
+            "creative_goal": "",
+            "target_audience": "",
+            "duration_format": "",
+            "approved_node_ids": approved_node_ids,
+            "open_questions": (),
+            "deferred_topics": (),
+            "rejection_notes": (),
+            "conversation_summary": "",
+            "summary_through_sequence_no": 0,
+        }
+    )
+
+
+def _materialization_input_summaries(
+    session: GuidedSessionStateV2,
+    specialist_name: str,
+) -> tuple[str, ...]:
+    role_kind = {
+        "script_writer": "script",
+        "product_designer": "product",
+        "prop_designer": "prop",
+        "character_designer": "character",
+        "scene_designer": "scene",
+        "storyboard_artist": "storyboard",
+        "video_director": "video",
+        "bgm_director": "audio",
+    }.get(specialist_name)
+    if role_kind is None:
+        return ()
+    return tuple(
+        json.dumps(decision.requirements, ensure_ascii=True, sort_keys=True)
+        for decision in session.element_decisions
+        if decision.element_kind == role_kind and decision.requirements
+    )
+
+
+def _materialization_anchor_summaries(
+    memory: ProjectCreativeMemoryV2,
+    specialist_name: str,
+) -> tuple[str, ...]:
+    role_kind = {
+        "script_writer": "script",
+        "product_designer": "product",
+        "prop_designer": "prop",
+        "character_designer": "character",
+        "scene_designer": "scene",
+        "storyboard_artist": "storyboard_sequence",
+        "video_director": "storyboard_video",
+        "bgm_director": "bgm",
+    }.get(specialist_name)
+    if role_kind is None:
+        return ()
+    return tuple(
+        f"{role}: {node_id}"
+        for role, node_ids in memory.approved_node_ids.items()
+        if role == role_kind
+        for node_id in node_ids
+    )
 
 
 def _approved_anchor_summaries(

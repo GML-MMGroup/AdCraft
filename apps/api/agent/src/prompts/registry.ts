@@ -23,16 +23,33 @@ type PromptRegistration = Omit<
 };
 
 const specialistProfiles = [
-  ["script_writer", "Script Writer", "script"],
-  ["product_designer", "Product Designer", "product"],
-  ["prop_designer", "Prop Designer", "prop"],
-  ["character_designer", "Character Designer", "character"],
-  ["scene_designer", "Scene Designer", "scene"],
-  ["storyboard_artist", "Storyboard Artist", "storyboard"],
-  ["video_director", "Video Director", "video"],
-  ["bgm_director", "BGM Director", "bgm"],
-  ["quick_media_agent", "Quick Media Agent", "general media"],
-] as const satisfies ReadonlyArray<readonly [AgentName, string, string]>;
+  ["script_writer", "Script Writer", "script", "ScriptSpecialistDraftV2"],
+  [
+    "product_designer",
+    "Product Designer",
+    "product",
+    "ProductImageSpecialistDraftV2",
+  ],
+  ["prop_designer", "Prop Designer", "prop", "PropImageSpecialistDraftV2"],
+  [
+    "character_designer",
+    "Character Designer",
+    "character",
+    "CharacterImageSpecialistDraftV2",
+  ],
+  ["scene_designer", "Scene Designer", "scene", "SceneImageSpecialistDraftV2"],
+  [
+    "storyboard_artist",
+    "Storyboard Artist",
+    "storyboard",
+    "StoryboardImageSpecialistDraftV2",
+  ],
+  ["video_director", "Video Director", "video", "VideoSpecialistDraftV2"],
+  ["bgm_director", "BGM Director", "bgm", "BgmAudioSpecialistDraftV2"],
+  ["quick_media_agent", "Quick Media Agent", "general media", "SpecialistDraftV2"],
+] as const satisfies ReadonlyArray<
+  readonly [AgentName, string, string, string]
+>;
 
 const registrations: ReadonlyArray<PromptRegistration> = [
   registration(
@@ -66,6 +83,7 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       "Decide one next interaction only, never a preplanned future sequence.",
       "Honor explicit include, exclude, and deferred element decisions from the typed Guidance Session.",
       "You may reply, ask one material clarification, propose at most one topic for exactly one owning Specialist, or finish guidance with a canonical completion_claim.",
+      "Use context.topic_ownership as the sole authority for specialist_name. Select the semantic topic first, then copy that topic's exact owning Specialist from the typed context. Never infer, rename, or substitute an owner from prose.",
       "Direct Text, Script, Image, Video, or Audio work is allowed when it best matches the Creative Goal; do not synthesize prerequisite topics.",
       "Return all user-visible language through the Video Agent Director identity.",
       "Do not create Canvas topology, run Nodes, call providers, expose Skill text, or include private reasoning.",
@@ -92,14 +110,15 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       "Use targeted_authoring only when the typed context identifies one explicit editable node or supported asset target.",
     ].join(" "),
   ),
-  ...specialistProfiles.flatMap(([agentName, role, subject]) => [
+  ...specialistProfiles.flatMap(
+    ([agentName, role, subject, materializationContract]) => [
     registration(
       `adcraft.${agentName}.propose_concepts.v1`,
       agentName,
       "propose_concepts",
       "ConceptProposalDraftV2",
       role,
-      `Return exactly the requested candidate_count of text-only ${subject} concepts using only the local handoff context. For single_plan return exactly one option; for choice_set return exactly the declared two-to-four options.`,
+      specialistScope(agentName, "propose_concepts", subject),
     ),
     registration(
       `adcraft.${agentName}.revise_concepts.v1`,
@@ -107,19 +126,19 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       "revise_concepts",
       "ConceptProposalDraftV2",
       role,
-      `Revise the pending ${subject} concepts using only the explicit revision instruction.`,
+      specialistScope(agentName, "revise_concepts", subject),
     ),
     registration(
       `adcraft.${agentName}.materialize_draft.v1`,
       agentName,
       "materialize_draft",
-      "SpecialistDraftV2",
+      materializationContract,
       role,
       [
-        `Materialize one complete editable ${subject} draft from the selected concept without calling a provider.`,
+        specialistScope(agentName, "materialize_draft", subject),
         ...(subject === "script"
           ? [
-              'Set semantic_role exactly to "advertising_script". Populate structured_content.content with the complete editable script as a top-level non-empty string. structured_content must be exactly {"content":"<complete editable script>"}. Do not use a nested concept object, return multiple concepts, or put the script only in generation_prompt.',
+              'Set creative_role exactly to "script". Populate structured_content.content with the complete editable script as a top-level non-empty string. structured_content must be exactly {"content":"<complete editable script>"}. Do not use a nested concept object, return multiple concepts, or put the script only in generation_prompt.',
             ]
           : []),
       ].join(" "),
@@ -132,8 +151,42 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       role,
       `Return one bounded ${subject} response for the precise local request without mutating platform state.`,
     ),
-  ]),
+    ],
+  ),
 ];
+
+function specialistScope(
+  agentName: AgentName,
+  operation: "propose_concepts" | "revise_concepts" | "materialize_draft",
+  subject: string,
+): string {
+  if (agentName !== "product_designer") {
+    if (operation === "propose_concepts") {
+      return `Return exactly the requested candidate_count of text-only ${subject} concepts using only the local handoff context. For single_plan return exactly one option; for choice_set return exactly the declared two-to-four options.`;
+    }
+    if (operation === "revise_concepts") {
+      return `Revise the pending ${subject} concepts using only the explicit revision instruction.`;
+    }
+    return `Materialize one complete editable ${subject} draft from the selected concept without calling a provider.`;
+  }
+  const action =
+    operation === "materialize_draft"
+      ? "Materialize one complete editable Draft for"
+      : operation === "revise_concepts"
+        ? "Revise the pending concepts for"
+        : "Return exactly the requested candidate_count of text-only concepts for";
+  return [
+    `${action} one reusable Product Image using only the local handoff context.`,
+    "Define product identity, silhouette and form, materials, color, visible features, composition, background, lighting, and visual style.",
+    "Do not author shot lists, timelines, cuts, transitions, dialogue, voice, BGM, editing, a complete commercial, or replacement campaign duration.",
+    ...(operation === "propose_concepts"
+      ? ["For single_plan return exactly one option; for choice_set return exactly the declared two-to-four options."]
+      : []),
+    ...(operation === "materialize_draft"
+      ? ["Do not call a provider."]
+      : []),
+  ].join(" ");
+}
 
 const descriptors = Object.freeze(
   registrations.map((item) => {

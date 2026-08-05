@@ -13,6 +13,13 @@ from app.schemas.agent_canvas import (
     CanvasInputRoleV2,
     CanvasNodeTypeV2,
 )
+from app.schemas.agent_canvas_ad_media import (
+    BgmContentV2,
+    DesignAssetContentV2,
+    SceneDesignBoardContentV2,
+    StoryboardGridContentV2,
+    VideoSegmentContentV2,
+)
 
 
 AgentCanvasSpecialistNameV2 = Literal[
@@ -272,19 +279,82 @@ class ProposedDraftReferenceV2(DraftReferenceIntentV2):
     media_type: Literal["text", "image", "video", "audio"]
 
 
-class SpecialistDraftV2(_CreativeSessionModel):
-    node_type: CanvasNodeTypeV2
-    creative_role: CanvasCreativeRoleV2
+class ScriptDraftContentV2(_CreativeSessionModel):
+    content: str = Field(min_length=1, max_length=32_768)
+
+
+class _SpecialistDraftBaseV2(_CreativeSessionModel):
     title: str = Field(min_length=1, max_length=256)
     summary_prompt: str = Field(min_length=1, max_length=8_192)
-    generation_prompt: str | None = Field(default=None, max_length=32_768)
-    structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     reference_intents: tuple[DraftReferenceIntentV2, ...] = Field(
         default=(),
         max_length=64,
     )
     warnings: tuple[str, ...] = Field(default=(), max_length=32)
+
+
+class SpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: CanvasNodeTypeV2
+    creative_role: CanvasCreativeRoleV2
+    generation_prompt: str | None = Field(default=None, max_length=32_768)
+    structured_content: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ScriptSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["script"]
+    creative_role: Literal["script"]
+    generation_prompt: None = None
+    structured_content: ScriptDraftContentV2
+
+
+class ProductImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["product"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: DesignAssetContentV2
+
+
+class PropImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["prop"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: DesignAssetContentV2
+
+
+class CharacterImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["character"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: DesignAssetContentV2
+
+
+class SceneImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["scene"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: SceneDesignBoardContentV2
+
+
+class StoryboardImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["storyboard_sequence"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: StoryboardGridContentV2
+
+
+class VideoSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["video"]
+    creative_role: Literal["storyboard_video"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: VideoSegmentContentV2
+
+
+class BgmAudioSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["audio"]
+    creative_role: Literal["bgm"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: BgmContentV2
 
 
 class ExpertActivityV2(_CreativeSessionModel):

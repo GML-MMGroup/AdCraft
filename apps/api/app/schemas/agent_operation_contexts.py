@@ -10,6 +10,7 @@ from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
     CreativeElementDecisionV2,
     CreativeGoalV2,
+    GuidanceTopicKindV2,
     GuidedSessionStateV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
@@ -275,6 +276,11 @@ AgentCanvasSpecialistName = Literal[
 ]
 
 
+class GuidanceTopicOwnershipV2(_PlanningContextModel):
+    topic_kind: GuidanceTopicKindV2
+    specialist_name: AgentCanvasSpecialistName
+
+
 class GuidanceNodeSummaryV2(_PlanningContextModel):
     node_id: str = Field(min_length=1, max_length=160)
     node_type: Literal["text", "script", "image", "video", "audio", "editing"]
@@ -319,6 +325,10 @@ class DirectorGuidanceContextV2(_PlanningContextModel):
     conversation_id: str = Field(min_length=1, max_length=160)
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     conversation_summary: str = Field(default="", max_length=16_384)
+    topic_ownership: tuple[GuidanceTopicOwnershipV2, ...] = Field(
+        min_length=9,
+        max_length=9,
+    )
     goal: CreativeGoalV2 | None = None
     element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=32)
     guidance_session: GuidedSessionStateV2 | None = None
@@ -479,6 +489,7 @@ class SpecialistContextV2(_PlanningContextModel):
     user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     target_node_id: str | None = Field(default=None, max_length=160)
     selected_option_summary: str = Field(default="", max_length=8_192)
+    selected_option_draft_prompt: str = Field(default="", max_length=32_768)
     selected_option_id: str | None = Field(default=None, max_length=160)
     script_summary: str = Field(default="", max_length=8_192)
     video_skill_excerpt: str = Field(default="", max_length=8_192)
@@ -493,6 +504,15 @@ class SpecialistContextV2(_PlanningContextModel):
     candidate_count: int | None = Field(default=None, ge=1, le=4)
     approved_anchor_summaries: tuple[str, ...] = Field(default=(), max_length=16)
     proposal_revision: ProposalRevisionContextV2 | None = None
+
+    @model_validator(mode="after")
+    def validate_materialization_prompt(self) -> "SpecialistContextV2":
+        has_private_prompt = bool(self.selected_option_draft_prompt.strip())
+        if self.operation == "materialize_draft" and not has_private_prompt:
+            raise ValueError("Materialization requires the selected private Draft Prompt.")
+        if self.operation != "materialize_draft" and has_private_prompt:
+            raise ValueError("Only materialization accepts a selected private Draft Prompt.")
+        return self
 
 
 PlanningAgentContext = Annotated[
