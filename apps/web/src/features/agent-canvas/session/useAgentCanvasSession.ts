@@ -312,6 +312,7 @@ export function useAgentCanvasSession() {
           [response.sibling_node.node_id],
           [response.placement_hint],
           source.position,
+          latest.value.assets,
         );
         if (positions.length) await updateNodePositions(positions);
         materializationKeysRef.current.delete(materializationScope);
@@ -337,6 +338,7 @@ export function useAgentCanvasSession() {
       receipt.created_node_ids,
       receipt.placement_hints,
       viewportAnchor,
+      latest.value.assets,
     );
     if (workflowRef.current?.workflow_id !== receipt.workflow_id) return;
     if (positions.length) await updateNodePositions(positions);

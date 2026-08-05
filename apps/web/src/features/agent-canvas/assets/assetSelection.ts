@@ -45,6 +45,8 @@ export interface AgentAssetSourceNodeSelection {
   mediaType: AgentCanvasAssetMediaTypeV2;
   displayName: string;
   durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
 }
 
 export function toReferenceSelection(
@@ -73,5 +75,7 @@ export function toSourceNodeSelection(
     mediaType: item.mediaType,
     displayName: item.displayName,
     durationSeconds: item.projectAsset?.duration_seconds ?? null,
+    width: item.projectAsset?.width ?? null,
+    height: item.projectAsset?.height ?? null,
   };
 }

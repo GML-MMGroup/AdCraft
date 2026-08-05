@@ -145,12 +145,24 @@ describe("canvasGraphModel", () => {
       id: "image-1",
       type: "agentCanvas",
       position: { x: 40, y: 60 },
+      style: { width: 310, height: 310 },
       data: {
         node: { node_id: "image-1" },
         asset: { asset_id: "asset-1" },
         runtime: { visible_status: "working" },
       },
     });
+  });
+
+  it("leaves React Flow dimensions measurable when image metadata is unavailable", () => {
+    const withoutDimensions = {
+      ...workflow,
+      assets: [{ ...workflow.assets[0]!, width: null, height: null }],
+    };
+
+    const nodes = toAgentCanvasFlowNodes(withoutDimensions, null, {});
+
+    expect(nodes.find((item) => item.id === "image-1")?.style).toBeUndefined();
   });
 
   it("renders only backend bindings as edges", () => {
@@ -194,6 +206,47 @@ describe("canvasGraphModel", () => {
     });
   });
 
+  it("uses adaptive image rectangles when placing a node beside generated media", () => {
+    const landscape = { ...node("landscape", "image"), position: { x: 100, y: 100 } };
+    const landscapeAsset = {
+      ...workflow.assets[0]!,
+      asset_id: "landscape-asset",
+      width: 1920,
+      height: 1080,
+    };
+    landscape.output_asset_id = landscapeAsset.asset_id;
+
+    expect(findAvailableCanvasPosition(
+      [landscape],
+      { x: 100, y: 100 },
+      {
+        assets: [landscapeAsset],
+        candidateNodeType: "image",
+        candidateDimensions: { width: 1080, height: 1920 },
+      },
+    )).toEqual({
+      x: -171,
+      y: 100,
+    });
+  });
+
+  it("reserves enough layout space for an image whose intrinsic dimensions have not loaded", () => {
+    const unresolvedImage = {
+      ...node("unresolved", "image"),
+      output_asset_id: null,
+      position: { x: 100, y: 100 },
+    };
+
+    expect(findAvailableCanvasPosition(
+      [unresolvedImage],
+      { x: 440, y: 100 },
+      { candidateNodeType: "video" },
+    )).toEqual({
+      x: 528,
+      y: 100,
+    });
+  });
+
   it("places only newly created nodes from backend placement hints", () => {
     const source = { ...node("source", "image"), position: { x: 100, y: 100 } };
     const unrelated = { ...node("unrelated", "video"), position: { x: 460, y: 100 } };
@@ -211,7 +264,7 @@ describe("canvasGraphModel", () => {
     );
 
     expect(positions).toEqual([
-      { node_id: "sibling", x: 780, y: 100 },
+      { node_id: "sibling", x: 800, y: 100 },
     ]);
     expect(source.position).toEqual({ x: 100, y: 100 });
     expect(unrelated.position).toEqual({ x: 460, y: 100 });
