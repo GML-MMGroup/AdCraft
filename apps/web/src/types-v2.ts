@@ -1538,6 +1538,19 @@ export interface CanvasModelSummaryV2 {
   catalog_revision: number;
 }
 
+export type CanvasParameterOriginV2 = "manual" | "node_prompt" | "binding";
+export type CanvasParameterScalarV2 = string | number | boolean;
+
+export interface CanvasParameterProvenanceV2 {
+  origin: CanvasParameterOriginV2;
+  source_node_id: string | null;
+  binding_id: string | null;
+  source_revision: number | null;
+  requested_value: CanvasParameterScalarV2;
+  effective_value: CanvasParameterScalarV2;
+  normalization_code: string | null;
+}
+
 /** Secret-safe model identity frozen for one runtime attempt. */
 export interface CanvasRuntimeModelResolutionV2 {
   node_id: string;
@@ -1578,6 +1591,7 @@ export interface CanvasNodeV2 {
   model_ref: string | null;
   model_summary: CanvasModelSummaryV2 | null;
   parameters: Record<string, unknown>;
+  parameter_provenance: Record<string, CanvasParameterProvenanceV2>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
   position: CanvasPositionV2;
@@ -1767,6 +1781,7 @@ export interface NodeRuntimeV2 {
   execution_id: string | null;
   provider_task_id: string | null;
   run_intent_snapshot_id: string | null;
+  parameter_compilation_snapshot_id: string | null;
   input_manifest_id?: string | null;
   effective_parameters: Record<string, unknown>;
   normalizations: string[];

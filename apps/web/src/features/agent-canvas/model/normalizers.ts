@@ -36,6 +36,7 @@ import type {
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
   CanvasNodeV2,
+  CanvasParameterProvenanceV2,
   CanvasPositionV2,
   CanvasVariationDraftResponseV2,
   CanvasVariationDraftV2,
@@ -104,6 +105,11 @@ const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", 
 const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
 const CANVAS_MODEL_SELECTION_MODES = new Set<CanvasModelSelectionModeV2>(["default", "explicit"]);
+const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>([
+  "manual",
+  "node_prompt",
+  "binding",
+]);
 const CANVAS_MODEL_CAPABILITIES = new Set<CanvasModelSummaryV2["capability"]>(["text", "image", "video", "audio"]);
 const CANVAS_MODEL_AVAILABILITIES = new Set<CanvasModelSummaryV2["availability"]>([
   "available",
@@ -527,6 +533,65 @@ export function normalizeCanvasModelSummaryV2(value: unknown, path = "model_summ
   };
 }
 
+function normalizeCanvasParameterScalarV2(
+  value: unknown,
+  path: string,
+): CanvasParameterProvenanceV2["requested_value"] {
+  if (typeof value === "string" || typeof value === "boolean") return value;
+  return expectFiniteNumber(value, path);
+}
+
+function normalizeCanvasParameterProvenanceV2(
+  value: unknown,
+  path: string,
+): CanvasParameterProvenanceV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "origin",
+    "source_node_id",
+    "binding_id",
+    "source_revision",
+    "requested_value",
+    "effective_value",
+    "normalization_code",
+  ], path);
+  const origin = expectLiteral(record.origin, CANVAS_PARAMETER_ORIGINS, `${path}.origin`);
+  const sourceNodeId = nullableStringWithDefault(record.source_node_id, `${path}.source_node_id`);
+  const bindingId = nullableStringWithDefault(record.binding_id, `${path}.binding_id`);
+  const sourceRevision = record.source_revision === undefined
+    ? null
+    : nullablePositiveInteger(record.source_revision, `${path}.source_revision`);
+  if (origin === "binding") {
+    if (!sourceNodeId || !bindingId || sourceRevision === null) {
+      fail(path, "binding origin requires source_node_id, binding_id, and source_revision");
+    }
+  } else if (sourceNodeId !== null || bindingId !== null || sourceRevision !== null) {
+    fail(path, "only binding origin may include binding source identity");
+  }
+  return {
+    origin,
+    source_node_id: sourceNodeId,
+    binding_id: bindingId,
+    source_revision: sourceRevision,
+    requested_value: normalizeCanvasParameterScalarV2(record.requested_value, `${path}.requested_value`),
+    effective_value: normalizeCanvasParameterScalarV2(record.effective_value, `${path}.effective_value`),
+    normalization_code: nullableStringWithDefault(record.normalization_code, `${path}.normalization_code`),
+  };
+}
+
+function normalizeCanvasParameterProvenanceMapV2(
+  value: unknown,
+  path: string,
+): Record<string, CanvasParameterProvenanceV2> {
+  const record = optionalUnknownRecord(value, path, {});
+  return Object.fromEntries(
+    Object.entries(record).map(([field, provenance]) => [
+      field,
+      normalizeCanvasParameterProvenanceV2(provenance, `${path}.${field}`),
+    ]),
+  );
+}
+
 export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNodeV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(
@@ -547,6 +612,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "model_ref",
       "model_summary",
       "parameters",
+      "parameter_provenance",
       "prompt_context_snapshot_id",
       "output_asset_id",
       "position",
@@ -595,6 +661,10 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       ? null
       : normalizeCanvasModelSummaryV2(record.model_summary, `${path}.model_summary`),
     parameters: expectRecordValue(record.parameters, `${path}.parameters`),
+    parameter_provenance: normalizeCanvasParameterProvenanceMapV2(
+      record.parameter_provenance,
+      `${path}.parameter_provenance`,
+    ),
     prompt_context_snapshot_id: nullableString(record.prompt_context_snapshot_id, `${path}.prompt_context_snapshot_id`),
     output_asset_id: outputAssetId,
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
@@ -1186,6 +1256,7 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
       "execution_id",
       "provider_task_id",
       "run_intent_snapshot_id",
+      "parameter_compilation_snapshot_id",
       "input_manifest_id",
       "effective_parameters",
       "normalizations",
@@ -1208,6 +1279,10 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     execution_id: nullableString(record.execution_id, `${path}.execution_id`),
     provider_task_id: nullableString(record.provider_task_id, `${path}.provider_task_id`),
     run_intent_snapshot_id: nullableStringWithDefault(record.run_intent_snapshot_id, `${path}.run_intent_snapshot_id`),
+    parameter_compilation_snapshot_id: nullableStringWithDefault(
+      record.parameter_compilation_snapshot_id,
+      `${path}.parameter_compilation_snapshot_id`,
+    ),
     input_manifest_id: nullableStringWithDefault(record.input_manifest_id, `${path}.input_manifest_id`),
     effective_parameters: optionalUnknownRecord(record.effective_parameters, `${path}.effective_parameters`),
     normalizations: optionalStringArray(record.normalizations, `${path}.normalizations`, []),
