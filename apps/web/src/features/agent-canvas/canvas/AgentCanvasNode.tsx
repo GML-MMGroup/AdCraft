@@ -5,6 +5,7 @@ import {
   DocumentIcon,
   EditIcon,
   ImageIcon,
+  PlayIcon,
   UnmuteIcon,
   VideoIcon,
 } from "../../../icons.tsx";
@@ -46,6 +47,7 @@ export interface AgentCanvasNodeCallbacks {
   onRun?: (nodeId: string) => void;
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
+  onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
   renderWorkbench?: (node: CanvasNodeV2) => ReactNode;
   onOpenConnectedNodeMenu?: (
     nodeId: string,
@@ -125,23 +127,42 @@ function typeMarkerImage(nodeType: CanvasNodeTypeV2): string {
 function MediaSurface({
   node,
   asset,
+  onOpenVideoPreview,
 }: {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
+  onOpenVideoPreview?: AgentCanvasNodeCallbacks["onOpenVideoPreview"];
 }) {
   const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
-  if (node.node_type === "video" && mediaUrl) {
+  const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
+  if (node.node_type === "video" && videoUrl && asset) {
     return (
-      <video
-        className="agent-canvas-node__media agent-canvas-node__media--cover"
-        src={mediaUrl}
-        poster={asset?.preview_url ?? undefined}
-        aria-label={asset?.display_name || "Video output"}
-        muted
-        loop
-        playsInline
-        preload="metadata"
-      />
+      <div className="agent-canvas-node__video-stage">
+        <video
+          className="agent-canvas-node__media agent-canvas-node__media--cover"
+          src={videoUrl}
+          poster={asset.preview_url ?? undefined}
+          aria-label={asset.display_name || "Video output"}
+          muted
+          playsInline
+          preload="metadata"
+        />
+        {onOpenVideoPreview ? (
+          <button
+            className="agent-canvas-node__video-play nodrag nopan"
+            type="button"
+            aria-label="Play video output"
+            title="Play video"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenVideoPreview(node.node_id, asset);
+            }}
+          >
+            <PlayIcon />
+          </button>
+        ) : null}
+      </div>
     );
   }
 
@@ -165,7 +186,8 @@ function NodeSurface({
   node,
   asset,
   status,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset"> & { status: CanvasNodeStatusV2 }) {
+  onOpenVideoPreview,
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview"> & { status: CanvasNodeStatusV2 }) {
   if (node.node_type === "text" || node.node_type === "script") {
     return (
       <div className={`agent-canvas-node__copy agent-canvas-node__copy--${node.node_type}`}>
@@ -177,7 +199,7 @@ function NodeSurface({
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
   }
-  return <MediaSurface node={node} asset={asset} />;
+  return <MediaSurface node={node} asset={asset} onOpenVideoPreview={onOpenVideoPreview} />;
 }
 
 export function AgentCanvasNodeCard({
@@ -185,6 +207,7 @@ export function AgentCanvasNodeCard({
   asset,
   runtime,
   selected = false,
+  onOpenVideoPreview,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
@@ -216,7 +239,12 @@ export function AgentCanvasNodeCard({
       ) : null}
 
       <div className="agent-canvas-node__surface">
-        <NodeSurface node={node} asset={asset} status={status} />
+        <NodeSurface
+          node={node}
+          asset={asset}
+          status={status}
+          onOpenVideoPreview={onOpenVideoPreview}
+        />
         {status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
             <span className="agent-canvas-node__working-orbit" aria-hidden="true" />
@@ -268,6 +296,7 @@ export function AgentCanvasNodeRenderer({
         asset={data.asset}
         runtime={data.runtime}
         selected={selected}
+        onOpenVideoPreview={data.onOpenVideoPreview}
       />
       {workbench ? <div className="agent-canvas-node-workbench-anchor nodrag nopan nowheel">{workbench}</div> : null}
       {data.showOutputHandle !== false ? (
