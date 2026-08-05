@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -270,6 +270,71 @@ describe("AgentCanvasNodeCard", () => {
     expect(video.getAttribute("src")).toBe("/media/video-output");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+  });
+
+  it("opens a generated video from its play control without bubbling to the node click surface", () => {
+    const asset = makeAsset("video");
+    const onOpenVideoPreview = vi.fn();
+    const onNodeClick = vi.fn();
+    const onNodePointerDown = vi.fn();
+
+    render(
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Test harness observes React click bubbling from the child control.
+      <div onClick={onNodeClick} onPointerDown={onNodePointerDown}>
+        <AgentCanvasNodeCard
+          node={makeNode("video", "ready")}
+          asset={asset}
+          onOpenVideoPreview={onOpenVideoPreview}
+        />
+      </div>,
+    );
+
+    const playButton = screen.getByRole("button", { name: "Play video output" });
+    fireEvent.pointerDown(playButton);
+    fireEvent.click(playButton);
+
+    expect(onOpenVideoPreview).toHaveBeenCalledWith("video-node", asset);
+    expect(onNodeClick).not.toHaveBeenCalled();
+    expect(onNodePointerDown).not.toHaveBeenCalled();
+  });
+
+  it("keeps the rest of the video surface available to the existing node selection flow", () => {
+    const onNodeClick = vi.fn();
+
+    render(
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Test harness represents React Flow's node click listener.
+      <div onClick={onNodeClick}>
+        <AgentCanvasNodeCard
+          node={makeNode("video", "ready")}
+          asset={makeAsset("video")}
+          onOpenVideoPreview={vi.fn()}
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByLabelText("video output"));
+
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a playback control for an image or a video without generated media", () => {
+    const imageView = render(
+      <AgentCanvasNodeCard
+        node={makeNode("image", "ready")}
+        asset={makeAsset("image")}
+        onOpenVideoPreview={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Play image output" })).toBeNull();
+
+    imageView.unmount();
+    render(
+      <AgentCanvasNodeCard
+        node={{ ...makeNode("video", "ready"), output_asset_id: null }}
+        onOpenVideoPreview={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Play video output" })).toBeNull();
   });
 
   it("keeps the generated image in the node instead of opening a separate media preview", () => {

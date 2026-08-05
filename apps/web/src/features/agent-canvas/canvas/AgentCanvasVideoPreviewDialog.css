@@ -1,0 +1,96 @@
+.agent-canvas-video-preview {
+  position: fixed;
+  z-index: 2400;
+  inset: 0;
+  display: grid;
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  max-height: none;
+  box-sizing: border-box;
+  margin: 0;
+  padding: clamp(28px, 5vw, 72px);
+  place-items: center;
+  border: 0;
+  background: rgba(7, 8, 13, 0.82);
+  color: #fff;
+  backdrop-filter: blur(18px) saturate(0.88);
+  -webkit-backdrop-filter: blur(18px) saturate(0.88);
+}
+
+.agent-canvas-video-preview__stage {
+  display: grid;
+  width: min(1280px, calc(100vw - clamp(56px, 10vw, 144px)));
+  height: min(820px, calc(100vh - clamp(56px, 10vw, 144px)));
+  place-items: center;
+}
+
+.agent-canvas-video-preview__player {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  background: #05060a;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+  object-fit: contain;
+}
+
+.agent-canvas-video-preview__close {
+  position: fixed;
+  z-index: 1;
+  top: 24px;
+  right: 24px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  background: rgba(22, 23, 31, 0.64);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.agent-canvas-video-preview__close svg {
+  width: 21px;
+  height: 21px;
+}
+
+.agent-canvas-video-preview__close:hover {
+  background: rgba(79, 76, 102, 0.78);
+  transform: translateY(-1px);
+}
+
+.agent-canvas-video-preview__close:focus-visible {
+  outline: 3px solid rgba(215, 208, 244, 0.9);
+  outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .agent-canvas-video-preview {
+    padding: 56px 16px 20px;
+  }
+
+  .agent-canvas-video-preview__stage {
+    width: 100%;
+    height: calc(100vh - 76px);
+  }
+
+  .agent-canvas-video-preview__close {
+    top: 12px;
+    right: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-canvas-video-preview__close {
+    transition: none;
+  }
+}

@@ -26,6 +26,7 @@ import type {
   CanvasNodeTypeV2,
   CanvasNodeV2,
   CanvasPositionV2,
+  ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./assets/AgentAssetBrowser.tsx";
 import {
   AgentCanvasNodeRenderer,
+  AgentCanvasVideoPreviewDialog,
   type AgentCanvasFlowNode,
   type AgentCanvasNodeCallbacks,
 } from "./canvas/index.ts";
@@ -139,6 +141,10 @@ export function AgentCanvasPage() {
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
+  const [videoPreview, setVideoPreview] = useState<{
+    asset: ProjectAssetSummaryV2;
+    title: string;
+  } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     menuPosition: CanvasPositionV2;
     canvasPosition: CanvasPositionV2;
@@ -178,6 +184,10 @@ export function AgentCanvasPage() {
     setEditingNodeId(nodeId);
     setSelectedNodeId(nodeId);
   }, [setSelectedNodeId]);
+
+  const closeVideoPreview = useCallback(() => {
+    setVideoPreview(null);
+  }, []);
 
   const uploadSelectedNodeReferences = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.currentTarget.files ?? []);
@@ -272,12 +282,19 @@ export function AgentCanvasPage() {
     onRun: (nodeId) => runNodeById(nodeId, false),
     onRetry: (nodeId) => runNodeById(nodeId, true),
     onExport: openEditing,
+    onOpenVideoPreview: (nodeId, asset) => {
+      const node = workflow?.nodes.find((candidate) => candidate.node_id === nodeId);
+      setVideoPreview({
+        asset,
+        title: asset.display_name || node?.title || "Video preview",
+      });
+    },
     renderWorkbench,
     onOpenConnectedNodeMenu: (nodeId, direction, point) => {
       setSelectedNodeId(nodeId);
       setConnectedNodeMenu({ anchorNodeId: nodeId, direction, point });
     },
-  }), [openEditing, renderWorkbench, runNodeById, setSelectedNodeId]);
+  }), [openEditing, renderWorkbench, runNodeById, setSelectedNodeId, workflow?.nodes]);
 
   const canonicalNodes = useMemo(
     () => workflow
@@ -699,6 +716,14 @@ export function AgentCanvasPage() {
             node={editingNode}
             patchNode={patchNode}
             onClose={() => setEditingNodeId(null)}
+          />
+        ) : null}
+
+        {videoPreview ? (
+          <AgentCanvasVideoPreviewDialog
+            asset={videoPreview.asset}
+            title={videoPreview.title}
+            onClose={closeVideoPreview}
           />
         ) : null}
 

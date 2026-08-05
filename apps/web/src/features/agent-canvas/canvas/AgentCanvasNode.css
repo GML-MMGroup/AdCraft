@@ -96,6 +96,59 @@
   object-position: center;
 }
 
+.agent-canvas-node__video-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-canvas-node__video-stage > video {
+  pointer-events: none;
+}
+
+.agent-canvas-node__video-play {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 50%;
+  background: rgba(18, 20, 29, 0.62);
+  box-shadow:
+    0 10px 24px rgba(5, 6, 12, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  color: #fff;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+}
+
+.agent-canvas-node__video-play svg {
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+}
+
+.agent-canvas-node__video-play:hover {
+  background: rgba(75, 91, 145, 0.78);
+  box-shadow:
+    0 12px 28px rgba(5, 6, 12, 0.34),
+    0 0 0 5px rgba(255, 255, 255, 0.1);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.agent-canvas-node__video-play:focus-visible {
+  outline: 3px solid rgba(215, 208, 244, 0.9);
+  outline-offset: 3px;
+}
+
 .agent-canvas-node-workbench-anchor {
   position: absolute;
   z-index: 24;
@@ -536,6 +589,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-node,
+  .agent-canvas-node__video-play,
   .agent-canvas-node__action,
   .agent-canvas-audio-player__waveform i,
   .agent-canvas-node__working-orbit,
