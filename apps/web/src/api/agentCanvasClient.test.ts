@@ -402,7 +402,17 @@ describe("Agent Canvas client", () => {
         availability: "open",
         application_count: 0,
         latest_application: null,
-        available_actions: ["select", "revise", "archive"],
+        guidance_session_id: "guidance-1",
+        guidance_session_revision: 3,
+        actions: [{
+          action_id: "proposal-1:1:select_option",
+          action: "select_option",
+          label: "Select",
+          proposal_id: "proposal-1",
+          expected_session_revision: 3,
+          confirmation_required: false,
+          reason: "Create one editable Draft.",
+        }],
         created_at: "2026-07-30T08:00:00Z",
         updated_at: "2026-07-30T08:00:00Z",
       });

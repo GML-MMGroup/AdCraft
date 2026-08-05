@@ -32,16 +32,18 @@ function Read-AdCraftState {
     }
     $values = @{}
     foreach ($line in Get-Content -LiteralPath $script:StateFile) {
-        if ($line -notmatch '^(ADCRAFT_PORT|ADCRAFT_UID|ADCRAFT_GID)=([0-9]+)$') {
+        if ($line -match '^(ADCRAFT_PORT|ADCRAFT_UID|ADCRAFT_GID)=([0-9]+)$') {
+            $key, $value = $Matches[1], [Int64]$Matches[2]
+        } elseif ($line -match '^ADCRAFT_AGENT_RUNTIME_TOKEN=([0-9a-f]{64})$') {
+            $key, $value = 'ADCRAFT_AGENT_RUNTIME_TOKEN', [string]$Matches[1]
+        } else {
             Stop-AdCraft 'deployment.env 格式无效。'
         }
-        $key, $value = $Matches[1], $Matches[2]
         if ($values.ContainsKey($key)) { Stop-AdCraft "deployment.env 包含重复字段：$key。" }
-        $values[$key] = [Int64]$value
+        $values[$key] = $value
     }
-    $requiredKeys = @('ADCRAFT_PORT', 'ADCRAFT_UID', 'ADCRAFT_GID')
-    $missingKeys = @($requiredKeys | Where-Object { -not $values.ContainsKey($_) })
-    if ($values.Count -ne $requiredKeys.Count -or $missingKeys.Count -gt 0) {
+    $missingKeys = @('ADCRAFT_PORT','ADCRAFT_UID','ADCRAFT_GID') | Where-Object { -not $values.ContainsKey($_) }
+    if ($values.Count -notin @(3, 4) -or $missingKeys.Count -gt 0) {
         Stop-AdCraft 'deployment.env 缺少字段。'
     }
     if ($values['ADCRAFT_PORT'] -lt 8080 -or $values['ADCRAFT_PORT'] -gt 8179) {
@@ -51,7 +53,25 @@ function Read-AdCraftState {
         ADCRAFT_PORT = [int]$values['ADCRAFT_PORT']
         ADCRAFT_UID = [int]$values['ADCRAFT_UID']
         ADCRAFT_GID = [int]$values['ADCRAFT_GID']
+        ADCRAFT_AGENT_RUNTIME_TOKEN = if ($values.ContainsKey('ADCRAFT_AGENT_RUNTIME_TOKEN')) { [string]$values['ADCRAFT_AGENT_RUNTIME_TOKEN'] } else { $null }
     }
+}
+
+function Assert-AdCraftAgentRuntimeToken($State) {
+    if ($null -eq $State.ADCRAFT_AGENT_RUNTIME_TOKEN) {
+        Stop-AdCraft 'deployment.env 缺少 Agent 内部令牌；请重新运行 deploy-windows.cmd。'
+    }
+}
+
+function New-AdCraftAgentRuntimeToken {
+    $bytes = New-Object byte[] 32
+    $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $generator.GetBytes($bytes)
+    } finally {
+        $generator.Dispose()
+    }
+    return -join ($bytes | ForEach-Object { $_.ToString('x2') })
 }
 
 function Write-AdCraftState([int]$Port) {
@@ -63,7 +83,12 @@ function Write-AdCraftState([int]$Port) {
         [System.IO.Directory]::CreateDirectory($script:RuntimeDirectory) > $null
     }
 
-    $content = "ADCRAFT_PORT=$Port`nADCRAFT_UID=0`nADCRAFT_GID=0"
+    $existingToken = $null
+    if (Test-Path -LiteralPath $script:StateFile -PathType Leaf) {
+        $existingToken = (Read-AdCraftState).ADCRAFT_AGENT_RUNTIME_TOKEN
+    }
+    $token = if ($null -ne $existingToken) { $existingToken } else { New-AdCraftAgentRuntimeToken }
+    $content = "ADCRAFT_PORT=$Port`nADCRAFT_UID=0`nADCRAFT_GID=0`nADCRAFT_AGENT_RUNTIME_TOKEN=$token`n"
     $temporaryPath = Join-Path $script:RuntimeDirectory ("deployment.env.{0}.tmp" -f [Guid]::NewGuid().ToString('N'))
     $temporaryCreated = $true
 
@@ -71,7 +96,6 @@ function Write-AdCraftState([int]$Port) {
         [System.IO.File]::WriteAllText($temporaryPath, $content, [System.Text.UTF8Encoding]::new($false))
 
         Move-Item -LiteralPath $temporaryPath -Destination $script:StateFile -Force
-        $temporaryCreated = $false
     } catch {
         if ($temporaryCreated -and [System.IO.File]::Exists($temporaryPath)) {
             [System.IO.File]::Delete($temporaryPath)
@@ -117,11 +141,15 @@ function Test-AdCraftPortFree([int]$Port) {
 
 function Select-AdCraftPort {
     if (Test-Path -LiteralPath $script:StateFile -PathType Leaf) {
-        $savedPort = (Read-AdCraftState).ADCRAFT_PORT
-        $webContainerId = @(
-            Invoke-AdCraftCompose @('ps', '-q', 'web') |
-                Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
-        )
+        $savedState = Read-AdCraftState
+        $savedPort = $savedState.ADCRAFT_PORT
+        $webContainerId = @()
+        if ($null -ne $savedState.ADCRAFT_AGENT_RUNTIME_TOKEN) {
+            $webContainerId = @(
+                Invoke-AdCraftCompose @('ps', '-q', 'web') |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+            )
+        }
 
         if ($webContainerId.Count -gt 0 -or (Test-AdCraftPortFree $savedPort)) {
             return $savedPort
@@ -142,7 +170,7 @@ function Invoke-AdCraftCompose([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { Stop-AdCraft "docker compose $($Arguments -join ' ') 失败。" }
 }
 
-function Get-AdCraftContainerHealth([ValidateSet('api','web')][string]$Service) {
+function Get-AdCraftContainerHealth([ValidateSet('agent','api','web')][string]$Service) {
     $containerId = @(
         Invoke-AdCraftCompose @('ps', '-q', $Service) |
             Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
@@ -162,22 +190,23 @@ function Wait-AdCraftServices {
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
     while ($stopwatch.Elapsed.TotalSeconds -lt 120) {
+        $agentStatus = Get-AdCraftContainerHealth 'agent'
         $apiStatus = Get-AdCraftContainerHealth 'api'
         $webStatus = Get-AdCraftContainerHealth 'web'
-        if ($apiStatus -eq 'healthy' -and $webStatus -eq 'healthy') {
+        if ($agentStatus -eq 'healthy' -and $apiStatus -eq 'healthy' -and $webStatus -eq 'healthy') {
             return
         }
-        if ($apiStatus -in @('exited', 'dead') -or $webStatus -in @('exited', 'dead')) {
-            Stop-AdCraft "服务启动失败：api=$apiStatus，web=$webStatus。"
+        if ($agentStatus -in @('exited', 'dead') -or $apiStatus -in @('exited', 'dead') -or $webStatus -in @('exited', 'dead')) {
+            Stop-AdCraft "服务启动失败：agent=$agentStatus，api=$apiStatus，web=$webStatus。"
         }
         Start-Sleep -Seconds 2
     }
 
-    Stop-AdCraft '等待 api 和 web 服务健康检查超时。'
+    Stop-AdCraft '等待 agent、api 和 web 服务健康检查超时。'
 }
 
 function Show-AdCraftLogs {
-    Invoke-AdCraftCompose @('logs', '--tail=100', 'api', 'web')
+    Invoke-AdCraftCompose @('logs', '--tail=100', 'agent', 'api', 'web')
 }
 
 function Get-AdCraftUrl {

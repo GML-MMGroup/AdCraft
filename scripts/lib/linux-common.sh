@@ -26,40 +26,54 @@ validate_project() {
 load_state() {
   [[ -f "$STATE_FILE" ]] || die "缺少 $STATE_FILE，请先运行 scripts/deploy-linux.sh。"
   read_state_file
-  export ADCRAFT_PORT ADCRAFT_UID ADCRAFT_GID
+  export ADCRAFT_PORT ADCRAFT_UID ADCRAFT_GID ADCRAFT_AGENT_RUNTIME_TOKEN
 }
 
 read_state_file() {
-  local line key value seen_port=0 seen_uid=0 seen_gid=0
+  local allow_missing_agent_token="${1:-false}"
+  local line key value seen_port=0 seen_uid=0 seen_gid=0 seen_agent_token=0
   ADCRAFT_PORT=""
   ADCRAFT_UID=""
   ADCRAFT_GID=""
+  ADCRAFT_AGENT_RUNTIME_TOKEN=""
 
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" =~ ^([A-Z_]+)=([0-9]+)$ ]] || die "deployment.env 格式无效。"
+    [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]] || die "deployment.env 格式无效。"
     key="${BASH_REMATCH[1]}"
     value="${BASH_REMATCH[2]}"
     case "$key" in
       ADCRAFT_PORT)
+        [[ "$value" =~ ^[0-9]+$ ]] || die "deployment.env 格式无效。"
         (( seen_port == 0 )) || die "deployment.env 包含重复端口。"
         printf -v ADCRAFT_PORT '%s' "$value"
         seen_port=1
         ;;
       ADCRAFT_UID)
+        [[ "$value" =~ ^[0-9]+$ ]] || die "deployment.env 格式无效。"
         (( seen_uid == 0 )) || die "deployment.env 包含重复 UID。"
         printf -v ADCRAFT_UID '%s' "$value"
         seen_uid=1
         ;;
       ADCRAFT_GID)
+        [[ "$value" =~ ^[0-9]+$ ]] || die "deployment.env 格式无效。"
         (( seen_gid == 0 )) || die "deployment.env 包含重复 GID。"
         printf -v ADCRAFT_GID '%s' "$value"
         seen_gid=1
+        ;;
+      ADCRAFT_AGENT_RUNTIME_TOKEN)
+        [[ "$value" =~ ^[0-9a-f]{64}$ ]] || die "deployment.env 中的 Agent 内部令牌无效。"
+        (( seen_agent_token == 0 )) || die "deployment.env 包含重复 Agent 内部令牌。"
+        printf -v ADCRAFT_AGENT_RUNTIME_TOKEN '%s' "$value"
+        seen_agent_token=1
         ;;
       *) die "deployment.env 包含未知字段。" ;;
     esac
   done < "$STATE_FILE"
 
   (( seen_port && seen_uid && seen_gid )) || die "deployment.env 缺少字段。"
+  if [[ "$allow_missing_agent_token" != true ]]; then
+    (( seen_agent_token )) || die "deployment.env 缺少 Agent 内部令牌；请重新运行 scripts/deploy-linux.sh。"
+  fi
   (( 10#$ADCRAFT_PORT >= 8080 && 10#$ADCRAFT_PORT <= 8179 )) || die "deployment.env 端口超出范围。"
 }
 
@@ -96,14 +110,15 @@ container_health() {
 
 wait_for_services() {
   local deadline=$((SECONDS + 120))
-  local api_status web_status
+  local agent_status api_status web_status
   while (( SECONDS < deadline )); do
+    agent_status="$(container_health agent)"
     api_status="$(container_health api)"
     web_status="$(container_health web)"
-    if [[ "$api_status" == healthy && "$web_status" == healthy ]]; then
+    if [[ "$agent_status" == healthy && "$api_status" == healthy && "$web_status" == healthy ]]; then
       return 0
     fi
-    if [[ "$api_status" =~ ^(exited|dead)$ || "$web_status" =~ ^(exited|dead)$ ]]; then
+    if [[ "$agent_status" =~ ^(exited|dead)$ || "$api_status" =~ ^(exited|dead)$ || "$web_status" =~ ^(exited|dead)$ ]]; then
       return 1
     fi
     sleep 2
@@ -112,7 +127,7 @@ wait_for_services() {
 }
 
 show_recent_logs() {
-  compose logs --tail=100 api web >&2 || true
+  compose logs --tail=100 agent api web >&2 || true
 }
 
 adcraft_url() {
