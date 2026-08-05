@@ -52,6 +52,7 @@ function validWorkflowPayload() {
         structured_content: { markdown: "# Brief" },
         model_id: null,
         parameters: {},
+        parameter_provenance: {},
         prompt_context_snapshot_id: null,
         output_asset_id: null,
         position: { x: 120, y: 80 },
@@ -74,6 +75,7 @@ function validWorkflowPayload() {
         structured_content: {},
         model_id: "model-image-1",
         parameters: { stylization: 100 },
+        parameter_provenance: {},
         prompt_context_snapshot_id: "snapshot-1",
         output_asset_id: "asset-output-1",
         position: { x: 480, y: 220 },
@@ -738,6 +740,7 @@ describe("Agent Canvas normalizers", () => {
           execution_id: "execution-1",
           provider_task_id: null,
           run_intent_snapshot_id: "run-intent-1",
+          parameter_compilation_snapshot_id: "parameter-compilation-1",
           input_manifest_id: "manifest-1",
           effective_parameters: {
             duration_seconds: 15,
@@ -771,6 +774,7 @@ describe("Agent Canvas normalizers", () => {
     expect(runtime.node_runtime["node-video-1"]).toMatchObject({
       phase: "blocked_by_upstream",
       run_intent_snapshot_id: "run-intent-1",
+      parameter_compilation_snapshot_id: "parameter-compilation-1",
       effective_parameters: {
         duration_seconds: 15,
         generate_audio: false,
@@ -1257,6 +1261,52 @@ describe("Agent Canvas normalizers", () => {
     expect(normalized.model_selection_mode).toBe("explicit");
     expect(normalized.model_ref).toBe("fake:deterministic-image");
     expect(normalized.model_summary?.display_name).toBe("Deterministic Image");
+  });
+
+  it("accepts parameter provenance returned by current canvas workflow reads", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      parameters: { duration_seconds: 10 },
+      parameter_provenance: {
+        duration_seconds: {
+          origin: "binding",
+          source_node_id: "node-text-1",
+          binding_id: "binding-1",
+          source_revision: 3,
+          requested_value: 18,
+          effective_value: 15,
+          normalization_code: "duration_clamped_to_maximum",
+        },
+      },
+    });
+
+    expect(normalized.parameter_provenance.duration_seconds).toEqual({
+      origin: "binding",
+      source_node_id: "node-text-1",
+      binding_id: "binding-1",
+      source_revision: 3,
+      requested_value: 18,
+      effective_value: 15,
+      normalization_code: "duration_clamped_to_maximum",
+    });
+    expect(normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[0],
+      parameter_provenance: {
+        duration_seconds: {
+          origin: "manual",
+          requested_value: 10,
+          effective_value: 10,
+        },
+      },
+    }).parameter_provenance.duration_seconds).toEqual({
+      origin: "manual",
+      source_node_id: null,
+      binding_id: null,
+      source_revision: null,
+      requested_value: 10,
+      effective_value: 10,
+      normalization_code: null,
+    });
   });
 
   it("normalizes model selection on a variation draft without a raw model ID", () => {
