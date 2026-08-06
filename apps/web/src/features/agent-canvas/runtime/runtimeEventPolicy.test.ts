@@ -31,6 +31,9 @@ describe("runtimeEventPolicy", () => {
       refreshWorkflow: false,
       refreshAssets: true,
       refreshChat: false,
+      refreshSettings: false,
+      refreshDocuments: false,
+      refreshDocumentId: null,
       refreshNodeId: null,
       refreshEditingNodeId: null,
     });
@@ -118,6 +121,50 @@ describe("runtimeEventPolicy", () => {
     expect(runtimeEventPolicy(event("layout_updated"))).toMatchObject({
       refreshChat: false,
       refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+  });
+
+  it("refreshes canonical state for guided production and automatic media handoff events", () => {
+    for (const eventType of [
+      "expert_activity_started",
+      "expert_activity_completed",
+      "expert_activity_failed",
+      "guided_draft_materialized",
+      "guided_binding_materialized",
+      "storyboard_sequence_planned",
+      "agent_auto_run_requested",
+      "agent_auto_run_submitted",
+      "agent_auto_run_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshWorkflow: true,
+        refreshRuntime: true,
+      });
+    }
+
+    expect(runtimeEventPolicy(event("agent_settings_updated"))).toMatchObject({
+      refreshWorkflow: true,
+      refreshRuntime: true,
+      refreshSettings: true,
+    });
+    expect(runtimeEventPolicy(event("editing_prepared", {
+      node_id: "node-editing-1",
+    }))).toMatchObject({
+      refreshWorkflow: true,
+      refreshRuntime: true,
+      refreshEditingNodeId: "node-editing-1",
+    });
+  });
+
+  it("refreshes persisted Agent Documents by stable document id", () => {
+    expect(runtimeEventPolicy(event("agent_document_updated", {
+      payload: { document_id: "doc-plan-1", revision: 4 },
+    }))).toMatchObject({
+      refreshDocuments: true,
+      refreshDocumentId: "doc-plan-1",
+      refreshChat: true,
+      refreshWorkflow: false,
       refreshRuntime: false,
     });
   });

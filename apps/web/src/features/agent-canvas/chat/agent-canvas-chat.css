@@ -23,17 +23,25 @@
 }
 
 .agent-chat__header {
-  display: flex;
-  min-height: 58px;
+  display: grid;
+  min-height: 92px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
+  gap: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid rgb(97 89 128 / 15%);
 }
 
-.agent-chat__header > div {
+.agent-chat__identity {
   display: grid;
+  min-width: 0;
   gap: 3px;
+}
+
+.agent-chat__header > .agent-execution-mode {
+  grid-column: 1 / -1;
+  justify-content: space-between;
 }
 
 .agent-chat__header strong {

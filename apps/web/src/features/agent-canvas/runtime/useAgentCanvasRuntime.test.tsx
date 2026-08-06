@@ -302,6 +302,7 @@ describe("useAgentCanvasRuntime", () => {
         display_order: 0,
       }],
       omitted_optional_inputs: [],
+      world_setting_inputs: [],
     }));
     expect(callbacks.applyWorkflow).not.toHaveBeenCalled();
   });
@@ -517,5 +518,78 @@ describe("useAgentCanvasRuntime", () => {
     await result.current.actions.runNode(readyImage);
 
     expect(api.runAgentCanvas).not.toHaveBeenCalled();
+  });
+
+  it("exposes settings, document, and Editing preparation event projections without inventing node state", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    api.agentCanvasRuntime.mockClear();
+    api.agentCanvasWorkflowWithEtag.mockClear();
+
+    const baseEvent = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      execution_id: null,
+      node_id: null,
+      asset_id: null,
+      binding_id: null,
+      conversation_id: "conversation-1",
+      turn_id: null,
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      created_at: "2026-08-06T08:00:00Z",
+    };
+    eventSource.emit("agent_settings_updated", {
+      ...baseEvent,
+      sequence_no: 43,
+      event_type: "agent_settings_updated",
+      payload: { media_execution_mode: "automatic", revision: 2 },
+    });
+    eventSource.emit("agent_document_updated", {
+      ...baseEvent,
+      sequence_no: 44,
+      event_type: "agent_document_updated",
+      payload: { document_id: "doc-plan-1", revision: 4 },
+    });
+    eventSource.emit("editing_prepared", {
+      ...baseEvent,
+      sequence_no: 45,
+      event_type: "editing_prepared",
+      node_id: "node-editing-1",
+      payload: {
+        editing_node_id: "node-editing-1",
+        omitted_node_ids: ["node-video-failed"],
+        manifest_revision: 3,
+      },
+    });
+
+    await waitFor(() => expect(result.current.state.settingsRevision).toBe(1));
+    expect(result.current.state.documentEvents).toEqual([
+      expect.objectContaining({ event_type: "agent_document_updated" }),
+    ]);
+    expect(result.current.state.editingPreparationByNodeId).toEqual({
+      "node-editing-1": {
+        omittedNodeIds: ["node-video-failed"],
+        manifestRevision: 3,
+      },
+    });
+    expect(api.agentCanvasRuntime).toHaveBeenCalled();
+    expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalled();
+    expect(result.current.state.runtime?.ready_node_ids).toEqual([]);
   });
 });

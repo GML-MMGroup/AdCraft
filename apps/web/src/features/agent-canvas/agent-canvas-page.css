@@ -678,6 +678,13 @@
   transform: translateX(-50%);
 }
 
+.agent-canvas-notice--info {
+  bottom: 70px;
+  color: #4f4870;
+  background: rgb(247 245 255 / 94%);
+  border-color: rgb(111 92 177 / 24%);
+}
+
 .agent-canvas-overlay {
   position: absolute;
   z-index: 35;

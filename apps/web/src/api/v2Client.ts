@@ -13,6 +13,11 @@ import type {
   VideoSkillCatalogResponseV2,
   VideoSkillPublicDetailV2,
   AgentCanvasWorkflowV2,
+  AgentExecutionSettingsPatchV2,
+  AgentExecutionSettingsV2,
+  AgentWorkingDocumentKindV2,
+  AgentWorkingDocumentPageV2,
+  AgentWorkingDocumentV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
   CanvasBindingMutationResponseV2,
@@ -160,6 +165,9 @@ import {
   normalizeVideoSkillCatalogResponseV2,
   normalizeVideoSkillPublicDetailV2,
   normalizeAgentCanvasWorkflowV2,
+  normalizeAgentExecutionSettingsV2,
+  normalizeAgentWorkingDocumentPageV2,
+  normalizeAgentWorkingDocumentV2,
   normalizeCanvasMutationResponseV2,
   normalizeCanvasBindingMutationResponseV2,
   normalizeCanvasConnectedNodeCreateResponseV2,
@@ -353,6 +361,7 @@ export function v2AuthoringPreconditionTarget(path: string, method: string): V2P
   const suffix = workflow[2] ?? "";
   if (
     suffix === "/layout"
+    || suffix === "/agent-settings"
     || suffix === "/run"
     || suffix === "/runs"
     || suffix === "/chat-target"
@@ -489,6 +498,36 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}`,
       {},
       normalizeAgentCanvasWorkflowV2,
+    );
+  },
+
+  agentCanvasExecutionSettings(
+    workflowId: string,
+  ): Promise<V2EtaggedResponse<AgentExecutionSettingsV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-settings`,
+      {},
+      normalizeAgentExecutionSettingsV2,
+      { captureAuthoringEtag: false },
+    );
+  },
+
+  patchAgentCanvasExecutionSettings(
+    workflowId: string,
+    request: AgentExecutionSettingsPatchV2,
+    expectedRevision: number,
+  ): Promise<V2EtaggedResponse<AgentExecutionSettingsV2>> {
+    const headers = new Headers();
+    headers.set("If-Match", `"${expectedRevision}"`);
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-settings`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(request),
+      },
+      normalizeAgentExecutionSettingsV2,
+      { captureAuthoringEtag: false },
     );
   },
 
@@ -728,6 +767,37 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
       {},
       normalizeAgentCanvasChatTimelineV2,
+    );
+  },
+
+  listAgentCanvasDocuments(
+    workflowId: string,
+    filters: {
+      kind?: AgentWorkingDocumentKindV2;
+      cursor?: string;
+      limit?: number;
+    } = {},
+  ): Promise<AgentWorkingDocumentPageV2> {
+    const query = new URLSearchParams();
+    if (filters.kind) query.set("kind", filters.kind);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-documents${suffix}`,
+      {},
+      normalizeAgentWorkingDocumentPageV2,
+    );
+  },
+
+  agentCanvasDocument(
+    workflowId: string,
+    documentId: string,
+  ): Promise<AgentWorkingDocumentV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-documents/${encodeURIComponent(documentId)}`,
+      {},
+      normalizeAgentWorkingDocumentV2,
     );
   },
 

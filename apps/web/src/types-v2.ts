@@ -1733,6 +1733,127 @@ export interface AgentCanvasWorkflowV2 {
   active_style_skill: ActiveStyleSkillSummaryV2 | null;
 }
 
+export type AgentMediaExecutionModeV2 = "manual" | "automatic";
+
+export interface AgentExecutionSettingsV2 {
+  workflow_id: string;
+  media_execution_mode: AgentMediaExecutionModeV2;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentExecutionSettingsPatchV2 {
+  media_execution_mode: AgentMediaExecutionModeV2;
+}
+
+export type AgentWorkingDocumentKindV2 =
+  | "anchor_registry"
+  | "storyboard_production_plan";
+
+export type AgentAnchorTypeV2 =
+  | "subject"
+  | "environment"
+  | "world_setting"
+  | "style"
+  | "composition";
+
+export interface AgentAnchorV2 {
+  alias: string;
+  anchor_type: AgentAnchorTypeV2;
+  display_name: string;
+  summary: string;
+  source_kind: "node" | "image_asset" | "skill_snapshot";
+  source_id: string | null;
+  availability: "pending" | "available" | "failed";
+}
+
+export interface AnchorRegistryContentV2 {
+  anchors: AgentAnchorV2[];
+}
+
+export interface StoryboardPlanGlobalParametersV2 {
+  aspect_ratio: string;
+  total_duration_seconds: number;
+  segment_count: number;
+}
+
+export interface StoryboardNarrativeSegmentV2 {
+  sequence_id: string;
+  order: number;
+  start_seconds: number;
+  end_seconds: number;
+  narrative_goal: string;
+  start_state: string;
+  end_state: string;
+  continuity_from_previous: string | null;
+}
+
+export interface StoryboardPlanRowV2 {
+  shot_index: number;
+  sequence_id: string;
+  panel_index: number;
+  content_beat: string;
+  anchor_aliases: string[];
+  camera_description: string;
+}
+
+export interface StoryboardNodeRecordV2 {
+  sequence_id: string | null;
+  node_role: "storyboard_grid" | "video_segment" | "bgm" | "editing";
+  node_id: string;
+}
+
+export interface StoryboardProductionPlanContentV2 {
+  narrative_outline: string;
+  global_parameters: StoryboardPlanGlobalParametersV2;
+  segments: StoryboardNarrativeSegmentV2[];
+  rows: StoryboardPlanRowV2[];
+  node_records: StoryboardNodeRecordV2[];
+  materialized_panel_cursor: number;
+}
+
+export interface AgentDocumentLinkedNodeRuntimeV2 {
+  node_id: string;
+  node_type: CanvasNodeTypeV2;
+  creative_role: string;
+  status: CanvasNodeStatusV2;
+  revision: number;
+}
+
+interface AgentWorkingDocumentBaseV2 {
+  document_id: string;
+  workflow_id: string;
+  guidance_session_id: string;
+  title: string;
+  revision: number;
+  content_digest: string;
+  created_by_agent_run_id: string;
+  updated_by_agent_run_id: string;
+  linked_nodes: AgentDocumentLinkedNodeRuntimeV2[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentAnchorRegistryDocumentV2 extends AgentWorkingDocumentBaseV2 {
+  kind: "anchor_registry";
+  content: AnchorRegistryContentV2;
+}
+
+export interface AgentStoryboardProductionPlanDocumentV2 extends AgentWorkingDocumentBaseV2 {
+  kind: "storyboard_production_plan";
+  content: StoryboardProductionPlanContentV2;
+}
+
+export type AgentWorkingDocumentV2 =
+  | AgentAnchorRegistryDocumentV2
+  | AgentStoryboardProductionPlanDocumentV2;
+
+export interface AgentWorkingDocumentPageV2 {
+  items: AgentWorkingDocumentV2[];
+  next_cursor: string | null;
+}
+
 export interface AgentCanvasProjectCreateResponseV2 extends AgentCanvasWorkflowV2 {
   active_style_skill_run_id: string;
   guidance_session_id: string | null;
@@ -2302,6 +2423,17 @@ export interface ChatActionReceiptCardV2 {
   created_at: string;
 }
 
+export interface ChatAgentDocumentReferenceV2 {
+  item_type: "agent_document";
+  document_id: string;
+  document_kind: AgentWorkingDocumentKindV2;
+  revision: number;
+  content_digest: string;
+  title: string;
+  sequence: number;
+  created_at: string;
+}
+
 export type ChatTimelineItemV2 =
   | ChatMessageV2
   | ChatArtifactCardV2
@@ -2309,7 +2441,8 @@ export type ChatTimelineItemV2 =
   | ChatProposalPointerV2
   | ChatExpertActivityV2
   | ChatCommandPlanCardV2
-  | ChatActionReceiptCardV2;
+  | ChatActionReceiptCardV2
+  | ChatAgentDocumentReferenceV2;
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
@@ -2764,7 +2897,8 @@ export interface AgentCanvasChatTimelineEntryV2 {
     | "expert_activity"
     | "planning_progress"
     | "command_plan"
-    | "action_receipt";
+    | "action_receipt"
+    | "agent_document_reference";
   speaker: "user" | "adcraft_video_agent" | null;
   content: string;
   metadata: Record<string, unknown>;

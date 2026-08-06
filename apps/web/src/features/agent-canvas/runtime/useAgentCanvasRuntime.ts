@@ -52,6 +52,13 @@ export function useAgentCanvasRuntime(
   const [runPending, setRunPending] = useState(false);
   const [chatRevision, setChatRevision] = useState(0);
   const [chatEvents, setChatEvents] = useState<CanvasRuntimeEventV2[]>([]);
+  const [settingsRevision, setSettingsRevision] = useState(0);
+  const [documentEvents, setDocumentEvents] = useState<CanvasRuntimeEventV2[]>([]);
+  const [editingPreparationByNodeId, setEditingPreparationByNodeId] = useState<Record<
+    string,
+    { omittedNodeIds: string[]; manifestRevision: number | null }
+  >>({});
+  const [autoRunNotice, setAutoRunNotice] = useState<string | null>(null);
   const [inputManifestsByNodeId, setInputManifestsByNodeId] = useState<Record<string, ProviderInputManifestAuditV2>>({});
   const [modelResolutionsByNodeId, setModelResolutionsByNodeId] = useState<Record<string, CanvasRuntimeModelResolutionV2>>({});
   const [inputReadinessIssue, setInputReadinessIssue] = useState<UpstreamInputReadinessIssueV2 | null>(null);
@@ -85,6 +92,10 @@ export function useAgentCanvasRuntime(
     setRuntimeError(null);
     setChatEvents([]);
     setChatRevision(0);
+    setSettingsRevision(0);
+    setDocumentEvents([]);
+    setEditingPreparationByNodeId({});
+    setAutoRunNotice(null);
     setInputManifestsByNodeId({});
     setModelResolutionsByNodeId({});
     setInputReadinessIssue(null);
@@ -237,6 +248,34 @@ export function useAgentCanvasRuntime(
     if (policy.refreshChat) {
       setChatEvents((current) => [...current, event].slice(-100));
       setChatRevision((current) => current + 1);
+    }
+    if (policy.refreshSettings) setSettingsRevision((current) => current + 1);
+    if (policy.refreshDocuments) {
+      setDocumentEvents((current) => [...current, event].slice(-50));
+    }
+    if (event.event_type === "editing_prepared") {
+      const nodeId = event.node_id
+        ?? (typeof event.payload?.editing_node_id === "string" ? event.payload.editing_node_id : null);
+      if (nodeId) {
+        const omittedNodeIds = Array.isArray(event.payload?.omitted_node_ids)
+          ? event.payload.omitted_node_ids.filter((item): item is string => typeof item === "string")
+          : [];
+        const manifestRevision = typeof event.payload?.manifest_revision === "number"
+          && Number.isInteger(event.payload.manifest_revision)
+          ? event.payload.manifest_revision
+          : null;
+        setEditingPreparationByNodeId((current) => ({
+          ...current,
+          [nodeId]: { omittedNodeIds, manifestRevision },
+        }));
+      }
+    }
+    if (event.event_type === "agent_auto_run_failed") {
+      setAutoRunNotice(
+        "Automatic generation could not start. The Draft is still available; use the node Run action to retry.",
+      );
+    } else if (event.event_type === "agent_auto_run_submitted") {
+      setAutoRunNotice(null);
     }
     const nodeId = policy.refreshEditingNodeId ?? policy.refreshNodeId;
     if (nodeId && workflowId) {
@@ -429,6 +468,10 @@ export function useAgentCanvasRuntime(
       runPending,
       chatRevision,
       chatEvents,
+      settingsRevision,
+      documentEvents,
+      editingPreparationByNodeId,
+      autoRunNotice,
       inputManifestsByNodeId,
       modelResolutionsByNodeId,
       inputReadinessIssue,
@@ -439,6 +482,7 @@ export function useAgentCanvasRuntime(
       runAll,
       runNode,
       cancelRun,
+      clearAutoRunNotice: () => setAutoRunNotice(null),
     },
   };
 }

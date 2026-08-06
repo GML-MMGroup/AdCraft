@@ -672,6 +672,87 @@ describe("Agent Canvas Video Style catalog client", () => {
   });
 });
 
+describe("Agent Canvas settings and working document client", () => {
+  it("uses the Agent Settings revision ETag without leaking the Workflow ETag", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:12"');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH") {
+        expect(new Headers(init.headers).get("If-Match")).toBe('"3"');
+        expect(JSON.parse(String(init.body))).toEqual({ media_execution_mode: "automatic" });
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          media_execution_mode: "automatic",
+          revision: 4,
+          created_at: "2026-08-06T08:00:00Z",
+          updated_at: "2026-08-06T08:02:00Z",
+        }, { etag: '"4"' });
+      }
+      expect(url).toContain("/agent-settings");
+      expect(new Headers(init?.headers).get("If-Match")).toBeNull();
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        media_execution_mode: "manual",
+        revision: 3,
+        created_at: "2026-08-06T08:00:00Z",
+        updated_at: "2026-08-06T08:01:00Z",
+      }, { etag: '"3"' });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const current = await v2Api.agentCanvasExecutionSettings("workflow-1");
+    const updated = await v2Api.patchAgentCanvasExecutionSettings(
+      "workflow-1",
+      { media_execution_mode: "automatic" },
+      current.value.revision,
+    );
+
+    expect(current.etag).toBe('"3"');
+    expect(updated.value.media_execution_mode).toBe("automatic");
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:12"');
+  });
+
+  it("lists and reads Agent Documents with filtering and pagination", async () => {
+    const document = {
+      document_id: "doc-anchor-1",
+      workflow_id: "workflow-1",
+      guidance_session_id: "session-1",
+      kind: "anchor_registry",
+      title: "Campaign anchors",
+      revision: 1,
+      content_digest: "sha256:anchors",
+      content: { anchors: [] },
+      created_by_agent_run_id: "run-1",
+      updated_by_agent_run_id: "run-1",
+      linked_nodes: [],
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:00:00Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://frontend.test");
+      if (url.pathname.endsWith("/doc-anchor-1")) return jsonResponse(document);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        kind: "anchor_registry",
+        cursor: "cursor-1",
+        limit: "10",
+      });
+      return jsonResponse({ items: [document], next_cursor: "cursor-2" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await v2Api.listAgentCanvasDocuments("workflow-1", {
+      kind: "anchor_registry",
+      cursor: "cursor-1",
+      limit: 10,
+    });
+    const detail = await v2Api.agentCanvasDocument("workflow-1", "doc-anchor-1");
+
+    expect(page.next_cursor).toBe("cursor-2");
+    expect(detail.document_id).toBe("doc-anchor-1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 function jsonResponse(
   payload: unknown,
   options: { status?: number; etag?: string } = {},
