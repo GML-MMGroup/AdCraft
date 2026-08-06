@@ -19,6 +19,7 @@ from app.persistence.models import (
     AgentCanvasExecutionRow,
     AgentCanvasNodeLeaseRow,
     AgentCanvasProviderTaskRow,
+    AgentCanvasVideoParameterCompilationSnapshotRow,
 )
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime import (
@@ -30,6 +31,7 @@ from app.schemas.agent_canvas_runtime import (
     NodeExecutionLeaseV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.schemas.agent_canvas_video_parameters import VideoParameterCompilationSnapshotV2
 
 
 _ACTIVE_EXECUTION_STATES = ("queued", "running", "waiting")
@@ -50,6 +52,85 @@ class AgentCanvasRuntimeRepository:
 
     def event_cursor(self, workflow_id: str) -> int:
         return self._events.max_seq(workflow_id)
+
+    def put_parameter_compilation_snapshot(
+        self,
+        snapshot: VideoParameterCompilationSnapshotV2,
+    ) -> VideoParameterCompilationSnapshotV2:
+        try:
+            with self._database.engine.begin() as connection:
+                existing = (
+                    connection.execute(
+                        select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
+                            AgentCanvasVideoParameterCompilationSnapshotRow.snapshot_id
+                            == snapshot.snapshot_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is not None:
+                    if str(existing["snapshot_digest"]) != snapshot.snapshot_digest:
+                        raise _error(
+                            "parameter_compilation_snapshot_conflict",
+                            "Parameter compilation snapshot content is immutable.",
+                        )
+                    return VideoParameterCompilationSnapshotV2.model_validate_json(
+                        str(existing["snapshot_json"])
+                    )
+                connection.execute(
+                    insert(AgentCanvasVideoParameterCompilationSnapshotRow).values(
+                        snapshot_id=snapshot.snapshot_id,
+                        workflow_id=snapshot.workflow_id,
+                        execution_id=snapshot.execution_id,
+                        member_id=snapshot.member_id,
+                        node_id=snapshot.node_id,
+                        snapshot_digest=snapshot.snapshot_digest,
+                        snapshot_json=snapshot.model_dump_json(),
+                        created_at=snapshot.created_at.isoformat(),
+                    )
+                )
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _error(
+                "parameter_compilation_snapshot_conflict",
+                "Parameter compilation snapshot content is immutable.",
+            ) from error
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Execution storage is unavailable.",
+            ) from error
+        return snapshot
+
+    def get_parameter_compilation_snapshot(
+        self,
+        snapshot_id: str,
+    ) -> VideoParameterCompilationSnapshotV2:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasVideoParameterCompilationSnapshotRow).where(
+                            AgentCanvasVideoParameterCompilationSnapshotRow.snapshot_id
+                            == snapshot_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Execution storage is unavailable.",
+            ) from error
+        if row is None:
+            raise _error(
+                "parameter_compilation_snapshot_not_found",
+                "Parameter compilation snapshot was not found.",
+            )
+        return VideoParameterCompilationSnapshotV2.model_validate_json(str(row["snapshot_json"]))
 
     def create_execution(
         self,
@@ -347,6 +428,7 @@ class AgentCanvasRuntimeRepository:
         resolved_input_manifest_id: str | None = None,
         resolved_input_manifest_digest: str | None = None,
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None,
+        parameter_compilation_snapshot: VideoParameterCompilationSnapshotV2 | None = None,
         omitted_optional_inputs: tuple[dict[str, object], ...] | None = None,
         error: CanvasNodeErrorV2 | None = None,
         event_type: str | None = None,
@@ -437,6 +519,15 @@ class AgentCanvasRuntimeRepository:
                                 "effective_parameters_json": effective_parameters.model_dump_json(),
                             }
                             if effective_parameters is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "parameter_compilation_snapshot_id": (
+                                    parameter_compilation_snapshot.snapshot_id
+                                )
+                            }
+                            if parameter_compilation_snapshot is not None
                             else {}
                         ),
                         **(
@@ -824,6 +915,9 @@ def _member(row: RowMapping) -> CanvasExecutionMembershipV2:
             )
             if row["effective_parameters_json"]
             else None
+        ),
+        parameter_compilation_snapshot_id=cast(
+            str | None, row["parameter_compilation_snapshot_id"]
         ),
         omitted_optional_inputs=tuple(json.loads(str(row["omitted_optional_inputs_json"]))),
         prompt_metadata=json.loads(str(row["prompt_metadata_json"])),
