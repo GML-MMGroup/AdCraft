@@ -53,6 +53,20 @@ const specialistProfiles = [
 
 const registrations: ReadonlyArray<PromptRegistration> = [
   registration(
+    "adcraft.video_director.compile_video_parameters.v1",
+    "video_director",
+    "compile_video_parameters",
+    "VideoParameterIntentV2",
+    "Video Director",
+    [
+      "Extract only explicit technical video controls from the supplied target prompt and direct Text or Script Binding sources.",
+      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, limited by the supplied capability contract.",
+      "Copy source_kind and immutable source identity exactly from the source that explicitly states each value.",
+      "Do not infer controls from creative wording, defaults, sibling or transitive nodes, and do not return creative prompt content or provider payloads.",
+      "Return no_explicit_controls with no candidates when no supplied source explicitly states a technical control.",
+    ].join(" "),
+  ),
+  registration(
     "adcraft.director.command_replan.v1",
     "director",
     "command_replan",
@@ -108,6 +122,55 @@ const registrations: ReadonlyArray<PromptRegistration> = [
       "Use quick_media only for one narrow requested media outcome with one explicit source or target.",
       "Use guided_production for a complete advertisement or multi-stage creative request even when its final delivery is video.",
       "Use targeted_authoring only when the typed context identifies one explicit editable node or supported asset target.",
+    ].join(" "),
+  ),
+  registration(
+    "adcraft.scene_designer.propose_world_setting.v1",
+    "scene_designer",
+    "propose_world_setting",
+    "WorldSettingProposalDraftV1",
+    "Scene Designer",
+    [
+      "Propose exactly context.candidate_count distinct World Setting directions; candidate_count must be two or three.",
+      "Each direction must contain a title, premise, era and place, core world rules, visual continuity rules, and concise user-facing summary.",
+      "Use the World Setting development Skill and the typed creative goal only.",
+      "Do not create a screenplay, dialogue, shot list, provider prompt, provider payload, Canvas topology, or media provider call.",
+    ].join(" "),
+  ),
+  registration(
+    "adcraft.scene_designer.revise_world_setting_options.v1",
+    "scene_designer",
+    "revise_world_setting_options",
+    "WorldSettingProposalDraftV1",
+    "Scene Designer",
+    [
+      "Revise only the supplied two or three World Setting directions using the explicit revision instruction and preserved anchors.",
+      "Return the complete replacement direction set with stable bounded fields.",
+      "Do not create a screenplay, dialogue, shot list, provider prompt, provider payload, Canvas topology, or media provider call.",
+    ].join(" "),
+  ),
+  registration(
+    "adcraft.scene_designer.materialize_world_setting.v1",
+    "scene_designer",
+    "materialize_world_setting",
+    "WorldSettingMaterializationDraftV1",
+    "Scene Designer",
+    [
+      "Materialize exactly one persisted selected World Setting direction into canonical prose and one complete shared-plus-eight-role structured projection bundle.",
+      "Use only the selected direction, explicit revision instruction, and preserved authoring context.",
+      "Do not create a screenplay, dialogue, shot list, provider prompt, provider payload, Canvas topology, or media provider call.",
+    ].join(" "),
+  ),
+  registration(
+    "adcraft.scene_designer.project_world_setting.v1",
+    "scene_designer",
+    "project_world_setting",
+    "WorldSettingReadyProjectionBundleV1",
+    "Scene Designer",
+    [
+      "Project the supplied canonical World Setting prose into one bounded shared projection and all eight exact role projections.",
+      "Keep each role projection isolated and keep BGM limited to era and culture, mood, energy, and instrumentation cues.",
+      "Do not create a screenplay, dialogue, shot list, provider prompt, provider payload, Canvas topology, or media provider call.",
     ].join(" "),
   ),
   ...specialistProfiles.flatMap(

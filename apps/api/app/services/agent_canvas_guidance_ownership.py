@@ -14,6 +14,7 @@ from app.schemas.agent_operation_contexts import GuidanceTopicOwnershipV2
 
 
 TOPIC_SPECIALIST: dict[GuidanceTopicKindV2, AgentCanvasSpecialistNameV2] = {
+    "world_setting": "scene_designer",
     "creative_direction": "script_writer",
     "product": "product_designer",
     "prop": "prop_designer",
@@ -48,12 +49,21 @@ class GuidanceOwnerResolver:
                 stage="guidance_owner_resolver",
             )
         supplied = decision.specialist_name
-        canonical = decision.model_copy(update={"specialist_name": expected})
+        if supplied != expected:
+            raise V2PersistenceError(
+                "guidance_topic_owner_invalid",
+                "The proposed topic has the wrong Specialist owner.",
+                stage="guidance_owner_resolver",
+                details={
+                    "topic_kind": str(decision.topic_kind),
+                    "expected_specialist_name": expected,
+                },
+            )
         return GuidanceOwnerResolution(
-            canonical,
+            decision,
             supplied,
             expected,
-            supplied != expected,
+            False,
         )
 
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 from uuid import uuid4
 
 from fastapi import (
@@ -45,14 +45,26 @@ from app.persistence.agent_canvas_editing_repository import (
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
+from app.persistence.agent_canvas_world_setting_repository import (
+    AgentCanvasWorldSettingRepository,
+)
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
+from app.persistence.agent_canvas_execution_settings_repository import (
+    AgentCanvasExecutionSettingsRepository,
+)
 from app.persistence.agent_canvas_command_repository import (
     AgentCanvasCommandRepository,
+)
+from app.persistence.agent_canvas_auto_run_repository import (
+    AgentCanvasAutomaticRunRepository,
+)
+from app.persistence.agent_working_document_repository import (
+    AgentWorkingDocumentRepository,
 )
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.database import V2Database, create_v2_database
@@ -100,6 +112,15 @@ from app.schemas.agent_canvas_conversation import (
     VideoSkillRunV2,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_execution_settings import (
+    AgentExecutionSettingsPatchV2,
+    AgentExecutionSettingsV2,
+)
+from app.schemas.agent_working_documents import (
+    AgentWorkingDocumentKindV2,
+    AgentWorkingDocumentPageV2,
+    AgentWorkingDocumentV2,
+)
 from app.schemas.agent_canvas_video_skills import (
     VideoSkillCatalogResponseV2,
     VideoSkillPublicDetailV2,
@@ -130,6 +151,7 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.agent_canvas_auto_run import AgentCanvasAutoRunDispatcher
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
 )
@@ -168,6 +190,8 @@ from app.services.agent_canvas_runtime import (
     DynamicCanvasScheduler,
 )
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
+from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
+from app.services.agent_canvas_world_setting_projection import WorldSettingProjectionService
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
@@ -181,9 +205,18 @@ from app.services.agent_canvas_conversation import (
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
+from app.services.agent_canvas_execution_settings import (
+    AgentCanvasExecutionSettingsService,
+)
+from app.services.agent_working_documents import AgentWorkingDocumentService
 from app.services.agent_canvas_layout import AgentCanvasLayoutService
 from app.services.agent_canvas_targets import AgentCanvasTargetService
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.services.agent_canvas_video_parameter_compiler import (
+    AgentCanvasVideoParameterCompiler,
+    DeterministicVideoParameterIntentGateway,
+    PiVideoParameterIntentGateway,
+)
 from app.services.agent_trace import V2AgentTraceWriter
 from app.services.agent_canvas_variations import AgentCanvasVariationService
 from app.services.model_selection import ModelSelectionService
@@ -229,6 +262,9 @@ class AgentCanvasRuntime:
     editing_export_repository: AgentCanvasEditingExportRepository
     continuation_outbox: AgentCanvasContinuationOutboxRepository
     continuation_worker: AgentCanvasContinuationWorker
+    execution_settings: AgentCanvasExecutionSettingsService
+    auto_run_dispatcher: AgentCanvasAutoRunDispatcher
+    working_documents: AgentWorkingDocumentService
 
 
 def get_agent_canvas_runtime(
@@ -278,6 +314,10 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         project_repository,
         event_repository,
     )
+    execution_settings = AgentCanvasExecutionSettingsService(
+        workflow_repository,
+        AgentCanvasExecutionSettingsRepository(database, event_repository),
+    )
     document_repository = AgentCanvasDocumentRepository(database)
     asset_repository = V2AssetLibraryRepository(database)
     asset_service = AgentCanvasAssetService(
@@ -293,6 +333,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
     conversation_repository = AgentCanvasConversationRepository(
         database,
         event_repository,
+    )
+    working_documents = AgentWorkingDocumentService(
+        workflows=workflow_repository,
+        documents=AgentWorkingDocumentRepository(database, event_repository),
+        assets=asset_repository,
+        conversations=conversation_repository,
     )
     continuation_outbox = AgentCanvasContinuationOutboxRepository(
         database,
@@ -342,6 +388,18 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         ),
         connection_policy=connection_policy,
     )
+    world_setting_projection = WorldSettingProjectionService(
+        workflow_repository,
+        AgentCanvasWorldSettingRepository(database),
+        gateway=director_gateway if isinstance(director_gateway, PiDirectorGateway) else None,
+        model_ref_resolver=lambda: (
+            model_resolution.resolve_selection(
+                node_type="script",
+                model_selection_mode="default",
+                model_ref=None,
+            ).model_ref
+        ),
+    )
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
     editing_export_repository = AgentCanvasEditingExportRepository(database)
     provider_executor = V2ProviderExecutor(
@@ -362,7 +420,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         registration.semantic_role for registration in list_agent_canvas_prompt_registrations()
     }
 
-    def prepare_media_context(node: CanvasNodeV2):
+    def prepare_media_context(node: CanvasNodeV2, world_setting):
         contract = role_registry.get(node.semantic_role)
         bundle = reference_resolver.resolve(
             node.workflow_id,
@@ -370,7 +428,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             contract,
         )
         compiled = (
-            prompt_compiler.compile(node, contract, bundle)
+            prompt_compiler.compile(
+                node,
+                contract,
+                bundle,
+                world_setting=world_setting,
+            )
             if node.semantic_role in compiled_roles
             else None
         )
@@ -418,6 +481,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
     run_snapshots = AgentCanvasRunIntentSnapshotService(
         workflow_repository,
         runtime_repository,
+        bindings=binding_service,
     )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
@@ -454,8 +518,22 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             node,
         ),
         media_context_preparer=prepare_media_context,
+        input_compiler=AgentCanvasResolvedInputCompiler(
+            binding_service,
+            world_settings=world_setting_projection,
+        ),
+        world_settings=world_setting_projection,
         stage_trace_writer=write_stage_trace,
         run_snapshots=run_snapshots,
+        video_parameter_compiler=AgentCanvasVideoParameterCompiler(
+            gateway=(
+                DeterministicVideoParameterIntentGateway()
+                if settings.agent_runtime_mode == "fake"
+                else PiVideoParameterIntentGateway()
+            ),
+            authoring_repository=workflow_repository,
+            runtime_repository=runtime_repository,
+        ),
         image_limit=settings.v2_max_parallel_image_jobs,
         video_limit=settings.v2_max_parallel_video_jobs,
         audio_limit=settings.v2_max_parallel_audio_jobs,
@@ -594,6 +672,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+    )
+    auto_run_dispatcher = AgentCanvasAutoRunDispatcher(
+        AgentCanvasAutomaticRunRepository(database, event_repository),
+        start_or_extend=run_service.start_or_extend,
+        resume_execution=scheduler.resume,
+        worker_id=f"agent-canvas-auto-run:{uuid4().hex}",
     )
     command_repository = AgentCanvasCommandRepository(
         database,
@@ -773,6 +857,9 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         editing_export_repository=editing_export_repository,
         continuation_outbox=continuation_outbox,
         continuation_worker=continuation_worker,
+        execution_settings=execution_settings,
+        auto_run_dispatcher=auto_run_dispatcher,
+        working_documents=working_documents,
     )
 
 
@@ -907,6 +994,47 @@ def get_workflow(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return workflow
+
+
+@router.get(
+    "/workflows/{workflow_id}/agent-settings",
+    response_model=AgentExecutionSettingsV2,
+)
+def get_agent_execution_settings(
+    workflow_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> AgentExecutionSettingsV2:
+    try:
+        settings = runtime.execution_settings.get_or_create(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = _agent_settings_etag(settings.revision)
+    return settings
+
+
+@router.patch(
+    "/workflows/{workflow_id}/agent-settings",
+    response_model=AgentExecutionSettingsV2,
+)
+def update_agent_execution_settings(
+    workflow_id: str,
+    request: AgentExecutionSettingsPatchV2,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+) -> AgentExecutionSettingsV2:
+    expected_revision = _agent_settings_expected_revision(if_match)
+    try:
+        settings = runtime.execution_settings.update(
+            workflow_id,
+            request,
+            expected_revision=expected_revision,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = _agent_settings_etag(settings.revision)
+    return settings
 
 
 @router.get(
@@ -1446,6 +1574,53 @@ def delete_asset(
 
 
 @router.get(
+    "/workflows/{workflow_id}/agent-documents",
+    response_model=AgentWorkingDocumentPageV2,
+)
+def list_agent_working_documents(
+    workflow_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    kind: str | None = None,
+    cursor: str | None = None,
+    limit: int = 20,
+) -> AgentWorkingDocumentPageV2:
+    if kind is not None and kind not in {
+        "anchor_registry",
+        "storyboard_production_plan",
+    }:
+        raise _http_error(
+            "agent_document_kind_unsupported",
+            422,
+            "Agent working document kind is unsupported.",
+        )
+    resolved_kind = cast(AgentWorkingDocumentKindV2 | None, kind)
+    try:
+        return runtime.working_documents.list_documents(
+            workflow_id,
+            kind=resolved_kind,
+            cursor=cursor,
+            limit=limit,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
+    "/workflows/{workflow_id}/agent-documents/{document_id}",
+    response_model=AgentWorkingDocumentV2,
+)
+def get_agent_working_document(
+    workflow_id: str,
+    document_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> AgentWorkingDocumentV2:
+    try:
+        return runtime.working_documents.get_document(workflow_id, document_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
     "/workflows/{workflow_id}/chat/timeline",
     response_model=ChatTimelineListResponseV2,
 )
@@ -1920,6 +2095,7 @@ def _process_agent_turn_and_resume(
     turn_id: str,
 ) -> None:
     runtime.conversations.process_turn(turn_id)
+    runtime.auto_run_dispatcher.run_once()
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
@@ -1964,6 +2140,42 @@ def _expected_project_version(value: str | None, project_id: str) -> int:
         raise _http_error(error.code, error.status_code, str(error)) from error
 
 
+def _agent_settings_etag(revision: int) -> str:
+    return f'"{revision}"'
+
+
+def _agent_settings_expected_revision(value: str | None) -> int:
+    if value is None:
+        raise _http_error(
+            "agent_settings_precondition_required",
+            428,
+            "If-Match is required for Agent execution settings updates.",
+        )
+    normalized = value.strip()
+    if normalized.startswith("W/") or len(normalized) < 3:
+        raise _http_error(
+            "agent_settings_revision_conflict",
+            412,
+            "Agent execution settings ETag is invalid.",
+        )
+    token = normalized[1:-1] if normalized.startswith('"') and normalized.endswith('"') else ""
+    try:
+        revision = int(token)
+    except ValueError as error:
+        raise _http_error(
+            "agent_settings_revision_conflict",
+            412,
+            "Agent execution settings ETag is invalid.",
+        ) from error
+    if revision < 1:
+        raise _http_error(
+            "agent_settings_revision_conflict",
+            412,
+            "Agent execution settings ETag is invalid.",
+        )
+    return revision
+
+
 def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
     status_code = {
         "project_not_found": 404,
@@ -1973,6 +2185,18 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "project_page_invalid": 422,
         "project_update_invalid": 422,
         "workflow_not_found": 404,
+        "workflow_not_agent_canvas": 409,
+        "agent_settings_revision_conflict": 412,
+        "agent_document_not_found": 404,
+        "agent_document_workflow_mismatch": 409,
+        "agent_document_kind_unsupported": 422,
+        "agent_document_revision_conflict": 409,
+        "agent_document_patch_invalid": 422,
+        "agent_document_anchor_source_invalid": 422,
+        "agent_document_anchor_alias_conflict": 409,
+        "agent_document_storyboard_sequence_invalid": 422,
+        "agent_document_cross_workflow_reference": 409,
+        "pagination_invalid": 422,
         "node_not_found": 404,
         "binding_not_found": 404,
         "asset_not_found": 404,
@@ -2049,6 +2273,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guidance_revision_conflict": 409,
         "guidance_goal_required": 422,
         "guidance_topic_conflict": 409,
+        "guidance_topic_owner_invalid": 422,
         "proposal_not_found": 404,
         "proposal_not_pending": 409,
         "proposal_option_not_found": 422,

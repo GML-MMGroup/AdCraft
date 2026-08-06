@@ -69,8 +69,12 @@ export const AGENT_CAPABILITY_CONTRACT = {
       "operations": [
         "direct_response",
         "materialize_draft",
+        "materialize_world_setting",
+        "project_world_setting",
         "propose_concepts",
-        "revise_concepts"
+        "propose_world_setting",
+        "revise_concepts",
+        "revise_world_setting_options"
       ],
       "model_role": "scene"
     },
@@ -98,6 +102,7 @@ export const AGENT_CAPABILITY_CONTRACT = {
     {
       "name": "video_director",
       "operations": [
+        "compile_video_parameters",
         "direct_response",
         "materialize_draft",
         "propose_concepts",
