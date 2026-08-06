@@ -8,6 +8,9 @@ import {
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeAgentCanvasChatTimelineResponseV2,
+  normalizeAgentExecutionSettingsV2,
+  normalizeAgentWorkingDocumentPageV2,
+  normalizeAgentWorkingDocumentV2,
   normalizeCanvasBindingV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
@@ -1877,5 +1880,150 @@ describe("Agent Canvas normalizers", () => {
       active_creative_direction_snapshot_id: null,
       updated_at: null,
     });
+  });
+
+  it("normalizes Agent execution settings without accepting unrelated fields", () => {
+    expect(normalizeAgentExecutionSettingsV2({
+      workflow_id: "workflow-1",
+      media_execution_mode: "automatic",
+      revision: 3,
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:01:00Z",
+    })).toMatchObject({
+      media_execution_mode: "automatic",
+      revision: 3,
+    });
+
+    expect(() => normalizeAgentExecutionSettingsV2({
+      workflow_id: "workflow-1",
+      media_execution_mode: "automatic",
+      revision: 3,
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:01:00Z",
+      guidance_mode: "delegated",
+    })).toThrowError(/guidance_mode/i);
+  });
+
+  it("normalizes read-only Anchor Registry and Storyboard Production Plan documents", () => {
+    const base = {
+      workflow_id: "workflow-1",
+      guidance_session_id: "session-1",
+      revision: 2,
+      content_digest: "sha256:document",
+      created_by_agent_run_id: "run-1",
+      updated_by_agent_run_id: "run-2",
+      linked_nodes: [{
+        node_id: "node-grid-1",
+        node_type: "image",
+        creative_role: "storyboard_sequence",
+        status: "ready",
+        revision: 4,
+      }],
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:02:00Z",
+    };
+    const anchorRegistry = normalizeAgentWorkingDocumentV2({
+      ...base,
+      document_id: "doc-anchor-1",
+      kind: "anchor_registry",
+      title: "Campaign anchors",
+      content: {
+        anchors: [{
+          alias: "HERO",
+          anchor_type: "subject",
+          display_name: "Lead talent",
+          summary: "Primary on-screen subject.",
+          source_kind: "node",
+          source_id: "node-character-1",
+          availability: "available",
+        }],
+      },
+    });
+    const storyboardPlan = normalizeAgentWorkingDocumentV2({
+      ...base,
+      document_id: "doc-plan-1",
+      kind: "storyboard_production_plan",
+      title: "Storyboard plan",
+      content: {
+        narrative_outline: "A calm product reveal.",
+        global_parameters: {
+          aspect_ratio: "16:9",
+          total_duration_seconds: 15,
+          segment_count: 1,
+        },
+        segments: [{
+          sequence_id: "sequence-1",
+          order: 1,
+          start_seconds: 0,
+          end_seconds: 15,
+          narrative_goal: "Reveal the product.",
+          start_state: "Closed frame.",
+          end_state: "Product hero frame.",
+          continuity_from_previous: null,
+        }],
+        rows: [{
+          shot_index: 1,
+          sequence_id: "sequence-1",
+          panel_index: 1,
+          content_beat: "Product enters frame.",
+          anchor_aliases: ["HERO"],
+          camera_description: "Slow push in.",
+        }],
+        node_records: [{
+          sequence_id: "sequence-1",
+          node_role: "storyboard_grid",
+          node_id: "node-grid-1",
+        }],
+        materialized_panel_cursor: 1,
+      },
+    });
+
+    expect(anchorRegistry.content).toMatchObject({ anchors: [{ alias: "HERO" }] });
+    expect(storyboardPlan.content).toMatchObject({
+      global_parameters: { aspect_ratio: "16:9", segment_count: 1 },
+      materialized_panel_cursor: 1,
+    });
+    expect(normalizeAgentWorkingDocumentPageV2({
+      items: [anchorRegistry, storyboardPlan],
+      next_cursor: "cursor-2",
+    })).toMatchObject({ next_cursor: "cursor-2" });
+  });
+
+  it("restores Agent Document references from the persisted chat timeline", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [{
+        entry_id: "entry-document-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 1,
+        entry_type: "agent_document_reference",
+        speaker: null,
+        content: "Storyboard plan",
+        metadata: {
+          type: "agent_document_reference",
+          document_id: "doc-plan-1",
+          document_kind: "storyboard_production_plan",
+          revision: 4,
+          content_digest: "sha256:plan",
+          title: "Storyboard plan",
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-06T08:00:00Z",
+      }],
+      next_cursor: 1,
+    });
+
+    expect(timeline.items).toEqual([expect.objectContaining({
+      item_type: "agent_document",
+      document_id: "doc-plan-1",
+      document_kind: "storyboard_production_plan",
+      revision: 4,
+    })]);
   });
 });

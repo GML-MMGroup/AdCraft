@@ -140,6 +140,7 @@ export function AgentCanvasPage() {
   const providerModels = useAgentCanvasProviderModels(workflow, session.state.selectedNode);
   const {
     cancelRun,
+    clearAutoRunNotice,
     refreshWorkflow,
     runAll,
     runNode,
@@ -572,6 +573,9 @@ export function AgentCanvasPage() {
   const editingNode = editingNodeId
     ? workflow.nodes.find((node) => node.node_id === editingNodeId && node.node_type === "editing") ?? null
     : null;
+  const editingPreparation = editingNode
+    ? live.state.editingPreparationByNodeId[editingNode.node_id]
+    : undefined;
   const connectedMenuAnchor = connectedNodeMenu
     ? workflow.nodes.find((node) => node.node_id === connectedNodeMenu.anchorNodeId) ?? null
     : null;
@@ -721,6 +725,17 @@ export function AgentCanvasPage() {
           </button>
         ) : null}
 
+        {live.state.autoRunNotice ? (
+          <button
+            type="button"
+            className="agent-canvas-notice agent-canvas-notice--info"
+            aria-label="Dismiss automatic run notice"
+            onClick={clearAutoRunNotice}
+          >
+            {live.state.autoRunNotice}
+          </button>
+        ) : null}
+
         {assetsOpen ? (
           <div className="agent-canvas-overlay" role="dialog" aria-modal="true" aria-label="Project assets">
             <button
@@ -745,6 +760,7 @@ export function AgentCanvasPage() {
           <AgentCanvasEditingPanel
             workflow={workflow}
             node={editingNode}
+            omittedNodeIds={editingPreparation?.omittedNodeIds ?? []}
             patchNode={patchNode}
             onClose={() => setEditingNodeId(null)}
           />
@@ -794,6 +810,8 @@ export function AgentCanvasPage() {
         workflow={workflow}
         chatRevision={live.state.chatRevision}
         chatEvents={live.state.chatEvents}
+        settingsRevision={live.state.settingsRevision}
+        documentEvents={live.state.documentEvents}
         onFocusNode={focusNode}
         onActionReceipt={placeReceiptNodes}
         onWorkflowRefresh={refreshWorkflow}

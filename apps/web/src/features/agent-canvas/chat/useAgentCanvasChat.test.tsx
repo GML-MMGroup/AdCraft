@@ -400,6 +400,39 @@ describe("useAgentCanvasChat", () => {
     });
   });
 
+  it("keeps durable Agent Document references in the restored timeline", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "agent_document",
+        document_id: "document-storyboard-1",
+        document_kind: "storyboard_production_plan",
+        revision: 2,
+        content_digest: "sha256:storyboard-plan",
+        title: "Storyboard production plan",
+        sequence: 4,
+        created_at: "2026-08-04T10:00:00Z",
+      }],
+      next_cursor: 4,
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(result.current.state.items).toEqual([
+      expect.objectContaining({
+        item_type: "agent_document",
+        document_id: "document-storyboard-1",
+        revision: 2,
+      }),
+    ]);
+  });
+
   it("selects a proposal with the backend action descriptor and creates a draft only", async () => {
     const select = descriptor("select_option", "action-select-1");
     const reference = {

@@ -1,0 +1,293 @@
+.agent-document-browser {
+  position: relative;
+}
+
+.agent-document-browser > button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 5%);
+  color: inherit;
+  cursor: pointer;
+}
+
+.agent-document-browser > button.is-active {
+  border-color: color-mix(in srgb, var(--accent, #9e8bef) 55%, transparent);
+  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
+}
+
+.agent-document-browser__panel {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 10px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, calc(100vw - 36px));
+  max-height: min(720px, calc(100vh - 110px));
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 8px;
+  background: color-mix(in srgb, #171820 96%, transparent);
+  box-shadow: 0 24px 58px rgb(0 0 0 / 45%);
+}
+
+.agent-document-browser__panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.agent-document-browser__panel > header div {
+  display: grid;
+  gap: 2px;
+}
+
+.agent-document-browser__panel > header small {
+  color: var(--text-secondary, #a9acbb);
+  font-size: 11px;
+}
+
+.agent-document-browser__panel > header button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 6%);
+  color: inherit;
+  cursor: pointer;
+}
+
+.agent-document-browser__filters {
+  display: flex;
+  gap: 4px;
+  padding: 10px 14px;
+}
+
+.agent-document-browser__filters button,
+.agent-document-browser__more {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 5%);
+  color: var(--text-secondary, #b7bac7);
+  cursor: pointer;
+}
+
+.agent-document-browser__filters button.is-selected {
+  border-color: color-mix(in srgb, var(--accent, #9e8bef) 48%, transparent);
+  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
+  color: var(--text-primary, #fff);
+}
+
+.agent-document-browser__content {
+  display: grid;
+  gap: 10px;
+  min-height: 120px;
+  overflow: auto;
+  padding: 0 14px 14px;
+}
+
+.agent-document-browser__more {
+  margin: 0 14px 14px;
+}
+
+.agent-document-browser__empty,
+.agent-document-browser__loading,
+.agent-document-card__loading,
+.agent-document-card__empty {
+  margin: 0;
+  padding: 18px;
+  color: var(--text-secondary, #a9acbb);
+  text-align: center;
+  font-size: 12px;
+}
+
+.agent-document-card {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 4%);
+  color: var(--text-primary, #f6f5fb);
+}
+
+.agent-document-card > header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.agent-document-card > header > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
+  color: var(--accent, #b3a4f5);
+}
+
+.agent-document-card > header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.agent-document-card > header strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-document-card > header small,
+.agent-document-card small {
+  color: var(--text-secondary, #a9acbb);
+  font-size: 10px;
+}
+
+.agent-document-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.agent-document-card__metrics span {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 4%);
+  color: var(--text-secondary, #a9acbb);
+  font-size: 9px;
+}
+
+.agent-document-card__metrics strong {
+  color: var(--text-primary, #fff);
+  font-size: 13px;
+}
+
+.agent-document-card__outline,
+.agent-document-card__segments p,
+.agent-document-card__rows p,
+.agent-document-card__anchors p {
+  margin: 0;
+  color: var(--text-secondary, #b5b7c2);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-document-card__segments,
+.agent-document-card__anchors {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-document-card__segments li {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.agent-document-card__segments li > span,
+.agent-document-card__rows > div > span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 7%);
+  color: #d9d4f1;
+  font-size: 10px;
+}
+
+.agent-document-card__segments li > div {
+  display: grid;
+  gap: 3px;
+}
+
+.agent-document-card__rows {
+  display: grid;
+  gap: 6px;
+}
+
+.agent-document-card__rows > div {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.agent-document-card__linked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-document-card__linked button,
+.agent-document-card__anchors button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 4%);
+  color: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.agent-document-card__anchors li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  padding: 9px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 3%);
+}
+
+.agent-document-card__anchors li > div,
+.agent-document-card__anchors p {
+  grid-column: 1 / -1;
+}
+
+.agent-document-card__anchors li > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.agent-document-card__anchors code {
+  color: #c9bcff;
+}
+
+.agent-document-card__error {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgb(225 116 124 / 35%);
+  border-radius: 8px;
+  background: rgb(225 116 124 / 8%);
+  color: #efb0b4;
+  text-align: left;
+  cursor: pointer;
+}

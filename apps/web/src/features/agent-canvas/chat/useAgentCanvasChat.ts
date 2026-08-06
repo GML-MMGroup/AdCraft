@@ -94,6 +94,7 @@ function mergeTimelineItems(
     if (item.item_type === "expert_activity") return `activity:${item.activity_id}`;
     if (item.item_type === "command_plan") return `command:${item.command_plan.plan_id}`;
     if (item.item_type === "action_receipt") return `receipt:${item.action_receipt.receipt_id}`;
+    if (item.item_type === "agent_document") return `document:${item.document_id}:${item.revision}`;
     if (item.item_type === "proposal_pointer") return `proposal:${item.proposal_id}`;
     const exhaustiveItem: never = item;
     return exhaustiveItem;

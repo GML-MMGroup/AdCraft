@@ -12,6 +12,8 @@ export { isV2ApiError, V2ApiError };
 export const agentCanvasApi = {
   createAgentCanvasProject: v2Api.createAgentCanvasProject,
   agentCanvasWorkflowWithEtag: v2Api.agentCanvasWorkflowWithEtag,
+  agentCanvasExecutionSettings: v2Api.agentCanvasExecutionSettings,
+  patchAgentCanvasExecutionSettings: v2Api.patchAgentCanvasExecutionSettings,
   agentCanvasNode: v2Api.agentCanvasNode,
   patchAgentCanvasLayout: v2Api.patchAgentCanvasLayout,
   createAgentCanvasNode: v2Api.createAgentCanvasNode,
@@ -32,6 +34,8 @@ export const agentCanvasApi = {
   saveAgentCanvasImageToLibrary: v2Api.saveAgentCanvasImageToLibrary,
   deleteAgentCanvasAsset: v2Api.deleteAgentCanvasAsset,
   agentCanvasChatTimeline: v2Api.agentCanvasChatTimeline,
+  listAgentCanvasDocuments: v2Api.listAgentCanvasDocuments,
+  agentCanvasDocument: v2Api.agentCanvasDocument,
   submitAgentCanvasChatMessage: v2Api.submitAgentCanvasChatMessage,
   agentCanvasChatTurn: v2Api.agentCanvasChatTurn,
   agentCanvasProposal: v2Api.agentCanvasProposal,

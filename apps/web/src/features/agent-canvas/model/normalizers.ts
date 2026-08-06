@@ -7,6 +7,13 @@ import type {
   AgentCanvasChatTurnV2,
   AgentCanvasChatTimelineResponseV2,
   AgentCanvasChatViewTimelineV2,
+  AgentDocumentLinkedNodeRuntimeV2,
+  AgentExecutionSettingsV2,
+  AgentWorkingDocumentKindV2,
+  AgentWorkingDocumentPageV2,
+  AgentWorkingDocumentV2,
+  AgentAnchorV2,
+  AnchorRegistryContentV2,
   AgentCommandOperationV2,
   AgentCommandPlanV2,
   ActiveStyleSkillSummaryV2,
@@ -93,6 +100,11 @@ import type {
   ProposalActionDescriptorV2,
   SpecialistAgentNameV2,
   StorageAccessDescriptorV2,
+  StoryboardNarrativeSegmentV2,
+  StoryboardNodeRecordV2,
+  StoryboardPlanGlobalParametersV2,
+  StoryboardPlanRowV2,
+  StoryboardProductionPlanContentV2,
   VideoSkillCatalogResponseV2,
   VideoSkillCategoryV2,
   VideoSkillPreviewV2,
@@ -279,6 +291,14 @@ const CREATION_MODES = new Set<AgentCanvasCreationModeV2>([
   "targeted_authoring",
   "quick_media",
   "guided_production",
+]);
+const AGENT_MEDIA_EXECUTION_MODES = new Set<AgentExecutionSettingsV2["media_execution_mode"]>([
+  "manual",
+  "automatic",
+]);
+const AGENT_WORKING_DOCUMENT_KINDS = new Set<AgentWorkingDocumentKindV2>([
+  "anchor_registry",
+  "storyboard_production_plan",
 ]);
 
 function fail(path: string, message: string): never {
@@ -999,6 +1019,319 @@ export function normalizeAgentCanvasProjectCreateResponseV2(
     guidance_session_id: record.guidance_session_id === undefined
       ? null
       : nullableString(record.guidance_session_id, `${path}.guidance_session_id`),
+  };
+}
+
+export function normalizeAgentExecutionSettingsV2(
+  value: unknown,
+  path = "agentSettings",
+): AgentExecutionSettingsV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["workflow_id", "media_execution_mode", "revision", "created_at", "updated_at"],
+    path,
+  );
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    media_execution_mode: expectLiteral(
+      record.media_execution_mode,
+      AGENT_MEDIA_EXECUTION_MODES,
+      `${path}.media_execution_mode`,
+    ),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeAgentAnchorV2(value: unknown, path: string): AgentAnchorV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["alias", "anchor_type", "display_name", "summary", "source_kind", "source_id", "availability"],
+    path,
+  );
+  const alias = expectNonEmptyString(record.alias, `${path}.alias`);
+  if (!/^[A-Z][A-Z0-9]{1,15}$/.test(alias)) fail(`${path}.alias`, "invalid anchor alias");
+  return {
+    alias,
+    anchor_type: expectLiteral(
+      record.anchor_type,
+      new Set<AgentAnchorV2["anchor_type"]>([
+        "subject",
+        "environment",
+        "world_setting",
+        "style",
+        "composition",
+      ]),
+      `${path}.anchor_type`,
+    ),
+    display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
+    summary: expectNonEmptyString(record.summary, `${path}.summary`),
+    source_kind: expectLiteral(
+      record.source_kind,
+      new Set<AgentAnchorV2["source_kind"]>(["node", "image_asset", "skill_snapshot"]),
+      `${path}.source_kind`,
+    ),
+    source_id: nullableStringWithDefault(record.source_id, `${path}.source_id`),
+    availability: expectLiteral(
+      record.availability,
+      new Set<AgentAnchorV2["availability"]>(["pending", "available", "failed"]),
+      `${path}.availability`,
+    ),
+  };
+}
+
+function normalizeAnchorRegistryContentV2(
+  value: unknown,
+  path: string,
+): AnchorRegistryContentV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["anchors"], path);
+  const anchors = expectArray(record.anchors ?? [], `${path}.anchors`);
+  if (anchors.length > 256) fail(`${path}.anchors`, "expected at most 256 anchors");
+  return {
+    anchors: anchors.map((item, index) => normalizeAgentAnchorV2(item, `${path}.anchors[${index}]`)),
+  };
+}
+
+function boundedNumber(
+  value: unknown,
+  path: string,
+  minimum: number,
+  maximum: number,
+  exclusiveMinimum = false,
+): number {
+  const result = expectFiniteNumber(value, path);
+  if ((exclusiveMinimum ? result <= minimum : result < minimum) || result > maximum) {
+    fail(path, `expected value between ${exclusiveMinimum ? "more than " : ""}${minimum} and ${maximum}`);
+  }
+  return result;
+}
+
+function boundedInteger(value: unknown, path: string, minimum: number, maximum: number): number {
+  const result = expectInteger(value, path);
+  if (result < minimum || result > maximum) fail(path, `expected integer between ${minimum} and ${maximum}`);
+  return result;
+}
+
+function normalizeStoryboardPlanGlobalParametersV2(
+  value: unknown,
+  path: string,
+): StoryboardPlanGlobalParametersV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["aspect_ratio", "total_duration_seconds", "segment_count"], path);
+  return {
+    aspect_ratio: expectNonEmptyString(record.aspect_ratio, `${path}.aspect_ratio`),
+    total_duration_seconds: boundedNumber(
+      record.total_duration_seconds,
+      `${path}.total_duration_seconds`,
+      0,
+      3600,
+      true,
+    ),
+    segment_count: boundedInteger(record.segment_count, `${path}.segment_count`, 1, 128),
+  };
+}
+
+function normalizeStoryboardNarrativeSegmentV2(
+  value: unknown,
+  path: string,
+): StoryboardNarrativeSegmentV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "sequence_id",
+    "order",
+    "start_seconds",
+    "end_seconds",
+    "narrative_goal",
+    "start_state",
+    "end_state",
+    "continuity_from_previous",
+  ], path);
+  const startSeconds = boundedNumber(record.start_seconds, `${path}.start_seconds`, 0, 3600);
+  const endSeconds = boundedNumber(record.end_seconds, `${path}.end_seconds`, 0, 3600, true);
+  if (endSeconds <= startSeconds) fail(`${path}.end_seconds`, "expected a value after start_seconds");
+  return {
+    sequence_id: expectNonEmptyString(record.sequence_id, `${path}.sequence_id`),
+    order: boundedInteger(record.order, `${path}.order`, 1, 128),
+    start_seconds: startSeconds,
+    end_seconds: endSeconds,
+    narrative_goal: expectNonEmptyString(record.narrative_goal, `${path}.narrative_goal`),
+    start_state: expectNonEmptyString(record.start_state, `${path}.start_state`),
+    end_state: expectNonEmptyString(record.end_state, `${path}.end_state`),
+    continuity_from_previous: nullableStringWithDefault(
+      record.continuity_from_previous,
+      `${path}.continuity_from_previous`,
+    ),
+  };
+}
+
+function normalizeStoryboardPlanRowV2(value: unknown, path: string): StoryboardPlanRowV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "shot_index",
+    "sequence_id",
+    "panel_index",
+    "content_beat",
+    "anchor_aliases",
+    "camera_description",
+  ], path);
+  const aliases = optionalStringArray(record.anchor_aliases, `${path}.anchor_aliases`, []);
+  if (aliases.length > 64) fail(`${path}.anchor_aliases`, "expected at most 64 aliases");
+  return {
+    shot_index: boundedInteger(record.shot_index, `${path}.shot_index`, 1, 1152),
+    sequence_id: expectNonEmptyString(record.sequence_id, `${path}.sequence_id`),
+    panel_index: boundedInteger(record.panel_index, `${path}.panel_index`, 1, 9),
+    content_beat: expectNonEmptyString(record.content_beat, `${path}.content_beat`),
+    anchor_aliases: aliases,
+    camera_description: expectNonEmptyString(record.camera_description, `${path}.camera_description`),
+  };
+}
+
+function normalizeStoryboardNodeRecordV2(value: unknown, path: string): StoryboardNodeRecordV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["sequence_id", "node_role", "node_id"], path);
+  return {
+    sequence_id: nullableStringWithDefault(record.sequence_id, `${path}.sequence_id`),
+    node_role: expectLiteral(
+      record.node_role,
+      new Set<StoryboardNodeRecordV2["node_role"]>([
+        "storyboard_grid",
+        "video_segment",
+        "bgm",
+        "editing",
+      ]),
+      `${path}.node_role`,
+    ),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+  };
+}
+
+function normalizeStoryboardProductionPlanContentV2(
+  value: unknown,
+  path: string,
+): StoryboardProductionPlanContentV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "narrative_outline",
+    "global_parameters",
+    "segments",
+    "rows",
+    "node_records",
+    "materialized_panel_cursor",
+  ], path);
+  const segments = expectArray(record.segments, `${path}.segments`);
+  const rows = expectArray(record.rows, `${path}.rows`);
+  const nodeRecords = expectArray(record.node_records ?? [], `${path}.node_records`);
+  if (segments.length > 128) fail(`${path}.segments`, "expected at most 128 segments");
+  if (rows.length > 1152) fail(`${path}.rows`, "expected at most 1152 rows");
+  if (nodeRecords.length > 384) fail(`${path}.node_records`, "expected at most 384 records");
+  return {
+    narrative_outline: expectNonEmptyString(record.narrative_outline, `${path}.narrative_outline`),
+    global_parameters: normalizeStoryboardPlanGlobalParametersV2(
+      record.global_parameters,
+      `${path}.global_parameters`,
+    ),
+    segments: segments.map((item, index) => normalizeStoryboardNarrativeSegmentV2(
+      item,
+      `${path}.segments[${index}]`,
+    )),
+    rows: rows.map((item, index) => normalizeStoryboardPlanRowV2(item, `${path}.rows[${index}]`)),
+    node_records: nodeRecords.map((item, index) => normalizeStoryboardNodeRecordV2(
+      item,
+      `${path}.node_records[${index}]`,
+    )),
+    materialized_panel_cursor: record.materialized_panel_cursor === undefined
+      ? 0
+      : boundedInteger(record.materialized_panel_cursor, `${path}.materialized_panel_cursor`, 0, 1152),
+  };
+}
+
+function normalizeAgentDocumentLinkedNodeRuntimeV2(
+  value: unknown,
+  path: string,
+): AgentDocumentLinkedNodeRuntimeV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["node_id", "node_type", "creative_role", "status", "revision"], path);
+  return {
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    node_type: expectLiteral(record.node_type, CANVAS_NODE_TYPES, `${path}.node_type`),
+    creative_role: expectNonEmptyString(record.creative_role, `${path}.creative_role`),
+    status: expectLiteral(record.status, CANVAS_NODE_STATUSES, `${path}.status`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+  };
+}
+
+export function normalizeAgentWorkingDocumentV2(
+  value: unknown,
+  path = "agentDocument",
+): AgentWorkingDocumentV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "document_id",
+    "workflow_id",
+    "guidance_session_id",
+    "kind",
+    "title",
+    "revision",
+    "content_digest",
+    "content",
+    "created_by_agent_run_id",
+    "updated_by_agent_run_id",
+    "linked_nodes",
+    "created_at",
+    "updated_at",
+  ], path);
+  const kind = expectLiteral(record.kind, AGENT_WORKING_DOCUMENT_KINDS, `${path}.kind`);
+  const digest = expectNonEmptyString(record.content_digest, `${path}.content_digest`);
+  if (!/^sha256:[0-9a-zA-Z_-]+$/.test(digest)) fail(`${path}.content_digest`, "invalid digest");
+  const base = {
+    document_id: expectNonEmptyString(record.document_id, `${path}.document_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    guidance_session_id: expectNonEmptyString(record.guidance_session_id, `${path}.guidance_session_id`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    content_digest: digest,
+    created_by_agent_run_id: expectNonEmptyString(
+      record.created_by_agent_run_id,
+      `${path}.created_by_agent_run_id`,
+    ),
+    updated_by_agent_run_id: expectNonEmptyString(
+      record.updated_by_agent_run_id,
+      `${path}.updated_by_agent_run_id`,
+    ),
+    linked_nodes: expectArray(record.linked_nodes ?? [], `${path}.linked_nodes`).map((item, index) => (
+      normalizeAgentDocumentLinkedNodeRuntimeV2(item, `${path}.linked_nodes[${index}]`)
+    )),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+  return kind === "anchor_registry"
+    ? {
+        ...base,
+        kind,
+        content: normalizeAnchorRegistryContentV2(record.content, `${path}.content`),
+      }
+    : {
+        ...base,
+        kind,
+        content: normalizeStoryboardProductionPlanContentV2(record.content, `${path}.content`),
+      };
+}
+
+export function normalizeAgentWorkingDocumentPageV2(
+  value: unknown,
+  path = "agentDocuments",
+): AgentWorkingDocumentPageV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["items", "next_cursor"], path);
+  return {
+    items: expectArray(record.items ?? [], `${path}.items`).map((item, index) => (
+      normalizeAgentWorkingDocumentV2(item, `${path}.items[${index}]`)
+    )),
+    next_cursor: nullableStringWithDefault(record.next_cursor, `${path}.next_cursor`),
   };
 }
 
@@ -2358,6 +2691,39 @@ export function normalizeAgentCanvasChatTimelineV2(
             : status === "working" ? null : entry.created_at,
         }];
       }
+      if (entry.entry_type === "agent_document_reference") {
+        const metadata = entry.metadata;
+        const metadataType = expectNonEmptyString(
+          metadata.type,
+          `${path}.items.metadata.type`,
+        );
+        if (metadataType !== "agent_document_reference") {
+          fail(`${path}.items.metadata.type`, "expected agent_document_reference");
+        }
+        return [{
+          item_type: "agent_document",
+          document_id: expectNonEmptyString(
+            metadata.document_id,
+            `${path}.items.metadata.document_id`,
+          ),
+          document_kind: expectLiteral(
+            metadata.document_kind,
+            AGENT_WORKING_DOCUMENT_KINDS,
+            `${path}.items.metadata.document_kind`,
+          ),
+          revision: expectPositiveInteger(
+            metadata.revision,
+            `${path}.items.metadata.revision`,
+          ),
+          content_digest: expectNonEmptyString(
+            metadata.content_digest,
+            `${path}.items.metadata.content_digest`,
+          ),
+          title: expectNonEmptyString(metadata.title, `${path}.items.metadata.title`),
+          sequence: entry.sequence_no,
+          created_at: entry.created_at,
+        }];
+      }
       if (entry.entry_type === "planning_progress") {
         return [{
           item_type: "message",
@@ -3178,6 +3544,7 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
         && entryType !== "planning_progress"
         && entryType !== "command_plan"
         && entryType !== "action_receipt"
+        && entryType !== "agent_document_reference"
       ) {
         fail(`${itemPath}.entry_type`, "invalid timeline entry type");
       }

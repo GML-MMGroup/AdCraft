@@ -30,6 +30,11 @@ import {
 } from "./chatComposerTextarea.ts";
 import { useAgentCanvasChat } from "./useAgentCanvasChat.ts";
 import { AgentCanvasStyleSelector } from "./AgentCanvasStyleSelector.tsx";
+import {
+  AgentCanvasDocumentBrowser,
+  AgentCanvasDocumentReferenceCard,
+} from "../documents/AgentCanvasDocuments.tsx";
+import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import "./agent-canvas-chat.css";
 
@@ -37,6 +42,8 @@ export function AgentCanvasChatPanel({
   workflow,
   chatRevision,
   chatEvents,
+  settingsRevision = 0,
+  documentEvents = [],
   onFocusNode,
   onActionReceipt,
   onWorkflowRefresh,
@@ -44,6 +51,8 @@ export function AgentCanvasChatPanel({
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
   chatEvents: CanvasRuntimeEventV2[];
+  settingsRevision?: number;
+  documentEvents?: CanvasRuntimeEventV2[];
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
@@ -118,7 +127,7 @@ export function AgentCanvasChatPanel({
   return (
     <aside className="agent-chat" aria-label="AdCraft Video Agent">
       <header className="agent-chat__header">
-        <div>
+        <div className="agent-chat__identity">
           <strong>AdCraft Video Agent</strong>
           <span>
             {chat.state.agentWorking
@@ -132,6 +141,16 @@ export function AgentCanvasChatPanel({
                 : "Ready"}
           </span>
         </div>
+        <AgentCanvasDocumentBrowser
+          workflowId={workflow.workflow_id}
+          documentEvents={documentEvents}
+          onFocusNode={onFocusNode}
+        />
+        <AgentCanvasExecutionModeControl
+          workflowId={workflow.workflow_id}
+          guidanceMode={chat.state.guidanceSession?.guidance_mode ?? null}
+          eventRevision={settingsRevision}
+        />
       </header>
 
       <div className="agent-chat__timeline-shell">
@@ -205,6 +224,17 @@ export function AgentCanvasChatPanel({
                   <ActionReceiptCard
                     key={`receipt-${item.action_receipt.receipt_id}`}
                     card={item}
+                  />
+                );
+              }
+              if (item.item_type === "agent_document") {
+                return (
+                  <AgentCanvasDocumentReferenceCard
+                    key={`document-${item.document_id}:${item.revision}`}
+                    workflowId={workflow.workflow_id}
+                    reference={item}
+                    documentEvents={documentEvents}
+                    onFocusNode={onFocusNode}
                   />
                 );
               }

@@ -5,6 +5,9 @@ export type AgentCanvasRuntimeRefreshPolicy = {
   refreshWorkflow: boolean;
   refreshAssets: boolean;
   refreshChat: boolean;
+  refreshSettings: boolean;
+  refreshDocuments: boolean;
+  refreshDocumentId: string | null;
   refreshNodeId: string | null;
   refreshEditingNodeId: string | null;
 };
@@ -94,20 +97,58 @@ const NODE_DETAIL_EVENTS = new Set([
   "node_cancelled",
 ]);
 
+const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
+  "expert_activity_started",
+  "expert_activity_completed",
+  "expert_activity_failed",
+  "guided_draft_materialized",
+  "guided_binding_materialized",
+  "storyboard_sequence_planned",
+  "editing_prepared",
+  "agent_settings_updated",
+  "agent_auto_run_requested",
+  "agent_auto_run_submitted",
+  "agent_auto_run_failed",
+]);
+
+const GUIDED_CHAT_EVENTS = new Set([
+  "expert_activity_started",
+  "expert_activity_completed",
+  "expert_activity_failed",
+  "guided_draft_materialized",
+  "guided_binding_materialized",
+  "storyboard_sequence_planned",
+  "editing_prepared",
+]);
+
+const DOCUMENT_EVENTS = new Set([
+  "agent_document_created",
+  "agent_document_updated",
+]);
+
 export function runtimeEventPolicy(
   event: CanvasRuntimeEventV2,
 ): AgentCanvasRuntimeRefreshPolicy {
   const type = event.event_type;
   const editing = type.startsWith("editing_export_");
+  const editingPrepared = type === "editing_prepared";
   const projectAssetPublished = type === "project_asset_published";
   const publishesOutput = type === "node_output_published";
+  const guidedCanonicalRefresh = GUIDED_CANONICAL_REFRESH_EVENTS.has(type);
+  const documentEvent = DOCUMENT_EVENTS.has(type);
+  const documentId = documentEvent && typeof event.payload?.document_id === "string"
+    ? event.payload.document_id
+    : null;
 
   return {
-    refreshRuntime: projectAssetPublished || RUNTIME_EVENTS.has(type),
-    refreshWorkflow: editing || AUTHORING_EVENTS.has(type),
+    refreshRuntime: projectAssetPublished || RUNTIME_EVENTS.has(type) || guidedCanonicalRefresh,
+    refreshWorkflow: editing || AUTHORING_EVENTS.has(type) || guidedCanonicalRefresh,
     refreshAssets: projectAssetPublished || publishesOutput,
-    refreshChat: CHAT_EVENTS.has(type),
+    refreshChat: CHAT_EVENTS.has(type) || GUIDED_CHAT_EVENTS.has(type) || documentEvent,
+    refreshSettings: type === "agent_settings_updated",
+    refreshDocuments: documentEvent,
+    refreshDocumentId: documentId,
     refreshNodeId: NODE_DETAIL_EVENTS.has(type) ? event.node_id : null,
-    refreshEditingNodeId: editing ? event.node_id : null,
+    refreshEditingNodeId: editing || editingPrepared ? event.node_id : null,
   };
 }
