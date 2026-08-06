@@ -14,6 +14,13 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_auto_run_repository import (
+    AgentCanvasAutomaticRunRepository,
+    is_automatic_run_eligible_node_type,
+)
+from app.persistence.agent_canvas_world_setting_repository import (
+    AgentCanvasWorldSettingRepository,
+)
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
@@ -27,6 +34,7 @@ from app.persistence.models import (
     AgentCanvasConversationRow,
     AgentCanvasCreativeDirectionSnapshotRow,
     AgentCanvasExpertActivityRow,
+    AgentCanvasExecutionSettingsRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
     AgentCanvasGuidedActionRow,
@@ -71,6 +79,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionSnapshotV1
 
 
 class AgentCanvasConversationRepository:
@@ -81,6 +90,7 @@ class AgentCanvasConversationRepository:
             raise ValueError("Conversation and event repositories must share one database.")
         self._database = database
         self._events = events
+        self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
 
     @property
     def database(self) -> V2Database:
@@ -2178,6 +2188,7 @@ class AgentCanvasConversationRepository:
         proposal_action: Literal["select_option", "delegate_choice"],
         receipt: AgentActionReceiptV2 | None = None,
         continuation: ContinuationCommitV2 | None = None,
+        world_setting_projection: WorldSettingProjectionSnapshotV1 | None = None,
     ) -> ConceptProposalV2:
         """Apply one open Proposal option and insert an independent Draft atomically."""
 
@@ -2186,6 +2197,25 @@ class AgentCanvasConversationRepository:
             raise _error("proposal_not_available", "Concept proposal is not available.")
         if option_id not in {option.option_id for option in proposal.options}:
             raise _error("proposal_option_not_found", "Concept option was not found.")
+        if node.creative_role == "world_setting" and world_setting_projection is None:
+            raise _error(
+                "world_setting_projection_missing",
+                "World Setting publication requires an initial projection.",
+            )
+        if node.creative_role != "world_setting" and world_setting_projection is not None:
+            raise _error(
+                "world_setting_projection_invalid",
+                "World Setting projection owner is invalid.",
+            )
+        if world_setting_projection is not None and (
+            world_setting_projection.workflow_id != node.workflow_id
+            or world_setting_projection.source_node_id != node.node_id
+            or world_setting_projection.source_node_revision != node.revision
+        ):
+            raise _error(
+                "world_setting_projection_invalid",
+                "World Setting projection identity does not match its Text Node.",
+            )
         now = _now()
         try:
             with self._database.engine.connect() as connection:
@@ -2310,6 +2340,11 @@ class AgentCanvasConversationRepository:
                             updated_at=node.updated_at.isoformat(),
                         )
                     )
+                    if world_setting_projection is not None:
+                        AgentCanvasWorldSettingRepository(self._database).insert(
+                            world_setting_projection,
+                            connection=connection,
+                        )
                     snapshot_id = connection.execute(
                         select(AgentCanvasNodeRow.prompt_context_snapshot_id).where(
                             AgentCanvasNodeRow.node_id == node.node_id
@@ -2542,6 +2577,23 @@ class AgentCanvasConversationRepository:
                             conversation_id=str(event_turn["conversation_id"]),
                             continuation=continuation,
                             now=now,
+                        )
+                    execution_mode = connection.execute(
+                        select(AgentCanvasExecutionSettingsRow.media_execution_mode).where(
+                            AgentCanvasExecutionSettingsRow.workflow_id == node.workflow_id
+                        )
+                    ).scalar_one_or_none()
+                    if (
+                        execution_mode == "automatic"
+                        and is_automatic_run_eligible_node_type(node.node_type)
+                        and source_turn_id is not None
+                    ):
+                        self._automatic_runs.enqueue_in_transaction(
+                            connection,
+                            workflow_id=node.workflow_id,
+                            source_action_id=source_turn_id,
+                            node_id=node.node_id,
+                            now=datetime.fromisoformat(now),
                         )
                     event_turn = _require_turn(
                         connection,
@@ -3990,6 +4042,7 @@ def _proposal(
             _proposal_action_descriptors(
                 proposal_id=str(row["proposal_id"]),
                 expected_session_revision=int(row["guidance_session_revision"]),
+                proposal_kind=str(row["proposal_kind"]),
             )
             if availability == "open"
             else ()
@@ -4035,14 +4088,27 @@ def _proposal_action_descriptors(
     *,
     proposal_id: str,
     expected_session_revision: int,
+    proposal_kind: str,
 ) -> tuple[ProposalActionDescriptorV2, ...]:
     definitions = (
         ("select_option", "Select option", True, "Publish one selected option as a Draft."),
         ("revise_options", "Revise options", False, "Ask the Specialist for revised options."),
-        ("defer_topic", "Defer topic", True, "Keep this topic available for later guidance."),
-        ("exclude_element", "Exclude element", True, "Exclude this optional element."),
         ("delegate_choice", "Delegate choice", True, "Let the Director choose one option."),
     )
+    if proposal_kind != "world_setting":
+        definitions = (
+            definitions[:2]
+            + (
+                (
+                    "defer_topic",
+                    "Defer topic",
+                    True,
+                    "Keep this topic available for later guidance.",
+                ),
+                ("exclude_element", "Exclude element", True, "Exclude this optional element."),
+            )
+            + definitions[2:]
+        )
     return tuple(
         ProposalActionDescriptorV2(
             action_id=f"{action}:{proposal_id}:{expected_session_revision}",

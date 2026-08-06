@@ -162,6 +162,7 @@ def _recover_agent_canvas_continuations(settings: Settings) -> None:
     runtime = create_agent_canvas_runtime(settings)
     try:
         runtime.continuation_worker.run_once()
+        runtime.auto_run_dispatcher.run_once()
     finally:
         runtime.database.dispose()
 
