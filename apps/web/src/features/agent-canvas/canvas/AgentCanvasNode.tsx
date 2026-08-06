@@ -110,11 +110,13 @@ function nodeCopy(node: CanvasNodeV2) {
 }
 
 function semanticNodeLabel(node: CanvasNodeV2): string {
+  if (node.node_type === "text" && node.creative_role === "world_setting") return "World Setting";
   if (node.node_type !== "image") return NODE_TYPE_LABELS[node.node_type];
   return IMAGE_ROLE_LABELS[node.creative_role] ?? NODE_TYPE_LABELS.image;
 }
 
 function typeMarkerLabel(node: CanvasNodeV2, label: string): string {
+  if (node.creative_role === "world_setting") return `${label} node`;
   return node.node_type === "image" && IMAGE_ROLE_LABELS[node.creative_role]
     ? `${label} image node`
     : `${node.node_type} node`;

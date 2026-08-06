@@ -6,8 +6,22 @@ import type {
   ProviderOmittedOptionalInputAuditV2,
   ProviderResolvedMediaInputAuditV2,
   ProviderResolvedTextInputAuditV2,
+  ProviderResolvedWorldSettingInputAuditV1,
   UpstreamInputReadinessIssueV2,
+  WorldSettingProjectionAudienceV1,
 } from "../../../types-v2.ts";
+
+const WORLD_SETTING_AUDIENCES = new Set<WorldSettingProjectionAudienceV1>([
+  "shared",
+  "script_writer",
+  "product_designer",
+  "prop_designer",
+  "character_designer",
+  "scene_designer",
+  "storyboard_artist",
+  "video_director",
+  "bgm_director",
+]);
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -87,6 +101,45 @@ function mediaInput(value: unknown): ProviderResolvedMediaInputAuditV2 | null {
   };
 }
 
+function worldSettingInput(value: unknown): ProviderResolvedWorldSettingInputAuditV1 | null {
+  const item = record(value);
+  if (!item) return null;
+  const bindingId = string(item.binding_id);
+  const sourceNodeId = string(item.source_node_id);
+  const sourceNodeRevision = nonNegativeInteger(item.source_node_revision);
+  const order = nonNegativeInteger(item.display_order);
+  const audience = string(item.projection_audience) as WorldSettingProjectionAudienceV1 | null;
+  const projectionSnapshotId = string(item.projection_snapshot_id);
+  const projectionMode = item.projection_mode === "ready" || item.projection_mode === "fallback"
+    ? item.projection_mode
+    : null;
+  if (
+    !bindingId
+    || !sourceNodeId
+    || sourceNodeRevision === null
+    || sourceNodeRevision < 1
+    || order === null
+    || !audience
+    || !WORLD_SETTING_AUDIENCES.has(audience)
+    || item.projection_contract_version !== "world-setting-projection-v1"
+    || !projectionSnapshotId
+    || !projectionMode
+    || typeof item.required !== "boolean"
+  ) return null;
+  return {
+    binding_id: bindingId,
+    source_node_id: sourceNodeId,
+    source_node_revision: sourceNodeRevision,
+    required: item.required,
+    display_order: order,
+    projection_audience: audience,
+    projection_contract_version: "world-setting-projection-v1",
+    projection_snapshot_id: projectionSnapshotId,
+    projection_mode: projectionMode,
+    warning_code: optionalString(item.warning_code),
+  };
+}
+
 function omittedOptionalInput(value: unknown): ProviderOmittedOptionalInputAuditV2 | null {
   const item = record(value);
   if (!item) return null;
@@ -110,6 +163,11 @@ export function inputManifestAuditFromEvent(
   const textInputs = Array.isArray(payload.text_inputs)
     ? sorted(payload.text_inputs.map(textInput).filter((item): item is ProviderResolvedTextInputAuditV2 => Boolean(item)))
     : [];
+  const worldSettingInputs = Array.isArray(payload.world_setting_inputs)
+    ? sorted(payload.world_setting_inputs
+      .map(worldSettingInput)
+      .filter((item): item is ProviderResolvedWorldSettingInputAuditV1 => Boolean(item)))
+    : [];
   const mediaInputs = Array.isArray(payload.media_inputs)
     ? sorted(payload.media_inputs.map(mediaInput).filter((item): item is ProviderResolvedMediaInputAuditV2 => Boolean(item)))
     : [];
@@ -124,6 +182,7 @@ export function inputManifestAuditFromEvent(
     execution_id: event.execution_id,
     node_run_id: optionalString(payload.node_run_id),
     text_inputs: textInputs,
+    world_setting_inputs: worldSettingInputs,
     media_inputs: mediaInputs,
     omitted_optional_inputs: omitted,
   };

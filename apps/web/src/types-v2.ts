@@ -1474,6 +1474,7 @@ export type CanvasNodeStatusV2 = "draft" | "working" | "ready" | "failed";
 
 export type CanvasCreativeRoleV2 =
   | "creative_brief"
+  | "world_setting"
   | "script"
   | "product"
   | "prop"
@@ -1487,6 +1488,21 @@ export type CanvasCreativeRoleV2 =
   | "general_video"
   | "general_audio"
   | "editing";
+
+export interface WorldSettingAuthoringProvenanceV1 {
+  source_proposal_id: string;
+  source_option_id: string;
+  materialization_run_id: string;
+  style_skill_run_id: string | null;
+  creative_direction_snapshot_id: string | null;
+}
+
+export interface WorldSettingDocumentV1 {
+  document_kind: "world_setting";
+  contract_version: "world-setting-v1";
+  content: string;
+  authoring_provenance: WorldSettingAuthoringProvenanceV1;
+}
 
 export type CanvasBindingInputRoleV2 =
   | "text_context"
@@ -1838,6 +1854,30 @@ export interface ProviderResolvedTextInputAuditV2 {
   display_order: number;
 }
 
+export type WorldSettingProjectionAudienceV1 =
+  | "shared"
+  | "script_writer"
+  | "product_designer"
+  | "prop_designer"
+  | "character_designer"
+  | "scene_designer"
+  | "storyboard_artist"
+  | "video_director"
+  | "bgm_director";
+
+export interface ProviderResolvedWorldSettingInputAuditV1 {
+  binding_id: string;
+  source_node_id: string;
+  source_node_revision: number;
+  required: boolean;
+  display_order: number;
+  projection_audience: WorldSettingProjectionAudienceV1;
+  projection_contract_version: "world-setting-projection-v1";
+  projection_snapshot_id: string;
+  projection_mode: "ready" | "fallback";
+  warning_code: string | null;
+}
+
 export interface ProviderResolvedMediaInputAuditV2 {
   binding_id: string;
   source_node_id: string | null;
@@ -1863,6 +1903,7 @@ export interface ProviderInputManifestAuditV2 {
   execution_id: string | null;
   node_run_id: string | null;
   text_inputs: ProviderResolvedTextInputAuditV2[];
+  world_setting_inputs: ProviderResolvedWorldSettingInputAuditV1[];
   media_inputs: ProviderResolvedMediaInputAuditV2[];
   omitted_optional_inputs: ProviderOmittedOptionalInputAuditV2[];
 }
@@ -1982,6 +2023,17 @@ export interface ProposedDraftReferenceV2 {
   media_type: "text" | "image" | "video" | "audio";
 }
 
+export type ConceptProposalKindV2 =
+  | "world_setting"
+  | "script"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "storyboard"
+  | "video"
+  | "bgm";
+
 export interface ConceptProposalV2 {
   proposal_id: string;
   workflow_id: string;
@@ -1991,7 +2043,7 @@ export interface ConceptProposalV2 {
   creative_direction_snapshot_id: string | null;
   proposal_revision: number;
   source_proposal_id: string | null;
-  proposal_kind: "script" | "product" | "prop" | "character" | "scene" | "storyboard" | "video" | "bgm";
+  proposal_kind: ConceptProposalKindV2;
   specialist_name: SpecialistAgentNameV2;
   options: ConceptOptionV2[];
   proposed_references: ProposedDraftReferenceV2[];
@@ -2566,6 +2618,7 @@ export interface AgentCanvasChatMessageRequestV2 {
 export type GuidanceOutputKindV2 = "text" | "script" | "image" | "video" | "audio";
 
 export type GuidanceTopicKindV2 =
+  | "world_setting"
   | "creative_direction"
   | "product"
   | "prop"

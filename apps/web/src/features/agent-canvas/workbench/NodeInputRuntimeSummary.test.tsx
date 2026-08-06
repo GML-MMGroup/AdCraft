@@ -40,6 +40,7 @@ const workflow: AgentCanvasWorkflowV2 = {
   layout_revision: 1,
   nodes: [
     node,
+    { ...node, node_id: "node-world-setting", node_type: "text", creative_role: "world_setting", title: "World Setting" },
     { ...node, node_id: "node-script-1", node_type: "script", creative_role: "script", title: "Narration" },
     { ...node, node_id: "node-image-1", node_type: "image", creative_role: "product", title: "Packshot" },
     { ...node, node_id: "node-scene-1", node_type: "image", creative_role: "scene", title: "Scene board" },
@@ -79,13 +80,25 @@ const audit: ProviderInputManifestAuditV2 = {
   input_manifest_id: "manifest-1",
   execution_id: "execution-1",
   node_run_id: "node-run-1",
+  world_setting_inputs: [{
+    binding_id: "binding-world-setting",
+    source_node_id: "node-world-setting",
+    source_node_revision: 2,
+    required: true,
+    display_order: 1,
+    projection_audience: "video_director",
+    projection_contract_version: "world-setting-projection-v1",
+    projection_snapshot_id: "projection-snapshot-1",
+    projection_mode: "fallback",
+    warning_code: "world_setting_projection_fallback",
+  }],
   text_inputs: [{
     binding_id: "binding-script",
     source_node_id: "node-script-1",
     snapshot_id: "snapshot-1",
     input_role: "text_context",
     required: true,
-    display_order: 1,
+    display_order: 2,
   }],
   media_inputs: [{
     binding_id: "binding-image",
@@ -112,8 +125,10 @@ describe("NodeInputRuntimeSummary", () => {
     const entries = screen.getAllByTestId("resolved-input");
     expect(entries.map((entry) => entry.textContent)).toEqual([
       expect.stringContaining("Packshot output"),
+      expect.stringContaining("World Setting"),
       expect.stringContaining("Narration"),
     ]);
+    expect(screen.getByText("World Setting is using a fallback projection for this run.")).toBeTruthy();
     expect(screen.getByText("Optional input unavailable: Scene board")).toBeTruthy();
     expect(screen.queryByText("https://must-not-be-stored.example/image.png")).toBeNull();
   });

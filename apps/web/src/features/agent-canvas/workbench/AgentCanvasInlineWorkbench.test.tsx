@@ -157,6 +157,49 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
+  it("edits a World Setting in place without model or Run controls", async () => {
+    const provenance = {
+      source_proposal_id: "proposal-world-1",
+      source_option_id: "option-world-1",
+      materialization_run_id: "materialization-1",
+      style_skill_run_id: "style-run-1",
+      creative_direction_snapshot_id: "direction-1",
+    };
+    const node: CanvasNodeV2 = {
+      ...makeNode("text", "ready"),
+      node_id: "world-setting-node",
+      creative_role: "world_setting",
+      title: "World Setting",
+      structured_content: {
+        document_kind: "world_setting",
+        contract_version: "world-setting-v1",
+        content: "A quiet contemporary city.",
+        authoring_provenance: provenance,
+      },
+    };
+    const props = renderWorkbench(node);
+
+    expect(screen.queryByLabelText("Choose model")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run text node" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("World Setting content"), {
+      target: { value: "A quiet contemporary city shaped by living craft traditions." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save World Setting changes" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      "world-setting-node",
+      expect.objectContaining({
+        structured_content: {
+          document_kind: "world_setting",
+          contract_version: "world-setting-v1",
+          content: "A quiet contemporary city shaped by living craft traditions.",
+          authoring_provenance: provenance,
+        },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
   it("saves a ready media prompt before creating a sibling variation", async () => {
     const node = makeNode("image", "ready");
     const props = renderWorkbench(node);
