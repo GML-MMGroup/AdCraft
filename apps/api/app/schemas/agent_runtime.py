@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     SpecialistDraftV2,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
 
 
 AgentName = Literal[
@@ -144,6 +145,7 @@ class AgentRunContext(_StrictModel):
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     conversation_id: str | None = Field(default=None, max_length=160)
     workflow_id: str | None = Field(default=None, max_length=160)
+    world_setting: WorldSettingProjectionContextV1 | None = None
     target: AgentTargetContext | None = None
     screenplay_summary: str | None = Field(default=None, max_length=16_384)
     style_summary: str | None = Field(default=None, max_length=8_192)
@@ -366,6 +368,7 @@ class ConceptOptionV2(_StrictModel):
 
 class ConceptProposalDraftV2(_StrictModel):
     proposal_kind: Literal[
+        "world_setting",
         "script",
         "product",
         "prop",
@@ -381,6 +384,12 @@ class ConceptProposalDraftV2(_StrictModel):
         default=(),
         max_length=64,
     )
+
+    @model_validator(mode="after")
+    def validate_world_setting_option_count(self) -> "ConceptProposalDraftV2":
+        if self.proposal_kind == "world_setting" and len(self.options) not in {2, 3}:
+            raise ValueError("World Setting proposals require two or three options.")
+        return self
 
 
 class SpecialistOperationV2(_StrictModel):
