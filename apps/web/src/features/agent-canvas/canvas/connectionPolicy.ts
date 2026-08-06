@@ -4,6 +4,8 @@ import type {
   CanvasNodeTypeV2,
 } from "../../../types-v2.ts";
 
+export const MANUAL_BINDING_REQUIRED = false;
+
 export function connectionRuleForPair(
   policy: CanvasConnectionPolicyV2,
   sourceType: CanvasNodeTypeV2,

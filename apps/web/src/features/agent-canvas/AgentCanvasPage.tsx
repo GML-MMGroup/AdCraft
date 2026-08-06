@@ -55,7 +55,10 @@ import {
   AGENT_CANVAS_NODE_HORIZONTAL_GAP,
   agentCanvasNodePlacementSize,
 } from "./canvas/nodeGeometry.ts";
-import { connectionRuleForPair } from "./canvas/connectionPolicy.ts";
+import {
+  MANUAL_BINDING_REQUIRED,
+  connectionRuleForPair,
+} from "./canvas/connectionPolicy.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
@@ -355,7 +358,7 @@ export function AgentCanvasPage() {
         source: { kind: "node_output", source_node_id: source.node_id },
         target_node_id: connection.target,
         input_role: rule.default_role,
-        required: true,
+        required: MANUAL_BINDING_REQUIRED,
         enabled: true,
         order: workflow.bindings.filter((binding) => binding.target_node_id === connection.target).length,
       });
@@ -514,7 +517,7 @@ export function AgentCanvasPage() {
         node: createDefaultCanvasNodeRequest(nodeType, position),
         binding: {
           input_role: inputRole,
-          required: true,
+          required: MANUAL_BINDING_REQUIRED,
           order,
         },
       });

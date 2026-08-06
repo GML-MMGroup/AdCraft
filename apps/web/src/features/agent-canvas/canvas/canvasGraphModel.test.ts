@@ -185,6 +185,24 @@ describe("canvasGraphModel", () => {
     ])).toEqual([]);
   });
 
+  it("renders a persisted World Setting binding and removes it when disabled", () => {
+    const binding = {
+      ...workflow.bindings[0]!,
+      binding_id: "binding-world-setting",
+      source: { kind: "node_output" as const, source_node_id: "node-world-setting" },
+      target_node_id: "video-1",
+      input_role: "text_context" as const,
+      metadata: { context_kind: "world_setting" },
+    };
+
+    expect(toAgentCanvasFlowEdges([binding])).toEqual([expect.objectContaining({
+      id: "binding-world-setting",
+      source: "node-world-setting",
+      target: "video-1",
+    })]);
+    expect(toAgentCanvasFlowEdges([{ ...binding, enabled: false }])).toEqual([]);
+  });
+
   it("selects explicit input roles from canonical source node media types", () => {
     expect(inputRoleForSourceNode(node("brief", "text"))).toBe("text_context");
     expect(inputRoleForSourceNode(node("script", "script"))).toBe("text_context");
