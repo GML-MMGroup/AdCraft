@@ -16,6 +16,8 @@ from app.schemas.agent_canvas_creative_session import (
     ResolvedImageTargetV2,
     StyleGuidanceContextV2,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 
 
 _MAX_CONTEXT_TEXT = 65_536
@@ -263,6 +265,43 @@ class ConversationSummaryAgentContext(_PlanningContextModel):
     )
 
 
+class VideoParameterTextSourceV2(_PlanningContextModel):
+    source_kind: Literal["node_prompt", "binding"]
+    source_node_id: str = Field(min_length=1, max_length=160)
+    source_revision: int = Field(ge=1)
+    binding_id: str | None = Field(default=None, min_length=1, max_length=160)
+    text: str = Field(min_length=1, max_length=32_768)
+
+    @model_validator(mode="after")
+    def validate_binding_identity(self) -> "VideoParameterTextSourceV2":
+        if self.source_kind == "binding" and self.binding_id is None:
+            raise ValueError("Binding parameter sources require a Binding ID.")
+        if self.source_kind == "node_prompt" and self.binding_id is not None:
+            raise ValueError("Node prompt parameter sources cannot claim a Binding ID.")
+        return self
+
+
+class VideoParameterCapabilityContextV2(_PlanningContextModel):
+    supported_parameters: tuple[str, ...]
+    duration_seconds_min: float | None = Field(default=None, gt=0)
+    duration_seconds_max: float | None = Field(default=None, gt=0)
+    supported_resolutions: tuple[str, ...] = ()
+    supported_aspect_ratios: tuple[str, ...] = ()
+    supports_native_audio: bool
+    default_parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    capability_revision: int = Field(ge=1)
+
+
+class VideoParameterIntentContextV2(_PlanningContextModel):
+    context_kind: Literal["video_parameter_intent"]
+    workflow_id: str = Field(min_length=1, max_length=160)
+    target_node_id: str = Field(min_length=1, max_length=160)
+    target_node_revision: int = Field(ge=1)
+    selected_model_ref: str = Field(min_length=3, max_length=320)
+    sources: tuple[VideoParameterTextSourceV2, ...] = Field(default=(), max_length=129)
+    capability: VideoParameterCapabilityContextV2
+
+
 AgentCanvasSpecialistName = Literal[
     "script_writer",
     "product_designer",
@@ -318,6 +357,11 @@ class GuidanceProposalSummaryV2(_PlanningContextModel):
     option_summaries: tuple[str, ...] = Field(default=(), max_length=4)
 
 
+class WorldSettingNextTopicPolicyV1(_PlanningContextModel):
+    required_topic_kind: Literal["world_setting"] | None = None
+    allowed_topic_kinds: tuple[GuidanceTopicKindV2, ...]
+
+
 class DirectorGuidanceContextV2(_PlanningContextModel):
     context_kind: Literal["director_guidance"]
     workflow_id: str = Field(min_length=1, max_length=160)
@@ -326,13 +370,14 @@ class DirectorGuidanceContextV2(_PlanningContextModel):
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     conversation_summary: str = Field(default="", max_length=16_384)
     topic_ownership: tuple[GuidanceTopicOwnershipV2, ...] = Field(
-        min_length=9,
-        max_length=9,
+        min_length=10,
+        max_length=10,
     )
     goal: CreativeGoalV2 | None = None
     element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=32)
     guidance_session: GuidedSessionStateV2 | None = None
     open_proposal: GuidanceProposalSummaryV2 | None = None
+    next_topic_policy: WorldSettingNextTopicPolicyV1
     nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=128)
     bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=256)
     style: GuidanceStyleSummaryV2 | None = None
@@ -362,6 +407,7 @@ class GuidanceSpecialistContextV2(_PlanningContextModel):
     relevant_nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=32)
     relevant_bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=64)
     targeted_prompt_baseline: str | None = Field(default=None, max_length=32_768)
+    world_setting: WorldSettingProjectionContextV1 | None = None
 
 
 class DelegatedProposalOptionSummaryV2(_PlanningContextModel):
@@ -504,6 +550,8 @@ class SpecialistContextV2(_PlanningContextModel):
     candidate_count: int | None = Field(default=None, ge=1, le=4)
     approved_anchor_summaries: tuple[str, ...] = Field(default=(), max_length=16)
     proposal_revision: ProposalRevisionContextV2 | None = None
+    world_setting: WorldSettingProjectionContextV1 | None = None
+    agent_document_context: AgentDocumentContextExcerptV2 | None = None
 
     @model_validator(mode="after")
     def validate_materialization_prompt(self) -> "SpecialistContextV2":
@@ -534,6 +582,7 @@ PlanningAgentContext = Annotated[
         DelegatedProposalChoiceContextV2,
         AgentCommandReplanContextV2,
         SpecialistContextV2,
+        VideoParameterIntentContextV2,
     ],
     Field(discriminator="context_kind"),
 ]

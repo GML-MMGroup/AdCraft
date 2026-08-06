@@ -531,6 +531,158 @@ class AgentCanvasWorkflowRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasExecutionSettingsRow(Base):
+    """Workflow-scoped media execution preference."""
+
+    __tablename__ = "agent_canvas_execution_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "media_execution_mode IN ('manual', 'automatic')",
+            name="ck_agent_canvas_execution_settings_mode",
+        ),
+        CheckConstraint(
+            "revision > 0",
+            name="ck_agent_canvas_execution_settings_revision",
+        ),
+    )
+
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), primary_key=True
+    )
+    media_execution_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasAutomaticRunCommandRow(Base):
+    """Durable post-publication request for canonical selected-node Run."""
+
+    __tablename__ = "agent_canvas_automatic_run_commands"
+    __table_args__ = (
+        CheckConstraint(
+            "command_kind = 'agent_auto_generate'",
+            name="ck_agent_canvas_auto_run_command_kind",
+        ),
+        CheckConstraint(
+            "state IN ('pending', 'claimed', 'submitted', 'failed')",
+            name="ck_agent_canvas_auto_run_state",
+        ),
+        CheckConstraint(
+            "attempt_count >= 0 AND max_attempts > 0",
+            name="ck_agent_canvas_auto_run_attempts",
+        ),
+        CheckConstraint(
+            "lease_generation >= 0",
+            name="ck_agent_canvas_auto_run_lease_generation",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "source_action_id",
+            "node_id",
+            "command_kind",
+            name="uq_agent_canvas_auto_run_identity",
+        ),
+        Index(
+            "ix_agent_canvas_auto_run_due",
+            "state",
+            "next_attempt_at",
+            "created_at",
+        ),
+    )
+
+    command_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    source_action_id: Mapped[str] = mapped_column(Text, nullable=False)
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    command_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    next_attempt_at: Mapped[str | None] = mapped_column(Text)
+    lease_owner: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    last_error_code: Mapped[str | None] = mapped_column(Text)
+    last_error_message: Mapped[str | None] = mapped_column(Text)
+    last_error_retryable: Mapped[bool | None] = mapped_column(Boolean)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentWorkingDocumentRow(Base):
+    """One typed Agent-owned coordination document."""
+
+    __tablename__ = "agent_working_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "document_kind IN ('anchor_registry', 'storyboard_production_plan')",
+            name="ck_agent_working_documents_kind",
+        ),
+        CheckConstraint("revision > 0", name="ck_agent_working_documents_revision"),
+        UniqueConstraint(
+            "workflow_id",
+            "guidance_session_id",
+            "document_kind",
+            name="uq_agent_working_documents_scope_kind",
+        ),
+        Index(
+            "ix_agent_working_documents_workflow_updated",
+            "workflow_id",
+            "updated_at",
+            "document_id",
+        ),
+    )
+
+    document_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    guidance_session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), nullable=False
+    )
+    document_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    content_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by_agent_run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_by_agent_run_id: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentWorkingDocumentPatchReceiptRow(Base):
+    """Idempotent result for one typed Agent document patch."""
+
+    __tablename__ = "agent_working_document_patch_receipts"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "idempotency_key",
+            name="uq_agent_working_document_patch_receipt_key",
+        ),
+        Index(
+            "ix_agent_working_document_patch_receipts_document_created",
+            "document_id",
+            "created_at",
+        ),
+    )
+
+    receipt_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    document_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_working_documents.document_id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AgentCanvasNodeRow(Base):
     """One generic persisted canvas node."""
 
@@ -570,6 +722,8 @@ class AgentCanvasNodeRow(Base):
     model_selection_mode: Mapped[str] = mapped_column(Text, nullable=False, default="default")
     model_ref: Mapped[str | None] = mapped_column(Text)
     parameters_json: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    parameter_provenance_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     prompt_context_snapshot_id: Mapped[str | None] = mapped_column(Text)
     output_asset_id: Mapped[str | None] = mapped_column(Text)
     position_x: Mapped[float] = mapped_column(Float, nullable=False)
@@ -578,6 +732,57 @@ class AgentCanvasNodeRow(Base):
     error_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasWorldSettingProjectionRow(Base):
+    """One immutable projection bundle for an exact World Setting revision."""
+
+    __tablename__ = "agent_canvas_world_setting_projection_bundles"
+    __table_args__ = (
+        CheckConstraint(
+            "source_node_revision > 0",
+            name="ck_world_setting_projection_positive_source_revision",
+        ),
+        CheckConstraint(
+            "projection_mode IN ('ready', 'fallback')",
+            name="ck_world_setting_projection_mode",
+        ),
+        UniqueConstraint(
+            "source_node_id",
+            "source_node_revision",
+            "source_content_digest",
+            "compiler_digest",
+            name="uq_world_setting_projection_cache_identity",
+        ),
+        Index(
+            "ix_world_setting_projection_workflow_source_revision",
+            "workflow_id",
+            "source_node_id",
+            "source_node_revision",
+        ),
+        Index("ix_world_setting_projection_digest", "projection_digest"),
+    )
+
+    projection_snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    source_node_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
+    )
+    source_node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_content_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    projection_contract_version: Mapped[str] = mapped_column(Text, nullable=False)
+    projection_prompt_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    projection_skill_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    model_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    compiler_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    projection_mode: Mapped[str] = mapped_column(Text, nullable=False)
+    shared_projection_json: Mapped[str] = mapped_column(Text, nullable=False)
+    role_projections_json: Mapped[str] = mapped_column(Text, nullable=False)
+    projection_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    warning_code: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class ProviderConnectionRow(Base):
@@ -1318,10 +1523,41 @@ class AgentCanvasExecutionMemberRow(Base):
     resolved_input_manifest_json: Mapped[str | None] = mapped_column(Text)
     resolved_input_manifest_digest: Mapped[str | None] = mapped_column(Text)
     effective_parameters_json: Mapped[str | None] = mapped_column(Text)
+    parameter_compilation_snapshot_id: Mapped[str | None] = mapped_column(Text)
     omitted_optional_inputs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     prompt_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     error_json: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasVideoParameterCompilationSnapshotRow(Base):
+    """One immutable Video parameter compilation result used by retries."""
+
+    __tablename__ = "agent_canvas_video_parameter_compilation_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "member_id",
+            name="uq_agent_canvas_video_parameter_snapshot_member",
+        ),
+        Index(
+            "ix_agent_canvas_video_parameter_snapshots_execution",
+            "execution_id",
+            "member_id",
+        ),
+    )
+
+    snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_members.member_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    snapshot_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasNodeLeaseRow(Base):

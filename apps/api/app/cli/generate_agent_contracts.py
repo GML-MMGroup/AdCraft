@@ -10,10 +10,13 @@ from typing import Any
 from pydantic import TypeAdapter
 
 from app.schemas import agent_runtime
+from app.schemas import agent_canvas_video_parameters
 from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
+from app.schemas import agent_canvas_world_setting
+from app.schemas import agent_working_documents
 from app.schemas import agent_operation_contexts
 from app.schemas import workflow_v2_expert_brief_contracts
 from app.schemas import workflow_v2_planning
@@ -28,6 +31,7 @@ CONTRACT_MODELS = (
     agent_canvas.CanvasVariationDraftV2,
     agent_canvas.CanvasBindingSourceNodeV2,
     agent_canvas.CanvasBindingSourceImageAssetV2,
+    agent_canvas_video_parameters.CanvasParameterProvenanceV2,
     agent_canvas.CanvasNodeV2,
     agent_canvas.CanvasBindingV2,
     agent_canvas_editing.EditingOutputSettingsV2,
@@ -53,6 +57,11 @@ CONTRACT_MODELS = (
     agent_operation_contexts.CharacterExpertAgentContext,
     agent_operation_contexts.SceneExpertAgentContext,
     agent_operation_contexts.BgmExpertAgentContext,
+    agent_operation_contexts.VideoParameterTextSourceV2,
+    agent_operation_contexts.VideoParameterCapabilityContextV2,
+    agent_operation_contexts.VideoParameterIntentContextV2,
+    agent_canvas_video_parameters.VideoParameterCandidateV2,
+    agent_canvas_video_parameters.VideoParameterIntentV2,
     agent_canvas_creative_session.CreationModeDecisionV2,
     agent_canvas_creative_session.CreativeGoalV2,
     agent_canvas_creative_session.CreativeElementDecisionV2,
@@ -81,7 +90,47 @@ CONTRACT_MODELS = (
     agent_canvas_creative_session.BgmAudioSpecialistDraftV2,
     agent_canvas_creative_session.ExpertActivityV2,
     agent_canvas_creative_session.ResolvedImageTargetV2,
+    agent_working_documents.AgentAnchorV2,
+    agent_working_documents.AnchorRegistryContentV2,
+    agent_working_documents.StoryboardPlanGlobalParametersV2,
+    agent_working_documents.StoryboardNarrativeSegmentV2,
+    agent_working_documents.StoryboardPlanRowV2,
+    agent_working_documents.StoryboardNodeRecordV2,
+    agent_working_documents.AgentDocumentLinkedNodeRuntimeV2,
+    agent_working_documents.StoryboardProductionPlanContentV2,
+    agent_working_documents.AgentWorkingDocumentV2,
+    agent_working_documents.AgentWorkingDocumentReferenceV2,
+    agent_working_documents.AgentDocumentContextExcerptV2,
+    agent_working_documents.AgentDocumentProvenanceV2,
+    agent_working_documents.InitializeAnchorRegistryPatchV2,
+    agent_working_documents.UpsertAnchorPatchV2,
+    agent_working_documents.InitializeStoryboardPlanPatchV2,
+    agent_working_documents.ReplaceNarrativeSegmentPatchV2,
+    agent_working_documents.ReplaceStoryboardRowsPatchV2,
+    agent_working_documents.AttachStoryboardNodePatchV2,
+    agent_working_documents.AttachVideoNodePatchV2,
+    agent_working_documents.AttachAudioNodePatchV2,
+    agent_working_documents.AttachEditingNodePatchV2,
+    agent_working_documents.AgentDocumentPatchSubmissionV2,
     agent_canvas_creative_session.GuidanceSessionActionV2,
+    agent_canvas_world_setting.WorldSettingAuthoringProvenanceV1,
+    agent_canvas_world_setting.WorldSettingDocumentV1,
+    agent_canvas_world_setting.WorldSettingDirectionV1,
+    agent_canvas_world_setting.WorldSettingProposalDraftV1,
+    agent_canvas_world_setting.SharedWorldSettingProjectionV1,
+    agent_canvas_world_setting.ScriptWorldSettingProjectionV1,
+    agent_canvas_world_setting.ProductWorldSettingProjectionV1,
+    agent_canvas_world_setting.PropWorldSettingProjectionV1,
+    agent_canvas_world_setting.CharacterWorldSettingProjectionV1,
+    agent_canvas_world_setting.SceneWorldSettingProjectionV1,
+    agent_canvas_world_setting.StoryboardWorldSettingProjectionV1,
+    agent_canvas_world_setting.VideoWorldSettingProjectionV1,
+    agent_canvas_world_setting.BgmWorldSettingProjectionV1,
+    agent_canvas_world_setting.WorldSettingReadyProjectionBundleV1,
+    agent_canvas_world_setting.WorldSettingMaterializationDraftV1,
+    agent_canvas_world_setting.WorldSettingProjectionSnapshotV1,
+    agent_canvas_world_setting.WorldSettingProjectionContextV1,
+    agent_canvas_world_setting.ResolvedWorldSettingInputV1,
     agent_operation_contexts.InteractionMessageSummary,
     agent_operation_contexts.InteractionTargetSummary,
     agent_operation_contexts.TargetedRevisionAgentContext,
@@ -93,6 +142,7 @@ CONTRACT_MODELS = (
     agent_operation_contexts.GuidanceImageReferenceV2,
     agent_operation_contexts.GuidanceStyleSummaryV2,
     agent_operation_contexts.GuidanceProposalSummaryV2,
+    agent_operation_contexts.WorldSettingNextTopicPolicyV1,
     agent_operation_contexts.DelegatedProposalOptionSummaryV2,
     agent_operation_contexts.DirectorTurnContextV2,
     agent_operation_contexts.GuidanceTopicOwnershipV2,
