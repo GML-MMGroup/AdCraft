@@ -40,6 +40,7 @@ from app.schemas.seedance_inputs import (
     SeedanceInputManifestAuditV1,
     SeedanceInputManifestV1,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_run_envelope import agent_run_envelope_fields
@@ -76,6 +77,7 @@ class NodeExecutionContext:
     delivered_references: tuple[V2DeliveredProviderReference, ...] = ()
     input_manifest: ResolvedNodeInputManifestV2 | None = None
     optional_input_omissions: tuple[dict[str, str], ...] = ()
+    world_setting: WorldSettingProjectionContextV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,12 +157,29 @@ def generated_asset_publication_metadata(
             if context.effective_parameters is not None
             else context.node.parameters
         ),
+        "parameter_compilation_snapshot_id": (
+            context.effective_parameters.parameter_compilation_snapshot_id
+            if context.effective_parameters is not None
+            else None
+        ),
         "normalizations": (
-            list(context.effective_parameters.normalizations)
+            [
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                for item in context.effective_parameters.normalizations
+            ]
             if context.effective_parameters is not None
             else []
         ),
     }
+    if context.world_setting is not None:
+        metadata["world_setting_projection"] = {
+            "source_node_id": context.world_setting.source_node_id,
+            "source_node_revision": context.world_setting.source_node_revision,
+            "projection_snapshot_id": context.world_setting.projection_snapshot_id,
+            "projection_digest": context.world_setting.projection_digest,
+            "projection_mode": context.world_setting.projection_mode,
+            "warning_code": context.world_setting.warning_code,
+        }
     audit = context.seedance_input_audit
     if audit is not None:
         metadata.update(
@@ -236,6 +255,7 @@ class ScriptNodeExecutor:
             operation="execute_canvas_script",
             user_input=_saved_prompt(context),
             workflow_id=context.node.workflow_id,
+            world_setting=context.world_setting,
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
@@ -291,6 +311,7 @@ class TextNodeExecutor:
             operation="execute_canvas_text",
             user_input=_saved_prompt(context),
             workflow_id=context.node.workflow_id,
+            world_setting=context.world_setting,
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )

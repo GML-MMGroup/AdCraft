@@ -34,6 +34,7 @@ from app.schemas.agent_canvas_runtime import (
     NodeRuntimeV2,
     ResolvedModelExecutionV1,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
@@ -50,6 +51,10 @@ from app.services.agent_canvas_provider_capabilities import (
 from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
+from app.services.agent_canvas_world_setting_projection import WorldSettingProjectionService
+from app.services.agent_canvas_video_parameter_compiler import (
+    AgentCanvasVideoParameterCompiler,
+)
 from app.services.model_resolution import ModelResolutionService
 
 
@@ -57,7 +62,7 @@ MediaPublisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], st
 ScriptReadyPublisher = Callable[[str, str], object]
 TextReadyPublisher = Callable[[CanvasNodeV2], object]
 MediaContextPreparer = Callable[
-    [CanvasNodeV2],
+    [CanvasNodeV2, WorldSettingProjectionContextV1 | None],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
 StageTraceWriter = Callable[
@@ -233,6 +238,8 @@ class DynamicCanvasScheduler:
         input_compiler: AgentCanvasResolvedInputCompiler | None = None,
         run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
         execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
+        video_parameter_compiler: AgentCanvasVideoParameterCompiler | None = None,
+        world_settings: WorldSettingProjectionService | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
@@ -252,9 +259,14 @@ class DynamicCanvasScheduler:
         self._text_ready_publisher = text_ready_publisher
         self._media_context_preparer = media_context_preparer
         self._stage_trace_writer = stage_trace_writer
-        self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(bindings)
+        self._world_settings = world_settings
+        self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(
+            bindings,
+            world_settings=world_settings,
+        )
         self._run_snapshots = run_snapshots
         self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
+        self._video_parameter_compiler = video_parameter_compiler
         self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
@@ -472,12 +484,29 @@ class DynamicCanvasScheduler:
             )
         )
         inputs = self._input_compiler.materialize_inputs(manifest)
+        if len(manifest.world_setting_inputs) > 1:
+            raise V2PersistenceError(
+                "world_setting_binding_ambiguous",
+                "A target Node cannot resolve more than one World Setting Binding.",
+                stage="agent_canvas_scheduler",
+            )
+        world_setting = None
+        if manifest.world_setting_inputs:
+            if self._world_settings is None:
+                raise V2PersistenceError(
+                    "world_setting_projection_unavailable",
+                    "World Setting projection resolution is unavailable.",
+                    stage="agent_canvas_scheduler",
+                    details={"retryable": True},
+                )
+            world_setting = self._world_settings.materialize(manifest.world_setting_inputs[0])
         model_id = None
         provider_id = None
         resolution = None
         compiled_prompt = None
         reference_bundle = None
         effective_parameters: EffectiveMediaParameterSnapshotV2 | None = None
+        parameter_compilation_snapshot = None
         prompt_metadata: dict[str, object] = dict(member.prompt_metadata)
         execution_parameter_normalizations = prompt_metadata.get(
             "execution_parameter_normalizations"
@@ -488,6 +517,15 @@ class DynamicCanvasScheduler:
             else derived_normalizations
         )
         prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
+        if world_setting is not None:
+            prompt_metadata["world_setting_projection"] = {
+                "source_node_id": world_setting.source_node_id,
+                "source_node_revision": world_setting.source_node_revision,
+                "projection_snapshot_id": world_setting.projection_snapshot_id,
+                "projection_digest": world_setting.projection_digest,
+                "projection_mode": world_setting.projection_mode,
+                "warning_code": world_setting.warning_code,
+            }
         runtime_omissions = tuple(
             item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
         )
@@ -512,17 +550,72 @@ class DynamicCanvasScheduler:
                 else node
             )
             capability = self._capabilities.resolve(selected_node, inputs)
-            effective_parameters = self._capabilities.effective_parameters(
-                node,
-                capability,
-                normalizations=normalization_labels,
-            )
+            if node.node_type == "video" and self._video_parameter_compiler is not None:
+                if member.parameter_compilation_snapshot_id is not None:
+                    parameter_compilation_snapshot = (
+                        self._runtime.get_parameter_compilation_snapshot(
+                            member.parameter_compilation_snapshot_id
+                        )
+                    )
+                    node = node.model_copy(
+                        update={
+                            "parameters": parameter_compilation_snapshot.requested_parameters,
+                            "parameter_provenance": (
+                                parameter_compilation_snapshot.parameter_provenance
+                            ),
+                        }
+                    )
+                else:
+                    compiled = self._video_parameter_compiler.compile(
+                        node=node,
+                        selected_model_ref=(
+                            resolution.model_ref if resolution is not None else capability.model_id
+                        ),
+                        capability=capability,
+                        direct_text_inputs=manifest.text_inputs,
+                        execution_id=execution_id,
+                        member_id=member.member_id,
+                        model_defaults=capability.default_parameters,
+                        now=now,
+                    )
+                    parameter_compilation_snapshot = (
+                        self._runtime.get_parameter_compilation_snapshot(
+                            compiled.parameter_compilation_snapshot_id or ""
+                        )
+                    )
+                    node = node.model_copy(
+                        update={
+                            "parameters": compiled.requested_parameters,
+                            "parameter_provenance": compiled.parameter_provenance,
+                        }
+                    )
+                effective_parameters = EffectiveMediaParameterSnapshotV2(
+                    requested=parameter_compilation_snapshot.requested_parameters,
+                    effective=parameter_compilation_snapshot.effective_parameters,
+                    normalizations=parameter_compilation_snapshot.normalizations,
+                    parameter_compilation_snapshot_id=(parameter_compilation_snapshot.snapshot_id),
+                    provider=capability.provider,
+                    model_id=capability.model_id,
+                    capability_revision=capability.capability_revision,
+                )
+                prompt_metadata["parameter_compilation_snapshot_id"] = (
+                    parameter_compilation_snapshot.snapshot_id
+                )
+            else:
+                effective_parameters = self._capabilities.effective_parameters(
+                    node,
+                    capability,
+                    normalizations=normalization_labels,
+                )
             prompt_metadata["effective_parameters"] = effective_parameters.model_dump(mode="json")
             if resolution is None:
                 model_id = capability.model_id
                 provider_id = capability.provider
             if self._media_context_preparer is not None:
-                compiled_prompt, reference_bundle = self._media_context_preparer(node)
+                compiled_prompt, reference_bundle = self._media_context_preparer(
+                    node,
+                    world_setting,
+                )
                 if compiled_prompt is not None:
                     prompt_metadata.update(
                         {
@@ -553,6 +646,7 @@ class DynamicCanvasScheduler:
                 }
                 for item in manifest.omitted_optional_inputs
             ),
+            world_setting=world_setting,
         )
         trace_started_at = self._clock()
         try:
@@ -601,12 +695,19 @@ class DynamicCanvasScheduler:
                 resolved_input_manifest_id=manifest.manifest_id,
                 resolved_input_manifest_digest=manifest.manifest_digest,
                 effective_parameters=effective_parameters,
+                parameter_compilation_snapshot=parameter_compilation_snapshot,
                 omitted_optional_inputs=runtime_omissions,
                 event_type="media_parameters_normalized",
                 event_payload={
                     "requested": effective_parameters.requested,
                     "effective": effective_parameters.effective,
-                    "normalizations": list(effective_parameters.normalizations),
+                    "normalizations": [
+                        item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                        for item in effective_parameters.normalizations
+                    ],
+                    "parameter_compilation_snapshot_id": (
+                        effective_parameters.parameter_compilation_snapshot_id
+                    ),
                 },
             )
         if stored_manifest is None:
@@ -621,6 +722,7 @@ class DynamicCanvasScheduler:
                 resolved_input_manifest_id=manifest.manifest_id,
                 resolved_input_manifest_digest=manifest.manifest_digest,
                 effective_parameters=effective_parameters,
+                parameter_compilation_snapshot=parameter_compilation_snapshot,
                 omitted_optional_inputs=runtime_omissions,
                 event_type="provider_inputs_resolved",
                 event_payload={
@@ -638,6 +740,9 @@ class DynamicCanvasScheduler:
                             "display_order": item.display_order,
                         }
                         for item in manifest.text_inputs
+                    ],
+                    "world_setting_inputs": [
+                        item.model_dump(mode="json") for item in manifest.world_setting_inputs
                     ],
                     "media_inputs": [
                         {
@@ -688,6 +793,7 @@ class DynamicCanvasScheduler:
                 resolved_input_manifest_id=manifest.manifest_id,
                 resolved_input_manifest_digest=manifest.manifest_digest,
                 effective_parameters=effective_parameters,
+                parameter_compilation_snapshot=parameter_compilation_snapshot,
                 omitted_optional_inputs=runtime_omissions,
             )
         elif prompt_metadata:
@@ -699,6 +805,7 @@ class DynamicCanvasScheduler:
                 now=now,
                 prompt_metadata=prompt_metadata,
                 effective_parameters=effective_parameters,
+                parameter_compilation_snapshot=parameter_compilation_snapshot,
                 omitted_optional_inputs=runtime_omissions,
             )
         return prepared
@@ -750,6 +857,18 @@ class DynamicCanvasScheduler:
                     result_descriptor={
                         **(outcome.result_descriptor or {}),
                         **(
+                            {
+                                "parameter_compilation_snapshot_id": (
+                                    context.effective_parameters.parameter_compilation_snapshot_id
+                                ),
+                                "requested_parameters": (context.effective_parameters.requested),
+                                "effective_parameters": (context.effective_parameters.effective),
+                            }
+                            if context.effective_parameters is not None
+                            and context.effective_parameters.parameter_compilation_snapshot_id
+                            else {}
+                        ),
+                        **(
                             {"model_resolution": context.model_resolution.model_dump(mode="json")}
                             if context.model_resolution is not None
                             else {}
@@ -775,6 +894,11 @@ class DynamicCanvasScheduler:
                     "model_resolution": (
                         context.model_resolution.model_dump(mode="json")
                         if context.model_resolution is not None
+                        else None
+                    ),
+                    "parameter_compilation_snapshot_id": (
+                        context.effective_parameters.parameter_compilation_snapshot_id
+                        if context.effective_parameters is not None
                         else None
                     ),
                 },
@@ -857,6 +981,15 @@ class DynamicCanvasScheduler:
             ),
             **(extra or {}),
         }
+        if context.world_setting is not None:
+            output["world_setting_projection"] = {
+                "source_node_id": context.world_setting.source_node_id,
+                "source_node_revision": context.world_setting.source_node_revision,
+                "projection_snapshot_id": context.world_setting.projection_snapshot_id,
+                "projection_digest": context.world_setting.projection_digest,
+                "projection_mode": context.world_setting.projection_mode,
+                "warning_code": context.world_setting.warning_code,
+            }
         finished_at = self._clock()
         try:
             self._stage_trace_writer(
@@ -880,7 +1013,7 @@ class DynamicCanvasScheduler:
         detail = CanvasNodeErrorV2(
             code=getattr(error, "code", "node_execution_failed"),
             message=str(error),
-            retryable=False,
+            retryable=bool(getattr(error, "details", {}).get("retryable", False)),
         )
         member = next(
             item
@@ -906,7 +1039,11 @@ class DynamicCanvasScheduler:
             error=detail,
             execution_id=lease.execution_id,
             event_type="node_failed",
-            event_payload={"code": detail.code},
+            event_payload={
+                "code": detail.code,
+                "stage": getattr(error, "stage", None),
+                "details": getattr(error, "details", {}),
+            },
         )
         self._runtime.complete_lease(lease, now=now)
 
@@ -1016,6 +1153,11 @@ class CanvasRuntimeSnapshotService:
                 ),
                 run_intent_snapshot_id=(
                     members[node.node_id].run_intent_snapshot_id
+                    if node.node_id in members
+                    else None
+                ),
+                parameter_compilation_snapshot_id=(
+                    members[node.node_id].parameter_compilation_snapshot_id
                     if node.node_id in members
                     else None
                 ),

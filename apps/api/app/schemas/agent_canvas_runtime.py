@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeTypeV2,
     RoleContractVersionV2,
 )
+from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
 
 
 CanvasRunScopeV2 = Literal["all_drafts", "selected_nodes"]
@@ -67,7 +68,10 @@ def _contains_forbidden_transport(value: object, *, key: str | None = None) -> b
 class EffectiveMediaParameterSnapshotV2(_RuntimeModel):
     requested: dict[str, JsonValue] = Field(default_factory=dict)
     effective: dict[str, JsonValue] = Field(default_factory=dict)
-    normalizations: tuple[str, ...] = ()
+    normalizations: tuple[str | VideoParameterNormalizationV2, ...] = ()
+    parameter_compilation_snapshot_id: str | None = Field(
+        default=None, min_length=1, max_length=160
+    )
     provider: str = Field(min_length=1, max_length=80)
     model_id: str = Field(min_length=1, max_length=320)
     capability_revision: int = Field(ge=1)
@@ -89,6 +93,8 @@ class NodeRunBindingSnapshotV2(_RuntimeModel):
     source_kind: Literal["node_output", "image_asset"]
     source_id: str = Field(min_length=1, max_length=160)
     source_node_revision: int | None = Field(default=None, ge=1)
+    source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class NodeRunIntentSnapshotV2(_RuntimeModel):
@@ -132,6 +138,9 @@ class PublishedMediaFactsV2(_RuntimeModel):
 
 class GeneratedAssetProvenanceV2(_RuntimeModel):
     node_run_snapshot_id: str = Field(min_length=1, max_length=160)
+    parameter_compilation_snapshot_id: str | None = Field(
+        default=None, min_length=1, max_length=160
+    )
     input_manifest_id: str | None = Field(default=None, min_length=1, max_length=160)
     node_revision: int = Field(ge=1)
     compiled_prompt_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -142,7 +151,7 @@ class GeneratedAssetProvenanceV2(_RuntimeModel):
     provider_task_id: str | None = Field(default=None, max_length=160)
     requested_parameters: dict[str, JsonValue] = Field(default_factory=dict)
     effective_parameters: dict[str, JsonValue] = Field(default_factory=dict)
-    normalizations: tuple[str, ...] = ()
+    normalizations: tuple[str | VideoParameterNormalizationV2, ...] = ()
     source_asset_version_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
@@ -215,6 +224,7 @@ class CanvasExecutionMembershipV2(_RuntimeModel):
     waiting_for_node_ids: tuple[str, ...] = ()
     provider_task_id: str | None = None
     run_intent_snapshot_id: str | None = None
+    parameter_compilation_snapshot_id: str | None = None
     run_intent_snapshot: NodeRunIntentSnapshotV2 | None = None
     run_intent_snapshot_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     resolved_input_manifest_id: str | None = None
@@ -299,9 +309,10 @@ class NodeRuntimeV2(_RuntimeModel):
     execution_id: str | None = None
     provider_task_id: str | None = None
     run_intent_snapshot_id: str | None = None
+    parameter_compilation_snapshot_id: str | None = None
     input_manifest_id: str | None = None
     effective_parameters: dict[str, JsonValue] = Field(default_factory=dict)
-    normalizations: tuple[str, ...] = ()
+    normalizations: tuple[str | VideoParameterNormalizationV2, ...] = ()
     omitted_optional_inputs: tuple[dict[str, JsonValue], ...] = ()
     waiting_reason: str | None = None
     missing_required_source_node_ids: tuple[str, ...] = ()
@@ -334,6 +345,8 @@ class CanvasProviderModelCapabilityV2(_RuntimeModel):
     max_references: int = Field(ge=0)
     reference_limits: dict[Literal["image", "video", "audio"], int] = Field(default_factory=dict)
     supported_parameters: frozenset[str] = frozenset()
+    default_parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    supported_resolutions: tuple[str, ...] = ()
     supported_aspect_ratios: tuple[str, ...] = ()
     duration_range_seconds: tuple[float, float] | None = None
     pixel_bounds: tuple[int, int] | None = None

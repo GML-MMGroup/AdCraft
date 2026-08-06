@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2, NodeRunIn
 from app.services.agent_canvas_execution_parameters import (
     AgentCanvasExecutionParameterResolver,
 )
+from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 
 
@@ -26,10 +27,13 @@ class AgentCanvasRunIntentSnapshotService:
         workflows: AgentCanvasWorkflowRepository,
         runtime: AgentCanvasRuntimeRepository,
         execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
+        *,
+        bindings: AgentCanvasBindingService | None = None,
     ) -> None:
         self._workflows = workflows
         self._runtime = runtime
         self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
+        self._bindings = bindings
 
     def freeze_members(
         self,
@@ -60,6 +64,12 @@ class AgentCanvasRunIntentSnapshotService:
                     stage="agent_canvas_run_snapshots",
                 )
             frozen_node, normalizations = self._execution_parameters.freeze_node(node)
+            if self._bindings is not None:
+                self._bindings.capture_prompt_context_snapshot(
+                    member.workflow_id,
+                    frozen_node.node_id,
+                    node_run_id=f"node_run_{execution_id}_{frozen_node.node_id}",
+                )
             bindings = tuple(
                 sorted(
                     (
@@ -94,6 +104,19 @@ class AgentCanvasRunIntentSnapshotService:
                         if isinstance(binding.source, CanvasBindingSourceNodeV2)
                         else None
                     ),
+                    source_semantic_role=(
+                        next(
+                            (
+                                source.semantic_role
+                                for source in workflow.nodes
+                                if source.node_id == binding.source.source_node_id
+                            ),
+                            None,
+                        )
+                        if isinstance(binding.source, CanvasBindingSourceNodeV2)
+                        else None
+                    ),
+                    binding_metadata=binding.metadata,
                 )
                 for binding in bindings
             )
