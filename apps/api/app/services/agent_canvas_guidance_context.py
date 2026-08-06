@@ -6,6 +6,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_conversation import ConceptProposalV2, VideoSkillRunV2
 from app.schemas.agent_canvas_creative_session import (
+    CreationModeV2,
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
     StyleGuidanceContextV2,
@@ -20,8 +21,10 @@ from app.schemas.agent_operation_contexts import (
     GuidanceProposalSummaryV2,
     GuidanceSpecialistContextV2,
     GuidanceStyleSummaryV2,
+    WorldSettingNextTopicPolicyV1,
 )
 from app.services.agent_canvas_guidance_ownership import topic_ownership_projection
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
 
 
 class GuidanceContextBuilder:
@@ -42,10 +45,14 @@ class GuidanceContextBuilder:
         mentioned_node_ids: tuple[str, ...],
         image_assets: tuple[ProjectAssetSummaryV2, ...],
         model_capabilities: dict[str, object] | None = None,
+        creation_mode: CreationModeV2 = "guided_production",
     ) -> DirectorGuidanceContextV2:
         node_ids = {node.node_id for node in workflow.nodes}
         if any(node_id not in node_ids for node_id in mentioned_node_ids):
             raise _context_error("A mentioned Node does not belong to the Workflow.")
+        required_topic_kind = (
+            "world_setting" if creation_mode == "guided_production" and session is None else None
+        )
         return DirectorGuidanceContextV2(
             context_kind="director_guidance",
             workflow_id=workflow.workflow_id,
@@ -68,6 +75,10 @@ class GuidanceContextBuilder:
                 )
                 if open_proposal is not None
                 else None
+            ),
+            next_topic_policy=WorldSettingNextTopicPolicyV1(
+                required_topic_kind=required_topic_kind,
+                allowed_topic_kinds=tuple(item.topic_kind for item in topic_ownership_projection()),
             ),
             nodes=tuple(_node_summary(node) for node in workflow.nodes),
             bindings=tuple(_binding_summary(binding) for binding in workflow.bindings),
@@ -100,6 +111,7 @@ class GuidanceContextBuilder:
         image_assets: tuple[ProjectAssetSummaryV2, ...],
         relevant_node_ids: tuple[str, ...] = (),
         targeted_prompt_baseline: str | None = None,
+        world_setting: WorldSettingProjectionContextV1 | None = None,
     ) -> GuidanceSpecialistContextV2:
         if decision.action != "propose_topic":
             raise _context_error("A Specialist context requires a topic proposal.")
@@ -132,6 +144,7 @@ class GuidanceContextBuilder:
             relevant_nodes=tuple(_node_summary(node) for node in relevant_nodes),
             relevant_bindings=tuple(_binding_summary(binding) for binding in relevant_bindings),
             targeted_prompt_baseline=targeted_prompt_baseline,
+            world_setting=world_setting,
         )
 
     def build_delegated_choice(
