@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import TYPE_CHECKING
 
 from app.schemas.agent_canvas import (
     AgentCanvasWorkflowV2,
@@ -17,14 +18,26 @@ from app.schemas.agent_canvas import (
     StorageAccessDescriptorV2,
 )
 from app.schemas.agent_canvas_runtime import NodeRunBindingSnapshotV2
+from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
+
+if TYPE_CHECKING:
+    from app.services.agent_canvas_world_setting_projection import (
+        WorldSettingProjectionService,
+    )
 
 
 class AgentCanvasResolvedInputCompiler:
     """Resolve only persisted target bindings in canonical order."""
 
-    def __init__(self, bindings: AgentCanvasBindingService) -> None:
+    def __init__(
+        self,
+        bindings: AgentCanvasBindingService,
+        *,
+        world_settings: "WorldSettingProjectionService | None" = None,
+    ) -> None:
         self._bindings = bindings
+        self._world_settings = world_settings
 
     def compile(
         self,
@@ -63,7 +76,7 @@ class AgentCanvasResolvedInputCompiler:
                 item for item in frozen.inputs if isinstance(item, ResolvedMediaInputSnapshotV2)
             )
             omitted = frozen.optional_omissions
-        text_inputs = tuple(
+        resolved_text_inputs = tuple(
             ResolvedTextBindingInputV2(
                 binding_id=item.binding_id or _missing_binding_id(item.source_node_id),
                 source_node_id=item.source_node_id,
@@ -75,9 +88,57 @@ class AgentCanvasResolvedInputCompiler:
                 document_kind=item.document_kind,
                 content_digest=item.content_hash,
                 content=item.content,
+                source_semantic_role=item.source_semantic_role,
+                binding_metadata=item.binding_metadata,
             )
             for item in text_snapshot.inputs
         )
+        text_inputs: list[ResolvedTextBindingInputV2] = []
+        world_setting_inputs = []
+        omitted_list = list(omitted)
+        for item in resolved_text_inputs:
+            if item.source_semantic_role != "world_setting":
+                text_inputs.append(item)
+                continue
+            if self._world_settings is None:
+                error = V2PersistenceError(
+                    "world_setting_projection_unavailable",
+                    "World Setting projection resolution is unavailable.",
+                    stage="agent_canvas_resolved_input_compiler",
+                )
+                if item.required:
+                    raise error
+                omitted_list.append(
+                    {
+                        "binding_id": item.binding_id,
+                        "source_node_id": item.source_node_id,
+                        "reason": error.code,
+                    }
+                )
+                continue
+            try:
+                world_setting_inputs.append(
+                    self._world_settings.resolve_for_run(
+                        workflow_id=workflow_id,
+                        source=item,
+                    )
+                )
+            except V2PersistenceError as error:
+                if item.required:
+                    raise
+                omitted_list.append(
+                    {
+                        "binding_id": item.binding_id,
+                        "source_node_id": item.source_node_id,
+                        "reason": error.code,
+                    }
+                )
+        if len(world_setting_inputs) > 1:
+            raise V2PersistenceError(
+                "world_setting_binding_ambiguous",
+                "A target Node cannot resolve more than one World Setting Binding.",
+                stage="agent_canvas_resolved_input_compiler",
+            )
         media_inputs = tuple(
             ResolvedMediaBindingInputV2(
                 binding_id=item.binding_id or _missing_binding_id(item.asset_id),
@@ -86,6 +147,7 @@ class AgentCanvasResolvedInputCompiler:
                 source_node_revision=item.source_node_revision,
                 input_role=item.input_role,
                 source_semantic_role=item.source_semantic_role,
+                binding_metadata=item.binding_metadata,
                 required=item.required,
                 display_order=item.display_order,
                 asset_id=item.asset_id,
@@ -101,7 +163,7 @@ class AgentCanvasResolvedInputCompiler:
                 source_node_id=item.get("source_node_id"),
                 reason_code=item["reason"],
             )
-            for item in omitted
+            for item in omitted_list
         )
         created_at = (
             text_snapshot.created_at
@@ -117,6 +179,7 @@ class AgentCanvasResolvedInputCompiler:
             "target_node_id": target_node_id,
             "workflow_revision": workflow.revision,
             "text_inputs": [item.model_dump(mode="json") for item in text_inputs],
+            "world_setting_inputs": [item.model_dump(mode="json") for item in world_setting_inputs],
             "media_inputs": [item.model_dump(mode="json") for item in media_inputs],
             "omitted_optional_inputs": [item.model_dump(mode="json") for item in omitted_inputs],
             "run_intent_snapshot_id": run_intent_snapshot_id,
@@ -165,6 +228,7 @@ class AgentCanvasResolvedInputCompiler:
                     source_node_revision=item.source_node_revision,
                     binding_kind=item.input_role,
                     source_semantic_role=item.source_semantic_role,
+                    binding_metadata=item.binding_metadata,
                     asset_id=item.asset_id,
                     asset_version_id=item.asset_version_id,
                     media_type=item.media_type,

@@ -23,6 +23,7 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,8 +53,11 @@ _ROLE_BOUNDARIES = {
         "Do not progress narrative action across panels.",
     ),
     "storyboard_sequence": (
-        "Render one complete 3x3 storyboard grid for one coherent sequence. "
-        "Use visual storytelling without visible text in every panel.",
+        "Render one complete 3x3 storyboard image for one coherent sequence. "
+        "Keep all nine distinct frames in strict reading order with consistent "
+        "identities, world details, visual style, and narrative continuity. "
+        "Do not render labels or panel numbers anywhere in the image. Use visual "
+        "storytelling without visible text in every frame.",
         "Do not generate captions, panel numbers, subtitles, speech bubbles, logos, or watermarks.",
     ),
     "storyboard_video": (
@@ -89,6 +93,15 @@ _CREATIVE_DIRECTION_ROLE = {
     "general_video": "quick_media_agent",
     "general_audio": "quick_media_agent",
 }
+_WORLD_SETTING_ROLE_LABEL = {
+    "product_designer": "Product Designer",
+    "prop_designer": "Prop Designer",
+    "character_designer": "Character Designer",
+    "scene_designer": "Scene Designer",
+    "storyboard_artist": "Storyboard Artist",
+    "video_director": "Video Director",
+    "bgm_director": "BGM Director",
+}
 
 
 def list_agent_canvas_prompt_registrations() -> tuple[AgentCanvasPromptRegistration, ...]:
@@ -114,6 +127,7 @@ class AgentCanvasProviderPromptCompiler:
         reference_bundle: AdReferenceBundleV2,
         *,
         creative_direction_projection: Mapping[str, object] | None = None,
+        world_setting: WorldSettingProjectionContextV1 | None = None,
     ) -> CompiledProviderPromptV2:
         if not str(node.generation_prompt or "").strip():
             raise _error(
@@ -136,6 +150,13 @@ class AgentCanvasProviderPromptCompiler:
                 _CREATIVE_DIRECTION_ROLE[node.semantic_role],
                 creative_direction_projection,
             )
+        if world_setting is not None:
+            expected_audience = _CREATIVE_DIRECTION_ROLE[node.semantic_role]
+            if world_setting.projection_audience != expected_audience:
+                raise _error(
+                    "world_setting_projection_audience_mismatch",
+                    "World Setting projection audience does not match the target role.",
+                )
         structured = self._roles.validate_structured_content(
             node.semantic_role,
             node.structured_content,
@@ -145,7 +166,9 @@ class AgentCanvasProviderPromptCompiler:
         references = "\n".join(
             (
                 f"- {item.binding_id}: asset={item.asset_id}; "
-                f"media={item.media_type}; url={item.access_descriptor.media_url}"
+                f"media={item.media_type}; semantic_reference_role="
+                f"{item.semantic_reference_role or 'unspecified'}; "
+                f"url={item.access_descriptor.media_url}"
             )
             for item in reference_bundle.references
         )
@@ -156,6 +179,7 @@ class AgentCanvasProviderPromptCompiler:
                 f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
                 f"Structured role content:\n{body}",
                 f"Visual style ({style.source}):\n{style.style_prompt}",
+                _render_world_setting(world_setting) if world_setting is not None else "",
                 f"Explicit references:\n{references}" if references else "",
             )
             if part
@@ -172,6 +196,14 @@ class AgentCanvasProviderPromptCompiler:
             "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
             "role_contract_version": node.role_contract_version,
             "structured_content": node.structured_content,
+            "world_setting_projection": (
+                {
+                    "projection_snapshot_id": world_setting.projection_snapshot_id,
+                    "projection_digest": world_setting.projection_digest,
+                }
+                if world_setting is not None
+                else None
+            ),
         }
         return CompiledProviderPromptV2(
             semantic_role=node.semantic_role,
@@ -225,12 +257,24 @@ def _render_content(structured: object) -> str:
             ]
         )
     if isinstance(structured, StoryboardGridContentV2):
+        frame_positions = (
+            "Top-left frame",
+            "Top-center frame",
+            "Top-right frame",
+            "Middle-left frame",
+            "Center frame",
+            "Middle-right frame",
+            "Bottom-left frame",
+            "Bottom-center frame",
+            "Bottom-right frame",
+        )
         return "\n".join(
             [
                 f"Sequence: {structured.sequence_summary}",
                 *[
                     (
-                        f"Panel {panel.panel_index}: {panel.beat}; {panel.composition}; "
+                        f"{frame_positions[panel.panel_index - 1]} content: "
+                        f"{panel.beat}; {panel.composition}; "
                         f"{panel.camera}; {panel.subject_action}; "
                         f"continuity={panel.continuity_from_previous}"
                     )
@@ -272,6 +316,29 @@ def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bo
     if semantic_role == "storyboard_sequence":
         return {"sequential_generation": False}
     return {}
+
+
+def _render_world_setting(context: WorldSettingProjectionContextV1) -> str:
+    shared = context.shared
+    parts = [
+        "World setting shared context:\n"
+        f"Premise: {shared.premise}\n"
+        f"Era and location: {shared.era_and_location}\n"
+        "Continuity rules:\n" + "\n".join(f"- {item}" for item in shared.continuity_rules)
+    ]
+    if context.role_projection is not None:
+        label = _WORLD_SETTING_ROLE_LABEL[context.role_projection.audience]
+        payload = context.role_projection.model_dump(
+            mode="json",
+            exclude={"audience"},
+        )
+        lines = []
+        for key, values in payload.items():
+            if values:
+                lines.append(f"{key.replace('_', ' ').title()}: " + "; ".join(values))
+        if lines:
+            parts.append(f"{label} context:\n" + "\n".join(lines))
+    return "\n\n".join(parts)
 
 
 def _digest(value: object) -> str:

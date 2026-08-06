@@ -24,6 +24,9 @@ from app.persistence.agent_canvas_command_repository import (
 )
 from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_world_setting_repository import (
+    AgentCanvasWorldSettingRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingSourceImageAssetV2,
@@ -65,6 +68,7 @@ from app.schemas.agent_canvas_creative_session import (
     StyleGuidanceContextV2,
     DelegatedProposalChoiceV2,
     NextGuidanceDecisionV2,
+    ProposedDraftReferenceV2,
 )
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
@@ -84,8 +88,16 @@ from app.schemas.agent_runtime import (
     AgentRunRequest,
     AgentRunCompletedPayload,
     ConceptProposalDraftV2,
+    AgentRunContext,
 )
-from app.services.durable_pi_run import DurablePiRunService
+from app.schemas.agent_canvas_world_setting import (
+    WorldSettingMaterializationDraftV1,
+    WorldSettingProjectionAudienceV1,
+    WorldSettingProposalDraftV1,
+    WorldSettingReadyProjectionBundleV1,
+)
+from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
+from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
 from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
@@ -106,6 +118,15 @@ from app.services.agent_canvas_guidance_decision import (
 )
 from app.services.agent_canvas_guidance_ownership import GuidanceOwnerResolver
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_world_setting import world_setting_proposal_from_draft
+from app.services.agent_canvas_world_setting import (
+    WorldSettingBindingPolicy,
+    WorldSettingPublicationCandidateV1,
+    build_world_setting_publication_candidate,
+)
+from app.services.agent_canvas_world_setting_projection import (
+    WorldSettingProjectionService,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -137,6 +158,37 @@ class SpecialistDraftMaterialization:
     proposal_id: str
     option_id: str
     conversation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorldSettingMaterialization:
+    candidate: WorldSettingPublicationCandidateV1
+    activity_id: str
+    proposal_id: str
+    option_id: str
+    conversation_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class PiStructuredRunResult:
+    """One validated terminal structured result with private audit identity."""
+
+    value: dict[str, object]
+    run_id: str
+    audit: dict[str, object]
+    model_ref: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorldSettingMaterializationAgentResultV1:
+    """Validated World Setting materialization plus private compiler identity."""
+
+    title: str
+    document_content: str
+    projection: WorldSettingReadyProjectionBundleV1
+    run_id: str
+    audit: dict[str, object]
+    model_ref: str
 
 
 def _continuation_commit(
@@ -212,6 +264,30 @@ class DirectorGateway(Protocol):
         turn_id: str,
         parent_run_id: str | None = None,
     ) -> ConceptProposalCreateV2: ...
+
+    def propose_world_setting(
+        self,
+        context: GuidanceSpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingProposalDraftV1: ...
+
+    def revise_world_setting_options(
+        self,
+        context: GuidanceSpecialistContextV2 | SpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingProposalDraftV1: ...
+
+    def materialize_world_setting(
+        self,
+        context: SpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingMaterializationAgentResultV1: ...
 
 
 class DeterministicDirectorGateway:
@@ -550,6 +626,112 @@ class PiDirectorGateway:
         concrete_draft = contract.model_validate(value)
         return SpecialistDraftV2.model_validate(concrete_draft.model_dump(mode="json"))
 
+    def propose_world_setting(
+        self,
+        context: GuidanceSpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingProposalDraftV1:
+        completed = self._run_structured(
+            agent_name="scene_designer",
+            operation="propose_world_setting",
+            context=context,
+            contract=WorldSettingProposalDraftV1,
+            max_handoffs=0,
+            parent_run_id=parent_run_id,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "turn_id": turn_id,
+                "agent_name": "scene_designer",
+                "operation": "propose_world_setting",
+            },
+        )
+        return WorldSettingProposalDraftV1.model_validate(completed.value)
+
+    def revise_world_setting_options(
+        self,
+        context: GuidanceSpecialistContextV2 | SpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingProposalDraftV1:
+        completed = self._run_structured(
+            agent_name="scene_designer",
+            operation="revise_world_setting_options",
+            context=context,
+            contract=WorldSettingProposalDraftV1,
+            max_handoffs=0,
+            parent_run_id=parent_run_id,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "turn_id": turn_id,
+                "agent_name": "scene_designer",
+                "operation": "revise_world_setting_options",
+            },
+        )
+        return WorldSettingProposalDraftV1.model_validate(completed.value)
+
+    def materialize_world_setting(
+        self,
+        context: GuidanceSpecialistContextV2 | SpecialistContextV2,
+        *,
+        turn_id: str,
+        parent_run_id: str | None = None,
+    ) -> WorldSettingMaterializationAgentResultV1:
+        completed = self._run_structured(
+            agent_name="scene_designer",
+            operation="materialize_world_setting",
+            context=context,
+            contract=WorldSettingMaterializationDraftV1,
+            max_handoffs=0,
+            parent_run_id=parent_run_id,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "turn_id": turn_id,
+                "agent_name": "scene_designer",
+                "operation": "materialize_world_setting",
+            },
+        )
+        materialized = WorldSettingMaterializationDraftV1.model_validate(completed.value)
+        return WorldSettingMaterializationAgentResultV1(
+            title=materialized.title,
+            document_content=materialized.document_content,
+            projection=materialized.projection,
+            run_id=completed.run_id,
+            audit=completed.audit,
+            model_ref=completed.model_ref,
+        )
+
+    def project_world_setting(
+        self,
+        content: str,
+        *,
+        audience: WorldSettingProjectionAudienceV1,
+        workflow_id: str | None = None,
+    ) -> WorldSettingReadyProjectionBundleV1:
+        context = AgentRunContext(
+            operation="project_world_setting",
+            user_input=content,
+            workflow_id=workflow_id,
+            input_payload={"projection_audience": audience},
+        )
+        completed = self._run_structured(
+            agent_name="scene_designer",
+            operation="project_world_setting",
+            context=context,
+            contract=WorldSettingReadyProjectionBundleV1,
+            max_handoffs=0,
+            identity_fields={
+                "workflow_id": workflow_id or "",
+                "source_content_digest": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "projection_audience": audience,
+                "agent_name": "scene_designer",
+                "operation": "project_world_setting",
+            },
+        )
+        return WorldSettingReadyProjectionBundleV1.model_validate(completed.value)
+
     def replan(
         self,
         context: AgentCommandReplanContextV2,
@@ -589,6 +771,28 @@ class PiDirectorGateway:
         identity_fields: dict[str, str | int],
         parent_run_id: str | None = None,
     ) -> tuple[dict[str, object], str]:
+        completed = self._run_structured(
+            agent_name=agent_name,
+            operation=operation,
+            context=context,
+            contract=contract,
+            max_handoffs=max_handoffs,
+            identity_fields=identity_fields,
+            parent_run_id=parent_run_id,
+        )
+        return completed.value, completed.run_id
+
+    def _run_structured(
+        self,
+        *,
+        agent_name: str,
+        operation: str,
+        context: BaseModel,
+        contract,
+        max_handoffs: int,
+        identity_fields: dict[str, str | int],
+        parent_run_id: str | None = None,
+    ) -> PiStructuredRunResult:
         resolution = self._model_resolution.resolve_selection(
             node_type="script",
             model_selection_mode="default",
@@ -632,8 +836,21 @@ class PiDirectorGateway:
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
         )
-        completed = AgentRunCompletedPayload.model_validate(result.terminal_payload)
-        return completed.value, result.run_id
+        return _completed_structured_run(result, model_ref=resolution.model_ref)
+
+
+def _completed_structured_run(
+    result: DurablePiRunResult,
+    *,
+    model_ref: str,
+) -> PiStructuredRunResult:
+    completed = AgentRunCompletedPayload.model_validate(result.terminal_payload)
+    return PiStructuredRunResult(
+        value=completed.value,
+        run_id=result.run_id,
+        audit=completed.audit,
+        model_ref=model_ref,
+    )
 
 
 class ConceptProposalService:
@@ -759,6 +976,26 @@ class ProjectCreativeMemoryService:
         )
 
 
+def with_agent_document_provenance(
+    node: CanvasNodeV2,
+    context: AgentDocumentContextExcerptV2,
+) -> CanvasNodeV2:
+    """Attach bounded source-document identity without creating an input."""
+
+    return node.model_copy(
+        update={
+            "metadata": {
+                **node.metadata,
+                "source_agent_document_id": context.document_id,
+                "source_agent_document_kind": context.document_kind,
+                "source_agent_document_revision": context.revision,
+                "source_agent_document_digest": context.content_digest,
+                "source_agent_document_selector": context.selector,
+            }
+        }
+    )
+
+
 class GuidanceProposalActionService:
     """Prevalidate and atomically publish one Specialist Draft."""
 
@@ -774,6 +1011,7 @@ class GuidanceProposalActionService:
         self._conversations = conversations
         self._asset_resolver = asset_resolver
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
+        self._world_setting_policy = WorldSettingBindingPolicy()
 
     def materialize(
         self,
@@ -786,6 +1024,7 @@ class GuidanceProposalActionService:
         selection_actor: str = "user",
         source_turn_id: str | None = None,
         continuation: ContinuationCommitV2 | None = None,
+        document_context: AgentDocumentContextExcerptV2 | None = None,
     ) -> CanvasNodeV2:
         proposal = self._conversations.get_proposal(proposal_id)
         option = next(
@@ -819,6 +1058,8 @@ class GuidanceProposalActionService:
             created_at=now,
             updated_at=now,
         )
+        if document_context is not None:
+            node = with_agent_document_provenance(node, document_context)
         allowed_sources = {
             (reference.source_kind, reference.source_id)
             for reference in proposal.proposed_references
@@ -869,6 +1110,72 @@ class GuidanceProposalActionService:
             proposal_action=proposal_action,
             receipt=receipt,
             continuation=continuation,
+        )
+        return node
+
+    def materialize_world_setting(
+        self,
+        proposal_id: str,
+        *,
+        option_id: str,
+        candidate: WorldSettingPublicationCandidateV1,
+        expected_session_revision: int,
+        proposal_action: Literal["select_option", "delegate_choice"],
+        selection_actor: str = "user",
+        source_turn_id: str | None = None,
+        continuation: ContinuationCommitV2 | None = None,
+    ) -> CanvasNodeV2:
+        """Publish a ready World Setting and initial projection atomically."""
+
+        proposal = self._conversations.get_proposal(proposal_id)
+        if option_id not in {item.option_id for item in proposal.options}:
+            raise V2PersistenceError(
+                "proposal_option_not_found",
+                "Concept option was not found.",
+                stage="world_setting_publication",
+            )
+        node = candidate.node
+        workflow = self._workflows.get_workflow(proposal.workflow_id)
+        receipt = (
+            AgentActionReceiptV2(
+                receipt_id=f"receipt_{source_turn_id}",
+                workflow_id=node.workflow_id,
+                action_id=source_turn_id,
+                proposal_id=proposal.proposal_id,
+                proposal_option_id=option_id,
+                proposal_action=proposal_action,
+                status="applied",
+                summary="The World Setting is ready.",
+                created_node_ids=(node.node_id,),
+                workflow_revision=workflow.revision + 1,
+            )
+            if source_turn_id is not None
+            else None
+        )
+        if continuation is not None and receipt is not None:
+            if continuation.source_turn_id != source_turn_id:
+                raise V2PersistenceError(
+                    "continuation_context_invalid",
+                    "Continuation source does not match the action turn.",
+                    stage="world_setting_publication",
+                )
+            receipt = receipt.model_copy(
+                update={"continuation_turn_id": continuation.continuation_turn_id}
+            )
+        self._conversations.apply_and_materialize(
+            proposal_id,
+            option_id=option_id,
+            node=node,
+            expected_workflow_revision=workflow.revision,
+            selection_actor=selection_actor,
+            source_turn_id=source_turn_id,
+            skill_run_id=proposal.video_skill_run_id,
+            topic_id=proposal.topic_id,
+            expected_session_revision=expected_session_revision,
+            proposal_action=proposal_action,
+            receipt=receipt,
+            continuation=continuation,
+            world_setting_projection=candidate.projection,
         )
         return node
 
@@ -941,6 +1248,16 @@ class GuidanceProposalActionService:
                     "Draft reference binding kind conflicts with the connection policy.",
                     stage="draft_materialization",
                 )
+            binding_metadata = (
+                self._world_setting_policy.metadata_for_target(node.creative_role)
+                if intent.source_kind == "node" and source.creative_role == "world_setting"
+                else {}
+            )
+            if intent.semantic_reference_role is not None:
+                binding_metadata = {
+                    **binding_metadata,
+                    "semantic_reference_role": intent.semantic_reference_role,
+                }
             bindings.append(
                 CanvasBindingV2(
                     binding_id=f"binding_{uuid4().hex}",
@@ -951,6 +1268,7 @@ class GuidanceProposalActionService:
                     required=intent.required,
                     enabled=True,
                     order=intent.display_order,
+                    metadata=binding_metadata,
                     created_at=node.created_at,
                     updated_at=node.created_at,
                 )
@@ -1083,6 +1401,11 @@ class AgentConversationService:
         self._guidance_decisions = GuidanceDecisionValidator()
         self._guidance_completion = GuidanceCompletionService()
         self._creative_direction = CreativeDirectionService()
+        self._world_setting_policy = WorldSettingBindingPolicy()
+        self._world_setting_projection = WorldSettingProjectionService(
+            workflows,
+            AgentCanvasWorldSettingRepository(workflows.database),
+        )
 
     def submit_message(
         self,
@@ -1320,6 +1643,37 @@ class AgentConversationService:
                     stage="agent_conversation_service",
                 )
             image_assets = tuple(self._asset_resolver(asset_id) for asset_id in mentioned_asset_ids)
+        creation_mode = "guided_production"
+        if session is None:
+            director_turn_context = (
+                self._context_assembler.assemble_director_turn(
+                    turn.workflow_id,
+                    conversation_id=turn.conversation_id,
+                    user_input=str(turn.request.get("text") or ""),
+                    mentioned_node_ids=mentioned_node_ids,
+                    mentioned_image_asset_ids=mentioned_asset_ids,
+                    guidance_session=None,
+                    creative_memory=memory,
+                )
+                if self._context_assembler is not None
+                else DirectorTurnContextV2(
+                    context_kind="director_turn",
+                    workflow_id=workflow.workflow_id,
+                    workflow_revision=workflow.revision,
+                    conversation_id=turn.conversation_id,
+                    user_input=str(turn.request.get("text") or ""),
+                    mentioned_node_ids=mentioned_node_ids,
+                    mentioned_image_asset_ids=mentioned_asset_ids,
+                    guidance_session=None,
+                    creative_memory=memory,
+                )
+            )
+            mode_decision = self._gateway.resolve_creation_mode(
+                director_turn_context,
+                turn_id=turn_id,
+            )
+            self._conversations.persist_creation_mode(turn_id, mode_decision)
+            creation_mode = mode_decision.mode
         director_context = self._guidance_contexts.build_director(
             workflow,
             conversation_id=turn.conversation_id,
@@ -1335,25 +1689,20 @@ class AgentConversationService:
             style_guidance=director_style,
             mentioned_node_ids=mentioned_node_ids,
             image_assets=image_assets,
+            creation_mode=creation_mode,
         )
         supplied_decision = self._gateway.decide_next_guidance_step(
             director_context,
             turn_id=turn_id,
         )
         owner_resolution = self._guidance_owners.resolve(supplied_decision)
-        if owner_resolution.corrected:
-            logger.info(
-                "guidance_specialist_owner_normalized topic_kind=%s supplied=%s resolved=%s",
-                owner_resolution.decision.topic_kind,
-                owner_resolution.supplied_specialist_name,
-                owner_resolution.resolved_specialist_name,
-            )
         decision = self._guidance_decisions.validate(
             owner_resolution.decision,
             session=session,
             workflow=workflow,
             resolved_targets=mentioned_node_ids,
             open_proposal=open_proposal,
+            required_topic_kind=director_context.next_topic_policy.required_topic_kind,
         )
         completion = None
         if decision.action == "finish_guidance":
@@ -1397,6 +1746,17 @@ class AgentConversationService:
             )
         elif decision.action == "propose_topic":
             assert session is not None
+            world_setting = None
+            if decision.topic_kind != "world_setting":
+                audience = cast(
+                    WorldSettingProjectionAudienceV1,
+                    decision.specialist_name,
+                )
+                world_setting = self._world_setting_projection.resolve_for_guidance(
+                    workflow_id=turn.workflow_id,
+                    session=session,
+                    audience=audience,
+                )
             specialist_context = self._guidance_contexts.build_specialist(
                 workflow,
                 decision=decision,
@@ -1421,6 +1781,7 @@ class AgentConversationService:
                     if len(mentioned_node_ids) == 1
                     else None
                 ),
+                world_setting=world_setting,
             )
             activity = self._conversations.start_expert_activity(
                 turn_id,
@@ -1429,10 +1790,48 @@ class AgentConversationService:
                 display_name=specialist_display_name(specialist_context.specialist_name),
             )
             try:
-                created = proposal or self._gateway.run_specialist(
-                    specialist_context,
-                    turn_id=turn_id,
-                )
+                if proposal is not None:
+                    created = proposal
+                elif decision.topic_kind == "world_setting":
+                    world_draft = self._gateway.propose_world_setting(
+                        specialist_context,
+                        turn_id=turn_id,
+                    )
+                    created = world_setting_proposal_from_draft(
+                        world_draft,
+                        topic_id=decision.topic_id,
+                    )
+                else:
+                    created = self._gateway.run_specialist(
+                        specialist_context,
+                        turn_id=turn_id,
+                    )
+                if world_setting is not None:
+                    world_node = self._workflows.get_node(
+                        turn.workflow_id,
+                        world_setting.source_node_id,
+                    )
+                    shifted = tuple(
+                        reference.model_copy(update={"display_order": reference.display_order + 1})
+                        for reference in created.proposed_references
+                    )
+                    created = created.model_copy(
+                        update={
+                            "proposed_references": (
+                                ProposedDraftReferenceV2(
+                                    source_kind="node",
+                                    source_id=world_node.node_id,
+                                    binding_kind="text_context",
+                                    input_role="text_context",
+                                    required=True,
+                                    display_order=0,
+                                    display_name=world_node.title,
+                                    media_type="text",
+                                ),
+                                *shifted,
+                            )
+                        }
+                    )
                 if len(created.options) != decision.candidate_count:
                     raise V2PersistenceError(
                         "specialist_proposal_invalid",
@@ -1487,25 +1886,42 @@ class AgentConversationService:
                 stage="agent_conversation_service",
             )
         if action.action == "select_option":
+            if proposal.proposal_kind == "world_setting":
+                materialized = self._materialize_world_setting_candidate(
+                    turn,
+                    proposal,
+                    action.option_id,
+                )
+                continuation = (
+                    _continuation_commit(turn, source_action_id=turn_id)
+                    if session.status == "active"
+                    else None
+                )
+                try:
+                    node = self._materialization.materialize_world_setting(
+                        proposal_id,
+                        option_id=action.option_id,
+                        candidate=materialized.candidate,
+                        expected_session_revision=action.expected_session_revision,
+                        proposal_action="select_option",
+                        source_turn_id=turn_id,
+                        continuation=continuation,
+                    )
+                except V2PersistenceError as error:
+                    self._fail_draft_materialization(materialized, error)
+                    raise
+                self._complete_draft_materialization(materialized, node)
+                receipt = self._conversations.get_publication_receipt_for_action(turn_id)
+                message = receipt.summary if receipt is not None else "The World Setting is ready."
+                return self._complete_turn(turn_id, turn.workflow_id, message)
             materialized = self._materialize_specialist_draft(
                 turn,
                 proposal,
                 action.option_id,
             )
-            accepted_references = tuple(
-                DraftReferenceIntentV2.model_validate(
-                    reference.model_dump(
-                        include={
-                            "source_kind",
-                            "source_id",
-                            "binding_kind",
-                            "input_role",
-                            "required",
-                            "display_order",
-                        }
-                    )
-                )
-                for reference in action.accepted_references
+            accepted_references = _reference_intents_for_selection(
+                proposal,
+                action.accepted_references,
             )
             materialized = replace(
                 materialized,
@@ -1601,6 +2017,35 @@ class AgentConversationService:
                     "The Director selected an option outside the current Proposal.",
                     stage="agent_conversation_service",
                 )
+            if proposal.proposal_kind == "world_setting":
+                materialized = self._materialize_world_setting_candidate(
+                    turn,
+                    proposal,
+                    choice.option_id,
+                )
+                continuation = (
+                    _continuation_commit(turn, source_action_id=turn_id)
+                    if session.status == "active"
+                    else None
+                )
+                try:
+                    node = self._materialization.materialize_world_setting(
+                        proposal_id,
+                        option_id=choice.option_id,
+                        candidate=materialized.candidate,
+                        expected_session_revision=action.expected_session_revision,
+                        proposal_action="delegate_choice",
+                        selection_actor="agent",
+                        source_turn_id=turn_id,
+                        continuation=continuation,
+                    )
+                except V2PersistenceError as error:
+                    self._fail_draft_materialization(materialized, error)
+                    raise
+                self._complete_draft_materialization(materialized, node)
+                receipt = self._conversations.get_publication_receipt_for_action(turn_id)
+                message = receipt.summary if receipt is not None else "The World Setting is ready."
+                return self._complete_turn(turn_id, turn.workflow_id, message)
             materialized = self._materialize_specialist_draft(
                 turn,
                 proposal,
@@ -1807,6 +2252,18 @@ class AgentConversationService:
                     "The selected Proposal option has no private Draft Prompt.",
                     stage="agent_conversation_service",
                 )
+            world_setting = (
+                self._world_setting_projection.resolve_for_guidance(
+                    workflow_id=turn.workflow_id,
+                    session=session,
+                    audience=cast(
+                        WorldSettingProjectionAudienceV1,
+                        proposal.specialist_name,
+                    ),
+                )
+                if proposal.proposal_kind != "world_setting"
+                else None
+            )
             draft = materialize(
                 SpecialistContextV2(
                     context_kind="specialist_handoff",
@@ -1837,6 +2294,7 @@ class AgentConversationService:
                     reference_allowlist=tuple(
                         reference.source_id for reference in proposal.proposed_references
                     ),
+                    world_setting=world_setting,
                 ),
                 turn_id=turn.turn_id,
             )
@@ -1877,9 +2335,118 @@ class AgentConversationService:
             conversation_id=turn.conversation_id,
         )
 
+    def _materialize_world_setting_candidate(
+        self,
+        turn: ChatTurnV2,
+        proposal,
+        option_id: str,
+    ) -> WorldSettingMaterialization:
+        option = next(
+            (item for item in proposal.options if item.option_id == option_id),
+            None,
+        )
+        if option is None or option.draft_spec is None:
+            raise V2PersistenceError(
+                "proposal_option_not_found",
+                "World Setting option was not found.",
+                stage="world_setting_publication",
+            )
+        activity = self._conversations.start_expert_activity(
+            turn.turn_id,
+            specialist_name="scene_designer",
+            operation="materialize_draft",
+            display_name=specialist_display_name("scene_designer"),
+            event_details={
+                "conversation_id": turn.conversation_id,
+                "proposal_id": proposal.proposal_id,
+                "option_id": option.option_id,
+            },
+        )
+        try:
+            workflow = self._workflows.get_workflow(turn.workflow_id)
+            session = self._conversations.get_guidance_session(turn.workflow_id)
+            memory = self._conversations.get_creative_memory(turn.workflow_id)
+            _, style_guidance = self._style_context_for_turn(
+                turn,
+                role="scene_designer",
+            )
+            context = SpecialistContextV2(
+                context_kind="specialist_handoff",
+                specialist_name="scene_designer",
+                operation="materialize_draft",
+                workflow_id=turn.workflow_id,
+                workflow_revision=workflow.revision,
+                user_instruction=str(
+                    turn.request.get("instruction") or "Apply the selected World Setting."
+                ),
+                selected_option_summary=option.summary_prompt,
+                selected_option_draft_prompt=option.draft_spec.prompt,
+                selected_option_id=option.option_id,
+                style_guidance=style_guidance,
+                guidance_session=session,
+                creative_memory=_materialization_memory_projection(
+                    memory,
+                    "scene_designer",
+                ),
+                approved_anchor_summaries=_materialization_anchor_summaries(
+                    memory,
+                    "scene_designer",
+                ),
+            )
+            result = self._gateway.materialize_world_setting(
+                context,
+                turn_id=turn.turn_id,
+            )
+            candidate = build_world_setting_publication_candidate(
+                proposal,
+                option,
+                title=result.title,
+                document_content=result.document_content,
+                projection=result.projection,
+                materialization_run_id=result.run_id,
+                audit=result.audit,
+                model_ref=result.model_ref,
+                now=datetime.now(timezone.utc),
+            )
+        except PiAgentRuntimeError as error:
+            self._conversations.transition_expert_activity(
+                activity.activity_id,
+                status="failed",
+                error_code=error.code,
+                error_message=error.message,
+            )
+            raise
+        except V2PersistenceError as error:
+            self._conversations.transition_expert_activity(
+                activity.activity_id,
+                status="failed",
+                error_code=error.code,
+                error_message=str(error),
+            )
+            raise
+        except (TypeError, ValueError) as error:
+            self._conversations.transition_expert_activity(
+                activity.activity_id,
+                status="failed",
+                error_code="world_setting_materialization_invalid",
+                error_message="World Setting materialization is invalid.",
+            )
+            raise V2PersistenceError(
+                "world_setting_materialization_invalid",
+                "World Setting materialization is invalid.",
+                stage="world_setting_publication",
+            ) from error
+        return WorldSettingMaterialization(
+            candidate=candidate,
+            activity_id=activity.activity_id,
+            proposal_id=proposal.proposal_id,
+            option_id=option.option_id,
+            conversation_id=turn.conversation_id,
+        )
+
     def _complete_draft_materialization(
         self,
-        materialized: SpecialistDraftMaterialization,
+        materialized: SpecialistDraftMaterialization | WorldSettingMaterialization,
         node: CanvasNodeV2,
     ) -> None:
         bindings = tuple(
@@ -1902,7 +2469,7 @@ class AgentConversationService:
 
     def _fail_draft_materialization(
         self,
-        materialized: SpecialistDraftMaterialization,
+        materialized: SpecialistDraftMaterialization | WorldSettingMaterialization,
         error: V2PersistenceError,
     ) -> None:
         self._conversations.transition_expert_activity(
@@ -1977,7 +2544,15 @@ class AgentConversationService:
             candidate_count=len(proposal.options),
             proposal_revision=revision_context,
         )
-        revise = getattr(self._gateway, "run_specialist", None)
+        revise = getattr(
+            self._gateway,
+            (
+                "revise_world_setting_options"
+                if proposal.proposal_kind == "world_setting"
+                else "run_specialist"
+            ),
+            None,
+        )
         if not callable(revise):
             raise V2PersistenceError(
                 "specialist_revision_failed",
@@ -1991,8 +2566,14 @@ class AgentConversationService:
             display_name=specialist_display_name(proposal.specialist_name),
         )
         try:
-            revised = ConceptProposalCreateV2.model_validate(
-                revise(specialist_context, turn_id=turn.turn_id)
+            raw_revised = revise(specialist_context, turn_id=turn.turn_id)
+            revised = (
+                world_setting_proposal_from_draft(
+                    WorldSettingProposalDraftV1.model_validate(raw_revised),
+                    topic_id=proposal.topic_id or "world_setting",
+                )
+                if proposal.proposal_kind == "world_setting"
+                else ConceptProposalCreateV2.model_validate(raw_revised)
             )
         except PiAgentRuntimeError as error:
             self._conversations.transition_expert_activity(
@@ -2128,6 +2709,34 @@ def _semantic_role_for_proposal(proposal_kind: str) -> str:
         "video": "storyboard_video",
         "bgm": "bgm",
     }[proposal_kind]
+
+
+def _reference_intents_for_selection(
+    proposal: ConceptProposalCreateV2,
+    accepted_references: tuple[ProposedDraftReferenceV2, ...],
+) -> tuple[DraftReferenceIntentV2, ...]:
+    required = tuple(reference for reference in proposal.proposed_references if reference.required)
+    required_sources = {(reference.source_kind, reference.source_id) for reference in required}
+    selected = required + tuple(
+        reference
+        for reference in accepted_references
+        if (reference.source_kind, reference.source_id) not in required_sources
+    )
+    return tuple(
+        DraftReferenceIntentV2.model_validate(
+            reference.model_dump(
+                include={
+                    "source_kind",
+                    "source_id",
+                    "binding_kind",
+                    "input_role",
+                    "required",
+                    "display_order",
+                }
+            )
+        )
+        for reference in selected
+    )
 
 
 def _materialization_memory_projection(

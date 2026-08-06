@@ -19,6 +19,7 @@ from app.schemas.agent_canvas_ad_media import (
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
     VideoSegmentContentV2,
+    SemanticReferenceRoleV2,
 )
 
 
@@ -42,6 +43,7 @@ CreationModeV2 = Literal[
 CreativeOutputKindV2 = Literal["text", "script", "image", "video", "audio"]
 CreativeDeliveryScopeV2 = Literal["draft", "generated_media"]
 CreativeElementKindV2 = Literal[
+    "world_setting",
     "product",
     "character",
     "prop",
@@ -52,6 +54,7 @@ CreativeElementKindV2 = Literal[
     "audio",
 ]
 GuidanceTopicKindV2 = Literal[
+    "world_setting",
     "creative_direction",
     "product",
     "prop",
@@ -108,6 +111,8 @@ class GuidanceTopicStateV2(_CreativeSessionModel):
 class GuidanceCompletionProjectionV2(_CreativeSessionModel):
     authoring: Literal["not_ready", "ready"] = "not_ready"
     delivery: Literal["not_ready", "ready"] = "not_ready"
+    editing_preparation: Literal["not_ready", "prepared"] = "not_ready"
+    editing_node_id: str | None = Field(default=None, max_length=160)
     matching_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
 
@@ -272,6 +277,7 @@ class DraftReferenceIntentV2(_CreativeSessionModel):
     input_role: CanvasInputRoleV2
     required: bool = False
     display_order: int = Field(ge=0, le=127)
+    semantic_reference_role: SemanticReferenceRoleV2 | None = None
 
 
 class ProposedDraftReferenceV2(DraftReferenceIntentV2):

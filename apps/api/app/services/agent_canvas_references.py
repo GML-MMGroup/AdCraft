@@ -90,6 +90,7 @@ class AdReferenceBundleResolver:
                 source_kind=binding.source.kind,
                 source_node_id=source_node_id,
                 source_semantic_role=source_role,
+                semantic_reference_role=binding.metadata.get("semantic_reference_role"),
                 asset_id=asset.asset_id,
                 media_type=asset.media_type,
                 display_order=binding.display_order,

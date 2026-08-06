@@ -26,6 +26,16 @@ AdMediaSemanticRoleV2 = Literal[
     "general_audio",
     "editing",
 ]
+SemanticReferenceRoleV2 = Literal[
+    "world_setting_reference",
+    "subject_reference",
+    "environment_reference",
+    "product_reference",
+    "prop_reference",
+    "style_reference",
+    "style_composition_reference",
+    "storyboard_visual_reference",
+]
 
 
 class _AdMediaModel(BaseModel):
@@ -159,6 +169,7 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     source_kind: Literal["node_output", "image_asset"]
     source_node_id: str | None = None
     source_semantic_role: str | None = None
+    semantic_reference_role: SemanticReferenceRoleV2 | None = None
     asset_id: str
     media_type: Literal["image", "video", "audio"]
     display_order: int = Field(ge=0)
