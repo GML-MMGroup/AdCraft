@@ -298,6 +298,13 @@ describe("Agent Canvas normalizers", () => {
       conversation_id: "conversation-1",
       guidance_session: {
         ...progressiveGuidanceSessionPayload(),
+        element_decisions: [{
+          element_kind: "world_setting",
+          presence: "include",
+          authority: "user",
+          requirements: { style: "quiet future" },
+          source: "explicit_user",
+        }],
         current_topic_id: "topic-world-setting",
         active_proposal_id: "proposal-world-1",
         topics: [{
@@ -328,6 +335,7 @@ describe("Agent Canvas normalizers", () => {
     });
     expect(proposal.proposal_kind).toBe("world_setting");
     expect(proposal.options).toHaveLength(2);
+    expect(timeline.guidanceSession?.element_decisions[0]?.element_kind).toBe("world_setting");
     expect(timeline.guidanceSession?.topics[0]?.topic_kind).toBe("world_setting");
   });
 

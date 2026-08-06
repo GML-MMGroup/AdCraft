@@ -212,6 +212,20 @@ const GUIDANCE_TOPIC_KINDS = new Set<GuidanceTopicKindV2>([
   "video",
   "audio",
 ]);
+const CREATIVE_ELEMENT_KIND_VALUES = {
+  world_setting: true,
+  product: true,
+  character: true,
+  prop: true,
+  scene: true,
+  script: true,
+  storyboard: true,
+  video: true,
+  audio: true,
+} as const satisfies Record<CreativeElementDecisionV2["element_kind"], true>;
+const CREATIVE_ELEMENT_KINDS = new Set<CreativeElementDecisionV2["element_kind"]>(
+  Object.keys(CREATIVE_ELEMENT_KIND_VALUES) as CreativeElementDecisionV2["element_kind"][],
+);
 const EXPERT_ACTIVITY_STATUSES = new Set<ChatExpertActivityV2["status"]>(["working", "completed", "failed"]);
 const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queued", "exporting", "completed", "failed", "cancelled"]);
 const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
@@ -2819,16 +2833,7 @@ function normalizeCreativeElementDecisionV2(
   return {
     element_kind: expectLiteral(
       record.element_kind,
-      new Set<CreativeElementDecisionV2["element_kind"]>([
-        "product",
-        "character",
-        "prop",
-        "scene",
-        "script",
-        "storyboard",
-        "video",
-        "audio",
-      ]),
+      CREATIVE_ELEMENT_KINDS,
       `${path}.element_kind`,
     ),
     presence: expectLiteral(
