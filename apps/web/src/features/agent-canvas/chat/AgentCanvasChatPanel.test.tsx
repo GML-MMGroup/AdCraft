@@ -13,6 +13,7 @@ import type {
 import {
   ActionReceiptCard,
   AgentCanvasChatPanel,
+  AgentWorkingRow,
   CommandPlanCard,
   GuidanceSessionProgress,
   GuidedActionsCard,
@@ -52,6 +53,18 @@ describe("chat composer textarea", () => {
     textarea.scrollTop = 29;
     snapChatComposerScroll(textarea);
     expect(textarea.scrollTop).toBe(20);
+  });
+});
+
+describe("AgentWorkingRow", () => {
+  afterEach(() => cleanup());
+
+  it("announces that the Agent is working and renders a loading indicator", () => {
+    render(<AgentWorkingRow />);
+
+    expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
+    expect(screen.getByText("Working")).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
   });
 });
 

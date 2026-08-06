@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
+  CanvasRuntimeEventV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
 
@@ -68,6 +69,30 @@ function descriptor(
     expected_session_revision: 7,
     confirmation_required: false,
     reason: "Continue the guided authoring session.",
+  };
+}
+
+function turnEvent(
+  eventType: "agent_turn_queued" | "agent_turn_started" | "agent_turn_completed" | "agent_turn_failed",
+  turnId = "turn-1",
+  seq = 1,
+): CanvasRuntimeEventV2 {
+  return {
+    seq,
+    workflow_id: "workflow-1",
+    event_type: eventType,
+    project_id: null,
+    execution_id: null,
+    node_id: null,
+    asset_id: null,
+    binding_id: null,
+    conversation_id: "conversation-1",
+    turn_id: turnId,
+    action_id: null,
+    trace_id: null,
+    span_id: null,
+    created_at: "2026-08-04T10:00:00Z",
+    payload: null,
   };
 }
 
@@ -189,6 +214,46 @@ describe("useAgentCanvasChat", () => {
       expect.any(String),
     );
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-1");
+  });
+
+  it("keeps the Agent working after message acceptance until the turn becomes terminal", async () => {
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: "message-1",
+      turn_id: "turn-1",
+      status: "queued",
+      events_cursor: 4,
+    });
+    const { result, rerender } = renderHook(
+      ({ chatEvents }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision: 0,
+        chatEvents,
+      }),
+      { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Create a calm product film.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+      });
+    });
+
+    expect(result.current.state.agentWorking).toBe(true);
+
+    rerender({ chatEvents: [turnEvent("agent_turn_started")] });
+    expect(result.current.state.agentWorking).toBe(true);
+
+    rerender({
+      chatEvents: [
+        turnEvent("agent_turn_started"),
+        turnEvent("agent_turn_completed", "turn-1", 2),
+      ],
+    });
+    expect(result.current.state.agentWorking).toBe(false);
   });
 
   it("sends the active Workflow Style Skill Run with Director messages", async () => {
