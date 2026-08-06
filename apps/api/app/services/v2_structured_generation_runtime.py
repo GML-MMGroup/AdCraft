@@ -319,7 +319,13 @@ class StructuredGenerationRuntime:
         finally:
             database.dispose()
         return self._result(
-            spec,
+            replace(
+                spec,
+                trace_metadata={
+                    **spec.trace_metadata,
+                    "agent_run_id": request.run_id,
+                },
+            ),
             output=output,
             mode="pi",
             warnings=[],

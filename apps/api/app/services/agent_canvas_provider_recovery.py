@@ -16,6 +16,7 @@ from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
     ResolvedModelExecutionV1,
+    EffectiveMediaParameterSnapshotV2,
 )
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
@@ -161,12 +162,38 @@ class ProviderTaskRecoveryService:
             return False
         payload = self._downloader(current)
         node = self._workflows.get_node(task.workflow_id, task.node_id)
+        member = next(
+            item
+            for item in self._runtime.list_members(task.execution_id)
+            if item.node_id == task.node_id
+        )
         stored_resolution = current.result_descriptor.get("model_resolution")
         resolution = (
             ResolvedModelExecutionV1.model_validate(stored_resolution)
             if isinstance(stored_resolution, dict)
             else None
         )
+        effective_parameters = member.effective_parameters
+        snapshot_id = (
+            member.parameter_compilation_snapshot_id
+            or str(current.result_descriptor.get("parameter_compilation_snapshot_id") or "")
+            or None
+        )
+        if effective_parameters is None and snapshot_id is not None:
+            snapshot = self._runtime.get_parameter_compilation_snapshot(snapshot_id)
+            effective_parameters = EffectiveMediaParameterSnapshotV2(
+                requested=snapshot.requested_parameters,
+                effective=snapshot.effective_parameters,
+                normalizations=snapshot.normalizations,
+                parameter_compilation_snapshot_id=snapshot.snapshot_id,
+                provider=(resolution.provider_id if resolution is not None else task.provider),
+                model_id=(
+                    resolution.provider_model_id if resolution is not None else snapshot.model_ref
+                ),
+                capability_revision=snapshot.capability_revision,
+            )
+        if effective_parameters is not None:
+            node = node.model_copy(update={"parameters": effective_parameters.requested})
         context = NodeExecutionContext(
             execution_id=task.execution_id,
             node=node,
@@ -174,14 +201,10 @@ class ProviderTaskRecoveryService:
             model_id=resolution.provider_model_id if resolution is not None else None,
             provider_id=resolution.provider_id if resolution is not None else None,
             model_resolution=resolution,
+            effective_parameters=effective_parameters,
         )
         fingerprint = f"provider-task:{task.task_id}"
         asset_id = self._media_publisher(context, payload, fingerprint)
-        member = next(
-            item
-            for item in self._runtime.list_members(task.execution_id)
-            if item.node_id == task.node_id
-        )
         if not self._state_machine.transition_member(
             self._runtime,
             member,
