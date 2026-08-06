@@ -10,6 +10,7 @@ from app.schemas.agent_canvas_creative_session import (
     GuidanceCompletionProjectionV2,
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
+    GuidanceTopicKindV2,
 )
 from app.services.agent_canvas_guidance_ownership import TOPIC_SPECIALIST
 
@@ -25,6 +26,7 @@ class GuidanceDecisionValidator:
         workflow: AgentCanvasWorkflowV2,
         resolved_targets: tuple[str, ...],
         open_proposal: ConceptProposalV2 | None = None,
+        required_topic_kind: GuidanceTopicKindV2 | None = None,
     ) -> NextGuidanceDecisionV2:
         if (
             session is None
@@ -37,6 +39,13 @@ class GuidanceDecisionValidator:
         }
         if any(target_id not in workflow_ids for target_id in resolved_targets):
             raise _decision_error("A resolved target is outside the current Workflow.")
+        if required_topic_kind is not None:
+            if decision.action == "finish_guidance":
+                raise _decision_error("World Setting must be established before guidance finishes.")
+            if decision.action == "propose_topic" and decision.topic_kind != required_topic_kind:
+                raise _decision_error(
+                    "World Setting must be the first creative topic in guided production."
+                )
         if decision.action == "propose_topic":
             if session is not None and session.status != "active":
                 raise _decision_error("A paused or completed session cannot propose a topic.")
