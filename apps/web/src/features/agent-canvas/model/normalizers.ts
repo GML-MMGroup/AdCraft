@@ -120,6 +120,7 @@ const CANVAS_MODEL_AVAILABILITIES = new Set<CanvasModelSummaryV2["availability"]
 ]);
 const CANVAS_CREATIVE_ROLES = new Set<CanvasCreativeRoleV2>([
   "creative_brief",
+  "world_setting",
   "script",
   "product",
   "prop",
@@ -200,6 +201,7 @@ const PROPOSAL_ACTIONS = new Set<ProposalActionDescriptorV2["action"]>([
   "delegate_choice",
 ]);
 const GUIDANCE_TOPIC_KINDS = new Set<GuidanceTopicKindV2>([
+  "world_setting",
   "creative_direction",
   "product",
   "prop",
@@ -1585,6 +1587,9 @@ export function normalizeConceptProposalV2(
   );
   const options = expectArray(record.options, `${path}.options`).map((item, index) => normalizeConceptOptionV2(item, `${path}.options[${index}]`));
   if (options.length < 1 || options.length > 4) fail(`${path}.options`, "expected between 1 and 4 options");
+  if (record.proposal_kind === "world_setting" && (options.length < 2 || options.length > 3)) {
+    fail(`${path}.options`, "World Setting proposals require between 2 and 3 options");
+  }
   return {
     proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -1600,6 +1605,7 @@ export function normalizeConceptProposalV2(
     proposal_kind: expectLiteral(
       record.proposal_kind,
       new Set<ConceptProposalV2["proposal_kind"]>([
+        "world_setting",
         "script",
         "product",
         "prop",

@@ -193,6 +193,37 @@
   50% { box-shadow: 0 0 0 8px rgb(149 129 215 / 0%); }
 }
 
+.agent-chat__working {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  min-height: 24px;
+  padding: 4px 6px;
+  color: #77788a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__working-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgb(149 129 215 / 24%);
+  border-top-color: #9581d7;
+  border-radius: 50%;
+  animation: agent-chat-working-spin 760ms linear infinite;
+}
+
+@keyframes agent-chat-working-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__working-spinner {
+    animation: none;
+  }
+}
+
 .agent-chat__artifact {
   display: grid;
   grid-template-columns: 28px 1fr auto;

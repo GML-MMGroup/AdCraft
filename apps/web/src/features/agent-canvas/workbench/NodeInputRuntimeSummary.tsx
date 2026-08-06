@@ -35,6 +35,14 @@ function resolvedInputs(
     inputRole: input.input_role,
     required: input.required,
   }));
+  const worldSetting = (inputManifest.world_setting_inputs ?? []).map((input) => ({
+    bindingId: input.binding_id,
+    displayOrder: input.display_order,
+    sourceName: nodeName(workflow, input.source_node_id),
+    mediaType: "text" as const,
+    inputRole: "world_setting",
+    required: input.required,
+  }));
   const media = inputManifest.media_inputs.map((input) => ({
     bindingId: input.binding_id,
     displayOrder: input.display_order,
@@ -44,7 +52,7 @@ function resolvedInputs(
     inputRole: input.input_role,
     required: input.required,
   }));
-  return [...text, ...media].sort((left, right) => (
+  return [...text, ...worldSetting, ...media].sort((left, right) => (
     left.displayOrder - right.displayOrder || left.bindingId.localeCompare(right.bindingId)
   ));
 }
@@ -69,14 +77,21 @@ export function NodeInputRuntimeSummary({
   const omitted = inputManifest?.node_id === node.node_id
     ? inputManifest.omitted_optional_inputs
     : [];
+  const hasWorldSettingFallback = inputManifest?.node_id === node.node_id
+    && (inputManifest.world_setting_inputs ?? []).some((input) => input.projection_mode === "fallback");
 
-  if (!issue && !inputs.length && !omitted.length) return null;
+  if (!issue && !inputs.length && !omitted.length && !hasWorldSettingFallback) return null;
 
   return (
     <section className="agent-node-workbench__runtime-inputs" aria-label="Resolved node inputs">
       {issue ? (
         <p className="agent-node-workbench__input-warning" role="status">
           Waiting for required inputs: {issue.source_node_ids.map((sourceNodeId) => nodeName(workflow, sourceNodeId)).join(", ")}
+        </p>
+      ) : null}
+      {hasWorldSettingFallback ? (
+        <p className="agent-node-workbench__input-warning" role="status">
+          World Setting is using a fallback projection for this run.
         </p>
       ) : null}
       {inputs.length ? (

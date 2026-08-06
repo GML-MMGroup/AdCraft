@@ -13,6 +13,7 @@ import type {
 import {
   ActionReceiptCard,
   AgentCanvasChatPanel,
+  AgentWorkingRow,
   CommandPlanCard,
   GuidanceSessionProgress,
   GuidedActionsCard,
@@ -52,6 +53,18 @@ describe("chat composer textarea", () => {
     textarea.scrollTop = 29;
     snapChatComposerScroll(textarea);
     expect(textarea.scrollTop).toBe(20);
+  });
+});
+
+describe("AgentWorkingRow", () => {
+  afterEach(() => cleanup());
+
+  it("announces that the Agent is working and renders a loading indicator", () => {
+    render(<AgentWorkingRow />);
+
+    expect(screen.getByRole("status", { name: "AdCraft Video Agent is working" })).toBeTruthy();
+    expect(screen.getByText("Working")).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
   });
 });
 
@@ -205,6 +218,41 @@ describe("ProposalCard", () => {
     expect(screen.getByText("Hero")).toBeTruthy();
     expect(screen.getByText(/Applied 1 time/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
+  });
+
+  it("renders only the World Setting actions returned by the backend", () => {
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            proposal_kind: "world_setting",
+            specialist_name: "script_writer",
+            options: [
+              { option_id: "world-1", title: "Quiet future", summary_prompt: "A calm near-future city." },
+              { option_id: "world-2", title: "Living heritage", summary_prompt: "Modern craft rooted in tradition." },
+            ],
+            actions: [
+              proposalAction("select_option", "Use this world"),
+              proposalAction("revise_options", "Revise worlds"),
+              proposalAction("delegate_choice", "Let AdCraft choose"),
+            ],
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Quiet future/ }));
+    expect(screen.getByRole("button", { name: "Use this world" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Revise worlds" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Let AdCraft choose" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Decide later" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exclude character" })).toBeNull();
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CanvasConnectionPolicyV2 } from "../../../types-v2.ts";
 import {
+  MANUAL_BINDING_REQUIRED,
   compatibleConnectedNodeTypes,
   connectionRuleForPair,
 } from "./connectionPolicy.ts";
@@ -55,6 +56,10 @@ const policy: CanvasConnectionPolicyV2 = {
 };
 
 describe("Agent Canvas connection policy", () => {
+  it("keeps user-created canvas connections optional by default", () => {
+    expect(MANUAL_BINDING_REQUIRED).toBe(false);
+  });
+
   it("derives downstream and upstream add-menu types from backend role rules", () => {
     expect(compatibleConnectedNodeTypes(policy, "text", "downstream")).toEqual(["image"]);
     expect(compatibleConnectedNodeTypes(policy, "editing", "upstream")).toEqual(["audio"]);

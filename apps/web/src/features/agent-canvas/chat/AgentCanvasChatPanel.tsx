@@ -81,8 +81,8 @@ export function AgentCanvasChatPanel({
     const sessionActions = chat.state.currentSessionActions
       .map((action) => `${action.action_id}:${action.state}`)
       .join(",");
-    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${sessionActions}`;
-  }, [chat.state.currentSessionActions, chat.state.items]);
+    return `${chat.state.items.length}:${latestItem?.sequence ?? ""}:${sessionActions}:${chat.state.agentWorking}`;
+  }, [chat.state.agentWorking, chat.state.currentSessionActions, chat.state.items]);
   const timelineScroll = useChatTimelineScroll({
     contentVersion: timelineContentVersion,
     resetKey: workflow.workflow_id,
@@ -121,8 +121,8 @@ export function AgentCanvasChatPanel({
         <div>
           <strong>AdCraft Video Agent</strong>
           <span>
-            {chat.state.sending
-              ? "Thinking"
+            {chat.state.agentWorking
+              ? "Working"
               : activeContinuation
                 ? continuationLabel(activeContinuation)
                 : currentTopic
@@ -228,6 +228,7 @@ export function AgentCanvasChatPanel({
                 onApply={chat.actions.applyGuidedAction}
               />
             ) : null}
+            {chat.state.agentWorking ? <AgentWorkingRow /> : null}
           </div>
         </div>
         {timelineScroll.hasUnseenContent ? (
@@ -370,6 +371,19 @@ export function AgentCanvasChatPanel({
         ) : null}
       </div>
     </aside>
+  );
+}
+
+export function AgentWorkingRow() {
+  return (
+    <div
+      className="agent-chat__working"
+      role="status"
+      aria-label="AdCraft Video Agent is working"
+    >
+      <span>Working</span>
+      <i className="agent-chat__working-spinner" aria-hidden="true" />
+    </div>
   );
 }
 

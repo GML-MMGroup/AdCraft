@@ -187,6 +187,33 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByRole("button", { name: /Run text node/i })).toBeNull();
   });
 
+  it("labels and displays a World Setting as a Ready text document", () => {
+    const node: CanvasNodeV2 = {
+      ...makeNode("text", "ready"),
+      creative_role: "world_setting",
+      title: "World Setting",
+      summary_prompt: null,
+      structured_content: {
+        document_kind: "world_setting",
+        contract_version: "world-setting-v1",
+        content: "A timeless mountain city governed by seasonal light and handmade technology.",
+        authoring_provenance: {
+          source_proposal_id: "proposal-world-1",
+          source_option_id: "option-world-1",
+          materialization_run_id: "materialization-1",
+          style_skill_run_id: null,
+          creative_direction_snapshot_id: null,
+        },
+      },
+    };
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("World Setting node, Ready")).toBeTruthy();
+    expect(screen.getByLabelText("World Setting node")).toBeTruthy();
+    expect(screen.getByText(/timeless mountain city/)).toBeTruthy();
+  });
+
   it("keeps a blocked Draft visible as waiting for upstream output", () => {
     render(
       <AgentCanvasNodeCard

@@ -119,6 +119,7 @@ export function useAgentCanvasChat({
 }) {
   const [persistedItems, setPersistedItems] = useState<ChatTimelineItemV2[]>([]);
   const [optimisticItems, setOptimisticItems] = useState<ChatTimelineItemV2[]>([]);
+  const [pendingAgentTurnIds, setPendingAgentTurnIds] = useState<string[]>([]);
   const [guidanceSession, setGuidanceSession] = useState<GuidedSessionStateV2 | null>(null);
   const [currentSessionActions, setCurrentSessionActions] = useState<GuidanceSessionActionV2[]>([]);
   const [continuationsById, setContinuationsById] = useState<Record<string, AgentCanvasContinuationV2>>({});
@@ -152,6 +153,9 @@ export function useAgentCanvasChat({
     if (!workflowId) return;
     try {
       const turn = await agentCanvasApi.agentCanvasChatTurn(workflowId, turnId);
+      if (turn.status === "completed" || turn.status === "failed") {
+        setPendingAgentTurnIds((current) => current.filter((item) => item !== turnId));
+      }
       if (turn.continuation) upsertContinuation(turn.continuation);
       const terminalErrorCode = turn.continuation?.last_error_code ?? turn.error_code;
       const terminalErrorMessage = turn.continuation?.last_error_message ?? turn.error_message;
@@ -174,6 +178,9 @@ export function useAgentCanvasChat({
     submittedDraft?: SubmitDraft,
   ) => {
     if (submittedDraft) submittedDraftsByTurnIdRef.current.set(accepted.turn_id, submittedDraft);
+    setPendingAgentTurnIds((current) => (
+      current.includes(accepted.turn_id) ? current : [...current, accepted.turn_id]
+    ));
     void refreshTurn(accepted.turn_id);
   }, [refreshTurn]);
 
@@ -335,6 +342,7 @@ export function useAgentCanvasChat({
     workflowGenerationRef.current += 1;
     setPersistedItems([]);
     setOptimisticItems([]);
+    setPendingAgentTurnIds([]);
     setGuidanceSession(null);
     setCurrentSessionActions([]);
     setContinuationsById({});
@@ -355,7 +363,25 @@ export function useAgentCanvasChat({
   }, [workflowId]);
 
   useEffect(() => {
+    setPendingAgentTurnIds((current) => {
+      const next = new Set(current);
+      chatEvents.forEach((event) => {
+        if (event.workflow_id !== workflowId || !event.turn_id) return;
+        if (event.event_type === "agent_turn_queued" || event.event_type === "agent_turn_started") {
+          next.add(event.turn_id);
+        }
+        if (event.event_type === "agent_turn_completed" || event.event_type === "agent_turn_failed") {
+          next.delete(event.turn_id);
+        }
+      });
+      const reconciled = [...next];
+      return reconciled.length === current.length
+        && reconciled.every((turnId, index) => turnId === current[index])
+        ? current
+        : reconciled;
+    });
     chatEvents.forEach((event) => {
+      if (event.workflow_id !== workflowId) return;
       if (event.event_type === "action_receipt_created") {
         const receiptId = event.payload?.receipt_id;
         if (typeof receiptId === "string" && !deliveredReceiptIdsRef.current.has(receiptId)) {
@@ -366,7 +392,7 @@ export function useAgentCanvasChat({
         void refreshTurn(event.turn_id);
       }
     });
-  }, [chatEvents, refreshTurn]);
+  }, [chatEvents, refreshTurn, workflowId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 80);
@@ -633,6 +659,7 @@ export function useAgentCanvasChat({
       continuations: Object.values(continuationsById),
       loading,
       sending,
+      agentWorking: sending || pendingAgentTurnIds.length > 0,
       actingProposalId,
       actingCommandPlanId,
       actingGuidedActionId,

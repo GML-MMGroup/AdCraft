@@ -197,6 +197,140 @@ function progressiveGuidanceSessionPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("accepts the canonical World Setting node, proposal, guidance topic, and persisted binding", () => {
+    const worldSettingDocument = {
+      document_kind: "world_setting",
+      contract_version: "world-setting-v1",
+      content: "A near-future coastal city where quiet technology blends into daily rituals.",
+      authoring_provenance: {
+        source_proposal_id: "proposal-world-1",
+        source_option_id: "world-option-1",
+        materialization_run_id: "materialization-1",
+        style_skill_run_id: null,
+        creative_direction_snapshot_id: "direction-1",
+      },
+    };
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      nodes: [
+        {
+          ...validWorkflowPayload().nodes[0],
+          node_id: "node-world-setting",
+          creative_role: "world_setting",
+          title: "World Setting",
+          structured_content: worldSettingDocument,
+        },
+        validWorkflowPayload().nodes[1],
+      ],
+      bindings: [{
+        binding_id: "binding-world-setting",
+        workflow_id: "workflow-1",
+        source: { kind: "node_output", source_node_id: "node-world-setting" },
+        target_node_id: "node-image-1",
+        input_role: "text_context",
+        required: true,
+        enabled: true,
+        order: 0,
+        label: "World Setting",
+        metadata: { context_kind: "world_setting" },
+        created_at: "2026-08-06T10:00:00Z",
+        updated_at: "2026-08-06T10:00:00Z",
+      }],
+    });
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-world-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-world-1",
+      video_skill_run_id: null,
+      topic_id: "topic-world-setting",
+      creative_direction_snapshot_id: "direction-1",
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "world_setting",
+      specialist_name: "script_writer",
+      options: [
+        { option_id: "world-option-1", title: "Quiet future", summary_prompt: "A restrained near-future city." },
+        { option_id: "world-option-2", title: "Living heritage", summary_prompt: "Tradition expressed through modern craft." },
+      ],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Choose the production world",
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 4,
+      actions: [
+        {
+          action_id: "world-select",
+          action: "select_option",
+          label: "Use this world",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Materialize the selected World Setting.",
+        },
+        {
+          action_id: "world-revise",
+          action: "revise_options",
+          label: "Revise options",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Request revised World Setting options.",
+        },
+        {
+          action_id: "world-delegate",
+          action: "delegate_choice",
+          label: "Let AdCraft choose",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Delegate the World Setting choice.",
+        },
+      ],
+      created_at: "2026-08-06T10:00:00Z",
+      updated_at: "2026-08-06T10:00:00Z",
+    });
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: {
+        ...progressiveGuidanceSessionPayload(),
+        current_topic_id: "topic-world-setting",
+        active_proposal_id: "proposal-world-1",
+        topics: [{
+          topic_id: "topic-world-setting",
+          topic_kind: "world_setting",
+          title: "World Setting",
+          status: "proposed",
+          specialist_name: "script_writer",
+          related_node_ids: ["node-world-setting"],
+          source_proposal_id: "proposal-world-1",
+          revision: 1,
+        }],
+      },
+      continuations: [],
+      current_session_actions: [],
+      items: [],
+      next_cursor: 0,
+    });
+
+    expect(workflow.nodes[0]).toMatchObject({
+      creative_role: "world_setting",
+      structured_content: worldSettingDocument,
+    });
+    expect(workflow.bindings[0]).toMatchObject({
+      input_role: "text_context",
+      required: true,
+      metadata: { context_kind: "world_setting" },
+    });
+    expect(proposal.proposal_kind).toBe("world_setting");
+    expect(proposal.options).toHaveLength(2);
+    expect(timeline.guidanceSession?.topics[0]?.topic_kind).toBe("world_setting");
+  });
+
   it("normalizes the canonical progressive guidance timeline", () => {
     const timeline = normalizeAgentCanvasChatTimelineV2({
       workflow_id: "workflow-1",

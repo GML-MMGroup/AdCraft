@@ -103,9 +103,10 @@ export function useNodeWorkbenchDraft({
   const draftNodeIdRef = useRef(node.node_id);
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
+  const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
   const editsTextContent = node.node_type === "text" || node.node_type === "script";
   const editsGenerationPrompt = ["image", "video", "audio"].includes(node.node_type);
-  const usesProvider = ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
@@ -188,6 +189,21 @@ export function useNodeWorkbenchDraft({
         setDirty(false);
         setParameterMigrationRequired(false);
       }
+      return saved;
+    }
+
+    if (isWorldSetting) {
+      if (!textContent.trim()) {
+        setError("World Setting content cannot be empty.");
+        return false;
+      }
+      const saved = await perform(() => patchNode(node.node_id, {
+        structured_content: {
+          ...node.structured_content,
+          content: textContent,
+        },
+      }));
+      if (saved) setDirty(false);
       return saved;
     }
 
@@ -279,6 +295,7 @@ export function useNodeWorkbenchDraft({
     errorAction,
     dirty,
     isReadyMedia,
+    isWorldSetting,
     editsTextContent,
     editsGenerationPrompt,
     usesProvider,
