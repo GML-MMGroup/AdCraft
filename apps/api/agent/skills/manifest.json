@@ -104,6 +104,11 @@
       "path": "visual_continuity_check/SKILL.md",
       "sha256": "de1a64e386e46c4c36a43959f719dcf6dfc2eacb12126d465a04ca6686e03859",
       "skill_id": "visual_continuity_check"
+    },
+    {
+      "path": "world_setting_development/SKILL.md",
+      "sha256": "4b1fc0ebc3a1e1fe2e5c3c96cc889eef21903c2208544885ae4b044d22aad957",
+      "skill_id": "world_setting_development"
     }
   ],
   "version": "1"

@@ -42,6 +42,11 @@ from app.schemas.workflow_v2_prompt_contracts import (
 from app.schemas.workflow_v2_screenplay import V2EditableScriptDocument, V2ScriptPlanV2
 from app.schemas.workflow_v2_storyboard_detail import V2StoryboardDetailPlan
 from app.schemas.workflow_v2_style import V2VisualStyleScopeRepairOutput
+from app.schemas.agent_canvas_world_setting import (
+    WorldSettingMaterializationDraftV1,
+    WorldSettingProposalDraftV1,
+    WorldSettingReadyProjectionBundleV1,
+)
 
 
 _CONTRACTS: dict[str, type[BaseModel]] = {
@@ -57,6 +62,9 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         CreationModeDecisionV2,
         NextGuidanceDecisionV2,
         DelegatedProposalChoiceV2,
+        WorldSettingProposalDraftV1,
+        WorldSettingMaterializationDraftV1,
+        WorldSettingReadyProjectionBundleV1,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
