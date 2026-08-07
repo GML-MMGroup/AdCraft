@@ -27,8 +27,6 @@ const IMAGE_NODE_TARGET_AREA = 96_000;
 const IMAGE_NODE_MAX_WIDTH = 360;
 const IMAGE_NODE_MAX_HEIGHT = 360;
 const IMAGE_NODE_MIN_EDGE = 128;
-const FOCUSED_NODE_MAX_WIDTH = 1040;
-const FOCUSED_NODE_MAX_HEIGHT = 680;
 
 export function validAgentCanvasMediaDimensions(
   dimensions?: AgentCanvasMediaDimensions | null,
@@ -75,28 +73,4 @@ export function agentCanvasNodePlacementSize(
     return UNKNOWN_IMAGE_NODE_SIZE;
   }
   return agentCanvasNodeSize(nodeType, dimensions);
-}
-
-export function agentCanvasFocusedNodeSize(
-  nodeType: CanvasNodeTypeV2,
-  dimensions?: AgentCanvasMediaDimensions | null,
-): AgentCanvasNodeSize {
-  if (
-    !["image", "video", "editing"].includes(nodeType)
-    || !validAgentCanvasMediaDimensions(dimensions)
-  ) {
-    return { width: FOCUSED_NODE_MAX_WIDTH, height: FOCUSED_NODE_MAX_HEIGHT };
-  }
-
-  const ratio = dimensions.width / dimensions.height;
-  if (ratio >= FOCUSED_NODE_MAX_WIDTH / FOCUSED_NODE_MAX_HEIGHT) {
-    return {
-      width: FOCUSED_NODE_MAX_WIDTH,
-      height: Math.round(FOCUSED_NODE_MAX_WIDTH / ratio),
-    };
-  }
-  return {
-    width: Math.round(FOCUSED_NODE_MAX_HEIGHT * ratio),
-    height: FOCUSED_NODE_MAX_HEIGHT,
-  };
 }

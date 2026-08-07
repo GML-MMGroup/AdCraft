@@ -380,39 +380,6 @@ describe("AgentCanvasNodeCard", () => {
     expect(shell?.style.height).toBe("203px");
   });
 
-  it("temporarily expands a focused media node without changing its canonical position", () => {
-    const data: AgentCanvasNodeData = {
-      node: makeNode("image", "ready"),
-      asset: { ...makeAsset("image"), width: 1920, height: 1080 },
-      focused: true,
-    };
-
-    const { container } = render(
-      <ReactFlowProvider>
-        <AgentCanvasNodeRenderer
-          id={data.node.node_id}
-          data={data}
-          type="agentCanvas"
-          selected
-          dragging={false}
-          draggable
-          selectable
-          deletable
-          isConnectable
-          zIndex={0}
-          positionAbsoluteX={0}
-          positionAbsoluteY={0}
-        />
-      </ReactFlowProvider>,
-    );
-
-    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
-    expect(shell?.classList).toContain("agent-canvas-node-shell--focused");
-    expect(shell?.style.width).toBe("1040px");
-    expect(shell?.style.height).toBe("585px");
-    expect(data.node.position).toEqual({ x: 80, y: 120 });
-  });
-
   it("falls back to the loaded image dimensions when asset metadata is missing", () => {
     const data: AgentCanvasNodeData = {
       node: makeNode("image", "ready"),

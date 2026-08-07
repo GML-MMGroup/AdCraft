@@ -154,19 +154,17 @@ describe("canvasGraphModel", () => {
     });
   });
 
-  it("marks only the active focus node and gives React Flow its temporary expanded size", () => {
+  it("keeps canonical node dimensions and data independent from viewport focus", () => {
     const focusedWorkflow = {
       ...workflow,
       assets: [{ ...workflow.assets[0]!, width: 1920, height: 1080 }],
     };
 
-    const nodes = toAgentCanvasFlowNodes(focusedWorkflow, null, {}, "image-1");
+    const nodes = toAgentCanvasFlowNodes(focusedWorkflow, null, {});
+    const imageNode = nodes.find((item) => item.id === "image-1");
 
-    expect(nodes.find((item) => item.id === "image-1")).toMatchObject({
-      style: { width: 1040, height: 585 },
-      data: { focused: true },
-    });
-    expect(nodes.find((item) => item.id === "video-1")?.data.focused).toBe(false);
+    expect(imageNode?.style).toEqual({ width: 360, height: 203 });
+    expect(imageNode?.data).not.toHaveProperty("focused");
   });
 
   it("removes Script nodes and their incident bindings from the visible canvas", () => {

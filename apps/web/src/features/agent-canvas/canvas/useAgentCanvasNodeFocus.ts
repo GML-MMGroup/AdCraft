@@ -17,6 +17,7 @@ interface UseAgentCanvasNodeFocusOptions {
 }
 
 const OTHER_NODE_EXIT_DELAY_MS = 220;
+export const AGENT_CANVAS_FOCUS_MAX_ZOOM = 4;
 
 export function useAgentCanvasNodeFocus({
   flowRef,
@@ -69,7 +70,7 @@ export function useAgentCanvasNodeFocus({
         padding: 0.12,
         duration: 420,
         minZoom: 0.05,
-        maxZoom: 2,
+        maxZoom: AGENT_CANVAS_FOCUS_MAX_ZOOM,
       });
     });
   }, [cancelPendingExit, cancelPendingFit, flowRef]);
