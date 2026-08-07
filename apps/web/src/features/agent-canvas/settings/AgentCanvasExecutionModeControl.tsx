@@ -1,14 +1,11 @@
-import type { GuidedSessionStateV2 } from "../../../types-v2.ts";
 import { useAgentCanvasExecutionSettings } from "./useAgentCanvasExecutionSettings.ts";
 import "./agent-canvas-settings.css";
 
 export function AgentCanvasExecutionModeControl({
   workflowId,
-  guidanceMode,
   eventRevision,
 }: {
   workflowId: string;
-  guidanceMode: GuidedSessionStateV2["guidance_mode"] | null;
   eventRevision: number;
 }) {
   const execution = useAgentCanvasExecutionSettings(workflowId, eventRevision);
@@ -16,38 +13,21 @@ export function AgentCanvasExecutionModeControl({
 
   return (
     <div className="agent-execution-mode">
-      <div className="agent-execution-mode__authority">
-        <span>Guidance</span>
-        <strong>
-          {guidanceMode === "delegated"
-            ? "Delegated"
-            : guidanceMode === "collaborative"
-              ? "Collaborative"
-              : "Not started"}
-        </strong>
-      </div>
       <div className="agent-execution-mode__control">
-        <span>Media</span>
-        <div role="group" aria-label="Media execution mode">
-          <button
-            type="button"
-            aria-label="Manual media execution"
-            aria-pressed={execution.settings?.media_execution_mode === "manual"}
-            disabled={disabled}
-            onClick={() => void execution.setMode("manual")}
-          >
-            Manual
-          </button>
-          <button
-            type="button"
-            aria-label="Automatic media execution"
-            aria-pressed={execution.settings?.media_execution_mode === "automatic"}
-            disabled={disabled}
-            onClick={() => void execution.setMode("automatic")}
-          >
-            Automatic
-          </button>
-        </div>
+        <span>Collaboration</span>
+        <button
+          type="button"
+          role="switch"
+          aria-label="Automatic media collaboration"
+          aria-checked={execution.settings?.media_execution_mode === "automatic"}
+          disabled={disabled}
+          title="Allow future eligible media Drafts to run automatically"
+          onClick={() => void execution.setMode(
+            execution.settings?.media_execution_mode === "automatic" ? "manual" : "automatic",
+          )}
+        >
+          <i aria-hidden="true" />
+        </button>
       </div>
       {execution.conflict ? (
         <div className="agent-execution-mode__conflict" role="alert">

@@ -71,6 +71,7 @@ describe("AgentWorkingRow", () => {
 function proposalAction(
   action: ProposalActionDescriptorV2["action"],
   label: string,
+  optionId: string | null = null,
 ): ProposalActionDescriptorV2 {
   return {
     action_id: `action-${action}`,
@@ -80,6 +81,9 @@ function proposalAction(
     expected_session_revision: 7,
     confirmation_required: false,
     reason: `${label} for the active topic.`,
+    option_id: optionId,
+    enabled: true,
+    disabled_reason: null,
   };
 }
 
@@ -220,6 +224,36 @@ describe("ProposalCard", () => {
     expect(screen.queryByRole("button", { name: "Use this direction" })).toBeNull();
   });
 
+  it("renders enabled historical actions on a superseded proposal option", () => {
+    const onApplyAction = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            availability: "superseded",
+            actions: [
+              proposalAction("reuse_direction", "Use this direction", "option-1"),
+              proposalAction("revise_direction", "Revise this direction", "option-1"),
+            ],
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={onApplyAction}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Use this direction" }));
+    expect(onApplyAction).toHaveBeenCalledWith(
+      "proposal-1",
+      expect.objectContaining({ action: "reuse_direction", option_id: "option-1" }),
+    );
+    expect(screen.getByRole("button", { name: "Revise this direction" })).toBeTruthy();
+  });
+
   it("renders only the World Setting actions returned by the backend", () => {
     render(
       <ProposalCard
@@ -264,13 +298,28 @@ describe("progress and action cards", () => {
       session_id: "guidance-1",
       workflow_id: "workflow-1",
       status: "active",
-      guidance_mode: "collaborative",
       goal: {
         requested_output: "video",
         delivery_scope: "generated_media",
         summary: "Create a launch film.",
         explicit_constraints: {},
       },
+      creative_authority: {
+        authority: "user",
+        source: "explicit_user",
+        decided_at_turn_id: "turn-authority-1",
+        revision: 1,
+      },
+      current_checkpoint: {
+        checkpoint_id: "checkpoint-1",
+        workflow_id: "workflow-1",
+        session_revision: 7,
+        stage_kind: "scene",
+        status: "waiting_user",
+        trigger: "proposal_action",
+        action_id: null,
+      },
+      narrative_direction: null,
       element_decisions: [],
       current_topic_id: "topic-scene",
       topics: [
@@ -300,6 +349,8 @@ describe("progress and action cards", () => {
       completion: {
         authoring: "not_ready",
         delivery: "not_ready",
+        editing_preparation: "not_ready",
+        editing_node_id: null,
         matching_node_ids: ["node-character-1"],
         matching_asset_ids: [],
       },
@@ -314,6 +365,8 @@ describe("progress and action cards", () => {
     expect(screen.getByText("Scene direction")).toBeTruthy();
     expect(screen.getByText("Authoring: not ready")).toBeTruthy();
     expect(screen.getByText("Delivery: not ready")).toBeTruthy();
+    expect(screen.getByText("Direction: You")).toBeTruthy();
+    expect(screen.getByText("Checkpoint: scene · waiting user")).toBeTruthy();
   });
 
   it("renders only current stop or resume guidance actions", () => {
@@ -332,6 +385,7 @@ describe("progress and action cards", () => {
             workflow_id: "workflow-1",
             confirmation_required: true,
             reason: "A newer session revision exists.",
+            authority: null,
           },
           {
             action_id: "action-stop",
@@ -344,6 +398,7 @@ describe("progress and action cards", () => {
             workflow_id: "workflow-1",
             confirmation_required: true,
             reason: "Keep the current drafts.",
+            authority: null,
           },
         ]}
         actingActionId={null}
@@ -353,7 +408,10 @@ describe("progress and action cards", () => {
 
     expect(screen.queryByRole("button", { name: "Old stop action" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Stop guidance" }));
-    expect(onApply).toHaveBeenCalledWith("action-stop");
+    expect(onApply).toHaveBeenCalledWith(expect.objectContaining({
+      action_id: "action-stop",
+      action: "stop_guidance",
+    }));
   });
 });
 
@@ -456,10 +514,81 @@ describe("command and receipt cards", () => {
       sequence: 4,
       started_at: "2026-08-04T00:00:00Z",
       finished_at: null,
+      message: null,
+      error_code: null,
+      elapsed_ms: null,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      operation_policy_id: null,
+      suggested_actions: [],
+      completion_mode: null,
+      warning_code: null,
     };
     render(<SpecialistActivityRow activity={activity} />);
 
     expect(screen.getByText("Scene Designer is working")).toBeTruthy();
+  });
+
+  it("shows bounded recovery actions for a backend-owned specialist failure", () => {
+    const onRetry = vi.fn();
+    const onReviseRequest = vi.fn();
+    render(<SpecialistActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-failed",
+      turn_id: "turn-failed",
+      specialist: "scene_designer",
+      display_name: "Scene Designer",
+      operation: "materialize_draft",
+      status: "failed",
+      sequence: 5,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:07:00Z",
+      message: "The Specialist request timed out.",
+      error_code: "agent_deadline_exceeded",
+      elapsed_ms: 420000,
+      attempt_stage: "transport_retry",
+      retryable: true,
+      validation_paths: [],
+      operation_policy_id: "agent.materialization.v1",
+      suggested_actions: ["retry", "revise_request"],
+      completion_mode: null,
+      warning_code: null,
+    }} onRetry={onRetry} onReviseRequest={onReviseRequest} />);
+
+    expect(screen.getByText("agent_deadline_exceeded")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry specialist operation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revise specialist request" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onReviseRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats deterministic fallback as completed with a warning", () => {
+    render(<SpecialistActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-fallback",
+      turn_id: "turn-fallback",
+      specialist: "product_designer",
+      display_name: "Product Designer",
+      operation: "materialize_draft",
+      status: "completed",
+      sequence: 6,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:01:00Z",
+      message: null,
+      error_code: null,
+      elapsed_ms: null,
+      attempt_stage: null,
+      retryable: false,
+      validation_paths: [],
+      operation_policy_id: "agent.materialization.v1",
+      suggested_actions: [],
+      completion_mode: "deterministic_fallback",
+      warning_code: "specialist_materialization_fallback",
+    }} />);
+
+    expect(screen.getByText("Draft created with a simplified fallback.")).toBeTruthy();
+    expect(screen.queryByText(/failed/i)).toBeNull();
   });
 });
 

@@ -161,13 +161,28 @@ function progressiveGuidanceSessionPayload() {
     session_id: "guidance-1",
     workflow_id: "workflow-1",
     status: "active",
-    guidance_mode: "collaborative",
     goal: {
       requested_output: "video",
       delivery_scope: "generated_media",
       summary: "Create a calm product advertisement.",
       explicit_constraints: { dialogue: "none" },
     },
+    creative_authority: {
+      authority: "user",
+      source: "explicit_user",
+      decided_at_turn_id: "turn-authority-1",
+      revision: 1,
+    },
+    current_checkpoint: {
+      checkpoint_id: "checkpoint-1",
+      workflow_id: "workflow-1",
+      session_revision: 3,
+      stage_kind: "scene",
+      status: "waiting_user",
+      trigger: "user_message",
+      action_id: null,
+    },
+    narrative_direction: "A quiet product ritual that builds toward a precise reveal.",
     element_decisions: [{
       element_kind: "character",
       presence: "exclude",
@@ -191,6 +206,8 @@ function progressiveGuidanceSessionPayload() {
     completion: {
       authoring: "not_ready",
       delivery: "not_ready",
+      editing_preparation: "not_ready",
+      editing_node_id: null,
       matching_node_ids: [],
       matching_asset_ids: [],
     },
@@ -203,8 +220,14 @@ describe("Agent Canvas normalizers", () => {
   it("accepts the canonical World Setting node, proposal, guidance topic, and persisted binding", () => {
     const worldSettingDocument = {
       document_kind: "world_setting",
-      contract_version: "world-setting-v1",
+      contract_version: "world-setting-v2",
       content: "A near-future coastal city where quiet technology blends into daily rituals.",
+      core: {
+        premise: "Quiet technology is embedded in daily rituals.",
+        era_and_place: "A near-future coastal city.",
+        world_rules: ["Technology stays visually unobtrusive."],
+        visual_continuity: ["Mist, pale stone, and restrained warm light recur."],
+      },
       authoring_provenance: {
         source_proposal_id: "proposal-world-1",
         source_option_id: "world-option-1",
@@ -340,6 +363,166 @@ describe("Agent Canvas normalizers", () => {
     expect(proposal.options).toHaveLength(2);
     expect(timeline.guidanceSession?.element_decisions[0]?.element_kind).toBe("world_setting");
     expect(timeline.guidanceSession?.topics[0]?.topic_kind).toBe("world_setting");
+    expect(timeline.guidanceSession?.creative_authority).toMatchObject({ authority: "user" });
+    expect(timeline.guidanceSession?.current_checkpoint).toMatchObject({ stage_kind: "scene" });
+  });
+
+  it("normalizes superseded proposal actions and recoverable expert activity metadata", () => {
+    const historicalProposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-history-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-proposal-1",
+      video_skill_run_id: null,
+      topic_id: "topic-scene",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 2,
+      source_proposal_id: null,
+      proposal_kind: "scene",
+      specialist_name: "scene_designer",
+      options: [{ option_id: "option-scene-1", title: "Morning", summary_prompt: "Quiet morning light." }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "superseded",
+      application_count: 0,
+      latest_application: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 3,
+      actions: [{
+        action_id: "reuse:proposal-history-1:option-scene-1:3",
+        action: "reuse_direction",
+        label: "Use this direction",
+        proposal_id: "proposal-history-1",
+        expected_session_revision: 3,
+        confirmation_required: false,
+        reason: "Publish this historical direction as a sibling Draft.",
+        option_id: "option-scene-1",
+        enabled: true,
+        disabled_reason: null,
+      }],
+      created_at: "2026-08-07T00:00:00Z",
+      updated_at: "2026-08-07T00:01:00Z",
+    });
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: progressiveGuidanceSessionPayload(),
+      continuations: [],
+      current_session_actions: [{
+        action_id: "authority-director",
+        logical_key: "authority:director:3",
+        action: "set_creative_authority",
+        authority: "director",
+        state: "pending",
+        creating_turn_id: "turn-authority-2",
+        expected_session_revision: 3,
+        label: "Take the lead",
+        workflow_id: "workflow-1",
+        confirmation_required: false,
+        reason: "Let the Director choose the next direction.",
+      }],
+      items: [{
+        entry_id: "activity-entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 4,
+        entry_type: "expert_activity",
+        speaker: null,
+        content: "The Specialist request timed out.",
+        metadata: {
+          activity_id: "activity-1",
+          specialist_name: "scene_designer",
+          operation: "materialize_draft",
+          display_name: "Scene Designer",
+          status: "failed",
+          error_code: "agent_deadline_exceeded",
+          elapsed_ms: 420000,
+          attempt_stage: "transport_retry",
+          retryable: true,
+          validation_paths: ["draft.title"],
+          operation_policy_id: "agent.materialization.v1",
+          suggested_actions: ["retry", "revise_request"],
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-07T01:00:00Z",
+      }],
+      next_cursor: 4,
+    });
+
+    expect(timeline.current_session_actions[0]).toMatchObject({
+      action: "set_creative_authority",
+      authority: "director",
+    });
+    expect(historicalProposal.actions[0]).toMatchObject({
+      action: "reuse_direction",
+      option_id: "option-scene-1",
+      enabled: true,
+    });
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "expert_activity",
+      activity_id: "activity-1",
+      error_code: "agent_deadline_exceeded",
+      message: "The Specialist request timed out.",
+      retryable: true,
+      suggested_actions: ["retry", "revise_request"],
+    });
+  });
+
+  it("normalizes an unresolved creative-authority decision without inventing a mode", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-authority-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "message",
+      request: { text: "Help me decide." },
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_decision: {
+        action: "ask_clarification",
+        assistant_message: "Would you like to direct this step?",
+        rationale: "Creative authority is unresolved.",
+        topic_id: null,
+        topic_kind: null,
+        topic_title: null,
+        topic_objective: null,
+        specialist_name: null,
+        candidate_count: null,
+        suggested_next_topic_kinds: [],
+        intent_patch: null,
+        completion_claim: null,
+        creative_authority_resolution: {
+          outcome: "ask",
+          authority: null,
+          source: null,
+          actions: [{
+            action_id: "authority-user",
+            action: "set_creative_authority",
+            authority: "user",
+            label: "I have a direction",
+            expected_session_revision: 3,
+          }, {
+            action_id: "authority-director",
+            action: "set_creative_authority",
+            authority: "director",
+            label: "Take the lead",
+            expected_session_revision: 3,
+          }],
+        },
+      },
+      guidance_session_revision: 3,
+      continuation: null,
+      created_at: "2026-08-07T01:00:00Z",
+      updated_at: "2026-08-07T01:00:01Z",
+    });
+
+    expect(turn.guidance_decision?.creative_authority_resolution).toMatchObject({
+      outcome: "ask",
+      actions: [{ label: "I have a direction" }, { label: "Take the lead" }],
+    });
   });
 
   it("normalizes the canonical progressive guidance timeline", () => {

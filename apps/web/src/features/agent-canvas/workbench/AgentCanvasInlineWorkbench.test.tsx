@@ -165,6 +165,12 @@ describe("AgentCanvasInlineWorkbench", () => {
       style_skill_run_id: "style-run-1",
       creative_direction_snapshot_id: "direction-1",
     };
+    const core = {
+      premise: "Living craft quietly shapes modern life.",
+      era_and_place: "A contemporary coastal city.",
+      world_rules: ["Technology remains visually unobtrusive."],
+      visual_continuity: ["Pale stone and warm practical light recur."],
+    };
     const node: CanvasNodeV2 = {
       ...makeNode("text", "ready"),
       node_id: "world-setting-node",
@@ -172,8 +178,9 @@ describe("AgentCanvasInlineWorkbench", () => {
       title: "World Setting",
       structured_content: {
         document_kind: "world_setting",
-        contract_version: "world-setting-v1",
+        contract_version: "world-setting-v2",
         content: "A quiet contemporary city.",
+        core,
         authoring_provenance: provenance,
       },
     };
@@ -191,8 +198,9 @@ describe("AgentCanvasInlineWorkbench", () => {
       expect.objectContaining({
         structured_content: {
           document_kind: "world_setting",
-          contract_version: "world-setting-v1",
+          contract_version: "world-setting-v2",
           content: "A quiet contemporary city shaped by living craft traditions.",
+          core,
           authoring_provenance: provenance,
         },
       }),

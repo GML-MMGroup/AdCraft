@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("AgentCanvasExecutionModeControl", () => {
-  it("does not claim a guidance authority before a guided session exists", async () => {
+  it("renders one Collaboration control without guidance or authority modes", async () => {
     vi.spyOn(agentCanvasApi, "agentCanvasExecutionSettings").mockResolvedValue({
       value: manualSettings,
       etag: '"1"',
@@ -27,15 +27,18 @@ describe("AgentCanvasExecutionModeControl", () => {
     render(
       <AgentCanvasExecutionModeControl
         workflowId="workflow-1"
-        guidanceMode={null}
         eventRevision={0}
       />,
     );
 
-    expect(await screen.findByText("Not started")).toBeTruthy();
+    expect(await screen.findByText("Collaboration")).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Automatic media collaboration" })).toBeTruthy();
+    expect(screen.queryByText("Guidance")).toBeNull();
+    expect(screen.queryByText("Delegated")).toBeNull();
+    expect(screen.queryByText("Collaborative")).toBeNull();
   });
 
-  it("keeps guidance authority and media execution as independent controls", async () => {
+  it("changes only future eligible media Draft auto-run behavior", async () => {
     vi.spyOn(agentCanvasApi, "agentCanvasExecutionSettings").mockResolvedValue({
       value: manualSettings,
       etag: '"1"',
@@ -54,21 +57,19 @@ describe("AgentCanvasExecutionModeControl", () => {
     render(
       <AgentCanvasExecutionModeControl
         workflowId="workflow-1"
-        guidanceMode="collaborative"
         eventRevision={0}
       />,
     );
 
-    expect(await screen.findByText("Collaborative")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Automatic media execution" }));
+    const collaboration = await screen.findByRole("switch", { name: "Automatic media collaboration" });
+    fireEvent.click(collaboration);
 
     await waitFor(() => expect(patch).toHaveBeenCalledWith(
       "workflow-1",
       { media_execution_mode: "automatic" },
       1,
     ));
-    expect(screen.getByRole("button", { name: "Automatic media execution" })
-      .getAttribute("aria-pressed")).toBe("true");
+    expect(collaboration.getAttribute("aria-checked")).toBe("true");
   });
 
   it("refreshes a stale setting and waits for an explicit retry after 412", async () => {
@@ -101,13 +102,11 @@ describe("AgentCanvasExecutionModeControl", () => {
     render(
       <AgentCanvasExecutionModeControl
         workflowId="workflow-1"
-        guidanceMode="delegated"
         eventRevision={0}
       />,
     );
 
-    await screen.findByText("Delegated");
-    fireEvent.click(screen.getByRole("button", { name: "Automatic media execution" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Automatic media collaboration" }));
 
     expect(await screen.findByText(/changed in another session/i)).toBeTruthy();
     expect(read).toHaveBeenCalledTimes(2);

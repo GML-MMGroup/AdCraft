@@ -148,7 +148,6 @@ export function AgentCanvasChatPanel({
         />
         <AgentCanvasExecutionModeControl
           workflowId={workflow.workflow_id}
-          guidanceMode={chat.state.guidanceSession?.guidance_mode ?? null}
           eventRevision={settingsRevision}
         />
       </header>
@@ -190,7 +189,17 @@ export function AgentCanvasChatPanel({
                 );
               }
               if (item.item_type === "expert_activity") {
-                return <SpecialistActivityRow key={`activity-${item.activity_id}`} activity={item} />;
+                return (
+                  <SpecialistActivityRow
+                    key={`activity-${item.activity_id}`}
+                    activity={item}
+                    onRetry={() => void chat.actions.retrySpecialistActivity(item)}
+                    onReviseRequest={() => {
+                      setDraft(`Revise the ${item.display_name} request: `);
+                      window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+                    }}
+                  />
+                );
               }
               if (item.item_type === "artifact") {
                 return (
@@ -419,8 +428,12 @@ export function AgentWorkingRow() {
 
 export function SpecialistActivityRow({
   activity,
+  onRetry,
+  onReviseRequest,
 }: {
   activity: ChatExpertActivityV2;
+  onRetry?: () => void;
+  onReviseRequest?: () => void;
 }) {
   const label = activity.status === "working"
     ? `${activity.display_name} is working`
@@ -430,7 +443,41 @@ export function SpecialistActivityRow({
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>
       <i aria-hidden="true" />
-      <span>{label}</span>
+      <div>
+        <span>{label}</span>
+        {activity.status === "failed" ? (
+          <>
+            {activity.error_code ? <code>{activity.error_code}</code> : null}
+            {activity.message ? <small>{activity.message}</small> : null}
+            <div className="agent-chat__activity-actions">
+              {activity.suggested_actions.includes("retry") && onRetry ? (
+                <button
+                  type="button"
+                  aria-label="Retry specialist operation"
+                  onClick={onRetry}
+                >
+                  Retry
+                </button>
+              ) : null}
+              {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
+                <button
+                  type="button"
+                  aria-label="Revise specialist request"
+                  onClick={onReviseRequest}
+                >
+                  Revise request
+                </button>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+        {activity.completion_mode === "deterministic_fallback"
+          && activity.warning_code === "specialist_materialization_fallback" ? (
+            <small className="agent-chat__activity-warning">
+              Draft created with a simplified fallback.
+            </small>
+          ) : null}
+      </div>
     </div>
   );
 }
@@ -486,6 +533,15 @@ export function GuidanceSessionProgress({
         <p>The agent is preparing the next creative decision.</p>
       )}
       <div className="agent-chat__completion" aria-label="Guidance completion">
+        {session.creative_authority ? (
+          <span>Direction: {session.creative_authority.authority === "user" ? "You" : "Director"}</span>
+        ) : null}
+        {session.current_checkpoint ? (
+          <span>
+            Checkpoint: {session.current_checkpoint.stage_kind?.replaceAll("_", " ") ?? "planning"}
+            {` · ${session.current_checkpoint.status.replaceAll("_", " ")}`}
+          </span>
+        ) : null}
         <span>Authoring: {session.completion.authoring.replaceAll("_", " ")}</span>
         <span>Delivery: {session.completion.delivery.replaceAll("_", " ")}</span>
       </div>
@@ -608,15 +664,21 @@ export function ProposalCard({
   const [revising, setRevising] = useState(false);
   const proposal = card.proposal;
   const isOpen = proposal.availability === "open";
-  const selectAction = proposal.actions.find((action) => action.action === "select_option") ?? null;
-  const reviseAction = proposal.actions.find((action) => action.action === "revise_options") ?? null;
+  const isSuperseded = proposal.availability === "superseded";
+  const selectAction = proposal.actions.find((action) => action.action === "select_option" && action.enabled) ?? null;
+  const reviseAction = proposal.actions.find((action) => (
+    (action.action === "revise_options" || action.action === "revise_direction") && action.enabled
+  )) ?? null;
   const directActions = proposal.actions.filter((action) => (
-    action.action === "defer_topic"
-    || action.action === "exclude_element"
-    || action.action === "delegate_choice"
+    action.enabled && (
+      action.action === "defer_topic"
+      || action.action === "exclude_element"
+      || action.action === "delegate_choice"
+      || action.action === "reuse_direction"
+    )
   ));
   const canSelect = isOpen && Boolean(selectAction);
-  const canRevise = isOpen && Boolean(reviseAction);
+  const canRevise = Boolean(reviseAction) && (isOpen || isSuperseded);
   const availableReferences = proposal.proposed_references;
   const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
     proposal.proposed_references,
@@ -758,7 +820,7 @@ export function ProposalCard({
           {issue}
         </p>
       ) : null}
-      {isOpen && (selectAction || reviseAction || directActions.length) ? (
+      {(isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
           {canSelect && selected && selectAction ? (
             <button
@@ -785,7 +847,7 @@ export function ProposalCard({
               <EditIcon />{reviseAction.label}
             </button>
           ) : null}
-          {isOpen ? directActions.map((action) => (
+          {directActions.map((action) => (
             <button
               type="button"
               key={action.action_id}
@@ -795,7 +857,7 @@ export function ProposalCard({
             >
               {action.label}
             </button>
-          )) : null}
+          ))}
         </div>
       ) : null}
       {revising && canRevise && reviseAction ? (
@@ -834,7 +896,7 @@ export function GuidedActionsCard({
 }: {
   actions: GuidanceSessionActionV2[];
   actingActionId: string | null;
-  onApply: (actionId: string) => Promise<void>;
+  onApply: (action: GuidanceSessionActionV2) => Promise<void>;
 }) {
   const visibleActions = actions.filter((action) => action.state !== "superseded");
   if (!visibleActions.length) return null;
@@ -846,7 +908,7 @@ export function GuidedActionsCard({
           key={action.action_id}
           disabled={action.state !== "pending" || Boolean(actingActionId)}
           title={action.reason}
-          onClick={() => void onApply(action.action_id)}
+          onClick={() => void onApply(action)}
         >
           <span>{action.label}</span>
           {action.state !== "pending" ? <small>{action.state}</small> : null}
