@@ -1,0 +1,155 @@
+export interface AgentTransportClassification {
+  readonly code: "agent_transport_failed";
+  readonly retryable: boolean;
+  readonly retryAfterMs: number;
+}
+
+interface TransportFailureShape {
+  readonly code?: unknown;
+  readonly status?: unknown;
+  readonly statusCode?: unknown;
+  readonly message?: unknown;
+  readonly retryAfterSeconds?: unknown;
+  readonly response?: {
+    readonly status?: unknown;
+    readonly headers?: { readonly get?: (name: string) => string | null };
+  };
+  readonly cause?: unknown;
+}
+
+const RETRYABLE_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EAI_AGAIN",
+  "ENOTFOUND",
+  "ERR_SSL_UNEXPECTED_EOF_WHILE_READING",
+]);
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+const RETRYABLE_MESSAGES = [
+  "connection reset",
+  "remote disconnect",
+  "socket hang up",
+  "tls eof",
+  "unexpected eof",
+  "dns lookup",
+  "connect failed",
+];
+
+export class AgentOperationFailure extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly retryable: boolean,
+    readonly attemptStage: "initial" | "transport_retry" | "structured_repair" =
+      "initial",
+  ) {
+    super(message);
+  }
+}
+
+export function classifyAgentTransportFailure(
+  candidate: unknown,
+): AgentTransportClassification {
+  const error = asFailureShape(candidate);
+  const cause = asFailureShape(error.cause);
+  const code = String(error.code ?? cause.code ?? "").toUpperCase();
+  const status = numberValue(
+    error.status ?? error.statusCode ?? error.response?.status,
+  );
+  const message = String(error.message ?? cause.message ?? candidate ?? "").toLowerCase();
+  const retryAfterSeconds = numberValue(error.retryAfterSeconds) ??
+    retryAfterHeader(error.response?.headers);
+  const retryable =
+    RETRYABLE_CODES.has(code) ||
+    (status !== undefined && RETRYABLE_STATUSES.has(status)) ||
+    RETRYABLE_MESSAGES.some((part) => message.includes(part)) ||
+    (status === 429 && retryAfterSeconds !== undefined);
+  return {
+    code: "agent_transport_failed",
+    retryable,
+    retryAfterMs: Math.max(0, (retryAfterSeconds ?? 0.25) * 1_000),
+  };
+}
+
+export async function runWithOneTransportRetry<T>(
+  operation: () => Promise<T>,
+  options: {
+    readonly deadlineEpochMs: number;
+    readonly now?: () => number;
+    readonly sleep?: (milliseconds: number) => Promise<void>;
+  },
+): Promise<T> {
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  }));
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (now() >= options.deadlineEpochMs) {
+      throw new AgentOperationFailure(
+        "agent_deadline_exceeded",
+        "Agent operation deadline exceeded.",
+        false,
+        attempt === 0 ? "initial" : "transport_retry",
+      );
+    }
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof AgentOperationFailure) throw error;
+      if (
+        error instanceof Error &&
+        error.message === "agent_structured_output_invalid"
+      ) {
+        throw new AgentOperationFailure(
+          error.message,
+          "Agent structured output remained invalid after repair.",
+          false,
+          "structured_repair",
+        );
+      }
+      const classification = classifyAgentTransportFailure(error);
+      const retryStage = attempt === 0 ? "initial" : "transport_retry";
+      const remainingMs = Math.max(0, options.deadlineEpochMs - now());
+      if (
+        attempt >= 1 ||
+        !classification.retryable ||
+        classification.retryAfterMs >= remainingMs
+      ) {
+        throw new AgentOperationFailure(
+          classification.code,
+          "Agent model transport failed.",
+          classification.retryable,
+          retryStage,
+        );
+      }
+      await sleep(classification.retryAfterMs);
+    }
+  }
+  throw new AgentOperationFailure(
+    "agent_transport_failed",
+    "Agent model transport failed.",
+    false,
+    "transport_retry",
+  );
+}
+
+function asFailureShape(candidate: unknown): TransportFailureShape {
+  return candidate && typeof candidate === "object"
+    ? (candidate as TransportFailureShape)
+    : { message: candidate };
+}
+
+function numberValue(candidate: unknown): number | undefined {
+  const value = typeof candidate === "number" ? candidate : Number(candidate);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+function retryAfterHeader(
+  headers: TransportFailureShape["response"] extends infer _T
+    ? { readonly get?: (name: string) => string | null } | undefined
+    : never,
+): number | undefined {
+  const value = headers?.get?.("retry-after");
+  return value === null || value === undefined ? undefined : numberValue(value);
+}

@@ -20,6 +20,7 @@ import {
   PythonInternalClient,
   type AgentCredentialSnapshot,
 } from "./python-internal-client.js";
+import { runWithOneTransportRetry } from "./operation-recovery.js";
 import {
   structuredRepairPrompt,
   structuredSubmissionPrompt,
@@ -101,6 +102,8 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     let acceptedResult: Record<string, unknown> | undefined;
     let attempts = 0;
+    const maximumStructuredAttempts =
+      1 + (request.policy?.structured_repair_limit ?? 1);
     const structuredTool: AgentTool<typeof structuredValueSchema> = {
       name: "submit_structured_result",
       label: "Submit structured result",
@@ -109,7 +112,9 @@ export class PiModelAdapter implements AgentModelAdapter {
       execute: async (toolCallId, params) => {
         budget?.consumeToolCall();
         attempts += 1;
-        if (attempts > 2) throw new Error("agent_structured_output_invalid");
+        if (attempts > maximumStructuredAttempts) {
+          throw new Error("agent_structured_output_invalid");
+        }
         const result = await this.python.executeTool({
           protocol_version: "1",
           run_id: request.run_id,
@@ -135,8 +140,9 @@ export class PiModelAdapter implements AgentModelAdapter {
         if (result.status === "completed") {
           acceptedResult = acceptedStructuredValue(result.result);
         } else if (
-          attempts >= 2 &&
-          result.error_code === "agent_structured_output_invalid"
+          result.error_code === "agent_structured_output_invalid" &&
+          (attempts >= maximumStructuredAttempts ||
+            result.result?.repair_allowed !== true)
         ) {
           throw new Error("agent_structured_output_invalid");
         }
@@ -149,54 +155,59 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     const tools: Array<AgentTool<typeof structuredValueSchema>> = [structuredTool];
     const toolChoice = toolChoiceForRequest(request);
-    const agent = new Agent({
-      initialState: {
-        systemPrompt: [
-          promptDescriptor?.system_prompt ?? definition.system_prompt,
-          skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
-          structuredSubmissionPrompt,
-          structuredRepairPrompt,
-          `Required contract: ${request.contract_name ?? "SpecialistDraft"}.`,
-          `JSON Schema: ${JSON.stringify(contractSchema(request))}`,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        model,
-        tools,
-      },
-      streamFn: (selectedModel, context, options) => {
-        const streamOptions = {
-          ...options,
-          apiKey: credential.api_key,
-          ...(toolChoice ? { toolChoice } : {}),
-        };
-        return modelStreamForCredential(
-          selectedModel as Model<"openai-completions">,
-          context,
-          streamOptions,
-          credential,
-        );
-      },
-    });
-    const eventProjection = new AgentEventProjection(() => agent.abort());
-    const unsubscribe = agent.subscribe((agentEvent) => {
-      eventProjection.add(projectOutputDelta(request, agentEvent, emit));
-    });
-    const abort = () => agent.abort();
-    signal.addEventListener("abort", abort, { once: true });
-    try {
-      let promptError: unknown;
+    const runAttempt = async (): Promise<void> => {
+      const agent = new Agent({
+        initialState: {
+          systemPrompt: [
+            promptDescriptor?.system_prompt ?? definition.system_prompt,
+            skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
+            structuredSubmissionPrompt,
+            structuredRepairPrompt,
+            `Required contract: ${request.contract_name ?? "SpecialistDraft"}.`,
+            `JSON Schema: ${JSON.stringify(contractSchema(request))}`,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          model,
+          tools,
+        },
+        streamFn: (selectedModel, context, options) => {
+          const streamOptions = {
+            ...options,
+            apiKey: credential.api_key,
+            ...(toolChoice ? { toolChoice } : {}),
+          };
+          return modelStreamForCredential(
+            selectedModel as Model<"openai-completions">,
+            context,
+            streamOptions,
+            credential,
+          );
+        },
+      });
+      const eventProjection = new AgentEventProjection(() => agent.abort());
+      const unsubscribe = agent.subscribe((agentEvent) => {
+        eventProjection.add(projectOutputDelta(request, agentEvent, emit));
+      });
+      const abort = () => agent.abort();
+      signal.addEventListener("abort", abort, { once: true });
       try {
-        await agent.prompt(promptInputForRequest(request));
-      } catch (error) {
-        promptError = error;
+        let promptError: unknown;
+        try {
+          await agent.prompt(promptInputForRequest(request));
+        } catch (error) {
+          promptError = error;
+        }
+        await eventProjection.settle();
+        if (promptError) throw promptError;
+      } finally {
+        signal.removeEventListener("abort", abort);
+        unsubscribe();
       }
-      await eventProjection.settle();
-      if (promptError) throw promptError;
-    } finally {
-      signal.removeEventListener("abort", abort);
-      unsubscribe();
-    }
+    };
+    await runWithOneTransportRetry(runAttempt, {
+      deadlineEpochMs: Date.parse(request.deadline_at),
+    });
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
       ...acceptedResult,

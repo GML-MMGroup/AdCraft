@@ -306,6 +306,9 @@ class DurablePiRunService:
             safe_error_code or _safe_error_code(payload),
             _safe_error_message(payload),
             retryable=bool(payload.get("retryable")),
+            details=(
+                dict(payload.get("audit") or {}) if isinstance(payload.get("audit"), dict) else {}
+            ),
         )
 
     @staticmethod

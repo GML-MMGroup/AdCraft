@@ -18,6 +18,7 @@ import {
   RunBudget,
   RunBudgetFailure,
 } from "./run-budget.js";
+import { AgentOperationFailure } from "./operation-recovery.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -244,7 +245,14 @@ async function handleRun(
         event(request, 0, terminal.eventType, {
           code: terminal.code,
           message: terminal.message,
-          audit: { duration_ms: Math.max(0, Date.now() - startedAt) },
+          retryable: terminal.retryable,
+          audit: {
+            duration_ms: Math.max(0, Date.now() - startedAt),
+            operation: request.operation,
+            specialist_name: request.agent_name,
+            operation_policy_id: request.policy?.operation_policy_id,
+            attempt_stage: terminal.attemptStage,
+          },
         }),
       );
     }
@@ -285,12 +293,16 @@ function terminalForFailure(
   eventType: "run_failed" | "run_cancelled";
   code: string;
   message: string;
+  retryable: boolean;
+  attemptStage: string;
 } {
   if (cause === "deadline") {
     return {
       eventType: "run_failed",
       code: "agent_deadline_exceeded",
       message: "Agent run deadline exceeded.",
+      retryable: true,
+      attemptStage: "initial",
     };
   }
   if (cause === "explicit_cancel" || cause === "server_shutdown") {
@@ -298,12 +310,16 @@ function terminalForFailure(
       eventType: "run_cancelled",
       code: "agent_run_cancelled",
       message: "Agent run was cancelled.",
+      retryable: false,
+      attemptStage: "initial",
     };
   }
   return {
     eventType: "run_failed",
     code: failure?.code ?? "agent_runtime_unavailable",
     message: failure?.message ?? "Agent runtime failed.",
+    retryable: failure?.retryable ?? false,
+    attemptStage: failure?.attemptStage ?? "initial",
   };
 }
 
@@ -311,6 +327,8 @@ class RuntimeFailure extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly retryable = false,
+    readonly attemptStage = "initial",
   ) {
     super(message);
   }
@@ -322,6 +340,14 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
   }
   if (error instanceof EventBufferOverflow) {
     return new RuntimeFailure(error.code, error.message);
+  }
+  if (error instanceof AgentOperationFailure) {
+    return new RuntimeFailure(
+      error.code,
+      error.message,
+      error.retryable,
+      error.attemptStage,
+    );
   }
   if (error instanceof RuntimeFailure) return error;
   if (error instanceof Error && safeAdapterErrorCodes.has(error.message)) {

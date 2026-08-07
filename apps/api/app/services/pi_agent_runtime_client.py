@@ -19,11 +19,19 @@ _TERMINAL_EVENTS = {"run_completed", "run_failed", "run_cancelled"}
 class PiAgentRuntimeError(RuntimeError):
     """Stable internal Agent runtime client failure."""
 
-    def __init__(self, code: str, message: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        retryable: bool = False,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
         self.retryable = retryable
+        self.details = details or {}
 
 
 @dataclass(frozen=True, slots=True)

@@ -18,7 +18,7 @@ from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     SpecialistDraftV2,
 )
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
 AgentName = Literal[
@@ -145,7 +145,7 @@ class AgentRunContext(_StrictModel):
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     conversation_id: str | None = Field(default=None, max_length=160)
     workflow_id: str | None = Field(default=None, max_length=160)
-    world_setting: WorldSettingProjectionContextV1 | None = None
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
     target: AgentTargetContext | None = None
     screenplay_summary: str | None = Field(default=None, max_length=16_384)
     style_summary: str | None = Field(default=None, max_length=8_192)
@@ -176,6 +176,10 @@ class AgentCanvasTextOutput(BaseModel):
 
 
 class AgentRunPolicy(_StrictModel):
+    operation_policy_id: str | None = Field(default=None, max_length=160)
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"] | None = None
+    transport_retry_limit: int = Field(default=0, ge=0, le=1)
+    structured_repair_limit: int = Field(default=1, ge=0, le=1)
     max_turns: int = Field(default=8, ge=1, le=64)
     max_tool_calls: int = Field(default=16, ge=0, le=128)
     max_handoffs: int = Field(default=8, ge=0, le=32)
@@ -406,7 +410,7 @@ class SpecialistOperationV2(_StrictModel):
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     result_schema_id: str = Field(min_length=1, max_length=160)
     max_output_tokens: int = Field(ge=1, le=32_768)
-    timeout_seconds: float = Field(gt=0, le=300)
+    timeout_seconds: float = Field(gt=0, le=600)
 
 
 class SpecialistDirectResponseV2(_StrictModel):
