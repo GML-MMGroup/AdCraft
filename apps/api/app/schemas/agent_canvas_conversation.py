@@ -12,6 +12,7 @@ from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
     ConceptDraftSpecV2,
     CreationModeDecisionV2,
+    CreativeAuthorityV2,
     GuidanceSessionActionV2,
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
@@ -211,6 +212,8 @@ ProposalActionTypeV2 = Literal[
     "defer_topic",
     "exclude_element",
     "delegate_choice",
+    "reuse_direction",
+    "revise_direction",
 ]
 
 
@@ -222,6 +225,9 @@ class ProposalActionDescriptorV2(_ConversationModel):
     expected_session_revision: int = Field(ge=1)
     confirmation_required: bool
     reason: str = Field(min_length=1, max_length=1_024)
+    option_id: str | None = Field(default=None, min_length=1, max_length=160)
+    enabled: bool = True
+    disabled_reason: str | None = Field(default=None, max_length=1_024)
 
 
 class _ProposalActionBaseV2(_ConversationModel):
@@ -255,12 +261,25 @@ class DelegateChoiceActionV2(_ProposalActionBaseV2):
     action: Literal["delegate_choice"]
 
 
+class ReuseDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["reuse_direction"]
+    option_id: str = Field(min_length=1, max_length=160)
+
+
+class ReviseDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["revise_direction"]
+    option_id: str = Field(min_length=1, max_length=160)
+    instruction: str = Field(min_length=1, max_length=8_192)
+
+
 ProposalActionRequestV2 = Annotated[
     SelectOptionActionV2
     | ReviseOptionsActionV2
     | DeferTopicActionV2
     | ExcludeElementActionV2
-    | DelegateChoiceActionV2,
+    | DelegateChoiceActionV2
+    | ReuseDirectionActionV2
+    | ReviseDirectionActionV2,
     Field(discriminator="action"),
 ]
 
@@ -268,7 +287,7 @@ ProposalActionRequestV2 = Annotated[
 class ProposalApplicationSummaryV2(_ConversationModel):
     application_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice"]
+    action: Literal["select_option", "delegate_choice", "reuse_direction"]
     receipt_id: str = Field(min_length=1, max_length=160)
     created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     queued_execution_ids: tuple[str, ...] = Field(default=(), max_length=32)
@@ -300,6 +319,21 @@ class AgentCommandPlanActionRequestV2(_ConversationModel):
 
 class GuidedActionApplyRequestV2(_ConversationModel):
     confirmed: bool = True
+    action: Literal["set_creative_authority"] | None = None
+    authority: CreativeAuthorityV2 | None = None
+    expected_session_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_authority_action(self) -> "GuidedActionApplyRequestV2":
+        authority_values = (self.authority, self.expected_session_revision)
+        if self.action == "set_creative_authority":
+            if any(value is None for value in authority_values):
+                raise ValueError(
+                    "Creative-authority actions require authority and session revision."
+                )
+        elif any(value is not None for value in authority_values):
+            raise ValueError("Only creative-authority actions accept authority fields.")
+        return self
 
 
 class AgentActionReceiptV2(_ConversationModel):
