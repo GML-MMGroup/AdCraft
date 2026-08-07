@@ -9,6 +9,22 @@ import type {
 
 export const AGENT_CANVAS_ROLE_CONTRACT_VERSION: CanvasRoleContractVersionV2 = "ad-media-role-v2";
 
+export type AgentCanvasVisibleNodeTypeV2 = Exclude<CanvasNodeTypeV2, "script">;
+
+export const AGENT_CANVAS_VISIBLE_NODE_TYPES: readonly AgentCanvasVisibleNodeTypeV2[] = [
+  "text",
+  "image",
+  "video",
+  "audio",
+  "editing",
+];
+
+export function isAgentCanvasVisibleNodeType(
+  nodeType: CanvasNodeTypeV2,
+): nodeType is AgentCanvasVisibleNodeTypeV2 {
+  return nodeType !== "script";
+}
+
 export const AGENT_CANVAS_NODE_LABELS: Record<CanvasNodeTypeV2, string> = {
   text: "Text",
   script: "Script",
@@ -41,7 +57,7 @@ function bgmContent(summary: string, durationSeconds = 30): Record<string, unkno
 }
 
 export function createDefaultCanvasNodeRequest(
-  nodeType: CanvasNodeTypeV2,
+  nodeType: AgentCanvasVisibleNodeTypeV2,
   position: CanvasPositionV2,
 ): CanvasNodeCreateRequestV2 {
   return {

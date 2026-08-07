@@ -41,12 +41,9 @@ function errorState(error: unknown): { message: string; action: WorkbenchErrorAc
 }
 
 function structuredText(node: CanvasNodeV2): string {
-  const preferredKey = node.node_type === "script" ? "script_text" : "content";
-  const preferred = node.structured_content[preferredKey];
+  const preferred = node.structured_content.content;
   if (typeof preferred === "string") return preferred;
-  const fallback = node.node_type === "script"
-    ? node.structured_content.content
-    : node.structured_content.text;
+  const fallback = node.structured_content.text;
   return typeof fallback === "string" ? fallback : "";
 }
 
@@ -104,9 +101,9 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
-  const editsTextContent = node.node_type === "text" || node.node_type === "script";
+  const editsTextContent = node.node_type === "text";
   const editsGenerationPrompt = ["image", "video", "audio"].includes(node.node_type);
-  const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const usesProvider = !isWorldSetting && ["text", "image", "video", "audio"].includes(node.node_type);
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
@@ -207,7 +204,6 @@ export function useNodeWorkbenchDraft({
       return saved;
     }
 
-    const contentKey = node.node_type === "script" ? "script_text" : "content";
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
       ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
@@ -219,7 +215,7 @@ export function useNodeWorkbenchDraft({
       ...(editsTextContent ? {
         structured_content: {
           ...node.structured_content,
-          [contentKey]: textContent,
+          content: textContent,
         },
       } : {}),
     }));

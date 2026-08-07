@@ -1,18 +1,20 @@
 import type { ReactNode } from "react";
 
 import {
-  DocumentIcon,
   EditIcon,
   ImageIcon,
   MuteIcon,
   VideoIcon,
 } from "../../../icons.tsx";
 import type { CanvasNodeTypeV2 } from "../../../types-v2.ts";
-import { AGENT_CANVAS_NODE_LABELS } from "../model/nodeDefaults.ts";
+import {
+  AGENT_CANVAS_NODE_LABELS,
+  AGENT_CANVAS_VISIBLE_NODE_TYPES,
+  type AgentCanvasVisibleNodeTypeV2,
+} from "../model/nodeDefaults.ts";
 
 function nodeIcon(type: CanvasNodeTypeV2): ReactNode {
   if (type === "text") return <EditIcon />;
-  if (type === "script") return <DocumentIcon />;
   if (type === "image") return <ImageIcon />;
   if (type === "video") return <VideoIcon />;
   if (type === "audio") return <MuteIcon />;
@@ -22,7 +24,7 @@ function nodeIcon(type: CanvasNodeTypeV2): ReactNode {
 interface AgentCanvasNodePickerProps {
   className?: string;
   menuLabel: string;
-  onSelect: (nodeType: CanvasNodeTypeV2) => void;
+  onSelect: (nodeType: AgentCanvasVisibleNodeTypeV2) => void;
 }
 
 export function AgentCanvasNodePicker({
@@ -32,7 +34,7 @@ export function AgentCanvasNodePicker({
 }: AgentCanvasNodePickerProps) {
   return (
     <div className={className} role="menu" aria-label={menuLabel}>
-      {(Object.keys(AGENT_CANVAS_NODE_LABELS) as CanvasNodeTypeV2[]).map((type) => (
+      {AGENT_CANVAS_VISIBLE_NODE_TYPES.map((type) => (
         <button
           type="button"
           role="menuitem"

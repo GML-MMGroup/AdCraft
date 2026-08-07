@@ -122,7 +122,7 @@ describe("AgentCanvasNodeCard", () => {
       /:root\[data-theme="dark"\] \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const selectedRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\.agent-canvas-node--selected\s*\{([\s\S]*?)\n\}/,
+      /:root\[data-theme="dark"\] \.agent-canvas-node\.agent-canvas-node--selected\s*\{([\s\S]*?)\n\}/,
     )?.[1];
 
     expect(shellRule).toContain("background: transparent");
@@ -133,41 +133,30 @@ describe("AgentCanvasNodeCard", () => {
     expect(playerRule).not.toContain("gradient");
     expect(glassEdgeRule).toContain("background: transparent");
     expect(glassEdgeRule).not.toContain("gradient");
-    expect(selectedRule).toContain("0 0 0 3px rgba(185, 172, 216, 0.2)");
+    expect(selectedRule).toContain("0 0 0 3px color-mix(in srgb, var(--agent-node-accent) 24%, transparent)");
   });
 
-  it("anchors a visible unframed type icon on the card's top-left border", () => {
+  it("uses one transparent glass shell for every visible node type", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
-    const markerRule = css.match(/\.agent-canvas-node__type-marker\s*\{([\s\S]*?)\n\}/)?.[1];
+    const shellRule = css.match(/^\.agent-canvas-node\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const surfaceRule = css.match(/^\.agent-canvas-node__surface\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(markerRule).toBeDefined();
-    expect(markerRule).toContain("background: transparent");
-    expect(markerRule).toContain("border: 0");
-    expect(markerRule).toContain("top: 0");
-    expect(markerRule).toContain("left: 0");
-    expect(markerRule).toContain("width: 40px");
-    expect(markerRule).toContain("height: 40px");
-    expect(markerRule).toContain("transform: translateY(-100%)");
-    expect(markerRule).not.toContain("border-radius");
-    expect(markerRule).not.toContain("box-shadow");
+    expect(shellRule).toContain("background: transparent");
+    expect(surfaceRule).toContain("background: rgba(255, 255, 255, 0.06)");
+    expect(css).not.toContain(".agent-canvas-node__type-marker");
   });
 
-  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "editing"])(
-    "renders a lightweight %s card with a border-aligned type marker and no title",
+  it.each<CanvasNodeTypeV2>(["text", "image", "video", "editing"])(
+    "renders a lightweight %s card with a centered type icon when no output exists",
     (nodeType) => {
       const node = makeNode(nodeType);
-      const asset = nodeType === "image" || nodeType === "video"
-        ? makeAsset(nodeType)
-        : nodeType === "editing"
-          ? makeAsset("video")
-          : null;
 
-      render(<AgentCanvasNodeCard node={node} asset={asset} />);
+      render(<AgentCanvasNodeCard node={node} />);
 
       const card = screen.getByTestId(`agent-canvas-node-${node.node_id}`);
       expect(card.dataset.nodeType).toBe(nodeType);
-      expect(screen.getByLabelText(`${nodeType} node`).classList.contains("agent-canvas-node__type-marker")).toBe(true);
+      expect(screen.getByLabelText(`${nodeType} node type`).classList.contains("agent-canvas-node__center-icon")).toBe(true);
       expect(screen.queryByText(node.title)).toBeNull();
       expect(screen.getByText("Draft")).toBeTruthy();
     },
@@ -179,7 +168,7 @@ describe("AgentCanvasNodeCard", () => {
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
     expect(screen.queryByText("Draft")).toBeNull();
-    expect(screen.queryByLabelText("audio node")).toBeNull();
+    expect(screen.queryByLabelText("audio node type")).toBeNull();
   });
 
   it("never offers Run for a text node", () => {
@@ -217,8 +206,8 @@ describe("AgentCanvasNodeCard", () => {
     render(<AgentCanvasNodeCard node={node} />);
 
     expect(screen.getByLabelText("World Setting node, Ready")).toBeTruthy();
-    expect(screen.getByLabelText("World Setting node")).toBeTruthy();
-    expect(screen.getByText(/timeless mountain city/)).toBeTruthy();
+    expect(screen.getByLabelText("World Setting node type")).toBeTruthy();
+    expect(screen.queryByText(/timeless mountain city/)).toBeNull();
   });
 
   it("keeps a blocked Draft visible as waiting for upstream output", () => {
@@ -251,7 +240,7 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByText("Failed")).toBeNull();
   });
 
-  it.each<CanvasNodeTypeV2>(["script", "image", "video", "editing"])(
+  it.each<CanvasNodeTypeV2>(["image", "video", "editing"])(
     "keeps %s actions in the inline composer instead of the card corner",
     (nodeType) => {
       const status = nodeType === "editing" ? "ready" : "draft";
@@ -285,7 +274,8 @@ describe("AgentCanvasNodeCard", () => {
     const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
 
-    expect(screen.getByLabelText("Storyboard Sequence image node")).toBeTruthy();
+    expect(screen.getByLabelText("Storyboard Sequence node, Ready")).toBeTruthy();
+    expect(screen.queryByLabelText("Storyboard Sequence image node type")).toBeNull();
     expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
@@ -303,7 +293,7 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
-    const node = makeNode("script", "draft");
+    const node = makeNode("image", "draft");
     render(
       <AgentCanvasNodeCard
         node={node}
@@ -313,8 +303,8 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.getByLabelText("script node is working").classList.contains("agent-canvas-node__working")).toBe(true);
-    expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
+    expect(screen.getByLabelText("image node is working").classList.contains("agent-canvas-node__working")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
   });
 
   it("contains complete image outputs while keeping video frames full-bleed", () => {
@@ -480,6 +470,7 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
+    expect(screen.queryByLabelText("image node type")).toBeNull();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
 });
@@ -499,7 +490,7 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(css).not.toContain(".agent-canvas-node__handle-target");
   });
 
-  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
+  it.each<CanvasNodeTypeV2>(["text", "image", "video", "audio", "editing"])(
     "renders %s node with only the default connection handles",
     (nodeType) => {
       const data: AgentCanvasNodeData = { node: makeNode(nodeType) };

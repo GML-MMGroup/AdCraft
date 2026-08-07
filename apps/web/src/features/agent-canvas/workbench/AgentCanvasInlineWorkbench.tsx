@@ -4,13 +4,17 @@ import { EditingWorkbench } from "./EditingWorkbench.tsx";
 import { MediaPromptWorkbench } from "./MediaPromptWorkbench.tsx";
 import { NodeReferenceStrip } from "./NodeReferenceStrip.tsx";
 import { NodeWorkbenchShell } from "./NodeWorkbenchShell.tsx";
-import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
 import { TextWorkbench } from "./TextWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
 import "./agent-canvas-inline-workbench.css";
 
 export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
+  if (props.node.node_type === "script") return null;
+  return <VisibleAgentCanvasInlineWorkbench {...props} />;
+}
+
+function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
   const {
     workflow,
     node,
@@ -51,16 +55,6 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       {references}
       {node.node_type === "text" ? (
         <TextWorkbench
-          node={node}
-          draft={draft}
-          models={providerModels}
-          modelsLoading={providerModelsLoading}
-          modelsError={providerModelsError}
-          modelResolution={modelResolution}
-        />
-      ) : null}
-      {node.node_type === "script" ? (
-        <ScriptWorkbench
           node={node}
           draft={draft}
           models={providerModels}
