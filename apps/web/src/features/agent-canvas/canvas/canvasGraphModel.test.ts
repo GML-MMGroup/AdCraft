@@ -154,6 +154,32 @@ describe("canvasGraphModel", () => {
     });
   });
 
+  it("removes Script nodes and their incident bindings from the visible canvas", () => {
+    const script = node("script-1", "script");
+    const workflowWithScript: AgentCanvasWorkflowV2 = {
+      ...workflow,
+      nodes: [workflow.nodes[0]!, script, workflow.nodes[1]!],
+      bindings: [
+        workflow.bindings[0]!,
+        {
+          ...workflow.bindings[0]!,
+          binding_id: "binding-to-script",
+          target_node_id: script.node_id,
+        },
+        {
+          ...workflow.bindings[0]!,
+          binding_id: "binding-from-script",
+          source: { kind: "node_output", source_node_id: script.node_id },
+        },
+      ],
+    };
+
+    expect(toAgentCanvasFlowNodes(workflowWithScript, null, {}).map((item) => item.id))
+      .toEqual(["image-1", "video-1"]);
+    expect(toAgentCanvasFlowEdges(workflowWithScript.bindings, workflowWithScript.nodes))
+      .toEqual([expect.objectContaining({ id: "binding-1" })]);
+  });
+
   it("leaves React Flow dimensions measurable when image metadata is unavailable", () => {
     const withoutDimensions = {
       ...workflow,
@@ -166,7 +192,7 @@ describe("canvasGraphModel", () => {
   });
 
   it("renders only backend bindings as edges", () => {
-    expect(toAgentCanvasFlowEdges(workflow.bindings)).toEqual([expect.objectContaining({
+    expect(toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes)).toEqual([expect.objectContaining({
       id: "binding-1",
       source: "image-1",
       target: "video-1",
@@ -182,7 +208,7 @@ describe("canvasGraphModel", () => {
         binding_id: "asset-binding",
         source: { kind: "image_asset", source_asset_id: "asset-1" },
       },
-    ])).toEqual([]);
+    ], workflow.nodes)).toEqual([]);
   });
 
   it("renders a persisted World Setting binding and removes it when disabled", () => {
@@ -195,12 +221,17 @@ describe("canvasGraphModel", () => {
       metadata: { context_kind: "world_setting" },
     };
 
-    expect(toAgentCanvasFlowEdges([binding])).toEqual([expect.objectContaining({
+    const nodes = [
+      { ...node("node-world-setting", "text"), creative_role: "world_setting" as const },
+      workflow.nodes[1]!,
+    ];
+
+    expect(toAgentCanvasFlowEdges([binding], nodes)).toEqual([expect.objectContaining({
       id: "binding-world-setting",
       source: "node-world-setting",
       target: "video-1",
     })]);
-    expect(toAgentCanvasFlowEdges([{ ...binding, enabled: false }])).toEqual([]);
+    expect(toAgentCanvasFlowEdges([{ ...binding, enabled: false }], nodes)).toEqual([]);
   });
 
   it("selects explicit input roles from canonical source node media types", () => {
@@ -222,6 +253,16 @@ describe("canvasGraphModel", () => {
       x: -240,
       y: 100,
     });
+  });
+
+  it("does not reserve layout space for a retired Script node", () => {
+    const retiredScript = { ...node("script", "script"), position: { x: 100, y: 100 } };
+
+    expect(findAvailableCanvasPosition(
+      [retiredScript],
+      { x: 100, y: 100 },
+      { candidateNodeType: "image" },
+    )).toEqual({ x: 100, y: 100 });
   });
 
   it("uses adaptive image rectangles when placing a node beside generated media", () => {

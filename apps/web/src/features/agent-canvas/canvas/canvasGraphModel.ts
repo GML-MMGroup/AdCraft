@@ -12,6 +12,7 @@ import type {
   CanvasRuntimeSnapshotV2,
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
+import { isAgentCanvasVisibleNodeType } from "../model/nodeDefaults.ts";
 import type {
   AgentCanvasFlowNode,
   AgentCanvasNodeCallbacks,
@@ -52,10 +53,12 @@ export function findAvailableCanvasPosition(
   options: FindAvailableCanvasPositionOptions = {},
 ): CanvasPositionV2 {
   const assetsById = new Map((options.assets ?? []).map((asset) => [asset.asset_id, asset]));
-  const occupied = nodes.map((node) => ({
-    position: node.position,
-    size: sizeForPlacementNode(node, assetsById),
-  }));
+  const occupied = nodes
+    .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
+    .map((node) => ({
+      position: node.position,
+      size: sizeForPlacementNode(node, assetsById),
+    }));
   const candidateSize = agentCanvasNodePlacementSize(
     options.candidateNodeType ?? "text",
     options.candidateDimensions,
@@ -74,7 +77,10 @@ export function incrementalPlacementForNodes(
   const nodesById = new Map(nodes.map((node) => [node.node_id, node]));
   const assetsById = new Map(assets.map((asset) => [asset.asset_id, asset]));
   const occupied = nodes
-    .filter((node) => !affected.has(node.node_id))
+    .filter((node) => (
+      !affected.has(node.node_id)
+      && isAgentCanvasVisibleNodeType(node.node_type)
+    ))
     .map((node) => ({
       position: node.position,
       size: sizeForPlacementNode(node, assetsById),
@@ -84,7 +90,7 @@ export function incrementalPlacementForNodes(
 
   affectedNodeIds.forEach((nodeId, index) => {
     const node = nodesById.get(nodeId);
-    if (!node) return;
+    if (!node || !isAgentCanvasVisibleNodeType(node.node_type)) return;
     const hint = placementHints[index] ?? {
       intent: "append_flow",
       anchor_node_id: null,
@@ -128,7 +134,7 @@ export function toAgentCanvasFlowNodes(
   callbacks: AgentCanvasNodeCallbacks,
 ): AgentCanvasFlowNode[] {
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
-  return workflow.nodes.map((node) => {
+  return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
     const asset = node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null;
     const dimensions = asset ? { width: asset.width, height: asset.height } : null;
     const size = agentCanvasNodeSize(node.node_type, dimensions);
@@ -215,8 +221,18 @@ function distanceFrom(position: CanvasPositionV2, origin: CanvasPositionV2): num
   return Math.abs(position.x - origin.x) + Math.abs(position.y - origin.y);
 }
 
-export function toAgentCanvasFlowEdges(bindings: CanvasBindingV2[]): Edge[] {
+export function toAgentCanvasFlowEdges(
+  bindings: CanvasBindingV2[],
+  nodes: CanvasNodeV2[],
+): Edge[] {
+  const visibleNodeIds = new Set(
+    nodes
+      .filter((node) => isAgentCanvasVisibleNodeType(node.node_type))
+      .map((node) => node.node_id),
+  );
   return bindings.flatMap((binding) => binding.enabled && binding.source.kind === "node_output"
+    && visibleNodeIds.has(binding.source.source_node_id)
+    && visibleNodeIds.has(binding.target_node_id)
     ? [{
         id: binding.binding_id,
         source: binding.source.source_node_id,

@@ -7,14 +7,7 @@ import {
 } from "@xyflow/react";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 
-import {
-  DocumentIcon,
-  EditIcon,
-  ImageIcon,
-  PlayIcon,
-  UnmuteIcon,
-  VideoIcon,
-} from "../../../icons.tsx";
+import { PlayIcon } from "../../../icons.tsx";
 import type {
   CanvasNodeStatusV2,
   CanvasNodeTypeV2,
@@ -23,6 +16,7 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
+import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
 import {
   agentCanvasNodeSize,
   validAgentCanvasMediaDimensions,
@@ -87,55 +81,17 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
 }
 
-function firstString(record: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function nodeCopy(node: CanvasNodeV2) {
-  const structured = node.structured_content;
-  if (node.node_type === "script") {
-    return firstString(structured, ["script_text", "content", "text", "body"])
-      ?? node.generation_prompt
-      ?? node.summary_prompt
-      ?? "Script draft";
-  }
-  return firstString(structured, ["text", "content", "body", "brief"])
-    ?? node.summary_prompt
-    ?? node.generation_prompt
-    ?? "Text draft";
-}
-
 function semanticNodeLabel(node: CanvasNodeV2): string {
   if (node.node_type === "text" && node.creative_role === "world_setting") return "World Setting";
   if (node.node_type !== "image") return NODE_TYPE_LABELS[node.node_type];
   return IMAGE_ROLE_LABELS[node.creative_role] ?? NODE_TYPE_LABELS.image;
 }
 
-function typeMarkerLabel(node: CanvasNodeV2, label: string): string {
-  if (node.creative_role === "world_setting") return `${label} node`;
+function typeIconLabel(node: CanvasNodeV2, label: string): string {
+  if (node.creative_role === "world_setting") return label;
   return node.node_type === "image" && IMAGE_ROLE_LABELS[node.creative_role]
-    ? `${label} image node`
-    : `${node.node_type} node`;
-}
-
-function typeIcon(nodeType: CanvasNodeTypeV2): ReactNode {
-  if (nodeType === "text") return <EditIcon />;
-  if (nodeType === "script") return <DocumentIcon />;
-  if (nodeType === "image") return <ImageIcon />;
-  if (nodeType === "video") return <VideoIcon />;
-  if (nodeType === "audio") return <UnmuteIcon />;
-  return <EditIcon />;
-}
-
-function typeMarkerImage(nodeType: CanvasNodeTypeV2): string {
-  if (nodeType === "image") return "/imgs/image.webp";
-  if (nodeType === "video" || nodeType === "editing") return "/imgs/video.webp";
-  if (nodeType === "audio") return "/imgs/audio.webp";
-  return "/imgs/text.webp";
+    ? `${label} image`
+    : node.node_type;
 }
 
 /* eslint-disable jsx-a11y/no-noninteractive-element-interactions -- Image load only reports intrinsic media dimensions; the image remains non-interactive. */
@@ -144,11 +100,13 @@ function MediaSurface({
   asset,
   onOpenVideoPreview,
   onMediaDimensionsResolved,
+  label,
 }: {
   node: CanvasNodeV2;
   asset?: ProjectAssetSummaryV2 | null;
   onOpenVideoPreview?: AgentCanvasNodeCallbacks["onOpenVideoPreview"];
   onMediaDimensionsResolved?: AgentCanvasNodeCardProps["onMediaDimensionsResolved"];
+  label: string;
 }) {
   const mediaUrl = asset?.media_url ?? asset?.preview_url ?? null;
   const videoUrl = asset?.media_type === "video" ? asset.media_url : null;
@@ -200,7 +158,10 @@ function MediaSurface({
     />
   ) : (
     <div className="agent-canvas-node__media-placeholder" aria-label={`${NODE_TYPE_LABELS[node.node_type]} preview unavailable`}>
-      {typeIcon(node.node_type)}
+      <AgentCanvasNodeTypeIcon
+        nodeType={node.node_type}
+        label={typeIconLabel(node, label)}
+      />
     </div>
   );
 }
@@ -212,12 +173,15 @@ function NodeSurface({
   status,
   onOpenVideoPreview,
   onMediaDimensionsResolved,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved"> & { status: CanvasNodeStatusV2 }) {
-  if (node.node_type === "text" || node.node_type === "script") {
+  label,
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved"> & { status: CanvasNodeStatusV2; label: string }) {
+  if (node.node_type === "text") {
     return (
-      <div className={`agent-canvas-node__copy agent-canvas-node__copy--${node.node_type}`}>
-        {node.node_type === "script" ? <span className="agent-canvas-node__script-rule" aria-hidden="true" /> : null}
-        <p>{nodeCopy(node)}</p>
+      <div className="agent-canvas-node__media-placeholder">
+        <AgentCanvasNodeTypeIcon
+          nodeType={node.node_type}
+          label={typeIconLabel(node, label)}
+        />
       </div>
     );
   }
@@ -228,6 +192,7 @@ function NodeSurface({
     <MediaSurface
       node={node}
       asset={asset}
+      label={label}
       onOpenVideoPreview={onOpenVideoPreview}
       onMediaDimensionsResolved={onMediaDimensionsResolved}
     />
@@ -242,6 +207,8 @@ export function AgentCanvasNodeCard({
   onOpenVideoPreview,
   onMediaDimensionsResolved,
 }: AgentCanvasNodeCardProps) {
+  if (node.node_type === "script") return null;
+
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
@@ -262,22 +229,12 @@ export function AgentCanvasNodeCard({
       data-node-status={status}
       aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
     >
-      {node.node_type !== "audio" ? (
-        <span
-          className="agent-canvas-node__type-marker"
-          role="img"
-          aria-label={typeMarkerLabel(node, label)}
-          title={`${label} node`}
-        >
-          <img src={typeMarkerImage(node.node_type)} alt="" draggable={false} />
-        </span>
-      ) : null}
-
       <div className="agent-canvas-node__surface">
         <NodeSurface
           node={node}
           asset={asset}
           status={status}
+          label={label}
           onOpenVideoPreview={onOpenVideoPreview}
           onMediaDimensionsResolved={onMediaDimensionsResolved}
         />
@@ -325,7 +282,8 @@ export function AgentCanvasNodeRenderer({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const label = semanticNodeLabel(data.node);
-  const workbench = data.renderWorkbench?.(data.node);
+  const visible = data.node.node_type !== "script";
+  const workbench = visible ? data.renderWorkbench?.(data.node) : null;
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
@@ -334,8 +292,10 @@ export function AgentCanvasNodeRenderer({
   const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
 
   useLayoutEffect(() => {
-    updateNodeInternals(id);
-  }, [id, nodeSize.height, nodeSize.width, updateNodeInternals]);
+    if (visible) updateNodeInternals(id);
+  }, [id, nodeSize.height, nodeSize.width, updateNodeInternals, visible]);
+
+  if (!visible) return null;
 
   return (
     <div

@@ -23,7 +23,6 @@ import {
 import type {
   CanvasBindingInputRoleV2,
   CanvasConnectionPolicyV2,
-  CanvasNodeTypeV2,
   CanvasNodeV2,
   CanvasPositionV2,
   ProjectAssetSummaryV2,
@@ -66,6 +65,7 @@ import {
   AGENT_CANVAS_ROLE_CONTRACT_VERSION,
   createDefaultCanvasNodeRequest,
   sourceAssetStructuredContent,
+  type AgentCanvasVisibleNodeTypeV2,
 } from "./model/nodeDefaults.ts";
 import { useAgentCanvasProviderModels } from "./model/useAgentCanvasProviderModels.ts";
 import { useAgentCanvasRuntime } from "./runtime/useAgentCanvasRuntime.ts";
@@ -311,7 +311,7 @@ export function AgentCanvasPage() {
     [live.state.runtime, nodeCallbacks, workflow],
   );
   const edges = useMemo(
-    () => workflow ? toAgentCanvasFlowEdges(workflow.bindings) : [],
+    () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
     [workflow],
   );
 
@@ -330,11 +330,11 @@ export function AgentCanvasPage() {
   useEffect(() => {
     if (
       session.state.selectedNodeId
-      && !workflow?.nodes.some((node) => node.node_id === session.state.selectedNodeId)
+      && !canonicalNodes.some((node) => node.id === session.state.selectedNodeId)
     ) {
       setSelectedNodeId(null);
     }
-  }, [session.state.selectedNodeId, setSelectedNodeId, workflow?.nodes]);
+  }, [canonicalNodes, session.state.selectedNodeId, setSelectedNodeId]);
 
   const handleNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
     onNodesChange(changes);
@@ -401,7 +401,7 @@ export function AgentCanvasPage() {
   }, [cancelRun]);
 
   const createNode = useCallback(async (
-    nodeType: CanvasNodeTypeV2,
+    nodeType: AgentCanvasVisibleNodeTypeV2,
     preferredPosition?: CanvasPositionV2,
   ) => {
     if (!workflow) return;
@@ -479,7 +479,7 @@ export function AgentCanvasPage() {
   }, [createCanvasNode, workflow]);
 
   const createConnectedNodeFromMenu = useCallback(async (
-    nodeType: CanvasNodeTypeV2,
+    nodeType: AgentCanvasVisibleNodeTypeV2,
     inputRole: CanvasBindingInputRoleV2,
   ) => {
     if (!workflow || !connectedNodeMenu) return;

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { PlusIcon } from "../../../icons.tsx";
-import type { CanvasNodeTypeV2, CanvasPositionV2 } from "../../../types-v2.ts";
+import type { CanvasPositionV2 } from "../../../types-v2.ts";
+import type { AgentCanvasVisibleNodeTypeV2 } from "../model/nodeDefaults.ts";
 import { AgentCanvasNodePicker } from "./AgentCanvasNodePicker.tsx";
 
 interface AgentCanvasContextMenuProps {
   menuPosition: CanvasPositionV2;
   canvasPosition: CanvasPositionV2;
-  onCreateNode: (nodeType: CanvasNodeTypeV2, position: CanvasPositionV2) => void;
+  onCreateNode: (nodeType: AgentCanvasVisibleNodeTypeV2, position: CanvasPositionV2) => void;
   onClose: () => void;
 }
 

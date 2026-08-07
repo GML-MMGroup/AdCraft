@@ -128,7 +128,6 @@ afterEach(() => cleanup());
 describe("AgentCanvasInlineWorkbench", () => {
   it.each<[CanvasNodeTypeV2, string]>([
     ["text", "Text content"],
-    ["script", "Script content"],
     ["image", "Generation prompt"],
   ])("uses a compact prompt composer for %s without node name chrome", (nodeType, textareaLabel) => {
     const node = makeNode(nodeType);
@@ -138,6 +137,31 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByText("Name")).toBeNull();
     expect(screen.queryByText(node.title)).toBeNull();
     expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
+  });
+
+  it("does not render a workbench for a retired Script node", () => {
+    const node = makeNode("script");
+    const { container } = render(
+      <AgentCanvasInlineWorkbench
+        workflow={makeWorkflow(node)}
+        node={node}
+        patchNode={vi.fn().mockResolvedValue(undefined)}
+        patchBinding={vi.fn().mockResolvedValue(undefined)}
+        deleteBinding={vi.fn().mockResolvedValue(undefined)}
+        onRun={vi.fn().mockResolvedValue(undefined)}
+        onSaveVariation={vi.fn().mockResolvedValue(undefined)}
+        onDiscardVariation={vi.fn().mockResolvedValue(undefined)}
+        onMaterializeVariation={vi.fn().mockResolvedValue(null)}
+        onSaveImageToLibrary={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn().mockResolvedValue(undefined)}
+        onOpenEditing={vi.fn()}
+        onOpenAssets={vi.fn()}
+        onUploadReferences={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(container.childElementCount).toBe(0);
   });
 
   it("saves structured text before running a Text node", async () => {
