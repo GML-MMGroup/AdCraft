@@ -6,10 +6,9 @@ describe("Agent Canvas SSE subscriptions", () => {
   it("subscribes only to the final authoring, runtime, and editing event contract", () => {
     expect(AGENT_CANVAS_SSE_EVENT_TYPES).toEqual(expect.arrayContaining([
       "agent_turn_queued",
-      "guidance_decision_completed",
-      "specialist_work_started",
-      "specialist_work_completed",
-      "specialist_work_failed",
+      "expert_activity_started",
+      "expert_activity_completed",
+      "expert_activity_failed",
       "proposal_created",
       "proposal_action_applied",
       "guidance_state_updated",
@@ -37,6 +36,9 @@ describe("Agent Canvas SSE subscriptions", () => {
       "creative_proposal_resolved",
       "production_recipe_created",
       "planning_topic_updated",
+      "specialist_work_started",
+      "specialist_work_completed",
+      "specialist_work_failed",
     ]));
   });
 });

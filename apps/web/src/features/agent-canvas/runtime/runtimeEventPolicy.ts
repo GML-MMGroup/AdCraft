@@ -72,10 +72,6 @@ const CHAT_EVENTS = new Set([
   "continuation_retry_scheduled",
   "continuation_completed",
   "continuation_failed",
-  "guidance_decision_completed",
-  "specialist_work_started",
-  "specialist_work_completed",
-  "specialist_work_failed",
   "proposal_created",
   "proposal_action_applied",
   "guidance_state_updated",
@@ -98,9 +94,6 @@ const NODE_DETAIL_EVENTS = new Set([
 ]);
 
 const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
-  "expert_activity_started",
-  "expert_activity_completed",
-  "expert_activity_failed",
   "guided_draft_materialized",
   "guided_binding_materialized",
   "storyboard_sequence_planned",

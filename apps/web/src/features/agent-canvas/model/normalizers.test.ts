@@ -196,7 +196,8 @@ function progressiveGuidanceSessionPayload() {
       topic_kind: "scene",
       title: "Scene direction",
       status: "proposed",
-      specialist_name: "scene_designer",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
       related_node_ids: [],
       source_proposal_id: "proposal-scene-1",
       revision: 2,
@@ -217,6 +218,61 @@ function progressiveGuidanceSessionPayload() {
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("accepts slim capability proposals and capability turns without guidance decisions", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-product-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-product-1",
+      video_skill_run_id: null,
+      topic_id: "topic-product",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "product",
+      capability_id: "product_design",
+      capability_display_name: "Product Designer",
+      options: [{
+        option_id: "option-product-1",
+        title: "Quiet Precision",
+        public_summary: "A restrained premium product direction.",
+      }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Define the product direction.",
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 1,
+      actions: [],
+      created_at: "2026-08-07T01:00:00Z",
+      updated_at: "2026-08-07T01:00:00Z",
+    });
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-product-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "capability",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: 1,
+      continuation: null,
+      created_at: "2026-08-07T01:00:00Z",
+      updated_at: "2026-08-07T01:00:01Z",
+    });
+
+    expect(proposal).toMatchObject({
+      capability_id: "product_design",
+      capability_display_name: "Product Designer",
+      options: [{ public_summary: "A restrained premium product direction." }],
+    });
+    expect(turn.turn_kind).toBe("capability");
+  });
+
   it("accepts the canonical World Setting node, proposal, guidance topic, and persisted binding", () => {
     const worldSettingDocument = {
       document_kind: "world_setting",
@@ -273,10 +329,11 @@ describe("Agent Canvas normalizers", () => {
       proposal_revision: 1,
       source_proposal_id: null,
       proposal_kind: "world_setting",
-      specialist_name: "script_writer",
+      capability_id: "world_setting",
+      capability_display_name: "World Setting Designer",
       options: [
-        { option_id: "world-option-1", title: "Quiet future", summary_prompt: "A restrained near-future city." },
-        { option_id: "world-option-2", title: "Living heritage", summary_prompt: "Tradition expressed through modern craft." },
+        { option_id: "world-option-1", title: "Quiet future", public_summary: "A restrained near-future city." },
+        { option_id: "world-option-2", title: "Living heritage", public_summary: "Tradition expressed through modern craft." },
       ],
       proposed_references: [],
       target_node_id: null,
@@ -338,7 +395,8 @@ describe("Agent Canvas normalizers", () => {
           topic_kind: "world_setting",
           title: "World Setting",
           status: "proposed",
-          specialist_name: "script_writer",
+          capability_id: "world_setting",
+          capability_display_name: "World Setting Designer",
           related_node_ids: ["node-world-setting"],
           source_proposal_id: "proposal-world-1",
           revision: 1,
@@ -378,8 +436,9 @@ describe("Agent Canvas normalizers", () => {
       proposal_revision: 2,
       source_proposal_id: null,
       proposal_kind: "scene",
-      specialist_name: "scene_designer",
-      options: [{ option_id: "option-scene-1", title: "Morning", summary_prompt: "Quiet morning light." }],
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      options: [{ option_id: "option-scene-1", title: "Morning", public_summary: "Quiet morning light." }],
       proposed_references: [],
       target_node_id: null,
       target_node_revision: null,
@@ -432,9 +491,9 @@ describe("Agent Canvas normalizers", () => {
         content: "The Specialist request timed out.",
         metadata: {
           activity_id: "activity-1",
-          specialist_name: "scene_designer",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
           operation: "materialize_draft",
-          display_name: "Scene Designer",
           status: "failed",
           error_code: "agent_deadline_exceeded",
           elapsed_ms: 420000,
@@ -467,61 +526,6 @@ describe("Agent Canvas normalizers", () => {
       message: "The Specialist request timed out.",
       retryable: true,
       suggested_actions: ["retry", "revise_request"],
-    });
-  });
-
-  it("normalizes an unresolved creative-authority decision without inventing a mode", () => {
-    const turn = normalizeAgentCanvasChatTurnV2({
-      turn_id: "turn-authority-1",
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      status: "completed",
-      turn_kind: "message",
-      request: { text: "Help me decide." },
-      error_code: null,
-      error_message: null,
-      creation_mode: null,
-      guidance_decision: {
-        action: "ask_clarification",
-        assistant_message: "Would you like to direct this step?",
-        rationale: "Creative authority is unresolved.",
-        topic_id: null,
-        topic_kind: null,
-        topic_title: null,
-        topic_objective: null,
-        specialist_name: null,
-        candidate_count: null,
-        suggested_next_topic_kinds: [],
-        intent_patch: null,
-        completion_claim: null,
-        creative_authority_resolution: {
-          outcome: "ask",
-          authority: null,
-          source: null,
-          actions: [{
-            action_id: "authority-user",
-            action: "set_creative_authority",
-            authority: "user",
-            label: "I have a direction",
-            expected_session_revision: 3,
-          }, {
-            action_id: "authority-director",
-            action: "set_creative_authority",
-            authority: "director",
-            label: "Take the lead",
-            expected_session_revision: 3,
-          }],
-        },
-      },
-      guidance_session_revision: 3,
-      continuation: null,
-      created_at: "2026-08-07T01:00:00Z",
-      updated_at: "2026-08-07T01:00:01Z",
-    });
-
-    expect(turn.guidance_decision?.creative_authority_resolution).toMatchObject({
-      outcome: "ask",
-      actions: [{ label: "I have a direction" }, { label: "Take the lead" }],
     });
   });
 
@@ -589,11 +593,12 @@ describe("Agent Canvas normalizers", () => {
       proposal_revision: 1,
       source_proposal_id: null,
       proposal_kind: "scene",
-      specialist_name: "scene_designer",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
       options: [{
         option_id: "scene-1",
         title: "Quiet studio",
-        summary_prompt: "A calm daylight studio.",
+        public_summary: "A calm daylight studio.",
       }],
       proposed_references: [],
       target_node_id: null,
@@ -666,7 +671,7 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
-  it("normalizes progressive turn, capability, and style skill projections", () => {
+  it("normalizes progressive turn, provider capability, and style skill projections", () => {
     const turn = normalizeAgentCanvasChatTurnV2({
       turn_id: "turn-1",
       workflow_id: "workflow-1",
@@ -675,20 +680,6 @@ describe("Agent Canvas normalizers", () => {
       turn_kind: "message",
       request: { text: "Make a calm ad." },
       creation_mode: null,
-      guidance_decision: {
-        action: "propose_topic",
-        assistant_message: "Let us choose the scene direction.",
-        rationale: "The scene anchors the visual treatment.",
-        topic_id: "topic-scene",
-        topic_kind: "scene",
-        topic_title: "Scene direction",
-        topic_objective: "Choose a setting.",
-        specialist_name: "scene_designer",
-        candidate_count: 3,
-        suggested_next_topic_kinds: ["storyboard"],
-        intent_patch: null,
-        completion_claim: null,
-      },
       guidance_session_revision: 3,
       continuation: null,
       error_code: null,
@@ -726,7 +717,7 @@ describe("Agent Canvas normalizers", () => {
       updated_at: "2026-08-04T09:01:00Z",
     });
 
-    expect(turn.guidance_decision?.action).toBe("propose_topic");
+    expect(turn.turn_kind).toBe("message");
     expect(turn.guidance_session_revision).toBe(3);
     expect(capabilities[0]?.capability_revision).toBe(8);
     expect(skillRun.active_creative_direction_snapshot_id).toBe("direction-1");
@@ -1220,7 +1211,6 @@ describe("Agent Canvas normalizers", () => {
         target_node_id: "node-video-1",
         target_asset_id: null,
       },
-      guidance_decision: null,
       guidance_session_revision: null,
       continuation: null,
       created_at: "2026-07-31T07:56:23Z",
@@ -1451,12 +1441,13 @@ describe("Agent Canvas normalizers", () => {
             proposal_revision: 1,
             source_proposal_id: null,
             proposal_kind: "character",
-            specialist_name: "character_designer",
+            capability_id: "character_design",
+            capability_display_name: "Character Designer",
             options: [
               {
                 option_id: "option-1",
                 title: "Option A",
-                summary_prompt: "Athletic streetwear lead.",
+                public_summary: "Athletic streetwear lead.",
               },
             ],
             proposed_references: [],

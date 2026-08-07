@@ -77,10 +77,9 @@ describe("runtimeEventPolicy", () => {
       refreshRuntime: false,
     });
     for (const eventType of [
-      "guidance_decision_completed",
-      "specialist_work_started",
-      "specialist_work_completed",
-      "specialist_work_failed",
+      "expert_activity_started",
+      "expert_activity_completed",
+      "expert_activity_failed",
       "proposal_created",
       "guidance_state_updated",
     ]) {
@@ -96,6 +95,11 @@ describe("runtimeEventPolicy", () => {
       refreshRuntime: false,
     });
     expect(runtimeEventPolicy(event("canvas_variation_materialized"))).toMatchObject({
+      refreshWorkflow: false,
+      refreshChat: false,
+      refreshRuntime: false,
+    });
+    expect(runtimeEventPolicy(event("specialist_work_started"))).toMatchObject({
       refreshWorkflow: false,
       refreshChat: false,
       refreshRuntime: false,
@@ -130,6 +134,15 @@ describe("runtimeEventPolicy", () => {
       "expert_activity_started",
       "expert_activity_completed",
       "expert_activity_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshWorkflow: false,
+        refreshRuntime: false,
+        refreshChat: true,
+      });
+    }
+
+    for (const eventType of [
       "guided_draft_materialized",
       "guided_binding_materialized",
       "storyboard_sequence_planned",

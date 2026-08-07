@@ -2071,16 +2071,22 @@ export interface BindingCapabilityDecisionV2 {
   switch_model_required: boolean;
 }
 
-export type SpecialistAgentNameV2 =
-  | "script_writer"
-  | "product_designer"
-  | "prop_designer"
-  | "character_designer"
-  | "scene_designer"
-  | "storyboard_artist"
-  | "video_director"
-  | "bgm_director"
-  | "quick_media_agent";
+export type AgentCapabilityIdV2 =
+  | "world_setting"
+  | "product_design"
+  | "prop_design"
+  | "character_design"
+  | "scene_design"
+  | "script_authoring"
+  | "storyboard_design"
+  | "video_direction"
+  | "bgm_direction"
+  | "quick_media";
+
+export interface CapabilityIdentityV2 {
+  capability_id: AgentCapabilityIdV2;
+  capability_display_name: string;
+}
 
 export interface ChatMessageV2 {
   item_type: "message";
@@ -2108,10 +2114,10 @@ export interface ChatArtifactCardV2 {
   created_at: string;
 }
 
-export interface ConceptOptionV2 {
+export interface CapabilityProposalOptionV2 {
   option_id: string;
   title: string;
-  summary_prompt: string;
+  public_summary: string;
 }
 
 export interface ProposalApplicationSummaryV2 {
@@ -2169,7 +2175,7 @@ export type ConceptProposalKindV2 =
   | "video"
   | "bgm";
 
-export interface ConceptProposalV2 {
+export interface ConceptProposalV2 extends CapabilityIdentityV2 {
   proposal_id: string;
   workflow_id: string;
   turn_id: string;
@@ -2179,8 +2185,7 @@ export interface ConceptProposalV2 {
   proposal_revision: number;
   source_proposal_id: string | null;
   proposal_kind: ConceptProposalKindV2;
-  specialist_name: SpecialistAgentNameV2;
-  options: ConceptOptionV2[];
+  options: CapabilityProposalOptionV2[];
   proposed_references: ProposedDraftReferenceV2[];
   target_node_id: string | null;
   target_node_revision: number | null;
@@ -2209,12 +2214,10 @@ export interface ChatProposalPointerV2 {
   created_at: string;
 }
 
-export interface ChatExpertActivityV2 {
+export interface ChatExpertActivityV2 extends CapabilityIdentityV2 {
   item_type: "expert_activity";
   activity_id: string;
   turn_id: string;
-  specialist: SpecialistAgentNameV2;
-  display_name: string;
   operation: string;
   status: "working" | "completed" | "failed";
   sequence: number;
@@ -2814,12 +2817,11 @@ export interface CreativeElementDecisionV2 {
   source: "explicit_user" | "accepted_proposal" | "delegated_to_agent";
 }
 
-export interface GuidanceTopicStateV2 {
+export interface GuidanceTopicStateV2 extends CapabilityIdentityV2 {
   topic_id: string;
   topic_kind: GuidanceTopicKindV2;
   title: string;
   status: "proposed" | "selected" | "deferred" | "excluded";
-  specialist_name: SpecialistAgentNameV2;
   related_node_ids: string[];
   source_proposal_id: string | null;
   revision: number;
@@ -2886,46 +2888,6 @@ export interface GuidedSessionStateV2 {
   completion: GuidanceCompletionProjectionV2;
   revision: number;
   updated_at: string;
-}
-
-export interface GuidanceIntentPatchV2 {
-  goal: CreativeGoalV2 | null;
-  element_decisions: CreativeElementDecisionV2[];
-}
-
-export interface GuidanceCompletionClaimV2 {
-  state: "authoring_ready" | "delivery_ready";
-  output_kind: GuidanceOutputKindV2;
-  node_ids: string[];
-  asset_ids: string[];
-  reason: string;
-}
-
-export interface NextGuidanceDecisionV2 {
-  action: "ordinary_reply" | "ask_clarification" | "propose_topic" | "finish_guidance";
-  assistant_message: string;
-  rationale: string;
-  topic_id: string | null;
-  topic_kind: GuidanceTopicKindV2 | null;
-  topic_title: string | null;
-  topic_objective: string | null;
-  specialist_name: SpecialistAgentNameV2 | null;
-  candidate_count: number | null;
-  suggested_next_topic_kinds: GuidanceTopicKindV2[];
-  intent_patch: GuidanceIntentPatchV2 | null;
-  completion_claim: GuidanceCompletionClaimV2 | null;
-  creative_authority_resolution: {
-    outcome: "resolved" | "ask";
-    authority: CreativeAuthorityV2 | null;
-    source: CreativeAuthoritySourceV2 | null;
-    actions: Array<{
-      action_id: string;
-      action: "set_creative_authority";
-      authority: CreativeAuthorityV2;
-      label: string;
-      expected_session_revision: number;
-    }>;
-  } | null;
 }
 
 export interface GuidanceSessionActionV2 {
@@ -2999,12 +2961,17 @@ export interface AgentCanvasChatTurnV2 {
   workflow_id: string;
   conversation_id: string;
   status: "queued" | "running" | "completed" | "failed";
-  turn_kind: "message" | "proposal_action" | "command_action" | "guided_action";
+  turn_kind:
+    | "message"
+    | "proposal_action"
+    | "command_action"
+    | "guided_action"
+    | "capability"
+    | "next_action";
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;
   creation_mode: CreationModeDecisionV2 | null;
-  guidance_decision: NextGuidanceDecisionV2 | null;
   guidance_session_revision: number | null;
   continuation: AgentCanvasContinuationV2 | null;
   created_at: string;
