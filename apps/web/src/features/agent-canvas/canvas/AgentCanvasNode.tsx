@@ -18,7 +18,6 @@ import type {
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import {
-  agentCanvasFocusedNodeSize,
   agentCanvasNodeSize,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
@@ -67,7 +66,6 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
   disabled?: boolean;
-  focused?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
 }
@@ -278,9 +276,7 @@ export function AgentCanvasNodeRenderer({
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
       ? intrinsicDimensions
       : null;
-  const nodeSize = data.focused
-    ? agentCanvasFocusedNodeSize(data.node.node_type, assetDimensions)
-    : agentCanvasNodeSize(data.node.node_type, assetDimensions);
+  const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
 
   useLayoutEffect(() => {
     if (visible) updateNodeInternals(id);
@@ -290,7 +286,7 @@ export function AgentCanvasNodeRenderer({
 
   return (
     <div
-      className={`agent-canvas-node-shell${data.focused ? " agent-canvas-node-shell--focused" : ""}`}
+      className="agent-canvas-node-shell"
       style={{ width: nodeSize.width, height: nodeSize.height }}
     >
       {data.showInputHandle !== false ? (

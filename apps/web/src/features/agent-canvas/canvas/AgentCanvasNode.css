@@ -3,7 +3,6 @@
   width: 272px;
   height: 184px;
   overflow: visible;
-  transition: width 320ms ease, height 320ms ease;
 }
 
 .agent-canvas-node {
@@ -196,32 +195,6 @@
   white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 5;
-}
-
-.agent-canvas-node-shell--focused .agent-canvas-node__content {
-  padding: 44px 46px 58px;
-}
-
-.agent-canvas-node-shell--focused .agent-canvas-node__content p {
-  font-size: 26px;
-  line-height: 1.56;
-  -webkit-line-clamp: 14;
-}
-
-.agent-canvas-node-shell--focused .agent-canvas-node__center-icon {
-  width: 112px;
-  height: 112px;
-}
-
-.agent-canvas-node-shell--focused .agent-canvas-node__center-icon img {
-  width: 96px;
-  height: 96px;
-}
-
-.agent-canvas-node-shell--focused .agent-canvas-node__status {
-  min-height: 28px;
-  padding: 5px 11px;
-  font-size: 13px;
 }
 
 .agent-canvas-node--audio {
@@ -611,7 +584,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-canvas-node-shell,
   .agent-canvas-node,
   .agent-canvas-node__video-play,
   .agent-canvas-node__action,

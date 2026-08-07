@@ -59,7 +59,10 @@ import {
   connectionRuleForPair,
 } from "./canvas/connectionPolicy.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
-import { useAgentCanvasNodeFocus } from "./canvas/useAgentCanvasNodeFocus.ts";
+import {
+  AGENT_CANVAS_FOCUS_MAX_ZOOM,
+  useAgentCanvasNodeFocus,
+} from "./canvas/useAgentCanvasNodeFocus.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
@@ -316,9 +319,9 @@ export function AgentCanvasPage() {
 
   const canonicalNodes = useMemo(
     () => workflow
-      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks, focusedNodeId)
+      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks)
       : [],
-    [focusedNodeId, live.state.runtime, nodeCallbacks, workflow],
+    [live.state.runtime, nodeCallbacks, workflow],
   );
   const edges = useMemo(
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
@@ -617,7 +620,7 @@ export function AgentCanvasPage() {
           edges={edges}
           nodeTypes={nodeTypes}
           minZoom={0.05}
-          maxZoom={2}
+          maxZoom={focusedNodeId ? AGENT_CANVAS_FOCUS_MAX_ZOOM : 2}
           deleteKeyCode={["Backspace", "Delete"]}
           multiSelectionKeyCode={["Meta", "Control"]}
           selectionKeyCode="Shift"

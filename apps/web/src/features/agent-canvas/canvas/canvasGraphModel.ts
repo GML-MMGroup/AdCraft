@@ -21,7 +21,6 @@ import {
   AGENT_CANVAS_NODE_HORIZONTAL_GAP,
   AGENT_CANVAS_NODE_VERTICAL_GAP,
   agentCanvasNodePlacementSize,
-  agentCanvasFocusedNodeSize,
   agentCanvasNodeSize,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
@@ -133,28 +132,23 @@ export function toAgentCanvasFlowNodes(
   workflow: AgentCanvasWorkflowV2,
   runtime: CanvasRuntimeSnapshotV2 | null,
   callbacks: AgentCanvasNodeCallbacks,
-  focusedNodeId: string | null = null,
 ): AgentCanvasFlowNode[] {
   const assets = new Map(workflow.assets.map((asset) => [asset.asset_id, asset]));
   return workflow.nodes.filter((node) => isAgentCanvasVisibleNodeType(node.node_type)).map((node) => {
     const asset = node.output_asset_id ? assets.get(node.output_asset_id) ?? null : null;
     const dimensions = asset ? { width: asset.width, height: asset.height } : null;
-    const focused = node.node_id === focusedNodeId;
-    const size = focused
-      ? agentCanvasFocusedNodeSize(node.node_type, dimensions)
-      : agentCanvasNodeSize(node.node_type, dimensions);
+    const size = agentCanvasNodeSize(node.node_type, dimensions);
     return {
       id: node.node_id,
       type: "agentCanvas" as const,
       position: node.position,
-      style: focused || (node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions))
+      style: node.node_type === "image" && validAgentCanvasMediaDimensions(dimensions)
         ? size
         : undefined,
       data: {
         node,
         asset,
         runtime: runtime?.node_runtime[node.node_id] ?? null,
-        focused,
         ...callbacks,
       },
     };

@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("useAgentCanvasNodeFocus", () => {
-  it("captures the current viewport and fits a double-clicked node into most of the view", () => {
+  it("captures the current viewport and zooms the whole canvas around the double-clicked node", () => {
     const flowRef = createFlowRef();
     const { result } = renderHook(() => useAgentCanvasNodeFocus({
       flowRef,
@@ -47,7 +47,7 @@ describe("useAgentCanvasNodeFocus", () => {
       padding: 0.12,
       duration: 420,
       minZoom: 0.05,
-      maxZoom: 2,
+      maxZoom: 4,
     });
   });
 
