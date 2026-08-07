@@ -12,11 +12,12 @@ from app.schemas.agent_canvas_creative_session import (
     CreativeGoalV2,
     GuidanceTopicKindV2,
     GuidedSessionStateV2,
+    GuidanceStagePolicyResultV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
     StyleGuidanceContextV2,
 )
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 
 
@@ -357,11 +358,6 @@ class GuidanceProposalSummaryV2(_PlanningContextModel):
     option_summaries: tuple[str, ...] = Field(default=(), max_length=4)
 
 
-class WorldSettingNextTopicPolicyV1(_PlanningContextModel):
-    required_topic_kind: Literal["world_setting"] | None = None
-    allowed_topic_kinds: tuple[GuidanceTopicKindV2, ...]
-
-
 class DirectorGuidanceContextV2(_PlanningContextModel):
     context_kind: Literal["director_guidance"]
     workflow_id: str = Field(min_length=1, max_length=160)
@@ -377,7 +373,7 @@ class DirectorGuidanceContextV2(_PlanningContextModel):
     element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=32)
     guidance_session: GuidedSessionStateV2 | None = None
     open_proposal: GuidanceProposalSummaryV2 | None = None
-    next_topic_policy: WorldSettingNextTopicPolicyV1
+    stage_policy: GuidanceStagePolicyResultV2
     nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=128)
     bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=256)
     style: GuidanceStyleSummaryV2 | None = None
@@ -397,6 +393,7 @@ class GuidanceSpecialistContextV2(_PlanningContextModel):
     topic_title: str = Field(min_length=1, max_length=256)
     topic_objective: str = Field(min_length=1, max_length=4_096)
     candidate_count: int = Field(ge=1, le=4)
+    proposal_mode: Literal["single_plan", "choice_set"] = "choice_set"
     user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     goal: CreativeGoalV2
     relevant_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=16)
@@ -407,7 +404,7 @@ class GuidanceSpecialistContextV2(_PlanningContextModel):
     relevant_nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=32)
     relevant_bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=64)
     targeted_prompt_baseline: str | None = Field(default=None, max_length=32_768)
-    world_setting: WorldSettingProjectionContextV1 | None = None
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
 
 
 class DelegatedProposalOptionSummaryV2(_PlanningContextModel):
@@ -550,7 +547,7 @@ class SpecialistContextV2(_PlanningContextModel):
     candidate_count: int | None = Field(default=None, ge=1, le=4)
     approved_anchor_summaries: tuple[str, ...] = Field(default=(), max_length=16)
     proposal_revision: ProposalRevisionContextV2 | None = None
-    world_setting: WorldSettingProjectionContextV1 | None = None
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
     agent_document_context: AgentDocumentContextExcerptV2 | None = None
 
     @model_validator(mode="after")

@@ -21,10 +21,10 @@ from app.schemas.agent_operation_contexts import (
     GuidanceProposalSummaryV2,
     GuidanceSpecialistContextV2,
     GuidanceStyleSummaryV2,
-    WorldSettingNextTopicPolicyV1,
 )
 from app.services.agent_canvas_guidance_ownership import topic_ownership_projection
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.services.agent_canvas_guidance_stage_policy import GuidanceStagePolicyV2
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
 class GuidanceContextBuilder:
@@ -50,8 +50,10 @@ class GuidanceContextBuilder:
         node_ids = {node.node_id for node in workflow.nodes}
         if any(node_id not in node_ids for node_id in mentioned_node_ids):
             raise _context_error("A mentioned Node does not belong to the Workflow.")
-        required_topic_kind = (
-            "world_setting" if creation_mode == "guided_production" and session is None else None
+        stage_policy = _stage_policy(
+            workflow,
+            session=session,
+            creation_mode=creation_mode,
         )
         return DirectorGuidanceContextV2(
             context_kind="director_guidance",
@@ -76,10 +78,7 @@ class GuidanceContextBuilder:
                 if open_proposal is not None
                 else None
             ),
-            next_topic_policy=WorldSettingNextTopicPolicyV1(
-                required_topic_kind=required_topic_kind,
-                allowed_topic_kinds=tuple(item.topic_kind for item in topic_ownership_projection()),
-            ),
+            stage_policy=stage_policy,
             nodes=tuple(_node_summary(node) for node in workflow.nodes),
             bindings=tuple(_binding_summary(binding) for binding in workflow.bindings),
             style=(
@@ -111,7 +110,8 @@ class GuidanceContextBuilder:
         image_assets: tuple[ProjectAssetSummaryV2, ...],
         relevant_node_ids: tuple[str, ...] = (),
         targeted_prompt_baseline: str | None = None,
-        world_setting: WorldSettingProjectionContextV1 | None = None,
+        world_setting: WorldSettingContextEnvelopeV2 | None = None,
+        proposal_mode: str = "choice_set",
     ) -> GuidanceSpecialistContextV2:
         if decision.action != "propose_topic":
             raise _context_error("A Specialist context requires a topic proposal.")
@@ -129,7 +129,8 @@ class GuidanceContextBuilder:
             topic_kind=decision.topic_kind,
             topic_title=decision.topic_title,
             topic_objective=decision.topic_objective,
-            candidate_count=decision.candidate_count,
+            candidate_count=(1 if proposal_mode == "single_plan" else decision.candidate_count),
+            proposal_mode=proposal_mode,
             user_instruction=user_instruction,
             goal=session.goal,
             relevant_decisions=tuple(
@@ -183,6 +184,47 @@ def _node_summary(node) -> GuidanceNodeSummaryV2:
         title=node.title,
         status=node.status,
         semantic_purpose=node.summary_prompt or node.creative_role,
+    )
+
+
+def _stage_policy(workflow, *, session, creation_mode):
+    policy = GuidanceStagePolicyV2()
+    if creation_mode != "guided_production":
+        return policy.unrestricted()
+    if session is None:
+        from app.schemas.agent_canvas_creative_session import GuidanceStagePolicyResultV2
+
+        return GuidanceStagePolicyResultV2(
+            allowed_stage_kinds=("world_setting",),
+            recommended_stage_kinds=("world_setting",),
+            blocking_facts=("world_setting_required",),
+            completion_allowed=False,
+        )
+    stage_by_role = {
+        "world_setting": "world_setting",
+        "script": "script",
+        "product": "product",
+        "prop": "prop",
+        "character": "character",
+        "scene": "scene",
+        "storyboard_sequence": "storyboard",
+        "storyboard_video": "video",
+        "bgm": "bgm",
+        "editing": "editing",
+    }
+    existing = {
+        stage_by_role[node.creative_role]
+        for node in workflow.nodes
+        if node.creative_role in stage_by_role
+    }
+    existing.update(
+        "bgm" if topic.topic_kind == "audio" else topic.topic_kind
+        for topic in session.topics
+        if topic.status == "selected" and topic.topic_kind != "creative_direction"
+    )
+    return policy.evaluate(
+        session=session,
+        existing_stage_kinds=tuple(existing),
     )
 
 
