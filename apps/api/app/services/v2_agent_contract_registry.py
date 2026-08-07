@@ -14,10 +14,18 @@ from app.schemas.agent_runtime import (
     SpecialistDraft,
 )
 from app.schemas.agent_canvas_creative_session import (
+    BgmAudioSpecialistDraftV2,
+    CharacterImageSpecialistDraftV2,
     CreationModeDecisionV2,
     DelegatedProposalChoiceV2,
     NextGuidanceDecisionV2,
+    ProductImageSpecialistDraftV2,
+    PropImageSpecialistDraftV2,
+    SceneImageSpecialistDraftV2,
+    ScriptSpecialistDraftV2,
     SpecialistDraftV2,
+    StoryboardImageSpecialistDraftV2,
+    VideoSpecialistDraftV2,
 )
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import (
@@ -43,9 +51,8 @@ from app.schemas.workflow_v2_screenplay import V2EditableScriptDocument, V2Scrip
 from app.schemas.workflow_v2_storyboard_detail import V2StoryboardDetailPlan
 from app.schemas.workflow_v2_style import V2VisualStyleScopeRepairOutput
 from app.schemas.agent_canvas_world_setting import (
-    WorldSettingMaterializationDraftV1,
+    WorldSettingMaterializationDraftV2,
     WorldSettingProposalDraftV1,
-    WorldSettingReadyProjectionBundleV1,
 )
 
 
@@ -59,12 +66,19 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         AgentCommandPlanDraftV2,
         ConceptProposalDraftV2,
         SpecialistDraftV2,
+        ScriptSpecialistDraftV2,
+        ProductImageSpecialistDraftV2,
+        PropImageSpecialistDraftV2,
+        CharacterImageSpecialistDraftV2,
+        SceneImageSpecialistDraftV2,
+        StoryboardImageSpecialistDraftV2,
+        VideoSpecialistDraftV2,
+        BgmAudioSpecialistDraftV2,
         CreationModeDecisionV2,
         NextGuidanceDecisionV2,
         DelegatedProposalChoiceV2,
         WorldSettingProposalDraftV1,
-        WorldSettingMaterializationDraftV1,
-        WorldSettingReadyProjectionBundleV1,
+        WorldSettingMaterializationDraftV2,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
