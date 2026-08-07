@@ -59,6 +59,7 @@ import {
   connectionRuleForPair,
 } from "./canvas/connectionPolicy.ts";
 import { deleteCanvasEntities } from "./canvas/deleteCanvasEntities.ts";
+import { useAgentCanvasNodeFocus } from "./canvas/useAgentCanvasNodeFocus.ts";
 import { AgentCanvasChatPanel } from "./chat/AgentCanvasChatPanel.tsx";
 import { AgentCanvasEditingPanel } from "./editing/AgentCanvasEditingPanel.tsx";
 import {
@@ -166,6 +167,15 @@ export function AgentCanvasPage() {
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
+  const {
+    focusedNodeId,
+    focusNode: focusCanvasNode,
+    exitFocus: exitCanvasNodeFocus,
+    scheduleExitForNodeSelection,
+  } = useAgentCanvasNodeFocus({
+    flowRef,
+    scopeKey: workflow?.workflow_id ?? "no-workflow",
+  });
 
   useEffect(() => {
     let active = true;
@@ -306,9 +316,9 @@ export function AgentCanvasPage() {
 
   const canonicalNodes = useMemo(
     () => workflow
-      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks)
+      ? toAgentCanvasFlowNodes(workflow, live.state.runtime, nodeCallbacks, focusedNodeId)
       : [],
-    [live.state.runtime, nodeCallbacks, workflow],
+    [focusedNodeId, live.state.runtime, nodeCallbacks, workflow],
   );
   const edges = useMemo(
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
@@ -335,6 +345,12 @@ export function AgentCanvasPage() {
       setSelectedNodeId(null);
     }
   }, [canonicalNodes, session.state.selectedNodeId, setSelectedNodeId]);
+
+  useEffect(() => {
+    if (focusedNodeId && !canonicalNodes.some((node) => node.id === focusedNodeId)) {
+      exitCanvasNodeFocus();
+    }
+  }, [canonicalNodes, exitCanvasNodeFocus, focusedNodeId]);
 
   const handleNodeChanges = useCallback((changes: NodeChange<AgentCanvasFlowNode>[]) => {
     onNodesChange(changes);
@@ -582,12 +598,19 @@ export function AgentCanvasPage() {
   const running = Boolean(live.state.runtime?.active_execution_id);
   return (
     <div className="agent-canvas-page">
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}
         className="agent-canvas-board"
         onPointerMove={pointerSpotlight.onPointerMove}
         onPointerLeave={pointerSpotlight.onPointerLeave}
         onPointerCancel={pointerSpotlight.onPointerCancel}
+        onDoubleClick={(event) => {
+          const target = event.target;
+          if (target instanceof Element && target.classList.contains("react-flow__pane")) {
+            exitCanvasNodeFocus();
+          }
+        }}
       >
         <ReactFlow<AgentCanvasFlowNode, Edge>
           nodes={nodes}
@@ -599,10 +622,20 @@ export function AgentCanvasPage() {
           multiSelectionKeyCode={["Meta", "Control"]}
           selectionKeyCode="Shift"
           panOnScroll
+          zoomOnDoubleClick={false}
           selectionOnDrag
           onInit={initializeFlow}
           onNodesChange={handleNodeChanges}
-          onNodeClick={(_event, node) => setSelectedNodeId(node.id)}
+          onNodeClick={(_event, node) => {
+            setSelectedNodeId(node.id);
+            scheduleExitForNodeSelection(node.id);
+          }}
+          onNodeDoubleClick={(event, node) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setSelectedNodeId(node.id);
+            focusCanvasNode(node.id);
+          }}
           onNodeDragStop={(_event, node, draggedNodes) => {
             const changed = draggedNodes.length ? draggedNodes : [node];
             void updateNodePositions(changed.map((item) => ({
@@ -629,7 +662,9 @@ export function AgentCanvasPage() {
             setConnectedNodeMenu(null);
             setContextMenu(null);
           }}
-          onMoveEnd={(_event, viewport) => writeViewport(workflow.workflow_id, viewport)}
+          onMoveEnd={(_event, viewport) => {
+            if (!focusedNodeId) writeViewport(workflow.workflow_id, viewport);
+          }}
           fitView={false}
           colorMode="system"
         >

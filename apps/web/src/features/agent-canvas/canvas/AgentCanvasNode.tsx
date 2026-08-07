@@ -16,8 +16,9 @@ import type {
   ProjectAssetSummaryV2,
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
-import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
+import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import {
+  agentCanvasFocusedNodeSize,
   agentCanvasNodeSize,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
@@ -66,6 +67,7 @@ export interface AgentCanvasNodeData extends Record<string, unknown>, AgentCanva
   asset?: ProjectAssetSummaryV2 | null;
   runtime?: NodeRuntimeV2 | null;
   disabled?: boolean;
+  focused?: boolean;
   showInputHandle?: boolean;
   showOutputHandle?: boolean;
 }
@@ -129,6 +131,7 @@ function MediaSurface({
             aria-label="Play video output"
             title="Play video"
             onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               onOpenVideoPreview(node.node_id, asset);
@@ -156,14 +159,7 @@ function MediaSurface({
         }
       }}
     />
-  ) : (
-    <div className="agent-canvas-node__media-placeholder" aria-label={`${NODE_TYPE_LABELS[node.node_type]} preview unavailable`}>
-      <AgentCanvasNodeTypeIcon
-        nodeType={node.node_type}
-        label={typeIconLabel(node, label)}
-      />
-    </div>
-  );
+  ) : <AgentCanvasNodeContent node={node} iconLabel={typeIconLabel(node, label)} />;
 }
 /* eslint-enable jsx-a11y/no-noninteractive-element-interactions */
 
@@ -176,14 +172,7 @@ function NodeSurface({
   label,
 }: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved"> & { status: CanvasNodeStatusV2; label: string }) {
   if (node.node_type === "text") {
-    return (
-      <div className="agent-canvas-node__media-placeholder">
-        <AgentCanvasNodeTypeIcon
-          nodeType={node.node_type}
-          label={typeIconLabel(node, label)}
-        />
-      </div>
-    );
+    return <AgentCanvasNodeContent node={node} iconLabel={typeIconLabel(node, label)} />;
   }
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
@@ -289,7 +278,9 @@ export function AgentCanvasNodeRenderer({
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
       ? intrinsicDimensions
       : null;
-  const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
+  const nodeSize = data.focused
+    ? agentCanvasFocusedNodeSize(data.node.node_type, assetDimensions)
+    : agentCanvasNodeSize(data.node.node_type, assetDimensions);
 
   useLayoutEffect(() => {
     if (visible) updateNodeInternals(id);
@@ -299,7 +290,7 @@ export function AgentCanvasNodeRenderer({
 
   return (
     <div
-      className="agent-canvas-node-shell"
+      className={`agent-canvas-node-shell${data.focused ? " agent-canvas-node-shell--focused" : ""}`}
       style={{ width: nodeSize.width, height: nodeSize.height }}
     >
       {data.showInputHandle !== false ? (
@@ -326,7 +317,15 @@ export function AgentCanvasNodeRenderer({
               height,
             })}
       />
-      {workbench ? <div className="agent-canvas-node-workbench-anchor nodrag nopan nowheel">{workbench}</div> : null}
+      {workbench ? (
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- The embedded form remains keyboard-accessible; this boundary only prevents node-level double-click focus.
+        <div
+          className="agent-canvas-node-workbench-anchor nodrag nopan nowheel"
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          {workbench}
+        </div>
+      ) : null}
       {data.showOutputHandle !== false ? (
         <Handle
           id="output"

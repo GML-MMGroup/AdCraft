@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   UNKNOWN_IMAGE_NODE_SIZE,
+  agentCanvasFocusedNodeSize,
   agentCanvasNodePlacementSize,
   agentCanvasNodeSize,
 } from "./nodeGeometry.ts";
@@ -49,6 +50,18 @@ describe("agentCanvasNodeSize", () => {
     expect(agentCanvasNodePlacementSize("image", { width: 1920, height: 1080 })).toEqual({
       width: 360,
       height: 203,
+    });
+  });
+
+  it("expands focused nodes into a large bounded area while preserving media ratios", () => {
+    expect(agentCanvasFocusedNodeSize("text", null)).toEqual({ width: 1040, height: 680 });
+    expect(agentCanvasFocusedNodeSize("image", { width: 1920, height: 1080 })).toEqual({
+      width: 1040,
+      height: 585,
+    });
+    expect(agentCanvasFocusedNodeSize("video", { width: 1080, height: 1920 })).toEqual({
+      width: 383,
+      height: 680,
     });
   });
 });
