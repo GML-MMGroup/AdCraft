@@ -8,6 +8,7 @@ from app.schemas.agent_canvas_conversation import ConceptProposalV2
 from app.schemas.agent_canvas_creative_session import (
     GuidanceCompletionClaimV2,
     GuidanceCompletionProjectionV2,
+    GuidanceStagePolicyResultV2,
     GuidedSessionStateV2,
     NextGuidanceDecisionV2,
     GuidanceTopicKindV2,
@@ -27,6 +28,7 @@ class GuidanceDecisionValidator:
         resolved_targets: tuple[str, ...],
         open_proposal: ConceptProposalV2 | None = None,
         required_topic_kind: GuidanceTopicKindV2 | None = None,
+        stage_policy: GuidanceStagePolicyResultV2 | None = None,
     ) -> NextGuidanceDecisionV2:
         if (
             session is None
@@ -53,6 +55,17 @@ class GuidanceDecisionValidator:
                 raise _decision_error("The current open Proposal must be resolved first.")
             if TOPIC_SPECIALIST[decision.topic_kind] != decision.specialist_name:
                 raise _decision_error("The proposed topic has the wrong Specialist owner.")
+            stage_kind = {
+                "creative_direction": "narrative_direction",
+                "audio": "bgm",
+            }.get(decision.topic_kind, decision.topic_kind)
+            if stage_policy is not None and stage_kind not in stage_policy.allowed_stage_kinds:
+                raise V2PersistenceError(
+                    "guidance_stage_not_allowed",
+                    "The proposed stage is outside the current guidance policy.",
+                    stage="guidance_decision_validator",
+                    details={"stage_kind": stage_kind},
+                )
             if session is not None and any(
                 item.element_kind == decision.topic_kind and item.presence == "exclude"
                 for item in session.element_decisions

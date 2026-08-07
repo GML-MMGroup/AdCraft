@@ -734,57 +734,6 @@ class AgentCanvasNodeRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
-class AgentCanvasWorldSettingProjectionRow(Base):
-    """One immutable projection bundle for an exact World Setting revision."""
-
-    __tablename__ = "agent_canvas_world_setting_projection_bundles"
-    __table_args__ = (
-        CheckConstraint(
-            "source_node_revision > 0",
-            name="ck_world_setting_projection_positive_source_revision",
-        ),
-        CheckConstraint(
-            "projection_mode IN ('ready', 'fallback')",
-            name="ck_world_setting_projection_mode",
-        ),
-        UniqueConstraint(
-            "source_node_id",
-            "source_node_revision",
-            "source_content_digest",
-            "compiler_digest",
-            name="uq_world_setting_projection_cache_identity",
-        ),
-        Index(
-            "ix_world_setting_projection_workflow_source_revision",
-            "workflow_id",
-            "source_node_id",
-            "source_node_revision",
-        ),
-        Index("ix_world_setting_projection_digest", "projection_digest"),
-    )
-
-    projection_snapshot_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    workflow_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
-    )
-    source_node_id: Mapped[str] = mapped_column(
-        ForeignKey("agent_canvas_nodes.node_id"), nullable=False
-    )
-    source_node_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_content_digest: Mapped[str] = mapped_column(Text, nullable=False)
-    projection_contract_version: Mapped[str] = mapped_column(Text, nullable=False)
-    projection_prompt_digest: Mapped[str] = mapped_column(Text, nullable=False)
-    projection_skill_digest: Mapped[str] = mapped_column(Text, nullable=False)
-    model_ref: Mapped[str] = mapped_column(Text, nullable=False)
-    compiler_digest: Mapped[str] = mapped_column(Text, nullable=False)
-    projection_mode: Mapped[str] = mapped_column(Text, nullable=False)
-    shared_projection_json: Mapped[str] = mapped_column(Text, nullable=False)
-    role_projections_json: Mapped[str] = mapped_column(Text, nullable=False)
-    projection_digest: Mapped[str] = mapped_column(Text, nullable=False)
-    warning_code: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-
-
 class ProviderConnectionRow(Base):
     """Secret-safe installation metadata for one configured provider."""
 
@@ -1190,9 +1139,11 @@ class AgentCanvasGuidanceSessionRow(Base):
         ForeignKey("agent_canvas_workflows.workflow_id"), unique=True, nullable=False
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    guidance_mode: Mapped[str] = mapped_column(Text, nullable=False)
     creative_goal_json: Mapped[str] = mapped_column(Text, nullable=False)
     element_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    creative_authority_json: Mapped[str | None] = mapped_column(Text)
+    current_checkpoint_json: Mapped[str | None] = mapped_column(Text)
+    narrative_direction: Mapped[str | None] = mapped_column(Text)
     current_topic_id: Mapped[str | None] = mapped_column(Text)
     active_proposal_id: Mapped[str | None] = mapped_column(Text)
     active_style_skill_run_id: Mapped[str | None] = mapped_column(Text)

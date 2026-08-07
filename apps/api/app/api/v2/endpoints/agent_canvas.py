@@ -45,9 +45,6 @@ from app.persistence.agent_canvas_editing_repository import (
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
-from app.persistence.agent_canvas_world_setting_repository import (
-    AgentCanvasWorldSettingRepository,
-)
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
@@ -191,7 +188,7 @@ from app.services.agent_canvas_runtime import (
 )
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
-from app.services.agent_canvas_world_setting_projection import WorldSettingProjectionService
+from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
@@ -388,18 +385,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         ),
         connection_policy=connection_policy,
     )
-    world_setting_projection = WorldSettingProjectionService(
-        workflow_repository,
-        AgentCanvasWorldSettingRepository(database),
-        gateway=director_gateway if isinstance(director_gateway, PiDirectorGateway) else None,
-        model_ref_resolver=lambda: (
-            model_resolution.resolve_selection(
-                node_type="script",
-                model_selection_mode="default",
-                model_ref=None,
-            ).model_ref
-        ),
-    )
+    world_setting_context = WorldSettingContextResolverV2(workflow_repository)
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
     editing_export_repository = AgentCanvasEditingExportRepository(database)
     provider_executor = V2ProviderExecutor(
@@ -520,9 +506,9 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         media_context_preparer=prepare_media_context,
         input_compiler=AgentCanvasResolvedInputCompiler(
             binding_service,
-            world_settings=world_setting_projection,
+            world_settings=world_setting_context,
         ),
-        world_settings=world_setting_projection,
+        world_settings=world_setting_context,
         stage_trace_writer=write_stage_trace,
         run_snapshots=run_snapshots,
         video_parameter_compiler=AgentCanvasVideoParameterCompiler(
@@ -1796,6 +1782,9 @@ def apply_guided_action(
             workflow_id,
             action_id,
             confirmed=request.confirmed,
+            action_type=request.action,
+            authority=request.authority,
+            expected_session_revision=request.expected_session_revision,
             idempotency_key=idempotency_key,
         )
     except V2PersistenceError as error:

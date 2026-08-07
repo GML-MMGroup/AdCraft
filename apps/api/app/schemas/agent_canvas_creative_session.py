@@ -65,6 +65,25 @@ GuidanceTopicKindV2 = Literal[
     "video",
     "audio",
 ]
+GuidanceStageKindV2 = Literal[
+    "world_setting",
+    "narrative_direction",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "script",
+    "storyboard",
+    "video",
+    "bgm",
+    "editing",
+]
+CreativeAuthorityV2 = Literal["user", "director"]
+CreativeAuthoritySourceV2 = Literal[
+    "explicit_user",
+    "explicit_delegation",
+    "director_inference",
+]
 
 
 class _CreativeSessionModel(BaseModel):
@@ -117,12 +136,63 @@ class GuidanceCompletionProjectionV2(_CreativeSessionModel):
     matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
 
 
+class CreativeAuthorityStateV2(_CreativeSessionModel):
+    authority: CreativeAuthorityV2
+    source: CreativeAuthoritySourceV2
+    decided_at_turn_id: str = Field(min_length=1, max_length=160)
+    revision: int = Field(ge=1)
+
+
+class CreativeAuthorityActionV2(_CreativeSessionModel):
+    action_id: str = Field(min_length=1, max_length=160)
+    action: Literal["set_creative_authority"] = "set_creative_authority"
+    authority: CreativeAuthorityV2
+    label: str = Field(min_length=1, max_length=160)
+    expected_session_revision: int = Field(ge=1)
+
+
+class CreativeAuthorityResolutionV2(_CreativeSessionModel):
+    outcome: Literal["resolved", "ask"]
+    authority: CreativeAuthorityV2 | None = None
+    source: CreativeAuthoritySourceV2 | None = None
+    actions: tuple[CreativeAuthorityActionV2, ...] = Field(default=(), max_length=2)
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> "CreativeAuthorityResolutionV2":
+        if self.outcome == "resolved":
+            if self.authority is None or self.source is None or self.actions:
+                raise ValueError("A resolved authority requires authority and source only.")
+        elif self.authority is not None or self.source is not None:
+            raise ValueError("An authority question cannot claim a resolved authority.")
+        return self
+
+
+class GuidedStepCheckpointV2(_CreativeSessionModel):
+    checkpoint_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    session_revision: int = Field(ge=1)
+    stage_kind: GuidanceStageKindV2 | None = None
+    status: Literal["pending", "waiting_user", "completed", "failed", "superseded"]
+    trigger: Literal["user_message", "proposal_action", "continuation", "recovery"]
+    action_id: str | None = Field(default=None, max_length=160)
+
+
+class GuidanceStagePolicyResultV2(_CreativeSessionModel):
+    allowed_stage_kinds: tuple[GuidanceStageKindV2, ...]
+    recommended_stage_kinds: tuple[GuidanceStageKindV2, ...]
+    unresolved_element_kinds: tuple[CreativeElementKindV2, ...] = ()
+    blocking_facts: tuple[str, ...] = Field(default=(), max_length=32)
+    completion_allowed: bool
+
+
 class GuidedSessionStateV2(_CreativeSessionModel):
     session_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     status: Literal["active", "paused", "completed"]
-    guidance_mode: Literal["collaborative", "delegated"]
     goal: CreativeGoalV2
+    creative_authority: CreativeAuthorityStateV2 | None = None
+    current_checkpoint: GuidedStepCheckpointV2 | None = None
+    narrative_direction: str | None = Field(default=None, max_length=4_096)
     element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
         default=(),
         max_length=32,
@@ -175,6 +245,7 @@ class NextGuidanceDecisionV2(_CreativeSessionModel):
     )
     intent_patch: GuidanceIntentPatchV2 | None = None
     completion_claim: GuidanceCompletionClaimV2 | None = None
+    creative_authority_resolution: CreativeAuthorityResolutionV2 | None = None
 
     @model_validator(mode="after")
     def validate_action_shape(self) -> "NextGuidanceDecisionV2":
@@ -208,12 +279,17 @@ class ConceptDraftSpecV2(_CreativeSessionModel):
     """Private bounded prompt authored for one proposal option."""
 
     prompt: str = Field(min_length=1, max_length=32_768)
+    world_setting_core: dict[str, JsonValue] | None = None
 
 
 class GuidanceSessionActionV2(_CreativeSessionModel):
     action_id: str = Field(min_length=1, max_length=160)
     logical_key: str = Field(min_length=1, max_length=256)
-    action: Literal["stop_guidance", "resume_guidance"]
+    action: Literal[
+        "stop_guidance",
+        "resume_guidance",
+        "set_creative_authority",
+    ]
     state: Literal["pending", "applying", "applied", "superseded", "failed"]
     creating_turn_id: str = Field(min_length=1, max_length=160)
     expected_session_revision: int = Field(ge=1)
@@ -221,6 +297,7 @@ class GuidanceSessionActionV2(_CreativeSessionModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     confirmation_required: bool
     reason: str = Field(min_length=1, max_length=1_024)
+    authority: CreativeAuthorityV2 | None = None
 
 
 class CreativeDirectionSnapshotV2(_CreativeSessionModel):
