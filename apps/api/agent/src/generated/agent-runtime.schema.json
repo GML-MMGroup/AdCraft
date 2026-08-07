@@ -1269,6 +1269,178 @@
       "title": "AgentNodeIdRefV2",
       "type": "object"
     },
+    "AgentOperationFailureV2": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_stage": {
+          "enum": [
+            "fallback",
+            "initial",
+            "structured_repair",
+            "transport_retry"
+          ],
+          "title": "Attempt Stage",
+          "type": "string"
+        },
+        "code": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "elapsed_ms": {
+          "minimum": 0,
+          "title": "Elapsed Ms",
+          "type": "integer"
+        },
+        "failure_stage": {
+          "enum": [
+            "asset_publication",
+            "materialization",
+            "model_capability",
+            "proposal",
+            "provider",
+            "revision",
+            "routing",
+            "safety"
+          ],
+          "title": "Failure Stage",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "retryable": {
+          "default": false,
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "specialist_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Specialist Name"
+        },
+        "validation_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Validation Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "attempt_stage",
+        "code",
+        "elapsed_ms",
+        "failure_stage",
+        "message",
+        "occurred_at",
+        "operation"
+      ],
+      "title": "AgentOperationFailureV2",
+      "type": "object"
+    },
+    "AgentOperationPolicyV2": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "contract_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Id",
+          "type": "string"
+        },
+        "fallback_class": {
+          "default": "none",
+          "enum": [
+            "none",
+            "selected_media_draft",
+            "selected_world_setting"
+          ],
+          "title": "Fallback Class",
+          "type": "string"
+        },
+        "hard_deadline_seconds": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Hard Deadline Seconds",
+          "type": "integer"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "policy_class": {
+          "enum": [
+            "long_form",
+            "materialization",
+            "proposal",
+            "routing"
+          ],
+          "title": "Policy Class",
+          "type": "string"
+        },
+        "policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Policy Id",
+          "type": "string"
+        },
+        "structured_repair_limit": {
+          "const": 1,
+          "default": 1,
+          "title": "Structured Repair Limit",
+          "type": "integer"
+        },
+        "transport_retry_limit": {
+          "const": 1,
+          "default": 1,
+          "title": "Transport Retry Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "agent_name",
+        "contract_id",
+        "hard_deadline_seconds",
+        "operation",
+        "policy_class",
+        "policy_id"
+      ],
+      "title": "AgentOperationPolicyV2",
+      "type": "object"
+    },
     "AgentOperationResultRefV2": {
       "additionalProperties": false,
       "properties": {
@@ -1860,7 +2032,7 @@
         "world_setting": {
           "anyOf": [
             {
-              "$ref": "#/$defs/WorldSettingProjectionContextV1"
+              "$ref": "#/$defs/WorldSettingContextEnvelopeV2"
             },
             {
               "type": "null"
@@ -1921,12 +2093,57 @@
           "title": "Max Turns",
           "type": "integer"
         },
+        "operation_class": {
+          "anyOf": [
+            {
+              "enum": [
+                "long_form",
+                "materialization",
+                "proposal",
+                "routing"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Class"
+        },
+        "operation_policy_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Policy Id"
+        },
+        "structured_repair_limit": {
+          "default": 1,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Structured Repair Limit",
+          "type": "integer"
+        },
         "timeout_seconds": {
           "default": 120.0,
           "exclusiveMinimum": 0,
           "maximum": 900,
           "title": "Timeout Seconds",
           "type": "number"
+        },
+        "transport_retry_limit": {
+          "default": 0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Transport Retry Limit",
+          "type": "integer"
         }
       },
       "title": "AgentRunPolicy",
@@ -3384,63 +3601,6 @@
       "title": "BgmExpertAgentContext",
       "type": "object"
     },
-    "BgmWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "bgm_director",
-          "default": "bgm_director",
-          "title": "Audience",
-          "type": "string"
-        },
-        "energy": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Energy",
-          "type": "array"
-        },
-        "era_and_culture": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Era And Culture",
-          "type": "array"
-        },
-        "instrumentation_cues": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Instrumentation Cues",
-          "type": "array"
-        },
-        "mood": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Mood",
-          "type": "array"
-        }
-      },
-      "title": "BgmWorldSettingProjectionV1",
-      "type": "object"
-    },
     "CanvasBindingSourceImageAssetV2": {
       "additionalProperties": false,
       "properties": {
@@ -4295,63 +4455,6 @@
       "title": "CharacterImageSpecialistDraftV2",
       "type": "object"
     },
-    "CharacterWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "character_designer",
-          "default": "character_designer",
-          "title": "Audience",
-          "type": "string"
-        },
-        "behavior": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Behavior",
-          "type": "array"
-        },
-        "social_identity": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Social Identity",
-          "type": "array"
-        },
-        "wardrobe_logic": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Wardrobe Logic",
-          "type": "array"
-        },
-        "world_fit": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "World Fit",
-          "type": "array"
-        }
-      },
-      "title": "CharacterWorldSettingProjectionV1",
-      "type": "object"
-    },
     "ConceptDraftSpecV2": {
       "additionalProperties": false,
       "description": "Private bounded prompt authored for one proposal option.",
@@ -4361,6 +4464,21 @@
           "minLength": 1,
           "title": "Prompt",
           "type": "string"
+        },
+        "world_setting_core": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "World Setting Core"
         }
       },
       "required": [
@@ -4638,6 +4756,151 @@
         "digest"
       ],
       "title": "CreativeAnchorSetV2",
+      "type": "object"
+    },
+    "CreativeAuthorityActionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "const": "set_creative_authority",
+          "default": "set_creative_authority",
+          "title": "Action",
+          "type": "string"
+        },
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "authority": {
+          "enum": [
+            "director",
+            "user"
+          ],
+          "title": "Authority",
+          "type": "string"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action_id",
+        "authority",
+        "expected_session_revision",
+        "label"
+      ],
+      "title": "CreativeAuthorityActionV2",
+      "type": "object"
+    },
+    "CreativeAuthorityResolutionV2": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CreativeAuthorityActionV2"
+          },
+          "maxItems": 2,
+          "title": "Actions",
+          "type": "array"
+        },
+        "authority": {
+          "anyOf": [
+            {
+              "enum": [
+                "director",
+                "user"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authority"
+        },
+        "outcome": {
+          "enum": [
+            "ask",
+            "resolved"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "director_inference",
+                "explicit_delegation",
+                "explicit_user"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        }
+      },
+      "required": [
+        "outcome"
+      ],
+      "title": "CreativeAuthorityResolutionV2",
+      "type": "object"
+    },
+    "CreativeAuthorityStateV2": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "enum": [
+            "director",
+            "user"
+          ],
+          "title": "Authority",
+          "type": "string"
+        },
+        "decided_at_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Decided At Turn Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "source": {
+          "enum": [
+            "director_inference",
+            "explicit_delegation",
+            "explicit_user"
+          ],
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "authority",
+        "decided_at_turn_id",
+        "revision",
+        "source"
+      ],
+      "title": "CreativeAuthorityStateV2",
       "type": "object"
     },
     "CreativeDirectionSnapshotV2": {
@@ -5132,9 +5395,6 @@
           "title": "Model Capabilities",
           "type": "object"
         },
-        "next_topic_policy": {
-          "$ref": "#/$defs/WorldSettingNextTopicPolicyV1"
-        },
         "nodes": {
           "default": [],
           "items": {
@@ -5154,6 +5414,9 @@
             }
           ],
           "default": null
+        },
+        "stage_policy": {
+          "$ref": "#/$defs/GuidanceStagePolicyResultV2"
         },
         "style": {
           "anyOf": [
@@ -5207,7 +5470,7 @@
       "required": [
         "context_kind",
         "conversation_id",
-        "next_topic_policy",
+        "stage_policy",
         "topic_ownership",
         "user_input",
         "workflow_id",
@@ -6358,6 +6621,7 @@
         "action": {
           "enum": [
             "resume_guidance",
+            "set_creative_authority",
             "stop_guidance"
           ],
           "title": "Action",
@@ -6368,6 +6632,22 @@
           "minLength": 1,
           "title": "Action Id",
           "type": "string"
+        },
+        "authority": {
+          "anyOf": [
+            {
+              "enum": [
+                "director",
+                "user"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authority"
         },
         "confirmation_required": {
           "title": "Confirmation Required",
@@ -6469,6 +6749,15 @@
           "maxItems": 16,
           "title": "Image References",
           "type": "array"
+        },
+        "proposal_mode": {
+          "default": "choice_set",
+          "enum": [
+            "choice_set",
+            "single_plan"
+          ],
+          "title": "Proposal Mode",
+          "type": "string"
         },
         "relevant_bindings": {
           "default": [],
@@ -6586,7 +6875,7 @@
         "world_setting": {
           "anyOf": [
             {
-              "$ref": "#/$defs/WorldSettingProjectionContextV1"
+              "$ref": "#/$defs/WorldSettingContextEnvelopeV2"
             },
             {
               "type": "null"
@@ -6609,6 +6898,90 @@
         "workflow_revision"
       ],
       "title": "GuidanceSpecialistContextV2",
+      "type": "object"
+    },
+    "GuidanceStagePolicyResultV2": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_stage_kinds": {
+          "items": {
+            "enum": [
+              "bgm",
+              "character",
+              "editing",
+              "narrative_direction",
+              "product",
+              "prop",
+              "scene",
+              "script",
+              "storyboard",
+              "video",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Stage Kinds",
+          "type": "array"
+        },
+        "blocking_facts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Blocking Facts",
+          "type": "array"
+        },
+        "completion_allowed": {
+          "title": "Completion Allowed",
+          "type": "boolean"
+        },
+        "recommended_stage_kinds": {
+          "items": {
+            "enum": [
+              "bgm",
+              "character",
+              "editing",
+              "narrative_direction",
+              "product",
+              "prop",
+              "scene",
+              "script",
+              "storyboard",
+              "video",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "title": "Recommended Stage Kinds",
+          "type": "array"
+        },
+        "unresolved_element_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "audio",
+              "character",
+              "product",
+              "prop",
+              "scene",
+              "script",
+              "storyboard",
+              "video",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "title": "Unresolved Element Kinds",
+          "type": "array"
+        }
+      },
+      "required": [
+        "allowed_stage_kinds",
+        "completion_allowed",
+        "recommended_stage_kinds"
+      ],
+      "title": "GuidanceStagePolicyResultV2",
       "type": "object"
     },
     "GuidanceStyleSummaryV2": {
@@ -6816,6 +7189,28 @@
         "completion": {
           "$ref": "#/$defs/GuidanceCompletionProjectionV2"
         },
+        "creative_authority": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeAuthorityStateV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "current_checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedStepCheckpointV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "current_topic_id": {
           "anyOf": [
             {
@@ -6841,13 +7236,18 @@
         "goal": {
           "$ref": "#/$defs/CreativeGoalV2"
         },
-        "guidance_mode": {
-          "enum": [
-            "collaborative",
-            "delegated"
+        "narrative_direction": {
+          "anyOf": [
+            {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Guidance Mode",
-          "type": "string"
+          "default": null,
+          "title": "Narrative Direction"
         },
         "revision": {
           "minimum": 1,
@@ -6892,7 +7292,6 @@
       },
       "required": [
         "goal",
-        "guidance_mode",
         "revision",
         "session_id",
         "status",
@@ -6900,6 +7299,96 @@
         "workflow_id"
       ],
       "title": "GuidedSessionStateV2",
+      "type": "object"
+    },
+    "GuidedStepCheckpointV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Action Id"
+        },
+        "checkpoint_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "session_revision": {
+          "minimum": 1,
+          "title": "Session Revision",
+          "type": "integer"
+        },
+        "stage_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "bgm",
+                "character",
+                "editing",
+                "narrative_direction",
+                "product",
+                "prop",
+                "scene",
+                "script",
+                "storyboard",
+                "video",
+                "world_setting"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage Kind"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "failed",
+            "pending",
+            "superseded",
+            "waiting_user"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "trigger": {
+          "enum": [
+            "continuation",
+            "proposal_action",
+            "recovery",
+            "user_message"
+          ],
+          "title": "Trigger",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "session_revision",
+        "status",
+        "trigger",
+        "workflow_id"
+      ],
+      "title": "GuidedStepCheckpointV2",
       "type": "object"
     },
     "InitializeAnchorRegistryPatchV2": {
@@ -7239,6 +7728,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/GuidanceCompletionClaimV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "creative_authority_resolution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CreativeAuthorityResolutionV2"
             },
             {
               "type": "null"
@@ -7670,63 +8170,6 @@
       "title": "ProductImageSpecialistDraftV2",
       "type": "object"
     },
-    "ProductWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "product_designer",
-          "default": "product_designer",
-          "title": "Audience",
-          "type": "string"
-        },
-        "materials": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Materials",
-          "type": "array"
-        },
-        "origin": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Origin",
-          "type": "array"
-        },
-        "status_and_use_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Status And Use Rules",
-          "type": "array"
-        },
-        "technology": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Technology",
-          "type": "array"
-        }
-      },
-      "title": "ProductWorldSettingProjectionV1",
-      "type": "object"
-    },
     "ProjectCreativeMemoryV2": {
       "additionalProperties": false,
       "properties": {
@@ -7897,63 +8340,6 @@
         "title"
       ],
       "title": "PropImageSpecialistDraftV2",
-      "type": "object"
-    },
-    "PropWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "prop_designer",
-          "default": "prop_designer",
-          "title": "Audience",
-          "type": "string"
-        },
-        "availability": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Availability",
-          "type": "array"
-        },
-        "interaction_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Interaction Rules",
-          "type": "array"
-        },
-        "materials": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Materials",
-          "type": "array"
-        },
-        "origin": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Origin",
-          "type": "array"
-        }
-      },
-      "title": "PropWorldSettingProjectionV1",
       "type": "object"
     },
     "ProposalRevisionContextV2": {
@@ -8418,110 +8804,6 @@
       "title": "ResolvedImageTargetV2",
       "type": "object"
     },
-    "ResolvedWorldSettingInputV1": {
-      "additionalProperties": false,
-      "description": "Identity-only reference to one frozen World Setting projection.",
-      "properties": {
-        "binding_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Binding Id",
-          "type": "string"
-        },
-        "display_order": {
-          "minimum": 0,
-          "title": "Display Order",
-          "type": "integer"
-        },
-        "projection_audience": {
-          "enum": [
-            "bgm_director",
-            "character_designer",
-            "product_designer",
-            "prop_designer",
-            "scene_designer",
-            "script_writer",
-            "shared",
-            "storyboard_artist",
-            "video_director"
-          ],
-          "title": "Projection Audience",
-          "type": "string"
-        },
-        "projection_contract_version": {
-          "const": "world-setting-projection-v1",
-          "title": "Projection Contract Version",
-          "type": "string"
-        },
-        "projection_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Projection Digest",
-          "type": "string"
-        },
-        "projection_mode": {
-          "enum": [
-            "fallback",
-            "ready"
-          ],
-          "title": "Projection Mode",
-          "type": "string"
-        },
-        "projection_snapshot_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Projection Snapshot Id",
-          "type": "string"
-        },
-        "required": {
-          "title": "Required",
-          "type": "boolean"
-        },
-        "source_content_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Source Content Digest",
-          "type": "string"
-        },
-        "source_node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Source Node Id",
-          "type": "string"
-        },
-        "source_node_revision": {
-          "minimum": 1,
-          "title": "Source Node Revision",
-          "type": "integer"
-        },
-        "warning_code": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Warning Code"
-        }
-      },
-      "required": [
-        "binding_id",
-        "display_order",
-        "projection_audience",
-        "projection_contract_version",
-        "projection_digest",
-        "projection_mode",
-        "projection_snapshot_id",
-        "required",
-        "source_content_digest",
-        "source_node_id",
-        "source_node_revision"
-      ],
-      "title": "ResolvedWorldSettingInputV1",
-      "type": "object"
-    },
     "SceneBoardPanelV2": {
       "additionalProperties": false,
       "properties": {
@@ -8807,63 +9089,6 @@
       "title": "SceneImageSpecialistDraftV2",
       "type": "object"
     },
-    "SceneWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "architecture": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Architecture",
-          "type": "array"
-        },
-        "audience": {
-          "const": "scene_designer",
-          "default": "scene_designer",
-          "title": "Audience",
-          "type": "string"
-        },
-        "era_and_place": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Era And Place",
-          "type": "array"
-        },
-        "materials_and_light": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Materials And Light",
-          "type": "array"
-        },
-        "spatial_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Spatial Rules",
-          "type": "array"
-        }
-      },
-      "title": "SceneWorldSettingProjectionV1",
-      "type": "object"
-    },
     "ScriptDraftContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -8949,52 +9174,6 @@
       "title": "ScriptSpecialistDraftV2",
       "type": "object"
     },
-    "ScriptWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "script_writer",
-          "default": "script_writer",
-          "title": "Audience",
-          "type": "string"
-        },
-        "continuity": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Continuity",
-          "type": "array"
-        },
-        "narrative_laws": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Narrative Laws",
-          "type": "array"
-        },
-        "permitted_conflicts": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Permitted Conflicts",
-          "type": "array"
-        }
-      },
-      "title": "ScriptWorldSettingProjectionV1",
-      "type": "object"
-    },
     "ScriptWriterAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -9070,41 +9249,6 @@
         "user_input"
       ],
       "title": "ScriptWriterAgentContext",
-      "type": "object"
-    },
-    "SharedWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "continuity_rules": {
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "minItems": 1,
-          "title": "Continuity Rules",
-          "type": "array"
-        },
-        "era_and_location": {
-          "maxLength": 2048,
-          "minLength": 1,
-          "title": "Era And Location",
-          "type": "string"
-        },
-        "premise": {
-          "maxLength": 2048,
-          "minLength": 1,
-          "title": "Premise",
-          "type": "string"
-        }
-      },
-      "required": [
-        "continuity_rules",
-        "era_and_location",
-        "premise"
-      ],
-      "title": "SharedWorldSettingProjectionV1",
       "type": "object"
     },
     "SpecialistContextV2": {
@@ -9344,7 +9488,7 @@
         "world_setting": {
           "anyOf": [
             {
-              "$ref": "#/$defs/WorldSettingProjectionContextV1"
+              "$ref": "#/$defs/WorldSettingContextEnvelopeV2"
             },
             {
               "type": "null"
@@ -9645,7 +9789,7 @@
         },
         "timeout_seconds": {
           "exclusiveMinimum": 0,
-          "maximum": 300,
+          "maximum": 600,
           "title": "Timeout Seconds",
           "type": "number"
         }
@@ -10139,63 +10283,6 @@
         "segments"
       ],
       "title": "StoryboardProductionPlanContentV2",
-      "type": "object"
-    },
-    "StoryboardWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "storyboard_artist",
-          "default": "storyboard_artist",
-          "title": "Audience",
-          "type": "string"
-        },
-        "narrative_motion": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Narrative Motion",
-          "type": "array"
-        },
-        "spatial_continuity": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Spatial Continuity",
-          "type": "array"
-        },
-        "staging_laws": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Staging Laws",
-          "type": "array"
-        },
-        "time_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Time Rules",
-          "type": "array"
-        }
-      },
-      "title": "StoryboardWorldSettingProjectionV1",
       "type": "object"
     },
     "StructuredViolation": {
@@ -11660,63 +11747,6 @@
       "title": "VideoSpecialistDraftV2",
       "type": "object"
     },
-    "VideoWorldSettingProjectionV1": {
-      "additionalProperties": false,
-      "properties": {
-        "audience": {
-          "const": "video_director",
-          "default": "video_director",
-          "title": "Audience",
-          "type": "string"
-        },
-        "environmental_behavior": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Environmental Behavior",
-          "type": "array"
-        },
-        "motion_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Motion Rules",
-          "type": "array"
-        },
-        "physical_continuity": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Physical Continuity",
-          "type": "array"
-        },
-        "time_rules": {
-          "default": [],
-          "items": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "maxItems": 8,
-          "title": "Time Rules",
-          "type": "array"
-        }
-      },
-      "title": "VideoWorldSettingProjectionV1",
-      "type": "object"
-    },
     "VisualStyleContractV2": {
       "additionalProperties": false,
       "properties": {
@@ -11831,7 +11861,7 @@
       "title": "WorkflowConversationReply",
       "type": "object"
     },
-    "WorldSettingAuthoringProvenanceV1": {
+    "WorldSettingAuthoringProvenanceV2": {
       "additionalProperties": false,
       "properties": {
         "creative_direction_snapshot_id": {
@@ -11884,7 +11914,157 @@
         "source_option_id",
         "source_proposal_id"
       ],
-      "title": "WorldSettingAuthoringProvenanceV1",
+      "title": "WorldSettingAuthoringProvenanceV2",
+      "type": "object"
+    },
+    "WorldSettingContextEnvelopeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Compiler Digest",
+          "type": "string"
+        },
+        "compiler_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Compiler Id",
+          "type": "string"
+        },
+        "context_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "context_kind": {
+          "const": "world_setting_context_v2",
+          "default": "world_setting_context_v2",
+          "title": "Context Kind",
+          "type": "string"
+        },
+        "relevant_visual_continuity": {
+          "default": [],
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Relevant Visual Continuity",
+          "type": "array"
+        },
+        "relevant_world_rules": {
+          "default": [],
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "title": "Relevant World Rules",
+          "type": "array"
+        },
+        "shared_summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Shared Summary",
+          "type": "string"
+        },
+        "source_content_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Content Digest",
+          "type": "string"
+        },
+        "source_core_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Core Digest",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "target_audience": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Target Audience",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compiler_digest",
+        "compiler_id",
+        "context_digest",
+        "shared_summary",
+        "source_content_digest",
+        "source_core_digest",
+        "source_node_id",
+        "source_node_revision",
+        "target_audience"
+      ],
+      "title": "WorldSettingContextEnvelopeV2",
+      "type": "object"
+    },
+    "WorldSettingCoreV2": {
+      "additionalProperties": false,
+      "properties": {
+        "era_and_place": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Era And Place",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "visual_continuity": {
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Visual Continuity",
+          "type": "array"
+        },
+        "world_rules": {
+          "items": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "World Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "era_and_place",
+        "premise",
+        "visual_continuity",
+        "world_rules"
+      ],
+      "title": "WorldSettingCoreV2",
       "type": "object"
     },
     "WorldSettingDirectionV1": {
@@ -11955,11 +12135,11 @@
       "title": "WorldSettingDirectionV1",
       "type": "object"
     },
-    "WorldSettingDocumentV1": {
+    "WorldSettingDocumentV2": {
       "additionalProperties": false,
       "properties": {
         "authoring_provenance": {
-          "$ref": "#/$defs/WorldSettingAuthoringProvenanceV1"
+          "$ref": "#/$defs/WorldSettingAuthoringProvenanceV2"
         },
         "content": {
           "maxLength": 32768,
@@ -11968,10 +12148,13 @@
           "type": "string"
         },
         "contract_version": {
-          "const": "world-setting-v1",
-          "default": "world-setting-v1",
+          "const": "world-setting-v2",
+          "default": "world-setting-v2",
           "title": "Contract Version",
           "type": "string"
+        },
+        "core": {
+          "$ref": "#/$defs/WorldSettingCoreV2"
         },
         "document_kind": {
           "const": "world_setting",
@@ -11982,12 +12165,13 @@
       },
       "required": [
         "authoring_provenance",
-        "content"
+        "content",
+        "core"
       ],
-      "title": "WorldSettingDocumentV1",
+      "title": "WorldSettingDocumentV2",
       "type": "object"
     },
-    "WorldSettingMaterializationDraftV1": {
+    "WorldSettingMaterializationDraftV2": {
       "additionalProperties": false,
       "properties": {
         "document_content": {
@@ -11995,9 +12179,6 @@
           "minLength": 1,
           "title": "Document Content",
           "type": "string"
-        },
-        "projection": {
-          "$ref": "#/$defs/WorldSettingReadyProjectionBundleV1"
         },
         "title": {
           "maxLength": 256,
@@ -12008,343 +12189,9 @@
       },
       "required": [
         "document_content",
-        "projection",
         "title"
       ],
-      "title": "WorldSettingMaterializationDraftV1",
-      "type": "object"
-    },
-    "WorldSettingNextTopicPolicyV1": {
-      "additionalProperties": false,
-      "properties": {
-        "allowed_topic_kinds": {
-          "items": {
-            "enum": [
-              "audio",
-              "character",
-              "creative_direction",
-              "product",
-              "prop",
-              "scene",
-              "script",
-              "storyboard",
-              "video",
-              "world_setting"
-            ],
-            "type": "string"
-          },
-          "title": "Allowed Topic Kinds",
-          "type": "array"
-        },
-        "required_topic_kind": {
-          "anyOf": [
-            {
-              "const": "world_setting",
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Required Topic Kind"
-        }
-      },
-      "required": [
-        "allowed_topic_kinds"
-      ],
-      "title": "WorldSettingNextTopicPolicyV1",
-      "type": "object"
-    },
-    "WorldSettingProjectionContextV1": {
-      "additionalProperties": false,
-      "properties": {
-        "projection_audience": {
-          "enum": [
-            "bgm_director",
-            "character_designer",
-            "product_designer",
-            "prop_designer",
-            "scene_designer",
-            "script_writer",
-            "shared",
-            "storyboard_artist",
-            "video_director"
-          ],
-          "title": "Projection Audience",
-          "type": "string"
-        },
-        "projection_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Projection Digest",
-          "type": "string"
-        },
-        "projection_mode": {
-          "enum": [
-            "fallback",
-            "ready"
-          ],
-          "title": "Projection Mode",
-          "type": "string"
-        },
-        "projection_snapshot_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Projection Snapshot Id",
-          "type": "string"
-        },
-        "role_projection": {
-          "anyOf": [
-            {
-              "discriminator": {
-                "mapping": {
-                  "bgm_director": "#/$defs/BgmWorldSettingProjectionV1",
-                  "character_designer": "#/$defs/CharacterWorldSettingProjectionV1",
-                  "product_designer": "#/$defs/ProductWorldSettingProjectionV1",
-                  "prop_designer": "#/$defs/PropWorldSettingProjectionV1",
-                  "scene_designer": "#/$defs/SceneWorldSettingProjectionV1",
-                  "script_writer": "#/$defs/ScriptWorldSettingProjectionV1",
-                  "storyboard_artist": "#/$defs/StoryboardWorldSettingProjectionV1",
-                  "video_director": "#/$defs/VideoWorldSettingProjectionV1"
-                },
-                "propertyName": "audience"
-              },
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/ScriptWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/ProductWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/PropWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/CharacterWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/SceneWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/StoryboardWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/VideoWorldSettingProjectionV1"
-                },
-                {
-                  "$ref": "#/$defs/BgmWorldSettingProjectionV1"
-                }
-              ]
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Role Projection"
-        },
-        "shared": {
-          "$ref": "#/$defs/SharedWorldSettingProjectionV1"
-        },
-        "source_content_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Source Content Digest",
-          "type": "string"
-        },
-        "source_node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Source Node Id",
-          "type": "string"
-        },
-        "source_node_revision": {
-          "minimum": 1,
-          "title": "Source Node Revision",
-          "type": "integer"
-        },
-        "warning_code": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Warning Code"
-        }
-      },
-      "required": [
-        "projection_audience",
-        "projection_digest",
-        "projection_mode",
-        "projection_snapshot_id",
-        "shared",
-        "source_content_digest",
-        "source_node_id",
-        "source_node_revision"
-      ],
-      "title": "WorldSettingProjectionContextV1",
-      "type": "object"
-    },
-    "WorldSettingProjectionSnapshotV1": {
-      "additionalProperties": false,
-      "properties": {
-        "compiler_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Compiler Digest",
-          "type": "string"
-        },
-        "created_at": {
-          "format": "date-time",
-          "title": "Created At",
-          "type": "string"
-        },
-        "model_ref": {
-          "maxLength": 320,
-          "minLength": 3,
-          "title": "Model Ref",
-          "type": "string"
-        },
-        "projection_contract_version": {
-          "const": "world-setting-projection-v1",
-          "title": "Projection Contract Version",
-          "type": "string"
-        },
-        "projection_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Projection Digest",
-          "type": "string"
-        },
-        "projection_mode": {
-          "enum": [
-            "fallback",
-            "ready"
-          ],
-          "title": "Projection Mode",
-          "type": "string"
-        },
-        "projection_prompt_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Projection Prompt Digest",
-          "type": "string"
-        },
-        "projection_skill_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Projection Skill Digest",
-          "type": "string"
-        },
-        "projection_snapshot_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Projection Snapshot Id",
-          "type": "string"
-        },
-        "role_projections": {
-          "default": [],
-          "items": {
-            "discriminator": {
-              "mapping": {
-                "bgm_director": "#/$defs/BgmWorldSettingProjectionV1",
-                "character_designer": "#/$defs/CharacterWorldSettingProjectionV1",
-                "product_designer": "#/$defs/ProductWorldSettingProjectionV1",
-                "prop_designer": "#/$defs/PropWorldSettingProjectionV1",
-                "scene_designer": "#/$defs/SceneWorldSettingProjectionV1",
-                "script_writer": "#/$defs/ScriptWorldSettingProjectionV1",
-                "storyboard_artist": "#/$defs/StoryboardWorldSettingProjectionV1",
-                "video_director": "#/$defs/VideoWorldSettingProjectionV1"
-              },
-              "propertyName": "audience"
-            },
-            "oneOf": [
-              {
-                "$ref": "#/$defs/ScriptWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/ProductWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/PropWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/CharacterWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/SceneWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/StoryboardWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/VideoWorldSettingProjectionV1"
-              },
-              {
-                "$ref": "#/$defs/BgmWorldSettingProjectionV1"
-              }
-            ]
-          },
-          "maxItems": 8,
-          "title": "Role Projections",
-          "type": "array"
-        },
-        "shared_projection": {
-          "$ref": "#/$defs/SharedWorldSettingProjectionV1"
-        },
-        "source_content_digest": {
-          "pattern": "^[a-f0-9]{64}$",
-          "title": "Source Content Digest",
-          "type": "string"
-        },
-        "source_node_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Source Node Id",
-          "type": "string"
-        },
-        "source_node_revision": {
-          "minimum": 1,
-          "title": "Source Node Revision",
-          "type": "integer"
-        },
-        "warning_code": {
-          "anyOf": [
-            {
-              "maxLength": 160,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Warning Code"
-        },
-        "workflow_id": {
-          "maxLength": 160,
-          "minLength": 1,
-          "title": "Workflow Id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "compiler_digest",
-        "created_at",
-        "model_ref",
-        "projection_contract_version",
-        "projection_digest",
-        "projection_mode",
-        "projection_prompt_digest",
-        "projection_skill_digest",
-        "projection_snapshot_id",
-        "shared_projection",
-        "source_content_digest",
-        "source_node_id",
-        "source_node_revision",
-        "workflow_id"
-      ],
-      "title": "WorldSettingProjectionSnapshotV1",
+      "title": "WorldSettingMaterializationDraftV2",
       "type": "object"
     },
     "WorldSettingProposalDraftV1": {
@@ -12378,55 +12225,94 @@
       "title": "WorldSettingProposalDraftV1",
       "type": "object"
     },
-    "WorldSettingReadyProjectionBundleV1": {
+    "WorldSettingResolvedInputV2": {
       "additionalProperties": false,
       "properties": {
-        "bgm_director": {
-          "$ref": "#/$defs/BgmWorldSettingProjectionV1"
-        },
-        "character_designer": {
-          "$ref": "#/$defs/CharacterWorldSettingProjectionV1"
-        },
-        "contract_version": {
-          "const": "world-setting-projection-v1",
-          "default": "world-setting-projection-v1",
-          "title": "Contract Version",
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
           "type": "string"
         },
-        "product_designer": {
-          "$ref": "#/$defs/ProductWorldSettingProjectionV1"
+        "compiler_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Compiler Digest",
+          "type": "string"
         },
-        "prop_designer": {
-          "$ref": "#/$defs/PropWorldSettingProjectionV1"
+        "compiler_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Compiler Id",
+          "type": "string"
         },
-        "scene_designer": {
-          "$ref": "#/$defs/SceneWorldSettingProjectionV1"
+        "context": {
+          "$ref": "#/$defs/WorldSettingContextEnvelopeV2"
         },
-        "script_writer": {
-          "$ref": "#/$defs/ScriptWorldSettingProjectionV1"
+        "context_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Context Digest",
+          "type": "string"
         },
-        "shared": {
-          "$ref": "#/$defs/SharedWorldSettingProjectionV1"
+        "display_order": {
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
         },
-        "storyboard_artist": {
-          "$ref": "#/$defs/StoryboardWorldSettingProjectionV1"
+        "required": {
+          "title": "Required",
+          "type": "boolean"
         },
-        "video_director": {
-          "$ref": "#/$defs/VideoWorldSettingProjectionV1"
+        "source_content_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Content Digest",
+          "type": "string"
+        },
+        "source_core_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Source Core Digest",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "target_audience": {
+          "enum": [
+            "bgm_director",
+            "character_designer",
+            "product_designer",
+            "prop_designer",
+            "scene_designer",
+            "script_writer",
+            "storyboard_artist",
+            "video_director"
+          ],
+          "title": "Target Audience",
+          "type": "string"
         }
       },
       "required": [
-        "bgm_director",
-        "character_designer",
-        "product_designer",
-        "prop_designer",
-        "scene_designer",
-        "script_writer",
-        "shared",
-        "storyboard_artist",
-        "video_director"
+        "binding_id",
+        "compiler_digest",
+        "compiler_id",
+        "context",
+        "context_digest",
+        "display_order",
+        "required",
+        "source_content_digest",
+        "source_core_digest",
+        "source_node_id",
+        "source_node_revision",
+        "target_audience"
       ],
-      "title": "WorldSettingReadyProjectionBundleV1",
+      "title": "WorldSettingResolvedInputV2",
       "type": "object"
     }
   },
