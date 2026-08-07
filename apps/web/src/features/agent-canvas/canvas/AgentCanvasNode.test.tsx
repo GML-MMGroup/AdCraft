@@ -162,6 +162,31 @@ describe("AgentCanvasNodeCard", () => {
     },
   );
 
+  it.each([
+    [
+      "text",
+      { structured_content: { content: "A concise campaign direction." } },
+      "A concise campaign direction.",
+    ],
+    [
+      "image",
+      { generation_prompt: "A complete product image prompt." },
+      "A complete product image prompt.",
+    ],
+    [
+      "video",
+      { generation_prompt: "A smooth cinematic camera move." },
+      "A smooth cinematic camera move.",
+    ],
+  ] as const)("replaces the centered %s icon with saved node content", (nodeType, overrides, copy) => {
+    const node = { ...makeNode(nodeType), ...overrides } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByLabelText(`${nodeType} node type`)).toBeNull();
+  });
+
   it("uses the glass player title instead of audio artwork or a status pill", () => {
     const node = makeNode("audio");
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);
@@ -206,8 +231,8 @@ describe("AgentCanvasNodeCard", () => {
     render(<AgentCanvasNodeCard node={node} />);
 
     expect(screen.getByLabelText("World Setting node, Ready")).toBeTruthy();
-    expect(screen.getByLabelText("World Setting node type")).toBeTruthy();
-    expect(screen.queryByText(/timeless mountain city/)).toBeNull();
+    expect(screen.queryByLabelText("World Setting node type")).toBeNull();
+    expect(screen.getByText(/timeless mountain city/)).toBeTruthy();
   });
 
   it("keeps a blocked Draft visible as waiting for upstream output", () => {
@@ -355,6 +380,39 @@ describe("AgentCanvasNodeCard", () => {
     expect(shell?.style.height).toBe("203px");
   });
 
+  it("temporarily expands a focused media node without changing its canonical position", () => {
+    const data: AgentCanvasNodeData = {
+      node: makeNode("image", "ready"),
+      asset: { ...makeAsset("image"), width: 1920, height: 1080 },
+      focused: true,
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    expect(shell?.classList).toContain("agent-canvas-node-shell--focused");
+    expect(shell?.style.width).toBe("1040px");
+    expect(shell?.style.height).toBe("585px");
+    expect(data.node.position).toEqual({ x: 80, y: 120 });
+  });
+
   it("falls back to the loaded image dimensions when asset metadata is missing", () => {
     const data: AgentCanvasNodeData = {
       node: makeNode("image", "ready"),
@@ -399,10 +457,11 @@ describe("AgentCanvasNodeCard", () => {
     const onOpenVideoPreview = vi.fn();
     const onNodeClick = vi.fn();
     const onNodePointerDown = vi.fn();
+    const onNodeDoubleClick = vi.fn();
 
     render(
       // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Test harness observes React click bubbling from the child control.
-      <div onClick={onNodeClick} onPointerDown={onNodePointerDown}>
+      <div onClick={onNodeClick} onPointerDown={onNodePointerDown} onDoubleClick={onNodeDoubleClick}>
         <AgentCanvasNodeCard
           node={makeNode("video", "ready")}
           asset={asset}
@@ -414,10 +473,12 @@ describe("AgentCanvasNodeCard", () => {
     const playButton = screen.getByRole("button", { name: "Play video output" });
     fireEvent.pointerDown(playButton);
     fireEvent.click(playButton);
+    fireEvent.doubleClick(playButton);
 
     expect(onOpenVideoPreview).toHaveBeenCalledWith("video-node", asset);
     expect(onNodeClick).not.toHaveBeenCalled();
     expect(onNodePointerDown).not.toHaveBeenCalled();
+    expect(onNodeDoubleClick).not.toHaveBeenCalled();
   });
 
   it("keeps the rest of the video surface available to the existing node selection flow", () => {
