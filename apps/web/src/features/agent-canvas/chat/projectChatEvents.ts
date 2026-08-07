@@ -1,68 +1,72 @@
 import type {
+  AgentCapabilityIdV2,
   CanvasRuntimeEventV2,
   ChatExpertActivityV2,
   ChatTimelineItemV2,
-  SpecialistAgentNameV2,
 } from "../../../types-v2.ts";
 
-const SPECIALISTS = new Set<SpecialistAgentNameV2>([
-  "script_writer",
-  "product_designer",
-  "prop_designer",
-  "character_designer",
-  "scene_designer",
-  "storyboard_artist",
-  "video_director",
-  "bgm_director",
-  "quick_media_agent",
+const CAPABILITY_IDS = new Set<AgentCapabilityIdV2>([
+  "world_setting",
+  "product_design",
+  "prop_design",
+  "character_design",
+  "scene_design",
+  "script_authoring",
+  "storyboard_design",
+  "video_direction",
+  "bgm_direction",
+  "quick_media",
+]);
+
+const EXPERT_ACTIVITY_EVENTS = new Set([
+  "expert_activity_started",
+  "expert_activity_completed",
+  "expert_activity_failed",
 ]);
 
 function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
-function specialistValue(payload: Record<string, unknown>): SpecialistAgentNameV2 | null {
-  const value = stringValue(payload.specialist, stringValue(payload.specialist_name));
-  return SPECIALISTS.has(value as SpecialistAgentNameV2)
-    ? value as SpecialistAgentNameV2
+function capabilityValue(payload: Record<string, unknown>): AgentCapabilityIdV2 | null {
+  const value = stringValue(payload.capability_id);
+  return CAPABILITY_IDS.has(value as AgentCapabilityIdV2)
+    ? value as AgentCapabilityIdV2
     : null;
-}
-
-function specialistLabel(specialist: SpecialistAgentNameV2): string {
-  return specialist
-    .split("_")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
 }
 
 export function projectChatEvents(
   events: CanvasRuntimeEventV2[],
 ): ChatTimelineItemV2[] {
   const activities = new Map<string, ChatExpertActivityV2>();
+  const latestSequenceByActivity = new Map<string, number>();
 
   events.forEach((event) => {
     const payload = event.payload ?? {};
-    if (event.event_type.startsWith("specialist_work_")) {
-      const specialist = specialistValue(payload);
+    if (EXPERT_ACTIVITY_EVENTS.has(event.event_type)) {
+      const capabilityId = capabilityValue(payload);
+      const capabilityDisplayName = stringValue(payload.capability_display_name);
       const turnId = stringValue(payload.turn_id, event.turn_id ?? "");
-      if (!specialist || !turnId) return;
-      const key = stringValue(payload.activity_id, `${turnId}:${specialist}`);
+      const operation = stringValue(payload.operation, "planning");
+      if (!capabilityId || !capabilityDisplayName || !turnId) return;
+      const key = stringValue(payload.activity_id, `${turnId}:${capabilityId}:${operation}`);
+      const latestSequence = latestSequenceByActivity.get(key);
+      if (latestSequence !== undefined && event.seq <= latestSequence) return;
       const previous = activities.get(key);
-      const status = event.event_type.endsWith("_completed")
+      const status: ChatExpertActivityV2["status"] = event.event_type === "expert_activity_completed"
         ? "completed"
-        : event.event_type.endsWith("_failed")
+        : event.event_type === "expert_activity_failed"
           ? "failed"
           : "working";
+      if (previous && previous.status !== "working") return;
+      latestSequenceByActivity.set(key, event.seq);
       activities.set(key, {
         item_type: "expert_activity",
         activity_id: key,
         turn_id: turnId,
-        specialist,
-        display_name: stringValue(
-          payload.display_name,
-          stringValue(payload.label, specialistLabel(specialist)),
-        ),
-        operation: stringValue(payload.operation, "planning"),
+        capability_id: capabilityId,
+        capability_display_name: capabilityDisplayName,
+        operation,
         status,
         sequence: previous?.sequence ?? event.seq,
         started_at: previous?.started_at ?? event.created_at,

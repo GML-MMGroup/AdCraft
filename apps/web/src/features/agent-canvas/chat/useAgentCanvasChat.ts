@@ -24,6 +24,7 @@ import type {
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
+import { agentCanvasChatErrorMessage } from "./chatErrorMessage.ts";
 
 type SubmitDraft = {
   text: string;
@@ -46,23 +47,11 @@ const GUIDANCE_CONFLICT_ERROR_CODES = new Set([
   "proposal_action_stale",
 ]);
 
-function agentTurnErrorMessage(code: string, fallback: string | null): string {
-  if (code === "agent_runtime_unavailable") {
-    return "The agent runtime is temporarily unavailable. Your input is preserved; try again shortly.";
+function chatRequestErrorMessage(error: unknown, fallback: string): string {
+  if (isV2ApiError(error) && error.code) {
+    return agentCanvasChatErrorMessage(error.code, error.message);
   }
-  if (code === "agent_deadline_exceeded") {
-    return "The agent took too long to respond. Your input is preserved; retry when ready.";
-  }
-  if (code === "guidance_decision_invalid") {
-    return "The agent could not produce a valid next guidance step. Try again.";
-  }
-  if (code === "guidance_completion_invalid") {
-    return "The guidance session is not ready to finish yet.";
-  }
-  if (code === "specialist_context_invalid") {
-    return "The specialist could not use the current project context. Refresh and try again.";
-  }
-  return fallback ?? "The agent could not complete this request.";
+  return error instanceof Error ? error.message : fallback;
 }
 
 function handleProposalActionError(
@@ -77,7 +66,7 @@ function handleProposalActionError(
   ) return false;
   setIssues((current) => ({
     ...current,
-    [proposalId]: error.message,
+    [proposalId]: agentCanvasChatErrorMessage(error.code!, error.message),
   }));
   return true;
 }
@@ -176,7 +165,7 @@ export function useAgentCanvasChat({
           // A confirmed backend failure must use a new idempotency key when retried.
           setFailedDraft({ ...failedMessage, idempotencyKey: undefined });
         }
-        setError(agentTurnErrorMessage(terminalErrorCode, terminalErrorMessage));
+        setError(agentCanvasChatErrorMessage(terminalErrorCode, terminalErrorMessage));
       }
     } catch {
       // A later timeline refresh remains authoritative after a transient turn lookup failure.
@@ -269,7 +258,7 @@ export function useAgentCanvasChat({
       setError(null);
     } catch (refreshError) {
       if (generation !== refreshGenerationRef.current) return;
-      setError(refreshError instanceof Error ? refreshError.message : "Conversation could not be loaded.");
+      setError(chatRequestErrorMessage(refreshError, "Conversation could not be loaded."));
     } finally {
       if (generation === refreshGenerationRef.current) setLoading(false);
     }
@@ -299,24 +288,8 @@ export function useAgentCanvasChat({
       void onWorkflowRefresh?.();
       return true;
     }
-    if (actionError.code === "guidance_decision_invalid") {
-      setError("The agent could not produce a valid next guidance step. Try again.");
-      return true;
-    }
-    if (actionError.code === "guidance_completion_invalid") {
-      setError("The guidance session is not ready to finish yet.");
-      return true;
-    }
-    if (actionError.code === "specialist_context_invalid") {
-      setError("The specialist could not use the current project context. Refresh and try again.");
-      return true;
-    }
-    if (actionError.code === "agent_deadline_exceeded") {
-      setError("The agent took too long to respond. Your input is preserved; retry when ready.");
-      return true;
-    }
-    if (actionError.code === "agent_runtime_unavailable") {
-      setError("The agent runtime is temporarily unavailable. Your input is preserved; try again shortly.");
+    if (actionError.code) {
+      setError(agentCanvasChatErrorMessage(actionError.code, actionError.message));
       return true;
     }
     return false;
@@ -334,7 +307,7 @@ export function useAgentCanvasChat({
     ) {
       setProposalIssues((current) => ({
         ...current,
-        [proposalId]: actionError.message,
+        [proposalId]: agentCanvasChatErrorMessage(actionError.code!, actionError.message),
       }));
       setNotice("The guidance session changed. Review the latest guidance state before trying again.");
       await refresh();
@@ -343,7 +316,7 @@ export function useAgentCanvasChat({
     }
     if (handleProposalActionError(proposalId, actionError, setProposalIssues)) return;
     if (!handleStructuredActionError(actionError)) {
-      setError(actionError instanceof Error ? actionError.message : fallbackMessage);
+      setError(chatRequestErrorMessage(actionError, fallbackMessage));
     }
   }, [handleStructuredActionError, onWorkflowRefresh, refresh]);
 
@@ -456,7 +429,7 @@ export function useAgentCanvasChat({
         item.item_type !== "message" || item.message_id !== optimisticId
       )));
       setFailedDraft({ ...draft, idempotencyKey });
-      setError(submitError instanceof Error ? submitError.message : "Message could not be sent.");
+      setError(chatRequestErrorMessage(submitError, "Message could not be sent."));
       return false;
     } finally {
       if (workflowGeneration === workflowGenerationRef.current) {
@@ -637,9 +610,10 @@ export function useAgentCanvasChat({
       pendingCommandPlanIdsRef.current.delete(planId);
       if (workflowGeneration === workflowGenerationRef.current) {
         if (!handleStructuredActionError(actionError)) {
-          setError(actionError instanceof Error
-            ? actionError.message
-            : `The command could not be ${action === "confirm" ? "confirmed" : "rejected"}.`);
+          setError(chatRequestErrorMessage(
+            actionError,
+            `The command could not be ${action === "confirm" ? "confirmed" : "rejected"}.`,
+          ));
         }
       }
     } finally {
@@ -679,9 +653,7 @@ export function useAgentCanvasChat({
     } catch (actionError) {
       if (workflowGeneration === workflowGenerationRef.current) {
         if (!handleStructuredActionError(actionError)) {
-          setError(actionError instanceof Error
-            ? actionError.message
-            : "The guided action could not be applied.");
+          setError(chatRequestErrorMessage(actionError, "The guided action could not be applied."));
         }
       }
     } finally {
@@ -694,7 +666,7 @@ export function useAgentCanvasChat({
   const retrySpecialistActivity = useCallback(async (activity: ChatExpertActivityV2) => {
     if (!activity.suggested_actions.includes("retry") || sending) return false;
     return submit({
-      text: `Retry the failed ${activity.display_name} ${activity.operation.replaceAll("_", " ")} operation.`,
+      text: `Retry the failed ${activity.capability_display_name} ${activity.operation.replaceAll("_", " ")} operation.`,
       mentionedNodeIds: [],
       mentionedImageAssetIds: [],
       idempotencyKey: createOperationKey(`expert-retry-${activity.activity_id}`),

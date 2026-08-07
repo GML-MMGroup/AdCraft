@@ -22,20 +22,27 @@ function event(
 }
 
 describe("projectChatEvents", () => {
-  it("turns specialist events into one activity row instead of chat bubbles", () => {
+  it("updates one capability activity row when canonical events are replayed", () => {
     const items = projectChatEvents([
-      event(1, "specialist_work_started", {
+      event(1, "expert_activity_started", {
         activity_id: "activity-1",
         turn_id: "turn-1",
-        specialist: "character_designer",
-        display_name: "Character Designer",
+        capability_id: "character_design",
+        capability_display_name: "Character Designer",
         operation: "create_concepts",
       }),
-      event(2, "specialist_work_completed", {
+      event(2, "expert_activity_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
-        specialist: "character_designer",
-        display_name: "Character Designer",
+        capability_id: "character_design",
+        capability_display_name: "Character Designer",
+        operation: "create_concepts",
+      }),
+      event(2, "expert_activity_completed", {
+        activity_id: "activity-1",
+        turn_id: "turn-1",
+        capability_id: "character_design",
+        capability_display_name: "Character Designer",
         operation: "create_concepts",
       }),
     ]);
@@ -43,30 +50,31 @@ describe("projectChatEvents", () => {
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({
       item_type: "expert_activity",
-      display_name: "Character Designer",
+      capability_id: "character_design",
+      capability_display_name: "Character Designer",
       status: "completed",
     });
   });
 
-  it("projects canonical specialist work events and ignores the retired alias", () => {
+  it("projects canonical failed capability activity and ignores retired aliases", () => {
     const items = projectChatEvents([
       event(1, "specialist_activity_started", {
         activity_id: "retired-activity",
         turn_id: "turn-retired",
         specialist: "scene_designer",
       }),
-      event(2, "specialist_work_started", {
+      event(2, "expert_activity_started", {
         activity_id: "activity-2",
         turn_id: "turn-2",
-        specialist_name: "scene_designer",
-        display_name: "Scene Designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         operation: "create_concepts",
       }),
-      event(3, "specialist_work_failed", {
+      event(3, "expert_activity_failed", {
         activity_id: "activity-2",
         turn_id: "turn-2",
-        specialist_name: "scene_designer",
-        display_name: "Scene Designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         operation: "create_concepts",
         error_code: "agent_transport_failed",
         retryable: true,
@@ -77,7 +85,8 @@ describe("projectChatEvents", () => {
     expect(items).toEqual([
       expect.objectContaining({
         activity_id: "activity-2",
-        specialist: "scene_designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         status: "failed",
         error_code: "agent_transport_failed",
         suggested_actions: ["retry", "revise_request"],
@@ -90,11 +99,12 @@ describe("projectChatEvents", () => {
       event(3, "concept_options_ready", {
         proposal_id: "proposal-1",
         turn_id: "turn-1",
-        specialist_name: "scene_designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         proposal_kind: "scene",
         options: [
-          { option_id: "option-1", title: "Morning", description: "Soft daylight." },
-          { option_id: "option-2", title: "Night", description: "Neon city." },
+          { option_id: "option-1", title: "Morning", public_summary: "Soft daylight." },
+          { option_id: "option-2", title: "Night", public_summary: "Neon city." },
         ],
         workflow_revision: 2,
       }),

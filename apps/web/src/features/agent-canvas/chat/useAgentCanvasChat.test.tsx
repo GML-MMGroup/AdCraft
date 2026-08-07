@@ -114,7 +114,6 @@ describe("useAgentCanvasChat", () => {
       error_code: null,
       error_message: null,
       creation_mode: null,
-      guidance_decision: null,
       guidance_session_revision: null,
       continuation: null,
       created_at: "2026-08-04T10:00:00Z",
@@ -218,6 +217,33 @@ describe("useAgentCanvasChat", () => {
       expect.any(String),
     );
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-1");
+  });
+
+  it("preserves an exact backend code when message submission is rejected", async () => {
+    api.submitAgentCanvasChatMessage.mockRejectedValue({
+      code: "proposal_persistence_failed",
+      message: "The proposal could not be persisted.",
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.submit({
+        text: "Create a calm product film.",
+        mentionedNodeIds: [],
+        mentionedImageAssetIds: [],
+      });
+    });
+
+    expect(result.current.state.error).toBe(
+      "proposal_persistence_failed: The proposal could not be persisted.",
+    );
+    expect(result.current.state.failedDraft).toMatchObject({
+      text: "Create a calm product film.",
+    });
   });
 
   it("keeps the Agent working after message acceptance until the turn becomes terminal", async () => {
@@ -327,7 +353,8 @@ describe("useAgentCanvasChat", () => {
           topic_kind: "character",
           title: "Lead character",
           status: "proposed",
-          specialist_name: "character_designer",
+          capability_id: "character_design",
+          capability_display_name: "Character Designer",
           related_node_ids: [],
           source_proposal_id: "proposal-1",
           revision: 1,
@@ -375,8 +402,9 @@ describe("useAgentCanvasChat", () => {
       proposal_revision: 1,
       source_proposal_id: null,
       proposal_kind: "character",
-      specialist_name: "character_designer",
-      options: [{ option_id: "option-1", title: "Hero", summary_prompt: "Editorial lead" }],
+      capability_id: "character_design",
+      capability_display_name: "Character Designer",
+      options: [{ option_id: "option-1", title: "Hero", public_summary: "Editorial lead" }],
       proposed_references: [],
       target_node_id: null,
       target_node_revision: null,
@@ -487,6 +515,8 @@ describe("useAgentCanvasChat", () => {
     );
     expect(api.actOnAgentCanvasProposal.mock.calls[0]?.[2]).not.toHaveProperty("generation_action");
     expect(api.actOnAgentCanvasProposal.mock.calls[0]?.[2]).not.toHaveProperty("position");
+    expect(api.actOnAgentCanvasProposal).toHaveBeenCalledTimes(1);
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
   });
 
   it("revises options with the backend action id and expected session revision", async () => {
@@ -624,8 +654,8 @@ describe("useAgentCanvasChat", () => {
         item_type: "expert_activity",
         activity_id: "activity-failed-1",
         turn_id: "turn-failed-1",
-        specialist: "scene_designer",
-        display_name: "Scene Designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         operation: "materialize_draft",
         status: "failed",
         sequence: 4,
@@ -659,8 +689,8 @@ describe("useAgentCanvasChat", () => {
         item_type: "expert_activity",
         activity_id: "activity-scene-1",
         turn_id: "turn-scene-1",
-        specialist: "scene_designer",
-        display_name: "Scene Designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         operation: "materialize_draft",
         status: "completed",
         sequence: 12,
@@ -680,12 +710,12 @@ describe("useAgentCanvasChat", () => {
     }));
     const staleWorkingEvent: CanvasRuntimeEventV2 = {
       ...turnEvent("agent_turn_started", "turn-scene-1", 2),
-      event_type: "specialist_work_started",
+      event_type: "expert_activity_started",
       payload: {
         activity_id: "activity-scene-1",
-        specialist_name: "scene_designer",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
         operation: "materialize_draft",
-        display_name: "Scene Designer",
       },
     };
     const { result } = renderHook(() => useAgentCanvasChat({
@@ -729,7 +759,9 @@ describe("useAgentCanvasChat", () => {
       );
     });
 
-    expect(result.current.state.proposalIssues["proposal-1"]).toBe("The guidance session changed.");
+    expect(result.current.state.proposalIssues["proposal-1"]).toBe(
+      "guidance_revision_conflict: The guidance session changed.",
+    );
     expect(result.current.state.notice).toContain("latest guidance state");
     expect(api.agentCanvasChatTimeline).toHaveBeenCalled();
   });
@@ -838,7 +870,6 @@ describe("useAgentCanvasChat", () => {
       error_code: "agent_runtime_unavailable",
       error_message: "The configured agent runtime is unavailable.",
       creation_mode: null,
-      guidance_decision: null,
       guidance_session_revision: null,
       continuation: null,
       created_at: "2026-08-04T10:00:00Z",
@@ -859,7 +890,9 @@ describe("useAgentCanvasChat", () => {
       await Promise.resolve();
     });
 
-    expect(result.current.state.error).toBe("The agent runtime is temporarily unavailable. Your input is preserved; try again shortly.");
+    expect(result.current.state.error).toBe(
+      "agent_runtime_unavailable: The configured agent runtime is unavailable.",
+    );
     expect(result.current.state.failedDraft).toMatchObject({
       text: "Create a calm product film.",
       idempotencyKey: undefined,

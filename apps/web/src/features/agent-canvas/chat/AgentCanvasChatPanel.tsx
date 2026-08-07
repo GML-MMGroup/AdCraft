@@ -18,7 +18,7 @@ import type {
   ChatCommandPlanCardV2,
   ChatExpertActivityV2,
   ChatProposalCardV2,
-  ConceptOptionV2,
+  CapabilityProposalOptionV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -195,7 +195,7 @@ export function AgentCanvasChatPanel({
                     activity={item}
                     onRetry={() => void chat.actions.retrySpecialistActivity(item)}
                     onReviseRequest={() => {
-                      setDraft(`Revise the ${item.display_name} request: `);
+                      setDraft(`Revise the ${item.capability_display_name} request: `);
                       window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
                     }}
                   />
@@ -436,10 +436,10 @@ export function SpecialistActivityRow({
   onReviseRequest?: () => void;
 }) {
   const label = activity.status === "working"
-    ? `${activity.display_name} is working`
+    ? `${activity.capability_display_name} is working`
     : activity.status === "completed"
-      ? `${activity.display_name} finished`
-      : `${activity.display_name} failed`;
+      ? `${activity.capability_display_name} finished`
+      : `${activity.capability_display_name} failed`;
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>
       <i aria-hidden="true" />
@@ -659,7 +659,7 @@ export function ProposalCard({
   onApplyAction: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   issue?: string;
 }) {
-  const [selected, setSelected] = useState<ConceptOptionV2 | null>(null);
+  const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(null);
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
   const proposal = card.proposal;
@@ -702,10 +702,7 @@ export function ProposalCard({
   return (
     <article className="agent-chat__proposal">
       <header>
-        <strong>{proposal.specialist_name
-          .split("_")
-          .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-          .join(" ")}</strong>
+        <strong>{proposal.capability_display_name}</strong>
         <span>{proposal.availability}</span>
       </header>
       <div className="agent-chat__options">
@@ -718,7 +715,7 @@ export function ProposalCard({
             onClick={() => setSelected(option)}
           >
             <strong>{option.title}</strong>
-            <span>{option.summary_prompt}</span>
+            <span>{option.public_summary}</span>
           </button>
         ))}
       </div>
