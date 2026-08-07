@@ -15,6 +15,7 @@ import type {
   AgentCanvasContinuationV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
+  ChatExpertActivityV2,
   ChatMessageV2,
   ChatTimelineItemV2,
   GuidanceSessionActionV2,
@@ -100,7 +101,15 @@ function mergeTimelineItems(
     return exhaustiveItem;
   };
   [...persisted, ...projected, ...optimistic].forEach((item) => {
-    keys.set(keyFor(item), item);
+    const key = keyFor(item);
+    const current = keys.get(key);
+    if (current?.item_type === "expert_activity" && item.item_type === "expert_activity") {
+      const currentTerminal = current.status !== "working";
+      const nextTerminal = item.status !== "working";
+      if (currentTerminal && !nextTerminal) return;
+      if (currentTerminal === nextTerminal && current.sequence >= item.sequence) return;
+    }
+    keys.set(key, item);
   });
   return [...keys.values()].sort((left, right) => left.sequence - right.sequence);
 }
@@ -508,7 +517,7 @@ export function useAgentCanvasChat({
       !workflowId
       || !instruction.trim()
       || actingProposalId
-      || actionDescriptor.action !== "revise_options"
+      || !["revise_options", "revise_direction"].includes(actionDescriptor.action)
     ) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
@@ -519,12 +528,27 @@ export function useAgentCanvasChat({
       return next;
     });
     try {
-      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(workflowId, proposalId, {
-        action_id: actionDescriptor.action_id,
-        expected_session_revision: actionDescriptor.expected_session_revision,
-        action: "revise_options",
-        instruction: instruction.trim(),
-      }, createOperationKey("proposal-revise-options"));
+      const request = actionDescriptor.action === "revise_direction"
+        ? {
+            action_id: actionDescriptor.action_id,
+            expected_session_revision: actionDescriptor.expected_session_revision,
+            action: "revise_direction" as const,
+            option_id: actionDescriptor.option_id ?? "",
+            instruction: instruction.trim(),
+          }
+        : {
+            action_id: actionDescriptor.action_id,
+            expected_session_revision: actionDescriptor.expected_session_revision,
+            action: "revise_options" as const,
+            instruction: instruction.trim(),
+          };
+      if (request.action === "revise_direction" && !request.option_id) return;
+      const accepted = await agentCanvasApi.actOnAgentCanvasProposal(
+        workflowId,
+        proposalId,
+        request,
+        createOperationKey(`proposal-${request.action.replaceAll("_", "-")}`),
+      );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
       trackAcceptedTurn(accepted);
       void refresh();
@@ -546,7 +570,7 @@ export function useAgentCanvasChat({
     if (
       !workflowId
       || actingProposalId
-      || !["defer_topic", "exclude_element", "delegate_choice"].includes(actionDescriptor.action)
+      || !["defer_topic", "exclude_element", "delegate_choice", "reuse_direction"].includes(actionDescriptor.action)
     ) return;
     const workflowGeneration = workflowGenerationRef.current;
     setActingProposalId(proposalId);
@@ -557,14 +581,23 @@ export function useAgentCanvasChat({
       return next;
     });
     try {
+      const request = actionDescriptor.action === "reuse_direction"
+        ? {
+            action_id: actionDescriptor.action_id,
+            expected_session_revision: actionDescriptor.expected_session_revision,
+            action: "reuse_direction" as const,
+            option_id: actionDescriptor.option_id ?? "",
+          }
+        : {
+            action_id: actionDescriptor.action_id,
+            expected_session_revision: actionDescriptor.expected_session_revision,
+            action: actionDescriptor.action as "defer_topic" | "exclude_element" | "delegate_choice",
+          };
+      if (request.action === "reuse_direction" && !request.option_id) return;
       const accepted = await agentCanvasApi.actOnAgentCanvasProposal(
         workflowId,
         proposalId,
-        {
-          action_id: actionDescriptor.action_id,
-          expected_session_revision: actionDescriptor.expected_session_revision,
-          action: actionDescriptor.action as "defer_topic" | "exclude_element" | "delegate_choice",
-        },
+        request,
         createOperationKey(`proposal-${actionDescriptor.action.replaceAll("_", "-")}`),
       );
       pendingActionTurnIdsRef.current.add(accepted.turn_id);
@@ -616,8 +649,13 @@ export function useAgentCanvasChat({
     }
   }, [actingCommandPlanId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
-  const applyGuidedAction = useCallback(async (actionId: string) => {
+  const applyGuidedAction = useCallback(async (action: GuidanceSessionActionV2) => {
+    const actionId = action.action_id;
     if (!workflowId || actingGuidedActionId) return;
+    if (action.action === "set_creative_authority" && !action.authority) {
+      setError("The creative authority action is incomplete. Refresh the conversation and try again.");
+      return;
+    }
     const workflowGeneration = workflowGenerationRef.current;
     setActingGuidedActionId(actionId);
     setError(null);
@@ -625,7 +663,14 @@ export function useAgentCanvasChat({
       const accepted = await agentCanvasApi.applyAgentCanvasGuidedAction(
         workflowId,
         actionId,
-        { confirmed: true },
+        action.action === "set_creative_authority"
+          ? {
+              confirmed: true,
+              action: "set_creative_authority",
+              authority: action.authority!,
+              expected_session_revision: action.expected_session_revision,
+            }
+          : { confirmed: true },
         createOperationKey("guided-action"),
       );
       pendingActionTurnIdsRef.current.add(actionId);
@@ -645,6 +690,16 @@ export function useAgentCanvasChat({
       }
     }
   }, [actingGuidedActionId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+
+  const retrySpecialistActivity = useCallback(async (activity: ChatExpertActivityV2) => {
+    if (!activity.suggested_actions.includes("retry") || sending) return false;
+    return submit({
+      text: `Retry the failed ${activity.display_name} ${activity.operation.replaceAll("_", " ")} operation.`,
+      mentionedNodeIds: [],
+      mentionedImageAssetIds: [],
+      idempotencyKey: createOperationKey(`expert-retry-${activity.activity_id}`),
+    });
+  }, [sending, submit]);
 
   const projectedItems = useMemo(() => projectChatEvents(chatEvents), [chatEvents]);
   const items = useMemo(
@@ -677,6 +732,7 @@ export function useAgentCanvasChat({
       applyProposalAction,
       actOnCommandPlan,
       applyGuidedAction,
+      retrySpecialistActivity,
       clearFailedDraft: () => setFailedDraft(null),
       clearNotice: () => setNotice(null),
     },

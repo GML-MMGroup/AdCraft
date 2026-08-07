@@ -84,13 +84,14 @@ const audit: ProviderInputManifestAuditV2 = {
     binding_id: "binding-world-setting",
     source_node_id: "node-world-setting",
     source_node_revision: 2,
+    source_content_digest: "a".repeat(64),
+    source_core_digest: "b".repeat(64),
     required: true,
     display_order: 1,
-    projection_audience: "video_director",
-    projection_contract_version: "world-setting-projection-v1",
-    projection_snapshot_id: "projection-snapshot-1",
-    projection_mode: "fallback",
-    warning_code: "world_setting_projection_fallback",
+    target_audience: "video_director",
+    compiler_id: "world-setting-context-compiler-v2",
+    compiler_digest: "c".repeat(64),
+    context_digest: "d".repeat(64),
   }],
   text_inputs: [{
     binding_id: "binding-script",
@@ -128,7 +129,7 @@ describe("NodeInputRuntimeSummary", () => {
       expect.stringContaining("World Setting"),
       expect.stringContaining("Narration"),
     ]);
-    expect(screen.getByText("World Setting is using a fallback projection for this run.")).toBeTruthy();
+    expect(screen.getByText("World Setting context · video director")).toBeTruthy();
     expect(screen.getByText("Optional input unavailable: Scene board")).toBeTruthy();
     expect(screen.queryByText("https://must-not-be-stored.example/image.png")).toBeNull();
   });

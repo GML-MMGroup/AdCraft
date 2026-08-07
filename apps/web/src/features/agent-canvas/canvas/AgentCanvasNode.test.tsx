@@ -43,6 +43,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
       : {},
     model_id: null,
     parameters: {},
+    metadata: {},
     prompt_context_snapshot_id: null,
     output_asset_id: ["image", "video", "audio", "editing"].includes(nodeType)
       ? `${nodeType}-asset`
@@ -195,8 +196,14 @@ describe("AgentCanvasNodeCard", () => {
       summary_prompt: null,
       structured_content: {
         document_kind: "world_setting",
-        contract_version: "world-setting-v1",
+        contract_version: "world-setting-v2",
         content: "A timeless mountain city governed by seasonal light and handmade technology.",
+        core: {
+          premise: "Seasonal light shapes daily life.",
+          era_and_place: "A timeless mountain city.",
+          world_rules: ["Technology is handmade."],
+          visual_continuity: ["Natural stone and seasonal light recur."],
+        },
         authoring_provenance: {
           source_proposal_id: "proposal-world-1",
           source_option_id: "option-world-1",
@@ -227,6 +234,21 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByText("Waiting for upstream")).toBeTruthy();
+  });
+
+  it("keeps a deterministic fallback node as a normal Draft and shows a bounded warning", () => {
+    render(<AgentCanvasNodeCard node={{
+      ...makeNode("image"),
+      metadata: {
+        materialization_mode: "deterministic_fallback",
+        warning_code: "specialist_materialization_fallback",
+        operation_policy_id: "agent.materialization.v1",
+      },
+    }} />);
+
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.getByText("Created with a simplified fallback")).toBeTruthy();
+    expect(screen.queryByText("Failed")).toBeNull();
   });
 
   it.each<CanvasNodeTypeV2>(["script", "image", "video", "editing"])(

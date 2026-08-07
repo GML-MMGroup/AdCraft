@@ -211,6 +211,8 @@ const PROPOSAL_ACTIONS = new Set<ProposalActionDescriptorV2["action"]>([
   "defer_topic",
   "exclude_element",
   "delegate_choice",
+  "reuse_direction",
+  "revise_direction",
 ]);
 const GUIDANCE_TOPIC_KINDS = new Set<GuidanceTopicKindV2>([
   "world_setting",
@@ -648,6 +650,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "model_ref",
       "model_summary",
       "parameters",
+      "metadata",
       "parameter_provenance",
       "prompt_context_snapshot_id",
       "output_asset_id",
@@ -697,6 +700,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       ? null
       : normalizeCanvasModelSummaryV2(record.model_summary, `${path}.model_summary`),
     parameters: expectRecordValue(record.parameters, `${path}.parameters`),
+    metadata: optionalUnknownRecord(record.metadata, `${path}.metadata`, {}),
     parameter_provenance: normalizeCanvasParameterProvenanceMapV2(
       record.parameter_provenance,
       `${path}.parameter_provenance`,
@@ -1883,6 +1887,9 @@ function normalizeProposalActionDescriptorV2(
     "expected_session_revision",
     "confirmation_required",
     "reason",
+    "option_id",
+    "enabled",
+    "disabled_reason",
   ], path);
   return {
     action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
@@ -1895,6 +1902,9 @@ function normalizeProposalActionDescriptorV2(
     ),
     confirmation_required: expectBoolean(record.confirmation_required, `${path}.confirmation_required`),
     reason: expectNonEmptyString(record.reason, `${path}.reason`),
+    option_id: nullableStringWithDefault(record.option_id, `${path}.option_id`),
+    enabled: record.enabled === undefined ? true : expectBoolean(record.enabled, `${path}.enabled`),
+    disabled_reason: nullableStringWithDefault(record.disabled_reason, `${path}.disabled_reason`),
   };
 }
 
@@ -2014,7 +2024,7 @@ function normalizeProposalApplicationSummaryV2(
     option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
     action: expectLiteral(
       record.action,
-      new Set<ProposalApplicationSummaryV2["action"]>(["select_option", "delegate_choice"]),
+      new Set<ProposalApplicationSummaryV2["action"]>(["select_option", "delegate_choice", "reuse_direction"]),
       `${path}.action`,
     ),
     receipt_id: expectNonEmptyString(record.receipt_id, `${path}.receipt_id`),
@@ -2073,7 +2083,11 @@ function normalizeChatProposalCardV2(value: unknown, path: string): ChatProposal
 
 function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpertActivityV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["item_type", "activity_id", "turn_id", "specialist", "display_name", "operation", "status", "sequence", "started_at", "finished_at"], path);
+  forbidUnknownFields(record, [
+    "item_type", "activity_id", "turn_id", "specialist", "display_name", "operation", "status",
+    "sequence", "started_at", "finished_at", "message", "error_code", "elapsed_ms", "attempt_stage",
+    "retryable", "validation_paths", "operation_policy_id", "suggested_actions", "completion_mode", "warning_code",
+  ], path);
   return {
     item_type: expectLiteral(record.item_type, new Set<ChatExpertActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
     activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
@@ -2085,6 +2099,32 @@ function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpert
     sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
     started_at: expectIsoDateTimeString(record.started_at, `${path}.started_at`),
     finished_at: record.finished_at === undefined ? null : nullableString(record.finished_at, `${path}.finished_at`),
+    message: nullableStringWithDefault(record.message, `${path}.message`),
+    error_code: nullableStringWithDefault(record.error_code, `${path}.error_code`),
+    elapsed_ms: record.elapsed_ms === undefined || record.elapsed_ms === null
+      ? null
+      : expectNonNegativeInteger(record.elapsed_ms, `${path}.elapsed_ms`),
+    attempt_stage: record.attempt_stage === undefined || record.attempt_stage === null
+      ? null
+      : expectLiteral(
+        record.attempt_stage,
+        new Set<NonNullable<ChatExpertActivityV2["attempt_stage"]>>([
+          "initial", "transport_retry", "structured_repair", "fallback",
+        ]),
+        `${path}.attempt_stage`,
+      ),
+    retryable: record.retryable === undefined ? false : expectBoolean(record.retryable, `${path}.retryable`),
+    validation_paths: optionalStringArray(record.validation_paths, `${path}.validation_paths`, []),
+    operation_policy_id: nullableStringWithDefault(record.operation_policy_id, `${path}.operation_policy_id`),
+    suggested_actions: expectArray(record.suggested_actions ?? [], `${path}.suggested_actions`).map((action, index) => (
+      expectLiteral(action, new Set<ChatExpertActivityV2["suggested_actions"][number]>(["retry", "revise_request"]), `${path}.suggested_actions[${index}]`)
+    )),
+    completion_mode: record.completion_mode === undefined || record.completion_mode === null
+      ? null
+      : expectLiteral(record.completion_mode, new Set(["deterministic_fallback"] as const), `${path}.completion_mode`),
+    warning_code: record.warning_code === undefined || record.warning_code === null
+      ? null
+      : expectLiteral(record.warning_code, new Set(["specialist_materialization_fallback"] as const), `${path}.warning_code`),
   };
 }
 
@@ -2668,6 +2708,33 @@ export function normalizeAgentCanvasChatTimelineV2(
           : typeof entry.metadata.label === "string"
             ? entry.metadata.label
           : specialist.split("_").map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ");
+        const elapsedMs = entry.metadata.elapsed_ms === undefined || entry.metadata.elapsed_ms === null
+          ? null
+          : expectNonNegativeInteger(entry.metadata.elapsed_ms, `${path}.items.metadata.elapsed_ms`);
+        const attemptStage = entry.metadata.attempt_stage === undefined || entry.metadata.attempt_stage === null
+          ? null
+          : expectLiteral(
+            entry.metadata.attempt_stage,
+            new Set<NonNullable<ChatExpertActivityV2["attempt_stage"]>>([
+              "initial", "transport_retry", "structured_repair", "fallback",
+            ]),
+            `${path}.items.metadata.attempt_stage`,
+          );
+        const suggestedActions = expectArray(
+          entry.metadata.suggested_actions ?? [],
+          `${path}.items.metadata.suggested_actions`,
+        ).map((action, index) => expectLiteral(
+          action,
+          new Set<ChatExpertActivityV2["suggested_actions"][number]>(["retry", "revise_request"]),
+          `${path}.items.metadata.suggested_actions[${index}]`,
+        ));
+        const publicMessage = typeof entry.metadata.message === "string"
+          ? entry.metadata.message
+          : typeof entry.metadata.error_message === "string"
+            ? entry.metadata.error_message
+            : entry.content.trim() && entry.content.trim() !== displayName
+              ? entry.content
+              : null;
         return [{
           item_type: "expert_activity",
           activity_id: typeof entry.metadata.activity_id === "string"
@@ -2689,6 +2756,28 @@ export function normalizeAgentCanvasChatTimelineV2(
           finished_at: typeof entry.metadata.finished_at === "string"
             ? entry.metadata.finished_at
             : status === "working" ? null : entry.created_at,
+          message: status === "failed" ? publicMessage : null,
+          error_code: typeof entry.metadata.error_code === "string"
+            ? entry.metadata.error_code
+            : null,
+          elapsed_ms: elapsedMs,
+          attempt_stage: attemptStage,
+          retryable: entry.metadata.retryable === true,
+          validation_paths: optionalStringArray(
+            entry.metadata.validation_paths,
+            `${path}.items.metadata.validation_paths`,
+            [],
+          ),
+          operation_policy_id: typeof entry.metadata.operation_policy_id === "string"
+            ? entry.metadata.operation_policy_id
+            : null,
+          suggested_actions: suggestedActions,
+          completion_mode: entry.metadata.completion_mode === "deterministic_fallback"
+            ? "deterministic_fallback"
+            : null,
+          warning_code: entry.metadata.warning_code === "specialist_materialization_fallback"
+            ? "specialist_materialization_fallback"
+            : null,
         }];
       }
       if (entry.entry_type === "agent_document_reference") {
@@ -3258,7 +3347,14 @@ function normalizeGuidanceCompletionProjectionV2(
   path: string,
 ): GuidanceCompletionProjectionV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["authoring", "delivery", "matching_node_ids", "matching_asset_ids"], path);
+  forbidUnknownFields(record, [
+    "authoring",
+    "delivery",
+    "editing_preparation",
+    "editing_node_id",
+    "matching_node_ids",
+    "matching_asset_ids",
+  ], path);
   return {
     authoring: expectLiteral(
       record.authoring ?? "not_ready",
@@ -3270,6 +3366,12 @@ function normalizeGuidanceCompletionProjectionV2(
       new Set<GuidanceCompletionProjectionV2["delivery"]>(["not_ready", "ready"]),
       `${path}.delivery`,
     ),
+    editing_preparation: expectLiteral(
+      record.editing_preparation ?? "not_ready",
+      new Set<GuidanceCompletionProjectionV2["editing_preparation"]>(["not_ready", "prepared"]),
+      `${path}.editing_preparation`,
+    ),
+    editing_node_id: nullableStringWithDefault(record.editing_node_id, `${path}.editing_node_id`),
     matching_node_ids: optionalStringArray(record.matching_node_ids, `${path}.matching_node_ids`, []),
     matching_asset_ids: optionalStringArray(record.matching_asset_ids, `${path}.matching_asset_ids`, []),
   };
@@ -3281,8 +3383,10 @@ function normalizeGuidedSessionStateV2(value: unknown, path: string): GuidedSess
     "session_id",
     "workflow_id",
     "status",
-    "guidance_mode",
     "goal",
+    "creative_authority",
+    "current_checkpoint",
+    "narrative_direction",
     "element_decisions",
     "current_topic_id",
     "topics",
@@ -3300,12 +3404,14 @@ function normalizeGuidedSessionStateV2(value: unknown, path: string): GuidedSess
       new Set<GuidedSessionStateV2["status"]>(["active", "paused", "completed"]),
       `${path}.status`,
     ),
-    guidance_mode: expectLiteral(
-      record.guidance_mode,
-      new Set<GuidedSessionStateV2["guidance_mode"]>(["collaborative", "delegated"]),
-      `${path}.guidance_mode`,
-    ),
     goal: normalizeCreativeGoalV2(record.goal, `${path}.goal`),
+    creative_authority: record.creative_authority === undefined || record.creative_authority === null
+      ? null
+      : normalizeCreativeAuthorityStateV2(record.creative_authority, `${path}.creative_authority`),
+    current_checkpoint: record.current_checkpoint === undefined || record.current_checkpoint === null
+      ? null
+      : normalizeGuidedStepCheckpointV2(record.current_checkpoint, `${path}.current_checkpoint`),
+    narrative_direction: nullableStringWithDefault(record.narrative_direction, `${path}.narrative_direction`),
     element_decisions: expectArray(record.element_decisions ?? [], `${path}.element_decisions`)
       .map((item, index) => normalizeCreativeElementDecisionV2(item, `${path}.element_decisions[${index}]`)),
     current_topic_id: nullableStringWithDefault(record.current_topic_id, `${path}.current_topic_id`),
@@ -3338,13 +3444,18 @@ function normalizeGuidanceSessionActionV2(
     "workflow_id",
     "confirmation_required",
     "reason",
+    "authority",
   ], path);
   return {
     action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
     logical_key: expectNonEmptyString(record.logical_key, `${path}.logical_key`),
     action: expectLiteral(
       record.action,
-      new Set<GuidanceSessionActionV2["action"]>(["stop_guidance", "resume_guidance"]),
+      new Set<GuidanceSessionActionV2["action"]>([
+        "stop_guidance",
+        "resume_guidance",
+        "set_creative_authority",
+      ]),
       `${path}.action`,
     ),
     state: expectLiteral(
@@ -3361,6 +3472,69 @@ function normalizeGuidanceSessionActionV2(
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     confirmation_required: expectBoolean(record.confirmation_required, `${path}.confirmation_required`),
     reason: expectNonEmptyString(record.reason, `${path}.reason`),
+    authority: record.authority === undefined || record.authority === null
+      ? null
+      : expectLiteral(record.authority, new Set(["user", "director"] as const), `${path}.authority`),
+  };
+}
+
+function normalizeCreativeAuthorityStateV2(
+  value: unknown,
+  path: string,
+): GuidedSessionStateV2["creative_authority"] {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["authority", "source", "decided_at_turn_id", "revision"], path);
+  return {
+    authority: expectLiteral(record.authority, new Set(["user", "director"] as const), `${path}.authority`),
+    source: expectLiteral(
+      record.source,
+      new Set(["explicit_user", "explicit_delegation", "director_inference"] as const),
+      `${path}.source`,
+    ),
+    decided_at_turn_id: expectNonEmptyString(record.decided_at_turn_id, `${path}.decided_at_turn_id`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+  };
+}
+
+function normalizeGuidedStepCheckpointV2(
+  value: unknown,
+  path: string,
+): GuidedSessionStateV2["current_checkpoint"] {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "checkpoint_id",
+    "workflow_id",
+    "session_revision",
+    "stage_kind",
+    "status",
+    "trigger",
+    "action_id",
+  ], path);
+  return {
+    checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    session_revision: expectPositiveInteger(record.session_revision, `${path}.session_revision`),
+    stage_kind: record.stage_kind === undefined || record.stage_kind === null
+      ? null
+      : expectLiteral(
+        record.stage_kind,
+        new Set([
+          "world_setting", "narrative_direction", "product", "prop", "character", "scene",
+          "script", "storyboard", "video", "bgm", "editing",
+        ] as const),
+        `${path}.stage_kind`,
+      ),
+    status: expectLiteral(
+      record.status,
+      new Set(["pending", "waiting_user", "completed", "failed", "superseded"] as const),
+      `${path}.status`,
+    ),
+    trigger: expectLiteral(
+      record.trigger,
+      new Set(["user_message", "proposal_action", "continuation", "recovery"] as const),
+      `${path}.trigger`,
+    ),
+    action_id: nullableStringWithDefault(record.action_id, `${path}.action_id`),
   };
 }
 
@@ -3417,6 +3591,7 @@ function normalizeNextGuidanceDecisionV2(
     "suggested_next_topic_kinds",
     "intent_patch",
     "completion_claim",
+    "creative_authority_resolution",
   ], path);
   const candidateCount = record.candidate_count === undefined || record.candidate_count === null
     ? null
@@ -3459,6 +3634,53 @@ function normalizeNextGuidanceDecisionV2(
     completion_claim: record.completion_claim === undefined || record.completion_claim === null
       ? null
       : normalizeGuidanceCompletionClaimV2(record.completion_claim, `${path}.completion_claim`),
+    creative_authority_resolution:
+      record.creative_authority_resolution === undefined || record.creative_authority_resolution === null
+        ? null
+        : normalizeCreativeAuthorityResolutionV2(
+          record.creative_authority_resolution,
+          `${path}.creative_authority_resolution`,
+        ),
+  };
+}
+
+function normalizeCreativeAuthorityResolutionV2(
+  value: unknown,
+  path: string,
+): NonNullable<NextGuidanceDecisionV2["creative_authority_resolution"]> {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["outcome", "authority", "source", "actions"], path);
+  return {
+    outcome: expectLiteral(record.outcome, new Set(["resolved", "ask"] as const), `${path}.outcome`),
+    authority: record.authority === undefined || record.authority === null
+      ? null
+      : expectLiteral(record.authority, new Set(["user", "director"] as const), `${path}.authority`),
+    source: record.source === undefined || record.source === null
+      ? null
+      : expectLiteral(
+        record.source,
+        new Set(["explicit_user", "explicit_delegation", "director_inference"] as const),
+        `${path}.source`,
+      ),
+    actions: expectArray(record.actions ?? [], `${path}.actions`).map((action, index) => {
+      const actionPath = `${path}.actions[${index}]`;
+      const actionRecord = expectRecord(action, actionPath);
+      forbidUnknownFields(
+        actionRecord,
+        ["action_id", "action", "authority", "label", "expected_session_revision"],
+        actionPath,
+      );
+      return {
+        action_id: expectNonEmptyString(actionRecord.action_id, `${actionPath}.action_id`),
+        action: expectLiteral(actionRecord.action, new Set(["set_creative_authority"] as const), `${actionPath}.action`),
+        authority: expectLiteral(actionRecord.authority, new Set(["user", "director"] as const), `${actionPath}.authority`),
+        label: expectNonEmptyString(actionRecord.label, `${actionPath}.label`),
+        expected_session_revision: expectPositiveInteger(
+          actionRecord.expected_session_revision,
+          `${actionPath}.expected_session_revision`,
+        ),
+      };
+    }),
   };
 }
 

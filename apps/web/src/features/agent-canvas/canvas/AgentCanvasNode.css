@@ -519,6 +519,25 @@
   box-shadow: 0 0 0 4px rgba(230, 201, 135, 0.15);
 }
 
+.agent-canvas-node__fallback-warning {
+  position: absolute;
+  z-index: 6;
+  right: 11px;
+  bottom: 10px;
+  max-width: calc(100% - 105px);
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid rgba(230, 201, 135, 0.34);
+  border-radius: 999px;
+  background: rgba(39, 34, 24, 0.76);
+  color: #f0d99f;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
 .agent-canvas-node__working {
   position: absolute;
   z-index: 4;

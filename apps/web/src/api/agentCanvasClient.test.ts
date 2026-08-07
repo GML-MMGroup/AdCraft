@@ -544,6 +544,42 @@ describe("Agent Canvas client", () => {
     expect(accepted.turn_id).toBe("turn-guided-1");
   });
 
+  it("sends creative-authority guided actions as structured fields", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/chat/guided-actions/action-authority/apply");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        confirmed: true,
+        action: "set_creative_authority",
+        authority: "director",
+        expected_session_revision: 8,
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-authority-1",
+        status: "queued",
+        events_cursor: 23,
+      }, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:8"');
+
+    const accepted = await v2Api.applyAgentCanvasGuidedAction(
+      "workflow-1",
+      "action-authority",
+      {
+        confirmed: true,
+        action: "set_creative_authority",
+        authority: "director",
+        expected_session_revision: 8,
+      },
+      "guided-authority-key",
+    );
+
+    expect(accepted.turn_id).toBe("turn-authority-1");
+  });
+
   it("persists layout batches against layout_revision without semantic If-Match", async () => {
     v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:12"');
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {

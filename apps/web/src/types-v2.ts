@@ -1489,7 +1489,7 @@ export type CanvasCreativeRoleV2 =
   | "general_audio"
   | "editing";
 
-export interface WorldSettingAuthoringProvenanceV1 {
+export interface WorldSettingAuthoringProvenanceV2 {
   source_proposal_id: string;
   source_option_id: string;
   materialization_run_id: string;
@@ -1497,11 +1497,19 @@ export interface WorldSettingAuthoringProvenanceV1 {
   creative_direction_snapshot_id: string | null;
 }
 
-export interface WorldSettingDocumentV1 {
+export interface WorldSettingCoreV2 {
+  premise: string;
+  era_and_place: string;
+  world_rules: string[];
+  visual_continuity: string[];
+}
+
+export interface WorldSettingDocumentV2 {
   document_kind: "world_setting";
-  contract_version: "world-setting-v1";
+  contract_version: "world-setting-v2";
   content: string;
-  authoring_provenance: WorldSettingAuthoringProvenanceV1;
+  core: WorldSettingCoreV2;
+  authoring_provenance: WorldSettingAuthoringProvenanceV2;
 }
 
 export type CanvasBindingInputRoleV2 =
@@ -1607,6 +1615,7 @@ export interface CanvasNodeV2 {
   model_ref: string | null;
   model_summary: CanvasModelSummaryV2 | null;
   parameters: Record<string, unknown>;
+  metadata: Record<string, unknown>;
   parameter_provenance: Record<string, CanvasParameterProvenanceV2>;
   prompt_context_snapshot_id: string | null;
   output_asset_id: string | null;
@@ -1975,8 +1984,7 @@ export interface ProviderResolvedTextInputAuditV2 {
   display_order: number;
 }
 
-export type WorldSettingProjectionAudienceV1 =
-  | "shared"
+export type WorldSettingContextAudienceV2 =
   | "script_writer"
   | "product_designer"
   | "prop_designer"
@@ -1986,17 +1994,18 @@ export type WorldSettingProjectionAudienceV1 =
   | "video_director"
   | "bgm_director";
 
-export interface ProviderResolvedWorldSettingInputAuditV1 {
+export interface ProviderResolvedWorldSettingInputAuditV2 {
   binding_id: string;
   source_node_id: string;
   source_node_revision: number;
+  source_content_digest: string;
+  source_core_digest: string;
   required: boolean;
   display_order: number;
-  projection_audience: WorldSettingProjectionAudienceV1;
-  projection_contract_version: "world-setting-projection-v1";
-  projection_snapshot_id: string;
-  projection_mode: "ready" | "fallback";
-  warning_code: string | null;
+  target_audience: WorldSettingContextAudienceV2;
+  compiler_id: string;
+  compiler_digest: string;
+  context_digest: string;
 }
 
 export interface ProviderResolvedMediaInputAuditV2 {
@@ -2024,7 +2033,7 @@ export interface ProviderInputManifestAuditV2 {
   execution_id: string | null;
   node_run_id: string | null;
   text_inputs: ProviderResolvedTextInputAuditV2[];
-  world_setting_inputs: ProviderResolvedWorldSettingInputAuditV1[];
+  world_setting_inputs: ProviderResolvedWorldSettingInputAuditV2[];
   media_inputs: ProviderResolvedMediaInputAuditV2[];
   omitted_optional_inputs: ProviderOmittedOptionalInputAuditV2[];
 }
@@ -2108,7 +2117,7 @@ export interface ConceptOptionV2 {
 export interface ProposalApplicationSummaryV2 {
   application_id: string;
   option_id: string;
-  action: "select_option" | "delegate_choice";
+  action: "select_option" | "delegate_choice" | "reuse_direction";
   receipt_id: string;
   created_node_ids: string[];
   queued_execution_ids: string[];
@@ -2121,7 +2130,9 @@ export type ProposalActionTypeV2 =
   | "revise_options"
   | "defer_topic"
   | "exclude_element"
-  | "delegate_choice";
+  | "delegate_choice"
+  | "reuse_direction"
+  | "revise_direction";
 
 export interface ProposalActionDescriptorV2 {
   action_id: string;
@@ -2131,6 +2142,9 @@ export interface ProposalActionDescriptorV2 {
   expected_session_revision: number;
   confirmation_required: boolean;
   reason: string;
+  option_id: string | null;
+  enabled: boolean;
+  disabled_reason: string | null;
 }
 
 export interface ProposedDraftReferenceV2 {
@@ -2206,6 +2220,16 @@ export interface ChatExpertActivityV2 {
   sequence: number;
   started_at: string;
   finished_at: string | null;
+  message: string | null;
+  error_code: string | null;
+  elapsed_ms: number | null;
+  attempt_stage: "initial" | "transport_retry" | "structured_repair" | "fallback" | null;
+  retryable: boolean;
+  validation_paths: string[];
+  operation_policy_id: string | null;
+  suggested_actions: Array<"retry" | "revise_request">;
+  completion_mode: "deterministic_fallback" | null;
+  warning_code: "specialist_materialization_fallback" | null;
 }
 
 export interface AgentNodeIdRefV2 {
@@ -2804,16 +2828,56 @@ export interface GuidanceTopicStateV2 {
 export interface GuidanceCompletionProjectionV2 {
   authoring: "not_ready" | "ready";
   delivery: "not_ready" | "ready";
+  editing_preparation: "not_ready" | "prepared";
+  editing_node_id: string | null;
   matching_node_ids: string[];
   matching_asset_ids: string[];
+}
+
+export type CreativeAuthorityV2 = "user" | "director";
+export type CreativeAuthoritySourceV2 =
+  | "explicit_user"
+  | "explicit_delegation"
+  | "director_inference";
+
+export interface CreativeAuthorityStateV2 {
+  authority: CreativeAuthorityV2;
+  source: CreativeAuthoritySourceV2;
+  decided_at_turn_id: string;
+  revision: number;
+}
+
+export type GuidanceStageKindV2 =
+  | "world_setting"
+  | "narrative_direction"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "script"
+  | "storyboard"
+  | "video"
+  | "bgm"
+  | "editing";
+
+export interface GuidedStepCheckpointV2 {
+  checkpoint_id: string;
+  workflow_id: string;
+  session_revision: number;
+  stage_kind: GuidanceStageKindV2 | null;
+  status: "pending" | "waiting_user" | "completed" | "failed" | "superseded";
+  trigger: "user_message" | "proposal_action" | "continuation" | "recovery";
+  action_id: string | null;
 }
 
 export interface GuidedSessionStateV2 {
   session_id: string;
   workflow_id: string;
   status: "active" | "paused" | "completed";
-  guidance_mode: "collaborative" | "delegated";
   goal: CreativeGoalV2;
+  creative_authority: CreativeAuthorityStateV2 | null;
+  current_checkpoint: GuidedStepCheckpointV2 | null;
+  narrative_direction: string | null;
   element_decisions: CreativeElementDecisionV2[];
   current_topic_id: string | null;
   topics: GuidanceTopicStateV2[];
@@ -2850,12 +2914,24 @@ export interface NextGuidanceDecisionV2 {
   suggested_next_topic_kinds: GuidanceTopicKindV2[];
   intent_patch: GuidanceIntentPatchV2 | null;
   completion_claim: GuidanceCompletionClaimV2 | null;
+  creative_authority_resolution: {
+    outcome: "resolved" | "ask";
+    authority: CreativeAuthorityV2 | null;
+    source: CreativeAuthoritySourceV2 | null;
+    actions: Array<{
+      action_id: string;
+      action: "set_creative_authority";
+      authority: CreativeAuthorityV2;
+      label: string;
+      expected_session_revision: number;
+    }>;
+  } | null;
 }
 
 export interface GuidanceSessionActionV2 {
   action_id: string;
   logical_key: string;
-  action: "stop_guidance" | "resume_guidance";
+  action: "stop_guidance" | "resume_guidance" | "set_creative_authority";
   state: "pending" | "applying" | "applied" | "superseded" | "failed";
   creating_turn_id: string;
   expected_session_revision: number;
@@ -2863,6 +2939,7 @@ export interface GuidanceSessionActionV2 {
   workflow_id: string;
   confirmation_required: boolean;
   reason: string;
+  authority: CreativeAuthorityV2 | null;
 }
 
 export type AgentContinuationDeliveryStatusV2 =
@@ -2952,15 +3029,38 @@ export type AgentCanvasProposalActionRequestV2 =
       action_id: string;
       expected_session_revision: number;
       action: "defer_topic" | "exclude_element" | "delegate_choice";
+    }
+  | {
+      action_id: string;
+      expected_session_revision: number;
+      action: "reuse_direction";
+      option_id: string;
+    }
+  | {
+      action_id: string;
+      expected_session_revision: number;
+      action: "revise_direction";
+      option_id: string;
+      instruction: string;
     };
 
 export interface AgentCanvasCommandPlanActionRequestV2 {
   action: "confirm" | "reject";
 }
 
-export interface AgentCanvasGuidedActionApplyRequestV2 {
-  confirmed: boolean;
-}
+export type AgentCanvasGuidedActionApplyRequestV2 =
+  | {
+      confirmed: boolean;
+      action?: null;
+      authority?: null;
+      expected_session_revision?: null;
+    }
+  | {
+      confirmed: boolean;
+      action: "set_creative_authority";
+      authority: CreativeAuthorityV2;
+      expected_session_revision: number;
+    };
 
 export interface AgentCanvasVideoSkillRunCreateRequestV2 {
   skill_id: string;

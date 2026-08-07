@@ -246,6 +246,8 @@ export function AgentCanvasNodeCard({
   const label = semanticNodeLabel(node);
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
     || Boolean(runtime?.blocked_by_node_ids.length);
+  const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
+    && node.metadata.warning_code === "specialist_materialization_fallback";
 
   return (
     <article
@@ -299,6 +301,12 @@ export function AgentCanvasNodeCard({
         >
           <i aria-hidden="true" />
           {blockedByUpstream ? "Waiting for upstream" : NODE_STATUS_LABELS[status]}
+        </span>
+      ) : null}
+
+      {usedDeterministicFallback ? (
+        <span className="agent-canvas-node__fallback-warning" role="status">
+          Created with a simplified fallback
         </span>
       ) : null}
 

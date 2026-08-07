@@ -68,6 +68,9 @@ describe("projectChatEvents", () => {
         specialist_name: "scene_designer",
         display_name: "Scene Designer",
         operation: "create_concepts",
+        error_code: "agent_transport_failed",
+        retryable: true,
+        suggested_actions: ["retry", "revise_request"],
       }),
     ]);
 
@@ -76,6 +79,8 @@ describe("projectChatEvents", () => {
         activity_id: "activity-2",
         specialist: "scene_designer",
         status: "failed",
+        error_code: "agent_transport_failed",
+        suggested_actions: ["retry", "revise_request"],
       }),
     ]);
   });

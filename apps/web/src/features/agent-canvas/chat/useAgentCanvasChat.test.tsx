@@ -5,6 +5,7 @@ import type {
   AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
   CanvasRuntimeEventV2,
+  GuidanceSessionActionV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
 
@@ -69,6 +70,9 @@ function descriptor(
     expected_session_revision: 7,
     confirmation_required: false,
     reason: "Continue the guided authoring session.",
+    option_id: null,
+    enabled: true,
+    disabled_reason: null,
   };
 }
 
@@ -302,13 +306,20 @@ describe("useAgentCanvasChat", () => {
         session_id: "guidance-1",
         workflow_id: "workflow-1",
         status: "active",
-        guidance_mode: "collaborative",
         goal: {
           requested_output: "video",
           delivery_scope: "generated_media",
           summary: "Create a product film.",
           explicit_constraints: {},
         },
+        creative_authority: {
+          authority: "user",
+          source: "explicit_user",
+          decided_at_turn_id: "turn-authority-1",
+          revision: 1,
+        },
+        current_checkpoint: null,
+        narrative_direction: null,
         element_decisions: [],
         current_topic_id: "topic-character",
         topics: [{
@@ -326,6 +337,8 @@ describe("useAgentCanvasChat", () => {
         completion: {
           authoring: "not_ready",
           delivery: "not_ready",
+          editing_preparation: "not_ready",
+          editing_node_id: null,
           matching_node_ids: [],
           matching_asset_ids: [],
         },
@@ -529,6 +542,172 @@ describe("useAgentCanvasChat", () => {
     },
   );
 
+  it("reuses a superseded direction with the descriptor's stable option and session revision", async () => {
+    const reuse = {
+      ...descriptor("reuse_direction", "action-reuse-direction-1"),
+      option_id: "option-superseded-1",
+    };
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.applyProposalAction("proposal-1", reuse);
+    });
+
+    expect(api.actOnAgentCanvasProposal).toHaveBeenCalledWith(
+      "workflow-1",
+      "proposal-1",
+      {
+        action_id: "action-reuse-direction-1",
+        expected_session_revision: 7,
+        action: "reuse_direction",
+        option_id: "option-superseded-1",
+      },
+      expect.stringContaining("proposal-reuse-direction"),
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("revises a superseded direction with its stable option identity", async () => {
+    const revise = {
+      ...descriptor("revise_direction", "action-revise-direction-1"),
+      option_id: "option-superseded-1",
+    };
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.reviseProposal(
+        "proposal-1",
+        revise,
+        "Keep the same direction but simplify the setting.",
+      );
+    });
+
+    expect(api.actOnAgentCanvasProposal).toHaveBeenCalledWith(
+      "workflow-1",
+      "proposal-1",
+      {
+        action_id: "action-revise-direction-1",
+        expected_session_revision: 7,
+        action: "revise_direction",
+        option_id: "option-superseded-1",
+        instruction: "Keep the same direction but simplify the setting.",
+      },
+      expect.stringContaining("proposal-revise-direction"),
+    );
+  });
+
+  it("starts a new idempotent user attempt when retrying a failed specialist activity", async () => {
+    api.submitAgentCanvasChatMessage.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: "message-retry-1",
+      turn_id: "turn-retry-1",
+      status: "queued",
+      events_cursor: 8,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.retrySpecialistActivity({
+        item_type: "expert_activity",
+        activity_id: "activity-failed-1",
+        turn_id: "turn-failed-1",
+        specialist: "scene_designer",
+        display_name: "Scene Designer",
+        operation: "materialize_draft",
+        status: "failed",
+        sequence: 4,
+        started_at: "2026-08-07T01:00:00Z",
+        finished_at: "2026-08-07T01:07:00Z",
+        message: "The request timed out.",
+        error_code: "agent_deadline_exceeded",
+        elapsed_ms: 420000,
+        attempt_stage: "transport_retry",
+        retryable: true,
+        validation_paths: [],
+        operation_policy_id: "agent.materialization.v1",
+        suggested_actions: ["retry", "revise_request"],
+        completion_mode: null,
+        warning_code: null,
+      });
+    });
+
+    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith(
+      "workflow-1",
+      expect.objectContaining({
+        text: "Retry the failed Scene Designer materialize draft operation.",
+      }),
+      expect.stringContaining("expert-retry-activity-failed-1"),
+    );
+  });
+
+  it("keeps a durable terminal specialist state when an older live event is still buffered", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "expert_activity",
+        activity_id: "activity-scene-1",
+        turn_id: "turn-scene-1",
+        specialist: "scene_designer",
+        display_name: "Scene Designer",
+        operation: "materialize_draft",
+        status: "completed",
+        sequence: 12,
+        started_at: "2026-08-07T01:00:00Z",
+        finished_at: "2026-08-07T01:01:00Z",
+        message: null,
+        error_code: null,
+        elapsed_ms: 60_000,
+        attempt_stage: "initial",
+        retryable: false,
+        validation_paths: [],
+        operation_policy_id: "agent.materialization.v1",
+        suggested_actions: [],
+        completion_mode: null,
+        warning_code: null,
+      }],
+    }));
+    const staleWorkingEvent: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_started", "turn-scene-1", 2),
+      event_type: "specialist_work_started",
+      payload: {
+        activity_id: "activity-scene-1",
+        specialist_name: "scene_designer",
+        operation: "materialize_draft",
+        display_name: "Scene Designer",
+      },
+    };
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [staleWorkingEvent],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.items).toEqual([
+      expect.objectContaining({
+        item_type: "expert_activity",
+        activity_id: "activity-scene-1",
+        status: "completed",
+      }),
+    ]);
+  });
+
   it("preserves the proposal card and refreshes guidance after a revision conflict", async () => {
     api.actOnAgentCanvasProposal.mockRejectedValue({
       code: "guidance_revision_conflict",
@@ -569,15 +748,73 @@ describe("useAgentCanvasChat", () => {
       chatRevision: 0,
       chatEvents: [],
     }));
+    const stopAction: GuidanceSessionActionV2 = {
+      action_id: "action-stop",
+      logical_key: "guidance:stop:7",
+      action: "stop_guidance",
+      state: "pending",
+      creating_turn_id: "turn-guidance-1",
+      expected_session_revision: 7,
+      label: "Stop guidance",
+      workflow_id: "workflow-1",
+      confirmation_required: false,
+      reason: "Pause guided production.",
+      authority: null,
+    };
 
     await act(async () => {
-      await result.current.actions.applyGuidedAction("action-stop");
+      await result.current.actions.applyGuidedAction(stopAction);
     });
 
     expect(api.applyAgentCanvasGuidedAction).toHaveBeenCalledWith(
       "workflow-1",
       "action-stop",
       { confirmed: true },
+      expect.stringContaining("guided-action"),
+    );
+  });
+
+  it("resolves creative authority with the structured guided action contract", async () => {
+    api.applyAgentCanvasGuidedAction.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: null,
+      turn_id: "turn-authority-action",
+      status: "queued",
+      events_cursor: 6,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+    const authorityAction: GuidanceSessionActionV2 = {
+      action_id: "action-authority-director",
+      logical_key: "authority:director:8",
+      action: "set_creative_authority",
+      state: "pending",
+      creating_turn_id: "turn-guidance-2",
+      expected_session_revision: 8,
+      label: "Take the lead",
+      workflow_id: "workflow-1",
+      confirmation_required: false,
+      reason: "Let the Director choose the creative direction.",
+      authority: "director",
+    };
+
+    await act(async () => {
+      await result.current.actions.applyGuidedAction(authorityAction);
+    });
+
+    expect(api.applyAgentCanvasGuidedAction).toHaveBeenCalledWith(
+      "workflow-1",
+      "action-authority-director",
+      {
+        confirmed: true,
+        action: "set_creative_authority",
+        authority: "director",
+        expected_session_revision: 8,
+      },
       expect.stringContaining("guided-action"),
     );
   });
