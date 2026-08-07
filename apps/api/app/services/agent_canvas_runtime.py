@@ -34,7 +34,10 @@ from app.schemas.agent_canvas_runtime import (
     NodeRuntimeV2,
     ResolvedModelExecutionV1,
 )
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_canvas_world_setting import (
+    WorldSettingContextEnvelopeV2,
+    WorldSettingResolvedInputV2,
+)
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 from app.services.agent_canvas_node_execution import (
     GeneratedMediaPayload,
@@ -51,7 +54,7 @@ from app.services.agent_canvas_provider_capabilities import (
 from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
-from app.services.agent_canvas_world_setting_projection import WorldSettingProjectionService
+from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_video_parameter_compiler import (
     AgentCanvasVideoParameterCompiler,
 )
@@ -62,7 +65,7 @@ MediaPublisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], st
 ScriptReadyPublisher = Callable[[str, str], object]
 TextReadyPublisher = Callable[[CanvasNodeV2], object]
 MediaContextPreparer = Callable[
-    [CanvasNodeV2, WorldSettingProjectionContextV1 | None],
+    [CanvasNodeV2, WorldSettingContextEnvelopeV2 | None],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
 ]
 StageTraceWriter = Callable[
@@ -239,7 +242,7 @@ class DynamicCanvasScheduler:
         run_snapshots: AgentCanvasRunIntentSnapshotService | None = None,
         execution_parameters: AgentCanvasExecutionParameterResolver | None = None,
         video_parameter_compiler: AgentCanvasVideoParameterCompiler | None = None,
-        world_settings: WorldSettingProjectionService | None = None,
+        world_settings: WorldSettingContextResolverV2 | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
@@ -259,7 +262,6 @@ class DynamicCanvasScheduler:
         self._text_ready_publisher = text_ready_publisher
         self._media_context_preparer = media_context_preparer
         self._stage_trace_writer = stage_trace_writer
-        self._world_settings = world_settings
         self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(
             bindings,
             world_settings=world_settings,
@@ -490,16 +492,9 @@ class DynamicCanvasScheduler:
                 "A target Node cannot resolve more than one World Setting Binding.",
                 stage="agent_canvas_scheduler",
             )
-        world_setting = None
-        if manifest.world_setting_inputs:
-            if self._world_settings is None:
-                raise V2PersistenceError(
-                    "world_setting_projection_unavailable",
-                    "World Setting projection resolution is unavailable.",
-                    stage="agent_canvas_scheduler",
-                    details={"retryable": True},
-                )
-            world_setting = self._world_settings.materialize(manifest.world_setting_inputs[0])
+        world_setting = (
+            manifest.world_setting_inputs[0].context if manifest.world_setting_inputs else None
+        )
         model_id = None
         provider_id = None
         resolution = None
@@ -518,13 +513,15 @@ class DynamicCanvasScheduler:
         )
         prompt_metadata["resolved_input_manifest"] = manifest.model_dump(mode="json")
         if world_setting is not None:
-            prompt_metadata["world_setting_projection"] = {
+            prompt_metadata["world_setting_context"] = {
                 "source_node_id": world_setting.source_node_id,
                 "source_node_revision": world_setting.source_node_revision,
-                "projection_snapshot_id": world_setting.projection_snapshot_id,
-                "projection_digest": world_setting.projection_digest,
-                "projection_mode": world_setting.projection_mode,
-                "warning_code": world_setting.warning_code,
+                "source_content_digest": world_setting.source_content_digest,
+                "source_core_digest": world_setting.source_core_digest,
+                "target_audience": world_setting.target_audience,
+                "compiler_id": world_setting.compiler_id,
+                "compiler_digest": world_setting.compiler_digest,
+                "context_digest": world_setting.context_digest,
             }
         runtime_omissions = tuple(
             item.model_dump(mode="json") for item in manifest.omitted_optional_inputs
@@ -711,6 +708,7 @@ class DynamicCanvasScheduler:
                 },
             )
         if stored_manifest is None:
+            public_manifest = _public_input_manifest(manifest)
             self._runtime.update_member(
                 execution_id,
                 node_id,
@@ -730,7 +728,7 @@ class DynamicCanvasScheduler:
                     "node_run_id": manifest.node_run_id,
                     "node_id": node_id,
                     "input_manifest_id": manifest.manifest_id,
-                    "input_manifest": manifest.model_dump(mode="json"),
+                    "input_manifest": public_manifest,
                     "text_inputs": [
                         {
                             "binding_id": item.binding_id,
@@ -742,7 +740,7 @@ class DynamicCanvasScheduler:
                         for item in manifest.text_inputs
                     ],
                     "world_setting_inputs": [
-                        item.model_dump(mode="json") for item in manifest.world_setting_inputs
+                        _public_world_setting_input(item) for item in manifest.world_setting_inputs
                     ],
                     "media_inputs": [
                         {
@@ -982,13 +980,15 @@ class DynamicCanvasScheduler:
             **(extra or {}),
         }
         if context.world_setting is not None:
-            output["world_setting_projection"] = {
+            output["world_setting_context"] = {
                 "source_node_id": context.world_setting.source_node_id,
                 "source_node_revision": context.world_setting.source_node_revision,
-                "projection_snapshot_id": context.world_setting.projection_snapshot_id,
-                "projection_digest": context.world_setting.projection_digest,
-                "projection_mode": context.world_setting.projection_mode,
-                "warning_code": context.world_setting.warning_code,
+                "source_content_digest": context.world_setting.source_content_digest,
+                "source_core_digest": context.world_setting.source_core_digest,
+                "target_audience": context.world_setting.target_audience,
+                "compiler_id": context.world_setting.compiler_id,
+                "compiler_digest": context.world_setting.compiler_digest,
+                "context_digest": context.world_setting.context_digest,
             }
         finished_at = self._clock()
         try:
@@ -1249,6 +1249,32 @@ def _skip_message(reason: str) -> str:
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
     }[reason]
+
+
+def _public_world_setting_input(
+    item: WorldSettingResolvedInputV2,
+) -> dict[str, object]:
+    return {
+        "binding_id": item.binding_id,
+        "source_node_id": item.source_node_id,
+        "source_node_revision": item.source_node_revision,
+        "source_content_digest": item.source_content_digest,
+        "source_core_digest": item.source_core_digest,
+        "required": item.required,
+        "display_order": item.display_order,
+        "target_audience": item.target_audience,
+        "compiler_id": item.compiler_id,
+        "compiler_digest": item.compiler_digest,
+        "context_digest": item.context_digest,
+    }
+
+
+def _public_input_manifest(manifest: ResolvedNodeInputManifestV2) -> dict[str, object]:
+    payload = manifest.model_dump(mode="json")
+    payload["world_setting_inputs"] = [
+        _public_world_setting_input(item) for item in manifest.world_setting_inputs
+    ]
+    return payload
 
 
 def _required_sources_not_ready(workflow, target_node_id, nodes) -> tuple[str, ...]:

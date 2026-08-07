@@ -22,8 +22,8 @@ from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_bindings import AgentCanvasBindingService
 
 if TYPE_CHECKING:
-    from app.services.agent_canvas_world_setting_projection import (
-        WorldSettingProjectionService,
+    from app.services.agent_canvas_world_setting_context import (
+        WorldSettingContextResolverV2,
     )
 
 
@@ -34,7 +34,7 @@ class AgentCanvasResolvedInputCompiler:
         self,
         bindings: AgentCanvasBindingService,
         *,
-        world_settings: "WorldSettingProjectionService | None" = None,
+        world_settings: "WorldSettingContextResolverV2 | None" = None,
     ) -> None:
         self._bindings = bindings
         self._world_settings = world_settings
@@ -90,6 +90,7 @@ class AgentCanvasResolvedInputCompiler:
                 content=item.content,
                 source_semantic_role=item.source_semantic_role,
                 binding_metadata=item.binding_metadata,
+                source_structured_content=item.source_structured_content,
             )
             for item in text_snapshot.inputs
         )
@@ -102,8 +103,8 @@ class AgentCanvasResolvedInputCompiler:
                 continue
             if self._world_settings is None:
                 error = V2PersistenceError(
-                    "world_setting_projection_unavailable",
-                    "World Setting projection resolution is unavailable.",
+                    "world_setting_context_unavailable",
+                    "World Setting context resolution is unavailable.",
                     stage="agent_canvas_resolved_input_compiler",
                 )
                 if item.required:

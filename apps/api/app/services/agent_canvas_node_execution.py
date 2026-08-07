@@ -40,7 +40,7 @@ from app.schemas.seedance_inputs import (
     SeedanceInputManifestAuditV1,
     SeedanceInputManifestV1,
 )
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_run_envelope import agent_run_envelope_fields
@@ -77,7 +77,7 @@ class NodeExecutionContext:
     delivered_references: tuple[V2DeliveredProviderReference, ...] = ()
     input_manifest: ResolvedNodeInputManifestV2 | None = None
     optional_input_omissions: tuple[dict[str, str], ...] = ()
-    world_setting: WorldSettingProjectionContextV1 | None = None
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,13 +172,15 @@ def generated_asset_publication_metadata(
         ),
     }
     if context.world_setting is not None:
-        metadata["world_setting_projection"] = {
+        metadata["world_setting_context"] = {
             "source_node_id": context.world_setting.source_node_id,
             "source_node_revision": context.world_setting.source_node_revision,
-            "projection_snapshot_id": context.world_setting.projection_snapshot_id,
-            "projection_digest": context.world_setting.projection_digest,
-            "projection_mode": context.world_setting.projection_mode,
-            "warning_code": context.world_setting.warning_code,
+            "source_content_digest": context.world_setting.source_content_digest,
+            "source_core_digest": context.world_setting.source_core_digest,
+            "target_audience": context.world_setting.target_audience,
+            "compiler_id": context.world_setting.compiler_id,
+            "compiler_digest": context.world_setting.compiler_digest,
+            "context_digest": context.world_setting.context_digest,
         }
     audit = context.seedance_input_audit
     if audit is not None:

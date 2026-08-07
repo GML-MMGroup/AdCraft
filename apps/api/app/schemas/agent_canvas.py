@@ -16,7 +16,7 @@ from pydantic import (
 
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
-from app.schemas.agent_canvas_world_setting import ResolvedWorldSettingInputV1
+from app.schemas.agent_canvas_world_setting import WorldSettingResolvedInputV2
 
 
 CanvasNodeTypeV2 = Literal["text", "script", "image", "video", "audio", "editing"]
@@ -533,6 +533,7 @@ class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     content_hash: str = Field(min_length=1)
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     binding_id: str | None = None
     input_role: Literal["text_context"] = "text_context"
     required: bool = False
@@ -580,6 +581,7 @@ class ResolvedTextBindingInputV2(_AgentCanvasModel):
     content: str
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
     binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class ResolvedMediaBindingInputV2(_AgentCanvasModel):
@@ -612,7 +614,7 @@ class ResolvedNodeInputManifestV2(_AgentCanvasModel):
     target_node_id: str = Field(min_length=1)
     workflow_revision: int = Field(ge=1)
     text_inputs: tuple[ResolvedTextBindingInputV2, ...] = ()
-    world_setting_inputs: tuple[ResolvedWorldSettingInputV1, ...] = ()
+    world_setting_inputs: tuple[WorldSettingResolvedInputV2, ...] = ()
     media_inputs: tuple[ResolvedMediaBindingInputV2, ...] = ()
     omitted_optional_inputs: tuple[OmittedOptionalInputV2, ...] = ()
     run_intent_snapshot_id: str | None = Field(default=None, min_length=1)

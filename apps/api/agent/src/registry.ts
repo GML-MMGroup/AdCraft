@@ -174,7 +174,6 @@ function skillsForOperation(
         "propose_world_setting",
         "revise_world_setting_options",
         "materialize_world_setting",
-        "project_world_setting",
       ].includes(operation)
     ) {
       return { required: ["world_setting_development"], optional: [] };

@@ -23,7 +23,7 @@ from app.schemas.agent_canvas_ad_media import (
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
-from app.schemas.agent_canvas_world_setting import WorldSettingProjectionContextV1
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,7 +127,7 @@ class AgentCanvasProviderPromptCompiler:
         reference_bundle: AdReferenceBundleV2,
         *,
         creative_direction_projection: Mapping[str, object] | None = None,
-        world_setting: WorldSettingProjectionContextV1 | None = None,
+        world_setting: WorldSettingContextEnvelopeV2 | None = None,
     ) -> CompiledProviderPromptV2:
         if not str(node.generation_prompt or "").strip():
             raise _error(
@@ -152,10 +152,10 @@ class AgentCanvasProviderPromptCompiler:
             )
         if world_setting is not None:
             expected_audience = _CREATIVE_DIRECTION_ROLE[node.semantic_role]
-            if world_setting.projection_audience != expected_audience:
+            if world_setting.target_audience != expected_audience:
                 raise _error(
-                    "world_setting_projection_audience_mismatch",
-                    "World Setting projection audience does not match the target role.",
+                    "world_setting_context_audience_invalid",
+                    "World Setting context audience does not match the target role.",
                 )
         structured = self._roles.validate_structured_content(
             node.semantic_role,
@@ -196,10 +196,12 @@ class AgentCanvasProviderPromptCompiler:
             "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
             "role_contract_version": node.role_contract_version,
             "structured_content": node.structured_content,
-            "world_setting_projection": (
+            "world_setting_context": (
                 {
-                    "projection_snapshot_id": world_setting.projection_snapshot_id,
-                    "projection_digest": world_setting.projection_digest,
+                    "source_node_id": world_setting.source_node_id,
+                    "source_node_revision": world_setting.source_node_revision,
+                    "compiler_digest": world_setting.compiler_digest,
+                    "context_digest": world_setting.context_digest,
                 }
                 if world_setting is not None
                 else None
@@ -318,26 +320,17 @@ def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bo
     return {}
 
 
-def _render_world_setting(context: WorldSettingProjectionContextV1) -> str:
-    shared = context.shared
-    parts = [
-        "World setting shared context:\n"
-        f"Premise: {shared.premise}\n"
-        f"Era and location: {shared.era_and_location}\n"
-        "Continuity rules:\n" + "\n".join(f"- {item}" for item in shared.continuity_rules)
-    ]
-    if context.role_projection is not None:
-        label = _WORLD_SETTING_ROLE_LABEL[context.role_projection.audience]
-        payload = context.role_projection.model_dump(
-            mode="json",
-            exclude={"audience"},
+def _render_world_setting(context: WorldSettingContextEnvelopeV2) -> str:
+    parts = [f"World setting context:\n{context.shared_summary}"]
+    if context.relevant_world_rules:
+        parts.append(
+            "World rules:\n" + "\n".join(f"- {item}" for item in context.relevant_world_rules)
         )
-        lines = []
-        for key, values in payload.items():
-            if values:
-                lines.append(f"{key.replace('_', ' ').title()}: " + "; ".join(values))
-        if lines:
-            parts.append(f"{label} context:\n" + "\n".join(lines))
+    if context.relevant_visual_continuity:
+        parts.append(
+            "Visual continuity:\n"
+            + "\n".join(f"- {item}" for item in context.relevant_visual_continuity)
+        )
     return "\n\n".join(parts)
 
 

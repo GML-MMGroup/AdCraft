@@ -70,7 +70,6 @@ export const AGENT_CAPABILITY_CONTRACT = {
         "direct_response",
         "materialize_draft",
         "materialize_world_setting",
-        "project_world_setting",
         "propose_concepts",
         "propose_world_setting",
         "revise_concepts",
