@@ -268,6 +268,9 @@ class CanvasVariationMaterializeResponseV2(_AgentCanvasModel):
     run: dict[str, JsonValue] | None = None
     run_error: CanvasNodeErrorV2 | None = None
     placement_hint: AgentPlacementHintV2
+    created_node_ids: tuple[str, ...] = ()
+    created_binding_ids: tuple[str, ...] = ()
+    placement_hints: tuple[AgentPlacementHintV2, ...] = ()
 
 
 class CanvasBindingSourceNodeV2(_AgentCanvasModel):

@@ -8,7 +8,11 @@ import hashlib
 import json
 
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
+from app.schemas.agent_canvas import (
+    AgentCanvasWorkflowV2,
+    CanvasNodeV2,
+    ProjectAssetSummaryV2,
+)
 from app.schemas.agent_canvas_capabilities import (
     CapabilityReferencePlanV1,
     PlannedCapabilityReferenceV1,
@@ -128,6 +132,11 @@ class CapabilityReferencePlanner:
                 )
             )
         )
+        selected_node_ids = self._preferred_automatic_character_references(
+            selected_node_ids,
+            nodes=nodes,
+            capability_id=capability_id,
+        )
         candidates: list[PlannedCapabilityReferenceV1] = []
 
         for order, node_id in enumerate(explicit_node_ids):
@@ -231,6 +240,35 @@ class CapabilityReferencePlanner:
     def _target_node_type(self, capability_id: CapabilityIdV1) -> str:
         definition = self._capabilities.definition(capability_id)
         return definition.node_type or "video"
+
+    @staticmethod
+    def _preferred_automatic_character_references(
+        node_ids: tuple[str, ...],
+        *,
+        nodes: Mapping[str, CanvasNodeV2],
+        capability_id: CapabilityIdV1,
+    ) -> tuple[str, ...]:
+        if capability_id not in {"storyboard_design", "video_direction"}:
+            return node_ids
+        paired_turnarounds = {
+            str(node.metadata.get("character_pair_id"))
+            for node_id in node_ids
+            if (node := nodes.get(node_id)) is not None
+            and getattr(node, "creative_role", None) == "character"
+            and getattr(node, "structured_content", {}).get("character_asset_kind") == "turnaround"
+            and node.metadata.get("character_pair_id")
+        }
+        return tuple(
+            node_id
+            for node_id in node_ids
+            if not (
+                (node := nodes.get(node_id)) is not None
+                and getattr(node, "creative_role", None) == "character"
+                and getattr(node, "structured_content", {}).get("character_asset_kind")
+                == "identity_master"
+                and node.metadata.get("character_pair_id") in paired_turnarounds
+            )
+        )
 
     @staticmethod
     def _selected_topic_node_ids(session: GuidedSessionStateV2) -> tuple[str, ...]:
