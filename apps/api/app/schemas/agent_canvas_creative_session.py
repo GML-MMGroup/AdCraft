@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, model_validator
 
@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_ad_media import (
     VideoSegmentContentV2,
     SemanticReferenceRoleV2,
 )
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
@@ -58,6 +59,14 @@ GuidanceTopicKindV2 = Literal[
     "video",
     "audio",
 ]
+
+
+def canonical_guidance_topic_kind(value: str) -> GuidanceTopicKindV2:
+    """Normalize retired capability-facing aliases at the persistence boundary."""
+
+    return cast(GuidanceTopicKindV2, "audio" if value == "bgm" else value)
+
+
 GuidanceStageKindV2 = Literal[
     "world_setting",
     "narrative_direction",
@@ -298,6 +307,8 @@ class _SpecialistDraftBaseV2(_CreativeSessionModel):
     title: str = Field(min_length=1, max_length=256)
     summary_prompt: str = Field(min_length=1, max_length=8_192)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
+    prompt_context_snapshot_id: str | None = Field(default=None, max_length=160)
     reference_intents: tuple[DraftReferenceIntentV2, ...] = Field(
         default=(),
         max_length=64,

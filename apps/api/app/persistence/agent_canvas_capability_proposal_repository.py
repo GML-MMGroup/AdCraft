@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel
 from sqlalchemy import func, insert, select, update
-from sqlalchemy.engine import Connection
 
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
@@ -22,11 +21,13 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
-    AgentCanvasNodeRow,
 )
 from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV1
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
-from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
+from app.schemas.agent_canvas_creative_session import (
+    ProposedDraftReferenceV2,
+    canonical_guidance_topic_kind,
+)
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -101,7 +102,7 @@ class AgentCanvasCapabilityProposalRepository:
                     )
                 session_revision = int(session["revision"]) + 1
                 topic_id = f"topic_{envelope.capability_id}"
-                proposed_references = _project_node_references(connection, envelope)
+                proposed_references = _project_references(envelope)
                 creative_direction_snapshot_id = _style_snapshot_id(envelope.style_projection)
                 topic = (
                     connection.execute(
@@ -119,7 +120,9 @@ class AgentCanvasCapabilityProposalRepository:
                         insert(AgentCanvasGuidanceTopicRow).values(
                             session_id=session["session_id"],
                             topic_id=topic_id,
-                            topic_kind=_PROPOSAL_KIND[envelope.capability_id],
+                            topic_kind=canonical_guidance_topic_kind(
+                                _PROPOSAL_KIND[envelope.capability_id]
+                            ),
                             title=CAPABILITY_DISPLAY_NAMES[envelope.capability_id],
                             status="proposed",
                             capability_id=envelope.capability_id,
@@ -300,6 +303,8 @@ class AgentCanvasCapabilityProposalRepository:
                             "option_count": len(options),
                             "source_action": envelope.source_action,
                             "source_proposal_id": source_proposal_id,
+                            "reference_count": len(proposed_references),
+                            "reference_plan_digest": envelope.reference_plan.digest,
                         },
                     ),
                     (
@@ -338,71 +343,23 @@ class AgentCanvasCapabilityProposalRepository:
         return proposal_id
 
 
-def _project_node_references(
-    connection: Connection,
+def _project_references(
     envelope: CapabilityCommandEnvelopeV1,
 ) -> tuple[ProposedDraftReferenceV2, ...]:
-    if not envelope.reference_allowlist:
-        return ()
-    rows = {
-        str(row["node_id"]): row
-        for row in connection.execute(
-            select(
-                AgentCanvasNodeRow.node_id,
-                AgentCanvasNodeRow.node_type,
-                AgentCanvasNodeRow.creative_role,
-                AgentCanvasNodeRow.title,
-            ).where(
-                AgentCanvasNodeRow.workflow_id == envelope.workflow_id,
-                AgentCanvasNodeRow.node_id.in_(envelope.reference_allowlist),
-            )
-        ).mappings()
-    }
-    references: list[ProposedDraftReferenceV2] = []
-    for source_id in envelope.reference_allowlist:
-        row = rows.get(source_id)
-        if row is None:
-            continue
-        node_type = str(row["node_type"])
-        if node_type in {"text", "script"}:
-            input_role = "text_context"
-            media_type = "text"
-        elif node_type == "image":
-            input_role = "image_reference"
-            media_type = "image"
-        elif node_type == "video":
-            input_role = "video_reference"
-            media_type = "video"
-        elif node_type == "audio":
-            input_role = "audio_reference"
-            media_type = "audio"
-        else:
-            continue
-        creative_role = str(row["creative_role"])
-        semantic_role = {
-            "world_setting": "world_setting_reference",
-            "product": "product_reference",
-            "prop": "prop_reference",
-            "character": "subject_reference",
-            "scene": "environment_reference",
-            "storyboard_sequence": "storyboard_visual_reference",
-        }.get(creative_role)
-        references.append(
-            ProposedDraftReferenceV2.model_validate(
-                {
-                    "source_kind": "node",
-                    "source_id": source_id,
-                    "binding_kind": input_role,
-                    "input_role": input_role,
-                    "required": creative_role == "world_setting",
-                    "display_order": len(references),
-                    "semantic_reference_role": semantic_role,
-                    "display_name": str(row["title"]),
-                    "media_type": media_type,
-                }
-            )
+    return tuple(
+        ProposedDraftReferenceV2(
+            source_kind=reference.source_kind,
+            source_id=reference.source_id,
+            binding_kind=reference.input_role,
+            input_role=reference.input_role,
+            required=reference.required,
+            display_order=index,
+            semantic_reference_role=reference.semantic_reference_role,
+            display_name=reference.display_name,
+            media_type=reference.media_type,
         )
-    return tuple(references)
+        for index, reference in enumerate(envelope.reference_plan.references)
+    )
 
 
 def _digest(*parts: str) -> str:

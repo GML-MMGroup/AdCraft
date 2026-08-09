@@ -48,7 +48,11 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
     WorkflowEventRow,
 )
-from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
+from app.schemas.agent_canvas import (
+    CanvasBindingV2,
+    CanvasNodeV2,
+    ResolvedTextInputSnapshotV2,
+)
 from app.schemas.agent_canvas_conversation import (
     AgentActionReceiptV2,
     ChatTimelineEntryV2,
@@ -76,6 +80,7 @@ from app.schemas.agent_canvas_creative_session import (
     ExpertActivityV2,
     GuidanceCompletionProjectionV2,
     GuidanceTopicStateV2,
+    canonical_guidance_topic_kind,
     GuidedStepCheckpointV2,
     GuidedSessionStateV2,
     GuidanceSessionActionV2,
@@ -83,9 +88,13 @@ from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
 )
 from app.schemas.agent_canvas_capabilities import NextActionEnvelopeV1
-from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
+from app.schemas.agent_canvas_capability_identity import (
+    CAPABILITY_DISPLAY_NAMES,
+    CapabilityIdV1,
+)
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 class AgentCanvasConversationRepository:
@@ -2460,7 +2469,17 @@ class AgentCanvasConversationRepository:
                                 "style_skill_snapshot_invalid",
                                 "Proposal Creative Direction snapshot is unavailable.",
                             )
-                        role = str(proposal_state["capability_id"])
+                        capability_id = str(proposal_state["capability_id"])
+                        role = (
+                            VideoAgentOperationRegistry()
+                            .for_capability(cast(CapabilityIdV1, capability_id))
+                            .style_projection_role
+                        )
+                        if role is None:
+                            raise _error(
+                                "style_skill_snapshot_invalid",
+                                "Proposal capability does not define a Style projection role.",
+                            )
                         projection = json.loads(str(snapshot_row["role_projections_json"])).get(
                             role
                         )
@@ -2569,16 +2588,7 @@ class AgentCanvasConversationRepository:
                             workflow_id=node.workflow_id,
                             target_node_id=node.node_id,
                             inputs_json=_dump(
-                                [
-                                    binding.model_dump(mode="json")
-                                    for binding in sorted(
-                                        bindings,
-                                        key=lambda item: (
-                                            item.display_order,
-                                            item.binding_id,
-                                        ),
-                                    )
-                                ]
+                                _materialization_text_snapshots(connection, bindings)
                             ),
                             creative_direction_snapshot_id=(creative_direction_snapshot_id),
                             skill_refs_json=_dump(skill_refs),
@@ -2866,6 +2876,36 @@ class AgentCanvasConversationRepository:
                             },
                         ),
                     )
+                    normalization_mode = node.metadata.get("normalization_mode")
+                    if normalization_mode in {"repaired", "deterministic_fallback"}:
+                        normalization_event = (
+                            "materialization_prompt_repaired"
+                            if normalization_mode == "repaired"
+                            else "materialization_prompt_fallback_used"
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=str(event_turn["turn_id"]),
+                                action_id=source_turn_id,
+                                event_type=normalization_event,
+                                created_at=now,
+                                payload={
+                                    "capability_id": str(proposal_state["capability_id"]),
+                                    "node_id": node.node_id,
+                                    "violation_codes": node.metadata.get(
+                                        "normalization_warnings", []
+                                    ),
+                                    "prompt_context_snapshot_id": snapshot_id,
+                                    "result_digest": hashlib.sha256(
+                                        (node.generation_prompt or "").encode("utf-8")
+                                    ).hexdigest(),
+                                },
+                            ),
+                        )
                     for binding in bindings:
                         self._events.append_in_transaction(
                             connection,
@@ -3188,7 +3228,7 @@ class AgentCanvasConversationRepository:
                         "Guidance topic is no longer available for deferral.",
                     )
                 goal = CreativeGoalV2.model_validate_json(str(session["creative_goal_json"]))
-                topic_kind = str(topic["topic_kind"])
+                topic_kind = canonical_guidance_topic_kind(str(topic["topic_kind"]))
                 if action == "exclude_element" and topic_kind == goal.requested_output:
                     raise _error(
                         "guidance_decision_invalid",
@@ -4601,7 +4641,7 @@ def _guidance_session(
         topics=tuple(
             GuidanceTopicStateV2(
                 topic_id=str(topic["topic_id"]),
-                topic_kind=cast(str, topic["topic_kind"]),
+                topic_kind=canonical_guidance_topic_kind(str(topic["topic_kind"])),
                 title=str(topic["title"]),
                 status=cast(str, topic["status"]),
                 capability_id=cast(str, topic["capability_id"]),
@@ -4652,6 +4692,47 @@ def _require_guidance_session_row(
 def _require_guidance_revision(row: RowMapping, expected_revision: int) -> None:
     if int(row["revision"]) != expected_revision:
         raise _error("guidance_revision_conflict", "Guidance session revision is stale.")
+
+
+def _materialization_text_snapshots(
+    connection: Connection,
+    bindings: tuple[CanvasBindingV2, ...],
+) -> list[dict[str, object]]:
+    snapshots: list[dict[str, object]] = []
+    for binding in sorted(
+        bindings,
+        key=lambda item: (item.display_order, item.binding_id),
+    ):
+        if binding.input_role != "text_context" or binding.source.kind != "node_output":
+            continue
+        source = (
+            connection.execute(
+                select(AgentCanvasNodeRow).where(
+                    AgentCanvasNodeRow.node_id == binding.source.node_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+        structured_content = json.loads(str(source["structured_content_json"]))
+        content = str(structured_content.get("content", ""))
+        snapshot = ResolvedTextInputSnapshotV2(
+            source_node_id=str(source["node_id"]),
+            source_node_revision=int(source["revision"]),
+            binding_kind="text_context",
+            document_kind=("script" if str(source["node_type"]) == "script" else "text"),
+            content=content[:16_000],
+            content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            source_semantic_role=str(source["creative_role"]),
+            binding_metadata=binding.metadata,
+            source_structured_content=structured_content,
+            binding_id=binding.binding_id,
+            input_role="text_context",
+            required=binding.required,
+            display_order=binding.display_order,
+        )
+        snapshots.append(snapshot.model_dump(mode="json"))
+    return snapshots
 
 
 def _dump(value: object) -> str:
