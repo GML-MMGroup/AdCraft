@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 
@@ -173,6 +173,7 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     asset_id: str
     media_type: Literal["image", "video", "audio"]
     display_order: int = Field(ge=0)
+    source_identity_facts: dict[str, JsonValue] = Field(default_factory=dict)
     access_descriptor: StorageAccessDescriptorV2
 
 

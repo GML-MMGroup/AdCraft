@@ -11,6 +11,7 @@ from app.persistence.agent_canvas_continuation_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
 @dataclass(frozen=True)
@@ -91,14 +92,12 @@ class AgentCanvasContinuationWorker:
         except Exception as error:  # noqa: BLE001 - each delivery is isolated.
             if isinstance(error, V2PersistenceError) and error.code == "continuation_lease_stale":
                 return "retried"
+            error_code, retryable = _structured_failure(error)
             return self._record_failure(
                 delivery,
-                error_code=(
-                    error.code
-                    if isinstance(error, V2PersistenceError)
-                    else "continuation_dispatch_failed"
-                ),
+                error_code=error_code,
                 error_message=str(error) or "Continuation dispatch failed.",
+                retryable=retryable,
             )
 
         if self._outbox.get(delivery.continuation_id).status == "completed":
@@ -161,9 +160,10 @@ class AgentCanvasContinuationWorker:
         *,
         error_code: str,
         error_message: str,
+        retryable: bool = True,
     ) -> str:
         next_attempt = delivery.attempt_count + 1
-        if next_attempt >= delivery.max_attempts:
+        if not retryable or next_attempt >= delivery.max_attempts:
             return self._record_terminal(
                 delivery,
                 error_code=(
@@ -210,3 +210,12 @@ class AgentCanvasContinuationWorker:
                 error_message[:1_024],
             )
         return "failed"
+
+
+def _structured_failure(error: Exception) -> tuple[str, bool]:
+    if isinstance(error, PiAgentRuntimeError):
+        return error.code, error.retryable and error.code != "agent_deadline_exceeded"
+    if isinstance(error, V2PersistenceError):
+        retryable = error.details.get("retryable", True)
+        return error.code, bool(retryable) and error.code != "agent_deadline_exceeded"
+    return "continuation_dispatch_failed", True

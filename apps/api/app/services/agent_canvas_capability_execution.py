@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_capabilities import (
     CapabilityExecutionResultV1,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
 class CapabilityGateway(Protocol):
@@ -96,6 +97,13 @@ class CapabilityExecutionService:
             raw = self._invoke(envelope, definition.operation, context, repair_error=None)
         except V2PersistenceError:
             raise
+        except PiAgentRuntimeError as error:
+            raise V2PersistenceError(
+                error.code,
+                error.message,
+                stage="capability_execution",
+                details={"retryable": error.retryable},
+            ) from error
         except Exception as error:  # noqa: BLE001 - gateway boundary normalization.
             raise V2PersistenceError(
                 "capability_invocation_failed",

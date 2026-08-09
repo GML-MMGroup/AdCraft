@@ -163,6 +163,7 @@ class AgentCanvasProviderPromptCompiler:
         )
         style = _style_from_content(structured)
         body = _render_content(structured)
+        reference_identities = _render_reference_identities(reference_bundle)
         references = "\n".join(
             (
                 f"- {item.binding_id}: asset={item.asset_id}; "
@@ -178,6 +179,7 @@ class AgentCanvasProviderPromptCompiler:
                 registration.boundary,
                 f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
                 f"Structured role content:\n{body}",
+                reference_identities,
                 f"Visual style ({style.source}):\n{style.style_prompt}",
                 _render_world_setting(world_setting) if world_setting is not None else "",
                 f"Explicit references:\n{references}" if references else "",
@@ -321,7 +323,11 @@ def _provider_parameters(semantic_role: str) -> dict[str, str | int | float | bo
 
 
 def _render_world_setting(context: WorldSettingContextEnvelopeV2) -> str:
-    parts = [f"World setting context:\n{context.shared_summary}"]
+    parts = [
+        "Authoritative World setting context "
+        "(overrides conflicting model-authored details):\n"
+        f"{context.shared_summary}"
+    ]
     if context.relevant_world_rules:
         parts.append(
             "World rules:\n" + "\n".join(f"- {item}" for item in context.relevant_world_rules)
@@ -332,6 +338,31 @@ def _render_world_setting(context: WorldSettingContextEnvelopeV2) -> str:
             + "\n".join(f"- {item}" for item in context.relevant_visual_continuity)
         )
     return "\n\n".join(parts)
+
+
+def _render_reference_identities(reference_bundle: AdReferenceBundleV2) -> str:
+    identities = [
+        {
+            "binding_id": reference.binding_id,
+            "source_role": reference.source_semantic_role,
+            "semantic_reference_role": reference.semantic_reference_role,
+            "facts": reference.source_identity_facts,
+        }
+        for reference in reference_bundle.references
+        if reference.source_identity_facts
+    ]
+    if not identities:
+        return ""
+    return (
+        "Authoritative bound reference identities:\n"
+        "These persisted Binding facts override conflicting model-authored details. "
+        "Keep their identities and environments unchanged while retaining creative "
+        "freedom for panel action, composition, and camera.\n"
+        + "\n".join(
+            f"- {json.dumps(identity, sort_keys=True, ensure_ascii=True)}"
+            for identity in identities
+        )
+    )
 
 
 def _digest(value: object) -> str:
