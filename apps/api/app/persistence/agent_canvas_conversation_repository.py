@@ -2384,7 +2384,64 @@ class AgentCanvasConversationRepository:
         continuation: ContinuationCommitV2 | None = None,
         materialization_id: str | None = None,
     ) -> ConceptProposalV2:
-        """Apply one open Proposal option and insert an independent Draft atomically."""
+        """Delegate one-Node publication to the canonical bundle transaction."""
+
+        return self.apply_and_materialize_bundle(
+            proposal_id,
+            option_id=option_id,
+            nodes=(node,),
+            bindings=bindings,
+            expected_workflow_revision=expected_workflow_revision,
+            selection_actor=selection_actor,
+            source_turn_id=source_turn_id,
+            skill_run_id=skill_run_id,
+            topic_id=topic_id,
+            expected_session_revision=expected_session_revision,
+            proposal_action=proposal_action,
+            receipt=receipt,
+            continuation=continuation,
+            materialization_id=materialization_id,
+        )
+
+    def apply_and_materialize_bundle(
+        self,
+        proposal_id: str,
+        *,
+        option_id: str,
+        nodes: tuple[CanvasNodeV2, ...],
+        bindings: tuple[CanvasBindingV2, ...] = (),
+        expected_workflow_revision: int,
+        selection_actor: str,
+        source_turn_id: str | None,
+        skill_run_id: str | None = None,
+        topic_id: str | None = None,
+        expected_session_revision: int,
+        proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"],
+        receipt: AgentActionReceiptV2 | None = None,
+        continuation: ContinuationCommitV2 | None = None,
+        materialization_id: str | None = None,
+    ) -> ConceptProposalV2:
+        """Apply one Proposal and insert its complete Draft bundle atomically."""
+
+        if not nodes:
+            raise _error("draft_bundle_invalid", "Draft bundle must contain a Node.")
+        node = nodes[0]
+        node_ids = tuple(item.node_id for item in nodes)
+        if len(set(node_ids)) != len(node_ids) or any(
+            item.workflow_id != node.workflow_id for item in nodes
+        ):
+            raise _error(
+                "draft_bundle_invalid",
+                "Draft bundle Nodes require unique IDs in one Workflow.",
+            )
+        if any(
+            binding.workflow_id != node.workflow_id or binding.target_node_id not in set(node_ids)
+            for binding in bindings
+        ):
+            raise _error(
+                "draft_binding_invalid",
+                "Draft bundle Bindings must target a published bundle Node.",
+            )
 
         proposal = self.get_proposal(proposal_id)
         allowed_availability = proposal.availability == "open" or (
@@ -2508,102 +2565,22 @@ class AgentCanvasConversationRepository:
                             "proposal_action_stale",
                             "Proposal is not the current Guidance checkpoint.",
                         )
-                    connection.execute(
-                        insert(AgentCanvasNodeRow).values(
-                            node_id=node.node_id,
-                            workflow_id=node.workflow_id,
-                            node_type=node.node_type,
-                            creative_role=node.creative_role,
-                            role_contract_version=node.role_contract_version,
-                            title=node.title,
-                            status=node.status,
-                            summary_prompt=node.summary_prompt,
-                            generation_prompt=node.generation_prompt,
-                            structured_content_json=_dump(node.structured_content),
-                            model_selection_mode=node.model_selection_mode,
-                            model_ref=node.model_ref,
-                            parameters_json=_dump(node.parameters),
-                            metadata_json=_dump(node.metadata),
-                            parameter_provenance_json=_dump(
-                                {
-                                    field: provenance.model_dump(mode="json")
-                                    for field, provenance in node.parameter_provenance.items()
-                                }
-                            ),
-                            prompt_context_snapshot_id=(
-                                node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
-                            ),
-                            output_asset_id=node.output_asset_id,
-                            position_x=node.position.x,
-                            position_y=node.position.y,
-                            revision=node.revision,
-                            error_json=None,
-                            created_at=node.created_at.isoformat(),
-                            updated_at=node.updated_at.isoformat(),
+                    snapshot_ids: dict[str, str] = {}
+                    for bundle_node in nodes:
+                        node_bindings = tuple(
+                            binding
+                            for binding in bindings
+                            if binding.target_node_id == bundle_node.node_id
                         )
-                    )
-                    snapshot_id = connection.execute(
-                        select(AgentCanvasNodeRow.prompt_context_snapshot_id).where(
-                            AgentCanvasNodeRow.node_id == node.node_id
+                        snapshot_ids[bundle_node.node_id] = _insert_materialized_node(
+                            connection,
+                            node=bundle_node,
+                            bindings=node_bindings,
+                            creative_direction_snapshot_id=creative_direction_snapshot_id,
+                            skill_refs=skill_refs,
+                            now=now,
                         )
-                    ).scalar_one()
-                    for binding in bindings:
-                        if (
-                            binding.workflow_id != node.workflow_id
-                            or binding.target_node_id != node.node_id
-                        ):
-                            raise _error(
-                                "draft_binding_invalid",
-                                "Draft bindings must target the published Draft.",
-                            )
-                        connection.execute(
-                            insert(AgentCanvasBindingRow).values(
-                                binding_id=binding.binding_id,
-                                workflow_id=binding.workflow_id,
-                                source_kind=binding.source.kind,
-                                source_node_id=(
-                                    binding.source.source_node_id
-                                    if binding.source.kind == "node_output"
-                                    else None
-                                ),
-                                source_asset_id=(
-                                    binding.source.asset_id
-                                    if binding.source.kind == "image_asset"
-                                    else None
-                                ),
-                                target_node_id=binding.target_node_id,
-                                input_role=binding.input_role,
-                                required=binding.required,
-                                enabled=binding.enabled,
-                                order_index=binding.order,
-                                label=binding.label,
-                                metadata_json=_dump(binding.metadata),
-                                created_at=binding.created_at.isoformat(),
-                                updated_at=binding.updated_at.isoformat(),
-                            )
-                        )
-                    connection.execute(
-                        insert(AgentCanvasPromptContextSnapshotRow).values(
-                            snapshot_id=snapshot_id,
-                            workflow_id=node.workflow_id,
-                            target_node_id=node.node_id,
-                            inputs_json=_dump(
-                                _materialization_text_snapshots(connection, bindings)
-                            ),
-                            creative_direction_snapshot_id=(creative_direction_snapshot_id),
-                            skill_refs_json=_dump(skill_refs),
-                            content_digest=hashlib.sha256(
-                                _dump(
-                                    {
-                                        "generation_prompt": node.generation_prompt,
-                                        "structured_content": node.structured_content,
-                                        "skill_refs": skill_refs,
-                                    }
-                                ).encode("utf-8")
-                            ).hexdigest(),
-                            created_at=now,
-                        )
-                    )
+                    snapshot_id = snapshot_ids[node.node_id]
                     if topic_id is None:
                         raise _error(
                             "guidance_topic_not_found",
@@ -2628,7 +2605,7 @@ class AgentCanvasConversationRepository:
                         dict.fromkeys(
                             (
                                 *json.loads(str(topic["related_node_ids_json"])),
-                                node.node_id,
+                                *(item.node_id for item in nodes),
                             )
                         )
                     )
@@ -2657,11 +2634,15 @@ class AgentCanvasConversationRepository:
                     )
                     memory = _creative_memory(memory_row, node.workflow_id)
                     approved_node_ids = dict(memory.approved_node_ids)
-                    approved_node_ids[node.creative_role] = tuple(
-                        dict.fromkeys(
-                            (*approved_node_ids.get(node.creative_role, ()), node.node_id)
+                    for bundle_node in nodes:
+                        approved_node_ids[bundle_node.creative_role] = tuple(
+                            dict.fromkeys(
+                                (
+                                    *approved_node_ids.get(bundle_node.creative_role, ()),
+                                    bundle_node.node_id,
+                                )
+                            )
                         )
-                    )
                     memory_revision = memory.memory_revision + 1
                     memory_values = _creative_memory_values(
                         memory.model_copy(update={"approved_node_ids": approved_node_ids}),
@@ -2792,18 +2773,16 @@ class AgentCanvasConversationRepository:
                             AgentCanvasExecutionSettingsRow.workflow_id == node.workflow_id
                         )
                     ).scalar_one_or_none()
-                    if (
-                        execution_mode == "automatic"
-                        and is_automatic_run_eligible_node_type(node.node_type)
-                        and source_turn_id is not None
-                    ):
-                        self._automatic_runs.enqueue_in_transaction(
-                            connection,
-                            workflow_id=node.workflow_id,
-                            source_action_id=source_turn_id,
-                            node_id=node.node_id,
-                            now=datetime.fromisoformat(now),
-                        )
+                    if execution_mode == "automatic" and source_turn_id is not None:
+                        for bundle_node in nodes:
+                            if is_automatic_run_eligible_node_type(bundle_node.node_type):
+                                self._automatic_runs.enqueue_in_transaction(
+                                    connection,
+                                    workflow_id=bundle_node.workflow_id,
+                                    source_action_id=source_turn_id,
+                                    node_id=bundle_node.node_id,
+                                    now=datetime.fromisoformat(now),
+                                )
                     event_turn = _require_turn(
                         connection,
                         source_turn_id or proposal.turn_id,
@@ -2825,28 +2804,30 @@ class AgentCanvasConversationRepository:
                                 "proposal_action": proposal_action,
                                 "session_revision": next_session_revision,
                                 "node_id": node.node_id,
+                                "node_ids": list(node_ids),
                                 "revision": expected_workflow_revision + 1,
                             },
                         ),
                     )
-                    self._events.append_in_transaction(
-                        connection,
-                        V2EventInsert(
-                            workflow_id=node.workflow_id,
-                            node_id=node.node_id,
-                            conversation_id=str(event_turn["conversation_id"]),
-                            turn_id=str(event_turn["turn_id"]),
-                            action_id=source_turn_id,
-                            event_type="draft_node_created",
-                            created_at=now,
-                            payload={
-                                "node_type": node.node_type,
-                                "creative_role": node.creative_role,
-                                "revision": expected_workflow_revision + 1,
-                                "refresh": ["workflow"],
-                            },
-                        ),
-                    )
+                    for bundle_node in nodes:
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=bundle_node.workflow_id,
+                                node_id=bundle_node.node_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=str(event_turn["turn_id"]),
+                                action_id=source_turn_id,
+                                event_type="draft_node_created",
+                                created_at=now,
+                                payload={
+                                    "node_type": bundle_node.node_type,
+                                    "creative_role": bundle_node.creative_role,
+                                    "revision": expected_workflow_revision + 1,
+                                    "refresh": ["workflow"],
+                                },
+                            ),
+                        )
                     materialization_mode = node.metadata.get("materialization_mode")
                     warning_code = node.metadata.get("warning_code")
                     operation_policy_id = node.metadata.get("operation_policy_id")
@@ -2864,6 +2845,7 @@ class AgentCanvasConversationRepository:
                                 "proposal_id": proposal_id,
                                 "option_id": option_id,
                                 "node_id": node.node_id,
+                                "node_ids": list(node_ids),
                                 "creative_role": node.creative_role,
                                 "completion_mode": (
                                     materialization_mode
@@ -2911,7 +2893,7 @@ class AgentCanvasConversationRepository:
                             connection,
                             V2EventInsert(
                                 workflow_id=node.workflow_id,
-                                node_id=node.node_id,
+                                node_id=binding.target_node_id,
                                 binding_id=binding.binding_id,
                                 conversation_id=str(event_turn["conversation_id"]),
                                 turn_id=str(event_turn["turn_id"]),
@@ -2919,7 +2901,7 @@ class AgentCanvasConversationRepository:
                                 event_type="binding_created",
                                 created_at=now,
                                 payload={
-                                    "target_node_id": node.node_id,
+                                    "target_node_id": binding.target_node_id,
                                     "input_role": binding.input_role,
                                     "refresh": ["workflow"],
                                 },
@@ -2975,7 +2957,7 @@ class AgentCanvasConversationRepository:
                                     "option_id": option_id,
                                     "capability_id": str(proposal_state["capability_id"]),
                                     "turn_id": source_turn_id,
-                                    "node_ids": [node.node_id],
+                                    "node_ids": list(node_ids),
                                     "binding_ids": [binding.binding_id for binding in bindings],
                                 },
                             ),
@@ -2995,6 +2977,7 @@ class AgentCanvasConversationRepository:
                                 "proposal_id": proposal_id,
                                 "topic_id": topic_id,
                                 "node_id": node.node_id,
+                                "node_ids": list(node_ids),
                             },
                         ),
                     )
@@ -4692,6 +4675,94 @@ def _require_guidance_session_row(
 def _require_guidance_revision(row: RowMapping, expected_revision: int) -> None:
     if int(row["revision"]) != expected_revision:
         raise _error("guidance_revision_conflict", "Guidance session revision is stale.")
+
+
+def _insert_materialized_node(
+    connection: Connection,
+    *,
+    node: CanvasNodeV2,
+    bindings: tuple[CanvasBindingV2, ...],
+    creative_direction_snapshot_id: str | None,
+    skill_refs: tuple[dict[str, str], ...],
+    now: str,
+) -> str:
+    snapshot_id = node.prompt_context_snapshot_id or f"snapshot_{uuid4().hex}"
+    connection.execute(
+        insert(AgentCanvasNodeRow).values(
+            node_id=node.node_id,
+            workflow_id=node.workflow_id,
+            node_type=node.node_type,
+            creative_role=node.creative_role,
+            role_contract_version=node.role_contract_version,
+            title=node.title,
+            status=node.status,
+            summary_prompt=node.summary_prompt,
+            generation_prompt=node.generation_prompt,
+            structured_content_json=_dump(node.structured_content),
+            model_selection_mode=node.model_selection_mode,
+            model_ref=node.model_ref,
+            parameters_json=_dump(node.parameters),
+            metadata_json=_dump(node.metadata),
+            parameter_provenance_json=_dump(
+                {
+                    field: provenance.model_dump(mode="json")
+                    for field, provenance in node.parameter_provenance.items()
+                }
+            ),
+            prompt_context_snapshot_id=snapshot_id,
+            output_asset_id=node.output_asset_id,
+            position_x=node.position.x,
+            position_y=node.position.y,
+            revision=node.revision,
+            error_json=None,
+            created_at=node.created_at.isoformat(),
+            updated_at=node.updated_at.isoformat(),
+        )
+    )
+    for binding in bindings:
+        connection.execute(
+            insert(AgentCanvasBindingRow).values(
+                binding_id=binding.binding_id,
+                workflow_id=binding.workflow_id,
+                source_kind=binding.source.kind,
+                source_node_id=(
+                    binding.source.source_node_id if binding.source.kind == "node_output" else None
+                ),
+                source_asset_id=(
+                    binding.source.asset_id if binding.source.kind == "image_asset" else None
+                ),
+                target_node_id=binding.target_node_id,
+                input_role=binding.input_role,
+                required=binding.required,
+                enabled=binding.enabled,
+                order_index=binding.order,
+                label=binding.label,
+                metadata_json=_dump(binding.metadata),
+                created_at=binding.created_at.isoformat(),
+                updated_at=binding.updated_at.isoformat(),
+            )
+        )
+    connection.execute(
+        insert(AgentCanvasPromptContextSnapshotRow).values(
+            snapshot_id=snapshot_id,
+            workflow_id=node.workflow_id,
+            target_node_id=node.node_id,
+            inputs_json=_dump(_materialization_text_snapshots(connection, bindings)),
+            creative_direction_snapshot_id=creative_direction_snapshot_id,
+            skill_refs_json=_dump(skill_refs),
+            content_digest=hashlib.sha256(
+                _dump(
+                    {
+                        "generation_prompt": node.generation_prompt,
+                        "structured_content": node.structured_content,
+                        "skill_refs": skill_refs,
+                    }
+                ).encode("utf-8")
+            ).hexdigest(),
+            created_at=now,
+        )
+    )
+    return snapshot_id
 
 
 def _materialization_text_snapshots(

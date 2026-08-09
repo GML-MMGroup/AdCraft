@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_world_setting import (
     WorldSettingDocumentV2,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_character_reference_pairs import CharacterReferencePairFactory
 from app.services.agent_canvas_conversation import GuidanceProposalActionService
 from app.services.agent_canvas_materialization_runtime import (
     materialization_context_from_state,
@@ -158,6 +159,43 @@ class CapabilityMaterializationPublicationService:
                 materialization_id=envelope.materialization_id,
             )
             return published.node_id
+        if envelope.capability_id == "character_design":
+            pair = CharacterReferencePairFactory().build(
+                envelope=envelope,
+                normalization=normalization,
+            )
+            lease_guard()
+            try:
+                nodes = self._materializer.materialize_bundle(
+                    envelope.proposal_id,
+                    option_id=envelope.selected_option.option_id,
+                    drafts=(pair.main_draft, pair.turnaround_draft),
+                    internal_bindings=(pair.internal_binding,),
+                    expected_session_revision=envelope.expected_session_revision,
+                    proposal_action=envelope.action,
+                    selection_actor=envelope.selection_actor,
+                    source_turn_id=envelope.action_turn_id,
+                    continuation=continuation,
+                    deterministic_node_ids=(pair.main_node_id, pair.turnaround_node_id),
+                    deterministic_binding_id=lambda index: (
+                        "binding_"
+                        + _digest(f"{envelope.materialization_id}:reference:{index}")[:32]
+                    ),
+                    materialization_id=envelope.materialization_id,
+                )
+            except V2PersistenceError as error:
+                raise V2PersistenceError(
+                    "character_pair_publication_failed",
+                    "Character reference pair publication failed atomically.",
+                    stage="capability_materialization_publication",
+                ) from error
+            except Exception as error:
+                raise V2PersistenceError(
+                    "character_pair_publication_failed",
+                    "Character reference pair publication failed atomically.",
+                    stage="capability_materialization_publication",
+                ) from error
+            return nodes[0].node_id
         if envelope.capability_id == "quick_media":
             quick_media = QuickMediaMaterializationResultV1.model_validate(normalized_result)
             node_type = quick_media.structured_content.media_type
