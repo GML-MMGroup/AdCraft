@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_creative_session import (
 from app.schemas.agent_canvas_conversation import ContinuationCommitV2
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
+    MaterializationNormalizationV1,
     QuickMediaMaterializationResultV1,
     WorldSettingMaterializationResultV1,
 )
@@ -31,7 +32,11 @@ from app.schemas.agent_canvas_world_setting import (
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_conversation import GuidanceProposalActionService
 from app.services.agent_canvas_materialization_runtime import (
+    materialization_context_from_state,
     validate_materialization_reference_snapshots,
+)
+from app.services.agent_canvas_materialization_normalizer import (
+    CapabilityMaterializationNormalizer,
 )
 from app.services.agent_canvas_world_setting import WorldSettingPublicationCandidateV2
 
@@ -88,11 +93,26 @@ class CapabilityMaterializationPublicationService:
             workflows=self._workflows,
             asset_resolver=self._asset_resolver,
         )
+        normalization = (
+            result
+            if isinstance(result, MaterializationNormalizationV1)
+            else CapabilityMaterializationNormalizer().normalize(
+                capability_id=envelope.capability_id,
+                result=result,
+                context=materialization_context_from_state(
+                    envelope,
+                    conversations=self._conversations,
+                    workflows=self._workflows,
+                    asset_resolver=self._asset_resolver,
+                ),
+            )
+        )
+        normalized_result = normalization.result
         definition = self._policy.definition(envelope.capability_id)
         node_id = "node_" + _digest(envelope.materialization_id)[:32]
         continuation = _next_action_continuation(envelope)
         if envelope.capability_id == "world_setting":
-            typed = WorldSettingMaterializationResultV1.model_validate(result)
+            typed = WorldSettingMaterializationResultV1.model_validate(normalized_result)
             now = self._clock()
             document = WorldSettingDocumentV2(
                 content=typed.structured_content.content,
@@ -139,7 +159,7 @@ class CapabilityMaterializationPublicationService:
             )
             return published.node_id
         if envelope.capability_id == "quick_media":
-            quick_media = QuickMediaMaterializationResultV1.model_validate(result)
+            quick_media = QuickMediaMaterializationResultV1.model_validate(normalized_result)
             node_type = quick_media.structured_content.media_type
             creative_role = {
                 "image": "general_image",
@@ -155,14 +175,7 @@ class CapabilityMaterializationPublicationService:
                 )
             node_type = definition.node_type
             creative_role = definition.creative_role
-        structured = getattr(result, "structured_content")
-        parameters = _compile_parameters(
-            capability_id=envelope.capability_id,
-            structured=structured,
-            explicit_constraints=self._conversations.get_guidance_session(
-                envelope.workflow_id
-            ).goal.explicit_constraints,
-        )
+        structured = getattr(normalized_result, "structured_content")
         references = tuple(
             DraftReferenceIntentV2.model_validate(
                 reference.model_dump(
@@ -180,13 +193,19 @@ class CapabilityMaterializationPublicationService:
             for reference in envelope.reference_plan.references
         )
         draft = SpecialistDraftV2(
-            title=str(getattr(result, "title")),
+            title=str(getattr(normalized_result, "title")),
             node_type=node_type,
             creative_role=creative_role,
-            summary_prompt=str(getattr(result, "summary_prompt")),
-            generation_prompt=getattr(result, "generation_prompt", None),
+            summary_prompt=str(getattr(normalized_result, "summary_prompt")),
+            generation_prompt=getattr(normalized_result, "generation_prompt", None),
             structured_content=structured.model_dump(mode="json"),
-            parameters=parameters,
+            parameters={
+                **normalization.parameters,
+                "normalization_mode": normalization.mode,
+                "normalization_warnings": list(normalization.warnings),
+            },
+            parameter_provenance=normalization.parameter_provenance,
+            prompt_context_snapshot_id=envelope.context_snapshot_id,
             reference_intents=references,
         )
         lease_guard()
@@ -210,45 +229,6 @@ class CapabilityMaterializationPublicationService:
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
-
-
-def _compile_parameters(
-    *,
-    capability_id: str,
-    structured: BaseModel,
-    explicit_constraints: dict[str, object],
-) -> dict[str, object]:
-    parameters: dict[str, object] = {}
-    duration = getattr(structured, "duration_seconds", None)
-    if duration is not None:
-        parameters["duration_seconds"] = duration
-    if capability_id != "video_direction":
-        return parameters
-
-    required_video_parameters = explicit_constraints.get("required_video_parameters")
-    if not isinstance(required_video_parameters, dict):
-        required_video_parameters = {}
-
-    def requested_parameter(name: str) -> object:
-        return explicit_constraints.get(name, required_video_parameters.get(name))
-
-    duration = requested_parameter("duration_seconds")
-    if (
-        isinstance(duration, (int, float))
-        and not isinstance(duration, bool)
-        and 0 < duration <= 3_600
-    ):
-        parameters["duration_seconds"] = duration
-    aspect_ratio = requested_parameter("aspect_ratio")
-    if isinstance(aspect_ratio, str) and aspect_ratio.strip():
-        parameters["aspect_ratio"] = aspect_ratio.strip()
-    resolution = requested_parameter("resolution")
-    if isinstance(resolution, str) and resolution.strip():
-        parameters["resolution"] = resolution.strip()
-    generate_audio = requested_parameter("generate_audio")
-    if isinstance(generate_audio, bool):
-        parameters["generate_audio"] = generate_audio
-    return parameters
 
 
 def _next_action_continuation(

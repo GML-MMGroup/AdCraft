@@ -20,6 +20,7 @@ from app.schemas.agent_canvas_creative_session import (
     ScriptDraftContentV2,
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingCoreV2
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 
 
 class _MaterializationModel(BaseModel):
@@ -202,3 +203,11 @@ CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS: dict[
     "bgm_direction": BgmMaterializationResultV1,
     "quick_media": QuickMediaMaterializationResultV1,
 }
+
+
+class MaterializationNormalizationV1(_MaterializationModel):
+    result: CapabilityMaterializationResultV1
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
+    mode: Literal["model", "repaired", "deterministic_fallback"]
+    warnings: tuple[str, ...] = Field(default=(), max_length=32)

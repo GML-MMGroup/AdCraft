@@ -44,7 +44,11 @@ _DEFINITIONS: tuple[CapabilityDefinitionV1, ...] = (
         node_type="image",
         creative_role="prop",
         default_candidate_count=3,
-        allowed_reference_roles=("world_setting_reference", "style_reference"),
+        allowed_reference_roles=(
+            "world_setting_reference",
+            "product_reference",
+            "style_reference",
+        ),
     ),
     CapabilityDefinitionV1(
         capability_id="character_design",
@@ -66,7 +70,6 @@ _DEFINITIONS: tuple[CapabilityDefinitionV1, ...] = (
         default_candidate_count=3,
         allowed_reference_roles=(
             "world_setting_reference",
-            "subject_reference",
             "style_reference",
         ),
     ),
@@ -92,6 +95,8 @@ _DEFINITIONS: tuple[CapabilityDefinitionV1, ...] = (
             "world_setting_reference",
             "subject_reference",
             "environment_reference",
+            "product_reference",
+            "prop_reference",
             "style_reference",
         ),
     ),
@@ -108,6 +113,8 @@ _DEFINITIONS: tuple[CapabilityDefinitionV1, ...] = (
             "storyboard_visual_reference",
             "subject_reference",
             "environment_reference",
+            "product_reference",
+            "prop_reference",
         ),
     ),
     CapabilityDefinitionV1(
@@ -223,9 +230,10 @@ class CapabilityPolicyService:
             *context.active_materialization_capabilities,
             *context.deferred_capabilities,
         }
-        allowed = tuple(
-            capability for capability in _GUIDED_CAPABILITIES if capability not in unavailable
+        eligible = (
+            context.required_capabilities if context.required_capabilities else _GUIDED_CAPABILITIES
         )
+        allowed = tuple(capability for capability in eligible if capability not in unavailable)
         required_missing = tuple(
             capability
             for capability in context.required_capabilities

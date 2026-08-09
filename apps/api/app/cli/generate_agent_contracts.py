@@ -85,6 +85,8 @@ CONTRACT_MODELS = (
     agent_canvas_capabilities.CapabilityDefinitionV1,
     agent_canvas_capabilities.CapabilityPolicyContextV1,
     agent_canvas_capabilities.CapabilityPolicyResultV1,
+    agent_canvas_capabilities.PlannedCapabilityReferenceV1,
+    agent_canvas_capabilities.CapabilityReferencePlanV1,
     agent_canvas_capabilities.ValidatedNextActionV1,
     agent_canvas_capabilities.CapabilityContextSnapshotV1,
     agent_canvas_capabilities.CapabilityInvocationContextV1,

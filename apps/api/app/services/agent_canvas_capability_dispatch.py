@@ -97,6 +97,7 @@ class CapabilityDispatchService:
             result_contract_name=command.definition.result_contract_name,
             candidate_count=command.definition.default_candidate_count,
             reference_allowlist=context_snapshot.approved_reference_ids,
+            reference_plan=context_snapshot.reference_plan,
             agent_request_identity=f"capability:{identity}",
             created_at=now,
         )

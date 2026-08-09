@@ -14,7 +14,16 @@ VideoParameterFieldV2 = Literal[
     "aspect_ratio",
     "generate_audio",
 ]
-VideoParameterOriginV2 = Literal["manual", "node_prompt", "binding"]
+VideoParameterOriginV2 = Literal[
+    "manual",
+    "node_prompt",
+    "binding",
+    "user_explicit",
+    "structured_content",
+    "guidance_default",
+    "role_default",
+    "provider_clamp",
+]
 VideoParameterScalarV2 = int | float | str | bool
 
 

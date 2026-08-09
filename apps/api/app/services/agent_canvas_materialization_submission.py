@@ -102,9 +102,7 @@ class ProposalMaterializationSubmissionService:
         supplied = (
             action.accepted_references
             if isinstance(action, SelectOptionActionV2)
-            else tuple(
-                reference for reference in proposal.proposed_references if reference.required
-            )
+            else proposal.proposed_references
         )
         accepted = []
         seen: set[tuple[str, str]] = set()
@@ -126,7 +124,7 @@ class ProposalMaterializationSubmissionService:
         ]
         if missing_required:
             raise _error(
-                "proposal_reference_plan_invalid",
+                "guided_reference_required_missing",
                 "Every required Proposal reference must be accepted.",
             )
         snapshots = []

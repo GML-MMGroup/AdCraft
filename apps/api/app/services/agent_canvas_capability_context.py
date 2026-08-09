@@ -10,7 +10,11 @@ from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
-from app.schemas.agent_canvas_capabilities import CapabilityContextSnapshotV1
+from app.schemas.agent_canvas_capabilities import (
+    CapabilityContextSnapshotV1,
+    CapabilityReferencePlanV1,
+    PlannedCapabilityReferenceV1,
+)
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
@@ -24,7 +28,7 @@ def build_capability_context_snapshot(
     conversations: AgentCanvasConversationRepository,
     capability_id: CapabilityIdV1,
     objective: str,
-    approved_reference_ids: tuple[str, ...],
+    reference_plan: CapabilityReferencePlanV1,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
 ) -> CapabilityContextSnapshotV1:
     """Freeze only the current capability's approved authoring context."""
@@ -32,7 +36,7 @@ def build_capability_context_snapshot(
     capability_context: dict[str, object] = {"objective": objective}
     reference_summaries = _reference_summaries(
         workflow,
-        approved_reference_ids,
+        reference_plan.references,
         asset_resolver=asset_resolver,
     )
     if reference_summaries:
@@ -49,7 +53,8 @@ def build_capability_context_snapshot(
         "session_revision": session.revision,
         "capability_id": capability_id,
         "shared_summary": session.goal.summary,
-        "approved_reference_ids": approved_reference_ids,
+        "approved_reference_ids": reference_plan.approved_reference_ids,
+        "reference_plan_digest": reference_plan.digest,
         "capability_context": capability_context,
         "style_projection": style_projection,
     }
@@ -60,21 +65,29 @@ def build_capability_context_snapshot(
         snapshot_id=f"snapshot_{digest[:32]}",
         digest=digest,
         shared_summary=session.goal.summary,
-        approved_reference_ids=approved_reference_ids,
+        approved_reference_ids=reference_plan.approved_reference_ids,
         capability_context=capability_context,
         style_projection=style_projection,
+        reference_plan=reference_plan,
     )
 
 
 def _reference_summaries(
     workflow: AgentCanvasWorkflowV2,
-    reference_ids: tuple[str, ...],
+    references: tuple[PlannedCapabilityReferenceV1, ...],
     *,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None,
 ) -> list[dict[str, object]]:
     nodes = {node.node_id: node for node in workflow.nodes}
     summaries: list[dict[str, object]] = []
-    for source_id in reference_ids:
+    for reference in references:
+        source_id = reference.source_id
+        plan_facts = {
+            "input_role": reference.input_role,
+            "required": reference.required,
+            "semantic_reference_role": reference.semantic_reference_role,
+            "display_order": reference.priority,
+        }
         node = nodes.get(source_id)
         if node is not None:
             summaries.append(
@@ -85,11 +98,18 @@ def _reference_summaries(
                     "creative_role": node.creative_role,
                     "title": node.title,
                     "status": node.status,
+                    **plan_facts,
                 }
             )
             continue
         if asset_resolver is None:
-            summaries.append({"source_id": source_id, "source_kind": "asset"})
+            summaries.append(
+                {
+                    "source_id": source_id,
+                    "source_kind": "asset",
+                    **plan_facts,
+                }
+            )
             continue
         asset = asset_resolver(source_id)
         summaries.append(
@@ -99,6 +119,7 @@ def _reference_summaries(
                 "display_name": asset.display_name,
                 "media_type": asset.media_type,
                 "checksum": asset.checksum,
+                **plan_facts,
             }
         )
     return summaries
