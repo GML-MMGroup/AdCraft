@@ -26,9 +26,14 @@ class V2WorkflowConversationAgentError(RuntimeError):
 
 
 class V2WorkflowConversationAgent:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        runtime: StructuredGenerationRuntime | None = None,
+    ) -> None:
         self._settings = settings
-        self._runtime = StructuredGenerationRuntime(settings=settings)
+        self._runtime = runtime or StructuredGenerationRuntime(settings=settings)
 
     def reply(
         self,
@@ -71,7 +76,7 @@ class V2WorkflowConversationAgent:
                 StructuredGenerationSpec(
                     stage_name=operation,
                     operation=operation,
-                    agent_name="front_desk",
+                    agent_name="video_agent",
                     contract_name=contract_name,
                     model_id=self._settings.llm_front_desk_model,
                     system_prompt="",

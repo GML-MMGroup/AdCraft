@@ -21,23 +21,20 @@ from app.schemas.agent_canvas_creative_session import (
 from app.services.agent_canvas_video_skills import LoadedVideoStyleSkillV2
 
 
-_SPECIALIST_ROLES = {
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
+_STYLE_PROJECTION_ROLES = {
+    "world_setting",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard",
+    "video",
+    "bgm",
+    "quick_media",
 }
 _CONTEXT_BYTES = 8_192
-_PRODUCT_IDENTITY_ROLES = {
-    "product_designer",
-    "storyboard_artist",
-    "video_director",
-}
+_PRODUCT_IDENTITY_ROLES = {"product", "storyboard", "video"}
 
 
 class CreativeDirectionService:
@@ -99,7 +96,6 @@ class CreativeDirectionService:
         role_projections = {
             role: {
                 "text": guidance.text,
-                "source_path": guidance.path,
                 "digest": guidance.digest,
             }
             for role, guidance in sorted(skill.role_guidance.items())
@@ -127,7 +123,7 @@ class CreativeDirectionService:
         snapshot: CreativeDirectionSnapshotV2,
         role: str,
     ) -> StyleGuidanceContextV2:
-        if role != "director" and role not in _SPECIALIST_ROLES:
+        if role != "director" and role not in _STYLE_PROJECTION_ROLES:
             raise _error(
                 "creative_direction_role_invalid",
                 "Creative Direction role is not supported.",
@@ -162,9 +158,6 @@ class CreativeDirectionService:
             global_guidance=global_guidance,
             role=None if role == "director" else role,
             role_guidance=role_guidance,
-            role_guidance_path=(
-                (str(projection.get("source_path") or "") or None) if projection else None
-            ),
             role_guidance_digest=(
                 (str(projection.get("digest") or "") or None) if projection else None
             ),
@@ -177,7 +170,7 @@ class CreativeDirectionService:
         *,
         prohibited_phrases: tuple[str, ...] = (),
     ) -> None:
-        if role not in _SPECIALIST_ROLES:
+        if role not in _STYLE_PROJECTION_ROLES:
             raise _error(
                 "creative_direction_role_invalid",
                 "Creative Direction role is not supported.",

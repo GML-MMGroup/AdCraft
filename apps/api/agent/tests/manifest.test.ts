@@ -58,7 +58,7 @@ describe("runtime manifest", () => {
         capabilities: {
           ...inputs.capabilities,
           agents: inputs.capabilities.agents.map((agent) =>
-            agent.name === "director"
+            agent.name === "video_agent"
               ? { ...agent, operations: [...agent.operations, "new_operation"] }
               : agent,
           ),

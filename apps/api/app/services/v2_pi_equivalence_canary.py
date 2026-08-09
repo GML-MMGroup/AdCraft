@@ -214,7 +214,7 @@ class _ProductionForcedRepairRunner:
             StructuredGenerationSpec(
                 stage_name="character_expert_brief",
                 operation="character_expert_brief",
-                agent_name="character_designer",
+                agent_name="video_agent",
                 contract_name="V2CharacterExpertPlan",
                 model_id=self._settings.llm_character_model,
                 system_prompt="",

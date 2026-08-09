@@ -8,8 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
-    CreativeElementDecisionV2,
-    CreativeGoalV2,
     GuidedSessionStateV2,
     ProjectCreativeMemoryV2,
     ResolvedImageTargetV2,
@@ -201,8 +199,8 @@ class InteractionTargetSummary(_PlanningContextModel):
     working_version: PlanningReferenceSummary | None = None
 
 
-class TargetedRevisionAgentContext(_PlanningContextModel):
-    context_kind: Literal["targeted_revision"]
+class AssetRevisionAgentContext(_PlanningContextModel):
+    context_kind: Literal["asset_revision"]
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str | None = Field(default=None, max_length=160)
@@ -262,114 +260,41 @@ class ConversationSummaryAgentContext(_PlanningContextModel):
     )
 
 
-AgentCanvasSpecialistName = Literal[
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
-]
+class VideoParameterTextSourceV2(_PlanningContextModel):
+    source_kind: Literal["node_prompt", "binding"]
+    source_node_id: str = Field(min_length=1, max_length=160)
+    source_revision: int = Field(ge=1)
+    binding_id: str | None = Field(default=None, min_length=1, max_length=160)
+    text: str = Field(min_length=1, max_length=32_768)
+
+    @model_validator(mode="after")
+    def validate_binding_identity(self) -> "VideoParameterTextSourceV2":
+        if self.source_kind == "binding" and self.binding_id is None:
+            raise ValueError("Binding parameter sources require a Binding ID.")
+        if self.source_kind == "node_prompt" and self.binding_id is not None:
+            raise ValueError("Node prompt parameter sources cannot claim a Binding ID.")
+        return self
 
 
-class GuidanceNodeSummaryV2(_PlanningContextModel):
-    node_id: str = Field(min_length=1, max_length=160)
-    node_type: Literal["text", "script", "image", "video", "audio", "editing"]
-    title: str = Field(min_length=1, max_length=256)
-    status: Literal["draft", "working", "ready", "failed"]
-    semantic_purpose: str = Field(default="", max_length=1_024)
+class VideoParameterCapabilityContextV2(_PlanningContextModel):
+    supported_parameters: tuple[str, ...]
+    duration_seconds_min: float | None = Field(default=None, gt=0)
+    duration_seconds_max: float | None = Field(default=None, gt=0)
+    supported_resolutions: tuple[str, ...] = ()
+    supported_aspect_ratios: tuple[str, ...] = ()
+    supports_native_audio: bool
+    default_parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    capability_revision: int = Field(ge=1)
 
 
-class GuidanceBindingSummaryV2(_PlanningContextModel):
-    binding_id: str = Field(min_length=1, max_length=160)
-    source_id: str = Field(min_length=1, max_length=160)
+class VideoParameterIntentContextV2(_PlanningContextModel):
+    context_kind: Literal["video_parameter_intent"]
+    workflow_id: str = Field(min_length=1, max_length=160)
     target_node_id: str = Field(min_length=1, max_length=160)
-    input_role: str = Field(min_length=1, max_length=80)
-    required: bool
-
-
-class GuidanceImageReferenceV2(_PlanningContextModel):
-    asset_id: str = Field(min_length=1, max_length=160)
-    display_name: str = Field(min_length=1, max_length=256)
-    media_url: str = Field(min_length=1, max_length=2_048)
-    semantic_purpose: str = Field(default="", max_length=1_024)
-
-
-class GuidanceStyleSummaryV2(_PlanningContextModel):
-    skill_run_id: str = Field(min_length=1, max_length=160)
-    skill_id: str = Field(min_length=1, max_length=160)
-    skill_version: str = Field(min_length=1, max_length=80)
-    summary: str = Field(default="", max_length=4_096)
-
-
-class GuidanceProposalSummaryV2(_PlanningContextModel):
-    proposal_id: str = Field(min_length=1, max_length=160)
-    topic_id: str = Field(min_length=1, max_length=160)
-    proposal_kind: str = Field(min_length=1, max_length=80)
-    option_summaries: tuple[str, ...] = Field(default=(), max_length=4)
-
-
-class DirectorGuidanceContextV2(_PlanningContextModel):
-    context_kind: Literal["director_guidance"]
-    workflow_id: str = Field(min_length=1, max_length=160)
-    workflow_revision: int = Field(ge=1)
-    conversation_id: str = Field(min_length=1, max_length=160)
-    user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
-    conversation_summary: str = Field(default="", max_length=16_384)
-    goal: CreativeGoalV2 | None = None
-    element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=32)
-    guidance_session: GuidedSessionStateV2 | None = None
-    open_proposal: GuidanceProposalSummaryV2 | None = None
-    nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=128)
-    bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=256)
-    style: GuidanceStyleSummaryV2 | None = None
-    style_guidance: StyleGuidanceContextV2 | None = None
-    mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
-    image_references: tuple[GuidanceImageReferenceV2, ...] = Field(default=(), max_length=16)
-    model_capabilities: dict[str, JsonValue] = Field(default_factory=dict)
-
-
-class GuidanceSpecialistContextV2(_PlanningContextModel):
-    context_kind: Literal["guidance_specialist"]
-    specialist_name: AgentCanvasSpecialistName
-    workflow_id: str = Field(min_length=1, max_length=160)
-    workflow_revision: int = Field(ge=1)
-    topic_id: str = Field(min_length=1, max_length=160)
-    topic_kind: str = Field(min_length=1, max_length=80)
-    topic_title: str = Field(min_length=1, max_length=256)
-    topic_objective: str = Field(min_length=1, max_length=4_096)
-    candidate_count: int = Field(ge=1, le=4)
-    user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
-    goal: CreativeGoalV2
-    relevant_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=16)
-    style_excerpt: str = Field(default="", max_length=8_192)
-    style_guidance: StyleGuidanceContextV2 | None = None
-    accepted_anchors: tuple[str, ...] = Field(default=(), max_length=32)
-    image_references: tuple[GuidanceImageReferenceV2, ...] = Field(default=(), max_length=16)
-    relevant_nodes: tuple[GuidanceNodeSummaryV2, ...] = Field(default=(), max_length=32)
-    relevant_bindings: tuple[GuidanceBindingSummaryV2, ...] = Field(default=(), max_length=64)
-    targeted_prompt_baseline: str | None = Field(default=None, max_length=32_768)
-
-
-class DelegatedProposalOptionSummaryV2(_PlanningContextModel):
-    option_id: str = Field(min_length=1, max_length=160)
-    title: str = Field(min_length=1, max_length=256)
-    summary: str = Field(min_length=1, max_length=8_192)
-    displayed_references: tuple[GuidanceImageReferenceV2, ...] = Field(default=(), max_length=16)
-
-
-class DelegatedProposalChoiceContextV2(_PlanningContextModel):
-    context_kind: Literal["delegated_proposal_choice"]
-    workflow_id: str = Field(min_length=1, max_length=160)
-    proposal_id: str = Field(min_length=1, max_length=160)
-    proposal_revision: int = Field(ge=1)
-    goal: CreativeGoalV2
-    relevant_decisions: tuple[CreativeElementDecisionV2, ...] = Field(default=(), max_length=16)
-    options: tuple[DelegatedProposalOptionSummaryV2, ...] = Field(min_length=1, max_length=4)
-    style_summary: str = Field(default="", max_length=4_096)
+    target_node_revision: int = Field(ge=1)
+    selected_model_ref: str = Field(min_length=3, max_length=320)
+    sources: tuple[VideoParameterTextSourceV2, ...] = Field(default=(), max_length=129)
+    capability: VideoParameterCapabilityContextV2
 
 
 class DirectorTurnContextV2(_PlanningContextModel):
@@ -465,36 +390,6 @@ class ProposalRevisionContextV2(_PlanningContextModel):
     relevant_target_summaries: tuple[str, ...] = Field(default=(), max_length=16)
 
 
-class SpecialistContextV2(_PlanningContextModel):
-    context_kind: Literal["specialist_handoff"]
-    specialist_name: AgentCanvasSpecialistName
-    operation: Literal[
-        "propose_concepts",
-        "revise_concepts",
-        "materialize_draft",
-        "direct_response",
-    ]
-    workflow_id: str = Field(min_length=1, max_length=160)
-    workflow_revision: int = Field(ge=1)
-    user_instruction: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
-    target_node_id: str | None = Field(default=None, max_length=160)
-    selected_option_summary: str = Field(default="", max_length=8_192)
-    selected_option_id: str | None = Field(default=None, max_length=160)
-    script_summary: str = Field(default="", max_length=8_192)
-    video_skill_excerpt: str = Field(default="", max_length=8_192)
-    style_guidance: StyleGuidanceContextV2 | None = None
-    explicit_input_summaries: tuple[str, ...] = Field(default=(), max_length=64)
-    guidance_session: GuidedSessionStateV2 | None = None
-    creative_memory: ProjectCreativeMemoryV2 | None = None
-    resolved_image_targets: tuple[ResolvedImageTargetV2, ...] = Field(default=(), max_length=16)
-    reference_allowlist: tuple[str, ...] = Field(default=(), max_length=64)
-    current_topic_id: str | None = Field(default=None, max_length=160)
-    proposal_mode: Literal["single_plan", "choice_set"] | None = None
-    candidate_count: int | None = Field(default=None, ge=1, le=4)
-    approved_anchor_summaries: tuple[str, ...] = Field(default=(), max_length=16)
-    proposal_revision: ProposalRevisionContextV2 | None = None
-
-
 PlanningAgentContext = Annotated[
     Union[
         FrontDeskIntentAgentContext,
@@ -504,16 +399,13 @@ PlanningAgentContext = Annotated[
         CharacterExpertAgentContext,
         SceneExpertAgentContext,
         BgmExpertAgentContext,
-        TargetedRevisionAgentContext,
+        AssetRevisionAgentContext,
         QuickMediaAgentContext,
         WorkflowConversationAgentContext,
         ConversationSummaryAgentContext,
         DirectorTurnContextV2,
-        DirectorGuidanceContextV2,
-        GuidanceSpecialistContextV2,
-        DelegatedProposalChoiceContextV2,
         AgentCommandReplanContextV2,
-        SpecialistContextV2,
+        VideoParameterIntentContextV2,
     ],
     Field(discriminator="context_kind"),
 ]

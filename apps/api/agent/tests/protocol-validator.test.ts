@@ -10,10 +10,10 @@ const request: AgentRunRequest = {
   request_id: "req_protocol",
   contract_digest: loadRuntimeManifest().contract_digest,
   context_snapshot_id: "context_protocol",
-  agent_name: "director",
-  operation: "conversation_turn",
+  agent_name: "video_agent",
+  operation: "workflow_conversation",
   deadline_at: "2026-07-24T12:10:00Z",
-  model_policy_id: "director.conversation_turn.v1",
+  model_policy_id: "video_agent.workflow_conversation.v1",
   context: {
     operation: "workflow_creation",
     user_input: "Create a product launch workflow.",
@@ -21,7 +21,7 @@ const request: AgentRunRequest = {
   policy: {
     max_turns: 4,
     max_tool_calls: 4,
-    max_handoffs: 1,
+    max_handoffs: 0,
     timeout_seconds: 2,
     max_input_bytes: 4096,
     max_output_bytes: 4096,
@@ -39,6 +39,10 @@ describe("AgentRunRequest protocol validation", () => {
     ["unknown field", { ...request, unexpected: true }],
     ["protocol mismatch", { ...request, protocol_version: "2" }],
     ["policy bound", { ...request, policy: { ...request.policy, max_turns: 0 } }],
+    [
+      "handoff policy",
+      { ...request, policy: { ...request.policy, max_handoffs: 1 } },
+    ],
     [
       "missing nested input",
       { ...request, context: { ...request.context, user_input: undefined } },

@@ -7,31 +7,19 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.agent_operation_contexts import (
-    AgentCanvasSpecialistName,
-    PlanningAgentContext,
-)
+from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas import CanvasCreativeRoleV2, ModelSelectionModeV1
-from app.schemas.agent_canvas_creative_session import (
-    ConceptDraftSpecV2,
-    ProposedDraftReferenceV2,
-    SpecialistDraftV2,
+from app.schemas.agent_canvas_capabilities import (
+    CapabilityInvocationContextV1,
+    NextActionContextV1,
+    TurnIntentContextV1,
 )
+from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
-AgentName = Literal[
-    "director",
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
-]
+AgentName = Literal["video_agent"]
 AgentRunStatus = Literal[
     "queued",
     "running",
@@ -144,6 +132,7 @@ class AgentRunContext(_StrictModel):
     user_input: str = Field(min_length=1, max_length=_MAX_CONTEXT_TEXT)
     conversation_id: str | None = Field(default=None, max_length=160)
     workflow_id: str | None = Field(default=None, max_length=160)
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
     target: AgentTargetContext | None = None
     screenplay_summary: str | None = Field(default=None, max_length=16_384)
     style_summary: str | None = Field(default=None, max_length=8_192)
@@ -174,9 +163,13 @@ class AgentCanvasTextOutput(BaseModel):
 
 
 class AgentRunPolicy(_StrictModel):
+    operation_policy_id: str | None = Field(default=None, max_length=160)
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"] | None = None
+    transport_retry_limit: int = Field(default=0, ge=0, le=1)
+    structured_repair_limit: int = Field(default=1, ge=0, le=1)
     max_turns: int = Field(default=8, ge=1, le=64)
     max_tool_calls: int = Field(default=16, ge=0, le=128)
-    max_handoffs: int = Field(default=8, ge=0, le=32)
+    max_handoffs: Literal[0] = 0
     timeout_seconds: float = Field(default=120.0, gt=0, le=900)
     max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
@@ -195,7 +188,14 @@ class AgentRunRequest(_StrictModel):
     deadline_at: datetime
     model_policy_id: str = Field(min_length=1, max_length=160)
     model_ref: str | None = Field(default=None, min_length=1, max_length=320)
-    context: PlanningAgentContext | AgentRunContext
+    context: (
+        PlanningAgentContext
+        | AgentRunContext
+        | TurnIntentContextV1
+        | NextActionContextV1
+        | CapabilityInvocationContextV1
+        | CapabilityMaterializationContextV1
+    )
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)
     contract_name: str | None = Field(default=None, max_length=160)
@@ -255,7 +255,7 @@ class AgentToolCall(_StrictModel):
     run_id: str = Field(min_length=1, max_length=160)
     tool_call_id: str = Field(min_length=1, max_length=160)
     idempotency_key: str = Field(min_length=1, max_length=256)
-    tool_name: str = Field(min_length=1, max_length=120)
+    tool_name: Literal["submit_structured_result"] = "submit_structured_result"
     arguments: dict[str, Any] = Field(default_factory=dict)
     expected_revision: int | None = Field(default=None, ge=1)
 
@@ -355,76 +355,6 @@ class SpecialistDraft(_StrictModel):
     constraints: tuple[str, ...] = Field(default=(), max_length=128)
     reference_roles: tuple[str, ...] = Field(default=(), max_length=128)
     warnings: tuple[str, ...] = Field(default=(), max_length=128)
-
-
-class ConceptOptionV2(_StrictModel):
-    option_id: str = Field(min_length=1, max_length=160)
-    title: str = Field(min_length=1, max_length=256)
-    summary_prompt: str = Field(min_length=1, max_length=4_096)
-    draft_spec: ConceptDraftSpecV2
-
-
-class ConceptProposalDraftV2(_StrictModel):
-    proposal_kind: Literal[
-        "script",
-        "product",
-        "prop",
-        "character",
-        "scene",
-        "storyboard",
-        "video",
-        "bgm",
-    ]
-    specialist_name: AgentCanvasSpecialistName
-    options: tuple[ConceptOptionV2, ...] = Field(min_length=1, max_length=4)
-    proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
-        default=(),
-        max_length=64,
-    )
-
-
-class SpecialistOperationV2(_StrictModel):
-    operation_id: str = Field(min_length=1, max_length=160)
-    specialist_name: AgentCanvasSpecialistName
-    operation: Literal[
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts",
-    ]
-    target_node_type: Literal["text", "script", "image", "video", "audio"] | None = None
-    target_creative_role: str | None = Field(default=None, max_length=160)
-    context_snapshot_id: str = Field(min_length=1, max_length=160)
-    result_schema_id: str = Field(min_length=1, max_length=160)
-    max_output_tokens: int = Field(ge=1, le=32_768)
-    timeout_seconds: float = Field(gt=0, le=300)
-
-
-class SpecialistDirectResponseV2(_StrictModel):
-    summary: str = Field(min_length=1, max_length=4_000)
-
-
-class SpecialistResultV2(_StrictModel):
-    result_kind: Literal["proposal", "draft", "direct_response", "refusal"]
-    proposal: ConceptProposalDraftV2 | None = None
-    draft: SpecialistDraftV2 | None = None
-    direct_response: SpecialistDirectResponseV2 | None = None
-    refusal_code: str | None = Field(default=None, max_length=160)
-
-    @model_validator(mode="after")
-    def validate_single_result(self) -> "SpecialistResultV2":
-        values = {
-            "proposal": self.proposal,
-            "draft": self.draft,
-            "direct_response": self.direct_response,
-            "refusal": self.refusal_code,
-        }
-        if (
-            values[self.result_kind] is None
-            or sum(value is not None for value in values.values()) != 1
-        ):
-            raise ValueError("Specialist result must contain exactly one typed result.")
-        return self
 
 
 class AgentNodeIdRefV2(_StrictModel):
@@ -697,6 +627,4 @@ class AgentCommandTransactionResultV2(_StrictModel):
 
 class AgentActionEnvelopeV2(_StrictModel):
     assistant_message: str = Field(min_length=1, max_length=4_000)
-    specialist_handoff: AgentCanvasSpecialistName | None = None
-    proposal: ConceptProposalDraftV2 | None = None
     command_plan: AgentCommandPlanDraftV2 | None = None

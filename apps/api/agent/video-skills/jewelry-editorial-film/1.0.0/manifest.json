@@ -20,15 +20,15 @@
   "display_order": 120,
   "files": {
     "SKILL.md": "396dd0d14b99ecf445fd8de603b3bcf31d8050347f18bc999578663740f99d82",
-    "references/product_designer.md": "262ad6b71a2d8a44517b9527a9fa7c00e18318a1da305bb52a409c5426193ada",
-    "references/character_designer.md": "18d630c29197ff2d07c9f3a3c5bf783de1472f418b7a6090da03c86522f9865b",
-    "references/scene_designer.md": "7302cd052cbeadd7d9ff017eaf5b4635456e1801271a42c78a98e1d267069110",
-    "references/video_director.md": "747cf1fe360b9590c9c2755a421afa21e733d5b1f8fcd0748f5e8de0a200c4c3"
+    "references/product.md": "262ad6b71a2d8a44517b9527a9fa7c00e18318a1da305bb52a409c5426193ada",
+    "references/character.md": "18d630c29197ff2d07c9f3a3c5bf783de1472f418b7a6090da03c86522f9865b",
+    "references/scene.md": "7302cd052cbeadd7d9ff017eaf5b4635456e1801271a42c78a98e1d267069110",
+    "references/video.md": "747cf1fe360b9590c9c2755a421afa21e733d5b1f8fcd0748f5e8de0a200c4c3"
   },
   "role_guidance": {
-    "product_designer": "references/product_designer.md",
-    "character_designer": "references/character_designer.md",
-    "scene_designer": "references/scene_designer.md",
-    "video_director": "references/video_director.md"
+    "product": "references/product.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "video": "references/video.md"
   }
 }

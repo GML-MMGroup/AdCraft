@@ -5,16 +5,18 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, model_validator
 
-from app.schemas.agent_operation_contexts import AgentCanvasSpecialistName
+from app.schemas.agent_canvas_capability_identity import (
+    CAPABILITY_DISPLAY_NAMES,
+    CapabilityIdV1,
+)
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
-    ConceptDraftSpecV2,
     CreationModeDecisionV2,
+    CreativeAuthorityV2,
     GuidanceSessionActionV2,
     GuidedSessionStateV2,
-    NextGuidanceDecisionV2,
     ProposedDraftReferenceV2,
 )
 from app.schemas.agent_runtime import (
@@ -50,7 +52,12 @@ class ContinuationDeliveryV2(_ConversationModel):
     conversation_id: str
     source_turn_id: str
     continuation_turn_id: str
-    operation: str
+    operation: Literal[
+        "next_action",
+        "capability_command",
+        "capability_materialization",
+    ]
+    envelope_id: str = Field(exclude=True)
     payload_digest: str
     status: Literal[
         "queued",
@@ -87,10 +94,16 @@ class ChatTurnV2(_ConversationModel):
     workflow_id: str
     conversation_id: str
     status: Literal["queued", "running", "completed", "failed"]
-    turn_kind: Literal["message", "proposal_action", "command_action", "guided_action"]
+    turn_kind: Literal[
+        "message",
+        "proposal_action",
+        "command_action",
+        "guided_action",
+        "capability",
+        "next_action",
+    ]
     request: dict[str, JsonValue]
     creation_mode: CreationModeDecisionV2 | None = None
-    guidance_decision: NextGuidanceDecisionV2 | None = None
     guidance_session_revision: int | None = Field(default=None, ge=1)
     continuation: ContinuationDeliveryV2 | None = None
     error_code: str | None = None
@@ -112,6 +125,7 @@ class ChatTimelineEntryV2(_ConversationModel):
         "planning_progress",
         "command_plan",
         "action_receipt",
+        "agent_document_reference",
     ]
     speaker: Literal["user", "adcraft_video_agent"] | None
     content: str
@@ -137,32 +151,32 @@ class ChatTimelineListResponseV2(_ConversationModel):
 class ConceptOptionRecordV2(_ConversationModel):
     option_id: str
     title: str = Field(min_length=1, max_length=256)
-    summary_prompt: str = Field(
-        min_length=1,
-        max_length=8_192,
-        validation_alias=AliasChoices("summary_prompt", "description"),
+    public_summary: str = Field(min_length=1, max_length=8_192)
+    key_decisions: tuple[Annotated[str, Field(min_length=1, max_length=1_024)], ...] = Field(
+        min_length=1, max_length=6
     )
-    draft_spec: ConceptDraftSpecV2 | None = Field(default=None, exclude=True)
 
-    @model_validator(mode="after")
-    def canonicalize_draft_spec(self) -> "ConceptOptionRecordV2":
-        if self.draft_spec is None:
-            object.__setattr__(
-                self,
-                "draft_spec",
-                ConceptDraftSpecV2(prompt=self.summary_prompt),
-            )
-        return self
 
-    @property
-    def description(self) -> str:
-        """Compatibility accessor for internal callers during the clean cut."""
+class ProposalMaterializationErrorV2(_ConversationModel):
+    code: str = Field(min_length=1, max_length=160)
+    message: str = Field(min_length=1, max_length=2_048)
 
-        return self.summary_prompt
+
+class ProposalMaterializationProjectionV2(_ConversationModel):
+    materialization_id: str = Field(min_length=1, max_length=160)
+    option_id: str = Field(min_length=1, max_length=160)
+    turn_id: str = Field(min_length=1, max_length=160)
+    status: Literal["queued", "working", "failed", "completed"]
+    attempt_no: int = Field(ge=1)
+    retryable: bool
+    error: ProposalMaterializationErrorV2 | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class ConceptProposalCreateV2(_ConversationModel):
     proposal_kind: Literal[
+        "world_setting",
         "script",
         "product",
         "prop",
@@ -172,7 +186,7 @@ class ConceptProposalCreateV2(_ConversationModel):
         "video",
         "bgm",
     ]
-    specialist_name: AgentCanvasSpecialistName
+    capability_id: CapabilityIdV1
     options: tuple[ConceptOptionRecordV2, ...] = Field(min_length=1, max_length=4)
     proposed_references: tuple[ProposedDraftReferenceV2, ...] = Field(
         default=(),
@@ -181,18 +195,25 @@ class ConceptProposalCreateV2(_ConversationModel):
     topic_id: str | None = Field(default=None, max_length=160)
     target_node_id: str | None = Field(default=None, max_length=160)
     target_node_revision: int | None = Field(default=None, ge=1)
-    proposal_purpose: str | None = Field(default=None, max_length=160)
+    proposal_purpose: str | None = Field(default=None, max_length=4_096)
     preserved_anchor_digest: str | None = Field(
         default=None,
         pattern=r"^[a-f0-9]{64}$",
         exclude=True,
     )
 
+    @computed_field
+    @property
+    def capability_display_name(self) -> str:
+        return CAPABILITY_DISPLAY_NAMES[self.capability_id]
+
     @model_validator(mode="after")
     def validate_unique_option_ids(self) -> "ConceptProposalCreateV2":
         option_ids = tuple(option.option_id for option in self.options)
         if len(set(option_ids)) != len(option_ids):
             raise ValueError("Concept option IDs must be unique within a proposal.")
+        if self.proposal_kind == "world_setting" and len(self.options) not in {2, 3}:
+            raise ValueError("World Setting proposals require two or three options.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
         return self
@@ -207,6 +228,8 @@ ProposalActionTypeV2 = Literal[
     "defer_topic",
     "exclude_element",
     "delegate_choice",
+    "reuse_direction",
+    "revise_direction",
 ]
 
 
@@ -218,6 +241,9 @@ class ProposalActionDescriptorV2(_ConversationModel):
     expected_session_revision: int = Field(ge=1)
     confirmation_required: bool
     reason: str = Field(min_length=1, max_length=1_024)
+    option_id: str | None = Field(default=None, min_length=1, max_length=160)
+    enabled: bool = True
+    disabled_reason: str | None = Field(default=None, max_length=1_024)
 
 
 class _ProposalActionBaseV2(_ConversationModel):
@@ -251,12 +277,25 @@ class DelegateChoiceActionV2(_ProposalActionBaseV2):
     action: Literal["delegate_choice"]
 
 
+class ReuseDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["reuse_direction"]
+    option_id: str = Field(min_length=1, max_length=160)
+
+
+class ReviseDirectionActionV2(_ProposalActionBaseV2):
+    action: Literal["revise_direction"]
+    option_id: str = Field(min_length=1, max_length=160)
+    instruction: str = Field(min_length=1, max_length=8_192)
+
+
 ProposalActionRequestV2 = Annotated[
     SelectOptionActionV2
     | ReviseOptionsActionV2
     | DeferTopicActionV2
     | ExcludeElementActionV2
-    | DelegateChoiceActionV2,
+    | DelegateChoiceActionV2
+    | ReuseDirectionActionV2
+    | ReviseDirectionActionV2,
     Field(discriminator="action"),
 ]
 
@@ -264,7 +303,7 @@ ProposalActionRequestV2 = Annotated[
 class ProposalApplicationSummaryV2(_ConversationModel):
     application_id: str = Field(min_length=1, max_length=160)
     option_id: str = Field(min_length=1, max_length=160)
-    action: Literal["select_option", "delegate_choice"]
+    action: Literal["select_option", "delegate_choice", "reuse_direction"]
     receipt_id: str = Field(min_length=1, max_length=160)
     created_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     queued_execution_ids: tuple[str, ...] = Field(default=(), max_length=32)
@@ -283,6 +322,7 @@ class ConceptProposalV2(ConceptProposalCreateV2):
     availability: ProposalAvailabilityV2 = "open"
     application_count: int = Field(default=0, ge=0)
     latest_application: ProposalApplicationSummaryV2 | None = None
+    materialization: ProposalMaterializationProjectionV2 | None = None
     guidance_session_id: str = Field(min_length=1, max_length=160)
     guidance_session_revision: int = Field(ge=1)
     actions: tuple[ProposalActionDescriptorV2, ...] = ()
@@ -296,6 +336,21 @@ class AgentCommandPlanActionRequestV2(_ConversationModel):
 
 class GuidedActionApplyRequestV2(_ConversationModel):
     confirmed: bool = True
+    action: Literal["set_creative_authority"] | None = None
+    authority: CreativeAuthorityV2 | None = None
+    expected_session_revision: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_authority_action(self) -> "GuidedActionApplyRequestV2":
+        authority_values = (self.authority, self.expected_session_revision)
+        if self.action == "set_creative_authority":
+            if any(value is None for value in authority_values):
+                raise ValueError(
+                    "Creative-authority actions require authority and session revision."
+                )
+        elif any(value is not None for value in authority_values):
+            raise ValueError("Only creative-authority actions accept authority fields.")
+        return self
 
 
 class AgentActionReceiptV2(_ConversationModel):
@@ -363,22 +418,3 @@ class VideoSkillRunCreateRequestV2(_ConversationModel):
     skill_id: str
     skill_version: str
     source_skill_run_id: str | None = None
-
-
-class PlanningTopicStateV2(_ConversationModel):
-    skill_run_id: str
-    topic_id: str
-    topic_kind: str = "generic"
-    display_order: int = Field(ge=0)
-    required: bool = False
-    specialist_name: AgentCanvasSpecialistName = "script_writer"
-    status: Literal[
-        "pending",
-        "in_review",
-        "resolved",
-        "skipped",
-        "not_required",
-        "deferred",
-    ]
-    outcome: str | None = None
-    related_node_ids: tuple[str, ...] = ()

@@ -10,15 +10,26 @@ from app.schemas.agent_runtime import (
     AgentCanvasScriptOutput,
     AgentCanvasTextOutput,
     AgentCommandPlanDraftV2,
-    ConceptProposalDraftV2,
     SpecialistDraft,
 )
-from app.schemas.agent_canvas_creative_session import (
-    CreationModeDecisionV2,
-    DelegatedProposalChoiceV2,
-    NextGuidanceDecisionV2,
-    SpecialistDraftV2,
+from app.schemas.agent_canvas_capabilities import (
+    BgmProposalResultV1,
+    CharacterProposalResultV1,
+    NextActionCommandV1,
+    ProductProposalResultV1,
+    PropProposalResultV1,
+    QuickMediaProposalResultV1,
+    SceneProposalResultV1,
+    ScriptProposalResultV1,
+    StoryboardProposalResultV1,
+    TurnIntentDecisionV1,
+    VideoProposalResultV1,
+    WorldSettingProposalResultV1,
 )
+from app.schemas.agent_canvas_materialization import (
+    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+)
+from app.schemas.agent_canvas_video_parameters import VideoParameterIntentV2
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import (
     V2BgmExpertPlan,
@@ -52,11 +63,19 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         AgentCanvasScriptOutput,
         AgentCanvasTextOutput,
         AgentCommandPlanDraftV2,
-        ConceptProposalDraftV2,
-        SpecialistDraftV2,
-        CreationModeDecisionV2,
-        NextGuidanceDecisionV2,
-        DelegatedProposalChoiceV2,
+        VideoParameterIntentV2,
+        TurnIntentDecisionV1,
+        NextActionCommandV1,
+        WorldSettingProposalResultV1,
+        ProductProposalResultV1,
+        PropProposalResultV1,
+        CharacterProposalResultV1,
+        SceneProposalResultV1,
+        ScriptProposalResultV1,
+        StoryboardProposalResultV1,
+        VideoProposalResultV1,
+        BgmProposalResultV1,
+        QuickMediaProposalResultV1,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
@@ -80,6 +99,9 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         V2BgmPromptPlan,
     )
 }
+_CONTRACTS.update(
+    {model.__name__: model for model in CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS.values()}
+)
 
 
 def validate_agent_contract(contract_name: str, value: object) -> BaseModel:

@@ -46,6 +46,7 @@ from app.schemas.agent_canvas import (
     CanvasVariationDraftV2,
     ResolvedTextInputSnapshotV2,
 )
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
     EditingNodeContentV2,
@@ -551,6 +552,115 @@ class AgentCanvasWorkflowRepository:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
 
+    def upsert_guided_editing(
+        self,
+        node: CanvasNodeV2,
+        bindings: tuple[CanvasBindingV2, ...],
+        *,
+        expected_revision: int,
+    ) -> AgentCanvasWorkflowV2:
+        """Atomically persist one guided Editing manifest and its explicit inputs."""
+
+        if node.node_type != "editing" or node.creative_role != "editing":
+            raise _invalid_binding_batch_error()
+        now = node.updated_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    current_revision = _require_workflow_revision(
+                        connection,
+                        node.workflow_id,
+                        expected_revision,
+                    )
+                    existing_node = connection.execute(
+                        select(AgentCanvasNodeRow.node_id).where(
+                            AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                            AgentCanvasNodeRow.node_id == node.node_id,
+                        )
+                    ).scalar_one_or_none()
+                    if existing_node is None:
+                        connection.execute(insert(AgentCanvasNodeRow).values(**_node_values(node)))
+                    else:
+                        node_values = _node_values(node)
+                        node_values.pop("node_id")
+                        node_values.pop("workflow_id")
+                        connection.execute(
+                            update(AgentCanvasNodeRow)
+                            .where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                            .values(**node_values)
+                        )
+                    for binding in bindings:
+                        if (
+                            binding.workflow_id != node.workflow_id
+                            or binding.target_node_id != node.node_id
+                            or not isinstance(binding.source, CanvasBindingSourceNodeV2)
+                        ):
+                            raise _invalid_binding_batch_error()
+                        _require_node(
+                            connection,
+                            binding.workflow_id,
+                            binding.source.node_id,
+                        )
+                        existing_binding = connection.execute(
+                            select(AgentCanvasBindingRow.binding_id).where(
+                                AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                                AgentCanvasBindingRow.binding_id == binding.binding_id,
+                            )
+                        ).scalar_one_or_none()
+                        if existing_binding is None:
+                            connection.execute(
+                                insert(AgentCanvasBindingRow).values(**_binding_values(binding))
+                            )
+                        else:
+                            binding_values = _binding_values(binding)
+                            binding_values.pop("binding_id")
+                            binding_values.pop("workflow_id")
+                            connection.execute(
+                                update(AgentCanvasBindingRow)
+                                .where(
+                                    AgentCanvasBindingRow.workflow_id == binding.workflow_id,
+                                    AgentCanvasBindingRow.binding_id == binding.binding_id,
+                                )
+                                .values(**binding_values)
+                            )
+                    _advance_workflow_revision(
+                        connection,
+                        workflow_id=node.workflow_id,
+                        current_revision=current_revision,
+                        updated_at=now,
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=node.workflow_id,
+                            node_id=node.node_id,
+                            event_type="guided_editing_updated",
+                            created_at=now,
+                            payload={
+                                "binding_ids": [binding.binding_id for binding in bindings],
+                                "manifest_revision": node.structured_content.get(
+                                    "manifest", {}
+                                ).get("manifest_revision"),
+                                "revision": current_revision + 1,
+                            },
+                        ),
+                    )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _conflict_error("canvas_binding_conflict") from error
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return self.get_workflow(node.workflow_id)
+
     def update_node(
         self,
         node: CanvasNodeV2,
@@ -608,6 +718,118 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def replace_derived_video_parameters(
+        self,
+        workflow_id: str,
+        node_id: str,
+        *,
+        expected_node_revision: int,
+        derived_parameters: dict[str, JsonValue],
+        derived_provenance: dict[str, CanvasParameterProvenanceV2],
+        now: datetime,
+    ) -> CanvasNodeV2:
+        """Replace derived Video parameters without overwriting manual values."""
+
+        if set(derived_parameters) != set(derived_provenance) or any(
+            provenance.origin == "manual" for provenance in derived_provenance.values()
+        ):
+            raise V2PersistenceError(
+                "node_parameter_compilation_failed",
+                "Derived parameter values and provenance do not match.",
+                stage="parameter_compilation",
+                details={"reason": "invalid_derived_parameters"},
+            )
+        timestamp = now.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == workflow_id,
+                                AgentCanvasNodeRow.node_id == node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _node_not_found_error()
+                    if int(row["revision"]) != expected_node_revision:
+                        raise _parameter_authoring_changed_error()
+                    current = _node_from_row(row)
+                    if current.node_type != "video":
+                        raise V2PersistenceError(
+                            "node_parameter_compilation_failed",
+                            "Derived Video parameters require a Video Node.",
+                            stage="parameter_compilation",
+                            details={"reason": "invalid_node_type"},
+                        )
+                    manual_parameters = {
+                        field: value
+                        for field, value in current.parameters.items()
+                        if current.parameter_provenance.get(field) is not None
+                        and current.parameter_provenance[field].origin == "manual"
+                    }
+                    manual_provenance = {
+                        field: provenance
+                        for field, provenance in current.parameter_provenance.items()
+                        if provenance.origin == "manual" and field in manual_parameters
+                    }
+                    parameters = {**derived_parameters, **manual_parameters}
+                    provenance = {**derived_provenance, **manual_provenance}
+                    if (
+                        parameters == current.parameters
+                        and provenance == current.parameter_provenance
+                    ):
+                        connection.commit()
+                        return current
+                    updated_revision = expected_node_revision + 1
+                    updated = connection.execute(
+                        update(AgentCanvasNodeRow)
+                        .where(
+                            AgentCanvasNodeRow.workflow_id == workflow_id,
+                            AgentCanvasNodeRow.node_id == node_id,
+                            AgentCanvasNodeRow.revision == expected_node_revision,
+                        )
+                        .values(
+                            parameters_json=_json_dump(parameters),
+                            parameter_provenance_json=_json_dump(
+                                {
+                                    field: item.model_dump(mode="json")
+                                    for field, item in provenance.items()
+                                }
+                            ),
+                            revision=updated_revision,
+                            updated_at=timestamp,
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _parameter_authoring_changed_error()
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            node_id=node_id,
+                            event_type="canvas_node_updated",
+                            created_at=timestamp,
+                            payload={
+                                "node_revision": updated_revision,
+                                "updated_fields": ["parameters", "parameter_provenance"],
+                            },
+                        ),
+                    )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        return self.get_node(workflow_id, node_id)
 
     def set_node_runtime_state(
         self,
@@ -1741,6 +1963,13 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "model_selection_mode": node.model_selection_mode,
         "model_ref": node.model_ref,
         "parameters_json": _json_dump(node.parameters),
+        "metadata_json": _json_dump(node.metadata),
+        "parameter_provenance_json": _json_dump(
+            {
+                field: provenance.model_dump(mode="json")
+                for field, provenance in node.parameter_provenance.items()
+            }
+        ),
         "prompt_context_snapshot_id": node.prompt_context_snapshot_id,
         "output_asset_id": node.output_asset_id,
         "position_x": node.position.x,
@@ -1776,6 +2005,8 @@ def _node_from_row(
         model_ref=cast(str | None, row["model_ref"]),
         model_summary=model_summary,
         parameters=cast(dict[str, JsonValue], json.loads(str(row["parameters_json"]))),
+        metadata=cast(dict[str, JsonValue], json.loads(str(row["metadata_json"]))),
+        parameter_provenance=_parameter_provenance_from_row(row),
         prompt_context_snapshot_id=cast(str | None, row["prompt_context_snapshot_id"]),
         output_asset_id=cast(str | None, row["output_asset_id"]),
         position=CanvasPositionV2(
@@ -1792,6 +2023,27 @@ def _node_from_row(
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def _parameter_provenance_from_row(
+    row: RowMapping,
+) -> dict[str, CanvasParameterProvenanceV2]:
+    parameters = cast(dict[str, JsonValue], json.loads(str(row["parameters_json"])))
+    raw = json.loads(str(row["parameter_provenance_json"]))
+    if raw:
+        return {
+            field: CanvasParameterProvenanceV2.model_validate(provenance)
+            for field, provenance in raw.items()
+        }
+    return {
+        field: CanvasParameterProvenanceV2(
+            origin="manual",
+            requested_value=value,
+            effective_value=value,
+        )
+        for field, value in parameters.items()
+        if isinstance(value, (str, int, float, bool))
+    }
 
 
 def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
@@ -2002,4 +2254,13 @@ def _conflict_error(code: str) -> V2PersistenceError:
         code,
         "Agent Canvas persistence conflict.",
         stage="agent_canvas_workflow_repository",
+    )
+
+
+def _parameter_authoring_changed_error() -> V2PersistenceError:
+    return V2PersistenceError(
+        "node_parameter_compilation_failed",
+        "Video parameter compilation lost an authoring revision race.",
+        stage="parameter_compilation",
+        details={"reason": "authoring_revision_changed", "retryable": True},
     )

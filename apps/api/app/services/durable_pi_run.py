@@ -119,6 +119,10 @@ class DurablePiRunService:
                 "audit_metadata": {
                     **request.audit_metadata,
                     **identity.audit_metadata,
+                    "model_policy_id": request.model_policy_id,
+                    "result_contract_name": request.contract_name,
+                    "context_snapshot_id": request.context_snapshot_id,
+                    "max_handoffs": request.policy.max_handoffs,
                     **({"model_ref": model_ref} if model_ref is not None else {}),
                 },
             }
@@ -306,6 +310,9 @@ class DurablePiRunService:
             safe_error_code or _safe_error_code(payload),
             _safe_error_message(payload),
             retryable=bool(payload.get("retryable")),
+            details=(
+                dict(payload.get("audit") or {}) if isinstance(payload.get("audit"), dict) else {}
+            ),
         )
 
     @staticmethod

@@ -20,15 +20,15 @@
   "display_order": 210,
   "files": {
     "SKILL.md": "de2b4466c11308d8d51effd05a4d92efcae83ad2f59b2e28f3ab6de5607df805",
-    "references/script_writer.md": "9d43322d9d652f5398f93d8e4fa697909c58e801b58bca45d16e8e9ea9618a76",
-    "references/scene_designer.md": "fb94536fb83dea3796defa2028c3b30487158bb2666ffc297711e3060cfaeec0",
-    "references/storyboard_artist.md": "ebabd4acf2ab81d9b2294d9041e674e340dbde77119d1873a249ff5ae74c3bad",
-    "references/video_director.md": "8d86706b80d064c5e430b56d26c3b4884ed332dd38443d5dafb68de21b734ec6"
+    "references/script.md": "9d43322d9d652f5398f93d8e4fa697909c58e801b58bca45d16e8e9ea9618a76",
+    "references/scene.md": "fb94536fb83dea3796defa2028c3b30487158bb2666ffc297711e3060cfaeec0",
+    "references/storyboard.md": "ebabd4acf2ab81d9b2294d9041e674e340dbde77119d1873a249ff5ae74c3bad",
+    "references/video.md": "8d86706b80d064c5e430b56d26c3b4884ed332dd38443d5dafb68de21b734ec6"
   },
   "role_guidance": {
-    "script_writer": "references/script_writer.md",
-    "scene_designer": "references/scene_designer.md",
-    "storyboard_artist": "references/storyboard_artist.md",
-    "video_director": "references/video_director.md"
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
   }
 }

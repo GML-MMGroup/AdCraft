@@ -32,7 +32,7 @@ function runtimeEvent(
     protocol_version: "1",
     seq: 0,
     run_id: "arun_buffer",
-    agent_name: "director",
+    agent_name: "video_agent",
     event_type: eventType,
     created_at: "2026-07-24T12:00:00Z",
     payload,

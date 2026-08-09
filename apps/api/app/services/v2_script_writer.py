@@ -151,7 +151,7 @@ class V2ScriptWriterService:
         try:
             invocation = (
                 planning_session.child(
-                    agent_name="script_writer",
+                    agent_name="video_agent",
                     operation="script_writer",
                     logical_key="script",
                 )

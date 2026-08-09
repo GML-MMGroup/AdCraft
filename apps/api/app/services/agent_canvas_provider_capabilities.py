@@ -201,6 +201,8 @@ def _capability_from_record(record: ProviderModelRecord) -> CanvasProviderModelC
         max_references=int(metadata.get("max_references", sum(limits.values()))),
         reference_limits=limits,
         supported_parameters=frozenset(metadata.get("supported_parameters", [])),
+        default_parameters=dict(metadata.get("default_parameters", {})),
+        supported_resolutions=tuple(metadata.get("supported_resolutions", ())),
         supported_aspect_ratios=tuple(metadata.get("supported_aspect_ratios", ())),
         pixel_bounds=_optional_pair(metadata.get("pixel_bounds")),
         duration_range_seconds=_optional_pair(metadata.get("duration_range_seconds")),

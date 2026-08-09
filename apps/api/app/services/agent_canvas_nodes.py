@@ -14,6 +14,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.model_selection import ModelSelectionService
 
@@ -60,6 +61,7 @@ class AgentCanvasNodeService:
             model_selection_mode=request.model_selection_mode,
             model_ref=request.model_ref,
             parameters=request.parameters,
+            parameter_provenance=_manual_parameter_provenance(request.parameters),
             prompt_context_snapshot_id=(
                 source.prompt_context_snapshot_id if source is not None else None
             ),
@@ -102,6 +104,8 @@ class AgentCanvasNodeService:
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
         changes = request.model_dump(exclude_unset=True)
+        if "parameters" in changes:
+            changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
         status = validate_node_patch(
             status=current.status,
             node_type=current.node_type,
@@ -144,6 +148,20 @@ def _initial_status(request: CanvasNodeCreateRequestV2) -> str:
     if request.node_type in {"text", "script"} and request.structured_content:
         return "ready"
     return "draft"
+
+
+def _manual_parameter_provenance(
+    parameters: dict[str, object],
+) -> dict[str, CanvasParameterProvenanceV2]:
+    return {
+        field: CanvasParameterProvenanceV2(
+            origin="manual",
+            requested_value=value,
+            effective_value=value,
+        )
+        for field, value in parameters.items()
+        if isinstance(value, (str, int, float, bool))
+    }
 
 
 def _copy_incoming_bindings(

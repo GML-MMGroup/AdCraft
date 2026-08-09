@@ -34,6 +34,7 @@ from app.services.agent_canvas_authoring_validation import (
     validate_ready_node_input_history,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +66,7 @@ class AgentCanvasBindingService:
         self._asset_version_resolver = asset_version_resolver
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
+        self._world_setting_policy = WorldSettingBindingPolicy()
 
     def create(
         self,
@@ -79,8 +81,10 @@ class AgentCanvasBindingService:
         incoming = tuple(
             binding for binding in workflow.bindings if binding.target_node_id == target.node_id
         )
+        world_setting_source = False
         if isinstance(request.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, request.source.node_id)
+            world_setting_source = source.creative_role == "world_setting"
             validate_node_binding(
                 bindings=tuple(
                     BindingValidationState(
@@ -154,7 +158,14 @@ class AgentCanvasBindingService:
                 len(incoming),
             ),
             label=request.label,
-            metadata=request.metadata,
+            metadata=(
+                self._world_setting_policy.metadata_for_target(
+                    target.creative_role,
+                    request.metadata,
+                )
+                if world_setting_source
+                else request.metadata
+            ),
             created_at=now,
             updated_at=now,
         )
@@ -232,8 +243,16 @@ class AgentCanvasBindingService:
                 "enabled": request.enabled if request.enabled is not None else existing.enabled,
                 "order": min(order, len(incoming) - 1),
                 "label": request.label if request.label is not None else existing.label,
-                "metadata": (
-                    request.metadata if request.metadata is not None else existing.metadata
+                "metadata": self._binding_metadata(
+                    source_role=(
+                        source.creative_role
+                        if isinstance(existing.source, CanvasBindingSourceNodeV2)
+                        else None
+                    ),
+                    target_role=target.creative_role,
+                    metadata=(
+                        request.metadata if request.metadata is not None else existing.metadata
+                    ),
                 ),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -244,6 +263,17 @@ class AgentCanvasBindingService:
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint,
         )
+
+    def _binding_metadata(
+        self,
+        *,
+        source_role: str | None,
+        target_role: str,
+        metadata: dict[str, object],
+    ) -> dict[str, object]:
+        if source_role != "world_setting":
+            return metadata
+        return self._world_setting_policy.metadata_for_target(target_role, metadata)
 
     def snapshot_prompt_context(
         self,
@@ -300,6 +330,9 @@ class AgentCanvasBindingService:
                     document_kind=document_kind,
                     content=content[:16000],
                     content_hash=content_hash,
+                    source_semantic_role=source.semantic_role,
+                    binding_metadata=binding.metadata,
+                    source_structured_content=source.structured_content,
                     binding_id=binding.binding_id,
                     input_role=binding.input_role,
                     required=binding.required,
@@ -406,6 +439,7 @@ class AgentCanvasBindingService:
                     source_node_revision=source_revision,
                     binding_kind=binding.input_role,
                     source_semantic_role=source_semantic_role,
+                    binding_metadata=binding.metadata,
                     asset_id=asset.asset_id,
                     asset_version_id=asset.version_id,
                     media_type=asset.media_type,
@@ -492,6 +526,11 @@ class AgentCanvasBindingService:
             target_node_id=target_node_id,
             operation=node_run_id,
         )
+        frozen_text_by_binding = (
+            {item.binding_id: item for item in existing.inputs if item.binding_id is not None}
+            if existing is not None
+            else {}
+        )
         text_inputs: list[ResolvedTextInputSnapshotV2] = []
         media_inputs: list[ResolvedMediaInputSnapshotV2] = []
         optional_omissions: list[dict[str, str]] = []
@@ -499,6 +538,10 @@ class AgentCanvasBindingService:
             if binding.input_role == "text_context":
                 if binding.source_kind != "node_output":
                     raise _frozen_binding_error()
+                frozen_input = frozen_text_by_binding.get(binding.binding_id)
+                if frozen_input is not None:
+                    text_inputs.append(frozen_input)
+                    continue
                 source = self._workflows.get_node(workflow_id, binding.source_id)
                 try:
                     document = self._documents.get(source.node_id)
@@ -519,6 +562,9 @@ class AgentCanvasBindingService:
                         document_kind=document_kind,
                         content=content[:16_000],
                         content_hash=content_hash,
+                        source_semantic_role=(binding.source_semantic_role or source.semantic_role),
+                        binding_metadata=binding.binding_metadata,
+                        source_structured_content=source.structured_content,
                         binding_id=binding.binding_id,
                         input_role="text_context",
                         required=binding.required,
@@ -562,6 +608,7 @@ class AgentCanvasBindingService:
                     ),
                     binding_kind=binding.input_role,
                     source_semantic_role=source_semantic_role,
+                    binding_metadata=binding.binding_metadata,
                     asset_id=asset.asset_id,
                     asset_version_id=asset.version_id,
                     media_type=asset.media_type,

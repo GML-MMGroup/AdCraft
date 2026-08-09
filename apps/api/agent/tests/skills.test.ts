@@ -15,44 +15,65 @@ const skillRoot = resolve(
 );
 
 describe("trusted skill bundle", () => {
-  it("loads only manifest-pinned skill markdown with verified digests", async () => {
-    const descriptor = getOperationDescriptor(
-      "character_designer",
-      "materialize_draft",
-    );
-    const skills = await loadRequiredSkills(descriptor, [
-      "reference_asset_selection",
-    ]);
+  it.each([
+    ["propose_world_setting_options", "video_agent_world_setting"],
+    ["propose_product_options", "video_agent_product_design"],
+    ["propose_prop_options", "video_agent_prop_design"],
+    ["propose_character_options", "video_agent_character_design"],
+    ["propose_scene_options", "video_agent_scene_design"],
+    ["propose_script_options", "video_agent_script_authoring"],
+    ["propose_storyboard_options", "video_agent_storyboard_design"],
+    ["propose_video_options", "video_agent_video_direction"],
+    ["propose_bgm_options", "video_agent_bgm_direction"],
+    ["free_video", "video_agent_quick_media"],
+  ])("loads only the canonical Skill for %s", async (operation, skillId) => {
+    const descriptor = getOperationDescriptor(operation);
+    const skills = await loadRequiredSkills(descriptor);
 
-    expect(skills.map((skill) => skill.skill_id)).toContain("character_prompt_expansion");
-    expect(skills.map((skill) => skill.skill_id)).toContain("reference_asset_selection");
-    expect(skills.map((skill) => skill.skill_id)).not.toContain(
-      "scene_spec_extraction",
-    );
+    expect(skills.map((skill) => skill.skill_id)).toEqual([skillId]);
     expect(skills.every((skill) => skill.content.length > 0)).toBe(true);
     expect(skills.every((skill) => /^[a-f0-9]{64}$/.test(skill.sha256))).toBe(true);
   });
 
-  it("rejects optional skills that are not declared by the operation", async () => {
-    const descriptor = getOperationDescriptor(
-      "character_designer",
-      "materialize_draft",
-    );
+  it.each([
+    "decide_turn_intent",
+    "decide_next_action",
+    "workflow_conversation",
+    "conversation_summary",
+    "execute_canvas_text",
+  ])("loads no creative Skill for %s", async (operation) => {
+    const descriptor = getOperationDescriptor(operation);
+
+    await expect(loadRequiredSkills(descriptor)).resolves.toEqual([]);
+  });
+
+  it("rejects arbitrary and sibling Skill selection", async () => {
+    const descriptor = getOperationDescriptor("propose_character_options");
 
     await expect(
-      loadRequiredSkills(descriptor, ["scene_spec_extraction"]),
+      loadRequiredSkills(descriptor, ["video_agent_scene_design"]),
+    ).rejects.toThrow("agent_optional_skill_not_allowed");
+    await expect(
+      loadRequiredSkills(descriptor, ["untrusted_skill"]),
     ).rejects.toThrow("agent_optional_skill_not_allowed");
   });
 
+  it("keeps Character materialization lean and delegates the companion to Python", async () => {
+    const descriptor = getOperationDescriptor("materialize_character");
+    const [skill] = await loadRequiredSkills(descriptor);
+
+    expect(skill?.content).toContain("Return one lean identity-master design result");
+    expect(skill?.content).toContain("Python derives the Turnaround companion");
+    expect(skill?.content).toContain("Do not construct a two-Node payload");
+    expect(skill?.content).toContain("Do not write a provider prompt");
+  });
+
   it("fails closed for missing required skills and context overflow", async () => {
-    const descriptor = getOperationDescriptor(
-      "character_designer",
-      "materialize_draft",
-    );
+    const descriptor = getOperationDescriptor("propose_character_options");
     await expect(
       loadRequiredSkills({
         ...descriptor,
-        required_skills: ["missing_skill"],
+        required_skill: "missing_skill",
       }),
     ).rejects.toThrow("agent_required_skill_missing");
     await expect(
@@ -65,13 +86,13 @@ describe("trusted skill bundle", () => {
 
   it("verifies every manifest entry and rejects a one-byte mutation", async () => {
     const verified = await verifySkillBundle();
-    expect(verified.skills.size).toBe(21);
+    expect(verified.skills.size).toBe(10);
 
     const temporaryRoot = await mkdtemp(join(tmpdir(), "adcraft-skills-"));
     await cp(skillRoot, temporaryRoot, { recursive: true });
     const target = join(
       temporaryRoot,
-      "character_prompt_expansion",
+      "video_agent_character_design",
       "SKILL.md",
     );
     const content = await readFile(target, "utf8");
@@ -79,7 +100,7 @@ describe("trusted skill bundle", () => {
       target,
       content.replace(
         "Make character descriptions",
-        "Alter character descriptions",
+        "Change character descriptions",
       ),
       "utf8",
     );

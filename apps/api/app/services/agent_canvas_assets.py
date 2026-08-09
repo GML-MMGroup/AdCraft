@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_runtime import (
     GeneratedAssetProvenanceV2,
     PublishedMediaFactsV2,
 )
+from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
 from app.schemas.v2_asset_library import (
     AssetEntityCreate,
     AssetEntityMemberCreate,
@@ -255,6 +256,16 @@ class AgentCanvasAssetService:
             "publication_status": "ready",
             "publication_id": fingerprint,
         }
+        measured_facts = facts.model_dump(mode="json")
+        if mime_type.startswith("image/") and _image_size_mismatch(
+            provenance.get("submitted_media_facts"),
+            width=facts.width,
+            height=facts.height,
+        ):
+            warnings = list(provenance.get("media_fact_warnings") or ())
+            if "generated_image_size_mismatch" not in warnings:
+                warnings.append("generated_image_size_mismatch")
+            provenance["media_fact_warnings"] = warnings
         node = next((item for item in workflow.nodes if item.node_id == node_id), None)
         generated_provenance = _generated_provenance(
             provenance,
@@ -265,7 +276,8 @@ class AgentCanvasAssetService:
         )
         provenance.update(
             {
-                "published_media_facts": facts.model_dump(mode="json"),
+                "published_media_facts": measured_facts,
+                "measured_media_facts": measured_facts,
                 "generated_asset_provenance": generated_provenance.model_dump(mode="json"),
             }
         )
@@ -702,6 +714,9 @@ def _generated_provenance(
             or f"run_intent_{_stable_identifier('snapshot', execution_id, node_id)}"
         ),
         input_manifest_id=_optional_string(metadata.get("input_manifest_id")),
+        parameter_compilation_snapshot_id=_optional_string(
+            metadata.get("parameter_compilation_snapshot_id")
+        ),
         node_revision=node_revision,
         compiled_prompt_digest=_hex_digest(
             metadata.get("compiled_prompt_digest") or metadata.get("prompt_digest")
@@ -715,11 +730,7 @@ def _generated_provenance(
         provider_task_id=_optional_string(metadata.get("provider_task_id")),
         requested_parameters=_json_mapping(metadata.get("requested_parameters")),
         effective_parameters=_json_mapping(metadata.get("effective_parameters")),
-        normalizations=tuple(
-            item for item in metadata.get("normalizations", ()) if isinstance(item, str) and item
-        )
-        if isinstance(metadata.get("normalizations"), (list, tuple))
-        else (),
+        normalizations=_generated_normalizations(metadata.get("normalizations")),
         source_asset_version_ids=tuple(
             item
             for item in metadata.get("source_asset_version_ids", ())
@@ -728,6 +739,38 @@ def _generated_provenance(
         if isinstance(metadata.get("source_asset_version_ids"), (list, tuple))
         else (),
     )
+
+
+def _generated_normalizations(
+    value: object,
+) -> tuple[str | VideoParameterNormalizationV2, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str | VideoParameterNormalizationV2] = []
+    for item in value:
+        if isinstance(item, str) and item:
+            result.append(item)
+        elif isinstance(item, Mapping):
+            result.append(VideoParameterNormalizationV2.model_validate(item))
+    return tuple(result)
+
+
+def _image_size_mismatch(
+    submitted_facts: object,
+    *,
+    width: int | None,
+    height: int | None,
+) -> bool:
+    if not isinstance(submitted_facts, Mapping) or width is None or height is None:
+        return False
+    size = submitted_facts.get("size")
+    if not isinstance(size, str):
+        return False
+    try:
+        requested_width, requested_height = (int(part) for part in size.lower().split("x", 1))
+    except (TypeError, ValueError):
+        return False
+    return (requested_width, requested_height) != (width, height)
 
 
 def _hex_digest(value: object) -> str:

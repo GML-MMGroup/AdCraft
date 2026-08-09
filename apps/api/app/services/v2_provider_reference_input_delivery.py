@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings, get_settings
 from app.persistence.asset_library_repository import V2AssetLibraryRepository
@@ -14,6 +14,10 @@ from app.persistence.database import create_v2_database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.v2_asset_library import AssetBindingV2, AssetVersionMetadataV2
 from app.schemas.agent_canvas import ResolvedMediaInputSnapshotV2
+from app.schemas.agent_canvas_runtime import (
+    ProviderReferenceDeliveryContextV1,
+    ResolvedModelExecutionV1,
+)
 from app.schemas.workflow_v2 import WorkflowAssetVersionV2
 from app.services.media_inputs import MediaInputConverter
 from app.services.v2_asset_store import V2AssetStoreService
@@ -68,6 +72,51 @@ PROVIDER_REFERENCE_DELIVERY_MODES: dict[str, set[str]] = {
     "dev_placeholder_video": {"image_url", "data_url"},
     "dev-placeholder-video": {"image_url", "data_url"},
 }
+
+CANVAS_PROTOCOL_REFERENCE_DELIVERY_MODES: dict[str, frozenset[str]] = {
+    "ark_image": frozenset({"provider_file_id", "provider_uploaded_url", "image_url", "data_url"}),
+    "ark_video": frozenset(
+        {
+            "provider_file_id",
+            "provider_uploaded_url",
+            "image_url",
+            "video_url",
+            "audio_url",
+            "data_url",
+        }
+    ),
+    "openai_compatible": frozenset(),
+    "tianpuyue_audio": frozenset(),
+}
+
+
+def reference_delivery_context_from_model_resolution(
+    resolution: ResolvedModelExecutionV1,
+) -> ProviderReferenceDeliveryContextV1:
+    """Derive delivery policy solely from the frozen model resolution."""
+
+    metadata = resolution.capability_metadata
+    accepted_value = metadata.get("accepted_input_types")
+    limits_value = metadata.get("reference_limits")
+    if not isinstance(accepted_value, (list, tuple, set, frozenset)) or not isinstance(
+        limits_value, dict
+    ):
+        raise _canvas_context_error(
+            "Frozen model capability metadata is incomplete for reference delivery."
+        )
+    try:
+        return ProviderReferenceDeliveryContextV1(
+            provider_id=resolution.provider_id,
+            provider_model_id=resolution.provider_model_id,
+            provider_protocol=resolution.provider_protocol,
+            target_capability=resolution.capability,
+            accepted_input_types=tuple(str(item) for item in accepted_value),
+            reference_limits=dict(limits_value),
+        )
+    except ValidationError as error:
+        raise _canvas_context_error(
+            "Frozen model capability metadata is invalid for reference delivery."
+        ) from error
 
 
 class V2DeliveredProviderReference(BaseModel):
@@ -323,32 +372,63 @@ class V2ProviderReferenceInputDeliveryService:
     def deliver_canvas_inputs(
         self,
         *,
-        provider: str,
+        model_resolution: ResolvedModelExecutionV1,
         inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
-        target_media_type: str | None = None,
-        model_id: str | None = None,
-        capability_context: dict[str, object] | None = None,
     ) -> V2DeliveredReferenceSet:
         """Deliver explicit Canvas media bindings in persisted input order."""
 
-        del target_media_type, model_id, capability_context
-        delivery_modes = _delivery_modes_for_provider(provider)
+        context = reference_delivery_context_from_model_resolution(model_resolution)
+        delivery_modes = _canvas_delivery_modes(context)
+        _validate_canvas_input_capabilities(context, inputs)
         references: list[V2DeliveredProviderReference] = []
         failures: list[V2ReferenceInputDeliveryFailure] = []
         optional_omissions: list[V2ReferenceInputDeliveryFailure] = []
+        total_data_url_bytes = 0
         for input_snapshot in sorted(
             inputs,
             key=lambda item: (item.display_order, item.binding_id or ""),
         ):
-            version = self._asset_library.find_version(asset_id=input_snapshot.asset_id)
-            delivered = (
-                _canvas_delivery_failure(input_snapshot, "asset_metadata_missing")
-                if version is None
-                else self._deliver_canvas_version(input_snapshot, version, delivery_modes)
+            version = self._asset_library.find_version(
+                asset_id=input_snapshot.asset_id,
+                version_id=input_snapshot.asset_version_id,
             )
+            if version is None:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "asset_metadata_missing",
+                )
+            elif (
+                input_snapshot.asset_version_id is not None
+                and version.version_id != input_snapshot.asset_version_id
+            ):
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "asset_version_mismatch",
+                )
+            elif version.sha256 != input_snapshot.asset_checksum:
+                delivered = _canvas_delivery_failure(
+                    input_snapshot,
+                    "asset_checksum_mismatch",
+                )
+            else:
+                delivered = self._deliver_canvas_version(
+                    input_snapshot,
+                    version,
+                    delivery_modes,
+                )
             if isinstance(delivered, V2ReferenceInputDeliveryFailure):
                 (failures if input_snapshot.required else optional_omissions).append(delivered)
                 continue
+            if delivered.provider_input_type == "data_url" and delivered.byte_count:
+                next_total = total_data_url_bytes + delivered.byte_count
+                if next_total > self._settings.v2_provider_reference_total_data_url_bytes:
+                    failure = _canvas_delivery_failure(
+                        input_snapshot,
+                        "image_data_url_total_too_large",
+                    )
+                    (failures if input_snapshot.required else optional_omissions).append(failure)
+                    continue
+                total_data_url_bytes = next_total
             references.append(delivered)
         return V2DeliveredReferenceSet(
             requested_reference_asset_ids=[item.asset_id for item in inputs],
@@ -361,7 +441,7 @@ class V2ProviderReferenceInputDeliveryService:
         self,
         input_snapshot: ResolvedMediaInputSnapshotV2,
         version: AssetVersionMetadataV2,
-        delivery_modes: set[str],
+        delivery_modes: frozenset[str],
     ) -> V2DeliveredProviderReference | V2ReferenceInputDeliveryFailure:
         metadata = version.metadata if isinstance(version.metadata, dict) else {}
         provider_file_id = _first_mapping_string(
@@ -714,6 +794,7 @@ def _canvas_delivery_failure(
         reason=reason,
         workflow_id=None,
         node_id=input_snapshot.source_node_id,
+        version_id=input_snapshot.asset_version_id,
     )
 
 
@@ -817,6 +898,67 @@ def _media_type_from_mime_type(mime_type: str) -> Literal["image", "video", "aud
     if normalized.startswith("audio/"):
         return "audio"
     return "text"
+
+
+def _canvas_delivery_modes(
+    context: ProviderReferenceDeliveryContextV1,
+) -> frozenset[str]:
+    if context.provider_protocol == "fake":
+        if context.target_capability == "image":
+            return CANVAS_PROTOCOL_REFERENCE_DELIVERY_MODES["ark_image"]
+        if context.target_capability == "video":
+            return CANVAS_PROTOCOL_REFERENCE_DELIVERY_MODES["ark_video"]
+        return frozenset()
+    modes = CANVAS_PROTOCOL_REFERENCE_DELIVERY_MODES.get(context.provider_protocol)
+    if modes is None:
+        raise _canvas_context_error(
+            "Frozen provider protocol does not support Canvas media references.",
+            details={"provider_protocol": context.provider_protocol},
+        )
+    return modes
+
+
+def _validate_canvas_input_capabilities(
+    context: ProviderReferenceDeliveryContextV1,
+    inputs: tuple[ResolvedMediaInputSnapshotV2, ...],
+) -> None:
+    counts: dict[str, int] = {}
+    accepted = set(context.accepted_input_types)
+    for item in inputs:
+        if item.media_type not in accepted:
+            raise V2PersistenceError(
+                "provider_inputs_unsupported",
+                "A bound media type is not supported by the frozen model capability.",
+                stage="provider_reference_delivery",
+                details={"media_type": item.media_type},
+            )
+        counts[item.media_type] = counts.get(item.media_type, 0) + 1
+    for media_type, count in counts.items():
+        limit = context.reference_limits.get(media_type, 0)
+        if count > limit:
+            raise V2PersistenceError(
+                "canvas_reference_limit_exceeded",
+                "Bound media exceeds the frozen model reference limit.",
+                stage="provider_reference_delivery",
+                details={
+                    "media_type": media_type,
+                    "count": count,
+                    "limit": limit,
+                },
+            )
+
+
+def _canvas_context_error(
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> V2PersistenceError:
+    return V2PersistenceError(
+        "provider_inputs_unsupported",
+        message,
+        stage="provider_reference_delivery",
+        details=details,
+    )
 
 
 def _delivery_modes_for_provider(provider: str) -> set[str]:

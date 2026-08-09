@@ -329,7 +329,6 @@ class V2ExpertBriefPlanner:
         def spec(
             *,
             operation: str,
-            agent_name: str,
             output_model: type[Any],
             context: Any,
             fallback_output: Any,
@@ -337,14 +336,14 @@ class V2ExpertBriefPlanner:
             return StructuredGenerationSpec(
                 stage_name=operation,
                 operation=operation,
-                agent_name=agent_name,  # type: ignore[arg-type]
+                agent_name="video_agent",
                 contract_name=output_model.__name__,
                 model_id=self._settings.llm_creative_model,
                 system_prompt="",
                 input_payload=payloads[operation],
                 output_model=output_model,
                 invocation=planning_session.child(
-                    agent_name=agent_name,  # type: ignore[arg-type]
+                    agent_name="video_agent",
                     operation=operation,
                     logical_key=operation,
                 ),
@@ -363,14 +362,12 @@ class V2ExpertBriefPlanner:
         return {
             "product_expert_brief": spec(
                 operation="product_expert_brief",
-                agent_name="product_designer",
                 output_model=V2ProductExpertPlan,
                 context=product_context,
                 fallback_output=V2ProductExpertPlan(product_briefs=deterministic.product_briefs),
             ),
             "character_expert_brief": spec(
                 operation="character_expert_brief",
-                agent_name="character_designer",
                 output_model=V2CharacterExpertPlan,
                 context=character_context,
                 fallback_output=V2CharacterExpertPlan(
@@ -379,14 +376,12 @@ class V2ExpertBriefPlanner:
             ),
             "scene_expert_brief": spec(
                 operation="scene_expert_brief",
-                agent_name="scene_designer",
                 output_model=V2SceneExpertPlan,
                 context=scene_context,
                 fallback_output=V2SceneExpertPlan(scene_briefs=deterministic.scene_briefs),
             ),
             "bgm_expert_brief": spec(
                 operation="bgm_expert_brief",
-                agent_name="bgm_director",
                 output_model=V2BgmExpertPlan,
                 context=bgm_context,
                 fallback_output=V2BgmExpertPlan(bgm_brief=deterministic.bgm_brief),

@@ -254,6 +254,13 @@ def _provider_download_failure(exc: Exception) -> dict[str, Any]:
     }
 
 
+def _image_file_identity(path: Path) -> tuple[str, str]:
+    header = path.read_bytes()[:16]
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", ".jpg"
+    return "image/png", ".png"
+
+
 class RealMediaProvider:
     mode = "real"
 
@@ -511,7 +518,9 @@ class RealMediaProvider:
         body, wire_audit = serialize_volcengine_image_generation_request(
             model=model,
             canonical_prompt=prompt,
-            size=_normalize_image_generation_size(self._settings.image_generation_size),
+            size=_normalize_image_generation_size(
+                request.get("size") or self._settings.image_generation_size
+            ),
             references=reference_assets,
             required_reference_asset_ids=list(request.get("submitted_reference_asset_ids") or []),
             response_format="url",
@@ -544,6 +553,17 @@ class RealMediaProvider:
                 image_base64 or "",
                 relative_image_path,
             )
+        local_path = download_result.get("local_path")
+        mime_type = "image/png"
+        if isinstance(local_path, str) and local_path:
+            source_path = self._settings.media_data_dir / local_path
+            mime_type, suffix = _image_file_identity(source_path)
+            if source_path.suffix.lower() != suffix:
+                destination = source_path.with_suffix(suffix)
+                source_path.replace(destination)
+                local_path = destination.relative_to(self._settings.media_data_dir).as_posix()
+                download_result["local_path"] = local_path
+        submitted_size = str(body["size"])
         asset = {
             "provider": request.get("provider") or "volcengine-v2-canonical-image-generation",
             "model": model,
@@ -561,8 +581,8 @@ class RealMediaProvider:
             "prompt": prompt,
             "url": image_url,
             "remote_url": image_url,
-            "local_path": download_result.get("local_path"),
-            "mime_type": "image/png",
+            "local_path": local_path,
+            "mime_type": mime_type,
             "status": response.get("status", "ready"),
             "download_status": download_result.get("download_status"),
             "download_error": download_result.get("download_error"),
@@ -570,6 +590,10 @@ class RealMediaProvider:
             "input_assets": _v2_sanitized_reference_assets(reference_assets),
             "prompt_audit": request.get("prompt_audit"),
             "reference_wire_audit": submitted_wire_audit,
+            "submitted_media_facts": {
+                "size": submitted_size,
+                "aspect_ratio": request.get("aspect_ratio"),
+            },
             "provider_payload": {
                 "provider_prompt": prompt,
                 "reference_asset_ids": list(request.get("submitted_reference_asset_ids") or []),

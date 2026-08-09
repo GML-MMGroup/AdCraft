@@ -15,18 +15,18 @@ const request: AgentRunRequest = {
   request_id: "req_test",
   contract_digest: loadRuntimeManifest().contract_digest,
   context_snapshot_id: "context_test",
-  agent_name: "director",
-  operation: "conversation_turn",
+  agent_name: "video_agent",
+  operation: "workflow_conversation",
   deadline_at: new Date(Date.now() + 5 * 60_000).toISOString(),
-  model_policy_id: "director.conversation_turn.v1",
+  model_policy_id: "video_agent.workflow_conversation.v1",
   context: {
-    operation: "conversation_turn",
+    operation: "workflow_conversation",
     user_input: "Create a product launch workflow.",
   },
   policy: {
     max_turns: 4,
     max_tool_calls: 4,
-    max_handoffs: 1,
+    max_handoffs: 0,
     timeout_seconds: 2,
     max_input_bytes: 4096,
     max_output_bytes: 4096,
@@ -389,7 +389,7 @@ describe("agent runtime server", () => {
           protocol_version: "1",
           seq: 0,
           run_id: "arun_test",
-          agent_name: "director",
+          agent_name: "video_agent",
           event_type: "output_delta",
           created_at: new Date().toISOString(),
           payload: { text: "x".repeat(1000) },
@@ -419,7 +419,7 @@ describe("agent runtime server", () => {
           protocol_version: "1",
           seq: 0,
           run_id: "arun_event_budget",
-          agent_name: "director",
+          agent_name: "video_agent",
           event_type: "output_delta",
           created_at: new Date().toISOString(),
           payload: { text: "x".repeat(1000) },
@@ -543,8 +543,8 @@ describe("agent runtime server", () => {
         .map(([entry]) => String(entry))
         .find((entry) => entry.includes("agent_structured_submission_rejected"));
       expect(diagnostic).toContain("arun_diagnostic");
-      expect(diagnostic).toContain("director");
-      expect(diagnostic).toContain("conversation_turn");
+      expect(diagnostic).toContain("video_agent");
+      expect(diagnostic).toContain("workflow_conversation");
       expect(diagnostic).toContain("agent_structured_output_invalid");
       expect(diagnostic).toContain("structured_submission");
       expect(diagnostic).not.toContain("Private prompt");

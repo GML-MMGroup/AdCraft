@@ -11,11 +11,65 @@ import {
   promptInputForRequest,
   promptAuditForRequest,
   structuredToolParameters,
+  thinkingFormatForCredential,
   toolChoiceForRequest,
   toolsForRequest,
 } from "../src/pi-model-adapter.js";
 
 describe("Pi model adapter", () => {
+  it("uses SiliconFlow's enable_thinking compatibility field", () => {
+    expect(
+      thinkingFormatForCredential({
+        protocol_version: "1",
+        provider: "siliconflow",
+        model_ref: "siliconflow:zai-org/GLM-5.2",
+        model_id: "zai-org/GLM-5.2",
+        model_policy_id: "video_agent.materialize_product.v1",
+        base_url: "https://api.siliconflow.cn/v1",
+        api_key: "private-key",
+        supports_tool_calls: true,
+        supports_strict_structured_output: true,
+        supports_streaming: true,
+        supports_streamed_tool_calls: false,
+        supports_reasoning_controls: false,
+      }),
+    ).toBe("qwen");
+  });
+
+  it("bounds SiliconFlow reasoning before a structured tool call", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      arkToolCallResponse({ assistant_message: "Accepted." }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await collectStream(
+        modelStreamForCredential(
+          {
+            ...arkModel(),
+            id: "zai-org/GLM-5.2",
+            provider: "siliconflow",
+            baseUrl: "https://api.siliconflow.cn/v1",
+            reasoning: true,
+            compat: {
+              ...arkModel().compat,
+              thinkingFormat: "qwen",
+            },
+          },
+          arkContext(),
+          { apiKey: "test-key" },
+          siliconFlowCredential(),
+        ),
+      );
+
+      const request = fetchMock.mock.calls[0]?.[1];
+      const payload = JSON.parse(String(request?.body)) as Record<string, unknown>;
+      expect(payload.enable_thinking).toBe(false);
+      expect(payload.thinking_budget).toBe(128);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("buffers structured tool events when streamed tool calls are unreliable", async () => {
     vi.stubGlobal(
       "fetch",
@@ -33,7 +87,7 @@ describe("Pi model adapter", () => {
           provider: "OpenAI Compatible",
           model_ref: "volcengine_ark:configured-model",
           model_id: "configured-model",
-          model_policy_id: "director.conversation_turn.v1",
+          model_policy_id: "video_agent.workflow_conversation.v1",
           base_url: "https://llm.example/v1",
           api_key: "private-key",
           supports_tool_calls: true,
@@ -56,7 +110,6 @@ describe("Pi model adapter", () => {
   it("reassembles Ark fragmented structured tool calls", async () => {
     const submission = {
       assistant_message: "I will prepare the requested canvas draft.",
-      specialist_handoff: "script_writer",
       proposal: null,
       command_plan: null,
       auto_continue_requested: false,
@@ -95,10 +148,10 @@ describe("Pi model adapter", () => {
       request_id: "req_replan",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_replan",
-      agent_name: "director",
+      agent_name: "video_agent",
       operation: "command_replan",
       deadline_at: "2026-07-29T12:10:00Z",
-      model_policy_id: "director.command_replan.v1",
+      model_policy_id: "video_agent.command_replan.v1",
       contract_name: "AgentCommandPlanDraftV2",
       context: {
         context_kind: "agent_command_replan",
@@ -119,31 +172,26 @@ describe("Pi model adapter", () => {
     expect(prompt).toContain('"conflict_code":"workflow_revision_conflict"');
   });
 
-  it("includes validated typed context in progressive guidance prompts", () => {
+  it("includes validated lean context in turn-intent prompts", () => {
     const request = {
       protocol_version: "1",
       run_id: "arun_guidance_context",
       request_id: "req_guidance_context",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_guidance",
-      agent_name: "director",
-      operation: "decide_next_guidance_step",
+      agent_name: "video_agent",
+      operation: "decide_turn_intent",
       deadline_at: "2026-07-31T12:10:00Z",
-      model_policy_id: "director.decide_next_guidance_step.v1",
-      contract_name: "NextGuidanceDecisionV2",
+      model_policy_id: "video_agent.decide_turn_intent.v1",
+      contract_name: "TurnIntentDecisionV1",
       context: {
-        context_kind: "director_guidance",
         workflow_id: "adwf_v2_context",
         workflow_revision: 2,
         conversation_id: "conversation_context",
         user_input: "Create a complete smartphone advertisement.",
-        conversation_summary: "The user wants one complete advertisement.",
-        element_decisions: [],
-        nodes: [],
-        bindings: [],
+        session_exists: false,
         mentioned_node_ids: [],
-        image_references: [],
-        model_capabilities: {},
+        mentioned_image_asset_ids: [],
       },
       contract_schema: {
         type: "object",
@@ -154,9 +202,86 @@ describe("Pi model adapter", () => {
     const prompt = promptInputForRequest(request);
 
     expect(prompt).toContain("Create a complete smartphone advertisement.");
-    expect(prompt).toContain('"context_kind":"director_guidance"');
-    expect(prompt).toContain('"conversation_summary"');
+    expect(prompt).toContain('"session_exists":false');
+    expect(prompt).not.toContain("topic_ownership");
     expect(prompt).not.toContain("contract_schema");
+  });
+
+  it("uses the creative goal as the capability materialization request", () => {
+    const request = {
+      protocol_version: "1",
+      run_id: "arun_materialize_product",
+      request_id: "req_materialize_product",
+      contract_digest: "a".repeat(64),
+      context_snapshot_id: "context_materialize_product",
+      agent_name: "video_agent",
+      operation: "materialize_product",
+      deadline_at: "2026-08-08T12:10:00Z",
+      model_policy_id: "video_agent.materialize_product.v1",
+      contract_name: "ProductMaterializationResultV1",
+      context: {
+        context_kind: "capability_materialization",
+        workflow_id: "adwf_v2_materialization",
+        conversation_id: "conversation_materialization",
+        capability_id: "product_design",
+        selected_option: {
+          option_id: "option_product_one",
+          title: "Refreshing ritual",
+          public_summary: "Present the bottled tea as a crisp daily reset.",
+          key_decisions: ["Keep the bottle label legible."],
+        },
+        creative_goal: "Create a concise bottled-tea advertisement.",
+      },
+    } satisfies AgentRunRequest;
+
+    const prompt = promptInputForRequest(request);
+
+    expect(prompt).toContain(
+      "User request:\nCreate a concise bottled-tea advertisement.",
+    );
+    expect(prompt).toContain('"context_kind":"capability_materialization"');
+    expect(prompt).toContain('"option_id":"option_product_one"');
+  });
+
+  it("uses direct video parameter sources as the compilation request", () => {
+    const request = {
+      protocol_version: "1",
+      run_id: "arun_video_parameters",
+      request_id: "req_video_parameters",
+      contract_digest: "a".repeat(64),
+      context_snapshot_id: "context_video_parameters",
+      agent_name: "video_agent",
+      operation: "compile_video_parameters",
+      deadline_at: "2026-08-08T12:10:00Z",
+      model_policy_id: "video_agent.compile_video_parameters.v1",
+      contract_name: "VideoParameterIntentV2",
+      context: {
+        context_kind: "video_parameter_intent",
+        workflow_id: "adwf_v2_parameters",
+        target_node_id: "node_video",
+        target_node_revision: 1,
+        selected_model_ref: "volcengine_ark:seedance",
+        sources: [
+          {
+            source_kind: "node_prompt",
+            source_node_id: "node_video",
+            source_revision: 1,
+            text: "Render for five seconds at 16:9.",
+          },
+        ],
+        capability: {
+          supported_parameters: ["duration_seconds", "aspect_ratio"],
+          supported_aspect_ratios: ["16:9"],
+          supports_native_audio: true,
+          capability_revision: 1,
+        },
+      },
+    } satisfies AgentRunRequest;
+
+    const prompt = promptInputForRequest(request);
+
+    expect(prompt).toContain("User request:\nRender for five seconds at 16:9.");
+    expect(prompt).toContain('"context_kind":"video_parameter_intent"');
   });
 
   it("captures asynchronous event projection failures without an unhandled rejection", async () => {
@@ -190,21 +315,27 @@ describe("Pi model adapter", () => {
     });
   });
 
-  it("limits structured-only specialist calls to result submission", () => {
+  it("limits every operation to structured result submission", () => {
     const request = {
       protocol_version: "1",
       run_id: "arun_targeted",
       request_id: "req_targeted",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_targeted",
-      agent_name: "character_designer",
-      operation: "materialize_draft",
+      agent_name: "video_agent",
+      operation: "propose_character_options",
       deadline_at: "2026-07-24T12:10:00Z",
-      model_policy_id: "character_designer.materialize_draft.v1",
-      contract_name: "AgentActionEnvelopeV2",
+      model_policy_id: "video_agent.propose_character_options.v1",
+      contract_name: "CharacterProposalResultV1",
       context: {
-        operation: "materialize_draft",
-        user_input: "Refine only the selected Character.",
+        context_kind: "capability_operation",
+        workflow_id: "adwf_v2_context",
+        conversation_id: "conversation_context",
+        capability_id: "character_design",
+        objective: "Create Character options.",
+        context_snapshot_id: "snapshot_character",
+        context_snapshot_digest: "b".repeat(64),
+        approved_reference_ids: [],
       },
       audit_metadata: {
         tool_mode: "structured_only",
@@ -216,15 +347,14 @@ describe("Pi model adapter", () => {
       type: "function",
       function: { name: "submit_structured_result" },
     });
-    expect(toolsForRequest({ ...request, audit_metadata: {} })).toEqual([
-      "submit_structured_result",
-    ]);
+    const defaultRequest = { ...request, audit_metadata: {} };
+    expect(toolsForRequest(defaultRequest)).toEqual(["submit_structured_result"]);
     expect(
-      toolChoiceForRequest({
-        ...request,
-        audit_metadata: {},
-      }),
-    ).toBeUndefined();
+      toolChoiceForRequest(defaultRequest),
+    ).toEqual({
+      type: "function",
+      function: { name: "submit_structured_result" },
+    });
   });
 
   it("uses the requested contract schema for structured submission", () => {
@@ -234,13 +364,13 @@ describe("Pi model adapter", () => {
       request_id: "req_contract",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_contract",
-      agent_name: "director",
-      operation: "conversation_turn",
+      agent_name: "video_agent",
+      operation: "decide_turn_intent",
       deadline_at: "2026-07-24T12:10:00Z",
-      model_policy_id: "director.conversation_turn.v1",
-      contract_name: "AgentActionEnvelopeV2",
+      model_policy_id: "video_agent.decide_turn_intent.v1",
+      contract_name: "TurnIntentDecisionV1",
       context: {
-        operation: "conversation_turn",
+        operation: "decide_turn_intent",
         user_input: "Create an ad.",
         contract_schema: {
           type: "object",
@@ -269,19 +399,24 @@ describe("Pi model adapter", () => {
       request_id: "req_audit",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_audit",
-      agent_name: "director",
-      operation: "conversation_turn",
+      agent_name: "video_agent",
+      operation: "decide_turn_intent",
       deadline_at: "2026-07-24T12:10:00Z",
-      model_policy_id: "director.conversation_turn.v1",
-      contract_name: "AgentActionEnvelopeV2",
+      model_policy_id: "video_agent.decide_turn_intent.v1",
+      contract_name: "TurnIntentDecisionV1",
       context: {
-        operation: "conversation_turn",
+        workflow_id: "adwf_v2_context",
+        workflow_revision: 1,
+        conversation_id: "conversation_context",
         user_input: "Create an ad.",
+        session_exists: false,
+        mentioned_node_ids: [],
+        mentioned_image_asset_ids: [],
       },
     } satisfies AgentRunRequest;
 
     expect(promptAuditForRequest(request)).toMatchObject({
-      prompt_id: "adcraft.director.conversation_turn.v1",
+      prompt_id: "adcraft.video_agent.decide_turn_intent.v1",
       prompt_version: "1",
       prompt_digest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
@@ -294,14 +429,20 @@ describe("Pi model adapter", () => {
       request_id: "req_model_audit",
       contract_digest: "a".repeat(64),
       context_snapshot_id: "context_model_audit",
-      agent_name: "character_designer",
-      operation: "propose_concepts",
+      agent_name: "video_agent",
+      operation: "propose_character_options",
       deadline_at: "2026-07-24T12:10:00Z",
-      model_policy_id: "character_designer.propose_concepts.v1",
-      contract_name: "ConceptProposalDraftV2",
+      model_policy_id: "video_agent.propose_character_options.v1",
+      contract_name: "CharacterProposalResultV1",
       context: {
-        operation: "propose_concepts",
-        user_input: "Create a Character brief.",
+        context_kind: "capability_operation",
+        workflow_id: "adwf_v2_context",
+        conversation_id: "conversation_context",
+        capability_id: "character_design",
+        objective: "Create a Character brief.",
+        context_snapshot_id: "snapshot_character",
+        context_snapshot_digest: "b".repeat(64),
+        approved_reference_ids: [],
       },
     } satisfies AgentRunRequest;
 
@@ -310,7 +451,7 @@ describe("Pi model adapter", () => {
         provider: "OpenAI Compatible",
         model_ref: "volcengine_ark:actual-character-model",
         model_id: "actual-character-model",
-        model_policy_id: "character_designer.propose_concepts.v1",
+        model_policy_id: "video_agent.propose_character_options.v1",
         base_url: "https://llm.example/v1",
         api_key: "private-key",
         supports_tool_calls: true,
@@ -320,7 +461,7 @@ describe("Pi model adapter", () => {
         supports_reasoning_controls: false,
       }, [
         {
-          skill_id: "character_spec_extraction",
+          skill_id: "video_agent_character_design",
           version: "1",
           sha256: "a".repeat(64),
           content: "private skill content",
@@ -330,13 +471,13 @@ describe("Pi model adapter", () => {
     expect(audit).toMatchObject({
       provider: "OpenAI Compatible",
       model_id: "actual-character-model",
-      model_policy_id: "character_designer.propose_concepts.v1",
-      prompt_id: "adcraft.character_designer.propose_concepts.v1",
+      model_policy_id: "video_agent.propose_character_options.v1",
+      prompt_id: "adcraft.video_agent.propose_character_options.v1",
       structured_attempts: 2,
       repair_stage: "repair",
       skills: [
         {
-          skill_id: "character_spec_extraction",
+          skill_id: "video_agent_character_design",
           version: "1",
           sha256: "a".repeat(64),
         },
@@ -370,6 +511,23 @@ function arkModel(): Model<"openai-completions"> {
   };
 }
 
+function siliconFlowCredential() {
+  return {
+    protocol_version: "1" as const,
+    provider: "siliconflow",
+    model_ref: "siliconflow:zai-org/GLM-5.2",
+    model_id: "zai-org/GLM-5.2",
+    model_policy_id: "video_agent.materialize_character.v1",
+    base_url: "https://api.siliconflow.cn/v1",
+    api_key: "private-key",
+    supports_tool_calls: true,
+    supports_strict_structured_output: true,
+    supports_streaming: true,
+    supports_streamed_tool_calls: false,
+    supports_reasoning_controls: false,
+  };
+}
+
 function arkContext(): Context {
   return {
     systemPrompt: "Return one complete AgentActionEnvelopeV2 through the required tool.",
@@ -390,7 +548,6 @@ function arkContext(): Context {
           required: ["assistant_message"],
           properties: {
             assistant_message: { type: "string" },
-            specialist_handoff: { type: ["string", "null"] },
             proposal: { type: ["object", "null"] },
             command_plan: { type: ["object", "null"] },
             auto_continue_requested: { type: "boolean" },

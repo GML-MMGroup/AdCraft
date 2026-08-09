@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 
 from app.core.config import PROJECT_ROOT, Settings
 from app.persistence.provider_model_repository import ProviderModelRepository
@@ -12,6 +13,9 @@ from app.services.provider_credentials import (
     ProviderCredentialRegistry,
 )
 from app.services.provider_model_catalog import ProviderModelCatalogService
+
+
+_BOOTSTRAP_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -28,6 +32,10 @@ class ProviderModelBootstrapService:
         self._repository = repository
 
     def bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
+        with _BOOTSTRAP_LOCK:
+            return self._bootstrap(now=now)
+
+    def _bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
         registry = ProviderCredentialRegistry()
         ProviderConnectionService(
             registry=registry,

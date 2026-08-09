@@ -51,7 +51,7 @@ class V2QuickMediaAgentService:
                 StructuredGenerationSpec(
                     stage_name="quick_media_prompt",
                     operation=operation,
-                    agent_name="quick_media_agent",
+                    agent_name="video_agent",
                     contract_name="V2QuickMediaPromptPlan",
                     model_id=self._settings.llm_creative_model,
                     system_prompt="",
@@ -93,7 +93,7 @@ def _fake_plan(media_type: str, user_input: str) -> V2QuickMediaPromptPlan:
             f"Create a polished standalone {media_type} asset. Creative direction: {user_input}"
         ),
         negative_prompt="watermark, unintended text, low quality",
-        agent_name="quick_media_agent",
+        agent_name="video_agent",
         operation=f"free_{media_type}",
         quality_notes=["Deterministic Quick Media fake plan."],
     )

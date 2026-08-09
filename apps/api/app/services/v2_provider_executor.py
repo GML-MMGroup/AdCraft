@@ -800,7 +800,12 @@ class V2ProviderExecutor:
                         "reference_assets": reference_assets,
                         "submitted_reference_asset_ids": reference_asset_ids,
                     }
-                    for field in ("provider_id", "provider_model_id"):
+                    for field in (
+                        "provider_id",
+                        "provider_model_id",
+                        "size",
+                        "aspect_ratio",
+                    ):
                         if isinstance(value := provider_payload.get(field), str) and value.strip():
                             image_request[field] = value.strip()
                     output = provider.generate_v2_canonical_image(image_request, workflow_id)
@@ -2686,6 +2691,7 @@ def _provider_asset_metadata(
         "channels",
         "progress",
         "provider_status",
+        "submitted_media_facts",
     ):
         value = provider_asset.get(key) if isinstance(provider_asset, dict) else None
         if value is not None:

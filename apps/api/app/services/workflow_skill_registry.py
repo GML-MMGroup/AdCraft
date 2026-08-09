@@ -23,63 +23,26 @@ CORE_AGENT_BY_NODE: dict[str, str] = {
 
 SKILL_IDS_BY_NODE: dict[str, tuple[str, ...]] = {
     "director": (
-        "product_info_extraction",
-        "selling_point_extraction",
-        "audience_analysis",
-        "campaign_appeal_generation",
-        "creative_idea_generation",
+        "video_agent_product_design",
+        "video_agent_world_setting",
+        "video_agent_script_authoring",
     ),
-    "script": (
-        "creative_idea_generation",
-        "short_ad_script_structure",
-        "dialogue_copy_generation",
-    ),
-    "character-generation": (
-        "character_spec_extraction",
-        "character_prompt_expansion",
-        "character_turnaround_prompt",
-    ),
-    "scene-generation": (
-        "scene_spec_extraction",
-        "pure_scene_prompt_expansion",
-        "multi_view_scene_prompt",
-    ),
-    "storyboard": (
-        "storyboard_beat_extraction",
-        "storyboard_image_prompt_generation",
-        "storyboard_video_prompt_generation",
-        "visual_continuity_check",
-    ),
-    "bgm": (
-        "bgm_prompt_generation",
-        "mood_and_duration_matching",
-    ),
-    "storyboard-video-generation": (
-        "segment_generation_planning",
-        "reference_asset_selection",
-    ),
+    "script": ("video_agent_script_authoring",),
+    "character-generation": ("video_agent_character_design",),
+    "scene-generation": ("video_agent_scene_design",),
+    "storyboard": ("video_agent_storyboard_design",),
+    "bgm": ("video_agent_bgm_direction",),
+    "storyboard-video-generation": ("video_agent_video_direction",),
     "final-composition": (),
     # Legacy orchestrator compatibility. These ids are not exposed in new graphs or catalog.
     "requirements-analysis": (
-        "product_info_extraction",
-        "selling_point_extraction",
-        "audience_analysis",
-        "campaign_appeal_generation",
+        "video_agent_product_design",
+        "video_agent_world_setting",
     ),
-    "product-design": (
-        "product_info_extraction",
-        "selling_point_extraction",
-    ),
-    "creative-direction": ("creative_idea_generation",),
-    "character-design": (
-        "character_spec_extraction",
-        "character_prompt_expansion",
-    ),
-    "scene-design": (
-        "scene_spec_extraction",
-        "pure_scene_prompt_expansion",
-        "multi_view_scene_prompt",
-    ),
+    "product-design": ("video_agent_product_design",),
+    "creative-direction": ("video_agent_script_authoring",),
+    "character-design": ("video_agent_character_design",),
+    "scene-design": ("video_agent_scene_design",),
 }
 
 

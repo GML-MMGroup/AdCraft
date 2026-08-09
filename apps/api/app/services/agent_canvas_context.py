@@ -83,7 +83,7 @@ class AgentMentionResolver:
                     asset_id=resolved_asset.asset_id,
                     owner_node_id=owner.node_id if owner is not None else None,
                     owner_semantic_role=(owner.semantic_role if owner is not None else None),
-                    specialist_name=_specialist_for_image_target(owner),
+                    capability_id=_capability_for_image_target(owner),
                     display_name=resolved_asset.display_name,
                     checksum=resolved_asset.checksum,
                 )
@@ -200,13 +200,13 @@ def _context_error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_local_context_assembler")
 
 
-def _specialist_for_image_target(node) -> str:
+def _capability_for_image_target(node) -> str:
     if node is None:
-        return "quick_media_agent"
+        return "quick_media"
     return {
-        "character": "character_designer",
-        "scene": "scene_designer",
-        "storyboard_sequence": "storyboard_artist",
-        "prop": "prop_designer",
-        "product": "product_designer",
-    }.get(node.semantic_role, "quick_media_agent")
+        "character": "character_design",
+        "scene": "scene_design",
+        "storyboard_sequence": "storyboard_design",
+        "prop": "prop_design",
+        "product": "product_design",
+    }.get(node.semantic_role, "quick_media")

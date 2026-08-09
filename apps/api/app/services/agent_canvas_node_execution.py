@@ -40,6 +40,7 @@ from app.schemas.seedance_inputs import (
     SeedanceInputManifestAuditV1,
     SeedanceInputManifestV1,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_run_envelope import agent_run_envelope_fields
@@ -76,6 +77,7 @@ class NodeExecutionContext:
     delivered_references: tuple[V2DeliveredProviderReference, ...] = ()
     input_manifest: ResolvedNodeInputManifestV2 | None = None
     optional_input_omissions: tuple[dict[str, str], ...] = ()
+    world_setting: WorldSettingContextEnvelopeV2 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,12 +157,31 @@ def generated_asset_publication_metadata(
             if context.effective_parameters is not None
             else context.node.parameters
         ),
+        "parameter_compilation_snapshot_id": (
+            context.effective_parameters.parameter_compilation_snapshot_id
+            if context.effective_parameters is not None
+            else None
+        ),
         "normalizations": (
-            list(context.effective_parameters.normalizations)
+            [
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                for item in context.effective_parameters.normalizations
+            ]
             if context.effective_parameters is not None
             else []
         ),
     }
+    if context.world_setting is not None:
+        metadata["world_setting_context"] = {
+            "source_node_id": context.world_setting.source_node_id,
+            "source_node_revision": context.world_setting.source_node_revision,
+            "source_content_digest": context.world_setting.source_content_digest,
+            "source_core_digest": context.world_setting.source_core_digest,
+            "target_audience": context.world_setting.target_audience,
+            "compiler_id": context.world_setting.compiler_id,
+            "compiler_digest": context.world_setting.compiler_digest,
+            "context_digest": context.world_setting.context_digest,
+        }
     audit = context.seedance_input_audit
     if audit is not None:
         metadata.update(
@@ -199,6 +220,22 @@ def generated_asset_publication_metadata(
         }
         if audio_intent:
             metadata["audio_intent"] = audio_intent
+    if context.node.creative_role == "character":
+        metadata.update(
+            {
+                "character_asset_kind": context.node.structured_content.get("character_asset_kind"),
+                "reference_rendering_mode": context.node.structured_content.get(
+                    "reference_rendering_mode"
+                ),
+                "negative_boundary_digest": (
+                    hashlib.sha256(
+                        context.compiled_prompt.negative_prompt.encode("utf-8")
+                    ).hexdigest()
+                    if context.compiled_prompt is not None
+                    else None
+                ),
+            }
+        )
     return {key: value for key, value in metadata.items() if value is not None}
 
 
@@ -236,6 +273,7 @@ class ScriptNodeExecutor:
             operation="execute_canvas_script",
             user_input=_saved_prompt(context),
             workflow_id=context.node.workflow_id,
+            world_setting=context.world_setting,
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
@@ -243,10 +281,10 @@ class ScriptNodeExecutor:
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
             **agent_run_envelope_fields(run_context),
-            agent_name="script_writer",
+            agent_name="video_agent",
             operation="execute_canvas_script",
             deadline_at=datetime.now(timezone.utc) + timedelta(seconds=self._timeout_seconds),
-            model_policy_id="script_writer.execute_canvas_script.v1",
+            model_policy_id="video_agent.execute_canvas_script.v1",
             model_ref=_frozen_text_model_ref(context),
             context=run_context,
             policy=AgentRunPolicy(
@@ -264,7 +302,7 @@ class ScriptNodeExecutor:
                 "execution_id": context.execution_id,
                 "node_id": context.node.node_id,
                 "node_revision": context.node.revision,
-                "agent_name": "script_writer",
+                "agent_name": "video_agent",
                 "operation": "execute_canvas_script",
             },
             model_ref=context.model_resolution.model_ref,
@@ -291,6 +329,7 @@ class TextNodeExecutor:
             operation="execute_canvas_text",
             user_input=_saved_prompt(context),
             workflow_id=context.node.workflow_id,
+            world_setting=context.world_setting,
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
@@ -298,10 +337,10 @@ class TextNodeExecutor:
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
             **agent_run_envelope_fields(run_context),
-            agent_name="quick_media_agent",
+            agent_name="video_agent",
             operation="execute_canvas_text",
             deadline_at=datetime.now(timezone.utc) + timedelta(seconds=self._timeout_seconds),
-            model_policy_id="quick_media_agent.execute_canvas_text.v1",
+            model_policy_id="video_agent.execute_canvas_text.v1",
             model_ref=_frozen_text_model_ref(context),
             context=run_context,
             policy=AgentRunPolicy(
@@ -319,7 +358,7 @@ class TextNodeExecutor:
                 "execution_id": context.execution_id,
                 "node_id": context.node.node_id,
                 "node_revision": context.node.revision,
-                "agent_name": "quick_media_agent",
+                "agent_name": "video_agent",
                 "operation": "execute_canvas_text",
             },
             model_ref=context.model_resolution.model_ref,
@@ -360,6 +399,7 @@ class MediaNodeExecutor:
 
         if context.node.node_type not in {"image", "video", "audio"}:
             return context
+        _require_character_identity_master_input(context)
         if context.node.node_type == "video" and context.seedance_manifest is not None:
             return context
         if context.node.node_type != "video" and context.delivered_references:
@@ -369,15 +409,14 @@ class MediaNodeExecutor:
         )
         delivery = None
         if media_inputs:
+            if context.model_resolution is None:
+                raise _error(
+                    "model_resolution_missing",
+                    "Media reference delivery requires a frozen model resolution.",
+                )
             delivery = self._reference_delivery.deliver_canvas_inputs(
-                provider=_provider_delivery_id(context.node.node_type, context.provider_id),
+                model_resolution=context.model_resolution,
                 inputs=media_inputs,
-                target_media_type=context.node.node_type,
-                model_id=context.model_id,
-                capability_context={
-                    "provider_id": context.provider_id or "",
-                    "semantic_role": context.node.semantic_role,
-                },
             )
             try:
                 delivery.raise_for_canvas_failures()
@@ -917,16 +956,31 @@ def _delivery_failure_identity(
     }
 
 
-def _seedance_provider_id(provider_id: str | None) -> str:
-    return "volcengine-seedance" if provider_id in {None, "volcengine", "fake"} else provider_id
-
-
-def _provider_delivery_id(media_type: str, provider_id: str | None) -> str:
-    if media_type == "video":
-        return _seedance_provider_id(provider_id)
-    if media_type == "image" and provider_id in {None, "volcengine", "fake"}:
-        return "volcengine-seedream"
-    return provider_id or f"real_{media_type}_provider"
+def _require_character_identity_master_input(context: NodeExecutionContext) -> None:
+    if not (
+        context.node.node_type == "image"
+        and context.node.creative_role == "character"
+        and context.node.structured_content.get("character_asset_kind") == "turnaround"
+    ):
+        return
+    candidates = tuple(
+        item
+        for item in context.inputs
+        if isinstance(item, ResolvedMediaInputSnapshotV2)
+        and item.source_kind == "node_output"
+        and item.source_semantic_role == "character"
+        and item.media_type == "image"
+        and item.input_role == "image_reference"
+        and item.required
+        and item.binding_metadata.get("reference_purpose") == "identity_master"
+        and item.binding_metadata.get("semantic_reference_role") == "subject_reference"
+    )
+    if len(candidates) != 1:
+        raise _error(
+            "character_identity_master_binding_invalid",
+            "Character Turnaround requires exactly one Ready Character Main image Binding.",
+            details={"target_node_id": context.node.node_id},
+        )
 
 
 def _seedance_checksum(asset_id: str, version_id: str | None) -> str:

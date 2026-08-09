@@ -5,14 +5,31 @@ export type RunBudgetCode =
   | "agent_deadline_exceeded";
 
 const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
-  resolve_creation_mode: 180,
-  conversation_turn: 300,
-  decide_next_guidance_step: 300,
-  proposal_action: 300,
-  propose_concepts: 300,
-  revise_concepts: 300,
-  materialize_draft: 300,
-  direct_response: 300,
+  decide_turn_intent: 180,
+  decide_next_action: 180,
+  command_replan: 180,
+  compile_video_parameters: 180,
+  propose_world_setting_options: 300,
+  propose_product_options: 300,
+  propose_prop_options: 300,
+  propose_character_options: 300,
+  propose_scene_options: 300,
+  propose_script_options: 300,
+  propose_storyboard_options: 300,
+  propose_video_options: 300,
+  propose_bgm_options: 300,
+  materialize_world_setting: 420,
+  materialize_product: 420,
+  materialize_prop: 420,
+  materialize_character: 420,
+  materialize_scene: 420,
+  materialize_script: 600,
+  materialize_storyboard: 600,
+  materialize_video: 420,
+  materialize_bgm: 420,
+  materialize_quick_media: 420,
+  execute_canvas_text: 420,
+  execute_canvas_script: 600,
 };
 
 export function operationDeadlineSeconds(operation: string): number {
@@ -33,7 +50,18 @@ export class RunBudget {
   #eventBytes = 0;
 
   constructor(
-    private readonly policy: Required<AgentRunPolicy>,
+    private readonly policy: Required<
+      Pick<
+        AgentRunPolicy,
+        | "max_turns"
+        | "max_tool_calls"
+        | "max_handoffs"
+        | "timeout_seconds"
+        | "max_input_bytes"
+        | "max_output_bytes"
+        | "max_event_bytes"
+      >
+    >,
     private readonly deadlineEpochMs: number,
     private readonly now: () => number = Date.now,
   ) {}

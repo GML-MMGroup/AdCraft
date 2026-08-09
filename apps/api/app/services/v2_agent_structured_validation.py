@@ -127,7 +127,7 @@ def _semantic_violations(
     context: dict[str, Any],
     value: dict[str, Any],
 ) -> tuple[StructuredViolation, ...]:
-    if profile in {None, "schema_only_v1"}:
+    if profile in {None, "schema_only_v1", "video_parameter_intent_v1"}:
         return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)

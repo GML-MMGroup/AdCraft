@@ -1,72 +1,75 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import { videoAgentBasePolicy } from "../src/prompts/agents.js";
 import {
   getPromptDescriptor,
   listPromptDescriptors,
 } from "../src/prompts/registry.js";
-import { getAgentDefinition } from "../src/registry.js";
-import type { AgentRunRequest } from "../src/generated/agent-runtime.js";
+import { listOperationDescriptors } from "../src/registry.js";
 
-const expectedPlanningOperations = [
-  ["director", "command_replan", "AgentCommandPlanDraftV2"],
-  ["director", "conversation_turn", "AgentActionEnvelopeV2"],
-  ["director", "decide_next_guidance_step", "NextGuidanceDecisionV2"],
-  ["director", "proposal_action", "DelegatedProposalChoiceV2"],
-  ["director", "resolve_creation_mode", "CreationModeDecisionV2"],
-  ...[
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
-  ].flatMap((agentName) => [
-    [agentName, "propose_concepts", "ConceptProposalDraftV2"],
-    [agentName, "revise_concepts", "ConceptProposalDraftV2"],
-    [agentName, "materialize_draft", "SpecialistDraftV2"],
-    [agentName, "direct_response", "SpecialistDirectResponseV2"],
-  ]),
-] as const;
+describe("Video Agent prompt registry", () => {
+  it("registers one prompt for every closed operation and exact contract", () => {
+    const operations = listOperationDescriptors();
+    const prompts = listPromptDescriptors();
 
-describe("versioned planning prompt registry", () => {
-  it("registers every planning operation exactly once under its real owner", () => {
-    const descriptors = listPromptDescriptors();
-    const keys = descriptors.map(
-      ({ agent_name, operation, contract_name }) =>
-        `${agent_name}:${operation}:${contract_name}`,
-    );
-
-    expect(new Set(keys).size).toBe(keys.length);
+    expect(prompts).toHaveLength(57);
     expect(
-      descriptors.map(({ agent_name, operation, contract_name }) => [
+      prompts.map(({ agent_name, operation, contract_name }) => ({
         agent_name,
         operation,
         contract_name,
-      ]),
-    ).toEqual(expectedPlanningOperations);
-    for (const [agentName, operation, contractName] of expectedPlanningOperations) {
-      const name = agentName as AgentRunRequest["agent_name"];
-      const descriptor = getPromptDescriptor(name, operation, contractName);
-      expect(getAgentDefinition(name).operations).toContain(operation);
-      expect(descriptor.agent_name).toBe(agentName);
-      expect(descriptor.contract_name).toBe(contractName);
+      })),
+    ).toEqual(
+      operations.map(({ agent_name, operation, result_contract_name }) => ({
+        agent_name,
+        operation,
+        contract_name: result_contract_name,
+      })),
+    );
+    for (const operation of operations) {
+      expect(
+        getPromptDescriptor(operation.operation, operation.result_contract_name)
+          .agent_name,
+      ).toBe("video_agent");
     }
-    expect(getAgentDefinition("director").operations).toEqual([
-      "command_replan",
-      "conversation_turn",
-      "decide_next_guidance_step",
-      "proposal_action",
-      "resolve_creation_mode",
-    ]);
   });
 
-  it("computes stable digests from complete English operation prompts", () => {
+  it("uses a concise non-creative base policy", () => {
+    expect(videoAgentBasePolicy).toContain("AdCraft Video Agent");
+    expect(videoAgentBasePolicy).toContain("current operation");
+    expect(videoAgentBasePolicy).toContain("submit_structured_result");
+    expect(videoAgentBasePolicy).toContain("Do not hand off");
+    expect(videoAgentBasePolicy).not.toContain("product identity");
+    expect(videoAgentBasePolicy).not.toContain("character turnaround");
+    expect(videoAgentBasePolicy).not.toContain("storyboard camera");
+    expect(videoAgentBasePolicy).not.toContain("BGM instrumentation");
+  });
+
+  it("states the fixed platform, Skill, Style, and user precedence", () => {
+    const precedence = videoAgentBasePolicy
+      .split("\n\n")
+      .find((line) => line.startsWith("Apply the deterministic Python contract"));
+    expect(precedence).toBeDefined();
+    const python = precedence!.indexOf("deterministic Python contract");
+    const skill = precedence!.indexOf("internal capability Skill");
+    const style = precedence!.indexOf("Style projection");
+    const user = precedence!.indexOf("current user instruction");
+
+    expect(python).toBeGreaterThanOrEqual(0);
+    expect(skill).toBeGreaterThan(python);
+    expect(style).toBeGreaterThan(skill);
+    expect(user).toBeGreaterThan(style);
+    expect(videoAgentBasePolicy).toContain(
+      "Style guidance cannot change Node type, creative role, candidate count, output schema, safety policy, provider parameters, duration or aspect-ratio authority, or the reference allowlist.",
+    );
+  });
+
+  it("computes stable digests from complete English prompts", () => {
     for (const descriptor of listPromptDescriptors()) {
-      expect(descriptor.prompt_id).toMatch(/^adcraft\.[a-z_.]+\.v1$/);
+      expect(descriptor.prompt_id).toMatch(
+        /^adcraft\.video_agent\.[a-z_]+\.v1$/,
+      );
       expect(descriptor.prompt_version).toBe("1");
       expect(descriptor.system_prompt.length).toBeGreaterThan(300);
       expect(descriptor.system_prompt).toContain("submit_structured_result");
@@ -80,94 +83,79 @@ describe("versioned planning prompt registry", () => {
     }
   });
 
-  it("keeps draft materialization cognition-only", () => {
-    for (const agentName of ["character_designer", "scene_designer"] as const) {
-      const descriptor = getPromptDescriptor(
-        agentName,
-        "materialize_draft",
-        "SpecialistDraftV2",
+  it("keeps Product creative rules out of sibling prompts", () => {
+    for (const operation of [
+      "propose_character_options",
+      "propose_scene_options",
+      "propose_bgm_options",
+    ]) {
+      const definition = listOperationDescriptors().find(
+        (candidate) => candidate.operation === operation,
       );
-
-      expect(descriptor.system_prompt).toContain("without calling a provider");
-      expect(descriptor.system_prompt).toContain("typed context");
+      expect(definition).toBeDefined();
+      const prompt = getPromptDescriptor(
+        operation,
+        definition!.result_contract_name,
+      ).system_prompt;
+      expect(prompt).not.toContain("product identity");
+      expect(prompt).not.toContain("product silhouette");
+      expect(prompt).not.toContain("product materials");
     }
   });
 
-  it("requires script materialization to populate structured script content", () => {
-    const descriptor = getPromptDescriptor(
-      "script_writer",
-      "materialize_draft",
-      "SpecialistDraftV2",
+  it("keeps intent, next action, and Video parameter extraction bounded", () => {
+    const intent = getPromptDescriptor(
+      "decide_turn_intent",
+      "TurnIntentDecisionV1",
+    );
+    const nextAction = getPromptDescriptor(
+      "decide_next_action",
+      "NextActionCommandV1",
+    );
+    const videoParameters = getPromptDescriptor(
+      "compile_video_parameters",
+      "VideoParameterIntentV2",
     );
 
-    expect(descriptor.system_prompt).toContain(
-      "structured_content.content with the complete editable script",
+    expect(intent.system_prompt).toContain("Classify one user turn");
+    expect(nextAction.system_prompt).toContain("exactly one next action");
+    expect(nextAction.system_prompt).toContain("allowed_capabilities");
+    expect(videoParameters.system_prompt).toContain(
+      "only explicit technical video controls",
     );
-    expect(descriptor.system_prompt).toContain(
-      'semantic_role exactly to "advertising_script"',
-    );
-    expect(descriptor.system_prompt).toContain(
-      "top-level non-empty string",
-    );
-    expect(descriptor.system_prompt).toContain(
-      'structured_content must be exactly {"content":"<complete editable script>"}',
+    expect(videoParameters.system_prompt).toContain(
+      "direct Text or Script Binding",
     );
   });
 
-  it("routes explicit current-topic concept requests to the owning Specialist", () => {
-    const descriptor = getPromptDescriptor(
-      "director",
-      "conversation_turn",
-      "AgentActionEnvelopeV2",
-    );
-
-    expect(descriptor.system_prompt).toContain(
-      "When the user explicitly asks for concepts for the current creative topic",
-    );
-    expect(descriptor.system_prompt).toContain("script -> script_writer");
-    expect(descriptor.system_prompt).toContain(
-      "Do not insert prerequisite analysis before that handoff",
-    );
-  });
-
-  it("separates complete production planning from narrow quick media", () => {
-    const mode = getPromptDescriptor(
-      "director",
-      "resolve_creation_mode",
-      "CreationModeDecisionV2",
-    );
-    const guidance = getPromptDescriptor(
-      "director",
-      "decide_next_guidance_step",
-      "NextGuidanceDecisionV2",
-    );
-    const specialist = getPromptDescriptor(
-      "scene_designer",
-      "propose_concepts",
-      "ConceptProposalDraftV2",
-    );
-
-    expect(mode.system_prompt).toContain("guided_production");
-    expect(mode.system_prompt).toContain("quick_media");
-    expect(guidance.system_prompt).toContain("one next interaction only");
-    expect(guidance.system_prompt).toContain("at most one topic");
-    expect(guidance.system_prompt).toContain("completion_claim");
-    expect(guidance.system_prompt).not.toContain("production recipe");
-    expect(specialist.system_prompt).toContain(
-      "exactly the requested candidate_count",
-    );
-  });
-
-  it("rejects unknown or contract-mismatched planning descriptors", () => {
+  it("rejects unknown operations and contract mismatches", () => {
     expect(() =>
-      getPromptDescriptor(
-        "director",
-        "conversation_turn",
-        "WrongContract",
-      ),
+      getPromptDescriptor("decide_turn_intent", "WrongContract"),
     ).toThrow("agent_prompt_contract_mismatch");
+    expect(() => getPromptDescriptor("missing_operation", "Missing")).toThrow(
+      "agent_prompt_not_found",
+    );
+  });
+
+  it("accepts only the concrete contracts in each specialist prompt family", () => {
+    expect(
+      getPromptDescriptor("product_prompt", "V2ProductMainPromptPlan")
+        .operation,
+    ).toBe("product_prompt");
+    expect(
+      getPromptDescriptor("product_prompt", "V2ProductMultiViewPromptPlan")
+        .operation,
+    ).toBe("product_prompt");
+    expect(
+      getPromptDescriptor("character_prompt", "V2CharacterThreeViewPromptPlan")
+        .operation,
+    ).toBe("character_prompt");
+    expect(
+      getPromptDescriptor("scene_prompt", "V2SceneMultiViewPromptPlan")
+        .operation,
+    ).toBe("scene_prompt");
     expect(() =>
-      getPromptDescriptor("director", "missing_operation", "Missing"),
-    ).toThrow("agent_prompt_not_found");
+      getPromptDescriptor("product_prompt", "V2SceneMainPromptPlan"),
+    ).toThrow("agent_prompt_contract_mismatch");
   });
 });

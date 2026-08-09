@@ -185,6 +185,17 @@ class EditingExportCancelResponseV2(_EditingModel):
     events_cursor: int = Field(ge=0)
 
 
+class EditingPreparationResultV2(_EditingModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    plan_document_id: str = Field(min_length=1, max_length=160)
+    editing_node_id: str = Field(min_length=1, max_length=160)
+    bound_video_node_ids: tuple[str, ...] = ()
+    bound_audio_node_ids: tuple[str, ...] = ()
+    omitted_node_ids: tuple[str, ...] = ()
+    manifest_revision: int = Field(ge=1)
+    replayed: bool = False
+
+
 def default_editing_content() -> dict[str, object]:
     """Return JSON-compatible default Editing content."""
 

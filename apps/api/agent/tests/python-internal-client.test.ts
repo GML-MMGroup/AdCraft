@@ -11,7 +11,7 @@ describe("PythonInternalClient", () => {
           provider: "OpenAI Compatible",
           model_ref: "volcengine_ark:configured-model",
           model_id: "configured-model",
-          model_policy_id: "character_designer.character_expert_brief.v1",
+          model_policy_id: "video_agent.character_expert_brief.v1",
           base_url: "https://llm.example/v1",
           api_key: "private-key",
           supports_tool_calls: true,
@@ -32,19 +32,19 @@ describe("PythonInternalClient", () => {
     const snapshot = await client.credential(
       "llm-default",
       "arun_character",
-      "character_designer",
+      "video_agent",
       "character_expert_brief",
-      "character_designer.character_expert_brief.v1",
+      "video_agent.character_expert_brief.v1",
       "volcengine_ark:configured-model",
     );
 
     expect(snapshot.model_id).toBe("configured-model");
     expect(snapshot.model_policy_id).toBe(
-      "character_designer.character_expert_brief.v1",
+      "video_agent.character_expert_brief.v1",
     );
     expect(snapshot.supports_streamed_tool_calls).toBe(false);
     expect(fetchImpl).toHaveBeenCalledWith(
-      "http://backend:8000/internal/v1/agent-runtime-config/llm-default?run_id=arun_character&agent_name=character_designer&operation=character_expert_brief&model_policy_id=character_designer.character_expert_brief.v1&model_ref=volcengine_ark%3Aconfigured-model",
+      "http://backend:8000/internal/v1/agent-runtime-config/llm-default?run_id=arun_character&agent_name=video_agent&operation=character_expert_brief&model_policy_id=video_agent.character_expert_brief.v1&model_ref=volcengine_ark%3Aconfigured-model",
       expect.objectContaining({
         headers: expect.objectContaining({
           authorization: "Bearer internal-token",
@@ -107,9 +107,9 @@ describe("PythonInternalClient", () => {
       client.credential(
         "llm-default",
         "arun_director",
-        "director",
-        "conversation_turn",
-        "director.conversation_turn.v1",
+        "video_agent",
+        "workflow_conversation",
+        "video_agent.workflow_conversation.v1",
         "volcengine_ark:doubao-seed-2-0-mini-260428",
       ),
     ).rejects.toThrow("provider_credentials_missing");

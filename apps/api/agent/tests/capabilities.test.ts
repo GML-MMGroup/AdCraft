@@ -13,49 +13,68 @@ async function sourceContract(): Promise<unknown> {
   );
 }
 
-describe("generated Agent capability contract", () => {
+describe("generated Video Agent capability contract", () => {
   it("matches the canonical JSON contract", async () => {
     expect(AGENT_CAPABILITY_CONTRACT).toEqual(
       canonicalizeAgentCapabilities(await sourceContract()),
     );
   });
 
-  it("drives the runtime registry names and operations", () => {
-    expect(
-      listAgentDefinitions().map(({ name, operations }) => ({
-        name,
-        operations,
-      })),
-    ).toEqual(
-      AGENT_CAPABILITY_CONTRACT.agents.map(({ name, operations }) => ({
-        name,
-        operations,
-      })),
-    );
+  it("declares one Agent, one model role, and 57 unique operations", () => {
+    expect(AGENT_CAPABILITY_CONTRACT.agents).toHaveLength(1);
+    const agent = AGENT_CAPABILITY_CONTRACT.agents[0];
+
+    expect(agent).toMatchObject({ name: "video_agent", model_role: "agent" });
+    expect(agent.operations).toHaveLength(57);
+    expect(new Set(agent.operations).size).toBe(57);
+    expect(listAgentDefinitions().map(({ name }) => name)).toEqual(["video_agent"]);
   });
 
-  it("rejects duplicate Agent names with a stable error", () => {
+  it("contains no retired operation", () => {
+    const operations = AGENT_CAPABILITY_CONTRACT.agents[0].operations;
+
+    for (const retired of [
+      "resolve_creation_mode",
+      "conversation_turn",
+      "decide_next_guidance_step",
+      "proposal_action",
+      "direct_response",
+      "propose_concepts",
+      "revise_concepts",
+      "materialize_draft",
+      "targeted_revision",
+    ]) {
+      expect(operations).not.toContain(retired);
+    }
+  });
+
+  it("rejects duplicate names, operations, and retired identities", () => {
     expect(() =>
       canonicalizeAgentCapabilities({
         contract_version: "1",
         agents: [
-          { name: "director", operations: ["conversation_turn"], model_role: "front_desk" },
-          { name: "director", operations: ["proposal_action"], model_role: "front_desk" },
+          { name: "video_agent", operations: ["free_image"], model_role: "agent" },
+          { name: "video_agent", operations: ["free_video"], model_role: "agent" },
         ],
       }),
     ).toThrow("agent_capability_contract_invalid");
-  });
-
-  it("rejects duplicate operations with a stable error", () => {
     expect(() =>
       canonicalizeAgentCapabilities({
         contract_version: "1",
         agents: [
           {
-            name: "director",
-            operations: ["conversation_turn", "conversation_turn"],
-            model_role: "front_desk",
+            name: "video_agent",
+            operations: ["free_image", "free_image"],
+            model_role: "agent",
           },
+        ],
+      }),
+    ).toThrow("agent_capability_contract_invalid");
+    expect(() =>
+      canonicalizeAgentCapabilities({
+        contract_version: "1",
+        agents: [
+          { name: "director", operations: ["free_image"], model_role: "agent" },
         ],
       }),
     ).toThrow("agent_capability_contract_invalid");

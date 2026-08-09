@@ -1,152 +1,100 @@
 import { describe, expect, it } from "vitest";
 
+import { AGENT_CAPABILITY_CONTRACT } from "../src/generated/agent-capabilities.js";
 import {
-  agentForSemanticFamily,
   getAgentDefinition,
   getOperationDescriptor,
-  listOperationDescriptors,
   listAgentDefinitions,
-  operationClass,
+  listOperationDescriptors,
   toolsForOperation,
 } from "../src/registry.js";
 
-describe("immutable agent registry", () => {
-  it("registers the bounded V2 expert set without final composition", () => {
-    const names = listAgentDefinitions().map((definition) => definition.name);
+const operations = AGENT_CAPABILITY_CONTRACT.agents[0].operations;
 
-    expect(names).toEqual([
-      "bgm_director",
-      "character_designer",
-      "director",
-      "product_designer",
-      "prop_designer",
-      "quick_media_agent",
-      "scene_designer",
-      "script_writer",
-      "storyboard_artist",
-      "video_director",
-    ]);
-    expect(names).not.toContain("final_composition");
+describe("Video Agent registry", () => {
+  it("registers one Video Agent with the exact closed operation set", () => {
+    const definitions = listAgentDefinitions();
+
+    expect(definitions).toHaveLength(1);
+    expect(definitions[0]?.name).toBe("video_agent");
+    expect(definitions[0]?.operations).toEqual(operations);
+    expect(definitions[0]?.max_handoffs).toBe(0);
+    expect(operations).toHaveLength(57);
   });
 
-  it("allows only Director to hand off and keeps child depth bounded", () => {
-    expect(getAgentDefinition("director").max_handoffs).toBe(1);
-    for (const definition of listAgentDefinitions()) {
-      if (definition.name !== "director") expect(definition.max_handoffs).toBe(0);
-    }
-  });
+  it("resolves operation metadata without an Agent selector", () => {
+    const descriptor = getOperationDescriptor("propose_character_options");
 
-  it("registers the persisted Agent Canvas Script Writer operation", () => {
-    const definition = getAgentDefinition("script_writer");
-
-    expect(definition.operations).toContain("execute_canvas_script");
-    expect(
-      getOperationDescriptor("script_writer", "execute_canvas_script").allowed_tools,
-    ).toEqual(["submit_structured_result"]);
-  });
-
-  it("registers bounded generic Text execution without specialist skills", () => {
-    const definition = getAgentDefinition("quick_media_agent");
-    const descriptor = getOperationDescriptor(
-      "quick_media_agent",
-      "execute_canvas_text",
-    );
-
-    expect(definition.operations).toContain("execute_canvas_text");
-    expect(descriptor.required_skills).toEqual([]);
-    expect(descriptor.optional_skills).toEqual([]);
-    expect(descriptor.allowed_tools).toEqual(["submit_structured_result"]);
-  });
-
-  it("maps every supported semantic family to exactly one owner", () => {
-    expect(agentForSemanticFamily("product_main")).toBe("product_designer");
-    expect(agentForSemanticFamily("character_side")).toBe("character_designer");
-    expect(agentForSemanticFamily("scene_main")).toBe("scene_designer");
-    expect(agentForSemanticFamily("shot_cell_3")).toBe("storyboard_artist");
-    expect(agentForSemanticFamily("shot_cell_12")).toBe("storyboard_artist");
-    expect(agentForSemanticFamily("shot_video_segment")).toBe("video_director");
-    expect(agentForSemanticFamily("bgm_track")).toBe("bgm_director");
-    expect(agentForSemanticFamily("prop_main")).toBe("prop_designer");
-    expect(agentForSemanticFamily("general_image")).toBe("quick_media_agent");
-    expect(agentForSemanticFamily("general_video")).toBe("quick_media_agent");
-    expect(agentForSemanticFamily("general_audio")).toBe("quick_media_agent");
-    expect(() => agentForSemanticFamily("final_composition")).toThrow(
-      "agent_semantic_family_not_allowed",
-    );
-  });
-
-  it("classifies dynamic shot cells and declares operation-scoped capabilities", () => {
-    expect(["shot_cell_1", "shot_cell_4", "shot_cell_12"].map(operationClass)).toEqual([
-      "shot_cell",
-      "shot_cell",
-      "shot_cell",
-    ]);
-    const descriptor = getOperationDescriptor(
-      "character_designer",
-      "materialize_draft",
-    );
-
-    expect(descriptor.required_skills).toContain("character_prompt_expansion");
-    expect(descriptor.required_skills).not.toContain("scene_spec_extraction");
-    expect(descriptor.allowed_tools).toEqual(["submit_structured_result"]);
+    expect(descriptor).toMatchObject({
+      agent_name: "video_agent",
+      operation: "propose_character_options",
+      capability_id: "character_design",
+      result_contract_name: "CharacterProposalResultV1",
+      required_skill: "video_agent_character_design",
+      allowed_tools: ["submit_structured_result"],
+      max_handoffs: 0,
+    });
     expect(descriptor.max_skill_context_bytes).toBeGreaterThan(0);
   });
 
-  it("enumerates every operation descriptor without media or final-composition tools", () => {
+  it("uses the typed Character materialization contract", () => {
+    expect(getOperationDescriptor("materialize_character")).toMatchObject({
+      capability_id: "character_design",
+      result_contract_name: "CharacterMaterializationResultV1",
+      required_skill: "video_agent_character_design",
+    });
+  });
+
+  it("loads no creative Skill for decision, conversation, and Text operations", () => {
+    for (const operation of [
+      "decide_turn_intent",
+      "decide_next_action",
+      "command_replan",
+      "workflow_conversation",
+      "conversation_summary",
+      "execute_canvas_text",
+      "workflow_creation",
+      "intent_contract_planner",
+    ]) {
+      expect(getOperationDescriptor(operation).required_skill).toBeNull();
+    }
+  });
+
+  it("enumerates every operation exactly once with zero handoffs and one tool", () => {
     const descriptors = listOperationDescriptors();
-    const registeredOperationCount = listAgentDefinitions().reduce(
-      (total, definition) => total + definition.operations.length,
-      0,
-    );
 
-    expect(descriptors).toHaveLength(registeredOperationCount);
+    expect(descriptors.map(({ operation }) => operation)).toEqual(operations);
+    expect(new Set(descriptors.map(({ operation }) => operation)).size).toBe(57);
+    expect(descriptors.every(({ agent_name }) => agent_name === "video_agent")).toBe(true);
+    expect(descriptors.every(({ max_handoffs }) => max_handoffs === 0)).toBe(true);
     expect(
-      descriptors.some((descriptor) => descriptor.operation === "final_composition"),
-    ).toBe(false);
+      descriptors.every(({ allowed_tools }) =>
+        allowed_tools.length === 1 && allowed_tools[0] === "submit_structured_result"),
+    ).toBe(true);
     expect(
-      descriptors.flatMap((descriptor) => descriptor.allowed_tools),
-    ).not.toContain("start_final_composition_render");
-    expect(
-      descriptors.filter(
-        (descriptor) =>
-          descriptor.agent_name === "director" &&
-          descriptor.operation === "conversation_turn",
-      ),
-    ).toHaveLength(1);
+      descriptors.every(({ required_skill }) =>
+        required_skill === null || required_skill.startsWith("video_agent_")),
+    ).toBe(true);
   });
 
-  it("keeps progressive Director turns free of fixed prerequisite skill bias", () => {
-    const descriptor = getOperationDescriptor(
-      "director",
-      "decide_next_guidance_step",
+  it("rejects retired identities and unknown operations", () => {
+    expect(() => getAgentDefinition("director" as "video_agent")).toThrow(
+      "agent_registry_entry_not_found",
     );
-
-    expect(descriptor.required_skills).toEqual([]);
-    expect(descriptor.optional_skills).toEqual([]);
-    expect(descriptor.max_handoffs).toBe(0);
-    expect(getAgentDefinition("director").operations).not.toContain(
-      "plan_production_recipe",
+    expect(() => getOperationDescriptor("targeted_revision")).toThrow(
+      "agent_operation_not_allowed",
+    );
+    expect(() => getOperationDescriptor("propose_concepts")).toThrow(
+      "agent_operation_not_allowed",
     );
   });
 
-  it("exposes only bounded Python tools and never final composition", () => {
-    expect(toolsForOperation("character_designer", "materialize_draft")).toEqual([
+  it("exposes only structured result submission", () => {
+    expect(toolsForOperation("propose_product_options")).toEqual([
       "submit_structured_result",
     ]);
-    expect(toolsForOperation("prop_designer", "propose_concepts")).toEqual([
+    expect(toolsForOperation("execute_canvas_text")).toEqual([
       "submit_structured_result",
     ]);
-    expect(
-      toolsForOperation("director", "conversation_turn"),
-    ).toEqual(["submit_structured_result"]);
-    expect(
-      toolsForOperation("director", "proposal_action"),
-    ).toEqual(["submit_structured_result"]);
-    expect(
-      getOperationDescriptor("director", "proposal_action").max_handoffs,
-    ).toBe(0);
-    expect(
-      toolsForOperation("video_director", "materialize_draft"),
-    ).not.toContain("start_final_composition_render");
   });
 });

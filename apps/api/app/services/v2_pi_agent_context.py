@@ -11,9 +11,8 @@ from app.schemas.agent_operation_contexts import (
     InteractionTargetSummary,
     PlanningReferenceSummary,
     QuickMediaAgentContext,
-    TargetedRevisionAgentContext,
+    AssetRevisionAgentContext,
 )
-from app.schemas.agent_runtime import AgentName
 from app.schemas.agent_runtime import V2ResolvedAgentTarget
 from app.schemas.workflow_v2 import WorkflowV2FreeNodeGenerateRequest
 from app.services.v2_asset_store import V2AssetStoreService
@@ -71,14 +70,14 @@ class V2AgentContextBuilder:
         self._recent_message_limit = max(1, min(recent_message_limit, 32))
         self._recent_message_bytes = max(256, min(recent_message_bytes, 32_768))
 
-    def build_targeted_revision(
+    def build_asset_revision(
         self,
         *,
         workflow_id: str,
         conversation_id: str | None,
         target: V2ResolvedAgentTarget,
         user_instruction: str,
-    ) -> TargetedRevisionAgentContext:
+    ) -> AssetRevisionAgentContext:
         workflow = self._read_model.assemble(workflow_id)
         item = next(
             (
@@ -102,8 +101,8 @@ class V2AgentContextBuilder:
         if item is None or slot is None or workflow.state_version is None:
             raise ValueError("agent_target_not_found")
         conversation_summary, recent_messages = self._conversation_context(conversation_id)
-        return TargetedRevisionAgentContext(
-            context_kind="targeted_revision",
+        return AssetRevisionAgentContext(
+            context_kind="asset_revision",
             user_input=user_instruction,
             workflow_id=workflow.workflow_id,
             conversation_id=conversation_id,
@@ -295,24 +294,6 @@ class V2AgentContextBuilder:
             },
             8_192,
         )
-
-
-def agent_for_semantic_family(semantic_family: str) -> AgentName:
-    if semantic_family.startswith("product_"):
-        return "product_designer"
-    if semantic_family.startswith("character_"):
-        return "character_designer"
-    if semantic_family.startswith("scene_"):
-        return "scene_designer"
-    if semantic_family.startswith("shot_cell_"):
-        return "storyboard_artist"
-    if semantic_family == "shot_video_segment":
-        return "video_director"
-    if semantic_family in {"bgm_audio", "bgm_track"}:
-        return "bgm_director"
-    if semantic_family in {"free_image", "free_video", "free_audio"}:
-        return "quick_media_agent"
-    raise ValueError("agent_semantic_family_not_allowed")
 
 
 def isolate_agent_input_payload(payload: dict[str, Any]) -> dict[str, Any]:

@@ -5,18 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
-
+from threading import Event, Thread
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
+from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
-
-
-class _TurnResult(Protocol):
-    status: str
-    error_code: str | None
-    error_message: str | None
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
 @dataclass(frozen=True)
@@ -34,7 +29,9 @@ class AgentCanvasContinuationWorker:
         self,
         outbox: AgentCanvasContinuationOutboxRepository,
         *,
-        process_turn: Callable[[str], _TurnResult],
+        next_action: Callable[[str], object],
+        capability_command: Callable[[str], object],
+        capability_materialization: Callable[[str, Callable[[], None]], object] | None = None,
         clock: Callable[[], datetime] | None = None,
         worker_id: str,
         batch_limit: int = 8,
@@ -45,7 +42,11 @@ class AgentCanvasContinuationWorker:
         fail_turn: Callable[[str, str, str], object] | None = None,
     ) -> None:
         self._outbox = outbox
-        self._process_turn = process_turn
+        self._handlers = {
+            "next_action": next_action,
+            "capability_command": capability_command,
+        }
+        self._capability_materialization = capability_materialization
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._worker_id = worker_id
         self._batch_limit = batch_limit
@@ -79,33 +80,79 @@ class AgentCanvasContinuationWorker:
 
     def _process_one(self, delivery: ContinuationDeliveryV2) -> str:
         try:
-            turn = self._process_turn(delivery.continuation_turn_id)
+            if delivery.operation == "capability_materialization":
+                if self._capability_materialization is None:
+                    raise V2PersistenceError(
+                        "capability_materialization_unavailable",
+                        "Capability Materialization worker is unavailable.",
+                    )
+                self._run_materialization(delivery)
+            else:
+                self._handlers[delivery.operation](delivery.envelope_id)
         except Exception as error:  # noqa: BLE001 - each delivery is isolated.
+            if isinstance(error, V2PersistenceError) and error.code == "continuation_lease_stale":
+                return "retried"
+            error_code, retryable = _structured_failure(error)
             return self._record_failure(
                 delivery,
-                error_code="continuation_dispatch_failed",
+                error_code=error_code,
                 error_message=str(error) or "Continuation dispatch failed.",
+                retryable=retryable,
             )
 
-        if turn.status == "completed":
-            self._outbox.complete(
+        if self._outbox.get(delivery.continuation_id).status == "completed":
+            return "completed"
+        self._outbox.complete(
+            delivery.continuation_id,
+            worker_id=self._worker_id,
+            lease_generation=delivery.lease_generation,
+            now=self._clock(),
+        )
+        return "completed"
+
+    def _run_materialization(self, delivery: ContinuationDeliveryV2) -> None:
+        assert self._capability_materialization is not None
+        stopped = Event()
+        lease_lost = Event()
+        interval = max(self._lease_duration.total_seconds() / 3, 0.01)
+
+        def guard() -> None:
+            if lease_lost.is_set():
+                raise V2PersistenceError(
+                    "continuation_lease_stale",
+                    "Continuation lease has been superseded or expired.",
+                )
+            self._outbox.assert_owned(
                 delivery.continuation_id,
                 worker_id=self._worker_id,
                 lease_generation=delivery.lease_generation,
                 now=self._clock(),
             )
-            return "completed"
-        if turn.status == "failed":
-            return self._record_terminal(
-                delivery,
-                error_code=getattr(turn, "error_code", None) or "continuation_dispatch_failed",
-                error_message=getattr(turn, "error_message", None) or "Continuation turn failed.",
-            )
-        return self._record_failure(
-            delivery,
-            error_code="continuation_dispatch_incomplete",
-            error_message="Continuation turn remains nonterminal.",
-        )
+
+        def renew() -> None:
+            while not stopped.wait(interval):
+                try:
+                    self._outbox.renew_lease(
+                        delivery.continuation_id,
+                        worker_id=self._worker_id,
+                        lease_generation=delivery.lease_generation,
+                        now=self._clock(),
+                        lease_duration=self._lease_duration,
+                    )
+                except V2PersistenceError:
+                    lease_lost.set()
+                    return
+
+        thread = Thread(target=renew, name="agent-canvas-materialization-lease", daemon=True)
+        thread.start()
+        try:
+            guard()
+            self._capability_materialization(delivery.envelope_id, guard)
+            if self._outbox.get(delivery.continuation_id).status != "completed":
+                guard()
+        finally:
+            stopped.set()
+            thread.join(timeout=min(interval, 1.0))
 
     def _record_failure(
         self,
@@ -113,12 +160,17 @@ class AgentCanvasContinuationWorker:
         *,
         error_code: str,
         error_message: str,
+        retryable: bool = True,
     ) -> str:
         next_attempt = delivery.attempt_count + 1
-        if next_attempt >= delivery.max_attempts:
+        if not retryable or next_attempt >= delivery.max_attempts:
             return self._record_terminal(
                 delivery,
-                error_code="continuation_retry_exhausted",
+                error_code=(
+                    error_code
+                    if error_code != "continuation_dispatch_failed"
+                    else "continuation_retry_exhausted"
+                ),
                 error_message=error_message,
             )
         delay = min(
@@ -158,3 +210,12 @@ class AgentCanvasContinuationWorker:
                 error_message[:1_024],
             )
         return "failed"
+
+
+def _structured_failure(error: Exception) -> tuple[str, bool]:
+    if isinstance(error, PiAgentRuntimeError):
+        return error.code, error.retryable and error.code != "agent_deadline_exceeded"
+    if isinstance(error, V2PersistenceError):
+        retryable = error.details.get("retryable", True)
+        return error.code, bool(retryable) and error.code != "agent_deadline_exceeded"
+    return "continuation_dispatch_failed", True

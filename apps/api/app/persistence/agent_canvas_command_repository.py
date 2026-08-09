@@ -51,6 +51,9 @@ from app.services.agent_canvas_authoring_validation import (
     validate_node_binding,
     validate_node_patch,
 )
+from app.services.agent_canvas_character_reference_pairs import (
+    character_turnaround_prompt,
+)
 
 
 ModelSelectionValidator = Callable[[str, str, str | None], object]
@@ -1426,6 +1429,12 @@ class AgentCanvasCommandRepository:
                     )
                     source = _require_node(connection, workflow_id, source_node_id)
                     _validate_variation_source(source)
+                    source_content = json.loads(str(source["structured_content_json"]))
+                    source_metadata = json.loads(str(source["metadata_json"]))
+                    character_pair_variation = (
+                        str(source["creative_role"]) == "character"
+                        and source_content.get("character_asset_kind") == "identity_master"
+                    )
                     variation = (
                         connection.execute(
                             select(AgentCanvasVariationDraftRow).where(
@@ -1442,6 +1451,7 @@ class AgentCanvasCommandRepository:
                             "Variation draft was not found.",
                         )
                     sibling_node_id = f"node_{uuid4().hex}"
+                    character_pair_id = f"pair_{uuid4().hex}" if character_pair_variation else None
                     position = request.position or CanvasPositionV2(
                         x=float(source["position_x"]) + 360.0,
                         y=float(source["position_y"]),
@@ -1456,10 +1466,15 @@ class AgentCanvasCommandRepository:
                         status="draft",
                         summary_prompt=cast(str | None, source["summary_prompt"]),
                         generation_prompt=str(variation["generation_prompt"]),
-                        structured_content=json.loads(str(source["structured_content_json"])),
+                        structured_content=source_content,
                         model_selection_mode=cast(str, variation["model_selection_mode"]),
                         model_ref=cast(str | None, variation["model_ref"]),
                         parameters=json.loads(str(variation["parameters_json"])),
+                        metadata=(
+                            {**source_metadata, "character_pair_id": character_pair_id}
+                            if character_pair_id is not None
+                            else {}
+                        ),
                         prompt_context_snapshot_id=None,
                         output_asset_id=None,
                         position=position,
@@ -1489,6 +1504,8 @@ class AgentCanvasCommandRepository:
                             model_selection_mode=sibling.model_selection_mode,
                             model_ref=sibling.model_ref,
                             parameters_json=_dump(sibling.parameters),
+                            metadata_json=_dump(sibling.metadata),
+                            parameter_provenance_json=_dump({}),
                             prompt_context_snapshot_id=None,
                             output_asset_id=None,
                             position_x=sibling.position.x,
@@ -1537,6 +1554,122 @@ class AgentCanvasCommandRepository:
                             )
                         )
                         copied_binding_ids.append(binding_id)
+                    created_nodes = [sibling]
+                    created_binding_ids = list(copied_binding_ids)
+                    placement_hints = [
+                        AgentPlacementHintV2(
+                            intent="right_sibling",
+                            anchor_node_id=source_node_id,
+                            group_key=character_pair_id,
+                        )
+                    ]
+                    if character_pair_id is not None:
+                        turnaround_node_id = f"node_{uuid4().hex}"
+                        turnaround_content = {
+                            **source_content,
+                            "character_asset_kind": "turnaround",
+                        }
+                        turnaround = CanvasNodeV2(
+                            node_id=turnaround_node_id,
+                            workflow_id=workflow_id,
+                            node_type="image",
+                            creative_role="character",
+                            role_contract_version=str(source["role_contract_version"]),
+                            title=f"{variation['title']} Turnaround",
+                            status="draft",
+                            summary_prompt=(
+                                f"Front, side, and back identity sheet for {variation['title']}."
+                            ),
+                            generation_prompt=character_turnaround_prompt(
+                                subject_identity=str(source_content["subject_identity"]),
+                                design_summary=str(source_content["design_summary"]),
+                            ),
+                            structured_content=turnaround_content,
+                            model_selection_mode=cast(str, variation["model_selection_mode"]),
+                            model_ref=cast(str | None, variation["model_ref"]),
+                            parameters=json.loads(str(variation["parameters_json"])),
+                            metadata={
+                                **source_metadata,
+                                "character_pair_id": character_pair_id,
+                            },
+                            prompt_context_snapshot_id=None,
+                            output_asset_id=None,
+                            position=CanvasPositionV2(
+                                x=sibling.position.x + 360.0,
+                                y=sibling.position.y,
+                            ),
+                            revision=1,
+                            error=None,
+                            variation_draft=None,
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        self._validate_model_selection(
+                            turnaround.node_type,
+                            turnaround.model_selection_mode,
+                            turnaround.model_ref,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasNodeRow).values(
+                                node_id=turnaround.node_id,
+                                workflow_id=turnaround.workflow_id,
+                                node_type=turnaround.node_type,
+                                creative_role=turnaround.creative_role,
+                                role_contract_version=turnaround.role_contract_version,
+                                title=turnaround.title,
+                                status=turnaround.status,
+                                summary_prompt=turnaround.summary_prompt,
+                                generation_prompt=turnaround.generation_prompt,
+                                structured_content_json=_dump(turnaround.structured_content),
+                                model_selection_mode=turnaround.model_selection_mode,
+                                model_ref=turnaround.model_ref,
+                                parameters_json=_dump(turnaround.parameters),
+                                metadata_json=_dump(turnaround.metadata),
+                                parameter_provenance_json=_dump({}),
+                                prompt_context_snapshot_id=None,
+                                output_asset_id=None,
+                                position_x=turnaround.position.x,
+                                position_y=turnaround.position.y,
+                                revision=1,
+                                error_json=None,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+                        internal_binding_id = f"binding_{uuid4().hex}"
+                        connection.execute(
+                            insert(AgentCanvasBindingRow).values(
+                                binding_id=internal_binding_id,
+                                workflow_id=workflow_id,
+                                source_kind="node_output",
+                                source_node_id=sibling.node_id,
+                                source_asset_id=None,
+                                target_node_id=turnaround.node_id,
+                                input_role="image_reference",
+                                required=True,
+                                enabled=True,
+                                order_index=0,
+                                label="Character identity master",
+                                metadata_json=_dump(
+                                    {
+                                        "character_pair_id": character_pair_id,
+                                        "reference_purpose": "identity_master",
+                                        "semantic_reference_role": "subject_reference",
+                                    }
+                                ),
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+                        created_nodes.append(turnaround)
+                        created_binding_ids.append(internal_binding_id)
+                        placement_hints.append(
+                            AgentPlacementHintV2(
+                                intent="right_sibling",
+                                anchor_node_id=sibling.node_id,
+                                group_key=character_pair_id,
+                            )
+                        )
                     connection.execute(
                         delete(AgentCanvasVariationDraftRow).where(
                             AgentCanvasVariationDraftRow.workflow_id == workflow_id,
@@ -1552,10 +1685,7 @@ class AgentCanvasCommandRepository:
                         )
                         .values(revision=next_revision, updated_at=now)
                     )
-                    placement_hint = AgentPlacementHintV2(
-                        intent="right_sibling",
-                        anchor_node_id=source_node_id,
-                    )
+                    placement_hint = placement_hints[0]
                     response = CanvasVariationMaterializeResponseV2(
                         workflow_id=workflow_id,
                         workflow_revision=next_revision,
@@ -1563,6 +1693,9 @@ class AgentCanvasCommandRepository:
                         sibling_node=sibling,
                         copied_binding_ids=tuple(copied_binding_ids),
                         placement_hint=placement_hint,
+                        created_node_ids=tuple(node.node_id for node in created_nodes),
+                        created_binding_ids=tuple(created_binding_ids),
+                        placement_hints=tuple(placement_hints),
                     )
                     self._events.append_in_transaction(
                         connection,
@@ -1574,9 +1707,15 @@ class AgentCanvasCommandRepository:
                             payload={
                                 "source_node_id": source_node_id,
                                 "sibling_node_id": sibling_node_id,
+                                "created_node_ids": list(response.created_node_ids),
+                                "created_binding_ids": list(response.created_binding_ids),
                                 "copied_binding_ids": copied_binding_ids,
                                 "revision": next_revision,
                                 "placement_hint": placement_hint.model_dump(mode="json"),
+                                "placement_hints": [
+                                    hint.model_dump(mode="json")
+                                    for hint in response.placement_hints
+                                ],
                             },
                         ),
                     )

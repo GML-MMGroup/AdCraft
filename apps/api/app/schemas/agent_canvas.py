@@ -15,6 +15,8 @@ from pydantic import (
 )
 
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
+from app.schemas.agent_canvas_world_setting import WorldSettingResolvedInputV2
 
 
 CanvasNodeTypeV2 = Literal["text", "script", "image", "video", "audio", "editing"]
@@ -23,6 +25,7 @@ RoleContractVersionV2 = Literal["ad-media-role-v1", "ad-media-role-v2"]
 ModelSelectionModeV1 = Literal["default", "explicit"]
 CanvasCreativeRoleV2 = Literal[
     "creative_brief",
+    "world_setting",
     "script",
     "product",
     "prop",
@@ -223,6 +226,8 @@ class CanvasNodeV2(_AgentCanvasModel):
     model_ref: str | None = Field(default=None, min_length=3, max_length=320)
     model_summary: CanvasModelSummaryV2 | None = None
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
     prompt_context_snapshot_id: str | None = None
     output_asset_id: str | None = None
     position: CanvasPositionV2
@@ -263,6 +268,9 @@ class CanvasVariationMaterializeResponseV2(_AgentCanvasModel):
     run: dict[str, JsonValue] | None = None
     run_error: CanvasNodeErrorV2 | None = None
     placement_hint: AgentPlacementHintV2
+    created_node_ids: tuple[str, ...] = ()
+    created_binding_ids: tuple[str, ...] = ()
+    placement_hints: tuple[AgentPlacementHintV2, ...] = ()
 
 
 class CanvasBindingSourceNodeV2(_AgentCanvasModel):
@@ -526,6 +534,9 @@ class ResolvedTextInputSnapshotV2(_AgentCanvasModel):
     document_kind: Literal["text", "script"]
     content: str
     content_hash: str = Field(min_length=1)
+    source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     binding_id: str | None = None
     input_role: Literal["text_context"] = "text_context"
     required: bool = False
@@ -539,6 +550,7 @@ class ResolvedMediaInputSnapshotV2(_AgentCanvasModel):
     source_node_revision: int | None = Field(default=None, ge=1)
     binding_kind: Literal["image_reference", "video_reference", "audio_reference"]
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
     asset_id: str = Field(min_length=1)
     asset_version_id: str | None = Field(default=None, min_length=1)
     media_type: ProjectAssetMediaTypeV2
@@ -570,6 +582,9 @@ class ResolvedTextBindingInputV2(_AgentCanvasModel):
     document_kind: Literal["text", "script"]
     content_digest: str = Field(min_length=1)
     content: str
+    source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+    source_structured_content: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class ResolvedMediaBindingInputV2(_AgentCanvasModel):
@@ -579,6 +594,7 @@ class ResolvedMediaBindingInputV2(_AgentCanvasModel):
     source_node_revision: int | None = Field(default=None, ge=1)
     input_role: Literal["image_reference", "video_reference", "audio_reference"]
     source_semantic_role: str | None = Field(default=None, min_length=1, max_length=160)
+    binding_metadata: dict[str, JsonValue] = Field(default_factory=dict)
     required: bool = False
     display_order: int = Field(default=0, ge=0)
     asset_id: str = Field(min_length=1)
@@ -601,6 +617,7 @@ class ResolvedNodeInputManifestV2(_AgentCanvasModel):
     target_node_id: str = Field(min_length=1)
     workflow_revision: int = Field(ge=1)
     text_inputs: tuple[ResolvedTextBindingInputV2, ...] = ()
+    world_setting_inputs: tuple[WorldSettingResolvedInputV2, ...] = ()
     media_inputs: tuple[ResolvedMediaBindingInputV2, ...] = ()
     omitted_optional_inputs: tuple[OmittedOptionalInputV2, ...] = ()
     run_intent_snapshot_id: str | None = Field(default=None, min_length=1)
