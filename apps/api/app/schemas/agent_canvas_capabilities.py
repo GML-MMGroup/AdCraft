@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import hashlib
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -54,6 +56,7 @@ class ExplicitElementIntentV1(_CapabilityModel):
         "prop",
         "character",
         "scene",
+        "world_setting",
         "script",
         "storyboard",
         "video",
@@ -75,6 +78,13 @@ class TurnIntentDecisionV1(_CapabilityModel):
     explicit_elements: tuple[ExplicitElementIntentV1, ...] = Field(default=(), max_length=16)
     explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)
     assistant_message: str | None = Field(default=None, max_length=4_000)
+
+    @model_validator(mode="after")
+    def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV1":
+        element_kinds = tuple(item.element_kind for item in self.explicit_elements)
+        if len(element_kinds) != len(set(element_kinds)):
+            raise ValueError("Explicit element decisions must use unique element kinds.")
+        return self
 
 
 class TurnIntentContextV1(_CapabilityModel):
@@ -151,6 +161,34 @@ class CapabilityPolicyResultV1(_CapabilityModel):
     targeted_resume: bool = False
 
 
+class PlannedCapabilityReferenceV1(_CapabilityModel):
+    source_kind: Literal["node", "image_asset"]
+    source_id: str = Field(min_length=1, max_length=160)
+    input_role: Literal[
+        "text_context",
+        "image_reference",
+        "video_reference",
+        "audio_reference",
+    ]
+    required: bool = False
+    default_selected: bool = True
+    semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    priority: int = Field(ge=0, le=10_000)
+    display_name: str = Field(min_length=1, max_length=256)
+    media_type: Literal["text", "image", "video", "audio"]
+
+
+class CapabilityReferencePlanV1(_CapabilityModel):
+    capability_id: CapabilityIdV1
+    references: tuple[PlannedCapabilityReferenceV1, ...] = Field(default=(), max_length=64)
+    digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    warnings: tuple[str, ...] = Field(default=(), max_length=64)
+
+    @property
+    def approved_reference_ids(self) -> tuple[str, ...]:
+        return tuple(reference.source_id for reference in self.references)
+
+
 GuidanceSourceActionV1 = Literal[
     "required_deferred_final_review",
     "user_resumed_deferred_topic",
@@ -170,6 +208,7 @@ class CapabilityContextSnapshotV1(_CapabilityModel):
     approved_reference_ids: tuple[str, ...] = Field(default=(), max_length=64)
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
+    reference_plan: CapabilityReferencePlanV1
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
@@ -212,10 +251,41 @@ class CapabilityCommandEnvelopeV1(_CapabilityModel):
     result_contract_name: str = Field(min_length=1, max_length=160)
     candidate_count: int = Field(ge=1, le=3)
     reference_allowlist: tuple[str, ...] = Field(default=(), max_length=64)
+    reference_plan: CapabilityReferencePlanV1
     agent_request_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
+
+    @model_validator(mode="before")
+    @classmethod
+    def restore_legacy_reference_plan(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or "reference_plan" in value:
+            return value
+        capability_id = value.get("capability_id")
+        allowlist = value.get("reference_allowlist") or ()
+        references = [
+            {
+                "source_kind": "node",
+                "source_id": source_id,
+                "input_role": "image_reference",
+                "required": False,
+                "default_selected": True,
+                "priority": index,
+                "display_name": source_id,
+                "media_type": "image",
+            }
+            for index, source_id in enumerate(allowlist)
+        ]
+        payload = {
+            "capability_id": capability_id,
+            "references": references,
+            "warnings": ["legacy_reference_allowlist_restored"],
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        return {**value, "reference_plan": {**payload, "digest": digest}}
 
 
 class NextActionEnvelopeV1(_CapabilityModel):
