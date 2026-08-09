@@ -18,6 +18,12 @@ from app.persistence.agent_canvas_auto_run_repository import (
     AgentCanvasAutomaticRunRepository,
     is_automatic_run_eligible_node_type,
 )
+from app.persistence.agent_canvas_continuation_repository import (
+    AgentCanvasContinuationOutboxRepository,
+)
+from app.persistence.agent_canvas_operation_envelope_repository import (
+    AgentCanvasOperationEnvelopeRepository,
+)
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
@@ -55,12 +61,13 @@ from app.schemas.agent_canvas_conversation import (
     ContinuationCommitV2,
     ContinuationDeliveryV2,
     ProposalApplicationSummaryV2,
+    ProposalMaterializationErrorV2,
+    ProposalMaterializationProjectionV2,
     ProposalActionDescriptorV2,
     ProposalActionRequestV2,
     VideoSkillRunV2,
 )
 from app.schemas.agent_canvas_creative_session import (
-    ConceptDraftSpecV2,
     CreationModeDecisionV2,
     CreativeAuthorityStateV2,
     CreativeDirectionSnapshotV2,
@@ -72,10 +79,11 @@ from app.schemas.agent_canvas_creative_session import (
     GuidedStepCheckpointV2,
     GuidedSessionStateV2,
     GuidanceSessionActionV2,
-    NextGuidanceDecisionV2,
     ProjectCreativeMemoryV2,
     ProposedDraftReferenceV2,
 )
+from app.schemas.agent_canvas_capabilities import NextActionEnvelopeV1
+from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -355,7 +363,7 @@ class AgentCanvasConversationRepository:
                             topic_kind=topic.topic_kind,
                             title=topic.title,
                             status=topic.status,
-                            specialist_name=topic.specialist_name,
+                            capability_id=topic.capability_id,
                             related_node_ids_json=_dump(list(topic.related_node_ids)),
                             source_proposal_id=topic.source_proposal_id,
                             revision=topic.revision,
@@ -404,108 +412,6 @@ class AgentCanvasConversationRepository:
                 "conversation_persistence_unavailable",
                 "Conversation storage failed.",
             ) from error
-
-    def persist_guidance_decision(
-        self,
-        turn_id: str,
-        decision: NextGuidanceDecisionV2,
-        *,
-        expected_session_revision: int | None,
-    ) -> GuidedSessionStateV2 | None:
-        turn = self.get_turn(turn_id)
-        session = self.get_guidance_session_or_none(turn.workflow_id)
-        if session is None:
-            goal = decision.intent_patch.goal if decision.intent_patch else None
-            if goal is None:
-                with self._database.engine.begin() as connection:
-                    connection.execute(
-                        update(AgentCanvasChatTurnRow)
-                        .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-                        .values(
-                            guidance_decision_json=decision.model_dump_json(),
-                            guidance_session_revision=None,
-                            updated_at=_now(),
-                        )
-                    )
-                return None
-            session = self.create_guidance_session(
-                turn.workflow_id,
-                goal=goal,
-                element_decisions=decision.intent_patch.element_decisions,
-                active_style_skill_run_id=turn.request.get("video_skill_run_id"),
-            )
-        if expected_session_revision is not None and session.revision != expected_session_revision:
-            raise _error("guidance_revision_conflict", "Guidance session revision is stale.")
-        if decision.intent_patch is not None and session is not None:
-            incoming_by_kind = {
-                item.element_kind: item for item in decision.intent_patch.element_decisions
-            }
-            element_decisions = tuple(
-                incoming_by_kind.pop(item.element_kind, item) for item in session.element_decisions
-            ) + tuple(incoming_by_kind.values())
-            goal = decision.intent_patch.goal or session.goal
-            if goal != session.goal or element_decisions != session.element_decisions:
-                now = _now()
-                with self._database.engine.begin() as connection:
-                    row = _require_guidance_session_row(connection, session.session_id)
-                    _require_guidance_revision(row, session.revision)
-                    connection.execute(
-                        update(AgentCanvasGuidanceSessionRow)
-                        .where(AgentCanvasGuidanceSessionRow.session_id == session.session_id)
-                        .values(
-                            goal_json=goal.model_dump_json(),
-                            element_decisions_json=_dump(
-                                [item.model_dump(mode="json") for item in element_decisions]
-                            ),
-                            revision=session.revision + 1,
-                            updated_at=now,
-                        )
-                    )
-                session = self.get_guidance_session(turn.workflow_id)
-        if decision.action == "propose_topic" and session is not None:
-            topic = GuidanceTopicStateV2(
-                topic_id=decision.topic_id,
-                topic_kind=decision.topic_kind,
-                title=decision.topic_title,
-                status="proposed",
-                specialist_name=decision.specialist_name,
-                related_node_ids=(),
-                source_proposal_id=None,
-                revision=1,
-            )
-            session = self.create_guidance_topic(
-                session.session_id,
-                topic,
-                expected_session_revision=session.revision,
-            )
-        now = _now()
-        with self._database.engine.begin() as connection:
-            connection.execute(
-                update(AgentCanvasChatTurnRow)
-                .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-                .values(
-                    guidance_decision_json=decision.model_dump_json(),
-                    guidance_session_revision=session.revision,
-                    updated_at=now,
-                )
-            )
-            self._events.append_in_transaction(
-                connection,
-                V2EventInsert(
-                    workflow_id=turn.workflow_id,
-                    event_type="guidance_decision_completed",
-                    created_at=now,
-                    payload={
-                        "conversation_id": turn.conversation_id,
-                        "turn_id": turn_id,
-                        "session_id": session.session_id if session is not None else None,
-                        "session_revision": session.revision if session is not None else None,
-                        "action": decision.action,
-                        "topic_id": decision.topic_id,
-                    },
-                ),
-            )
-        return session
 
     def complete_guidance_session(
         self,
@@ -1272,11 +1178,10 @@ class AgentCanvasConversationRepository:
             workflow_id,
             turn_kind="message",
             request={
-                "text": "Continue planning from the current canvas state.",
-                "mentioned_node_ids": [],
-                "mentioned_image_asset_ids": [],
+                "schema_version": "1",
                 "video_skill_run_id": video_skill_run_id,
                 "source_action_id": source_action_id,
+                "workflow_revision": workflow_revision,
             },
             idempotency_key=idempotency_key,
             user_message=None,
@@ -1551,47 +1456,12 @@ class AgentCanvasConversationRepository:
                                     },
                                 ),
                             )
-                    if assistant_message:
-                        connection.execute(
-                            insert(AgentCanvasChatEntryRow).values(
-                                entry_id=f"msg_{uuid4().hex}",
-                                conversation_id=str(turn["conversation_id"]),
-                                workflow_id=str(turn["workflow_id"]),
-                                sequence_no=_next_chat_sequence(
-                                    connection, str(turn["conversation_id"])
-                                ),
-                                entry_type="message",
-                                speaker="adcraft_video_agent",
-                                content=assistant_message,
-                                metadata_json=_dump({"turn_id": turn_id}),
-                                created_at=now,
-                            )
-                        )
-                        self._events.append_in_transaction(
-                            connection,
-                            V2EventInsert(
-                                workflow_id=str(turn["workflow_id"]),
-                                event_type="chat_message_created",
-                                created_at=now,
-                                payload={
-                                    "turn_id": turn_id,
-                                    "speaker": "adcraft_video_agent",
-                                },
-                            ),
-                        )
-                    connection.execute(
-                        update(AgentCanvasChatTurnRow)
-                        .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-                        .values(status="completed", updated_at=now)
-                    )
-                    self._events.append_in_transaction(
+                    _complete_turn_in_transaction(
                         connection,
-                        V2EventInsert(
-                            workflow_id=str(turn["workflow_id"]),
-                            event_type="chat_turn_completed",
-                            created_at=now,
-                            payload={"turn_id": turn_id},
-                        ),
+                        events=self._events,
+                        turn=turn,
+                        assistant_message=assistant_message,
+                        now=now,
                     )
                     connection.commit()
                 except BaseException:
@@ -2010,6 +1880,64 @@ class AgentCanvasConversationRepository:
                         updated_at=now,
                     )
                 )
+                activity = (
+                    connection.execute(
+                        select(AgentCanvasExpertActivityRow).where(
+                            AgentCanvasExpertActivityRow.turn_id == turn_id,
+                            AgentCanvasExpertActivityRow.status == "working",
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if activity is not None:
+                    connection.execute(
+                        update(AgentCanvasExpertActivityRow)
+                        .where(AgentCanvasExpertActivityRow.activity_id == activity["activity_id"])
+                        .values(
+                            status="failed",
+                            error_code=code,
+                            error_message=message,
+                            updated_at=now,
+                        )
+                    )
+                    activity_payload = {
+                        "activity_id": str(activity["activity_id"]),
+                        "turn_id": turn_id,
+                        "capability_id": str(activity["capability_id"]),
+                        "capability_display_name": str(activity["display_name"]),
+                        "operation": str(activity["operation"]),
+                        "status": "failed",
+                        "error_code": code,
+                    }
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(turn["workflow_id"]),
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type="expert_activity_failed",
+                            transition_key=(f"conversation:{turn_id}:expert_activity_failed"),
+                            created_at=now,
+                            payload=activity_payload,
+                        ),
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(turn["workflow_id"]),
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type="agent_command_failed",
+                            transition_key=f"conversation:{turn_id}:agent_command_failed",
+                            created_at=now,
+                            payload={
+                                "turn_id": turn_id,
+                                "capability_id": str(activity["capability_id"]),
+                                "error_code": code,
+                            },
+                        ),
+                    )
                 self._events.append_in_transaction(
                     connection,
                     V2EventInsert(
@@ -2168,7 +2096,7 @@ class AgentCanvasConversationRepository:
                         turn_id=turn_id,
                         workflow_id=str(turn["workflow_id"]),
                         proposal_kind=proposal.proposal_kind,
-                        specialist_name=proposal.specialist_name,
+                        capability_id=proposal.capability_id,
                         video_skill_run_id=skill_run_id,
                         topic_id=proposal.topic_id or _proposal_topic_id(proposal.proposal_kind),
                         target_node_id=proposal.target_node_id,
@@ -2222,12 +2150,8 @@ class AgentCanvasConversationRepository:
                             proposal_id=proposal_id,
                             display_order=order,
                             title=option.title,
-                            description=option.summary_prompt,
-                            draft_spec_json=_dump(
-                                option.draft_spec.model_dump(mode="json")
-                                if option.draft_spec is not None
-                                else {"prompt": option.summary_prompt}
-                            ),
+                            description=option.public_summary,
+                            key_decisions_json=_dump(list(option.key_decisions)),
                         )
                     )
                 _append_timeline_entry(
@@ -2239,7 +2163,8 @@ class AgentCanvasConversationRepository:
                     metadata={
                         "proposal_id": proposal_id,
                         "proposal_kind": proposal.proposal_kind,
-                        "specialist_name": proposal.specialist_name,
+                        "capability_id": proposal.capability_id,
+                        "capability_display_name": proposal.capability_display_name,
                         "video_skill_run_id": _turn_skill_run_id(turn),
                         "topic_id": proposal.topic_id or _proposal_topic_id(proposal.proposal_kind),
                         "target_node_id": proposal.target_node_id,
@@ -2251,7 +2176,8 @@ class AgentCanvasConversationRepository:
                             {
                                 "option_id": option.option_id,
                                 "title": option.title,
-                                "summary_prompt": option.summary_prompt,
+                                "public_summary": option.public_summary,
+                                "key_decisions": list(option.key_decisions),
                             }
                             for option in proposal.options
                         ],
@@ -2271,7 +2197,8 @@ class AgentCanvasConversationRepository:
                         payload={
                             "turn_id": turn_id,
                             "proposal_id": proposal_id,
-                            "specialist": proposal.specialist_name,
+                            "capability_id": proposal.capability_id,
+                            "capability_display_name": proposal.capability_display_name,
                             "option_count": len(proposal.options),
                         },
                     ),
@@ -2403,6 +2330,33 @@ class AgentCanvasConversationRepository:
             ) from error
         return tuple(self.get_proposal(str(proposal_id)) for proposal_id in ids)
 
+    def list_active_materialization_capability_ids(
+        self,
+        workflow_id: str,
+    ) -> tuple[str, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                values = tuple(
+                    connection.execute(
+                        select(AgentCanvasConceptProposalRow.capability_id)
+                        .where(
+                            AgentCanvasConceptProposalRow.workflow_id == workflow_id,
+                            AgentCanvasConceptProposalRow.materialization_status.in_(
+                                ("queued", "working")
+                            ),
+                        )
+                        .order_by(
+                            AgentCanvasConceptProposalRow.created_at.asc(),
+                            AgentCanvasConceptProposalRow.proposal_id.asc(),
+                        )
+                    ).scalars()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        return tuple(dict.fromkeys(str(value) for value in values))
+
     def apply_and_materialize(
         self,
         proposal_id: str,
@@ -2419,11 +2373,15 @@ class AgentCanvasConversationRepository:
         proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"],
         receipt: AgentActionReceiptV2 | None = None,
         continuation: ContinuationCommitV2 | None = None,
+        materialization_id: str | None = None,
     ) -> ConceptProposalV2:
         """Apply one open Proposal option and insert an independent Draft atomically."""
 
         proposal = self.get_proposal(proposal_id)
-        if proposal.availability != "open":
+        allowed_availability = proposal.availability == "open" or (
+            proposal_action == "reuse_direction" and proposal.availability == "superseded"
+        )
+        if not allowed_availability:
             raise _error("proposal_not_available", "Concept proposal is not available.")
         if option_id not in {option.option_id for option in proposal.options}:
             raise _error("proposal_option_not_found", "Concept option was not found.")
@@ -2448,7 +2406,7 @@ class AgentCanvasConversationRepository:
                                 AgentCanvasConceptProposalRow.availability,
                                 AgentCanvasConceptProposalRow.video_skill_run_id,
                                 AgentCanvasConceptProposalRow.topic_id,
-                                AgentCanvasConceptProposalRow.specialist_name,
+                                AgentCanvasConceptProposalRow.capability_id,
                                 AgentCanvasConceptProposalRow.creative_direction_snapshot_id,
                             ).where(
                                 AgentCanvasConceptProposalRow.proposal_id == proposal_id,
@@ -2458,7 +2416,14 @@ class AgentCanvasConversationRepository:
                         .mappings()
                         .one_or_none()
                     )
-                    if proposal_state is None or proposal_state["availability"] != "open":
+                    persisted_availability = (
+                        str(proposal_state["availability"]) if proposal_state is not None else None
+                    )
+                    availability_valid = persisted_availability == "open" or (
+                        proposal_action == "reuse_direction"
+                        and persisted_availability == "superseded"
+                    )
+                    if not availability_valid:
                         raise _error(
                             "proposal_not_available",
                             "Proposal is not available for application.",
@@ -2495,7 +2460,7 @@ class AgentCanvasConversationRepository:
                                 "style_skill_snapshot_invalid",
                                 "Proposal Creative Direction snapshot is unavailable.",
                             )
-                        role = str(proposal_state["specialist_name"])
+                        role = str(proposal_state["capability_id"])
                         projection = json.loads(str(snapshot_row["role_projections_json"])).get(
                             role
                         )
@@ -2507,10 +2472,7 @@ class AgentCanvasConversationRepository:
                             "role": role,
                         }
                         if isinstance(projection, dict):
-                            source_path = str(projection.get("source_path") or "")
                             role_digest = str(projection.get("digest") or "")
-                            if source_path:
-                                skill_ref["role_guidance_path"] = source_path
                             if role_digest:
                                 skill_ref["role_guidance_digest"] = role_digest
                         skill_refs = (skill_ref,)
@@ -2519,7 +2481,10 @@ class AgentCanvasConversationRepository:
                         proposal.guidance_session_id,
                     )
                     _require_guidance_revision(session, expected_session_revision)
-                    if str(session["active_proposal_id"]) != proposal_id:
+                    if (
+                        proposal_action != "reuse_direction"
+                        and str(session["active_proposal_id"]) != proposal_id
+                    ):
                         raise _error(
                             "proposal_action_stale",
                             "Proposal is not the current Guidance checkpoint.",
@@ -2706,14 +2671,35 @@ class AgentCanvasConversationRepository:
                             .where(AgentCanvasCreativeMemoryRow.workflow_id == node.workflow_id)
                             .values(**memory_values)
                         )
-                    connection.execute(
-                        update(AgentCanvasConceptProposalRow)
-                        .where(
-                            AgentCanvasConceptProposalRow.proposal_id == proposal_id,
-                            AgentCanvasConceptProposalRow.availability == "open",
+                    proposal_values = {"availability": "applied", "updated_at": now}
+                    if materialization_id is not None:
+                        proposal_values.update(
+                            {
+                                "materialization_status": "completed",
+                                "materialization_retryable": False,
+                                "materialization_error_code": None,
+                                "materialization_error_message": None,
+                                "materialization_updated_at": now,
+                            }
                         )
-                        .values(availability="applied", updated_at=now)
+                    proposal_update_conditions = [
+                        AgentCanvasConceptProposalRow.proposal_id == proposal_id,
+                        AgentCanvasConceptProposalRow.availability == persisted_availability,
+                    ]
+                    if materialization_id is not None:
+                        proposal_update_conditions.append(
+                            AgentCanvasConceptProposalRow.materialization_id == materialization_id
+                        )
+                    proposal_update = connection.execute(
+                        update(AgentCanvasConceptProposalRow)
+                        .where(*proposal_update_conditions)
+                        .values(**proposal_values)
                     )
+                    if proposal_update.rowcount != 1:
+                        raise _error(
+                            "proposal_materialization_conflict",
+                            "Materialization attempt is no longer current.",
+                        )
                     next_session_revision = expected_session_revision + 1
                     connection.execute(
                         update(AgentCanvasGuidanceSessionRow)
@@ -2899,6 +2885,61 @@ class AgentCanvasConversationRepository:
                                 },
                             ),
                         )
+                    if materialization_id is not None and source_turn_id is not None:
+                        connection.execute(
+                            update(AgentCanvasChatTurnRow)
+                            .where(AgentCanvasChatTurnRow.turn_id == source_turn_id)
+                            .values(
+                                status="completed",
+                                error_code=None,
+                                error_message=None,
+                                updated_at=now,
+                            )
+                        )
+                        connection.execute(
+                            update(AgentCanvasExpertActivityRow)
+                            .where(AgentCanvasExpertActivityRow.turn_id == source_turn_id)
+                            .values(status="completed", updated_at=now)
+                        )
+                        connection.execute(
+                            update(AgentCanvasContinuationOutboxRow)
+                            .where(
+                                AgentCanvasContinuationOutboxRow.continuation_turn_id
+                                == source_turn_id,
+                                AgentCanvasContinuationOutboxRow.operation
+                                == "capability_materialization",
+                            )
+                            .values(
+                                status="completed",
+                                lease_owner=None,
+                                lease_expires_at=None,
+                                last_error_code=None,
+                                last_error_message=None,
+                                updated_at=now,
+                            )
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=source_turn_id,
+                                action_id=source_turn_id,
+                                event_type="proposal_materialization_completed",
+                                transition_key=(f"materialization:{materialization_id}:completed"),
+                                created_at=now,
+                                payload={
+                                    "proposal_id": proposal_id,
+                                    "materialization_id": materialization_id,
+                                    "option_id": option_id,
+                                    "capability_id": str(proposal_state["capability_id"]),
+                                    "turn_id": source_turn_id,
+                                    "node_ids": [node.node_id],
+                                    "binding_ids": [binding.binding_id for binding in bindings],
+                                },
+                            ),
+                        )
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
@@ -2993,21 +3034,52 @@ class AgentCanvasConversationRepository:
         continuation: ContinuationCommitV2,
         now: str,
     ) -> None:
-        request = {
-            "text": "Continue planning from the current canvas state.",
-            "mentioned_node_ids": [],
-            "mentioned_image_asset_ids": [],
-            "video_skill_run_id": continuation.video_skill_run_id,
-            "source_action_id": continuation.source_action_id,
-        }
+        _require_turn(connection, continuation.source_turn_id)
+        session = (
+            connection.execute(
+                select(AgentCanvasGuidanceSessionRow).where(
+                    AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+                )
+            )
+            .mappings()
+            .one()
+        )
+        goal = CreativeGoalV2.model_validate_json(str(session["creative_goal_json"]))
+        timestamp = datetime.fromisoformat(now)
+        envelope_digest = hashlib.sha256(continuation.idempotency_key.encode("utf-8")).hexdigest()
+        envelope_id = f"envelope_{envelope_digest[:32]}"
+        context_digest = hashlib.sha256(
+            _dump(
+                {
+                    "workflow_id": workflow_id,
+                    "session_revision": int(session["revision"]),
+                    "objective": goal.summary,
+                }
+            ).encode("utf-8")
+        ).hexdigest()
+        envelope = NextActionEnvelopeV1(
+            envelope_id=envelope_id,
+            workflow_id=workflow_id,
+            conversation_id=conversation_id,
+            source_turn_id=continuation.source_turn_id,
+            next_action_turn_id=continuation.continuation_turn_id,
+            session_id=str(session["session_id"]),
+            expected_session_revision=int(session["revision"]),
+            objective=goal.summary,
+            context_snapshot_id=f"snapshot_{context_digest[:32]}",
+            context_snapshot_digest=context_digest,
+            created_at=timestamp,
+        )
         connection.execute(
             insert(AgentCanvasChatTurnRow).values(
                 turn_id=continuation.continuation_turn_id,
                 conversation_id=conversation_id,
                 workflow_id=workflow_id,
-                turn_kind="message",
+                turn_kind="next_action",
                 status="queued",
-                request_json=_dump(request),
+                request_json=_dump({"schema_version": "1", "envelope_id": envelope_id}),
+                creation_mode_json=None,
+                guidance_session_revision=int(session["revision"]),
                 idempotency_key=continuation.idempotency_key,
                 error_code=None,
                 error_message=None,
@@ -3015,32 +3087,33 @@ class AgentCanvasConversationRepository:
                 updated_at=now,
             )
         )
-        continuation_payload = {"turn_id": continuation.continuation_turn_id}
-        continuation_payload_json = _dump(continuation_payload)
-        connection.execute(
-            insert(AgentCanvasContinuationOutboxRow).values(
-                continuation_id=continuation.continuation_id,
-                workflow_id=workflow_id,
-                conversation_id=conversation_id,
-                source_turn_id=continuation.source_turn_id,
-                continuation_turn_id=continuation.continuation_turn_id,
-                operation="conversation_turn",
-                payload_json=continuation_payload_json,
-                payload_digest=hashlib.sha256(
-                    continuation_payload_json.encode("utf-8")
-                ).hexdigest(),
-                status="queued",
-                attempt_count=0,
-                max_attempts=continuation.max_attempts,
-                next_attempt_at=now,
-                lease_owner=None,
-                lease_generation=0,
-                lease_expires_at=None,
-                last_error_code=None,
-                last_error_message=None,
-                created_at=now,
-                updated_at=now,
-            )
+        AgentCanvasOperationEnvelopeRepository(self._database).create_in_transaction(
+            connection,
+            envelope,
+        )
+        AgentCanvasContinuationOutboxRepository(
+            self._database,
+            self._events,
+        ).enqueue_in_transaction(
+            connection,
+            continuation_id=continuation.continuation_id,
+            workflow_id=workflow_id,
+            conversation_id=conversation_id,
+            source_turn_id=continuation.source_turn_id,
+            continuation_turn_id=continuation.continuation_turn_id,
+            operation="next_action",
+            payload={"schema_version": "1", "envelope_id": envelope_id},
+            max_attempts=continuation.max_attempts,
+            now=timestamp,
+        )
+        _append_timeline_entry(
+            connection,
+            conversation_id=conversation_id,
+            workflow_id=workflow_id,
+            entry_type="planning_progress",
+            content="Planning the next creative action.",
+            metadata={"envelope_id": envelope_id, "operation": "next_action"},
+            created_at=now,
         )
         self._events.append_in_transaction(
             connection,
@@ -3048,36 +3121,12 @@ class AgentCanvasConversationRepository:
                 workflow_id=workflow_id,
                 conversation_id=conversation_id,
                 turn_id=continuation.continuation_turn_id,
-                action_id=continuation.source_action_id,
-                event_type="agent_turn_queued",
-                created_at=now,
-                payload={
-                    "turn_id": continuation.continuation_turn_id,
-                    "turn_kind": "message",
-                    "source_action_id": continuation.source_action_id,
-                    "continuation_id": continuation.continuation_id,
-                },
-            ),
-        )
-        self._events.append_in_transaction(
-            connection,
-            V2EventInsert(
-                workflow_id=workflow_id,
-                conversation_id=conversation_id,
-                turn_id=continuation.continuation_turn_id,
-                event_type="continuation_queued",
+                event_type="agent_command_queued",
                 transition_key=(
-                    f"conversation:{continuation.continuation_turn_id}:continuation_queued:0"
+                    f"conversation:{continuation.continuation_turn_id}:agent_command_queued"
                 ),
                 created_at=now,
-                payload={
-                    "continuation_id": continuation.continuation_id,
-                    "status": "queued",
-                    "attempt": 0,
-                    "lease_generation": 0,
-                    "next_attempt_at": now,
-                    "error_code": None,
-                },
+                payload={"envelope_id": envelope_id, "operation": "next_action"},
             ),
         )
 
@@ -3133,6 +3182,11 @@ class AgentCanvasConversationRepository:
                 )
                 if topic is None:
                     raise _error("guidance_topic_not_found", "Guidance topic was not found.")
+                if action == "defer_topic" and str(topic["status"]) != "proposed":
+                    raise _error(
+                        "guidance_defer_conflict",
+                        "Guidance topic is no longer available for deferral.",
+                    )
                 goal = CreativeGoalV2.model_validate_json(str(session["creative_goal_json"]))
                 topic_kind = str(topic["topic_kind"])
                 if action == "exclude_element" and topic_kind == goal.requested_output:
@@ -3172,7 +3226,10 @@ class AgentCanvasConversationRepository:
                 connection.execute(
                     update(AgentCanvasConceptProposalRow)
                     .where(AgentCanvasConceptProposalRow.proposal_id == proposal_id)
-                    .values(availability="applied", updated_at=now)
+                    .values(
+                        availability=("superseded" if action == "defer_topic" else "applied"),
+                        updated_at=now,
+                    )
                 )
                 next_revision = expected_session_revision + 1
                 connection.execute(
@@ -3267,6 +3324,13 @@ class AgentCanvasConversationRepository:
                             payload={**common_payload, "action": action},
                         ),
                     )
+                _complete_turn_in_transaction(
+                    connection,
+                    events=self._events,
+                    turn=turn,
+                    assistant_message=receipt.summary,
+                    now=now,
+                )
                 connection.commit()
                 return receipt
             except BaseException:
@@ -3390,13 +3454,13 @@ class AgentCanvasConversationRepository:
         self,
         turn_id: str,
         *,
-        specialist_name: str,
+        capability_id: str,
         operation: str,
         display_name: str,
         event_details: Mapping[str, object] | None = None,
     ) -> ExpertActivityV2:
         now = _now()
-        activity_id = _expert_activity_id(turn_id, specialist_name, operation)
+        activity_id = _expert_activity_id(turn_id, capability_id, operation)
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
@@ -3416,7 +3480,7 @@ class AgentCanvasConversationRepository:
                         activity_id=activity_id,
                         turn_id=turn_id,
                         workflow_id=str(turn["workflow_id"]),
-                        specialist_name=specialist_name,
+                        capability_id=capability_id,
                         operation=operation,
                         status="working",
                         display_name=display_name,
@@ -3436,9 +3500,9 @@ class AgentCanvasConversationRepository:
                             "activity_id": activity_id,
                             "workflow_id": str(turn["workflow_id"]),
                             "turn_id": turn_id,
-                            "specialist_name": specialist_name,
+                            "capability_id": capability_id,
                             "operation": operation,
-                            "display_name": display_name,
+                            "capability_display_name": display_name,
                             "status": "working",
                             "conversation_id": str(turn["conversation_id"]),
                             "created_at": now,
@@ -3454,9 +3518,9 @@ class AgentCanvasConversationRepository:
                     content=display_name,
                     metadata={
                         "activity_id": activity_id,
-                        "specialist_name": specialist_name,
+                        "capability_id": capability_id,
                         "operation": operation,
-                        "display_name": display_name,
+                        "capability_display_name": display_name,
                         "status": "working",
                         "conversation_id": str(turn["conversation_id"]),
                         "created_at": now,
@@ -3524,10 +3588,10 @@ class AgentCanvasConversationRepository:
                             "activity_id": activity_id,
                             "workflow_id": str(row["workflow_id"]),
                             "turn_id": str(row["turn_id"]),
-                            "specialist_name": str(row["specialist_name"]),
+                            "capability_id": str(row["capability_id"]),
                             "operation": str(row["operation"]),
                             "status": status,
-                            "display_name": str(row["display_name"]),
+                            "capability_display_name": str(row["display_name"]),
                             "error_code": error_code,
                             "conversation_id": str(turn["conversation_id"]),
                             "created_at": now,
@@ -3543,9 +3607,9 @@ class AgentCanvasConversationRepository:
                     content=str(row["display_name"]),
                     metadata={
                         "activity_id": activity_id,
-                        "specialist_name": str(row["specialist_name"]),
+                        "capability_id": str(row["capability_id"]),
                         "operation": str(row["operation"]),
-                        "display_name": str(row["display_name"]),
+                        "capability_display_name": str(row["display_name"]),
                         "status": status,
                         "error_code": error_code,
                         **(event_details or {}),
@@ -3634,7 +3698,7 @@ class AgentCanvasConversationRepository:
         self,
         turn_id: str,
         *,
-        specialist_name: str,
+        capability_id: str,
         operation: str,
         status: str,
         display_name: str,
@@ -3643,7 +3707,7 @@ class AgentCanvasConversationRepository:
     ) -> ExpertActivityV2:
         activity = self.start_expert_activity(
             turn_id,
-            specialist_name=specialist_name,
+            capability_id=capability_id,
             operation=operation,
             display_name=display_name,
         )
@@ -3960,6 +4024,59 @@ def _next_chat_sequence(connection: Connection, conversation_id: str) -> int:
     )
 
 
+def _complete_turn_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    turn: RowMapping,
+    assistant_message: str | None,
+    now: str,
+) -> None:
+    turn_id = str(turn["turn_id"])
+    workflow_id = str(turn["workflow_id"])
+    conversation_id = str(turn["conversation_id"])
+    if assistant_message:
+        connection.execute(
+            insert(AgentCanvasChatEntryRow).values(
+                entry_id=f"msg_{uuid4().hex}",
+                conversation_id=conversation_id,
+                workflow_id=workflow_id,
+                sequence_no=_next_chat_sequence(connection, conversation_id),
+                entry_type="message",
+                speaker="adcraft_video_agent",
+                content=assistant_message,
+                metadata_json=_dump({"turn_id": turn_id}),
+                created_at=now,
+            )
+        )
+        events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=workflow_id,
+                event_type="chat_message_created",
+                created_at=now,
+                payload={
+                    "turn_id": turn_id,
+                    "speaker": "adcraft_video_agent",
+                },
+            ),
+        )
+    connection.execute(
+        update(AgentCanvasChatTurnRow)
+        .where(AgentCanvasChatTurnRow.turn_id == turn_id)
+        .values(status="completed", updated_at=now)
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            event_type="chat_turn_completed",
+            created_at=now,
+            payload={"turn_id": turn_id},
+        ),
+    )
+
+
 def _append_timeline_entry(
     connection: Connection,
     *,
@@ -4059,23 +4176,14 @@ def _creative_direction_snapshot(
 
 
 def _expert_activity(row: RowMapping) -> ExpertActivityV2:
-    display_name = str(row["display_name"]).strip() or {
-        "script_writer": "Script Writer",
-        "product_designer": "Product Designer",
-        "prop_designer": "Prop Designer",
-        "character_designer": "Character Designer",
-        "scene_designer": "Scene Designer",
-        "storyboard_artist": "Storyboard Artist",
-        "video_director": "Video Director",
-        "bgm_director": "BGM Director",
-        "quick_media_agent": "Quick Media Agent",
-    }.get(str(row["specialist_name"]), "Specialist")
+    capability_id = cast(str, row["capability_id"])
+    display_name = str(row["display_name"]).strip() or CAPABILITY_DISPLAY_NAMES[capability_id]
     return ExpertActivityV2(
         activity_id=str(row["activity_id"]),
         workflow_id=str(row["workflow_id"]),
         turn_id=str(row["turn_id"]),
-        specialist_name=cast(str, row["specialist_name"]),
-        display_name=display_name,
+        capability_id=capability_id,
+        capability_display_name=display_name,
         operation=cast(str, row["operation"]),
         status=cast(str, row["status"]),
         error_code=str(row["error_code"]) if row["error_code"] else None,
@@ -4085,8 +4193,8 @@ def _expert_activity(row: RowMapping) -> ExpertActivityV2:
     )
 
 
-def _expert_activity_id(turn_id: str, specialist_name: str, operation: str) -> str:
-    identity = f"{turn_id}:{specialist_name}:{operation}".encode("utf-8")
+def _expert_activity_id(turn_id: str, capability_id: str, operation: str) -> str:
+    identity = f"{turn_id}:{capability_id}:{operation}".encode("utf-8")
     return f"activity_{hashlib.sha256(identity).hexdigest()[:32]}"
 
 
@@ -4184,11 +4292,6 @@ def _turn(
             if row["creation_mode_json"]
             else None
         ),
-        guidance_decision=(
-            NextGuidanceDecisionV2.model_validate_json(str(row["guidance_decision_json"]))
-            if row["guidance_decision_json"]
-            else None
-        ),
         guidance_session_revision=(
             int(row["guidance_session_revision"])
             if row["guidance_session_revision"] is not None
@@ -4203,6 +4306,7 @@ def _turn(
 
 
 def _continuation_delivery(row: RowMapping) -> ContinuationDeliveryV2:
+    payload = json.loads(str(row["payload_json"]))
     return ContinuationDeliveryV2(
         continuation_id=str(row["continuation_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -4210,6 +4314,7 @@ def _continuation_delivery(row: RowMapping) -> ContinuationDeliveryV2:
         source_turn_id=str(row["source_turn_id"]),
         continuation_turn_id=str(row["continuation_turn_id"]),
         operation=str(row["operation"]),
+        envelope_id=str(payload["envelope_id"]),
         payload_digest=str(row["payload_digest"]),
         status=cast(str, row["status"]),
         attempt_count=int(row["attempt_count"]),
@@ -4258,6 +4363,58 @@ def _proposal(
                 created_at=receipt.created_at,
             )
     availability = cast(str, row["availability"])
+    materialization = (
+        ProposalMaterializationProjectionV2(
+            materialization_id=str(row["materialization_id"]),
+            option_id=str(row["materialization_option_id"]),
+            turn_id=str(row["materialization_turn_id"]),
+            status=cast(str, row["materialization_status"]),
+            attempt_no=int(row["materialization_attempt_no"]),
+            retryable=bool(row["materialization_retryable"]),
+            error=(
+                ProposalMaterializationErrorV2(
+                    code=str(row["materialization_error_code"]),
+                    message=str(row["materialization_error_message"]),
+                )
+                if row["materialization_error_code"] is not None
+                and row["materialization_error_message"] is not None
+                else None
+            ),
+            created_at=str(row["materialization_created_at"]),
+            updated_at=str(row["materialization_updated_at"]),
+        )
+        if row["materialization_id"] is not None
+        else None
+    )
+    actions = (
+        _proposal_action_descriptors(
+            proposal_id=str(row["proposal_id"]),
+            expected_session_revision=int(row["guidance_session_revision"]),
+            proposal_kind=str(row["proposal_kind"]),
+        )
+        if availability == "open"
+        else (
+            _historical_proposal_action_descriptors(
+                proposal_id=str(row["proposal_id"]),
+                option_ids=tuple(str(option["option_id"]) for option in options),
+                expected_session_revision=(
+                    current_session_revision or int(row["guidance_session_revision"])
+                ),
+            )
+            if availability == "superseded"
+            else ()
+        )
+    )
+    if materialization is not None and materialization.status in {"queued", "working"}:
+        actions = tuple(
+            action.model_copy(
+                update={
+                    "enabled": False,
+                    "disabled_reason": "The selected direction is being materialized.",
+                }
+            )
+            for action in actions
+        )
     return ConceptProposalV2(
         proposal_id=str(row["proposal_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -4283,31 +4440,14 @@ def _proposal(
             str(row["source_proposal_id"]) if row["source_proposal_id"] is not None else None
         ),
         proposal_kind=cast(str, row["proposal_kind"]),
-        specialist_name=cast(str, row["specialist_name"]),
+        capability_id=cast(str, row["capability_id"]),
         availability=availability,
         application_count=len(applications),
         latest_application=latest_application,
+        materialization=materialization,
         guidance_session_id=str(row["guidance_session_id"]),
         guidance_session_revision=int(row["guidance_session_revision"]),
-        actions=(
-            _proposal_action_descriptors(
-                proposal_id=str(row["proposal_id"]),
-                expected_session_revision=int(row["guidance_session_revision"]),
-                proposal_kind=str(row["proposal_kind"]),
-            )
-            if availability == "open"
-            else (
-                _historical_proposal_action_descriptors(
-                    proposal_id=str(row["proposal_id"]),
-                    option_ids=tuple(str(option["option_id"]) for option in options),
-                    expected_session_revision=(
-                        current_session_revision or int(row["guidance_session_revision"])
-                    ),
-                )
-                if availability == "superseded"
-                else ()
-            )
-        ),
+        actions=actions,
         proposed_references=tuple(
             ProposedDraftReferenceV2.model_validate(item)
             for item in json.loads(str(row["proposed_references_json"]))
@@ -4316,10 +4456,8 @@ def _proposal(
             ConceptOptionRecordV2(
                 option_id=str(option["option_id"]),
                 title=str(option["title"]),
-                summary_prompt=str(option["description"]),
-                draft_spec=ConceptDraftSpecV2.model_validate(
-                    json.loads(str(option["draft_spec_json"]))
-                ),
+                public_summary=str(option["description"]),
+                key_decisions=tuple(json.loads(str(option["key_decisions_json"]))),
             )
             for option in options
         ),
@@ -4466,7 +4604,7 @@ def _guidance_session(
                 topic_kind=cast(str, topic["topic_kind"]),
                 title=str(topic["title"]),
                 status=cast(str, topic["status"]),
-                specialist_name=cast(str, topic["specialist_name"]),
+                capability_id=cast(str, topic["capability_id"]),
                 related_node_ids=tuple(
                     str(item) for item in json.loads(str(topic["related_node_ids_json"]))
                 ),
