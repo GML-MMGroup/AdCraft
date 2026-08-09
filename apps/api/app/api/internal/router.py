@@ -26,11 +26,6 @@ from app.services.v2_agent_credential_broker import (
 from app.services.v2_agent_structured_validation import (
     V2AgentStructuredValidationService,
 )
-from app.services.v2_agent_tool_gateway import (
-    V2AgentToolGateway,
-    WorkflowV2AgentToolDomain,
-)
-
 
 router = APIRouter(prefix="/internal/v1")
 logger = logging.getLogger(__name__)
@@ -116,15 +111,6 @@ def execute_agent_tool(
     call: AgentToolCall,
     settings: Settings = Depends(get_settings),
 ) -> AgentToolResult:
-    if call.tool_name != "submit_structured_result":
-        database = create_v2_database(settings.media_data_dir)
-        try:
-            return V2AgentToolGateway(
-                repository=AgentRunRepository(database),
-                domain=WorkflowV2AgentToolDomain(settings),
-            ).execute(call)
-        finally:
-            database.dispose()
     database = create_v2_database(settings.media_data_dir)
     repository = AgentRunRepository(database)
     try:

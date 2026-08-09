@@ -81,26 +81,26 @@ _ROLE_BOUNDARIES = {
         "Do not add undeclared speech or lyrics.",
     ),
 }
-_CREATIVE_DIRECTION_ROLE = {
-    "product": "product_designer",
-    "prop": "prop_designer",
-    "character": "character_designer",
-    "scene": "scene_designer",
-    "storyboard_sequence": "storyboard_artist",
-    "storyboard_video": "video_director",
-    "bgm": "bgm_director",
-    "general_image": "quick_media_agent",
-    "general_video": "quick_media_agent",
-    "general_audio": "quick_media_agent",
+_STYLE_ROLE_BY_SEMANTIC_ROLE = {
+    "product": "product",
+    "prop": "prop",
+    "character": "character",
+    "scene": "scene",
+    "storyboard_sequence": "storyboard",
+    "storyboard_video": "video",
+    "bgm": "bgm",
+    "general_image": "quick_media",
+    "general_video": "quick_media",
+    "general_audio": "quick_media",
 }
 _WORLD_SETTING_ROLE_LABEL = {
-    "product_designer": "Product Designer",
-    "prop_designer": "Prop Designer",
-    "character_designer": "Character Designer",
-    "scene_designer": "Scene Designer",
-    "storyboard_artist": "Storyboard Artist",
-    "video_director": "Video Director",
-    "bgm_director": "BGM Director",
+    "product": "Product",
+    "prop": "Prop",
+    "character": "Character",
+    "scene": "Scene",
+    "storyboard": "Storyboard",
+    "video": "Video",
+    "bgm": "BGM",
 }
 
 
@@ -147,11 +147,11 @@ class AgentCanvasProviderPromptCompiler:
             )
         if creative_direction_projection is not None:
             CreativeDirectionService().validate_role_projection(
-                _CREATIVE_DIRECTION_ROLE[node.semantic_role],
+                _STYLE_ROLE_BY_SEMANTIC_ROLE[node.semantic_role],
                 creative_direction_projection,
             )
         if world_setting is not None:
-            expected_audience = _CREATIVE_DIRECTION_ROLE[node.semantic_role]
+            expected_audience = _STYLE_ROLE_BY_SEMANTIC_ROLE[node.semantic_role]
             if world_setting.target_audience != expected_audience:
                 raise _error(
                     "world_setting_context_audience_invalid",

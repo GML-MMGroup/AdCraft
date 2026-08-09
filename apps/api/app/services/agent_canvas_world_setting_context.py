@@ -21,26 +21,26 @@ from app.schemas.agent_canvas_world_setting import (
 
 
 WORLD_SETTING_CONTEXT_AUDIENCES = (
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard",
+    "video",
+    "bgm",
 )
 
 _COMPILER_ID = "adcraft.world-setting-context.v2"
 _AUDIENCE_FIELDS: dict[str, tuple[str, ...]] = {
-    "script_writer": ("world_rules", "visual_continuity"),
-    "product_designer": ("world_rules", "visual_continuity"),
-    "prop_designer": ("world_rules", "visual_continuity"),
-    "character_designer": ("world_rules", "visual_continuity"),
-    "scene_designer": ("world_rules", "visual_continuity"),
-    "storyboard_artist": ("world_rules", "visual_continuity"),
-    "video_director": ("world_rules", "visual_continuity"),
-    "bgm_director": ("world_rules",),
+    "script": ("world_rules", "visual_continuity"),
+    "product": ("world_rules", "visual_continuity"),
+    "prop": ("world_rules", "visual_continuity"),
+    "character": ("world_rules", "visual_continuity"),
+    "scene": ("world_rules", "visual_continuity"),
+    "storyboard": ("world_rules", "visual_continuity"),
+    "video": ("world_rules", "visual_continuity"),
+    "bgm": ("world_rules",),
 }
 
 

@@ -34,8 +34,8 @@ from app.services.v2_structured_generation_runtime import (
 )
 
 
-_CONTRACT_VERSION = "video_director.compile_video_parameters.v1"
-_PROMPT_DESCRIPTOR = "adcraft.video_director.compile_video_parameters.v1"
+_CONTRACT_VERSION = "video_agent.compile_video_parameters.v1"
+_PROMPT_DESCRIPTOR = "adcraft.video_agent.compile_video_parameters.v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +53,7 @@ class VideoParameterIntentGateway(Protocol):
 
 
 class PiVideoParameterIntentGateway:
-    """Invoke the registered bounded Video Director structured operation."""
+    """Invoke the registered bounded Video Agent structured operation."""
 
     def __init__(self, runtime: StructuredGenerationRuntime | None = None) -> None:
         self._runtime = runtime or StructuredGenerationRuntime()
@@ -67,10 +67,8 @@ class PiVideoParameterIntentGateway:
                 StructuredGenerationSpec(
                     stage_name="compile_video_parameters",
                     contract_name="VideoParameterIntentV2",
-                    model_id="video-director",
-                    system_prompt=(
-                        "Use the registered Video Director parameter compilation prompt."
-                    ),
+                    model_id="video-agent",
+                    system_prompt=("Use the registered Video Agent parameter compilation prompt."),
                     input_payload=context.model_dump(mode="json"),
                     output_model=VideoParameterIntentV2,
                     trace_metadata={
@@ -79,7 +77,7 @@ class PiVideoParameterIntentGateway:
                         "expected_target_revision": context.target_node_revision,
                     },
                     validation_profile="video_parameter_intent_v1",
-                    agent_name="video_director",
+                    agent_name="video_agent",
                     operation="compile_video_parameters",
                     tool_mode="structured_only",
                     agent_context=context,

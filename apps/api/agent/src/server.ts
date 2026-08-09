@@ -164,7 +164,7 @@ async function handleRun(
   const policy = {
     max_turns: request.policy?.max_turns ?? 8,
     max_tool_calls: request.policy?.max_tool_calls ?? 16,
-    max_handoffs: request.policy?.max_handoffs ?? 8,
+    max_handoffs: 0 as const,
     timeout_seconds:
       request.policy?.timeout_seconds ?? operationDeadlineSeconds(request.operation),
     max_input_bytes: request.policy?.max_input_bytes ?? 131_072,
@@ -249,7 +249,7 @@ async function handleRun(
           audit: {
             duration_ms: Math.max(0, Date.now() - startedAt),
             operation: request.operation,
-            specialist_name: request.agent_name,
+            agent_name: request.agent_name,
             operation_policy_id: request.policy?.operation_policy_id,
             attempt_stage: terminal.attemptStage,
           },
