@@ -25,10 +25,7 @@ import {
   structuredRepairPrompt,
   structuredSubmissionPrompt,
 } from "./prompts/agents.js";
-import {
-  getPromptDescriptor,
-  isPlanningOperation,
-} from "./prompts/registry.js";
+import { getPromptDescriptor } from "./prompts/registry.js";
 import {
   getAgentDefinition,
   getOperationDescriptor,
@@ -53,13 +50,10 @@ export class PiModelAdapter implements AgentModelAdapter {
     if (!definition.operations.includes(request.operation)) {
       throw new Error("agent_operation_not_allowed");
     }
-    const promptDescriptor = isPlanningOperation(request.operation)
-      ? getPromptDescriptor(
-          request.agent_name,
-          request.operation,
-          request.contract_name ?? "",
-        )
-      : undefined;
+    const promptDescriptor = getPromptDescriptor(
+      request.operation,
+      request.contract_name ?? "",
+    );
     if (!request.model_ref) throw new Error("agent_protocol_mismatch");
     const credential = await this.python.credential(
       request.credential_ref ?? "llm-default",
@@ -69,10 +63,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       request.model_policy_id,
       request.model_ref,
     );
-    const operationDescriptor = getOperationDescriptor(
-      request.agent_name,
-      request.operation,
-    );
+    const operationDescriptor = getOperationDescriptor(request.operation);
     const skills = await loadRequiredSkills(operationDescriptor);
     const skillContext = skills
       .map(
@@ -97,13 +88,13 @@ export class PiModelAdapter implements AgentModelAdapter {
         supportsUsageInStreaming: true,
         supportsStrictMode: true,
         maxTokensField: "max_tokens",
-        thinkingFormat: "zai",
+        thinkingFormat: thinkingFormatForCredential(credential),
       },
     };
     let acceptedResult: Record<string, unknown> | undefined;
     let attempts = 0;
     const maximumStructuredAttempts =
-      1 + (request.policy?.structured_repair_limit ?? 1);
+      1 + Math.min(1, request.policy?.structured_repair_limit ?? 1);
     const structuredTool: AgentTool<typeof structuredValueSchema> = {
       name: "submit_structured_result",
       label: "Submit structured result",
@@ -159,7 +150,7 @@ export class PiModelAdapter implements AgentModelAdapter {
       const agent = new Agent({
         initialState: {
           systemPrompt: [
-            promptDescriptor?.system_prompt ?? definition.system_prompt,
+            promptDescriptor.system_prompt,
             skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
             structuredSubmissionPrompt,
             structuredRepairPrompt,
@@ -222,15 +213,24 @@ export class PiModelAdapter implements AgentModelAdapter {
 
 }
 
+export function thinkingFormatForCredential(
+  credential: AgentCredentialSnapshot,
+): "qwen" | "zai" {
+  return credential.provider.toLowerCase() === "siliconflow" ||
+    credential.base_url.toLowerCase().includes("api.siliconflow.cn")
+    ? "qwen"
+    : "zai";
+}
+
 export function modelStreamForCredential(
   model: Model<"openai-completions">,
   context: Context,
   options: SimpleStreamOptions,
   credential: AgentCredentialSnapshot,
-  sourceFactory: () => AssistantMessageEventStream = () =>
-    streamSimple(model, context, options),
+  sourceFactory?: () => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-  const source = sourceFactory();
+  const source = sourceFactory?.() ??
+    streamSimple(model, context, providerStreamOptions(options, credential));
   if (credential.supports_streamed_tool_calls) return source;
 
   const buffered = createAssistantMessageEventStream();
@@ -242,13 +242,37 @@ export function modelStreamForCredential(
   return buffered;
 }
 
+function providerStreamOptions(
+  options: SimpleStreamOptions,
+  credential: AgentCredentialSnapshot,
+): SimpleStreamOptions {
+  if (
+    credential.provider.toLowerCase() !== "siliconflow" &&
+    !credential.base_url.toLowerCase().includes("api.siliconflow.cn")
+  ) {
+    return options;
+  }
+  const upstream = options.onPayload;
+  return {
+    ...options,
+    onPayload: async (payload, model) => {
+      const transformed = (await upstream?.(payload, model)) ?? payload;
+      if (!transformed || typeof transformed !== "object" || Array.isArray(transformed)) {
+        return transformed;
+      }
+      return {
+        ...transformed,
+        enable_thinking: false,
+        thinking_budget: 128,
+      };
+    },
+  };
+}
+
 export function toolsForRequest(
   request: AgentRunRequest,
 ): ReadonlyArray<AgentToolName> {
-  if (request.audit_metadata?.tool_mode === "structured_only") {
-    return ["submit_structured_result"];
-  }
-  return toolsForOperation(request.agent_name, request.operation);
+  return toolsForOperation(request.operation);
 }
 
 export function toolChoiceForRequest(
@@ -259,12 +283,10 @@ export function toolChoiceForRequest(
       readonly function: { readonly name: "submit_structured_result" };
     }
   | undefined {
-  return request.audit_metadata?.tool_mode === "structured_only"
-    ? {
-        type: "function",
-        function: { name: "submit_structured_result" },
-      }
-    : undefined;
+  return {
+    type: "function",
+    function: { name: "submit_structured_result" },
+  };
 }
 
 export class AgentEventProjection {
@@ -295,9 +317,7 @@ export class AgentEventProjection {
 export function promptAuditForRequest(
   request: AgentRunRequest,
 ): Readonly<Record<string, string>> {
-  if (!isPlanningOperation(request.operation)) return {};
   const descriptor = getPromptDescriptor(
-    request.agent_name,
     request.operation,
     request.contract_name ?? "",
   );
@@ -371,16 +391,37 @@ function contractSchema(request: AgentRunRequest): Readonly<Record<string, unkno
 }
 
 export function promptInputForRequest(request: AgentRunRequest): string {
-  const primaryInput =
-    "user_input" in request.context
-      ? request.context.user_input
-      : "user_instruction" in request.context
-        ? request.context.user_instruction
-        : "original_user_intent" in request.context
-          ? request.context.original_user_intent
-          : undefined;
+  const context = request.context as Readonly<Record<string, unknown>>;
+  let primaryInput = [
+    "user_input",
+    "user_instruction",
+    "original_user_intent",
+    "objective",
+    "creative_goal",
+  ]
+    .map((key) => context[key])
+    .find((value): value is string => typeof value === "string" && value.length > 0);
+  if (
+    !primaryInput &&
+    context.context_kind === "video_parameter_intent" &&
+    Array.isArray(context.sources)
+  ) {
+    primaryInput = context.sources
+      .map((source) =>
+        source && typeof source === "object" && "text" in source
+          ? (source as Readonly<Record<string, unknown>>).text
+          : undefined,
+      )
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .join("\n\n");
+  }
   if (!primaryInput) throw new Error("agent_context_input_missing");
-  if (!("context_kind" in request.context)) return primaryInput;
+  const hasTypedOperationContext =
+    "context_kind" in request.context ||
+    "session_exists" in request.context ||
+    "capability_id" in request.context ||
+    "policy" in request.context;
+  if (!hasTypedOperationContext) return primaryInput;
 
   const typedContext = Object.fromEntries(
     Object.entries(request.context).filter(([key]) => key !== "contract_schema"),
