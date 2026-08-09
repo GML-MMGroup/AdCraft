@@ -8,14 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 WorldSettingContextAudienceV2 = Literal[
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard",
+    "video",
+    "bgm",
 ]
 
 _ProjectionItem = Annotated[str, Field(min_length=1, max_length=1_024)]
@@ -107,27 +107,4 @@ class WorldSettingResolvedInputV2(_WorldSettingModel):
         )
         if identity != context_identity:
             raise ValueError("World Setting context identity is inconsistent.")
-        return self
-
-
-class WorldSettingDirectionV1(_WorldSettingModel):
-    option_id: str = Field(min_length=1, max_length=160)
-    title: str = Field(min_length=1, max_length=256)
-    premise: str = Field(min_length=1, max_length=2_048)
-    era_and_place: str = Field(min_length=1, max_length=2_048)
-    world_rules: tuple[_ProjectionItem, ...] = Field(min_length=1, max_length=8)
-    visual_continuity: tuple[_ProjectionItem, ...] = Field(min_length=1, max_length=8)
-    user_summary: str = Field(min_length=1, max_length=4_096)
-
-
-class WorldSettingProposalDraftV1(_WorldSettingModel):
-    proposal_kind: Literal["world_setting"] = "world_setting"
-    specialist_name: Literal["scene_designer"] = "scene_designer"
-    options: tuple[WorldSettingDirectionV1, ...] = Field(min_length=2, max_length=3)
-
-    @model_validator(mode="after")
-    def validate_unique_option_ids(self) -> "WorldSettingProposalDraftV1":
-        option_ids = tuple(option.option_id for option in self.options)
-        if len(set(option_ids)) != len(option_ids):
-            raise ValueError("World Setting option IDs must be unique.")
         return self

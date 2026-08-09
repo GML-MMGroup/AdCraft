@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, model_validator
 
 from app.schemas.agent_canvas import (
     CanvasBindingKindV2,
@@ -21,19 +21,12 @@ from app.schemas.agent_canvas_ad_media import (
     VideoSegmentContentV2,
     SemanticReferenceRoleV2,
 )
+from app.schemas.agent_canvas_capability_identity import (
+    CAPABILITY_DISPLAY_NAMES,
+    CapabilityIdV1,
+)
 
 
-AgentCanvasSpecialistNameV2 = Literal[
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
-]
 CreationModeV2 = Literal[
     "ordinary_conversation",
     "targeted_authoring",
@@ -121,10 +114,15 @@ class GuidanceTopicStateV2(_CreativeSessionModel):
     topic_kind: GuidanceTopicKindV2
     title: str = Field(min_length=1, max_length=256)
     status: Literal["proposed", "selected", "deferred", "excluded"]
-    specialist_name: AgentCanvasSpecialistNameV2
+    capability_id: CapabilityIdV1
     related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     source_proposal_id: str | None = Field(default=None, max_length=160)
     revision: int = Field(ge=1)
+
+    @computed_field
+    @property
+    def capability_display_name(self) -> str:
+        return CAPABILITY_DISPLAY_NAMES[self.capability_id]
 
 
 class GuidanceCompletionProjectionV2(_CreativeSessionModel):
@@ -208,78 +206,9 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     updated_at: datetime
 
 
-class GuidanceIntentPatchV2(_CreativeSessionModel):
-    goal: CreativeGoalV2 | None = None
-    element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
-        default=(),
-        max_length=32,
-    )
-
-
-class GuidanceCompletionClaimV2(_CreativeSessionModel):
-    state: Literal["authoring_ready", "delivery_ready"]
-    output_kind: CreativeOutputKindV2
-    node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    reason: str = Field(min_length=1, max_length=2_048)
-
-
-class NextGuidanceDecisionV2(_CreativeSessionModel):
-    action: Literal[
-        "ordinary_reply",
-        "ask_clarification",
-        "propose_topic",
-        "finish_guidance",
-    ]
-    assistant_message: str = Field(min_length=1, max_length=4_000)
-    rationale: str = Field(min_length=1, max_length=4_000)
-    topic_id: str | None = Field(default=None, max_length=160)
-    topic_kind: GuidanceTopicKindV2 | None = None
-    topic_title: str | None = Field(default=None, max_length=256)
-    topic_objective: str | None = Field(default=None, max_length=4_096)
-    specialist_name: AgentCanvasSpecialistNameV2 | None = None
-    candidate_count: int | None = Field(default=None, ge=1, le=4)
-    suggested_next_topic_kinds: tuple[GuidanceTopicKindV2, ...] = Field(
-        default=(),
-        max_length=8,
-    )
-    intent_patch: GuidanceIntentPatchV2 | None = None
-    completion_claim: GuidanceCompletionClaimV2 | None = None
-    creative_authority_resolution: CreativeAuthorityResolutionV2 | None = None
-
-    @model_validator(mode="after")
-    def validate_action_shape(self) -> "NextGuidanceDecisionV2":
-        topic_values = (
-            self.topic_id,
-            self.topic_kind,
-            self.topic_title,
-            self.topic_objective,
-            self.specialist_name,
-            self.candidate_count,
-        )
-        if self.action == "propose_topic":
-            if any(value is None for value in topic_values):
-                raise ValueError("A topic proposal requires the complete topic shape.")
-        elif any(value is not None for value in topic_values):
-            raise ValueError("Only a topic proposal accepts topic fields.")
-        if self.action == "finish_guidance":
-            if self.completion_claim is None:
-                raise ValueError("Finishing guidance requires a completion claim.")
-        elif self.completion_claim is not None:
-            raise ValueError("Only finish_guidance accepts a completion claim.")
-        return self
-
-
 class DelegatedProposalChoiceV2(_CreativeSessionModel):
     option_id: str = Field(min_length=1, max_length=160)
     reason: str = Field(min_length=1, max_length=2_048)
-
-
-class ConceptDraftSpecV2(_CreativeSessionModel):
-    """Private bounded prompt authored for one proposal option."""
-
-    prompt: str = Field(min_length=1, max_length=32_768)
-    world_setting_core: dict[str, JsonValue] | None = None
 
 
 class GuidanceSessionActionV2(_CreativeSessionModel):
@@ -325,7 +254,6 @@ class StyleGuidanceContextV2(_CreativeSessionModel):
     global_guidance: str = Field(min_length=1, max_length=8_192)
     role: str | None = Field(default=None, max_length=160)
     role_guidance: str | None = Field(default=None, max_length=8_192)
-    role_guidance_path: str | None = Field(default=None, max_length=512)
     role_guidance_digest: str | None = Field(default=None, max_length=160)
     source: Literal["creative_direction_snapshot"] = "creative_direction_snapshot"
     precedence: Literal["advisory"] = "advisory"
@@ -444,9 +372,9 @@ class ExpertActivityV2(_CreativeSessionModel):
     activity_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     turn_id: str = Field(min_length=1, max_length=160)
-    specialist_name: AgentCanvasSpecialistNameV2
-    display_name: str = Field(min_length=1, max_length=160)
-    operation: Literal["propose_concepts", "revise_concepts", "materialize_draft"]
+    capability_id: CapabilityIdV1
+    capability_display_name: str = Field(min_length=1, max_length=160)
+    operation: str = Field(min_length=1, max_length=160)
     status: Literal["working", "completed", "failed"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
@@ -458,6 +386,6 @@ class ResolvedImageTargetV2(_CreativeSessionModel):
     asset_id: str = Field(min_length=1, max_length=160)
     owner_node_id: str | None = Field(default=None, max_length=160)
     owner_semantic_role: str | None = Field(default=None, max_length=160)
-    specialist_name: AgentCanvasSpecialistNameV2
+    capability_id: CapabilityIdV1
     display_name: str = Field(min_length=1, max_length=256)
     checksum: str = Field(min_length=1, max_length=160)

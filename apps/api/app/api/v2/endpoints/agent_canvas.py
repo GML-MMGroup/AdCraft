@@ -48,6 +48,12 @@ from app.persistence.agent_canvas_runtime_repository import (
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_capability_proposal_repository import (
+    AgentCanvasCapabilityProposalRepository,
+)
+from app.persistence.agent_canvas_materialization_repository import (
+    AgentCanvasMaterializationRepository,
+)
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
@@ -196,12 +202,24 @@ from app.services.agent_canvas_context import AgentLocalContextAssembler
 from app.services.agent_canvas_style_activation import StyleSkillActivationService
 from app.services.agent_canvas_conversation import (
     AgentConversationService,
-    DeterministicDirectorGateway,
-    PiDirectorGateway,
+    DeterministicVideoAgentGateway,
+    GuidanceProposalActionService,
+    PiVideoAgentGateway,
 )
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
+from app.services.agent_canvas_capability_execution import CapabilityExecutionService
+from app.services.agent_canvas_capability_execution import capability_context_from_envelope
+from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
+from app.services.agent_canvas_materialization_publication import (
+    CapabilityMaterializationPublicationService,
+)
+from app.services.agent_canvas_materialization_runtime import (
+    CapabilityMaterializationRunner,
+    materialization_context_from_state,
+)
+from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_execution_settings import (
     AgentCanvasExecutionSettingsService,
 )
@@ -348,10 +366,10 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         conversation_repository,
         video_skills,
     )
-    director_gateway = (
-        DeterministicDirectorGateway()
+    video_agent_gateway = (
+        DeterministicVideoAgentGateway()
         if settings.agent_runtime_mode == "fake"
-        else PiDirectorGateway(
+        else PiVideoAgentGateway(
             DurablePiRunService(
                 settings=settings,
                 client=PiAgentRuntimeClient(
@@ -700,9 +718,9 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             conversations=conversation_repository,
             workflows=workflow_repository,
             compiler=command_compiler,
-            gateway=director_gateway,
+            gateway=video_agent_gateway,
         )
-        if isinstance(director_gateway, PiDirectorGateway)
+        if isinstance(video_agent_gateway, PiVideoAgentGateway)
         else None
     )
     command_service = AgentCanvasCommandService(
@@ -765,7 +783,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             workflow_repository,
             model_selection=model_selection,
         ),
-        gateway=director_gateway,
+        gateway=video_agent_gateway,
         video_skills=video_skills,
         context_assembler=AgentLocalContextAssembler(
             workflow_repository,
@@ -779,15 +797,76 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         run_nodes=queue_nodes,
         continuation_outbox=continuation_outbox,
     )
+    capability_execution = CapabilityExecutionService(
+        database=database,
+        gateway=video_agent_gateway,
+        context_loader=capability_context_from_envelope,
+        current_session_revision=lambda envelope: (
+            conversation_repository.get_guidance_session(envelope.workflow_id).revision
+            if envelope.expected_session_revision is not None
+            else None
+        ),
+        publisher=AgentCanvasCapabilityProposalRepository(
+            database,
+            event_repository,
+        ).publish,
+    )
+    durable_next_action = DurableNextActionExecutionService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        outbox=continuation_outbox,
+        capability_dispatch=CapabilityDispatchService(
+            database=database,
+            events=event_repository,
+        ),
+        gateway=video_agent_gateway,
+    )
+    materialization_repository = AgentCanvasMaterializationRepository(
+        database,
+        event_repository,
+    )
+    materialization_runner = CapabilityMaterializationRunner(
+        gateway=video_agent_gateway,
+        context_loader=lambda envelope: materialization_context_from_state(
+            envelope,
+            conversations=conversation_repository,
+            workflows=workflow_repository,
+            asset_resolver=asset_service.resolve_asset,
+        ),
+        publisher=CapabilityMaterializationPublicationService(
+            workflows=workflow_repository,
+            conversations=conversation_repository,
+            asset_resolver=asset_service.resolve_asset,
+            materializer=GuidanceProposalActionService(
+                workflow_repository,
+                conversation_repository,
+                asset_resolver=asset_service.resolve_asset,
+                connection_policy=connection_policy,
+            ),
+        ).publish,
+    )
+
+    def execute_materialization(envelope_id: str, lease_guard) -> object:
+        envelope = materialization_repository.get_envelope(envelope_id)
+        materialization_repository.mark_working(envelope)
+        return materialization_runner.execute(envelope, lease_guard=lease_guard)
+
+    def fail_continuation_turn(turn_id: str, code: str, message: str) -> object:
+        if materialization_repository.fail_for_turn(
+            turn_id,
+            error_code=code,
+            error_message=message,
+        ):
+            return conversation_repository.get_turn(turn_id)
+        return conversation_repository.fail_turn(turn_id, code=code, message=message)
+
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
-        process_turn=conversation_service.process_turn,
+        next_action=durable_next_action.execute,
+        capability_command=capability_execution.execute,
+        capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
-        fail_turn=lambda turn_id, code, message: conversation_repository.fail_turn(
-            turn_id,
-            code=code,
-            message=message,
-        ),
+        fail_turn=fail_continuation_turn,
     )
     return AgentCanvasRuntime(
         database=database,
@@ -2267,6 +2346,14 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_not_pending": 409,
         "proposal_option_not_found": 422,
         "proposal_revision_conflict": 409,
+        "proposal_materialization_conflict": 409,
+        "proposal_reference_plan_invalid": 422,
+        "proposal_target_revision_stale": 409,
+        "proposal_reference_revision_stale": 409,
+        "capability_materialization_context_invalid": 422,
+        "capability_materialization_contract_invalid": 422,
+        "capability_materialization_failed": 503,
+        "capability_materialization_unavailable": 503,
         "video_skill_not_found": 404,
         "skill_not_found": 404,
         "skill_catalog_cursor_invalid": 422,

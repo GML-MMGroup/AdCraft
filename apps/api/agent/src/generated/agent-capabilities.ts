@@ -3,111 +3,67 @@ export const AGENT_CAPABILITY_CONTRACT = {
   "contract_version": "1",
   "agents": [
     {
-      "name": "bgm_director",
+      "name": "video_agent",
       "operations": [
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "bgm"
-    },
-    {
-      "name": "character_designer",
-      "operations": [
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "character"
-    },
-    {
-      "name": "director",
-      "operations": [
+        "bgm_expert_brief",
+        "bgm_prompt",
+        "character_expert_brief",
+        "character_prompt",
         "command_replan",
-        "conversation_turn",
-        "decide_next_guidance_step",
-        "proposal_action",
-        "resolve_creation_mode"
-      ],
-      "model_role": "front_desk"
-    },
-    {
-      "name": "product_designer",
-      "operations": [
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "product_design"
-    },
-    {
-      "name": "prop_designer",
-      "operations": [
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "product_design"
-    },
-    {
-      "name": "quick_media_agent",
-      "operations": [
-        "direct_response",
-        "execute_canvas_text",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "quick_media"
-    },
-    {
-      "name": "scene_designer",
-      "operations": [
-        "direct_response",
-        "materialize_draft",
-        "materialize_world_setting",
-        "propose_concepts",
-        "propose_world_setting",
-        "revise_concepts",
-        "revise_world_setting_options"
-      ],
-      "model_role": "scene"
-    },
-    {
-      "name": "script_writer",
-      "operations": [
-        "direct_response",
-        "execute_canvas_script",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "script"
-    },
-    {
-      "name": "storyboard_artist",
-      "operations": [
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
-      ],
-      "model_role": "storyboard"
-    },
-    {
-      "name": "video_director",
-      "operations": [
         "compile_video_parameters",
-        "direct_response",
-        "materialize_draft",
-        "propose_concepts",
-        "revise_concepts"
+        "conversation_summary",
+        "decide_next_action",
+        "decide_turn_intent",
+        "execute_canvas_script",
+        "execute_canvas_text",
+        "free_audio",
+        "free_image",
+        "free_video",
+        "intent_contract_planner",
+        "materialize_bgm",
+        "materialize_character",
+        "materialize_product",
+        "materialize_prop",
+        "materialize_quick_media",
+        "materialize_scene",
+        "materialize_script",
+        "materialize_storyboard",
+        "materialize_video",
+        "materialize_world_setting",
+        "product_expert_brief",
+        "product_prompt",
+        "propose_bgm_options",
+        "propose_character_options",
+        "propose_product_options",
+        "propose_prop_options",
+        "propose_scene_options",
+        "propose_script_options",
+        "propose_storyboard_options",
+        "propose_video_options",
+        "propose_world_setting_options",
+        "revise_bgm_options",
+        "revise_character_asset",
+        "revise_character_options",
+        "revise_product_options",
+        "revise_prop_options",
+        "revise_scene_asset",
+        "revise_scene_options",
+        "revise_script_options",
+        "revise_storyboard_options",
+        "revise_video_options",
+        "revise_world_setting_options",
+        "scene_expert_brief",
+        "scene_prompt",
+        "script_edit_normalization",
+        "script_writer",
+        "shot_video_prompt",
+        "storyboard_detail",
+        "storyboard_prompt",
+        "visual_style_scope_repair",
+        "workflow_conversation",
+        "workflow_creation"
       ],
-      "model_role": "final_video"
+      "model_role": "agent"
     }
   ]
 } as const;

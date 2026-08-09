@@ -15,7 +15,11 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.persistence.models import AgentCanvasContinuationOutboxRow
+from app.persistence.models import (
+    AgentCanvasContinuationOutboxRow,
+    AgentCanvasOperationEnvelopeRow,
+)
+from app.schemas.agent_canvas_capabilities import CapabilityIdV1
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -42,8 +46,66 @@ class AgentCanvasContinuationOutboxRepository:
         max_attempts: int,
         now: datetime,
     ) -> ContinuationDeliveryV2:
+        try:
+            with self._database.engine.begin() as connection:
+                return self.enqueue_in_transaction(
+                    connection,
+                    continuation_id=continuation_id,
+                    workflow_id=workflow_id,
+                    conversation_id=conversation_id,
+                    source_turn_id=source_turn_id,
+                    continuation_turn_id=continuation_turn_id,
+                    operation=operation,
+                    payload=payload,
+                    max_attempts=max_attempts,
+                    now=now,
+                )
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _error(
+                "idempotency_conflict",
+                "Continuation identity conflicts with an existing delivery.",
+            ) from error
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def enqueue_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        continuation_id: str,
+        workflow_id: str,
+        conversation_id: str,
+        source_turn_id: str,
+        continuation_turn_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        max_attempts: int,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
         if max_attempts < 1:
             raise _error("continuation_attempts_invalid", "Maximum attempts must be positive.")
+        if operation not in {
+            "next_action",
+            "capability_command",
+            "capability_materialization",
+        } or set(payload) != {
+            "schema_version",
+            "envelope_id",
+        }:
+            raise _error(
+                "continuation_payload_invalid",
+                "Continuation delivery requires one typed operation envelope reference.",
+            )
+        if (
+            payload.get("schema_version") != "1"
+            or not str(payload.get("envelope_id") or "").strip()
+        ):
+            raise _error(
+                "continuation_payload_invalid",
+                "Continuation delivery envelope reference is invalid.",
+            )
         payload_json = _json(payload)
         payload_digest = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
         timestamp = _utc(now)
@@ -68,30 +130,19 @@ class AgentCanvasContinuationOutboxRepository:
             "created_at": _iso(timestamp),
             "updated_at": _iso(timestamp),
         }
-        try:
-            with self._database.engine.begin() as connection:
-                existing = _select_one(connection, continuation_id)
-                if existing is not None:
-                    _require_same_enqueue(existing, values)
-                    return _delivery(existing)
-                connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
-                self._append_lifecycle_event(
-                    connection,
-                    values,
-                    event_type="continuation_queued",
-                    transition_key=(f"conversation:{continuation_turn_id}:continuation_queued:0"),
-                    created_at=timestamp,
-                )
-                return _delivery(values)
-        except V2PersistenceError:
-            raise
-        except IntegrityError as error:
-            raise _error(
-                "idempotency_conflict",
-                "Continuation identity conflicts with an existing delivery.",
-            ) from error
-        except SQLAlchemyError as error:
-            raise _persistence_error() from error
+        existing = _select_one(connection, continuation_id)
+        if existing is not None:
+            _require_same_enqueue(existing, values)
+            return _delivery(existing)
+        connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
+        self._append_lifecycle_event(
+            connection,
+            values,
+            event_type="continuation_queued",
+            transition_key=f"conversation:{continuation_turn_id}:continuation_queued:0",
+            created_at=timestamp,
+        )
+        return _delivery(values)
 
     def get(self, continuation_id: str) -> ContinuationDeliveryV2:
         try:
@@ -102,6 +153,65 @@ class AgentCanvasContinuationOutboxRepository:
         if row is None:
             raise _error("continuation_not_found", "Continuation delivery was not found.")
         return _delivery(row)
+
+    def list_nonterminal_for_workflow(
+        self,
+        workflow_id: str,
+    ) -> tuple[ContinuationDeliveryV2, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow)
+                        .where(
+                            AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                            AgentCanvasContinuationOutboxRow.status.in_(
+                                ("queued", "leased", "retry_wait")
+                            ),
+                        )
+                        .order_by(
+                            AgentCanvasContinuationOutboxRow.created_at.asc(),
+                            AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(_delivery(row) for row in rows)
+
+    def list_nonterminal_capability_ids(
+        self,
+        workflow_id: str,
+    ) -> tuple[CapabilityIdV1, ...]:
+        """Return capability commands that still own a pending delivery."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = tuple(
+                    connection.execute(
+                        select(AgentCanvasOperationEnvelopeRow.envelope_json)
+                        .join(
+                            AgentCanvasContinuationOutboxRow,
+                            AgentCanvasContinuationOutboxRow.continuation_turn_id
+                            == AgentCanvasOperationEnvelopeRow.turn_id,
+                        )
+                        .where(
+                            AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                            AgentCanvasContinuationOutboxRow.operation == "capability_command",
+                            AgentCanvasContinuationOutboxRow.status.in_(
+                                ("queued", "leased", "retry_wait")
+                            ),
+                        )
+                        .order_by(AgentCanvasContinuationOutboxRow.created_at.asc())
+                    ).scalars()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(
+            dict.fromkeys(json.loads(str(envelope_json))["capability_id"] for envelope_json in rows)
+        )
 
     def claim_due(
         self,
@@ -214,6 +324,63 @@ class AgentCanvasContinuationOutboxRepository:
             status="completed",
             now=now,
         )
+
+    def renew_lease(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        now: datetime,
+        lease_duration: timedelta,
+    ) -> ContinuationDeliveryV2:
+        timestamp = _utc(now)
+        if lease_duration <= timedelta(0):
+            raise _error("continuation_claim_invalid", "Lease duration must be positive.")
+        try:
+            with self._database.engine.begin() as connection:
+                row = _select_one(connection, continuation_id)
+                if row is None:
+                    raise _error("continuation_not_found", "Continuation delivery was not found.")
+                _require_owned(row, worker_id, lease_generation, timestamp)
+                expires_at = _iso(timestamp + lease_duration)
+                result = connection.execute(
+                    update(AgentCanvasContinuationOutboxRow)
+                    .where(
+                        AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+                        AgentCanvasContinuationOutboxRow.status == "leased",
+                        AgentCanvasContinuationOutboxRow.lease_owner == worker_id,
+                        AgentCanvasContinuationOutboxRow.lease_generation == lease_generation,
+                    )
+                    .values(lease_expires_at=expires_at, updated_at=_iso(timestamp))
+                )
+                if result.rowcount != 1:
+                    raise _stale_lease_error()
+                return _delivery(
+                    {**row, "lease_expires_at": expires_at, "updated_at": _iso(timestamp)}
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def assert_owned(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        now: datetime,
+    ) -> None:
+        delivery = self.get(continuation_id)
+        if (
+            delivery.status != "leased"
+            or delivery.lease_owner != worker_id
+            or delivery.lease_generation != lease_generation
+            or delivery.lease_expires_at is None
+            or delivery.lease_expires_at < _utc(now)
+        ):
+            raise _stale_lease_error()
 
     def schedule_retry(
         self,
@@ -475,6 +642,7 @@ def _require_owned(
 
 
 def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
+    payload = json.loads(str(row["payload_json"]))
     return ContinuationDeliveryV2(
         continuation_id=str(row["continuation_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -482,6 +650,7 @@ def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
         source_turn_id=str(row["source_turn_id"]),
         continuation_turn_id=str(row["continuation_turn_id"]),
         operation=str(row["operation"]),
+        envelope_id=str(payload["envelope_id"]),
         payload_digest=str(row["payload_digest"]),
         status=row["status"],
         attempt_count=int(row["attempt_count"]),
