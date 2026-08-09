@@ -11,6 +11,7 @@
     "start": "tsx src/main.ts",
     "build": "tsc",
     "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
+    "generate:skills": "tsx scripts/generate-skill-manifest.ts",
     "generate:manifest": "npm run generate:capabilities && tsx scripts/generate-runtime-manifest.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
