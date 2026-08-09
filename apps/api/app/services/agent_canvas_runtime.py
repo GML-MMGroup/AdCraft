@@ -414,6 +414,11 @@ class DynamicCanvasScheduler:
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
                         "preferred_upstream_node_ids": list(preferred_waiting),
+                        **(
+                            {"reason_code": ("skipped_due_to_failed_required_input")}
+                            if blocked
+                            else {}
+                        ),
                     },
                 )
                 continue
@@ -624,6 +629,20 @@ class DynamicCanvasScheduler:
                             "reference_bundle_digest": (compiled_prompt.reference_bundle_digest),
                         }
                     )
+                    if node.creative_role == "character":
+                        prompt_metadata.update(
+                            {
+                                "character_asset_kind": node.structured_content.get(
+                                    "character_asset_kind"
+                                ),
+                                "reference_rendering_mode": node.structured_content.get(
+                                    "reference_rendering_mode"
+                                ),
+                                "negative_boundary_digest": hashlib.sha256(
+                                    compiled_prompt.negative_prompt.encode("utf-8")
+                                ).hexdigest(),
+                            }
+                        )
         context = NodeExecutionContext(
             execution_id=execution_id,
             node=node,
