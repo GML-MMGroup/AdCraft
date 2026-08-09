@@ -97,6 +97,8 @@ from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_capability_reference_planner import CapabilityReferencePlanner
+from app.services.model_selection import ModelSelectionService
 from app.services.agent_canvas_next_action import NextActionExecutionService
 from app.services.agent_canvas_next_action_context import (
     assemble_capability_policy_context,
@@ -716,10 +718,14 @@ class GuidanceProposalActionService:
             "materialization_mode",
             "warning_code",
             "operation_policy_id",
+            "normalization_mode",
+            "normalization_warnings",
         }
         provenance = {
             key: value for key, value in draft.parameters.items() if key in provenance_keys
         }
+        if draft.prompt_context_snapshot_id is not None:
+            provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
         node = CanvasNodeV2(
             node_id=deterministic_node_id or f"node_{uuid4().hex}",
             workflow_id=proposal.workflow_id,
@@ -738,6 +744,7 @@ class GuidanceProposalActionService:
                 },
             },
             metadata=provenance,
+            parameter_provenance=draft.parameter_provenance,
             position=CanvasPositionV2(x=0, y=0),
             revision=1,
             created_at=now,
@@ -1069,6 +1076,7 @@ class AgentConversationService:
         connection_policy: AgentCanvasConnectionPolicyService | None = None,
         continuation_outbox: AgentCanvasContinuationOutboxRepository | None = None,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
+        model_selection: ModelSelectionService | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -1115,6 +1123,10 @@ class AgentConversationService:
         self._turn_intents = TurnIntentService(gateway)
         self._next_actions = NextActionExecutionService(gateway)
         self._capability_policy = CapabilityPolicyService()
+        self._reference_planner = CapabilityReferencePlanner(
+            connection_policy=connection_policy,
+            model_selection=model_selection,
+        )
         self._capability_dispatch = CapabilityDispatchService(
             database=workflows.database,
             events=EventRepository(workflows.database),
@@ -1483,7 +1495,18 @@ class AgentConversationService:
                 turn.workflow_id,
                 command.command.message or "Guided production is complete.",
             )
-        approved_reference_ids = tuple(dict.fromkeys((*mentioned_node_ids, *mentioned_asset_ids)))
+        reference_plan = self._reference_planner.plan(
+            workflow=workflow,
+            session=session,
+            capability_id=command.command.capability_id,
+            objective=command.command.objective or intent.objective,
+            explicit_node_ids=mentioned_node_ids,
+            explicit_image_asset_ids=mentioned_asset_ids,
+            approved_node_ids=self._conversations.get_creative_memory(
+                turn.workflow_id
+            ).approved_node_ids,
+            asset_resolver=self._asset_resolver,
+        )
         self._capability_dispatch.dispatch_next_action(
             turn,
             command,
@@ -1493,7 +1516,7 @@ class AgentConversationService:
                 conversations=self._conversations,
                 capability_id=command.command.capability_id,
                 objective=command.command.objective or intent.objective,
-                approved_reference_ids=approved_reference_ids,
+                reference_plan=reference_plan,
                 asset_resolver=self._asset_resolver,
             ),
             session_id=session.session_id,

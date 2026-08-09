@@ -796,6 +796,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         command_service=command_service,
         run_nodes=queue_nodes,
         continuation_outbox=continuation_outbox,
+        model_selection=model_selection,
     )
     capability_execution = CapabilityExecutionService(
         database=database,
@@ -820,6 +821,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             events=event_repository,
         ),
         gateway=video_agent_gateway,
+        asset_resolver=asset_service.resolve_asset,
+        model_selection=model_selection,
     )
     materialization_repository = AgentCanvasMaterializationRepository(
         database,

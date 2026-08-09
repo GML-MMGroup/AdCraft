@@ -256,6 +256,16 @@ class AgentCanvasAssetService:
             "publication_status": "ready",
             "publication_id": fingerprint,
         }
+        measured_facts = facts.model_dump(mode="json")
+        if mime_type.startswith("image/") and _image_size_mismatch(
+            provenance.get("submitted_media_facts"),
+            width=facts.width,
+            height=facts.height,
+        ):
+            warnings = list(provenance.get("media_fact_warnings") or ())
+            if "generated_image_size_mismatch" not in warnings:
+                warnings.append("generated_image_size_mismatch")
+            provenance["media_fact_warnings"] = warnings
         node = next((item for item in workflow.nodes if item.node_id == node_id), None)
         generated_provenance = _generated_provenance(
             provenance,
@@ -266,7 +276,8 @@ class AgentCanvasAssetService:
         )
         provenance.update(
             {
-                "published_media_facts": facts.model_dump(mode="json"),
+                "published_media_facts": measured_facts,
+                "measured_media_facts": measured_facts,
                 "generated_asset_provenance": generated_provenance.model_dump(mode="json"),
             }
         )
@@ -742,6 +753,24 @@ def _generated_normalizations(
         elif isinstance(item, Mapping):
             result.append(VideoParameterNormalizationV2.model_validate(item))
     return tuple(result)
+
+
+def _image_size_mismatch(
+    submitted_facts: object,
+    *,
+    width: int | None,
+    height: int | None,
+) -> bool:
+    if not isinstance(submitted_facts, Mapping) or width is None or height is None:
+        return False
+    size = submitted_facts.get("size")
+    if not isinstance(size, str):
+        return False
+    try:
+        requested_width, requested_height = (int(part) for part in size.lower().split("x", 1))
+    except (TypeError, ValueError):
+        return False
+    return (requested_width, requested_height) != (width, height)
 
 
 def _hex_digest(value: object) -> str:

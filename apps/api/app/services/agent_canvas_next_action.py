@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol
 
 from pydantic import ValidationError
@@ -17,6 +18,7 @@ from app.persistence.agent_canvas_operation_envelope_repository import (
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
     NextActionCommandV1,
     NextActionContextV1,
@@ -29,9 +31,11 @@ from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_capability_reference_planner import CapabilityReferencePlanner
 from app.services.agent_canvas_next_action_context import (
     assemble_capability_policy_context,
 )
+from app.services.model_selection import ModelSelectionService
 
 
 class NextActionGateway(Protocol):
@@ -80,6 +84,8 @@ class DurableNextActionExecutionService:
         outbox: AgentCanvasContinuationOutboxRepository,
         capability_dispatch: CapabilityDispatchService,
         gateway: NextActionGateway,
+        asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
+        model_selection: ModelSelectionService | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -88,6 +94,10 @@ class DurableNextActionExecutionService:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(workflows.database)
         self._next_action = NextActionExecutionService(gateway)
         self._policy = CapabilityPolicyService()
+        self._reference_planner = CapabilityReferencePlanner(
+            model_selection=model_selection,
+        )
+        self._asset_resolver = asset_resolver
 
     def execute(self, envelope_id: str) -> ValidatedNextActionV1:
         envelope = self._envelopes.get(envelope_id)
@@ -138,6 +148,21 @@ class DurableNextActionExecutionService:
             turn_id=envelope.next_action_turn_id,
         )
         if command.command.action == "invoke_capability":
+            source_turn = self._conversations.get_turn(envelope.source_turn_id)
+            reference_plan = self._reference_planner.plan(
+                workflow=workflow,
+                session=session,
+                capability_id=command.command.capability_id,
+                objective=command.command.objective or envelope.objective,
+                explicit_node_ids=tuple(source_turn.request.get("mentioned_node_ids") or ()),
+                explicit_image_asset_ids=tuple(
+                    source_turn.request.get("mentioned_image_asset_ids") or ()
+                ),
+                approved_node_ids=self._conversations.get_creative_memory(
+                    envelope.workflow_id
+                ).approved_node_ids,
+                asset_resolver=self._asset_resolver,
+            )
             self._capability_dispatch.dispatch_next_action(
                 turn,
                 command,
@@ -147,7 +172,8 @@ class DurableNextActionExecutionService:
                     conversations=self._conversations,
                     capability_id=command.command.capability_id,
                     objective=command.command.objective or envelope.objective,
-                    approved_reference_ids=(),
+                    reference_plan=reference_plan,
+                    asset_resolver=self._asset_resolver,
                 ),
                 session_id=session.session_id,
                 expected_session_revision=session.revision,

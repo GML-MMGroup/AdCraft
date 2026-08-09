@@ -42,6 +42,15 @@ class CatalogSyncResult:
     catalog_revision: int | None
 
 
+GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO: Mapping[str, str] = {
+    "1:1": "2048x2048",
+    "16:9": "2560x1440",
+    "9:16": "1440x2560",
+    "4:3": "2304x1728",
+    "3:4": "1728x2304",
+}
+
+
 _TRUSTED_MANIFESTS = (
     TrustedModelManifest(
         provider_id="siliconflow",
@@ -86,6 +95,7 @@ _TRUSTED_MANIFESTS = (
             "reference_limits": {"image": 8, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
         },
@@ -175,6 +185,7 @@ _TRUSTED_MANIFESTS = (
             "reference_limits": {"image": 8, "video": 0, "audio": 0},
             "supported_parameters": ["aspect_ratio", "size"],
             "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4"],
+            "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "fake",
         },
