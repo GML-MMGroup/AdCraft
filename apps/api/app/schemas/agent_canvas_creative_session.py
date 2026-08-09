@@ -15,6 +15,7 @@ from app.schemas.agent_canvas import (
 )
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
+    CharacterDesignAssetContentV2,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
@@ -348,7 +349,7 @@ class CharacterImageSpecialistDraftV2(_SpecialistDraftBaseV2):
     node_type: Literal["image"]
     creative_role: Literal["character"]
     generation_prompt: str = Field(min_length=1, max_length=32_768)
-    structured_content: DesignAssetContentV2
+    structured_content: CharacterDesignAssetContentV2
 
 
 class SceneImageSpecialistDraftV2(_SpecialistDraftBaseV2):

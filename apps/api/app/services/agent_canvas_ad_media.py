@@ -10,6 +10,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_ad_media import (
     AdMediaRoleContractV2,
     BgmContentV2,
+    CharacterDesignAssetContentV2,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
@@ -107,8 +108,9 @@ def _role_registry() -> dict[str, _RegisteredRole]:
         add(role, "text", "text")
     add("script", "script", "text")
     add("general_image", "image", "image")
-    for role in ("product", "prop", "character"):
+    for role in ("product", "prop"):
         add(role, "image", "image", DesignAssetContentV2)
+    add("character", "image", "image", CharacterDesignAssetContentV2)
     add("scene", "image", "image", SceneDesignBoardContentV2)
     add("storyboard_sequence", "image", "image", StoryboardGridContentV2)
     add("general_video", "video", "video")

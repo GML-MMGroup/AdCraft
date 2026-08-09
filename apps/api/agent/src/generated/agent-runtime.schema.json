@@ -5591,6 +5591,66 @@
       "title": "CapabilityReferencePlanV1",
       "type": "object"
     },
+    "CharacterDesignAssetContentV2": {
+      "additionalProperties": false,
+      "properties": {
+        "character_asset_kind": {
+          "default": "identity_master",
+          "enum": [
+            "identity_master",
+            "turnaround"
+          ],
+          "title": "Character Asset Kind",
+          "type": "string"
+        },
+        "design_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Design Summary",
+          "type": "string"
+        },
+        "explicit_inclusions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Explicit Inclusions",
+          "type": "array"
+        },
+        "negative_constraints": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Negative Constraints",
+          "type": "array"
+        },
+        "reference_rendering_mode": {
+          "const": "detailed_semi_realistic_illustration",
+          "default": "detailed_semi_realistic_illustration",
+          "title": "Reference Rendering Mode",
+          "type": "string"
+        },
+        "style": {
+          "$ref": "#/$defs/VisualStyleContractV2"
+        },
+        "subject_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Subject Identity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "design_summary",
+        "style",
+        "subject_identity"
+      ],
+      "title": "CharacterDesignAssetContentV2",
+      "type": "object"
+    },
     "CharacterExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -5692,7 +5752,7 @@
           "type": "string"
         },
         "structured_content": {
-          "$ref": "#/$defs/DesignAssetContentV2"
+          "$ref": "#/$defs/CharacterDesignAssetContentV2"
         },
         "summary_prompt": {
           "maxLength": 8192,

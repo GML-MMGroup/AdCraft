@@ -32,6 +32,8 @@ export type VisualStyleContractV2 = { readonly "style_prompt": string; readonly 
 
 export type DesignAssetContentV2 = { readonly "subject_identity": string; readonly "design_summary": string; readonly "style": VisualStyleContractV2; readonly "explicit_inclusions"?: ReadonlyArray<string>; readonly "negative_constraints"?: ReadonlyArray<string> };
 
+export type CharacterDesignAssetContentV2 = { readonly "subject_identity": string; readonly "design_summary": string; readonly "style": VisualStyleContractV2; readonly "explicit_inclusions"?: ReadonlyArray<string>; readonly "negative_constraints"?: ReadonlyArray<string>; readonly "character_asset_kind"?: "identity_master" | "turnaround"; readonly "reference_rendering_mode"?: "detailed_semi_realistic_illustration" };
+
 export type SceneBoardPanelV2 = { readonly "panel_index": number; readonly "view_or_zone": string; readonly "spatial_description": string; readonly "lighting_material_detail": string };
 
 export type SceneDesignBoardContentV2 = { readonly "scene_identity": string; readonly "environment_summary": string; readonly "layout": string; readonly "lighting": string; readonly "materials": string; readonly "time_of_day": string; readonly "style": VisualStyleContractV2; readonly "panels": ReadonlyArray<SceneBoardPanelV2>; readonly "explicit_entity_reference_ids"?: ReadonlyArray<string>; readonly "exclude_unreferenced_entities"?: true; readonly "no_narrative_progression"?: true };
@@ -158,7 +160,7 @@ export type ProductMaterializationResultV1 = { readonly "title": string; readonl
 
 export type PropMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "generation_prompt": string; readonly "structured_content": DesignAssetContentV2 };
 
-export type CharacterMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "generation_prompt": string; readonly "structured_content": DesignAssetContentV2 };
+export type CharacterMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "generation_prompt": string; readonly "structured_content": CharacterDesignAssetContentV2 };
 
 export type SceneMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "generation_prompt": string; readonly "structured_content": SceneDesignBoardContentV2 };
 

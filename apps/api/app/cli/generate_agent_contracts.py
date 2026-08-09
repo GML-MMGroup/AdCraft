@@ -44,6 +44,7 @@ CONTRACT_MODELS = (
     agent_canvas_editing.EditingManifestV2,
     agent_canvas_ad_media.VisualStyleContractV2,
     agent_canvas_ad_media.DesignAssetContentV2,
+    agent_canvas_ad_media.CharacterDesignAssetContentV2,
     agent_canvas_ad_media.SceneBoardPanelV2,
     agent_canvas_ad_media.SceneDesignBoardContentV2,
     agent_canvas_ad_media.StoryboardPanelV2,

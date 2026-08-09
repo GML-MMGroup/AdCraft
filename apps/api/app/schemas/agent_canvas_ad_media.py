@@ -56,6 +56,17 @@ class DesignAssetContentV2(_AdMediaModel):
     negative_constraints: tuple[str, ...] = Field(default=(), max_length=64)
 
 
+CharacterAssetKindV2 = Literal["identity_master", "turnaround"]
+CharacterReferenceRenderingModeV2 = Literal["detailed_semi_realistic_illustration"]
+
+
+class CharacterDesignAssetContentV2(DesignAssetContentV2):
+    character_asset_kind: CharacterAssetKindV2 = "identity_master"
+    reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
+        "detailed_semi_realistic_illustration"
+    )
+
+
 class SceneBoardPanelV2(_AdMediaModel):
     panel_index: int = Field(ge=1, le=9)
     view_or_zone: str = Field(min_length=1, max_length=1_024)

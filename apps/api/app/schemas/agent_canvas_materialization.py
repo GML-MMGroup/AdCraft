@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas_ad_media import (
     BgmContentV2,
+    CharacterDesignAssetContentV2,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
     StoryboardGridContentV2,
@@ -146,8 +147,9 @@ class PropMaterializationResultV1(ProductMaterializationResultV1):
     pass
 
 
-class CharacterMaterializationResultV1(ProductMaterializationResultV1):
-    pass
+class CharacterMaterializationResultV1(_MaterializationResultBaseV1):
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: CharacterDesignAssetContentV2
 
 
 class SceneMaterializationResultV1(_MaterializationResultBaseV1):

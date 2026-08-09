@@ -14,6 +14,8 @@ Use the audience, campaign tone, script context, explicit character constraints,
 
 # Output Guidance
 
+- Return one lean identity-master design result for Character materialization.
+- Python derives the Turnaround companion from the validated identity master.
 - Make character descriptions stable enough for consistent image and video generation.
 - Define role, age range, face, hair, outfit, body type, silhouette, temperament, and brand fit when relevant.
 - Separate character identity from action and environment.
@@ -25,6 +27,8 @@ Use the audience, campaign tone, script context, explicit character constraints,
 
 # Do Not
 
+- Do not construct a two-Node payload or assign canvas Node or Binding IDs.
+- Do not write a provider prompt or choose provider request parameters.
 - Do not add unnecessary people or change identity between views.
 - Do not embed complex scenes in pure character references.
 - Do not choose provider parameters or expose private reference locations.
