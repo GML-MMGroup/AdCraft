@@ -17,7 +17,7 @@ import {
 } from "../src/pi-model-adapter.js";
 
 describe("Pi model adapter", () => {
-  it("uses SiliconFlow's enable_thinking compatibility field", () => {
+  it("uses the immutable policy thinking format", () => {
     expect(
       thinkingFormatForCredential({
         protocol_version: "1",
@@ -32,53 +32,24 @@ describe("Pi model adapter", () => {
         supports_streaming: true,
         supports_streamed_tool_calls: false,
         supports_reasoning_controls: false,
+        execution_policy: proposalPolicy(),
       }),
-    ).toBe("qwen");
+    ).toBe("zai");
   });
 
-  it("bounds SiliconFlow reasoning before a structured tool call", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      arkToolCallResponse({ assistant_message: "Accepted." }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-    try {
-      await collectStream(
-        modelStreamForCredential(
-          {
-            ...arkModel(),
-            id: "zai-org/GLM-5.2",
-            provider: "siliconflow",
-            baseUrl: "https://api.siliconflow.cn/v1",
-            reasoning: true,
-            compat: {
-              ...arkModel().compat,
-              thinkingFormat: "qwen",
-            },
-          },
-          arkContext(),
-          { apiKey: "test-key" },
-          siliconFlowCredential(),
-        ),
-      );
-
-      const request = fetchMock.mock.calls[0]?.[1];
-      const payload = JSON.parse(String(request?.body)) as Record<string, unknown>;
-      expect(payload.enable_thinking).toBe(false);
-      expect(payload.thinking_budget).toBe(128);
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("does not derive thinking format from provider identity", () => {
+    expect(
+      thinkingFormatForCredential({
+        ...siliconFlowCredential(),
+        provider: "another-openai-compatible-provider",
+        base_url: "https://example.invalid/v1",
+      }),
+    ).toBe("zai");
   });
 
-  it("buffers structured tool events when streamed tool calls are unreliable", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn<typeof fetch>().mockResolvedValue(
-        arkToolCallResponse({ assistant_message: "Accepted." }),
-      ),
-    );
-    try {
-      const buffered = modelStreamForCredential(
+  it("rejects unsupported streamed tools instead of buffering a stream", () => {
+    expect(() =>
+      modelStreamForCredential(
         arkModel(),
         arkContext(),
         { apiKey: "test-key" },
@@ -95,16 +66,13 @@ describe("Pi model adapter", () => {
           supports_streaming: true,
           supports_streamed_tool_calls: false,
           supports_reasoning_controls: false,
+          execution_policy: {
+            ...proposalPolicy(),
+            model_ref: "volcengine_ark:configured-model",
+          },
         },
-      );
-
-      const events = await collectStream(buffered);
-
-      expect(events.some((candidate) => candidate.type === "toolcall_end")).toBe(true);
-      expect(events.at(-1)?.type).toBe("done");
-    } finally {
-      vi.unstubAllGlobals();
-    }
+      ),
+    ).toThrow("agent_model_capability_mismatch");
   });
 
   it("reassembles Ark fragmented structured tool calls", async () => {
@@ -459,6 +427,10 @@ describe("Pi model adapter", () => {
         supports_streaming: true,
         supports_streamed_tool_calls: false,
         supports_reasoning_controls: false,
+        execution_policy: {
+          ...proposalPolicy(),
+          model_ref: "volcengine_ark:actual-character-model",
+        },
       }, [
         {
           skill_id: "video_agent_character_design",
@@ -525,6 +497,24 @@ function siliconFlowCredential() {
     supports_streaming: true,
     supports_streamed_tool_calls: false,
     supports_reasoning_controls: false,
+    execution_policy: proposalPolicy(),
+  };
+}
+
+function proposalPolicy() {
+  return {
+    model_ref: "siliconflow:zai-org/GLM-5.2",
+    operation: "propose_character_options",
+    operation_class: "proposal" as const,
+    thinking_format: "zai" as const,
+    reasoning_control: "provider_default" as const,
+    structured_transport: "non_streaming_tool_call" as const,
+    supports_tool_calls: true,
+    supports_streamed_tool_calls: false,
+    deadline_seconds: 300,
+    max_output_tokens: 3072,
+    transport_retry_limit: 1,
+    structured_repair_limit: 1,
   };
 }
 

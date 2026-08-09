@@ -22,7 +22,7 @@ describe("Agent operation recovery", () => {
     [{ status: 403 }, false],
     [{ status: 422 }, false],
     [{ message: "safety rejected" }, false],
-    [{ code: "agent_deadline_exceeded" }, false],
+    [{ code: "agent_provider_timeout" }, false],
   ])("classifies transport failures narrowly", (error, retryable) => {
     expect(classifyAgentTransportFailure(error).retryable).toBe(retryable);
   });
@@ -48,8 +48,8 @@ describe("Agent operation recovery", () => {
   it("never replays an unchanged operation after the hard deadline", async () => {
     const operation = vi.fn<() => Promise<string>>().mockRejectedValue(
       new AgentOperationFailure(
-        "agent_deadline_exceeded",
-        "Agent operation deadline exceeded.",
+        "agent_provider_timeout",
+        "Agent provider deadline exceeded.",
         false,
       ),
     );
@@ -60,8 +60,20 @@ describe("Agent operation recovery", () => {
         now: () => 1_000,
         sleep: async () => undefined,
       }),
-    ).rejects.toMatchObject({ code: "agent_deadline_exceeded" });
+    ).rejects.toMatchObject({ code: "agent_provider_timeout" });
     expect(operation).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies a pre-dispatch expired deadline as provider timeout", async () => {
+    const operation = vi.fn<() => Promise<string>>();
+
+    await expect(
+      runWithOneTransportRetry(operation, {
+        deadlineEpochMs: 1_000,
+        now: () => 1_000,
+      }),
+    ).rejects.toMatchObject({ code: "agent_provider_timeout" });
+    expect(operation).not.toHaveBeenCalled();
   });
 
   it("preserves structured contract failures without classifying them as transport", async () => {
@@ -94,7 +106,7 @@ describe("Agent operation recovery", () => {
         now: () => 1_500,
         sleep: async () => undefined,
       }),
-    ).rejects.toMatchObject({ code: "agent_transport_failed" });
+    ).rejects.toMatchObject({ code: "agent_provider_transport_failed" });
     expect(operation).toHaveBeenCalledTimes(1);
   });
 });

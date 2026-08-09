@@ -17,6 +17,26 @@ _AUDITED_EVENTS = {
     "run_failed",
     "run_cancelled",
 }
+_TRANSPORT_AUDIT_KEYS = (
+    "provider",
+    "model_ref",
+    "structured_transport",
+    "thinking_format",
+    "reasoning_control",
+    "deadline_seconds",
+    "max_output_tokens",
+    "started_at",
+    "first_response_at",
+    "last_activity_at",
+    "finished_at",
+    "finish_reason",
+    "provider_trace_id",
+    "input_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+    "transport_retry_count",
+    "structured_attempt_count",
+)
 
 
 class V2AgentEventProjector:
@@ -65,5 +85,21 @@ def _coarse_payload(event: AgentRuntimeEvent) -> dict[str, Any]:
             "error_code": payload.get("error_code"),
         }
     if event.event_type in {"run_failed", "run_cancelled"}:
-        return {"error_code": payload.get("code")}
-    return {"status": event.event_type.removeprefix("run_")}
+        output: dict[str, Any] = {"error_code": payload.get("code")}
+    else:
+        output = {"status": event.event_type.removeprefix("run_")}
+    audit = _safe_transport_audit(payload.get("audit"))
+    if audit:
+        output["audit"] = audit
+    return output
+
+
+def _safe_transport_audit(candidate: Any) -> dict[str, str | int | float | bool | None]:
+    if not isinstance(candidate, dict):
+        return {}
+    return {
+        key: value
+        for key in _TRANSPORT_AUDIT_KEYS
+        if (value := candidate.get(key)) is None or isinstance(value, (str, int, float, bool))
+        if key in candidate
+    }

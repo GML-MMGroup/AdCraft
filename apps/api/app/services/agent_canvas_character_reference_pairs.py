@@ -93,7 +93,7 @@ class CharacterReferencePairFactory:
         turnaround = CharacterImageSpecialistDraftV2(
             node_type="image",
             creative_role="character",
-            title=f"{main_result.title} Turnaround",
+            title=_suffixed_title(main_result.title, "Turnaround"),
             summary_prompt=f"Three-view unlabeled identity sheet for {main_result.title}.",
             generation_prompt=(
                 f"{_TURNAROUND_PROMPT}\n\nIdentity: {main_content.subject_identity}. "
@@ -134,6 +134,14 @@ class CharacterReferencePairFactory:
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _suffixed_title(value: str, suffix: str) -> str:
+    separator = " "
+    available = 256 - len(separator) - len(suffix)
+    if len(value) <= available:
+        return f"{value}{separator}{suffix}"
+    return f"{value[: available - 3].rstrip()}...{separator}{suffix}"
 
 
 def character_turnaround_prompt(

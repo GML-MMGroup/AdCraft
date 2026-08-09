@@ -66,6 +66,10 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": False,
+            "thinking_format": "zai",
+            "reasoning_control": "provider_default",
+            "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
         },
     ),
     TrustedModelManifest(
@@ -82,6 +86,10 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": False,
+            "thinking_format": "none",
+            "reasoning_control": "none",
+            "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
         },
     ),
     TrustedModelManifest(
@@ -172,6 +180,10 @@ _TRUSTED_MANIFESTS = (
             "supports_streaming": True,
             "supports_streamed_tool_calls": False,
             "supports_reasoning_controls": False,
+            "thinking_format": "none",
+            "reasoning_control": "none",
+            "structured_transport": "non_streaming_tool_call",
+            "default_max_output_tokens": 8192,
         },
     ),
     TrustedModelManifest(

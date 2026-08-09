@@ -143,7 +143,7 @@ def _render_result(
             style_prompt=context.style_prompt,
         )
         return ProductMaterializationResultV1(
-            title=seed.identity,
+            title=_display_title(seed.identity),
             summary_prompt=_join(seed.identity, seed.selling_focus),
             generation_prompt=prompt,
             structured_content={
@@ -171,7 +171,7 @@ def _render_result(
             style_prompt=context.style_prompt,
         )
         return PropMaterializationResultV1(
-            title=seed.identity,
+            title=_display_title(seed.identity),
             summary_prompt=_join(seed.identity, seed.function),
             generation_prompt=prompt,
             structured_content={
@@ -190,7 +190,7 @@ def _render_result(
             seed.performance_role,
         )
         return CharacterMaterializationResultV1(
-            title=seed.identity,
+            title=_display_title(seed.identity),
             summary_prompt=summary,
             generation_prompt=_join(
                 "Create one still full-body character identity design.",
@@ -224,7 +224,7 @@ def _render_result(
             for index in range(1, 10)
         )
         return SceneMaterializationResultV1(
-            title=seed.identity,
+            title=_display_title(seed.identity),
             summary_prompt=summary,
             generation_prompt=_join(
                 "Create one static 3x3 scene design board with exactly nine distinct views.",
@@ -340,6 +340,13 @@ def _render_result(
             },
         )
     raise _error("Proposal Draft Seed capability is unsupported.")
+
+
+def _display_title(value: str) -> str:
+    title = " ".join(value.split())
+    if len(title) <= 256:
+        return title
+    return f"{title[:253].rstrip()}..."
 
 
 def _design_prompt(

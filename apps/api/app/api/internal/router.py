@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hmac
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import ValidationError
@@ -60,7 +60,7 @@ def get_agent_runtime_config(
     model_policy_id: str,
     model_ref: str,
     settings: Settings = Depends(get_settings),
-) -> dict[str, str | bool]:
+) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-store"
     try:
         database = create_v2_database(settings.media_data_dir)
@@ -98,6 +98,7 @@ def get_agent_runtime_config(
         "supports_streaming": snapshot.supports_streaming,
         "supports_streamed_tool_calls": snapshot.supports_streamed_tool_calls,
         "supports_reasoning_controls": snapshot.supports_reasoning_controls,
+        "execution_policy": snapshot.execution_policy.model_dump(mode="json"),
         "api_key": snapshot.api_key,
     }
 

@@ -1,5 +1,5 @@
 export interface AgentTransportClassification {
-  readonly code: "agent_transport_failed";
+  readonly code: "agent_provider_transport_failed";
   readonly retryable: boolean;
   readonly retryAfterMs: number;
 }
@@ -66,7 +66,7 @@ export function classifyAgentTransportFailure(
     RETRYABLE_MESSAGES.some((part) => message.includes(part)) ||
     (status === 429 && retryAfterSeconds !== undefined);
   return {
-    code: "agent_transport_failed",
+    code: "agent_provider_transport_failed",
     retryable,
     retryAfterMs: Math.max(0, (retryAfterSeconds ?? 0.25) * 1_000),
   };
@@ -87,8 +87,8 @@ export async function runWithOneTransportRetry<T>(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (now() >= options.deadlineEpochMs) {
       throw new AgentOperationFailure(
-        "agent_deadline_exceeded",
-        "Agent operation deadline exceeded.",
+        "agent_provider_timeout",
+        "Agent provider deadline exceeded.",
         false,
         attempt === 0 ? "initial" : "transport_retry",
       );
@@ -127,7 +127,7 @@ export async function runWithOneTransportRetry<T>(
     }
   }
   throw new AgentOperationFailure(
-    "agent_transport_failed",
+    "agent_provider_transport_failed",
     "Agent model transport failed.",
     false,
     "transport_retry",

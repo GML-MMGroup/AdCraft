@@ -44,10 +44,14 @@ type AbortCause =
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
   "agent_model_incompatible",
+  "agent_model_capability_mismatch",
   "agent_model_policy_mismatch",
   "agent_model_unavailable",
   "agent_operation_not_allowed",
   "agent_structured_output_invalid",
+  "agent_contract_validation_failed",
+  "agent_provider_timeout",
+  "agent_provider_transport_failed",
   "agent_run_budget_exceeded",
   "agent_tool_not_allowed",
   "agent_target_revision_conflict",

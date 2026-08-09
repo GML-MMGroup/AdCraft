@@ -9,7 +9,11 @@ from app.core.config import Settings
 from app.persistence.database import V2Database, create_v2_database
 from app.persistence.provider_model_repository import ProviderModelRecord, ProviderModelRepository
 from app.schemas.agent_capabilities import AgentCapabilityV1
-from app.schemas.agent_runtime import AgentName
+from app.schemas.agent_runtime import AgentModelExecutionPolicyV1, AgentName
+from app.services.agent_model_execution_policy import (
+    AgentModelExecutionPolicyError,
+    resolve_agent_model_execution_policy,
+)
 from app.services.provider_credentials import CredentialSettingsError, ProviderCredentialRegistry
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
 
@@ -44,6 +48,7 @@ class AgentCredentialSnapshot:
     supports_streaming: bool
     supports_streamed_tool_calls: bool
     supports_reasoning_controls: bool
+    execution_policy: AgentModelExecutionPolicyV1
     api_key: str = field(repr=False)
 
 
@@ -101,6 +106,14 @@ class V2AgentCredentialBroker:
                 "The selected provider text credential is not configured.",
             )
         metadata = record.capability_metadata
+        try:
+            execution_policy = resolve_agent_model_execution_policy(
+                model_ref=record.model_ref,
+                operation=operation,
+                capability_metadata=metadata,
+            )
+        except AgentModelExecutionPolicyError as error:
+            raise AgentCredentialError(error.code, str(error)) from error
         return AgentCredentialSnapshot(
             protocol_version=self._settings.agent_runtime_protocol_version,
             provider=definition.display_name,
@@ -115,6 +128,7 @@ class V2AgentCredentialBroker:
             supports_streaming=_metadata_flag(metadata, "supports_streaming"),
             supports_streamed_tool_calls=_metadata_flag(metadata, "supports_streamed_tool_calls"),
             supports_reasoning_controls=_metadata_flag(metadata, "supports_reasoning_controls"),
+            execution_policy=execution_policy,
             api_key=api_key,
         )
 

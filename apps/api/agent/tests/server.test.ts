@@ -209,6 +209,45 @@ describe("agent runtime server", () => {
     });
   });
 
+  it.each([
+    "agent_provider_timeout",
+    "agent_provider_transport_failed",
+    "agent_model_capability_mismatch",
+    "agent_structured_output_invalid",
+    "agent_contract_validation_failed",
+  ])("preserves typed adapter failure %s", async (code) => {
+    const adapter: AgentModelAdapter = {
+      async run() {
+        throw new Error(code);
+      },
+    };
+    const baseUrl = await start(adapter);
+    const response = await fetch(`${baseUrl}/internal/v1/agent-runs`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        ...request,
+        run_id: `arun_${code}`,
+        request_id: `req_${code}`,
+      }),
+    });
+    const events = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as {
+        event_type: string;
+        payload: { code: string };
+      });
+
+    expect(events.at(-1)).toMatchObject({
+      event_type: "run_failed",
+      payload: { code },
+    });
+  });
+
   it("enforces a bounded cognitive concurrency pool", async () => {
     let entered!: () => void;
     const started = new Promise<void>((resolve) => {

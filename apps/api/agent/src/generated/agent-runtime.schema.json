@@ -1213,6 +1213,108 @@
       "title": "AgentMaterializeSiblingDraftOperationV2",
       "type": "object"
     },
+    "AgentModelExecutionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "deadline_seconds": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Deadline Seconds",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_class": {
+          "enum": [
+            "long_form",
+            "proposal",
+            "routing"
+          ],
+          "title": "Operation Class",
+          "type": "string"
+        },
+        "reasoning_control": {
+          "enum": [
+            "enable_thinking",
+            "none",
+            "provider_default",
+            "reasoning_effort"
+          ],
+          "title": "Reasoning Control",
+          "type": "string"
+        },
+        "structured_repair_limit": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Structured Repair Limit",
+          "type": "integer"
+        },
+        "structured_transport": {
+          "enum": [
+            "json_object",
+            "non_streaming_tool_call",
+            "streamed_tool_call"
+          ],
+          "title": "Structured Transport",
+          "type": "string"
+        },
+        "supports_streamed_tool_calls": {
+          "title": "Supports Streamed Tool Calls",
+          "type": "boolean"
+        },
+        "supports_tool_calls": {
+          "title": "Supports Tool Calls",
+          "type": "boolean"
+        },
+        "thinking_format": {
+          "enum": [
+            "none",
+            "qwen",
+            "zai"
+          ],
+          "title": "Thinking Format",
+          "type": "string"
+        },
+        "transport_retry_limit": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Transport Retry Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deadline_seconds",
+        "max_output_tokens",
+        "model_ref",
+        "operation",
+        "operation_class",
+        "reasoning_control",
+        "structured_repair_limit",
+        "structured_transport",
+        "supports_streamed_tool_calls",
+        "supports_tool_calls",
+        "thinking_format",
+        "transport_retry_limit"
+      ],
+      "title": "AgentModelExecutionPolicyV1",
+      "type": "object"
+    },
     "AgentNodeIdRefV2": {
       "additionalProperties": false,
       "properties": {
@@ -2961,6 +3063,191 @@
         "tool_call_id"
       ],
       "title": "AgentToolResult",
+      "type": "object"
+    },
+    "AgentTransportAttemptMetadataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "deadline_seconds": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Deadline Seconds",
+          "type": "integer"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "first_response_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Response At"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "last_activity_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Activity At"
+        },
+        "max_output_tokens": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "provider": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "provider_trace_id": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Trace Id"
+        },
+        "reasoning_control": {
+          "enum": [
+            "enable_thinking",
+            "none",
+            "provider_default",
+            "reasoning_effort"
+          ],
+          "title": "Reasoning Control",
+          "type": "string"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "structured_attempt_count": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Structured Attempt Count",
+          "type": "integer"
+        },
+        "structured_transport": {
+          "enum": [
+            "json_object",
+            "non_streaming_tool_call",
+            "streamed_tool_call"
+          ],
+          "title": "Structured Transport",
+          "type": "string"
+        },
+        "thinking_format": {
+          "enum": [
+            "none",
+            "qwen",
+            "zai"
+          ],
+          "title": "Thinking Format",
+          "type": "string"
+        },
+        "transport_retry_count": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Transport Retry Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deadline_seconds",
+        "finished_at",
+        "max_output_tokens",
+        "model_ref",
+        "provider",
+        "reasoning_control",
+        "started_at",
+        "structured_attempt_count",
+        "structured_transport",
+        "thinking_format",
+        "transport_retry_count"
+      ],
+      "title": "AgentTransportAttemptMetadataV1",
       "type": "object"
     },
     "AgentWorkingDocumentReferenceV2": {
