@@ -10,11 +10,11 @@
   "display_order": 10,
   "files": {
     "SKILL.md": "130745d8dfd802fd773c44a28382557b6aaff8a968579052c0ea4f4211f1dc77",
-    "references/bgm_director.md": "8f8f60e2eedc9de2ec85ce5d169567db5b199b1f8da857b5d52c15152832dc0e",
-    "references/video_director.md": "1971b6544d044564377915686c40ec2a4f21587861ec27aab3851865200e3b9b"
+    "references/bgm.md": "8f8f60e2eedc9de2ec85ce5d169567db5b199b1f8da857b5d52c15152832dc0e",
+    "references/video.md": "1971b6544d044564377915686c40ec2a4f21587861ec27aab3851865200e3b9b"
   },
   "role_guidance": {
-    "bgm_director": "references/bgm_director.md",
-    "video_director": "references/video_director.md"
+    "bgm": "references/bgm.md",
+    "video": "references/video.md"
   }
 }

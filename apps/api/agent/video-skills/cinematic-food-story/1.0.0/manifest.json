@@ -20,17 +20,17 @@
   "display_order": 530,
   "files": {
     "SKILL.md": "4aaeaa123a023c7e3d3a69fca31bd46898ef02dac1882656b24e345808aa5b82",
-    "references/script_writer.md": "99118dba6cbf68fbe340ccf0701e606555d97369039b06f4bb02015426b4fca1",
-    "references/scene_designer.md": "8d6dd302838a2243b03299010ae7170c9cf2cfc279b1152a767f05a124f12fb8",
-    "references/storyboard_artist.md": "e08675419b3a4490e67a3e1b575aaffb9ff0aa2e3f4feec13e32e30506389d69",
-    "references/video_director.md": "4ee1c0c712264cf6cb5c2f560fa5bc30ef1aa32b7411c89c2deee09c302479fe",
-    "references/bgm_director.md": "9ead8cb4a2ef138cd80a342579525b391498534aba2df40021482406d296504c"
+    "references/script.md": "99118dba6cbf68fbe340ccf0701e606555d97369039b06f4bb02015426b4fca1",
+    "references/scene.md": "8d6dd302838a2243b03299010ae7170c9cf2cfc279b1152a767f05a124f12fb8",
+    "references/storyboard.md": "e08675419b3a4490e67a3e1b575aaffb9ff0aa2e3f4feec13e32e30506389d69",
+    "references/video.md": "4ee1c0c712264cf6cb5c2f560fa5bc30ef1aa32b7411c89c2deee09c302479fe",
+    "references/bgm.md": "9ead8cb4a2ef138cd80a342579525b391498534aba2df40021482406d296504c"
   },
   "role_guidance": {
-    "script_writer": "references/script_writer.md",
-    "scene_designer": "references/scene_designer.md",
-    "storyboard_artist": "references/storyboard_artist.md",
-    "video_director": "references/video_director.md",
-    "bgm_director": "references/bgm_director.md"
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
   }
 }

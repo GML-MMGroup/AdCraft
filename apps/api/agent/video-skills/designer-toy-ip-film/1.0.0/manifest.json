@@ -20,17 +20,17 @@
   "display_order": 310,
   "files": {
     "SKILL.md": "d112cc0e3d307fc5e727723a0d6463d2d215f9139b86cc91237a980614aababc",
-    "references/character_designer.md": "5b3fb39198eb780786f60dbab8bb4490bc9eab2f0f7f5c3ed0a8d123135e20c4",
-    "references/scene_designer.md": "f0e695180adb344034171a2886249483dd09b78e4ee2b4a78dd0ebec405b2c8f",
-    "references/storyboard_artist.md": "9b3a7867edb5e6f637bce4f80fb1bbaddc20cc836e35c37ceaad2e476f2446e4",
-    "references/video_director.md": "83e8c9af1b4efd5a669a3545421b1c94434c632835a0198b3eb26f63f595ecc7",
-    "references/quick_media_agent.md": "d1f062385ab8a79347a7981244c2b619b0eda4c67db1a97c9016daaaa89b2502"
+    "references/character.md": "5b3fb39198eb780786f60dbab8bb4490bc9eab2f0f7f5c3ed0a8d123135e20c4",
+    "references/scene.md": "f0e695180adb344034171a2886249483dd09b78e4ee2b4a78dd0ebec405b2c8f",
+    "references/storyboard.md": "9b3a7867edb5e6f637bce4f80fb1bbaddc20cc836e35c37ceaad2e476f2446e4",
+    "references/video.md": "83e8c9af1b4efd5a669a3545421b1c94434c632835a0198b3eb26f63f595ecc7",
+    "references/quick_media.md": "d1f062385ab8a79347a7981244c2b619b0eda4c67db1a97c9016daaaa89b2502"
   },
   "role_guidance": {
-    "character_designer": "references/character_designer.md",
-    "scene_designer": "references/scene_designer.md",
-    "storyboard_artist": "references/storyboard_artist.md",
-    "video_director": "references/video_director.md",
-    "quick_media_agent": "references/quick_media_agent.md"
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
   }
 }

@@ -20,15 +20,15 @@
   "display_order": 50,
   "files": {
     "SKILL.md": "141a35dce52f423bb70816c827f855fcaa7df6500f18b5d881033135b3b73fd6",
-    "references/script_writer.md": "34803a4759a7218db1a5cae9adef9bb58fa014a6a88cca902b8fa4d8576fa9b4",
-    "references/product_designer.md": "19727d1bd1ffd7c8cfad3c8d6a86a486f7eab6eaf7f8a5cf4f3d59f6f333199b",
-    "references/storyboard_artist.md": "00a4bf3cff1bf480f2472e5c208fbfd6ed8a133aabacc26a6c9d220541cfecda",
-    "references/video_director.md": "26ff08de80c66cec12dd11d7b0a5ed4a0e12ec48b08fbc49d60fc0b23a840c0f"
+    "references/script.md": "34803a4759a7218db1a5cae9adef9bb58fa014a6a88cca902b8fa4d8576fa9b4",
+    "references/product.md": "19727d1bd1ffd7c8cfad3c8d6a86a486f7eab6eaf7f8a5cf4f3d59f6f333199b",
+    "references/storyboard.md": "00a4bf3cff1bf480f2472e5c208fbfd6ed8a133aabacc26a6c9d220541cfecda",
+    "references/video.md": "26ff08de80c66cec12dd11d7b0a5ed4a0e12ec48b08fbc49d60fc0b23a840c0f"
   },
   "role_guidance": {
-    "script_writer": "references/script_writer.md",
-    "product_designer": "references/product_designer.md",
-    "storyboard_artist": "references/storyboard_artist.md",
-    "video_director": "references/video_director.md"
+    "script": "references/script.md",
+    "product": "references/product.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
   }
 }

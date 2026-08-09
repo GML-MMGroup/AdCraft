@@ -25,15 +25,16 @@ _GLOBAL_GUIDANCE_BYTES = 4_096
 _ROLE_GUIDANCE_BYTES = 4_096
 _RESOLVED_CONTEXT_BYTES = 8_192
 _SUPPORTED_ROLES = {
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
+    "world_setting",
+    "script",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "storyboard",
+    "video",
+    "bgm",
+    "quick_media",
 }
 
 
