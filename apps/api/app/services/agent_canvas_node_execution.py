@@ -220,6 +220,22 @@ def generated_asset_publication_metadata(
         }
         if audio_intent:
             metadata["audio_intent"] = audio_intent
+    if context.node.creative_role == "character":
+        metadata.update(
+            {
+                "character_asset_kind": context.node.structured_content.get("character_asset_kind"),
+                "reference_rendering_mode": context.node.structured_content.get(
+                    "reference_rendering_mode"
+                ),
+                "negative_boundary_digest": (
+                    hashlib.sha256(
+                        context.compiled_prompt.negative_prompt.encode("utf-8")
+                    ).hexdigest()
+                    if context.compiled_prompt is not None
+                    else None
+                ),
+            }
+        )
     return {key: value for key, value in metadata.items() if value is not None}
 
 
@@ -383,6 +399,7 @@ class MediaNodeExecutor:
 
         if context.node.node_type not in {"image", "video", "audio"}:
             return context
+        _require_character_identity_master_input(context)
         if context.node.node_type == "video" and context.seedance_manifest is not None:
             return context
         if context.node.node_type != "video" and context.delivered_references:
@@ -937,6 +954,33 @@ def _delivery_failure_identity(
         "required": source.required if source is not None else True,
         "reason": failure.reason,
     }
+
+
+def _require_character_identity_master_input(context: NodeExecutionContext) -> None:
+    if not (
+        context.node.node_type == "image"
+        and context.node.creative_role == "character"
+        and context.node.structured_content.get("character_asset_kind") == "turnaround"
+    ):
+        return
+    candidates = tuple(
+        item
+        for item in context.inputs
+        if isinstance(item, ResolvedMediaInputSnapshotV2)
+        and item.source_kind == "node_output"
+        and item.source_semantic_role == "character"
+        and item.media_type == "image"
+        and item.input_role == "image_reference"
+        and item.required
+        and item.binding_metadata.get("reference_purpose") == "identity_master"
+        and item.binding_metadata.get("semantic_reference_role") == "subject_reference"
+    )
+    if len(candidates) != 1:
+        raise _error(
+            "character_identity_master_binding_invalid",
+            "Character Turnaround requires exactly one Ready Character Main image Binding.",
+            details={"target_node_id": context.node.node_id},
+        )
 
 
 def _seedance_checksum(asset_id: str, version_id: str | None) -> str:
