@@ -13,6 +13,7 @@ from app.schemas.agent_canvas_ad_media import (
     AdMediaRoleContractV2,
     AdReferenceBundleV2,
     BgmContentV2,
+    CharacterDesignAssetContentV2,
     CompiledProviderPromptV2,
     DesignAssetContentV2,
     SceneDesignBoardContentV2,
@@ -22,6 +23,9 @@ from app.schemas.agent_canvas_ad_media import (
     resolve_visual_style,
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
+from app.services.agent_canvas_character_reference_prompt_policy import (
+    CharacterReferencePromptPolicy,
+)
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
@@ -162,6 +166,11 @@ class AgentCanvasProviderPromptCompiler:
             node.structured_content,
         )
         style = _style_from_content(structured)
+        character_policy = (
+            CharacterReferencePromptPolicy().compile(structured)
+            if isinstance(structured, CharacterDesignAssetContentV2)
+            else None
+        )
         body = _render_content(structured)
         reference_identities = _render_reference_identities(reference_bundle)
         references = "\n".join(
@@ -176,6 +185,7 @@ class AgentCanvasProviderPromptCompiler:
         prompt = "\n\n".join(
             part
             for part in (
+                character_policy.positive_boundary if character_policy is not None else "",
                 registration.boundary,
                 f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
                 f"Structured role content:\n{body}",
@@ -188,9 +198,20 @@ class AgentCanvasProviderPromptCompiler:
         )
         negative = "\n".join(
             (
+                character_policy.negative_boundary if character_policy is not None else "",
                 registration.negative_boundary,
                 *style.negative_style_constraints,
             )
+        )
+        registry_digest = (
+            _digest(
+                {
+                    "role_registry_digest": registration.registry_digest,
+                    "character_policy_digest": character_policy.policy_digest,
+                }
+            )
+            if character_policy is not None
+            else registration.registry_digest
         )
         context = {
             "node_id": node.node_id,
@@ -212,7 +233,7 @@ class AgentCanvasProviderPromptCompiler:
         return CompiledProviderPromptV2(
             semantic_role=node.semantic_role,
             prompt_registry_ref=registration.registry_ref,
-            prompt_registry_digest=registration.registry_digest,
+            prompt_registry_digest=registry_digest,
             render_context_digest=_digest(context),
             prompt_digest=hashlib.sha256(prompt.encode()).hexdigest(),
             reference_bundle_digest=reference_bundle.bundle_digest,
@@ -353,11 +374,21 @@ def _render_reference_identities(reference_bundle: AdReferenceBundleV2) -> str:
     ]
     if not identities:
         return ""
+    turnaround_clause = (
+        "A Character Turnaround reference is one person shown across front, side, and back "
+        "views. Preserve identity cues but render the target in its own requested medium.\n"
+        if any(
+            reference.source_identity_facts.get("character_asset_kind") == "turnaround"
+            for reference in reference_bundle.references
+        )
+        else ""
+    )
     return (
         "Authoritative bound reference identities:\n"
         "These persisted Binding facts override conflicting model-authored details. "
         "Keep their identities and environments unchanged while retaining creative "
         "freedom for panel action, composition, and camera.\n"
+        + turnaround_clause
         + "\n".join(
             f"- {json.dumps(identity, sort_keys=True, ensure_ascii=True)}"
             for identity in identities
