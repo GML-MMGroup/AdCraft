@@ -180,9 +180,8 @@ class V2AgentCredentialBroker:
                 "Agent operations require a text-capable model.",
             )
         metadata = record.capability_metadata
-        requires_agent_capability = operation != "execute_canvas_text"
         if (
-            (requires_agent_capability and not _metadata_flag(metadata, "agent_compatible"))
+            not _metadata_flag(metadata, "agent_compatible")
             or not _metadata_flag(metadata, "supports_tool_calls")
             or not _metadata_flag(metadata, "supports_structured_output")
         ):

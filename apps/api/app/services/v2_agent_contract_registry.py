@@ -10,23 +10,26 @@ from app.schemas.agent_runtime import (
     AgentCanvasScriptOutput,
     AgentCanvasTextOutput,
     AgentCommandPlanDraftV2,
-    ConceptProposalDraftV2,
     SpecialistDraft,
 )
-from app.schemas.agent_canvas_creative_session import (
-    BgmAudioSpecialistDraftV2,
-    CharacterImageSpecialistDraftV2,
-    CreationModeDecisionV2,
-    DelegatedProposalChoiceV2,
-    NextGuidanceDecisionV2,
-    ProductImageSpecialistDraftV2,
-    PropImageSpecialistDraftV2,
-    SceneImageSpecialistDraftV2,
-    ScriptSpecialistDraftV2,
-    SpecialistDraftV2,
-    StoryboardImageSpecialistDraftV2,
-    VideoSpecialistDraftV2,
+from app.schemas.agent_canvas_capabilities import (
+    BgmProposalResultV1,
+    CharacterProposalResultV1,
+    NextActionCommandV1,
+    ProductProposalResultV1,
+    PropProposalResultV1,
+    QuickMediaProposalResultV1,
+    SceneProposalResultV1,
+    ScriptProposalResultV1,
+    StoryboardProposalResultV1,
+    TurnIntentDecisionV1,
+    VideoProposalResultV1,
+    WorldSettingProposalResultV1,
 )
+from app.schemas.agent_canvas_materialization import (
+    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+)
+from app.schemas.agent_canvas_video_parameters import VideoParameterIntentV2
 from app.schemas.specialist_agents import SpecialistResult
 from app.schemas.workflow_v2_expert_brief_contracts import (
     V2BgmExpertPlan,
@@ -50,10 +53,6 @@ from app.schemas.workflow_v2_prompt_contracts import (
 from app.schemas.workflow_v2_screenplay import V2EditableScriptDocument, V2ScriptPlanV2
 from app.schemas.workflow_v2_storyboard_detail import V2StoryboardDetailPlan
 from app.schemas.workflow_v2_style import V2VisualStyleScopeRepairOutput
-from app.schemas.agent_canvas_world_setting import (
-    WorldSettingMaterializationDraftV2,
-    WorldSettingProposalDraftV1,
-)
 
 
 _CONTRACTS: dict[str, type[BaseModel]] = {
@@ -64,21 +63,19 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         AgentCanvasScriptOutput,
         AgentCanvasTextOutput,
         AgentCommandPlanDraftV2,
-        ConceptProposalDraftV2,
-        SpecialistDraftV2,
-        ScriptSpecialistDraftV2,
-        ProductImageSpecialistDraftV2,
-        PropImageSpecialistDraftV2,
-        CharacterImageSpecialistDraftV2,
-        SceneImageSpecialistDraftV2,
-        StoryboardImageSpecialistDraftV2,
-        VideoSpecialistDraftV2,
-        BgmAudioSpecialistDraftV2,
-        CreationModeDecisionV2,
-        NextGuidanceDecisionV2,
-        DelegatedProposalChoiceV2,
-        WorldSettingProposalDraftV1,
-        WorldSettingMaterializationDraftV2,
+        VideoParameterIntentV2,
+        TurnIntentDecisionV1,
+        NextActionCommandV1,
+        WorldSettingProposalResultV1,
+        ProductProposalResultV1,
+        PropProposalResultV1,
+        CharacterProposalResultV1,
+        SceneProposalResultV1,
+        ScriptProposalResultV1,
+        StoryboardProposalResultV1,
+        VideoProposalResultV1,
+        BgmProposalResultV1,
+        QuickMediaProposalResultV1,
         SpecialistResult,
         FrontDeskIntentOutput,
         V2EditableScriptDocument,
@@ -102,6 +99,9 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         V2BgmPromptPlan,
     )
 }
+_CONTRACTS.update(
+    {model.__name__: model for model in CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS.values()}
+)
 
 
 def validate_agent_contract(contract_name: str, value: object) -> BaseModel:

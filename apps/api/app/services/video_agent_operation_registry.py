@@ -1,0 +1,403 @@
+"""Closed operation registry for the single production Video Agent."""
+
+from __future__ import annotations
+
+from types import MappingProxyType
+
+from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_materialization import (
+    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
+)
+from app.schemas.agent_capabilities import (
+    AgentCapabilityContractV1,
+    VideoAgentOperationDefinitionV1,
+)
+
+
+class VideoAgentOperationRegistryError(ValueError):
+    """A Video Agent operation or capability mapping is not registered."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+_CAPABILITIES: tuple[tuple[CapabilityIdV1, str, str, str, str, str], ...] = (
+    (
+        "world_setting",
+        "world_setting",
+        "WorldSettingProposalResultV1",
+        "video_agent_world_setting",
+        "world_setting",
+        "World Setting Designer",
+    ),
+    (
+        "product_design",
+        "product",
+        "ProductProposalResultV1",
+        "video_agent_product_design",
+        "product",
+        "Product Designer",
+    ),
+    (
+        "prop_design",
+        "prop",
+        "PropProposalResultV1",
+        "video_agent_prop_design",
+        "prop",
+        "Prop Designer",
+    ),
+    (
+        "character_design",
+        "character",
+        "CharacterProposalResultV1",
+        "video_agent_character_design",
+        "character",
+        "Character Designer",
+    ),
+    (
+        "scene_design",
+        "scene",
+        "SceneProposalResultV1",
+        "video_agent_scene_design",
+        "scene",
+        "Scene Designer",
+    ),
+    (
+        "script_authoring",
+        "script",
+        "ScriptProposalResultV1",
+        "video_agent_script_authoring",
+        "script",
+        "Script Writer",
+    ),
+    (
+        "storyboard_design",
+        "storyboard",
+        "StoryboardProposalResultV1",
+        "video_agent_storyboard_design",
+        "storyboard",
+        "Storyboard Artist",
+    ),
+    (
+        "video_direction",
+        "video",
+        "VideoProposalResultV1",
+        "video_agent_video_direction",
+        "video",
+        "Video Director",
+    ),
+    (
+        "bgm_direction",
+        "bgm",
+        "BgmProposalResultV1",
+        "video_agent_bgm_direction",
+        "bgm",
+        "BGM Director",
+    ),
+)
+
+
+def _definition(
+    operation: str,
+    result_contract_name: str,
+    *,
+    capability_id: CapabilityIdV1 | None = None,
+    internal_skill_id: str | None = None,
+    style_projection_role: str | None = None,
+    display_name: str | None = None,
+) -> VideoAgentOperationDefinitionV1:
+    return VideoAgentOperationDefinitionV1(
+        operation=operation,
+        capability_id=capability_id,
+        internal_skill_id=internal_skill_id,
+        style_projection_role=style_projection_role,
+        result_contract_name=result_contract_name,
+        display_name=display_name,
+    )
+
+
+def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
+    definitions: list[VideoAgentOperationDefinitionV1] = []
+    for capability_id, operation_stem, contract, skill, style_role, display in _CAPABILITIES:
+        for prefix in ("propose", "revise"):
+            definitions.append(
+                _definition(
+                    f"{prefix}_{operation_stem}_options",
+                    contract,
+                    capability_id=capability_id,
+                    internal_skill_id=skill,
+                    style_projection_role=style_role,
+                    display_name=display,
+                )
+            )
+        definitions.append(
+            _definition(
+                f"materialize_{operation_stem}",
+                CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id].__name__,
+                capability_id=capability_id,
+                internal_skill_id=skill,
+                style_projection_role=style_role,
+                display_name=display,
+            )
+        )
+    return tuple(definitions)
+
+
+_DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
+    _definition("decide_turn_intent", "TurnIntentDecisionV1"),
+    _definition("decide_next_action", "NextActionCommandV1"),
+    _definition("command_replan", "AgentCommandPlanDraftV2"),
+    _definition("workflow_conversation", "WorkflowConversationReply"),
+    _definition("conversation_summary", "ConversationSummaryResult"),
+    *_capability_definitions(),
+    _definition(
+        "free_image",
+        "V2QuickMediaPromptPlan",
+        capability_id="quick_media",
+        internal_skill_id="video_agent_quick_media",
+        style_projection_role="quick_media",
+        display_name="Quick Media",
+    ),
+    _definition(
+        "free_video",
+        "V2QuickMediaPromptPlan",
+        capability_id="quick_media",
+        internal_skill_id="video_agent_quick_media",
+        style_projection_role="quick_media",
+        display_name="Quick Media",
+    ),
+    _definition(
+        "free_audio",
+        "V2QuickMediaPromptPlan",
+        capability_id="quick_media",
+        internal_skill_id="video_agent_quick_media",
+        style_projection_role="quick_media",
+        display_name="Quick Media",
+    ),
+    _definition(
+        "materialize_quick_media",
+        "QuickMediaMaterializationResultV1",
+        capability_id="quick_media",
+        internal_skill_id="video_agent_quick_media",
+        style_projection_role="quick_media",
+        display_name="Quick Media",
+    ),
+    _definition("execute_canvas_text", "AgentCanvasTextOutput"),
+    _definition(
+        "execute_canvas_script",
+        "AgentCanvasScriptOutput",
+        capability_id="script_authoring",
+        internal_skill_id="video_agent_script_authoring",
+        style_projection_role="script",
+        display_name="Script Writer",
+    ),
+    _definition(
+        "compile_video_parameters",
+        "VideoParameterIntentV2",
+        capability_id="video_direction",
+        internal_skill_id="video_agent_video_direction",
+        style_projection_role="video",
+        display_name="Video Director",
+    ),
+    _definition("workflow_creation", "FrontDeskIntentOutput"),
+    _definition("intent_contract_planner", "V2IntentPlan"),
+    _definition(
+        "script_writer",
+        "V2ScriptPlanV2",
+        capability_id="script_authoring",
+        internal_skill_id="video_agent_script_authoring",
+        style_projection_role="script",
+        display_name="Script Writer",
+    ),
+    _definition(
+        "script_edit_normalization",
+        "V2EditableScriptDocument",
+        capability_id="script_authoring",
+        internal_skill_id="video_agent_script_authoring",
+        style_projection_role="script",
+        display_name="Script Writer",
+    ),
+    _definition(
+        "product_expert_brief",
+        "V2ProductExpertPlan",
+        capability_id="product_design",
+        internal_skill_id="video_agent_product_design",
+        style_projection_role="product",
+        display_name="Product Designer",
+    ),
+    _definition(
+        "character_expert_brief",
+        "V2CharacterExpertPlan",
+        capability_id="character_design",
+        internal_skill_id="video_agent_character_design",
+        style_projection_role="character",
+        display_name="Character Designer",
+    ),
+    _definition(
+        "scene_expert_brief",
+        "V2SceneExpertPlan",
+        capability_id="scene_design",
+        internal_skill_id="video_agent_scene_design",
+        style_projection_role="scene",
+        display_name="Scene Designer",
+    ),
+    _definition(
+        "bgm_expert_brief",
+        "V2BgmExpertPlan",
+        capability_id="bgm_direction",
+        internal_skill_id="video_agent_bgm_direction",
+        style_projection_role="bgm",
+        display_name="BGM Director",
+    ),
+    _definition(
+        "product_prompt",
+        "V2ProductPromptPlan",
+        capability_id="product_design",
+        internal_skill_id="video_agent_product_design",
+        style_projection_role="product",
+        display_name="Product Designer",
+    ),
+    _definition(
+        "character_prompt",
+        "V2CharacterPromptPlan",
+        capability_id="character_design",
+        internal_skill_id="video_agent_character_design",
+        style_projection_role="character",
+        display_name="Character Designer",
+    ),
+    _definition(
+        "scene_prompt",
+        "V2ScenePromptPlan",
+        capability_id="scene_design",
+        internal_skill_id="video_agent_scene_design",
+        style_projection_role="scene",
+        display_name="Scene Designer",
+    ),
+    _definition(
+        "storyboard_prompt",
+        "V2ShotCellPromptPlan",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
+    _definition(
+        "storyboard_detail",
+        "V2StoryboardDetailPlan",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
+    _definition(
+        "shot_video_prompt",
+        "V2ShotVideoPromptPlan",
+        capability_id="video_direction",
+        internal_skill_id="video_agent_video_direction",
+        style_projection_role="video",
+        display_name="Video Director",
+    ),
+    _definition(
+        "bgm_prompt",
+        "V2BgmPromptPlan",
+        capability_id="bgm_direction",
+        internal_skill_id="video_agent_bgm_direction",
+        style_projection_role="bgm",
+        display_name="BGM Director",
+    ),
+    _definition(
+        "visual_style_scope_repair",
+        "V2VisualStyleScopeRepairOutput",
+        capability_id="world_setting",
+        internal_skill_id="video_agent_world_setting",
+        style_projection_role="world_setting",
+        display_name="World Setting Designer",
+    ),
+    _definition(
+        "revise_character_asset",
+        "SpecialistResult",
+        capability_id="character_design",
+        internal_skill_id="video_agent_character_design",
+        style_projection_role="character",
+        display_name="Character Designer",
+    ),
+    _definition(
+        "revise_scene_asset",
+        "SpecialistResult",
+        capability_id="scene_design",
+        internal_skill_id="video_agent_scene_design",
+        style_projection_role="scene",
+        display_name="Scene Designer",
+    ),
+)
+
+
+class VideoAgentOperationRegistry:
+    """Resolve exact operation metadata without identity or Skill fallback."""
+
+    def __init__(self) -> None:
+        by_operation = {definition.operation: definition for definition in _DEFINITIONS}
+        if len(by_operation) != len(_DEFINITIONS):
+            raise VideoAgentOperationRegistryError(
+                "agent_operation_registry_invalid",
+                "Video Agent operations must be unique.",
+            )
+        self._by_operation = MappingProxyType(by_operation)
+        self._capability_operations = MappingProxyType(
+            {
+                capability_id: (
+                    self._by_operation[f"propose_{operation_stem}_options"],
+                    self._by_operation[f"revise_{operation_stem}_options"],
+                )
+                for capability_id, operation_stem, *_ in _CAPABILITIES
+            }
+        )
+
+    def names(self) -> tuple[str, ...]:
+        return tuple(self._by_operation)
+
+    def definitions(self) -> tuple[VideoAgentOperationDefinitionV1, ...]:
+        return tuple(self._by_operation.values())
+
+    def resolve(self, operation: str) -> VideoAgentOperationDefinitionV1:
+        try:
+            return self._by_operation[operation]
+        except KeyError as error:
+            raise VideoAgentOperationRegistryError(
+                "agent_operation_not_allowed",
+                "Video Agent operation is not registered.",
+            ) from error
+
+    def validate_capability_contract(self, contract: AgentCapabilityContractV1) -> None:
+        if len(contract.agents) != 1:
+            self._invalid_contract()
+        agent = contract.agents[0]
+        if (
+            agent.name != "video_agent"
+            or agent.model_role != "agent"
+            or set(agent.operations) != set(self._by_operation)
+        ):
+            self._invalid_contract()
+
+    def for_capability(
+        self,
+        capability_id: CapabilityIdV1,
+        *,
+        revision: bool = False,
+    ) -> VideoAgentOperationDefinitionV1:
+        try:
+            proposed, revised = self._capability_operations[capability_id]
+        except KeyError as error:
+            raise VideoAgentOperationRegistryError(
+                "agent_operation_not_allowed",
+                "Capability does not use the Proposal operation boundary.",
+            ) from error
+        return revised if revision else proposed
+
+    @staticmethod
+    def _invalid_contract() -> None:
+        raise VideoAgentOperationRegistryError(
+            "agent_operation_registry_invalid",
+            "Agent capability contract does not match the Video Agent operation registry.",
+        )

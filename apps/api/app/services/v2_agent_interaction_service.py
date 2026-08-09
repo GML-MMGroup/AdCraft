@@ -247,7 +247,7 @@ class V2AgentInteractionService:
         specialist: SpecialistAgentName,
         target: Any,
     ) -> WorkflowV2:
-        context = self._context_builder.build_targeted_revision(
+        context = self._context_builder.build_asset_revision(
             workflow_id=workflow_id,
             conversation_id=conversation_id,
             target=target,

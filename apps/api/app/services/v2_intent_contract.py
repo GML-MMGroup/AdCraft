@@ -189,7 +189,7 @@ class V2IntentPlanner:
         )
         invocation = (
             planning_session.child(
-                agent_name="front_desk",
+                agent_name="video_agent",
                 operation="intent_contract_planner",
                 logical_key="intent",
             )
