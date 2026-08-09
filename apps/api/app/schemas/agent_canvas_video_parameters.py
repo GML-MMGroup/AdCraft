@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
 VideoParameterFieldV2 = Literal[
@@ -90,6 +90,11 @@ class VideoParameterIntentV2(_VideoParameterModel):
     )
     status: Literal["explicit_controls", "no_explicit_controls"]
     candidates: tuple[VideoParameterCandidateV2, ...] = Field(default=(), max_length=32)
+
+    @field_validator("candidates", mode="before")
+    @classmethod
+    def normalize_json_candidates(cls, value: object) -> object:
+        return tuple(value) if isinstance(value, list) else value
 
     @model_validator(mode="after")
     def validate_status(self) -> "VideoParameterIntentV2":
