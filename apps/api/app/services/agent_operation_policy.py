@@ -20,24 +20,68 @@ _DEADLINES: Mapping[AgentOperationPolicyClassV2, int] = {
 _ROUTING_OPERATIONS = {
     "command_replan",
     "compile_video_parameters",
-    "conversation_turn",
-    "decide_next_guidance_step",
-    "direct_response",
-    "proposal_action",
-    "resolve_creation_mode",
+    "conversation_summary",
+    "decide_next_action",
+    "decide_turn_intent",
+    "intent_contract_planner",
+    "visual_style_scope_repair",
+    "workflow_conversation",
+    "workflow_creation",
 }
 _PROPOSAL_OPERATIONS = {
-    "propose_concepts",
-    "propose_world_setting",
-    "revise_concepts",
+    "bgm_expert_brief",
+    "bgm_prompt",
+    "character_expert_brief",
+    "character_prompt",
+    "free_audio",
+    "free_image",
+    "free_video",
+    "product_expert_brief",
+    "product_prompt",
+    "propose_bgm_options",
+    "propose_character_options",
+    "propose_product_options",
+    "propose_prop_options",
+    "propose_scene_options",
+    "propose_script_options",
+    "propose_storyboard_options",
+    "propose_video_options",
+    "propose_world_setting_options",
+    "revise_bgm_options",
+    "revise_character_asset",
+    "revise_character_options",
+    "revise_product_options",
+    "revise_prop_options",
+    "revise_scene_asset",
+    "revise_scene_options",
+    "revise_script_options",
+    "revise_storyboard_options",
+    "revise_video_options",
     "revise_world_setting_options",
+    "scene_expert_brief",
+    "scene_prompt",
+    "shot_video_prompt",
+    "storyboard_prompt",
 }
 _MATERIALIZATION_OPERATIONS = {
     "execute_canvas_text",
-    "materialize_draft",
+    "materialize_bgm",
+    "materialize_product",
+    "materialize_prop",
+    "materialize_quick_media",
+    "materialize_scene",
+    "materialize_script",
+    "materialize_storyboard",
     "materialize_world_setting",
 }
-_LONG_FORM_OPERATIONS = {"execute_canvas_script"}
+_LONG_FORM_OPERATIONS = {
+    "execute_canvas_script",
+    "materialize_character",
+    "materialize_video",
+    "script_edit_normalization",
+    "script_writer",
+    "storyboard_detail",
+}
 
 
 class AgentOperationPolicyError(ValueError):
@@ -74,12 +118,6 @@ class AgentOperationPolicyRegistryV2:
             operation=operation,
             contract_id=contract_id,
         )
-        fallback_class = "none"
-        if policy_class == "materialization":
-            if operation == "materialize_world_setting":
-                fallback_class = "selected_world_setting"
-            elif operation == "materialize_draft":
-                fallback_class = "selected_media_draft"
         return AgentOperationPolicyV2(
             policy_id=f"agent.{policy_class}.v1",
             agent_name=agent_name,
@@ -87,7 +125,7 @@ class AgentOperationPolicyRegistryV2:
             contract_id=contract_id,
             policy_class=policy_class,
             hard_deadline_seconds=self._deadlines[policy_class],
-            fallback_class=fallback_class,
+            fallback_class="none",
         )
 
     def validate_production_operations(self) -> tuple[str, ...]:
@@ -117,8 +155,6 @@ def _policy_class(
     operation: str,
     contract_id: str,
 ) -> AgentOperationPolicyClassV2:
-    if operation == "materialize_draft" and agent_name == "script_writer":
-        return "long_form"
     if contract_id in {"ScriptSpecialistDraftV2", "StoryboardProductionPlanContentV2"}:
         return "long_form"
     if operation in _ROUTING_OPERATIONS:
