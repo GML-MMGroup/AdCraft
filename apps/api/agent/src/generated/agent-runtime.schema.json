@@ -4183,8 +4183,13 @@
         "origin": {
           "enum": [
             "binding",
+            "guidance_default",
             "manual",
-            "node_prompt"
+            "node_prompt",
+            "provider_clamp",
+            "role_default",
+            "structured_content",
+            "user_explicit"
           ],
           "title": "Origin",
           "type": "string"
@@ -4444,6 +4449,9 @@
           "title": "Reference Allowlist",
           "type": "array"
         },
+        "reference_plan": {
+          "$ref": "#/$defs/CapabilityReferencePlanV1"
+        },
         "result_contract_name": {
           "maxLength": 160,
           "minLength": 1,
@@ -4535,6 +4543,7 @@
         "created_at",
         "envelope_id",
         "objective",
+        "reference_plan",
         "result_contract_name",
         "source_turn_id",
         "workflow_id"
@@ -4566,6 +4575,9 @@
           "title": "Digest",
           "type": "string"
         },
+        "reference_plan": {
+          "$ref": "#/$defs/CapabilityReferencePlanV1"
+        },
         "shared_summary": {
           "default": "",
           "maxLength": 8192,
@@ -4588,6 +4600,7 @@
       },
       "required": [
         "digest",
+        "reference_plan",
         "snapshot_id"
       ],
       "title": "CapabilityContextSnapshotV1",
@@ -5526,6 +5539,56 @@
         "recommended_capabilities"
       ],
       "title": "CapabilityPolicyResultV1",
+      "type": "object"
+    },
+    "CapabilityReferencePlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "quick_media",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PlannedCapabilityReferenceV1"
+          },
+          "maxItems": 64,
+          "title": "References",
+          "type": "array"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "capability_id",
+        "digest"
+      ],
+      "title": "CapabilityReferencePlanV1",
       "type": "object"
     },
     "CharacterExpertAgentContext": {
@@ -6952,7 +7015,8 @@
             "scene",
             "script",
             "storyboard",
-            "video"
+            "video",
+            "world_setting"
           ],
           "title": "Element Kind",
           "type": "string"
@@ -8247,6 +8311,99 @@
         "workflow_id"
       ],
       "title": "NextActionEnvelopeV1",
+      "type": "object"
+    },
+    "PlannedCapabilityReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "default_selected": {
+          "default": true,
+          "title": "Default Selected",
+          "type": "boolean"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "input_role": {
+          "enum": [
+            "audio_reference",
+            "image_reference",
+            "text_context",
+            "video_reference"
+          ],
+          "title": "Input Role",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "semantic_reference_role": {
+          "anyOf": [
+            {
+              "enum": [
+                "environment_reference",
+                "product_reference",
+                "prop_reference",
+                "storyboard_visual_reference",
+                "style_composition_reference",
+                "style_reference",
+                "subject_reference",
+                "world_setting_reference"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Reference Role"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "image_asset",
+            "node"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_name",
+        "input_role",
+        "media_type",
+        "priority",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "PlannedCapabilityReferenceV1",
       "type": "object"
     },
     "PlanningItemSummary": {
