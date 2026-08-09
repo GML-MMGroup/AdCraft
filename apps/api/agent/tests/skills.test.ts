@@ -68,6 +68,33 @@ describe("trusted skill bundle", () => {
     expect(skill?.content).toContain("Do not write a provider prompt");
   });
 
+  it("keeps Character references isolated and Turnaround views unlabeled", async () => {
+    const [skill] = await loadRequiredSkills(
+      getOperationDescriptor("propose_character_options"),
+    );
+
+    expect(skill?.content).toContain("seamless light-neutral background");
+    expect(skill?.content).toContain("no environmental objects");
+    expect(skill?.content).toContain("exactly three unlabeled full-body views");
+  });
+
+  it("separates adjacent Storyboard and Video segment responsibilities", async () => {
+    const [storyboard] = await loadRequiredSkills(
+      getOperationDescriptor("propose_storyboard_options"),
+    );
+    const [video] = await loadRequiredSkills(
+      getOperationDescriptor("propose_video_options"),
+    );
+
+    expect(storyboard?.content).toContain("distinct narrative responsibility");
+    expect(storyboard?.content).toContain("opening state");
+    expect(storyboard?.content).toContain("closing state");
+    expect(storyboard?.content).toContain("bounded continuity handoff");
+    expect(video?.content).toContain("segment-specific motion progression");
+    expect(video?.content).toContain("target output style");
+    expect(video?.content).toContain("non-style reference");
+  });
+
   it("fails closed for missing required skills and context overflow", async () => {
     const descriptor = getOperationDescriptor("propose_character_options");
     await expect(

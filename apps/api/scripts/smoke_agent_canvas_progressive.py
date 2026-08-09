@@ -797,12 +797,17 @@ class ProgressiveJourneyDriver:
                 "node_type": "image",
                 "creative_role": "storyboard_sequence",
                 "title": "Storyboard B (15-30 seconds)",
-                "summary_prompt": storyboard_a.get("summary_prompt"),
+                "summary_prompt": (
+                    "Complete the campaign with the curator serving the sparkling tea, then "
+                    "settle on the final bottle-and-glass brand tableau."
+                ),
                 "generation_prompt": (
-                    f"{storyboard_a.get('generation_prompt') or ''}\n\n"
-                    "Sequence B covers 15-30 seconds and continues from Sequence A to the final brand beat."
-                ).strip(),
-                "structured_content": storyboard_a.get("structured_content") or {},
+                    "Begin from Sequence A's poised first-pour state. Show the curator completing "
+                    "the pour, effervescence rising through the glass, the tasting-cup ritual, "
+                    "and a decisive bottle-and-glass final brand beat. This 15-30 second sequence "
+                    "must advance beyond the establishing actions in Sequence A."
+                ),
+                "structured_content": _all_elements_storyboard_b_content(storyboard_a),
                 "parameters": storyboard_a.get("parameters") or {},
                 "position": {
                     "x": float((storyboard_a.get("position") or {}).get("x") or 0) + 360,
@@ -825,6 +830,10 @@ class ProgressiveJourneyDriver:
             video_a,
             {
                 "title": "Video A (0-15 seconds)",
+                "structured_content": {
+                    **(video_a.get("structured_content") or {}),
+                    "duration_seconds": 15,
+                },
                 "parameters": {
                     **(video_a.get("parameters") or {}),
                     "duration_seconds": 15,
@@ -839,15 +848,16 @@ class ProgressiveJourneyDriver:
                 "node_type": "video",
                 "creative_role": "storyboard_video",
                 "title": "Video B (15-30 seconds)",
-                "summary_prompt": video_a.get("summary_prompt"),
+                "summary_prompt": (
+                    "The curator completes the pour and resolves the ritual in a final brand beat."
+                ),
                 "generation_prompt": (
-                    f"{video_a.get('generation_prompt') or ''}\n\n"
-                    "Continue Sequence A as the distinct 15-30 second segment."
-                ).strip(),
-                "structured_content": {
-                    **(video_a.get("structured_content") or {}),
-                    "duration_seconds": 15,
-                },
+                    "Continue from Sequence A's closing pose and bottle position. Track the "
+                    "completed sparkling pour, the curator's tasting-cup presentation, and a "
+                    "calm push-in to the bottle-and-glass final brand beat. Preserve live-action "
+                    "cinematic treatment and do not repeat Sequence A's establishing move."
+                ),
+                "structured_content": _all_elements_video_b_content(),
                 "parameters": {
                     **(video_a.get("parameters") or {}),
                     "duration_seconds": 15,
@@ -927,6 +937,7 @@ class ProgressiveJourneyDriver:
             )
             workflow = created_editing.get("workflow") or workflow
         workflow, _ = self.client.get(f"/api/v2/workflows/{workflow_id}")
+        _assert_distinct_all_elements_segments(workflow)
         return workflow
 
     def _assert_manual_media(self, report: ProgressiveAcceptanceReport, workflow_id: str) -> None:
@@ -1274,6 +1285,154 @@ def _assert_draft_contract(workflow: dict[str, Any]) -> None:
         if node.get("model_selection_mode") == "explicit" and not node.get("model_ref"):
             raise AcceptanceFailure(
                 "acceptance_prompt_incomplete", "An explicit Video model reference is missing."
+            )
+
+
+def _all_elements_storyboard_b_content(
+    storyboard_a: dict[str, Any],
+) -> dict[str, Any]:
+    source_content = storyboard_a.get("structured_content") or {}
+    return {
+        "sequence_summary": (
+            "The curator completes the pour and resolves the tea ritual in a final brand tableau."
+        ),
+        "narrative_goal": (
+            "Advance from anticipation to refreshment, product proof, and a memorable close."
+        ),
+        "style": source_content.get("style")
+        or {
+            "style_prompt": "Premium cinematic live-action storyboard illustration",
+            "source": "user",
+        },
+        "panels": [
+            {
+                "panel_index": 1,
+                "beat": "Resume the poised pour from Sequence A's closing state.",
+                "composition": "Medium frame preserving bottle, glass, and curator positions.",
+                "camera": "Matched eyeline and lens from the prior closing frame.",
+                "subject_action": "The curator begins the committed pour.",
+                "continuity_from_previous": "Exact handoff from the poised first-pour state.",
+            },
+            {
+                "panel_index": 2,
+                "beat": "Sparkling tea arcs cleanly into the tasting glass.",
+                "composition": "Product and liquid share the foreground.",
+                "camera": "Controlled lateral track.",
+                "subject_action": "The curator steadies the bottle while pouring.",
+                "continuity_from_previous": "Continue the same pour without resetting props.",
+            },
+            {
+                "panel_index": 3,
+                "beat": "Effervescence rises through the filled glass.",
+                "composition": "Macro detail with package silhouette retained behind.",
+                "camera": "Gentle macro push-in.",
+                "subject_action": "Bubbles collect and rise around the tea.",
+                "continuity_from_previous": "The completed pour motivates the macro detail.",
+            },
+            {
+                "panel_index": 4,
+                "beat": "The tasting cup enters beside the sparkling glass.",
+                "composition": "Balanced bottle, glass, and porcelain cup triangle.",
+                "camera": "Return to a stable tabletop medium shot.",
+                "subject_action": "The curator places the cup with deliberate precision.",
+                "continuity_from_previous": "Retain liquid level and package orientation.",
+            },
+            {
+                "panel_index": 5,
+                "beat": "The curator presents the finished serving ritual.",
+                "composition": "Curator framed behind the complete product arrangement.",
+                "camera": "Subtle forward drift.",
+                "subject_action": "An open hand invites attention to the serving.",
+                "continuity_from_previous": "All table objects remain fixed.",
+            },
+            {
+                "panel_index": 6,
+                "beat": "Dawn light catches condensation and gold package details.",
+                "composition": "Three-quarter product beauty angle.",
+                "camera": "Slow arc around the bottle shoulder.",
+                "subject_action": "Condensation and highlights reveal material quality.",
+                "continuity_from_previous": "Preserve the completed serving arrangement.",
+            },
+            {
+                "panel_index": 7,
+                "beat": "The curator withdraws to give the product full focus.",
+                "composition": "Bottle and glass dominate while the curator recedes.",
+                "camera": "Measured rack focus to the label plane.",
+                "subject_action": "The curator settles into a calm background pose.",
+                "continuity_from_previous": "Continue the same camera arc into the focus shift.",
+            },
+            {
+                "panel_index": 8,
+                "beat": "The bottle and sparkling glass lock into the hero arrangement.",
+                "composition": "Centered final product tableau with clean negative space.",
+                "camera": "Finish the push-in and stabilize.",
+                "subject_action": "Fine bubbles and dawn reflections remain active.",
+                "continuity_from_previous": "Hold established package geometry and liquid level.",
+            },
+            {
+                "panel_index": 9,
+                "beat": "Resolve on the final bottle-and-glass brand beat.",
+                "composition": "Readable hero pack shot against the rooftop tea bar.",
+                "camera": "Locked final frame.",
+                "subject_action": "The complete serving rests in a confident final state.",
+                "continuity_from_previous": "Settle from motion without changing identity or layout.",
+            },
+        ],
+        "no_generated_text": True,
+    }
+
+
+def _all_elements_video_b_content() -> dict[str, Any]:
+    return {
+        "segment_summary": (
+            "The curator completes the sparkling pour and resolves the ritual in a final "
+            "bottle-and-glass brand tableau."
+        ),
+        "duration_seconds": 15,
+        "storyboard_content": (
+            "Open on Sequence A's exact poised-pour closing state. Complete the pour, move "
+            "through effervescence and tasting-cup presentation, then push into the stable "
+            "bottle-and-glass final brand beat."
+        ),
+        "dialogue": "",
+        "voice_style": "",
+        "environment_sound": "Quiet rooftop ambience and soft porcelain contact",
+        "action_effects": "Bottle pour, sparkling fizz, and glass placement",
+        "negative_constraints": "No embedded background music and no repeated establishing move.",
+        "background_music": False,
+    }
+
+
+def _assert_distinct_all_elements_segments(workflow: dict[str, Any]) -> None:
+    def nodes_for(role: str) -> list[dict[str, Any]]:
+        return [node for node in workflow.get("nodes") or [] if node.get("creative_role") == role]
+
+    def normalized_content(node: dict[str, Any]) -> str:
+        content = dict(node.get("structured_content") or {})
+        content.pop("duration_seconds", None)
+        return json.dumps(content, sort_keys=True, separators=(",", ":"))
+
+    storyboards = nodes_for("storyboard_sequence")
+    videos = nodes_for("storyboard_video")
+    if len(storyboards) != 2 or len(videos) != 2:
+        raise AcceptanceFailure(
+            "acceptance_segment_continuity_invalid",
+            "The all-elements scenario requires two Storyboard and two Video segments.",
+        )
+    for earlier, later in ((storyboards[0], storyboards[1]), (videos[0], videos[1])):
+        summaries_are_distinct = (
+            str(earlier.get("summary_prompt") or "").strip().casefold()
+            != str(later.get("summary_prompt") or "").strip().casefold()
+        )
+        prompts_are_distinct = (
+            str(earlier.get("generation_prompt") or "").strip().casefold()
+            != str(later.get("generation_prompt") or "").strip().casefold()
+        )
+        content_is_distinct = normalized_content(earlier) != normalized_content(later)
+        if not (summaries_are_distinct and prompts_are_distinct and content_is_distinct):
+            raise AcceptanceFailure(
+                "acceptance_segment_continuity_invalid",
+                "Segment B must advance a distinct narrative responsibility before provider work.",
             )
 
 

@@ -19,11 +19,13 @@ Use the audience, campaign tone, script context, explicit character constraints,
 - Make character descriptions stable enough for consistent image and video generation.
 - Define role, age range, face, hair, outfit, body type, silhouette, temperament, and brand fit when relevant.
 - Separate character identity from action and environment.
-- For turnaround guidance, preserve one identity across front, side, and back views on a plain design-sheet background.
+- Keep the Character Main composition to one full-body illustrated person on a seamless light-neutral background with no environmental objects.
+- For Turnaround guidance, preserve one identity across exactly three unlabeled full-body views: forward-facing, exact side profile, and rear-facing.
 
 # Prompt Rules
 
 - Repeat stable identity details consistently across every requested character view.
+- Keep Turnaround sheets free of headings, orientation labels, captions, typography, logos, and watermarks.
 
 # Do Not
 

@@ -18,10 +18,14 @@ Use the owning shot, its selected storyboard references, product and identity co
 - Keep camera motion limited and legible within each segment.
 - Preserve product, character, scene, lighting, and timing continuity across adjacent shots.
 - Reference only the approved assets supplied for the same shot.
+- Define one segment-specific motion progression from its opening state through a distinct primary action to its closing state.
+- Use bounded prior-segment context only for the continuity handoff into the owning segment.
+- Treat the target output style as authoritative; a non-style reference supplies identity, spatial, or action facts without transferring its rendering medium.
 
 # Prompt Rules
 
 - Keep motion and camera instructions bounded to the owning shot and supplied constraints.
+- Preserve the supplied reference facts while following the target Video rendering medium.
 
 # Do Not
 

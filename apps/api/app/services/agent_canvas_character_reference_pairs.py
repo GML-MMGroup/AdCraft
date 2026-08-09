@@ -20,9 +20,9 @@ from app.schemas.agent_canvas_materialization import (
 )
 
 
-_MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a clean light design background. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
+_MAIN_PROMPT = """Create one detailed semi-realistic 2D commercial character illustration, clearly illustrated rather than photographed. Show exactly one full-body human in a natural standing pose with a slight three-quarter front view on a seamless light-neutral design background with no environmental objects. Use only a subtle grounding shadow. Preserve readable facial features, hair, wardrobe construction, body proportions, silhouette, and color palette."""
 
-_TURNAROUND_PROMPT = """Use the bound Character Main image as the sole identity master. Render one simple front, side, and back full-body turnaround sheet on a clean light design background. All three views are the same person with identical face, hair, wardrobe, proportions, silhouette, materials, palette, and detailed semi-realistic illustration treatment. Do not reinterpret or redesign the identity."""
+_TURNAROUND_PROMPT = """Use the bound Character Main image as the sole identity master. Render one turnaround sheet with exactly three unlabeled full-body figures arranged left-to-right as forward-facing, exact side profile, and rear-facing on a seamless light-neutral design background. All three views are the same person with identical face, hair, wardrobe, proportions, silhouette, materials, palette, and detailed semi-realistic illustration treatment. Keep the sheet blank: no headings, orientation labels, captions, typography, logos, or watermarks anywhere. Do not reinterpret or redesign the identity."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +94,7 @@ class CharacterReferencePairFactory:
             node_type="image",
             creative_role="character",
             title=f"{main_result.title} Turnaround",
-            summary_prompt=f"Front, side, and back identity sheet for {main_result.title}.",
+            summary_prompt=f"Three-view unlabeled identity sheet for {main_result.title}.",
             generation_prompt=(
                 f"{_TURNAROUND_PROMPT}\n\nIdentity: {main_content.subject_identity}. "
                 f"Design: {main_content.design_summary}."
