@@ -15,7 +15,7 @@ class V2QuickMediaPromptPlan(BaseModel):
     reference_asset_ids: list[str] = Field(default_factory=list, max_length=128)
     quality_notes: list[str] = Field(default_factory=list, max_length=64)
     warnings: list[dict[str, str]] = Field(default_factory=list, max_length=64)
-    agent_name: Literal["quick_media_agent"] = "quick_media_agent"
+    agent_name: Literal["video_agent"] = "video_agent"
     operation: Literal["free_image", "free_video", "free_audio"]
 
     @field_validator("summary_prompt", "provider_prompt")
