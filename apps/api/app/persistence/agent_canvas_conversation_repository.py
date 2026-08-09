@@ -92,6 +92,10 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
+from app.schemas.agent_canvas_draft_seeds import (
+    DraftSeedEnvelopeV1,
+    DraftSeedPersistenceRecordV1,
+)
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
@@ -2022,6 +2026,7 @@ class AgentCanvasConversationRepository:
     ) -> ConceptProposalV2:
         now = _now()
         proposal_id = f"proposal_{uuid4().hex}"
+        seed_records = _validated_seed_records(proposal)
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
@@ -2153,6 +2158,7 @@ class AgentCanvasConversationRepository:
                         reserved_ids=reserved_option_ids,
                     )
                     reserved_option_ids.add(option_id)
+                    seed_record = seed_records.get(option.option_id)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -2161,6 +2167,15 @@ class AgentCanvasConversationRepository:
                             title=option.title,
                             description=option.public_summary,
                             key_decisions_json=_dump(list(option.key_decisions)),
+                            draft_seed_schema=(
+                                seed_record.draft_seed_schema if seed_record is not None else None
+                            ),
+                            draft_seed_json=(
+                                seed_record.draft_seed_json if seed_record is not None else None
+                            ),
+                            draft_seed_digest=(
+                                seed_record.draft_seed_digest if seed_record is not None else None
+                            ),
                         )
                     )
                 _append_timeline_entry(
@@ -2266,6 +2281,60 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         return self.get_proposal(proposal_id)
+
+    def get_draft_seed(self, option_id: str) -> DraftSeedPersistenceRecordV1:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasConceptOptionRow).where(
+                            AgentCanvasConceptOptionRow.option_id == option_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
+        if row is None:
+            raise _error("proposal_option_not_found", "Concept option was not found.")
+        return _draft_seed_record_from_row(row)
+
+    def get_draft_seed_envelope(self, option_id: str) -> DraftSeedEnvelopeV1:
+        return DraftSeedEnvelopeV1.model_validate_json(
+            self.get_draft_seed(option_id).draft_seed_json
+        )
+
+    def get_draft_seed_metadata(self, option_id: str) -> tuple[str | None, str | None]:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(
+                            AgentCanvasConceptOptionRow.draft_seed_schema,
+                            AgentCanvasConceptOptionRow.draft_seed_digest,
+                        ).where(AgentCanvasConceptOptionRow.option_id == option_id)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
+        if row is None:
+            raise _error("proposal_option_not_found", "Concept option was not found.")
+        schema = row["draft_seed_schema"]
+        digest = row["draft_seed_digest"]
+        return (
+            (str(schema), str(digest))
+            if schema is not None and digest is not None
+            else (None, None)
+        )
 
     def get_proposal(self, proposal_id: str) -> ConceptProposalV2:
         try:
@@ -4879,6 +4948,72 @@ def _available_option_id(
         return requested_id
     suffix = hashlib.sha256(f"{proposal_id}:{requested_id}".encode()).hexdigest()[:12]
     return f"{requested_id[:147]}_{suffix}"
+
+
+def _validated_seed_records(
+    proposal: ConceptProposalCreateV2,
+) -> dict[str, DraftSeedPersistenceRecordV1]:
+    if proposal.capability_id == "quick_media":
+        return {}
+    records: dict[str, DraftSeedPersistenceRecordV1] = {}
+    for record in proposal.draft_seeds:
+        try:
+            seed = DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
+        except (TypeError, ValueError) as error:
+            raise _error(
+                "proposal_draft_seed_invalid",
+                "Proposal Draft Seed is invalid.",
+            ) from error
+        digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
+        if (
+            record.draft_seed_schema != "draft_seed_v1"
+            or digest != record.draft_seed_digest
+            or seed.capability_id != proposal.capability_id
+        ):
+            raise _error(
+                "proposal_draft_seed_invalid",
+                "Proposal Draft Seed is invalid.",
+            )
+        records[record.option_id] = record
+    return records
+
+
+def _draft_seed_record_from_row(row: RowMapping) -> DraftSeedPersistenceRecordV1:
+    values = (
+        row["draft_seed_schema"],
+        row["draft_seed_json"],
+        row["draft_seed_digest"],
+    )
+    if all(value is None for value in values):
+        raise _error(
+            "proposal_draft_seed_missing",
+            "Proposal option has no private Draft Seed; regenerate the Proposal.",
+        )
+    if any(value is None for value in values):
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed is incomplete.",
+        )
+    try:
+        record = DraftSeedPersistenceRecordV1(
+            option_id=str(row["option_id"]),
+            draft_seed_schema=str(row["draft_seed_schema"]),
+            draft_seed_json=str(row["draft_seed_json"]),
+            draft_seed_digest=str(row["draft_seed_digest"]),
+        )
+        DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed is invalid.",
+        ) from error
+    digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
+    if digest != record.draft_seed_digest:
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed digest is invalid.",
+        )
+    return record
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

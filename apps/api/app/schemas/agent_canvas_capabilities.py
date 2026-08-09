@@ -5,12 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_draft_seeds import (
+    DraftSeedCapabilityIdV1,
+    DraftSeedEnvelopeV1,
+)
 
 
 class _CapabilityModel(BaseModel):
@@ -326,40 +330,51 @@ class _OptionBaseV1(_CapabilityModel):
     key_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
-class WorldSettingProposalOptionV1(_OptionBaseV1):
-    pass
+class _SeededOptionBaseV1(_OptionBaseV1):
+    expected_capability_id: ClassVar[DraftSeedCapabilityIdV1]
+    private_draft_seed: DraftSeedEnvelopeV1
+
+    @model_validator(mode="after")
+    def validate_seed_capability(self) -> "_SeededOptionBaseV1":
+        if self.private_draft_seed.capability_id != self.expected_capability_id:
+            raise ValueError("Proposal option Draft Seed has the wrong capability.")
+        return self
 
 
-class ProductProposalOptionV1(_OptionBaseV1):
-    pass
+class WorldSettingProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "world_setting"
 
 
-class PropProposalOptionV1(_OptionBaseV1):
-    pass
+class ProductProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "product_design"
 
 
-class CharacterProposalOptionV1(_OptionBaseV1):
-    pass
+class PropProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "prop_design"
 
 
-class SceneProposalOptionV1(_OptionBaseV1):
-    pass
+class CharacterProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "character_design"
 
 
-class ScriptProposalOptionV1(_OptionBaseV1):
-    pass
+class SceneProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "scene_design"
 
 
-class StoryboardProposalOptionV1(_OptionBaseV1):
-    pass
+class ScriptProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "script_authoring"
 
 
-class VideoProposalOptionV1(_OptionBaseV1):
-    pass
+class StoryboardProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "storyboard_design"
 
 
-class BgmProposalOptionV1(_OptionBaseV1):
-    pass
+class VideoProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "video_direction"
+
+
+class BgmProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "bgm_direction"
 
 
 class QuickMediaProposalOptionV1(_OptionBaseV1):

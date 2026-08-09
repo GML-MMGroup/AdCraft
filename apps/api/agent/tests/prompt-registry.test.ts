@@ -13,7 +13,7 @@ describe("Video Agent prompt registry", () => {
     const operations = listOperationDescriptors();
     const prompts = listPromptDescriptors();
 
-    expect(prompts).toHaveLength(57);
+    expect(prompts).toHaveLength(48);
     expect(
       prompts.map(({ agent_name, operation, contract_name }) => ({
         agent_name,
@@ -100,6 +100,28 @@ describe("Video Agent prompt registry", () => {
       expect(prompt).not.toContain("product identity");
       expect(prompt).not.toContain("product silhouette");
       expect(prompt).not.toContain("product materials");
+    }
+  });
+
+  it("requires one private typed Draft Seed for every creative Proposal option", () => {
+    for (const operation of [
+      "propose_world_setting_options",
+      "propose_product_options",
+      "revise_character_options",
+      "propose_video_options",
+      "propose_bgm_options",
+    ]) {
+      const definition = listOperationDescriptors().find(
+        (candidate) => candidate.operation === operation,
+      );
+      const prompt = getPromptDescriptor(
+        operation,
+        definition!.result_contract_name,
+      ).system_prompt;
+
+      expect(prompt).toContain("private_draft_seed");
+      expect(prompt).toContain("platform identity");
+      expect(prompt).toContain("provider parameters");
     }
   });
 

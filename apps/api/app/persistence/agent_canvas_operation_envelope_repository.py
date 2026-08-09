@@ -17,11 +17,17 @@ from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV1,
     NextActionEnvelopeV1,
 )
-from app.schemas.agent_canvas_materialization import CapabilityMaterializationEnvelopeV1
+from app.schemas.agent_canvas_materialization import (
+    CapabilityMaterializationEnvelopeV1,
+    ProposalPublicationEnvelopeV1,
+)
 
 
 OperationEnvelopeV1: TypeAlias = (
-    CapabilityCommandEnvelopeV1 | NextActionEnvelopeV1 | CapabilityMaterializationEnvelopeV1
+    CapabilityCommandEnvelopeV1
+    | NextActionEnvelopeV1
+    | CapabilityMaterializationEnvelopeV1
+    | ProposalPublicationEnvelopeV1
 )
 _ENVELOPE_ADAPTER = TypeAdapter(OperationEnvelopeV1)
 

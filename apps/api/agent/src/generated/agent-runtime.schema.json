@@ -3466,6 +3466,74 @@
       "title": "BgmContentV2",
       "type": "object"
     },
+    "BgmDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "energy_curve": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Energy Curve",
+          "type": "string"
+        },
+        "instrumental_only": {
+          "const": true,
+          "default": true,
+          "title": "Instrumental Only",
+          "type": "boolean"
+        },
+        "instrumentation": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Instrumentation",
+          "type": "string"
+        },
+        "mood": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Mood",
+          "type": "string"
+        },
+        "no_lyrics": {
+          "const": true,
+          "default": true,
+          "title": "No Lyrics",
+          "type": "boolean"
+        },
+        "no_vocals": {
+          "const": true,
+          "default": true,
+          "title": "No Vocals",
+          "type": "boolean"
+        },
+        "pace": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Pace",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "bgm_direction",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "duration_seconds",
+        "energy_curve",
+        "instrumentation",
+        "mood",
+        "pace",
+        "seed_kind"
+      ],
+      "title": "BgmDraftSeedV1",
+      "type": "object"
+    },
     "BgmExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -3612,6 +3680,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -3627,6 +3698,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -5651,6 +5723,74 @@
       "title": "CharacterDesignAssetContentV2",
       "type": "object"
     },
+    "CharacterDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "appearance": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Appearance",
+          "type": "string"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "performance_role": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Performance Role",
+          "type": "string"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "character_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "visual_medium": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Visual Medium",
+          "type": "string"
+        },
+        "wardrobe": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Wardrobe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "appearance",
+        "identity",
+        "performance_role",
+        "presentation_intent",
+        "seed_kind",
+        "visual_medium",
+        "wardrobe"
+      ],
+      "title": "CharacterDraftSeedV1",
+      "type": "object"
+    },
     "CharacterExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -5788,6 +5928,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -5803,6 +5946,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -6675,6 +6819,84 @@
         "source_kind"
       ],
       "title": "DraftReferenceIntentV2",
+      "type": "object"
+    },
+    "DraftSeedEnvelopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed": {
+          "discriminator": {
+            "mapping": {
+              "bgm_direction": "#/$defs/BgmDraftSeedV1",
+              "character_design": "#/$defs/CharacterDraftSeedV1",
+              "product_design": "#/$defs/ProductDraftSeedV1",
+              "prop_design": "#/$defs/PropDraftSeedV1",
+              "scene_design": "#/$defs/SceneDraftSeedV1",
+              "script_authoring": "#/$defs/ScriptDraftSeedV1",
+              "storyboard_design": "#/$defs/StoryboardDraftSeedV1",
+              "video_direction": "#/$defs/VideoDraftSeedV1",
+              "world_setting": "#/$defs/WorldSettingDraftSeedV1"
+            },
+            "propertyName": "seed_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/WorldSettingDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/ProductDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/PropDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/CharacterDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/SceneDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/ScriptDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/StoryboardDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/VideoDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/BgmDraftSeedV1"
+            }
+          ],
+          "title": "Seed"
+        }
+      },
+      "required": [
+        "capability_id",
+        "seed"
+      ],
+      "title": "DraftSeedEnvelopeV1",
       "type": "object"
     },
     "EditingBgmEntryV2": {
@@ -8595,6 +8817,84 @@
       "title": "PlanningSlotSummary",
       "type": "object"
     },
+    "ProductDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "color_palette": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Color Palette",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "form": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Form",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Materials",
+          "type": "array"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "product_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "selling_focus": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Selling Focus",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color_palette",
+        "form",
+        "identity",
+        "materials",
+        "presentation_intent",
+        "seed_kind",
+        "selling_focus"
+      ],
+      "title": "ProductDraftSeedV1",
+      "type": "object"
+    },
     "ProductExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -8732,6 +9032,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -8747,6 +9050,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -8873,6 +9177,84 @@
       "title": "ProjectCreativeMemoryV2",
       "type": "object"
     },
+    "PropDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "color_palette": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Color Palette",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "form": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Form",
+          "type": "string"
+        },
+        "function": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Function",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Materials",
+          "type": "array"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "prop_design",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color_palette",
+        "form",
+        "function",
+        "identity",
+        "materials",
+        "presentation_intent",
+        "seed_kind"
+      ],
+      "title": "PropDraftSeedV1",
+      "type": "object"
+    },
     "PropMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -8919,6 +9301,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -8934,6 +9319,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -8957,6 +9343,228 @@
         "options"
       ],
       "title": "PropProposalResultV1",
+      "type": "object"
+    },
+    "ProposalPublicationEnvelopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "delegate_choice",
+            "reuse_direction",
+            "select_option"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "action_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Turn Id",
+          "type": "string"
+        },
+        "attempt_no": {
+          "minimum": 1,
+          "title": "Attempt No",
+          "type": "integer"
+        },
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "context_snapshot_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Context Snapshot Digest",
+          "type": "string"
+        },
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "draft_seed_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Seed Digest"
+        },
+        "draft_seed_schema": {
+          "anyOf": [
+            {
+              "const": "draft_seed_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Seed Schema"
+        },
+        "envelope_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Envelope Id",
+          "type": "string"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "idempotency_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Identity",
+          "type": "string"
+        },
+        "materialization_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Materialization Id",
+          "type": "string"
+        },
+        "proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_revision": {
+          "minimum": 1,
+          "title": "Proposal Revision",
+          "type": "integer"
+        },
+        "reference_plan": {
+          "$ref": "#/$defs/ProposalReferencePlanV1"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selected_option": {
+          "$ref": "#/$defs/SelectedConceptOptionV1"
+        },
+        "selection_actor": {
+          "enum": [
+            "agent",
+            "user"
+          ],
+          "title": "Selection Actor",
+          "type": "string"
+        },
+        "selection_reason": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selection Reason"
+        },
+        "style_skill_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Skill Run Id"
+        },
+        "target_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Id"
+        },
+        "target_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Revision"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "action_turn_id",
+        "attempt_no",
+        "capability_id",
+        "context_snapshot_digest",
+        "context_snapshot_id",
+        "conversation_id",
+        "created_at",
+        "envelope_id",
+        "expected_session_revision",
+        "idempotency_identity",
+        "materialization_id",
+        "proposal_id",
+        "proposal_revision",
+        "reference_plan",
+        "selected_option",
+        "selection_actor",
+        "workflow_id"
+      ],
+      "title": "ProposalPublicationEnvelopeV1",
       "type": "object"
     },
     "ProposalReferencePlanV1": {
@@ -9749,6 +10357,74 @@
       "title": "SceneDesignBoardContentV2",
       "type": "object"
     },
+    "SceneDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "atmosphere": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Atmosphere",
+          "type": "string"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "lighting": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "scene_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "spatial_layout": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Spatial Layout",
+          "type": "string"
+        },
+        "time_of_day": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Time Of Day",
+          "type": "string"
+        }
+      },
+      "required": [
+        "atmosphere",
+        "identity",
+        "lighting",
+        "materials",
+        "seed_kind",
+        "spatial_layout",
+        "time_of_day"
+      ],
+      "title": "SceneDraftSeedV1",
+      "type": "object"
+    },
     "SceneExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -9886,6 +10562,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -9901,6 +10580,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -9942,6 +10622,61 @@
       "title": "ScriptDraftContentV2",
       "type": "object"
     },
+    "ScriptDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "audience_objective": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Audience Objective",
+          "type": "string"
+        },
+        "dialogue_direction": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Dialogue Direction",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "narrative_beats": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Narrative Beats",
+          "type": "array"
+        },
+        "premise": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "script_authoring",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "audience_objective",
+        "dialogue_direction",
+        "duration_seconds",
+        "narrative_beats",
+        "premise",
+        "seed_kind"
+      ],
+      "title": "ScriptDraftSeedV1",
+      "type": "object"
+    },
     "ScriptMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -9981,6 +10716,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -9996,6 +10734,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -10216,6 +10955,68 @@
       "title": "SpecialistDraft",
       "type": "object"
     },
+    "StoryboardDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_language": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Camera Language",
+          "type": "string"
+        },
+        "continuity_anchors": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Continuity Anchors",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "panel_beats": {
+          "items": {
+            "$ref": "#/$defs/StoryboardPanelSeedV1"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Panel Beats",
+          "type": "array"
+        },
+        "seed_kind": {
+          "const": "storyboard_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "sequence_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Sequence Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "camera_language",
+        "continuity_anchors",
+        "panel_beats",
+        "seed_kind",
+        "sequence_summary"
+      ],
+      "title": "StoryboardDraftSeedV1",
+      "type": "object"
+    },
     "StoryboardGridContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -10402,6 +11203,57 @@
         "node_role"
       ],
       "title": "StoryboardNodeRecordV2",
+      "type": "object"
+    },
+    "StoryboardPanelSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "beat": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Beat",
+          "type": "string"
+        },
+        "camera": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Camera",
+          "type": "string"
+        },
+        "composition": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Composition",
+          "type": "string"
+        },
+        "continuity_from_previous": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Continuity From Previous",
+          "type": "string"
+        },
+        "panel_index": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Panel Index",
+          "type": "integer"
+        },
+        "subject_action": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Subject Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "beat",
+        "camera",
+        "composition",
+        "continuity_from_previous",
+        "panel_index",
+        "subject_action"
+      ],
+      "title": "StoryboardPanelSeedV1",
       "type": "object"
     },
     "StoryboardPanelV2": {
@@ -10604,6 +11456,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -10619,6 +11474,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -11788,6 +12644,73 @@
       "title": "VideoAgentOperationDefinitionV1",
       "type": "object"
     },
+    "VideoDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_language": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Camera Language",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "motion": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Motion",
+          "type": "string"
+        },
+        "native_audio_direction": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Native Audio Direction",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "video_direction",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "segment_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Segment Summary",
+          "type": "string"
+        },
+        "target_style": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Target Style",
+          "type": "string"
+        },
+        "timing_beats": {
+          "items": {
+            "$ref": "#/$defs/VideoTimingBeatSeedV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Timing Beats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "camera_language",
+        "duration_seconds",
+        "motion",
+        "native_audio_direction",
+        "seed_kind",
+        "segment_summary",
+        "target_style",
+        "timing_beats"
+      ],
+      "title": "VideoDraftSeedV1",
+      "type": "object"
+    },
     "VideoMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -12195,6 +13118,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -12210,6 +13136,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -12299,6 +13226,36 @@
         "storyboard_content"
       ],
       "title": "VideoSegmentContentV2",
+      "type": "object"
+    },
+    "VideoTimingBeatSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "end_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "End Seconds",
+          "type": "number"
+        },
+        "start_seconds": {
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Start Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "end_seconds",
+        "start_seconds"
+      ],
+      "title": "VideoTimingBeatSeedV1",
       "type": "object"
     },
     "VisualStyleContractV2": {
@@ -12657,6 +13614,66 @@
       "title": "WorldSettingDocumentV2",
       "type": "object"
     },
+    "WorldSettingDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "era_and_place": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Era And Place",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "prompt_brief": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Prompt Brief",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "world_setting",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "visual_continuity": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Visual Continuity",
+          "type": "array"
+        },
+        "world_rules": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "World Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "era_and_place",
+        "premise",
+        "prompt_brief",
+        "seed_kind",
+        "visual_continuity",
+        "world_rules"
+      ],
+      "title": "WorldSettingDraftSeedV1",
+      "type": "object"
+    },
     "WorldSettingMaterializationContentV1": {
       "additionalProperties": false,
       "properties": {
@@ -12716,6 +13733,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -12731,6 +13751,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],

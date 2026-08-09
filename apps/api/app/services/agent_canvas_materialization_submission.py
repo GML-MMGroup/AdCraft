@@ -26,14 +26,15 @@ from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationEnvelopeV1,
+    ProposalPublicationEnvelopeV1,
     ProposalReferencePlanV1,
     ProposalReferenceSnapshotV1,
     SelectedConceptOptionV1,
 )
 
 
-class ProposalMaterializationSubmissionService:
-    """Validate public selection facts without invoking Pi or creating a Node."""
+class _ProposalSelectionSubmissionService:
+    """Share selection validation for deterministic publication and Quick Media."""
 
     def __init__(
         self,
@@ -246,6 +247,81 @@ class ProposalMaterializationSubmissionService:
     def _load_envelope(self, materialization_id: str) -> CapabilityMaterializationEnvelopeV1:
         envelope_id = "envelope_" + _digest(materialization_id)[:32]
         return self._materializations.get_envelope(envelope_id)
+
+
+class QuickMediaMaterializationSubmissionService(_ProposalSelectionSubmissionService):
+    """Queue the sole remaining model-assisted Proposal materialization path."""
+
+    def _build_envelope(
+        self,
+        proposal,
+        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        accepted: ChatTurnAcceptedV2,
+    ) -> CapabilityMaterializationEnvelopeV1:
+        if proposal.capability_id != "quick_media":
+            raise _error(
+                "quick_media_materialization_invalid",
+                "Only Quick Media uses model-assisted Proposal materialization.",
+            )
+        return super()._build_envelope(proposal, action, accepted)
+
+
+class ProposalPublicationSubmissionService(_ProposalSelectionSubmissionService):
+    """Queue deterministic Proposal publication while preserving the public lifecycle."""
+
+    def _build_envelope(
+        self,
+        proposal,
+        action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
+        accepted: ChatTurnAcceptedV2,
+    ) -> ProposalPublicationEnvelopeV1:
+        if proposal.capability_id == "quick_media":
+            raise _error(
+                "proposal_publication_invalid",
+                "Quick Media does not use deterministic Proposal publication.",
+            )
+        legacy = super()._build_envelope(proposal, action, accepted)
+        if isinstance(legacy, ProposalPublicationEnvelopeV1):
+            return legacy
+        seed_schema, seed_digest = self._conversations.get_draft_seed_metadata(
+            legacy.selected_option.option_id
+        )
+        return ProposalPublicationEnvelopeV1(
+            envelope_id=legacy.envelope_id,
+            materialization_id=legacy.materialization_id,
+            proposal_id=legacy.proposal_id,
+            proposal_revision=legacy.proposal_revision,
+            workflow_id=legacy.workflow_id,
+            conversation_id=legacy.conversation_id,
+            action_turn_id=legacy.action_turn_id,
+            action=legacy.action,
+            selection_actor=legacy.selection_actor,
+            selection_reason=legacy.selection_reason,
+            capability_id=legacy.capability_id,
+            selected_option=legacy.selected_option,
+            draft_seed_schema=seed_schema,
+            draft_seed_digest=seed_digest,
+            reference_plan=legacy.reference_plan,
+            expected_session_revision=legacy.expected_session_revision,
+            target_node_id=legacy.target_node_id,
+            target_node_revision=legacy.target_node_revision,
+            context_snapshot_id=legacy.context_snapshot_id,
+            context_snapshot_digest=legacy.context_snapshot_digest,
+            style_skill_run_id=legacy.style_skill_run_id,
+            attempt_no=legacy.attempt_no,
+            idempotency_identity=legacy.agent_request_identity,
+            created_at=legacy.created_at,
+        )
+
+    def _load_envelope(self, materialization_id: str) -> ProposalPublicationEnvelopeV1:
+        envelope_id = "envelope_" + _digest(materialization_id)[:32]
+        envelope = self._materializations.get_envelope(envelope_id)
+        if not isinstance(envelope, ProposalPublicationEnvelopeV1):
+            raise _error(
+                "proposal_publication_invalid",
+                "Persisted operation is not a Proposal publication.",
+            )
+        return envelope
 
 
 def _json_digest(value: object) -> str:

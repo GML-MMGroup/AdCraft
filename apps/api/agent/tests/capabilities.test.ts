@@ -20,13 +20,13 @@ describe("generated Video Agent capability contract", () => {
     );
   });
 
-  it("declares one Agent, one model role, and 57 unique operations", () => {
+  it("declares one Agent, one model role, and 48 unique operations", () => {
     expect(AGENT_CAPABILITY_CONTRACT.agents).toHaveLength(1);
     const agent = AGENT_CAPABILITY_CONTRACT.agents[0];
 
     expect(agent).toMatchObject({ name: "video_agent", model_role: "agent" });
-    expect(agent.operations).toHaveLength(57);
-    expect(new Set(agent.operations).size).toBe(57);
+    expect(agent.operations).toHaveLength(48);
+    expect(new Set(agent.operations).size).toBe(48);
     expect(listAgentDefinitions().map(({ name }) => name)).toEqual(["video_agent"]);
   });
 

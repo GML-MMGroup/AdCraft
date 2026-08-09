@@ -65,19 +65,10 @@ _PROPOSAL_OPERATIONS = {
 }
 _MATERIALIZATION_OPERATIONS = {
     "execute_canvas_text",
-    "materialize_bgm",
-    "materialize_product",
-    "materialize_prop",
     "materialize_quick_media",
-    "materialize_scene",
-    "materialize_script",
-    "materialize_storyboard",
-    "materialize_world_setting",
 }
 _LONG_FORM_OPERATIONS = {
     "execute_canvas_script",
-    "materialize_character",
-    "materialize_video",
     "script_edit_normalization",
     "script_writer",
     "storyboard_detail",

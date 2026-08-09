@@ -58,14 +58,13 @@ describe("trusted skill bundle", () => {
     ).rejects.toThrow("agent_optional_skill_not_allowed");
   });
 
-  it("keeps Character materialization lean and delegates the companion to Python", async () => {
-    const descriptor = getOperationDescriptor("materialize_character");
+  it("keeps Quick Media materialization on its dedicated Skill", async () => {
+    const descriptor = getOperationDescriptor("materialize_quick_media");
     const [skill] = await loadRequiredSkills(descriptor);
 
-    expect(skill?.content).toContain("Return one lean identity-master design result");
-    expect(skill?.content).toContain("Python derives the Turnaround companion");
-    expect(skill?.content).toContain("Do not construct a two-Node payload");
-    expect(skill?.content).toContain("Do not write a provider prompt");
+    expect(skill?.skill_id).toBe("video_agent_quick_media");
+    expect(skill?.content).toContain("one bounded prompt plan");
+    expect(skill?.content).toContain("Do not submit media generation");
   });
 
   it("keeps Character references isolated and Turnaround views unlabeled", async () => {

@@ -24,7 +24,7 @@ describe("Pi model adapter", () => {
         provider: "siliconflow",
         model_ref: "siliconflow:zai-org/GLM-5.2",
         model_id: "zai-org/GLM-5.2",
-        model_policy_id: "video_agent.materialize_product.v1",
+        model_policy_id: "video_agent.propose_product_options.v1",
         base_url: "https://api.siliconflow.cn/v1",
         api_key: "private-key",
         supports_tool_calls: true,
@@ -207,23 +207,23 @@ describe("Pi model adapter", () => {
     expect(prompt).not.toContain("contract_schema");
   });
 
-  it("uses the creative goal as the capability materialization request", () => {
+  it("uses the creative goal as the Quick Media materialization request", () => {
     const request = {
       protocol_version: "1",
-      run_id: "arun_materialize_product",
-      request_id: "req_materialize_product",
+      run_id: "arun_materialize_quick_media",
+      request_id: "req_materialize_quick_media",
       contract_digest: "a".repeat(64),
-      context_snapshot_id: "context_materialize_product",
+      context_snapshot_id: "context_materialize_quick_media",
       agent_name: "video_agent",
-      operation: "materialize_product",
+      operation: "materialize_quick_media",
       deadline_at: "2026-08-08T12:10:00Z",
-      model_policy_id: "video_agent.materialize_product.v1",
-      contract_name: "ProductMaterializationResultV1",
+      model_policy_id: "video_agent.materialize_quick_media.v1",
+      contract_name: "QuickMediaMaterializationResultV1",
       context: {
         context_kind: "capability_materialization",
         workflow_id: "adwf_v2_materialization",
         conversation_id: "conversation_materialization",
-        capability_id: "product_design",
+        capability_id: "quick_media",
         selected_option: {
           option_id: "option_product_one",
           title: "Refreshing ritual",
@@ -517,7 +517,7 @@ function siliconFlowCredential() {
     provider: "siliconflow",
     model_ref: "siliconflow:zai-org/GLM-5.2",
     model_id: "zai-org/GLM-5.2",
-    model_policy_id: "video_agent.materialize_character.v1",
+    model_policy_id: "video_agent.propose_character_options.v1",
     base_url: "https://api.siliconflow.cn/v1",
     api_key: "private-key",
     supports_tool_calls: true,

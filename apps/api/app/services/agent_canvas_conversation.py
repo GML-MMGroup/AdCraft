@@ -62,6 +62,7 @@ from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
 )
+from app.schemas.agent_canvas_draft_seeds import draft_seed_persistence_record
 from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
     CreativeGoalV2,
@@ -105,7 +106,8 @@ from app.services.agent_canvas_next_action_context import (
 )
 from app.services.agent_canvas_next_action_dispatch import NextActionDispatchService
 from app.services.agent_canvas_materialization_submission import (
-    ProposalMaterializationSubmissionService,
+    ProposalPublicationSubmissionService,
+    QuickMediaMaterializationSubmissionService,
 )
 from app.services.agent_canvas_turn_intent import TurnIntentService
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
@@ -465,9 +467,122 @@ def _deterministic_capability_result(
                     f"Keep the {capability_id} direction coherent.",
                     f"Use option {index} as the selected creative premise.",
                 ],
+                **(
+                    {}
+                    if capability_id == "quick_media"
+                    else {"private_draft_seed": _deterministic_draft_seed(capability_id)}
+                ),
             }
         )
     return {"options": options}
+
+
+def _deterministic_draft_seed(capability_id: str) -> dict[str, object]:
+    common = {"capability_id": capability_id}
+    if capability_id == "world_setting":
+        seed: dict[str, object] = {
+            "seed_kind": capability_id,
+            "premise": "A coherent premium advertising world.",
+            "era_and_place": "A contemporary studio environment.",
+            "world_rules": ["Keep the campaign identity consistent."],
+            "visual_continuity": ["Use one controlled lighting language."],
+            "prompt_brief": "Optimistic premium commercial direction.",
+        }
+    elif capability_id in {"product_design", "prop_design"}:
+        seed = {
+            "seed_kind": capability_id,
+            "identity": f"A coherent {capability_id.replace('_design', '')} design.",
+            **(
+                {"selling_focus": "Make the key benefit immediately legible."}
+                if capability_id == "product_design"
+                else {"function": "Support the advertising action clearly."}
+            ),
+            "form": "A distinctive, production-ready silhouette.",
+            "materials": ["matte metal", "clear glass"],
+            "color_palette": ["neutral base", "controlled accent"],
+            "presentation_intent": "One premium still design study.",
+            "exclusions": ["text", "watermarks"],
+        }
+    elif capability_id == "character_design":
+        seed = {
+            "seed_kind": capability_id,
+            "identity": "A distinctive advertising character.",
+            "appearance": "Readable facial features and coherent proportions.",
+            "wardrobe": "Purposeful contemporary wardrobe.",
+            "performance_role": "A confident and approachable guide.",
+            "visual_medium": "Detailed semi-realistic commercial illustration.",
+            "presentation_intent": "One full-body identity master.",
+            "exclusions": ["text", "watermarks"],
+        }
+    elif capability_id == "scene_design":
+        seed = {
+            "seed_kind": capability_id,
+            "identity": "A coherent advertising environment.",
+            "spatial_layout": "One legible environment with stable zones.",
+            "lighting": "Controlled commercial lighting.",
+            "materials": "Consistent production materials.",
+            "time_of_day": "Day.",
+            "atmosphere": "Premium and inviting.",
+            "exclusions": ["text", "unreferenced entities"],
+        }
+    elif capability_id == "script_authoring":
+        seed = {
+            "seed_kind": capability_id,
+            "premise": "A concise product story reveals a clear benefit.",
+            "audience_objective": "Make the benefit memorable and credible.",
+            "narrative_beats": ["Set up the need.", "Reveal the solution.", "Resolve."],
+            "dialogue_direction": "Concise, natural commercial narration.",
+            "duration_seconds": 30,
+        }
+    elif capability_id == "storyboard_design":
+        seed = {
+            "seed_kind": capability_id,
+            "sequence_summary": "A coherent nine-panel advertising sequence.",
+            "panel_beats": [
+                {
+                    "panel_index": index,
+                    "beat": f"Advertising beat {index}.",
+                    "composition": f"Distinct composition {index}.",
+                    "camera": f"Controlled camera setup {index}.",
+                    "subject_action": f"Clear subject action {index}.",
+                    "continuity_from_previous": (
+                        "Opening frame." if index == 1 else "Continue established identity."
+                    ),
+                }
+                for index in range(1, 10)
+            ],
+            "continuity_anchors": ["subject identity", "lighting direction"],
+            "camera_language": "Measured cinematic coverage.",
+            "exclusions": ["generated text"],
+        }
+    elif capability_id == "video_direction":
+        seed = {
+            "seed_kind": capability_id,
+            "segment_summary": "A concise moving product reveal.",
+            "timing_beats": [
+                {"start_seconds": 0, "end_seconds": 5, "action": "Reveal the subject."}
+            ],
+            "camera_language": "One controlled camera move.",
+            "motion": "Natural subject motion.",
+            "native_audio_direction": "Preserve natural room tone and action effects.",
+            "target_style": "Premium cinematic realism.",
+            "duration_seconds": 5,
+        }
+    elif capability_id == "bgm_direction":
+        seed = {
+            "seed_kind": capability_id,
+            "mood": "Quiet optimism.",
+            "instrumentation": "Warm synth, muted piano, and soft percussion.",
+            "pace": "Steady mid-tempo pulse.",
+            "energy_curve": "Gentle lift and resolved close.",
+            "duration_seconds": 30,
+            "instrumental_only": True,
+            "no_vocals": True,
+            "no_lyrics": True,
+        }
+    else:
+        raise ValueError("Unsupported deterministic Draft Seed capability.")
+    return {**common, "seed": seed}
 
 
 def _deterministic_materialization_result(capability_id: str) -> dict[str, object]:
@@ -1211,13 +1326,8 @@ class AgentConversationService:
                 EventRepository(workflows.database),
             )
         )
-        self._materialization_submission = ProposalMaterializationSubmissionService(
-            conversations,
-            AgentCanvasMaterializationRepository(
-                workflows.database,
-                EventRepository(workflows.database),
-            ),
-            reference_snapshot=lambda workflow_id, reference: (
+        submission_kwargs = {
+            "reference_snapshot": lambda workflow_id, reference: (
                 (
                     workflows.get_node(workflow_id, reference.source_id).revision
                     if reference.source_kind == "node"
@@ -1228,7 +1338,21 @@ class AgentConversationService:
                     if reference.source_kind == "image_asset" and self._asset_resolver is not None
                     else None
                 ),
-            ),
+            )
+        }
+        materializations = AgentCanvasMaterializationRepository(
+            workflows.database,
+            EventRepository(workflows.database),
+        )
+        self._proposal_publication_submission = ProposalPublicationSubmissionService(
+            conversations,
+            materializations,
+            **submission_kwargs,
+        )
+        self._quick_media_materialization_submission = QuickMediaMaterializationSubmissionService(
+            conversations,
+            materializations,
+            **submission_kwargs,
         )
         self._turn_intents = TurnIntentService(gateway)
         self._next_actions = NextActionExecutionService(gateway)
@@ -1309,7 +1433,12 @@ class AgentConversationService:
                 stage="agent_conversation_service",
             )
         if request.action in {"select_option", "delegate_choice", "reuse_direction"}:
-            return self._materialization_submission.submit_action(
+            submission = (
+                self._quick_media_materialization_submission
+                if proposal.capability_id == "quick_media"
+                else self._proposal_publication_submission
+            )
+            return submission.submit_action(
                 workflow_id,
                 proposal_id,
                 request,
@@ -1993,22 +2122,35 @@ class AgentConversationService:
                 "Capability revision result is invalid.",
                 stage="agent_conversation_service",
             ) from error
+        option_ids = tuple(
+            "option_"
+            + hashlib.sha256(
+                f"{request_identity}:{index}:{option.title}".encode("utf-8")
+            ).hexdigest()[:32]
+            for index, option in enumerate(result.options)
+        )
         revised = ConceptProposalCreateV2(
             proposal_kind=proposal.proposal_kind,
             capability_id=proposal.capability_id,
             options=tuple(
                 ConceptOptionRecordV2(
-                    option_id=(
-                        "option_"
-                        + hashlib.sha256(
-                            f"{request_identity}:{index}:{option.title}".encode("utf-8")
-                        ).hexdigest()[:32]
-                    ),
+                    option_id=option_ids[index],
                     title=option.title,
                     public_summary=option.public_summary,
                     key_decisions=option.key_decisions,
                 )
                 for index, option in enumerate(result.options)
+            ),
+            draft_seeds=(
+                ()
+                if proposal.capability_id == "quick_media"
+                else tuple(
+                    draft_seed_persistence_record(
+                        option_ids[index],
+                        option.private_draft_seed,
+                    )
+                    for index, option in enumerate(result.options)
+                )
             ),
             proposed_references=proposal.proposed_references,
             topic_id=proposal.topic_id,

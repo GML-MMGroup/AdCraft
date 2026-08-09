@@ -18,6 +18,7 @@ from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
 from app.schemas import agent_canvas_capabilities
 from app.schemas import agent_canvas_materialization
+from app.schemas import agent_canvas_draft_seeds
 from app.schemas import agent_canvas_world_setting
 from app.schemas import agent_working_documents
 from app.schemas import agent_operation_contexts
@@ -100,8 +101,21 @@ CONTRACT_MODELS = (
     agent_canvas_materialization.ProposalReferenceSnapshotV1,
     agent_canvas_materialization.ProposalReferencePlanV1,
     agent_canvas_materialization.CapabilityMaterializationEnvelopeV1,
+    agent_canvas_materialization.ProposalPublicationEnvelopeV1,
     agent_canvas_materialization.CapabilityMaterializationContextV1,
     agent_canvas_materialization.CapabilityMaterializationExecutionResultV1,
+    agent_canvas_draft_seeds.WorldSettingDraftSeedV1,
+    agent_canvas_draft_seeds.ProductDraftSeedV1,
+    agent_canvas_draft_seeds.PropDraftSeedV1,
+    agent_canvas_draft_seeds.CharacterDraftSeedV1,
+    agent_canvas_draft_seeds.SceneDraftSeedV1,
+    agent_canvas_draft_seeds.ScriptDraftSeedV1,
+    agent_canvas_draft_seeds.StoryboardPanelSeedV1,
+    agent_canvas_draft_seeds.StoryboardDraftSeedV1,
+    agent_canvas_draft_seeds.VideoTimingBeatSeedV1,
+    agent_canvas_draft_seeds.VideoDraftSeedV1,
+    agent_canvas_draft_seeds.BgmDraftSeedV1,
+    agent_canvas_draft_seeds.DraftSeedEnvelopeV1,
     agent_canvas_materialization.WorldSettingMaterializationContentV1,
     agent_canvas_materialization.QuickMediaMaterializationContentV1,
     agent_canvas_materialization.WorldSettingMaterializationResultV1,

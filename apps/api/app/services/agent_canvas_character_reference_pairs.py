@@ -14,9 +14,9 @@ from app.schemas.agent_canvas_creative_session import (
     DraftReferenceIntentV2,
 )
 from app.schemas.agent_canvas_materialization import (
-    CapabilityMaterializationEnvelopeV1,
     CharacterMaterializationResultV1,
     MaterializationNormalizationV1,
+    ProposalApplicationEnvelopeV1,
 )
 
 
@@ -41,7 +41,7 @@ class CharacterReferencePairFactory:
     def build(
         self,
         *,
-        envelope: CapabilityMaterializationEnvelopeV1,
+        envelope: ProposalApplicationEnvelopeV1,
         normalization: MaterializationNormalizationV1,
     ) -> CharacterReferencePairDraftsV1:
         main_result = CharacterMaterializationResultV1.model_validate(normalization.result)

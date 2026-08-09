@@ -5,9 +5,6 @@ from __future__ import annotations
 from types import MappingProxyType
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_materialization import (
-    CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
-)
 from app.schemas.agent_capabilities import (
     AgentCapabilityContractV1,
     VideoAgentOperationDefinitionV1,
@@ -131,16 +128,6 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
                     display_name=display,
                 )
             )
-        definitions.append(
-            _definition(
-                f"materialize_{operation_stem}",
-                CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[capability_id].__name__,
-                capability_id=capability_id,
-                internal_skill_id=skill,
-                style_projection_role=style_role,
-                display_name=display,
-            )
-        )
     return tuple(definitions)
 
 

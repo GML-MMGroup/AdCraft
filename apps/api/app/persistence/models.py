@@ -1348,6 +1348,9 @@ class AgentCanvasConceptOptionRow(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     key_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_seed_schema: Mapped[str | None] = mapped_column(Text)
+    draft_seed_json: Mapped[str | None] = mapped_column(Text)
+    draft_seed_digest: Mapped[str | None] = mapped_column(Text)
 
 
 class AgentCanvasExpertActivityRow(Base):

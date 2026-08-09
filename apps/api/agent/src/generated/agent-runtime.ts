@@ -144,9 +144,35 @@ export type ProposalReferencePlanV1 = { readonly "plan_id": string; readonly "re
 
 export type CapabilityMaterializationEnvelopeV1 = { readonly "schema_version"?: "1"; readonly "envelope_id": string; readonly "materialization_id": string; readonly "proposal_id": string; readonly "proposal_revision": number; readonly "workflow_id": string; readonly "conversation_id": string; readonly "action_turn_id": string; readonly "action": "delegate_choice" | "reuse_direction" | "select_option"; readonly "selection_actor": "agent" | "user"; readonly "selection_reason"?: string | null; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "selected_option": SelectedConceptOptionV1; readonly "reference_plan": ProposalReferencePlanV1; readonly "expected_session_revision": number; readonly "target_node_id"?: string | null; readonly "target_node_revision"?: number | null; readonly "context_snapshot_id": string; readonly "context_snapshot_digest": string; readonly "style_skill_run_id"?: string | null; readonly "result_contract_name": string; readonly "attempt_no": number; readonly "agent_request_identity": string; readonly "created_at": string };
 
+export type ProposalPublicationEnvelopeV1 = { readonly "schema_version"?: "1"; readonly "envelope_id": string; readonly "materialization_id": string; readonly "proposal_id": string; readonly "proposal_revision": number; readonly "workflow_id": string; readonly "conversation_id": string; readonly "action_turn_id": string; readonly "action": "delegate_choice" | "reuse_direction" | "select_option"; readonly "selection_actor": "agent" | "user"; readonly "selection_reason"?: string | null; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "selected_option": SelectedConceptOptionV1; readonly "draft_seed_schema"?: "draft_seed_v1" | null; readonly "draft_seed_digest"?: string | null; readonly "reference_plan": ProposalReferencePlanV1; readonly "expected_session_revision": number; readonly "target_node_id"?: string | null; readonly "target_node_revision"?: number | null; readonly "context_snapshot_id": string; readonly "context_snapshot_digest": string; readonly "style_skill_run_id"?: string | null; readonly "attempt_no": number; readonly "idempotency_identity": string; readonly "created_at": string };
+
 export type CapabilityMaterializationContextV1 = { readonly "context_kind"?: "capability_materialization"; readonly "workflow_id": string; readonly "conversation_id": string; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "selected_option": SelectedConceptOptionV1; readonly "creative_goal": string; readonly "explicit_constraints"?: Readonly<Record<string, unknown>>; readonly "shared_summary"?: string; readonly "capability_facts"?: Readonly<Record<string, unknown>>; readonly "world_setting_excerpt"?: string | null; readonly "reference_summaries"?: ReadonlyArray<Readonly<Record<string, unknown>>>; readonly "style_projection"?: Readonly<Record<string, unknown>>; readonly "target_node_summary"?: Readonly<Record<string, unknown>> | null; readonly "repair_error"?: string | null };
 
 export type CapabilityMaterializationExecutionResultV1 = { readonly "materialization_id": string; readonly "node_id": string; readonly "repaired"?: boolean };
+
+export type WorldSettingDraftSeedV1 = { readonly "seed_kind": "world_setting"; readonly "premise": string; readonly "era_and_place": string; readonly "world_rules": ReadonlyArray<string>; readonly "visual_continuity": ReadonlyArray<string>; readonly "prompt_brief": string };
+
+export type ProductDraftSeedV1 = { readonly "seed_kind": "product_design"; readonly "identity": string; readonly "selling_focus": string; readonly "form": string; readonly "materials": ReadonlyArray<string>; readonly "color_palette": ReadonlyArray<string>; readonly "presentation_intent": string; readonly "exclusions"?: ReadonlyArray<string> };
+
+export type PropDraftSeedV1 = { readonly "seed_kind": "prop_design"; readonly "identity": string; readonly "function": string; readonly "form": string; readonly "materials": ReadonlyArray<string>; readonly "color_palette": ReadonlyArray<string>; readonly "presentation_intent": string; readonly "exclusions"?: ReadonlyArray<string> };
+
+export type CharacterDraftSeedV1 = { readonly "seed_kind": "character_design"; readonly "identity": string; readonly "appearance": string; readonly "wardrobe": string; readonly "performance_role": string; readonly "visual_medium": string; readonly "presentation_intent": string; readonly "exclusions"?: ReadonlyArray<string> };
+
+export type SceneDraftSeedV1 = { readonly "seed_kind": "scene_design"; readonly "identity": string; readonly "spatial_layout": string; readonly "lighting": string; readonly "materials": string; readonly "time_of_day": string; readonly "atmosphere": string; readonly "exclusions"?: ReadonlyArray<string> };
+
+export type ScriptDraftSeedV1 = { readonly "seed_kind": "script_authoring"; readonly "premise": string; readonly "audience_objective": string; readonly "narrative_beats": ReadonlyArray<string>; readonly "dialogue_direction": string; readonly "duration_seconds": number };
+
+export type StoryboardPanelSeedV1 = { readonly "panel_index": number; readonly "beat": string; readonly "composition": string; readonly "camera": string; readonly "subject_action": string; readonly "continuity_from_previous": string };
+
+export type StoryboardDraftSeedV1 = { readonly "seed_kind": "storyboard_design"; readonly "sequence_summary": string; readonly "panel_beats": ReadonlyArray<StoryboardPanelSeedV1>; readonly "continuity_anchors": ReadonlyArray<string>; readonly "camera_language": string; readonly "exclusions"?: ReadonlyArray<string> };
+
+export type VideoTimingBeatSeedV1 = { readonly "start_seconds": number; readonly "end_seconds": number; readonly "action": string };
+
+export type VideoDraftSeedV1 = { readonly "seed_kind": "video_direction"; readonly "segment_summary": string; readonly "timing_beats": ReadonlyArray<VideoTimingBeatSeedV1>; readonly "camera_language": string; readonly "motion": string; readonly "native_audio_direction": string; readonly "target_style": string; readonly "duration_seconds": number };
+
+export type BgmDraftSeedV1 = { readonly "seed_kind": "bgm_direction"; readonly "mood": string; readonly "instrumentation": string; readonly "pace": string; readonly "energy_curve": string; readonly "duration_seconds": number; readonly "instrumental_only"?: true; readonly "no_vocals"?: true; readonly "no_lyrics"?: true };
+
+export type DraftSeedEnvelopeV1 = { readonly "schema_version"?: "1"; readonly "capability_id": "bgm_direction" | "character_design" | "product_design" | "prop_design" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"; readonly "seed": WorldSettingDraftSeedV1 | ProductDraftSeedV1 | PropDraftSeedV1 | CharacterDraftSeedV1 | SceneDraftSeedV1 | ScriptDraftSeedV1 | StoryboardDraftSeedV1 | VideoDraftSeedV1 | BgmDraftSeedV1 };
 
 export type WorldSettingMaterializationContentV1 = { readonly "content": string; readonly "core": WorldSettingCoreV2 };
 
@@ -172,23 +198,23 @@ export type BgmMaterializationResultV1 = { readonly "title": string; readonly "s
 
 export type QuickMediaMaterializationResultV1 = { readonly "title": string; readonly "summary_prompt": string; readonly "generation_prompt": string; readonly "structured_content": QuickMediaMaterializationContentV1 };
 
-export type WorldSettingProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type WorldSettingProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type ProductProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type ProductProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type PropProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type PropProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type CharacterProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type CharacterProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type SceneProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type SceneProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type ScriptProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type ScriptProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type StoryboardProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type StoryboardProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type VideoProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type VideoProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
-export type BgmProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
+export type BgmProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string>; readonly "private_draft_seed": DraftSeedEnvelopeV1 };
 
 export type QuickMediaProposalOptionV1 = { readonly "title": string; readonly "public_summary": string; readonly "key_decisions": ReadonlyArray<string> };
 

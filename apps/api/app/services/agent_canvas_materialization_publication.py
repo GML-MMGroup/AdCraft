@@ -20,8 +20,8 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_conversation import ContinuationCommitV2
 from app.schemas.agent_canvas_materialization import (
-    CapabilityMaterializationEnvelopeV1,
     MaterializationNormalizationV1,
+    ProposalApplicationEnvelopeV1,
     QuickMediaMaterializationResultV1,
     WorldSettingMaterializationResultV1,
 )
@@ -63,7 +63,7 @@ class CapabilityMaterializationPublicationService:
 
     def publish(
         self,
-        envelope: CapabilityMaterializationEnvelopeV1,
+        envelope: ProposalApplicationEnvelopeV1,
         result: BaseModel,
         lease_guard: Callable[[], None],
     ) -> str:
@@ -270,7 +270,7 @@ def _digest(value: str) -> str:
 
 
 def _next_action_continuation(
-    envelope: CapabilityMaterializationEnvelopeV1,
+    envelope: ProposalApplicationEnvelopeV1,
 ) -> ContinuationCommitV2:
     digest = _digest(f"materialization-next-action:{envelope.materialization_id}")
     return ContinuationCommitV2(

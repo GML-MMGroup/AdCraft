@@ -19,7 +19,7 @@ describe("Video Agent registry", () => {
     expect(definitions[0]?.name).toBe("video_agent");
     expect(definitions[0]?.operations).toEqual(operations);
     expect(definitions[0]?.max_handoffs).toBe(0);
-    expect(operations).toHaveLength(57);
+    expect(operations).toHaveLength(48);
   });
 
   it("resolves operation metadata without an Agent selector", () => {
@@ -37,12 +37,15 @@ describe("Video Agent registry", () => {
     expect(descriptor.max_skill_context_bytes).toBeGreaterThan(0);
   });
 
-  it("uses the typed Character materialization contract", () => {
-    expect(getOperationDescriptor("materialize_character")).toMatchObject({
-      capability_id: "character_design",
-      result_contract_name: "CharacterMaterializationResultV1",
-      required_skill: "video_agent_character_design",
+  it("keeps only Quick Media on the model-assisted materialization path", () => {
+    expect(getOperationDescriptor("materialize_quick_media")).toMatchObject({
+      capability_id: "quick_media",
+      result_contract_name: "QuickMediaMaterializationResultV1",
+      required_skill: "video_agent_quick_media",
     });
+    expect(() => getOperationDescriptor("materialize_character")).toThrow(
+      "agent_operation_not_allowed",
+    );
   });
 
   it("loads no creative Skill for decision, conversation, and Text operations", () => {
@@ -64,7 +67,7 @@ describe("Video Agent registry", () => {
     const descriptors = listOperationDescriptors();
 
     expect(descriptors.map(({ operation }) => operation)).toEqual(operations);
-    expect(new Set(descriptors.map(({ operation }) => operation)).size).toBe(57);
+    expect(new Set(descriptors.map(({ operation }) => operation)).size).toBe(48);
     expect(descriptors.every(({ agent_name }) => agent_name === "video_agent")).toBe(true);
     expect(descriptors.every(({ max_handoffs }) => max_handoffs === 0)).toBe(true);
     expect(

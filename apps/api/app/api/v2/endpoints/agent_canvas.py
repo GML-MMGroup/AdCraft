@@ -216,9 +216,11 @@ from app.services.agent_canvas_materialization_publication import (
     CapabilityMaterializationPublicationService,
 )
 from app.services.agent_canvas_materialization_runtime import (
-    CapabilityMaterializationRunner,
+    QuickMediaMaterializationRunner,
     materialization_context_from_state,
 )
+from app.services.agent_canvas_proposal_publication import ProposalPublicationRunner
+from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_execution_settings import (
     AgentCanvasExecutionSettingsService,
@@ -828,7 +830,18 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         database,
         event_repository,
     )
-    materialization_runner = CapabilityMaterializationRunner(
+    materialization_publisher = CapabilityMaterializationPublicationService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        asset_resolver=asset_service.resolve_asset,
+        materializer=GuidanceProposalActionService(
+            workflow_repository,
+            conversation_repository,
+            asset_resolver=asset_service.resolve_asset,
+            connection_policy=connection_policy,
+        ),
+    )
+    materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,
         context_loader=lambda envelope: materialization_context_from_state(
             envelope,
@@ -836,22 +849,24 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             workflows=workflow_repository,
             asset_resolver=asset_service.resolve_asset,
         ),
-        publisher=CapabilityMaterializationPublicationService(
-            workflows=workflow_repository,
+        publisher=materialization_publisher.publish,
+    )
+    publication_runner = ProposalPublicationRunner(
+        conversations=conversation_repository,
+        context_loader=lambda envelope: materialization_context_from_state(
+            envelope,
             conversations=conversation_repository,
+            workflows=workflow_repository,
             asset_resolver=asset_service.resolve_asset,
-            materializer=GuidanceProposalActionService(
-                workflow_repository,
-                conversation_repository,
-                asset_resolver=asset_service.resolve_asset,
-                connection_policy=connection_policy,
-            ),
-        ).publish,
+        ),
+        publisher=materialization_publisher.publish,
     )
 
     def execute_materialization(envelope_id: str, lease_guard) -> object:
         envelope = materialization_repository.get_envelope(envelope_id)
         materialization_repository.mark_working(envelope)
+        if isinstance(envelope, ProposalPublicationEnvelopeV1):
+            return publication_runner.execute(envelope, lease_guard=lease_guard)
         return materialization_runner.execute(envelope, lease_guard=lease_guard)
 
     def fail_continuation_turn(turn_id: str, code: str, message: str) -> object:
@@ -2353,6 +2368,10 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_reference_plan_invalid": 422,
         "proposal_target_revision_stale": 409,
         "proposal_reference_revision_stale": 409,
+        "proposal_draft_seed_missing": 422,
+        "proposal_draft_seed_invalid": 422,
+        "proposal_publication_invalid": 422,
+        "proposal_publication_failed": 503,
         "capability_materialization_context_invalid": 422,
         "capability_materialization_contract_invalid": 422,
         "capability_materialization_failed": 503,

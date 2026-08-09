@@ -63,19 +63,6 @@ const capabilityDefinitions = [
   readonly [CapabilityId, string, string, string, string]
 >;
 
-const materializationContracts: Readonly<Record<CapabilityId, string>> = {
-  world_setting: "WorldSettingMaterializationResultV1",
-  product_design: "ProductMaterializationResultV1",
-  prop_design: "PropMaterializationResultV1",
-  character_design: "CharacterMaterializationResultV1",
-  scene_design: "SceneMaterializationResultV1",
-  script_authoring: "ScriptMaterializationResultV1",
-  storyboard_design: "StoryboardMaterializationResultV1",
-  video_direction: "VideoMaterializationResultV1",
-  bgm_direction: "BgmMaterializationResultV1",
-  quick_media: "QuickMediaMaterializationResultV1",
-};
-
 const metadata = new Map<string, OperationMetadata>([
   ["decide_turn_intent", { result_contract_name: "TurnIntentDecisionV1" }],
   ["decide_next_action", { result_contract_name: "NextActionCommandV1" }],
@@ -94,13 +81,6 @@ for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefin
       display_name: displayName,
     });
   }
-  metadata.set(`materialize_${stem}`, {
-    capability_id: capabilityId,
-    result_contract_name: materializationContracts[capabilityId],
-    required_skill: skill,
-    style_projection_role: stem,
-    display_name: displayName,
-  });
 }
 
 addMetadata(["free_image", "free_video", "free_audio"], {
@@ -112,7 +92,7 @@ addMetadata(["free_image", "free_video", "free_audio"], {
 });
 metadata.set("materialize_quick_media", {
   capability_id: "quick_media",
-  result_contract_name: materializationContracts.quick_media,
+  result_contract_name: "QuickMediaMaterializationResultV1",
   required_skill: "video_agent_quick_media",
   style_projection_role: "quick_media",
   display_name: "Quick Media",
