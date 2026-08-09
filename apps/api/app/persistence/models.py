@@ -1163,7 +1163,7 @@ class AgentCanvasGuidanceTopicRow(Base):
     topic_kind: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_id: Mapped[str] = mapped_column(Text, nullable=False)
     related_node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -1229,7 +1229,6 @@ class AgentCanvasChatTurnRow(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     request_json: Mapped[str] = mapped_column(Text, nullable=False)
     creation_mode_json: Mapped[str | None] = mapped_column(Text)
-    guidance_decision_json: Mapped[str | None] = mapped_column(Text)
     guidance_session_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     error_code: Mapped[str | None] = mapped_column(Text)
@@ -1252,6 +1251,10 @@ class AgentCanvasContinuationOutboxRow(Base):
         CheckConstraint(
             "lease_generation >= 0",
             name="ck_agent_canvas_continuation_lease_generation",
+        ),
+        CheckConstraint(
+            "operation IN ('next_action','capability_command')",
+            name="ck_agent_canvas_continuation_operation",
         ),
         UniqueConstraint(
             "continuation_turn_id",
@@ -1307,7 +1310,7 @@ class AgentCanvasConceptProposalRow(Base):
     )
     workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
     proposal_kind: Mapped[str] = mapped_column(Text, nullable=False)
-    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_id: Mapped[str] = mapped_column(Text, nullable=False)
     video_skill_run_id: Mapped[str | None] = mapped_column(Text)
     topic_id: Mapped[str | None] = mapped_column(Text)
     target_node_id: Mapped[str | None] = mapped_column(Text)
@@ -1320,6 +1323,16 @@ class AgentCanvasConceptProposalRow(Base):
     availability: Mapped[str] = mapped_column(Text, nullable=False, default="open")
     guidance_session_id: Mapped[str] = mapped_column(Text, nullable=False)
     guidance_session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    materialization_id: Mapped[str | None] = mapped_column(Text)
+    materialization_option_id: Mapped[str | None] = mapped_column(Text)
+    materialization_turn_id: Mapped[str | None] = mapped_column(Text)
+    materialization_attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    materialization_status: Mapped[str | None] = mapped_column(Text)
+    materialization_retryable: Mapped[bool | None] = mapped_column(Boolean)
+    materialization_error_code: Mapped[str | None] = mapped_column(Text)
+    materialization_error_message: Mapped[str | None] = mapped_column(Text)
+    materialization_created_at: Mapped[str | None] = mapped_column(Text)
+    materialization_updated_at: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -1334,7 +1347,7 @@ class AgentCanvasConceptOptionRow(Base):
     display_order: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    draft_spec_json: Mapped[str] = mapped_column(Text, nullable=False)
+    key_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasExpertActivityRow(Base):
@@ -1345,7 +1358,7 @@ class AgentCanvasExpertActivityRow(Base):
         ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
     )
     workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
-    specialist_name: Mapped[str] = mapped_column(Text, nullable=False)
+    capability_id: Mapped[str] = mapped_column(Text, nullable=False)
     operation: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(Text, nullable=False)
