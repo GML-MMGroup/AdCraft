@@ -11,6 +11,7 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
+from app.schemas.agent_canvas_draft_seeds import DraftSeedPersistenceRecordV1
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
@@ -174,7 +175,7 @@ class ProposalMaterializationProjectionV2(_ConversationModel):
     updated_at: datetime
 
 
-class ConceptProposalCreateV2(_ConversationModel):
+class _ConceptProposalBaseV2(_ConversationModel):
     proposal_kind: Literal[
         "world_setting",
         "script",
@@ -208,7 +209,7 @@ class ConceptProposalCreateV2(_ConversationModel):
         return CAPABILITY_DISPLAY_NAMES[self.capability_id]
 
     @model_validator(mode="after")
-    def validate_unique_option_ids(self) -> "ConceptProposalCreateV2":
+    def validate_proposal_shape(self) -> "_ConceptProposalBaseV2":
         option_ids = tuple(option.option_id for option in self.options)
         if len(set(option_ids)) != len(option_ids):
             raise ValueError("Concept option IDs must be unique within a proposal.")
@@ -216,6 +217,26 @@ class ConceptProposalCreateV2(_ConversationModel):
             raise ValueError("World Setting proposals require two or three options.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
+        return self
+
+
+class ConceptProposalCreateV2(_ConceptProposalBaseV2):
+    draft_seeds: tuple[DraftSeedPersistenceRecordV1, ...] = Field(
+        default=(),
+        max_length=4,
+        exclude=True,
+        repr=False,
+    )
+
+    @model_validator(mode="after")
+    def validate_draft_seeds(self) -> "ConceptProposalCreateV2":
+        option_ids = tuple(option.option_id for option in self.options)
+        seed_option_ids = tuple(record.option_id for record in self.draft_seeds)
+        if self.capability_id == "quick_media":
+            if seed_option_ids:
+                raise ValueError("Quick Media proposals do not use private Draft Seeds.")
+        elif seed_option_ids != option_ids:
+            raise ValueError("Every Proposal option requires one ordered private Draft Seed.")
         return self
 
 
@@ -310,7 +331,7 @@ class ProposalApplicationSummaryV2(_ConversationModel):
     created_at: datetime
 
 
-class ConceptProposalV2(ConceptProposalCreateV2):
+class ConceptProposalV2(_ConceptProposalBaseV2):
     proposal_id: str
     workflow_id: str
     turn_id: str
