@@ -31,7 +31,8 @@ class CharacterReferencePromptPolicy:
                 "Create one detailed semi-realistic 2D commercial character illustration, "
                 "clearly illustrated rather than photographed. Show exactly one full-body "
                 "human in a natural standing pose with a slight three-quarter front view on "
-                "a clean light design background. Preserve readable facial features, hair, "
+                "a seamless light-neutral design background with no environmental objects. "
+                "Use only a subtle grounding shadow. Preserve readable facial features, hair, "
                 "wardrobe construction, body proportions, silhouette, and color palette. "
                 "Any photographic or live-action campaign direction applies only to eventual "
                 "Video output, not this Character reference image."
@@ -39,16 +40,19 @@ class CharacterReferencePromptPolicy:
             negative = (
                 "No photographic portrait, photorealistic skin, live-action capture, real-person "
                 "likeness, multiple people, product placement, environment, action sequence, "
-                "contact sheet, or turnaround sheet."
+                "environmental object, contact sheet, or turnaround sheet."
             )
         else:
             positive = (
                 "Use the bound Character Main image as the sole identity master. Render one "
-                "simple front, side, and back full-body turnaround sheet on a clean light design "
-                "background. All three views are the same person with identical face, hair, "
+                "turnaround sheet with exactly three unlabeled full-body figures arranged "
+                "left-to-right as forward-facing, exact side profile, and rear-facing on a "
+                "seamless light-neutral design background. All three views are the same person "
+                "with identical face, hair, "
                 "wardrobe, proportions, silhouette, materials, palette, and detailed "
                 "semi-realistic illustration treatment, clearly illustrated rather than "
-                "photographed. Do not reinterpret or redesign the "
+                "photographed. Keep the sheet blank: no headings, orientation labels, captions, "
+                "typography, logos, or watermarks anywhere. Do not reinterpret or redesign the "
                 "identity. Any photographic or live-action campaign direction applies only to "
                 "eventual Video output, not this Character reference image."
             )
@@ -56,7 +60,7 @@ class CharacterReferencePromptPolicy:
                 "No photographic rendering, photography, live-action capture, identity drift, "
                 "wardrobe change, extra person, extra view, "
                 "head panel, detail panel, material panel, action pose, product, scene, label, "
-                "caption, logo, or watermark."
+                "heading, orientation label, caption, typography, logo, or watermark."
             )
         digest = sha256(f"{self.policy_id}\n{positive}\n{negative}".encode()).hexdigest()
         return CompiledCharacterReferencePolicyV1(

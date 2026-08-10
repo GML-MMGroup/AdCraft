@@ -22,12 +22,12 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
     resolve_visual_style,
 )
+from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
 from app.services.agent_canvas_character_reference_prompt_policy import (
     CharacterReferencePromptPolicy,
 )
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
-from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,14 +165,17 @@ class AgentCanvasProviderPromptCompiler:
             node.semantic_role,
             node.structured_content,
         )
-        style = _style_from_content(structured)
+        style = _style_from_content(node, structured)
         character_policy = (
             CharacterReferencePromptPolicy().compile(structured)
             if isinstance(structured, CharacterDesignAssetContentV2)
             else None
         )
         body = _render_content(structured)
-        reference_identities = _render_reference_identities(reference_bundle)
+        reference_identities = _render_reference_identities(
+            reference_bundle,
+            target_semantic_role=node.semantic_role,
+        )
         references = "\n".join(
             (
                 f"- {item.binding_id}: asset={item.asset_id}; "
@@ -182,17 +185,31 @@ class AgentCanvasProviderPromptCompiler:
             )
             for item in reference_bundle.references
         )
+        is_video = node.semantic_role in {"storyboard_video", "general_video"}
+        style_clause = (
+            f"Authoritative target output style ({style.source}):\n{style.style_prompt}"
+            if is_video
+            else f"Visual style ({style.source}):\n{style.style_prompt}"
+        )
+        prompt_parts = (
+            character_policy.positive_boundary if character_policy is not None else "",
+            registration.boundary,
+            f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
+            f"Structured role content:\n{body}",
+            reference_identities,
+            (
+                _render_world_setting(world_setting)
+                if world_setting is not None and node.semantic_role != "character"
+                else ""
+            ),
+            f"Explicit references:\n{references}" if references else "",
+        )
         prompt = "\n\n".join(
             part
             for part in (
-                character_policy.positive_boundary if character_policy is not None else "",
-                registration.boundary,
-                f"Creative prompt:\n{node.generation_prompt or node.summary_prompt or ''}",
-                f"Structured role content:\n{body}",
-                reference_identities,
-                f"Visual style ({style.source}):\n{style.style_prompt}",
-                _render_world_setting(world_setting) if world_setting is not None else "",
-                f"Explicit references:\n{references}" if references else "",
+                (*prompt_parts, style_clause)
+                if is_video
+                else (*prompt_parts[:5], style_clause, *prompt_parts[5:])
             )
             if part
         )
@@ -261,9 +278,16 @@ def _registration(
     )
 
 
-def _style_from_content(structured: object) -> VisualStyleContractV2:
+def _style_from_content(node: CanvasNodeV2, structured: object) -> VisualStyleContractV2:
     style = getattr(structured, "style", None)
-    return style if isinstance(style, VisualStyleContractV2) else resolve_visual_style()
+    if isinstance(style, VisualStyleContractV2):
+        return style
+    if node.semantic_role in {"storyboard_video", "general_video"}:
+        return VisualStyleContractV2(
+            style_prompt=str(node.generation_prompt).strip(),
+            source="user",
+        )
+    return resolve_visual_style()
 
 
 def _render_content(structured: object) -> str:
@@ -361,7 +385,11 @@ def _render_world_setting(context: WorldSettingContextEnvelopeV2) -> str:
     return "\n\n".join(parts)
 
 
-def _render_reference_identities(reference_bundle: AdReferenceBundleV2) -> str:
+def _render_reference_identities(
+    reference_bundle: AdReferenceBundleV2,
+    *,
+    target_semantic_role: str,
+) -> str:
     identities = [
         {
             "binding_id": reference.binding_id,
@@ -372,7 +400,7 @@ def _render_reference_identities(reference_bundle: AdReferenceBundleV2) -> str:
         for reference in reference_bundle.references
         if reference.source_identity_facts
     ]
-    if not identities:
+    if not identities and not reference_bundle.references:
         return ""
     turnaround_clause = (
         "A Character Turnaround reference is one person shown across front, side, and back "
@@ -383,8 +411,34 @@ def _render_reference_identities(reference_bundle: AdReferenceBundleV2) -> str:
         )
         else ""
     )
+    video_semantics = ""
+    if target_semantic_role in {"storyboard_video", "general_video"}:
+        roles = {reference.semantic_reference_role for reference in reference_bundle.references}
+        instructions = []
+        if "subject_reference" in roles:
+            instructions.append(
+                "Subject references control identity, wardrobe, silhouette, and proportions."
+            )
+        if "environment_reference" in roles:
+            instructions.append(
+                "Scene references control spatial identity, layout, lighting, and materials."
+            )
+        if "storyboard_visual_reference" in roles:
+            instructions.append(
+                "Storyboard references control frame order, composition, action, and continuity."
+            )
+        if roles.intersection({"style_reference", "style_composition_reference"}):
+            instructions.append(
+                "Explicit style references are style-bearing inputs, subject to the final "
+                "target output style."
+            )
+        instructions.append(
+            "Non-style references do not transfer photographic, live-action, illustration, "
+            "line-art, cel-shaded, animated, or 3D rendering medium to the target Video."
+        )
+        video_semantics = "Video reference-use semantics:\n" + "\n".join(instructions) + "\n"
     return (
-        "Authoritative bound reference identities:\n"
+        video_semantics + "Authoritative bound reference identities:\n"
         "These persisted Binding facts override conflicting model-authored details. "
         "Keep their identities and environments unchanged while retaining creative "
         "freedom for panel action, composition, and camera.\n"
