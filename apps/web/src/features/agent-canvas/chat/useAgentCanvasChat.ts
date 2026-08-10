@@ -374,6 +374,9 @@ export function useAgentCanvasChat({
       if (event.event_type.startsWith("continuation_") && event.turn_id) {
         void refreshTurn(event.turn_id);
       }
+      if (event.event_type.startsWith("proposal_materialization_") && event.turn_id) {
+        void refreshTurn(event.turn_id);
+      }
     });
   }, [chatEvents, refreshTurn, workflowId]);
 

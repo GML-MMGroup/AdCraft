@@ -36,6 +36,7 @@ import {
 } from "../documents/AgentCanvasDocuments.tsx";
 import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
+import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
 import "./agent-canvas-chat.css";
 
 export function AgentCanvasChatPanel({
@@ -648,33 +649,61 @@ export function ProposalCard({
   onApplyAction: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   issue?: string;
 }) {
-  const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(null);
+  const proposal = card.proposal;
+  const materialization = proposal.materialization;
+  const [selected, setSelected] = useState<CapabilityProposalOptionV2 | null>(() => (
+    proposal.options.find((option) => option.option_id === materialization?.option_id) ?? null
+  ));
   const [revision, setRevision] = useState("");
   const [revising, setRevising] = useState(false);
-  const proposal = card.proposal;
+  const referencesDirtyRef = useRef(false);
+  const referencesRevisionRef = useRef(proposal.proposal_revision);
   const isOpen = proposal.availability === "open";
   const isSuperseded = proposal.availability === "superseded";
-  const selectAction = proposal.actions.find((action) => action.action === "select_option" && action.enabled) ?? null;
+  const materializationBusy = materialization?.status === "queued" || materialization?.status === "working";
+  const retryBlocked = materialization?.status === "failed" && !materialization.retryable;
+  const selectAction = proposal.actions.find((action) => action.action === "select_option") ?? null;
   const reviseAction = proposal.actions.find((action) => (
-    (action.action === "revise_options" || action.action === "revise_direction") && action.enabled
+    action.action === "revise_options" || action.action === "revise_direction"
   )) ?? null;
   const directActions = proposal.actions.filter((action) => (
-    action.enabled && (
-      action.action === "defer_topic"
-      || action.action === "exclude_element"
-      || action.action === "delegate_choice"
-      || action.action === "reuse_direction"
-    )
+    action.action === "defer_topic"
+    || action.action === "exclude_element"
+    || action.action === "delegate_choice"
+    || action.action === "reuse_direction"
   ));
-  const canSelect = isOpen && Boolean(selectAction);
-  const canRevise = Boolean(reviseAction) && (isOpen || isSuperseded);
+  const canSelect = isOpen
+    && Boolean(selectAction?.enabled)
+    && !materializationBusy
+    && !retryBlocked;
+  const canRevise = Boolean(reviseAction?.enabled)
+    && (isOpen || isSuperseded)
+    && !materializationBusy;
   const availableReferences = proposal.proposed_references;
   const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
     proposal.proposed_references,
   );
+
   useEffect(() => {
-    setAcceptedReferences(proposal.proposed_references);
-  }, [proposal.proposal_id, proposal.proposal_revision, proposal.proposed_references]);
+    if (!materialization?.option_id) return;
+    const materializedOption = proposal.options.find((option) => option.option_id === materialization.option_id);
+    if (materializedOption) setSelected(materializedOption);
+  }, [materialization?.option_id, proposal.options]);
+
+  useEffect(() => {
+    const revisionChanged = referencesRevisionRef.current !== proposal.proposal_revision;
+    referencesRevisionRef.current = proposal.proposal_revision;
+    if (materialization) return;
+    if (revisionChanged) referencesDirtyRef.current = false;
+    if (!referencesDirtyRef.current) setAcceptedReferences(proposal.proposed_references);
+  }, [materialization, proposal.proposal_revision, proposal.proposed_references]);
+
+  function updateAcceptedReferences(
+    update: (current: ProposedDraftReferenceV2[]) => ProposedDraftReferenceV2[],
+  ) {
+    referencesDirtyRef.current = true;
+    setAcceptedReferences(update);
+  }
 
   function withOrders(references: ProposedDraftReferenceV2[]) {
     return references.map((reference, index) => ({ ...reference, display_order: index }));
@@ -685,7 +714,7 @@ export function ProposalCard({
     if (target < 0 || target >= acceptedReferences.length) return;
     const next = [...acceptedReferences];
     [next[index], next[target]] = [next[target]!, next[index]!];
-    setAcceptedReferences(withOrders(next));
+    updateAcceptedReferences(() => withOrders(next));
   }
 
   return (
@@ -705,10 +734,15 @@ export function ProposalCard({
           >
             <strong>{option.title}</strong>
             <span>{option.public_summary}</span>
+            <ul>
+              {option.key_decisions.map((decision, index) => (
+                <li key={`${option.option_id}:${index}`}>{decision}</li>
+              ))}
+            </ul>
           </button>
         ))}
       </div>
-      {acceptedReferences.length || canSelect ? (
+      {acceptedReferences.length || selectAction ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
             <strong>References</strong>
@@ -725,7 +759,7 @@ export function ProposalCard({
                   type="checkbox"
                   checked={reference.required}
                   disabled={pending || !canSelect}
-                  onChange={(event) => setAcceptedReferences((current) => current.map((item, itemIndex) => (
+                  onChange={(event) => updateAcceptedReferences((current) => current.map((item, itemIndex) => (
                     itemIndex === index ? { ...item, required: event.currentTarget.checked } : item
                   )))}
                 />
@@ -751,7 +785,7 @@ export function ProposalCard({
                 type="button"
                 aria-label={`Remove ${reference.display_name}`}
                 disabled={pending || !canSelect}
-                onClick={() => setAcceptedReferences((current) => withOrders(
+                onClick={() => updateAcceptedReferences((current) => withOrders(
                   current.filter((_item, itemIndex) => itemIndex !== index),
                 ))}
               >
@@ -772,7 +806,7 @@ export function ProposalCard({
                   candidate.source_kind === reference.source_kind
                   && candidate.source_id === reference.source_id
                 ))) return;
-                setAcceptedReferences((current) => withOrders([...current, reference]));
+                updateAcceptedReferences((current) => withOrders([...current, reference]));
               }}
             >
               <option value="">Add reference...</option>
@@ -801,6 +835,9 @@ export function ProposalCard({
             : ""}
         </p>
       ) : null}
+      {materialization ? (
+        <ProposalMaterializationStatus materialization={materialization} />
+      ) : null}
       {issue ? (
         <p className="agent-chat__proposal-issue" role="status">
           {issue}
@@ -808,11 +845,11 @@ export function ProposalCard({
       ) : null}
       {(isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
-          {canSelect && selected && selectAction ? (
+          {isOpen && selected && selectAction ? (
             <button
               type="button"
-              disabled={pending}
-              title={selectAction.reason}
+              disabled={pending || !canSelect}
+              title={selectAction.disabled_reason ?? selectAction.reason}
               onClick={() => void onSelect(
                 proposal.proposal_id,
                 selectAction,
@@ -823,11 +860,11 @@ export function ProposalCard({
               {selectAction.label}
             </button>
           ) : null}
-          {canRevise && reviseAction ? (
+          {(isOpen || isSuperseded) && reviseAction ? (
             <button
               type="button"
-              disabled={pending}
-              title={reviseAction.reason}
+              disabled={pending || !canRevise}
+              title={reviseAction.disabled_reason ?? reviseAction.reason}
               onClick={() => setRevising((current) => !current)}
             >
               <EditIcon />{reviseAction.label}
@@ -837,8 +874,8 @@ export function ProposalCard({
             <button
               type="button"
               key={action.action_id}
-              disabled={pending}
-              title={action.reason}
+              disabled={pending || materializationBusy || !action.enabled}
+              title={action.disabled_reason ?? action.reason}
               onClick={() => void onApplyAction(proposal.proposal_id, action)}
             >
               {action.label}

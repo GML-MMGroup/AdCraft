@@ -395,6 +395,7 @@ describe("Agent Canvas client", () => {
           option_id: "option-1",
           title: "Quiet confidence",
           public_summary: "A restrained editorial lead.",
+          key_decisions: ["Understated wardrobe", "Confident posture"],
         }],
         proposed_references: [],
         target_node_id: null,
@@ -403,6 +404,7 @@ describe("Agent Canvas client", () => {
         availability: "open",
         application_count: 0,
         latest_application: null,
+        materialization: null,
         guidance_session_id: "guidance-1",
         guidance_session_revision: 3,
         actions: [{
@@ -425,6 +427,44 @@ describe("Agent Canvas client", () => {
 
     expect(policy.input_roles[0]?.default_role).toBe("image_reference");
     expect(proposal.options[0]?.title).toBe("Quiet confidence");
+  });
+
+  it("accepts a 202 Proposal action response as a queued turn", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        action: "select_option",
+        option_id: "option-1",
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-materialization-1",
+        status: "queued",
+        events_cursor: 42,
+      }, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const accepted = await v2Api.actOnAgentCanvasProposal(
+      "workflow-1",
+      "proposal-1",
+      {
+        action_id: "action-select-1",
+        expected_session_revision: 7,
+        action: "select_option",
+        option_id: "option-1",
+        accepted_references: [],
+      },
+      "proposal-action-key",
+    );
+
+    expect(accepted).toMatchObject({
+      turn_id: "turn-materialization-1",
+      status: "queued",
+    });
   });
 
   it("creates connected nodes and patches bindings with real workflow preconditions", async () => {

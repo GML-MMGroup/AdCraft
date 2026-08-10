@@ -106,6 +106,25 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes proposal state throughout materialization and Workflow only after publication", () => {
+    for (const eventType of [
+      "proposal_materialization_queued",
+      "proposal_materialization_started",
+      "proposal_materialization_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: false,
+        refreshRuntime: false,
+      });
+    }
+    expect(runtimeEventPolicy(event("proposal_materialization_completed"))).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+    });
+  });
+
   it("refreshes editing detail for progress without treating export as a canvas run", () => {
     const policy = runtimeEventPolicy(event("editing_export_progress", {
       execution_id: null,

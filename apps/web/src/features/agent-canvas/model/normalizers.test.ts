@@ -235,6 +235,7 @@ describe("Agent Canvas normalizers", () => {
         option_id: "option-product-1",
         title: "Quiet Precision",
         public_summary: "A restrained premium product direction.",
+        key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
       }],
       proposed_references: [],
       target_node_id: null,
@@ -243,6 +244,20 @@ describe("Agent Canvas normalizers", () => {
       availability: "open",
       application_count: 0,
       latest_application: null,
+      materialization: {
+        materialization_id: "materialization-product-1",
+        option_id: "option-product-1",
+        turn_id: "turn-materialization-1",
+        status: "failed",
+        attempt_no: 1,
+        retryable: true,
+        error: {
+          code: "capability_materialization_failed",
+          message: "The selected direction could not be prepared.",
+        },
+        created_at: "2026-08-07T01:00:01Z",
+        updated_at: "2026-08-07T01:00:02Z",
+      },
       guidance_session_id: "guidance-1",
       guidance_session_revision: 1,
       actions: [],
@@ -268,7 +283,15 @@ describe("Agent Canvas normalizers", () => {
     expect(proposal).toMatchObject({
       capability_id: "product_design",
       capability_display_name: "Product Designer",
-      options: [{ public_summary: "A restrained premium product direction." }],
+      options: [{
+        public_summary: "A restrained premium product direction.",
+        key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
+      }],
+      materialization: {
+        status: "failed",
+        retryable: true,
+        error: { code: "capability_materialization_failed" },
+      },
     });
     expect(turn.turn_kind).toBe("capability");
   });
@@ -332,8 +355,18 @@ describe("Agent Canvas normalizers", () => {
       capability_id: "world_setting",
       capability_display_name: "World Setting Designer",
       options: [
-        { option_id: "world-option-1", title: "Quiet future", public_summary: "A restrained near-future city." },
-        { option_id: "world-option-2", title: "Living heritage", public_summary: "Tradition expressed through modern craft." },
+        {
+          option_id: "world-option-1",
+          title: "Quiet future",
+          public_summary: "A restrained near-future city.",
+          key_decisions: ["Keep technology calm and unobtrusive."],
+        },
+        {
+          option_id: "world-option-2",
+          title: "Living heritage",
+          public_summary: "Tradition expressed through modern craft.",
+          key_decisions: ["Make craft heritage visible in the environment."],
+        },
       ],
       proposed_references: [],
       target_node_id: null,
@@ -438,7 +471,12 @@ describe("Agent Canvas normalizers", () => {
       proposal_kind: "scene",
       capability_id: "scene_design",
       capability_display_name: "Scene Designer",
-      options: [{ option_id: "option-scene-1", title: "Morning", public_summary: "Quiet morning light." }],
+      options: [{
+        option_id: "option-scene-1",
+        title: "Morning",
+        public_summary: "Quiet morning light.",
+        key_decisions: ["Use soft directional daylight."],
+      }],
       proposed_references: [],
       target_node_id: null,
       target_node_revision: null,
@@ -601,6 +639,7 @@ describe("Agent Canvas normalizers", () => {
         option_id: "scene-1",
         title: "Quiet studio",
         public_summary: "A calm daylight studio.",
+        key_decisions: ["Keep the set minimal and naturally lit."],
       }],
       proposed_references: [],
       target_node_id: null,
@@ -1450,6 +1489,7 @@ describe("Agent Canvas normalizers", () => {
                 option_id: "option-1",
                 title: "Option A",
                 public_summary: "Athletic streetwear lead.",
+                key_decisions: ["Use a confident athletic silhouette."],
               },
             ],
             proposed_references: [],

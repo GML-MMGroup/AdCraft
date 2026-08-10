@@ -95,6 +95,8 @@ import type {
   GuidanceTopicStateV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
+  ProposalMaterializationErrorV2,
+  ProposalMaterializationProjectionV2,
   AgentCapabilityIdV2,
   StorageAccessDescriptorV2,
   StoryboardNarrativeSegmentV2,
@@ -1828,11 +1830,65 @@ function normalizeCapabilityProposalOptionV2(
   path: string,
 ): CapabilityProposalOptionV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["option_id", "title", "public_summary"], path);
+  forbidUnknownFields(record, ["option_id", "title", "public_summary", "key_decisions"], path);
+  const keyDecisions = expectArray(record.key_decisions, `${path}.key_decisions`).map((item, index) => (
+    expectNonEmptyString(item, `${path}.key_decisions[${index}]`)
+  ));
+  if (keyDecisions.length < 1 || keyDecisions.length > 6) {
+    fail(`${path}.key_decisions`, "expected between 1 and 6 decisions");
+  }
   return {
     option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
     title: expectNonEmptyString(record.title, `${path}.title`),
     public_summary: expectNonEmptyString(record.public_summary, `${path}.public_summary`),
+    key_decisions: keyDecisions,
+  };
+}
+
+function normalizeProposalMaterializationErrorV2(
+  value: unknown,
+  path: string,
+): ProposalMaterializationErrorV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["code", "message"], path);
+  return {
+    code: expectNonEmptyString(record.code, `${path}.code`),
+    message: expectNonEmptyString(record.message, `${path}.message`),
+  };
+}
+
+function normalizeProposalMaterializationProjectionV2(
+  value: unknown,
+  path: string,
+): ProposalMaterializationProjectionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "materialization_id",
+    "option_id",
+    "turn_id",
+    "status",
+    "attempt_no",
+    "retryable",
+    "error",
+    "created_at",
+    "updated_at",
+  ], path);
+  return {
+    materialization_id: expectNonEmptyString(record.materialization_id, `${path}.materialization_id`),
+    option_id: expectNonEmptyString(record.option_id, `${path}.option_id`),
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    status: expectLiteral(
+      record.status,
+      new Set<ProposalMaterializationProjectionV2["status"]>(["queued", "working", "failed", "completed"]),
+      `${path}.status`,
+    ),
+    attempt_no: expectPositiveInteger(record.attempt_no, `${path}.attempt_no`),
+    retryable: expectBoolean(record.retryable, `${path}.retryable`),
+    error: record.error === null
+      ? null
+      : normalizeProposalMaterializationErrorV2(record.error, `${path}.error`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }
 
@@ -1936,6 +1992,7 @@ export function normalizeConceptProposalV2(
       "availability",
       "application_count",
       "latest_application",
+      "materialization",
       "guidance_session_id",
       "guidance_session_revision",
       "actions",
@@ -2000,6 +2057,9 @@ export function normalizeConceptProposalV2(
     latest_application: record.latest_application === undefined || record.latest_application === null
       ? null
       : normalizeProposalApplicationSummaryV2(record.latest_application, `${path}.latest_application`),
+    materialization: record.materialization === undefined || record.materialization === null
+      ? null
+      : normalizeProposalMaterializationProjectionV2(record.materialization, `${path}.materialization`),
     guidance_session_id: expectNonEmptyString(record.guidance_session_id, `${path}.guidance_session_id`),
     guidance_session_revision: expectPositiveInteger(
       record.guidance_session_revision,

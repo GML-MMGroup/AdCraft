@@ -404,7 +404,12 @@ describe("useAgentCanvasChat", () => {
       proposal_kind: "character",
       capability_id: "character_design",
       capability_display_name: "Character Designer",
-      options: [{ option_id: "option-1", title: "Hero", public_summary: "Editorial lead" }],
+      options: [{
+        option_id: "option-1",
+        title: "Hero",
+        public_summary: "Editorial lead",
+        key_decisions: ["Confident posture"],
+      }],
       proposed_references: [],
       target_node_id: null,
       target_node_revision: null,
@@ -412,6 +417,7 @@ describe("useAgentCanvasChat", () => {
       availability: "open",
       application_count: 0,
       latest_application: null,
+      materialization: null,
       guidance_session_id: "guidance-1",
       guidance_session_revision: 7,
       actions: [descriptor("select_option")],
@@ -474,7 +480,7 @@ describe("useAgentCanvasChat", () => {
     ]);
   });
 
-  it("selects a proposal with the backend action descriptor and creates a draft only", async () => {
+  it("accepts a queued proposal materialization turn without assuming a synchronous node", async () => {
     const select = descriptor("select_option", "action-select-1");
     const reference = {
       source_kind: "image_asset" as const,
@@ -517,6 +523,33 @@ describe("useAgentCanvasChat", () => {
     expect(api.actOnAgentCanvasProposal.mock.calls[0]?.[2]).not.toHaveProperty("position");
     expect(api.actOnAgentCanvasProposal).toHaveBeenCalledTimes(1);
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(result.current.state.agentWorking).toBe(true);
+  });
+
+  it("refreshes the action turn when a proposal materialization event arrives", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    const { rerender } = renderHook(({ chatEvents }) => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: chatEvents.length,
+      chatEvents,
+    }), { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } });
+    const event: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_started", "turn-materialization-1", 8),
+      event_type: "proposal_materialization_started",
+      payload: {
+        proposal_id: "proposal-1",
+        materialization_id: "materialization-1",
+        option_id: "option-1",
+      },
+    };
+
+    rerender({ chatEvents: [event] });
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-materialization-1");
   });
 
   it("revises options with the backend action id and expected session revision", async () => {

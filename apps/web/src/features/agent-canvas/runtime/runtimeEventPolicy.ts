@@ -58,6 +58,7 @@ const AUTHORING_EVENTS = new Set([
   "guided_action_applied",
   "command_plan_committed",
   "action_receipt_created",
+  "proposal_materialization_completed",
 ]);
 
 const CHAT_EVENTS = new Set([
@@ -74,6 +75,10 @@ const CHAT_EVENTS = new Set([
   "continuation_failed",
   "proposal_created",
   "proposal_action_applied",
+  "proposal_materialization_queued",
+  "proposal_materialization_started",
+  "proposal_materialization_completed",
+  "proposal_materialization_failed",
   "guidance_state_updated",
   "draft_node_created",
   "guided_action_created",

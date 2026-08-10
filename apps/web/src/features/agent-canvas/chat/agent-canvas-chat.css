@@ -538,6 +538,73 @@
   line-height: 1.4;
 }
 
+.agent-chat__options ul {
+  display: grid;
+  gap: 2px;
+  margin: 3px 0 0;
+  padding-left: 15px;
+  color: #68697b;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.agent-chat__proposal-materialization {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 9px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgb(111 96 168 / 7%);
+  color: #656176;
+}
+
+.agent-chat__proposal-materialization > span {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.agent-chat__proposal-materialization.is-queued > span,
+.agent-chat__proposal-materialization.is-working > span {
+  border-color: #806dc2;
+  border-top-color: transparent;
+  animation: agent-chat-materialization-spin 900ms linear infinite;
+}
+
+.agent-chat__proposal-materialization.is-failed {
+  background: rgb(183 87 102 / 8%);
+  color: #9a5b67;
+}
+
+.agent-chat__proposal-materialization > div {
+  display: grid;
+  gap: 3px;
+}
+
+.agent-chat__proposal-materialization strong {
+  font-size: 10px;
+}
+
+.agent-chat__proposal-materialization small {
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+@keyframes agent-chat-materialization-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__proposal-materialization.is-queued > span,
+  .agent-chat__proposal-materialization.is-working > span {
+    animation: none;
+  }
+}
+
 .agent-chat__proposal-references {
   display: grid;
   gap: 5px;

@@ -105,6 +105,7 @@ const proposalCard: ChatProposalCardV2 = {
       option_id: "option-1",
       title: "Hero",
       public_summary: "A focused campaign hero",
+      key_decisions: ["Contemporary wardrobe", "Confident posture"],
     }],
     proposed_references: [],
     target_node_id: null,
@@ -113,6 +114,7 @@ const proposalCard: ChatProposalCardV2 = {
     availability: "open",
     application_count: 0,
     latest_application: null,
+    materialization: null,
     guidance_session_id: "guidance-1",
     guidance_session_revision: 7,
     actions: [
@@ -144,7 +146,7 @@ describe("ProposalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Hero/ }));
+    fireEvent.click(screen.getByText("Hero").closest("button")!);
     fireEvent.click(screen.getByRole("button", { name: "Use this direction" }));
 
     expect(onSelect).toHaveBeenCalledWith(
@@ -153,7 +155,147 @@ describe("ProposalCard", () => {
       "option-1",
       [],
     );
+    expect(screen.getByText("Contemporary wardrobe")).toBeTruthy();
+    expect(screen.getByText("Confident posture")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Generate now" })).toBeNull();
+  });
+
+  it.each(["queued", "working"] as const)(
+    "keeps the selected direction visible and disables every action while materialization is %s",
+    (status) => {
+      render(
+        <ProposalCard
+          card={{
+            ...proposalCard,
+            proposal: {
+              ...proposalCard.proposal,
+              materialization: {
+                materialization_id: "materialization-1",
+                option_id: "option-1",
+                turn_id: "turn-materialization-1",
+                status,
+                attempt_no: 1,
+                retryable: false,
+                error: null,
+                created_at: "2026-08-08T00:00:00Z",
+                updated_at: "2026-08-08T00:00:01Z",
+              },
+            },
+          }}
+          pending={false}
+          onSelect={vi.fn()}
+          onRevise={vi.fn()}
+          onApplyAction={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole("status", { name: `Proposal materialization ${status}` })).toBeTruthy();
+      expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: "Revise options" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: "Decide later" }) as HTMLButtonElement).disabled).toBe(true);
+    },
+  );
+
+  it("preserves the selected option and references after a retryable failure", () => {
+    const proposedReference = {
+      source_kind: "image_asset" as const,
+      source_id: "asset-hero-1",
+      binding_kind: "image_reference" as const,
+      input_role: "visual_reference" as const,
+      required: true,
+      display_order: 0,
+      display_name: "Hero reference",
+      media_type: "image" as const,
+    };
+    const { rerender } = render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            proposed_references: [proposedReference],
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Hero").closest("button")!);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Required" }));
+    expect((screen.getByRole("checkbox", { name: "Required" }) as HTMLInputElement).checked).toBe(false);
+
+    rerender(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            proposal_revision: 2,
+            proposed_references: [proposedReference],
+            materialization: {
+              materialization_id: "materialization-1",
+              option_id: "option-1",
+              turn_id: "turn-materialization-1",
+              status: "failed",
+              attempt_no: 1,
+              retryable: true,
+              error: {
+                code: "capability_materialization_failed",
+                message: "The selected direction could not be prepared.",
+              },
+              created_at: "2026-08-08T00:00:00Z",
+              updated_at: "2026-08-08T00:00:01Z",
+            },
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("The selected direction could not be prepared.")).toBeTruthy();
+    expect(screen.getByText("Hero reference")).toBeTruthy();
+    expect((screen.getByRole("checkbox", { name: "Required" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("does not offer a failed materialization retry when the backend marks it non-retryable", () => {
+    render(
+      <ProposalCard
+        card={{
+          ...proposalCard,
+          proposal: {
+            ...proposalCard.proposal,
+            materialization: {
+              materialization_id: "materialization-1",
+              option_id: "option-1",
+              turn_id: "turn-materialization-1",
+              status: "failed",
+              attempt_no: 1,
+              retryable: false,
+              error: {
+                code: "proposal_reference_unavailable",
+                message: "A required reference is no longer available.",
+              },
+              created_at: "2026-08-08T00:00:00Z",
+              updated_at: "2026-08-08T00:00:01Z",
+            },
+          },
+        }}
+        pending={false}
+        onSelect={vi.fn()}
+        onRevise={vi.fn()}
+        onApplyAction={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("A required reference is no longer available.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("dispatches revise, defer, exclude, and delegate through their structured descriptors", () => {
@@ -266,8 +408,8 @@ describe("ProposalCard", () => {
             capability_id: "world_setting",
             capability_display_name: "World Setting Designer",
             options: [
-              { option_id: "world-1", title: "Quiet future", public_summary: "A calm near-future city." },
-              { option_id: "world-2", title: "Living heritage", public_summary: "Modern craft rooted in tradition." },
+              { option_id: "world-1", title: "Quiet future", public_summary: "A calm near-future city.", key_decisions: ["Quiet technology"] },
+              { option_id: "world-2", title: "Living heritage", public_summary: "Modern craft rooted in tradition.", key_decisions: ["Visible craft heritage"] },
             ],
             actions: [
               proposalAction("select_option", "Use this world"),

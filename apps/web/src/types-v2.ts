@@ -2118,6 +2118,26 @@ export interface CapabilityProposalOptionV2 {
   option_id: string;
   title: string;
   public_summary: string;
+  key_decisions: string[];
+}
+
+export type ProposalMaterializationStatusV2 = "queued" | "working" | "failed" | "completed";
+
+export interface ProposalMaterializationErrorV2 {
+  code: string;
+  message: string;
+}
+
+export interface ProposalMaterializationProjectionV2 {
+  materialization_id: string;
+  option_id: string;
+  turn_id: string;
+  status: ProposalMaterializationStatusV2;
+  attempt_no: number;
+  retryable: boolean;
+  error: ProposalMaterializationErrorV2 | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ProposalApplicationSummaryV2 {
@@ -2193,6 +2213,7 @@ export interface ConceptProposalV2 extends CapabilityIdentityV2 {
   availability: ProposalAvailabilityV2;
   application_count: number;
   latest_application: ProposalApplicationSummaryV2 | null;
+  materialization: ProposalMaterializationProjectionV2 | null;
   guidance_session_id: string;
   guidance_session_revision: number;
   actions: ProposalActionDescriptorV2[];
