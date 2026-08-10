@@ -531,6 +531,73 @@ class AgentCanvasWorkflowRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasRequirementLedgerRevisionRow(Base):
+    """One immutable full snapshot of Agent Canvas requirements."""
+
+    __tablename__ = "agent_canvas_requirement_ledger_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "revision_no > 0",
+            name="ck_agent_canvas_requirement_revisions_positive",
+        ),
+        CheckConstraint(
+            "source_kind IN "
+            "('initialization','user_turn','proposal_selection','manual_edit','node_deletion')",
+            name="ck_agent_canvas_requirement_revisions_source",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "revision_no",
+            name="uq_agent_canvas_requirement_revisions_workflow_no",
+        ),
+        Index(
+            "ix_agent_canvas_requirement_revisions_workflow_no",
+            "workflow_id",
+            "revision_no",
+        ),
+    )
+
+    revision_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    parent_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_canvas_requirement_ledger_revisions.revision_id")
+    )
+    source_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    source_turn_id: Mapped[str | None] = mapped_column(Text)
+    source_proposal_id: Mapped[str | None] = mapped_column(Text)
+    source_node_id: Mapped[str | None] = mapped_column(Text)
+    ledger_json: Mapped[str] = mapped_column(Text, nullable=False)
+    content_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasRequirementLedgerRow(Base):
+    """Current Requirement Ledger revision pointer for one workflow."""
+
+    __tablename__ = "agent_canvas_requirement_ledgers"
+    __table_args__ = (
+        CheckConstraint(
+            "current_revision_no > 0",
+            name="ck_agent_canvas_requirement_ledgers_positive",
+        ),
+    )
+
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    current_revision_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_requirement_ledger_revisions.revision_id"),
+        nullable=False,
+    )
+    current_revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AgentCanvasExecutionSettingsRow(Base):
     """Workflow-scoped media execution preference."""
 
@@ -940,6 +1007,10 @@ class AgentCanvasPromptContextSnapshotRow(Base):
     byte_estimate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     token_estimate: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     content_digest: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_id: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_no: Mapped[int | None] = mapped_column(Integer)
+    requirement_digest: Mapped[str | None] = mapped_column(Text)
+    requirement_projection_digest: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
@@ -1317,6 +1388,9 @@ class AgentCanvasConceptProposalRow(Base):
     target_node_revision: Mapped[int | None] = mapped_column(Integer)
     proposal_purpose: Mapped[str | None] = mapped_column(Text)
     creative_direction_snapshot_id: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_id: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_no: Mapped[int | None] = mapped_column(Integer)
+    requirement_digest: Mapped[str | None] = mapped_column(Text)
     proposal_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     proposed_references_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
@@ -1348,6 +1422,9 @@ class AgentCanvasConceptOptionRow(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     key_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    draft_seed_schema: Mapped[str | None] = mapped_column(Text)
+    draft_seed_json: Mapped[str | None] = mapped_column(Text)
+    draft_seed_digest: Mapped[str | None] = mapped_column(Text)
 
 
 class AgentCanvasExpertActivityRow(Base):
