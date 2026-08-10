@@ -1,11 +1,11 @@
 .agent-node-workbench {
   position: relative;
-  width: 620px;
-  max-width: min(620px, calc(100vw - 48px));
+  width: 640px;
+  max-width: min(640px, calc(100vw - 48px));
   overflow: hidden;
   color: #edf0f8;
-  background: #191a20;
-  border: 1px solid #393b45;
+  background: #2a2a2a;
+  border: 1px solid #454545;
   border-radius: 12px;
   box-shadow: 0 26px 60px rgb(0 0 0 / 42%);
   backdrop-filter: none;
@@ -48,8 +48,8 @@
 
 .agent-node-workbench__body {
   display: grid;
-  gap: 11px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px 12px 12px;
 }
 
 .agent-node-workbench__composer,
@@ -88,12 +88,7 @@
   padding: 0 9px;
 }
 
-.agent-node-workbench textarea {
-  min-height: 112px;
-  padding: 10px 4px 6px;
-  line-height: 1.5;
-  resize: none;
-}
+.agent-node-workbench textarea { resize: none; }
 
 .agent-node-workbench .agent-node-workbench__composer textarea {
   border: 0;
@@ -109,6 +104,29 @@
 
 html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
   outline: none;
+}
+
+.agent-node-workbench__four-line-editor {
+  display: block;
+  height: 88px;
+  min-height: 88px;
+  max-height: 88px;
+  padding: 0;
+  overflow-y: auto;
+  color: #f0f0f0;
+  font-size: 14px;
+  line-height: 22px;
+  scrollbar-color: rgb(208 211 222 / 46%) transparent;
+  scrollbar-width: thin;
+}
+
+.agent-node-workbench__four-line-editor::-webkit-scrollbar { width: 7px; }
+.agent-node-workbench__four-line-editor::-webkit-scrollbar-track { background: transparent; }
+.agent-node-workbench__four-line-editor::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgb(208 211 222 / 40%);
+  background-clip: padding-box;
 }
 
 .agent-node-workbench__composer--script textarea {
@@ -278,7 +296,8 @@ html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
 }
 
 .agent-node-workbench__footer--composer {
-  justify-content: flex-end;
+  min-height: 34px;
+  padding-top: 1px;
 }
 
 .agent-node-workbench__footer > span {
@@ -315,9 +334,9 @@ html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
 
 .agent-node-workbench__references {
   display: flex;
-  min-height: 44px;
+  min-height: 58px;
   align-items: center;
-  padding: 11px 12px 0;
+  padding: 10px 12px 0;
 }
 
 .agent-node-workbench__runtime-inputs {
@@ -390,7 +409,7 @@ html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
 .agent-node-workbench__reference-list {
   display: flex;
   max-width: 100%;
-  gap: 9px;
+  gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
 }
@@ -398,26 +417,43 @@ html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
 .agent-node-workbench__reference-list > article {
   position: relative;
   display: grid;
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   place-items: center;
   overflow: visible;
   border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 7px;
-  background: rgb(255 255 255 / 6%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 7%);
+}
+
+.agent-node-workbench__reference-list > article.is-text {
+  width: auto;
+  max-width: 180px;
+  padding: 0 24px 0 10px;
 }
 
 .agent-node-workbench__reference-list > article.is-disabled { opacity: 0.52; }
 
 .agent-node-workbench__reference-list > article > img,
-.agent-node-workbench__reference-list > article > span {
+.agent-node-workbench__reference-list > article > span:not(.agent-node-workbench__reference-text) {
   display: grid;
   width: 100%;
   height: 100%;
   place-items: center;
-  border-radius: 6px;
+  border-radius: 7px;
   object-fit: cover;
+}
+
+.agent-node-workbench__reference-text {
+  display: block;
+  max-width: 146px;
+  overflow: hidden;
+  color: rgb(242 243 247 / 82%);
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-node-workbench__reference-list > article > button {
@@ -452,6 +488,8 @@ html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
 
 .agent-node-workbench__options--inline label { display: block; }
 .agent-node-workbench__options--inline label > span { display: none; }
+.agent-node-workbench__options--inline .agent-node-workbench__model-label { display: none; }
+.agent-node-workbench__options--inline .agent-node-workbench__model-picker { gap: 0; }
 .agent-node-workbench__options--inline :is(select, input) {
   width: auto;
   min-width: 104px;

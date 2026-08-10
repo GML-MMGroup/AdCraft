@@ -103,6 +103,34 @@ function makeReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 {
   } as AgentCanvasWorkflowV2;
 }
 
+function makeTextReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 {
+  const source = {
+    ...makeNode("text", "ready"),
+    node_id: "source-text",
+    title: "World Setting",
+    structured_content: { content: "A calm morning in a riverside park." },
+  };
+  return {
+    ...makeWorkflow(target),
+    nodes: [source, target],
+    bindings: [{
+      binding_id: "text-binding",
+      workflow_id: "workflow-1",
+      source: { kind: "node_output", source_node_id: source.node_id },
+      target_node_id: target.node_id,
+      input_role: "text_context",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
+      created_at: "2026-07-31T00:00:00Z",
+      updated_at: "2026-07-31T00:00:00Z",
+    }],
+    assets: [],
+  } as AgentCanvasWorkflowV2;
+}
+
 function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
   const props = {
     workflow: makeWorkflow(node),
@@ -134,7 +162,7 @@ describe("AgentCanvasInlineWorkbench", () => {
     const css = readFileSync(cssPath, "utf8");
     const shellRule = css.match(/^\.agent-node-workbench\s*\{([\s\S]*?)\n\}/m)?.[1];
 
-    expect(shellRule).toContain("background: #191a20");
+    expect(shellRule).toContain("background: #2a2a2a");
     expect(shellRule).not.toContain("gradient");
     expect(shellRule).toContain("backdrop-filter: none");
   });
@@ -379,5 +407,37 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     expect(screen.getByRole("button", { name: "Choose asset references" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Upload image reference" })).toBeNull();
+  });
+
+  it("renders upstream text as a labelled reference chip", () => {
+    const node = makeNode("image");
+    renderWorkbench(node, { workflow: makeTextReferenceWorkflow(node) });
+
+    expect(screen.getByText("World Setting")).toBeTruthy();
+  });
+
+  it("keeps the Text node model control in the composer footer", () => {
+    const props = {
+      workflow: makeWorkflow(makeNode("text")),
+      node: makeNode("text"),
+      patchNode: vi.fn().mockResolvedValue(undefined),
+      patchBinding: vi.fn().mockResolvedValue(undefined),
+      deleteBinding: vi.fn().mockResolvedValue(undefined),
+      onRun: vi.fn().mockResolvedValue(undefined),
+      onSaveVariation: vi.fn().mockResolvedValue(undefined),
+      onDiscardVariation: vi.fn().mockResolvedValue(undefined),
+      onMaterializeVariation: vi.fn().mockResolvedValue(null),
+      onSaveImageToLibrary: vi.fn().mockResolvedValue(undefined),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+      onOpenEditing: vi.fn(),
+      onOpenAssets: vi.fn(),
+      onUploadReferences: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const { container } = render(<AgentCanvasInlineWorkbench {...props} />);
+
+    expect(container.querySelector(
+      ".agent-node-workbench__footer .agent-node-workbench__model-picker",
+    )).toBeTruthy();
   });
 });

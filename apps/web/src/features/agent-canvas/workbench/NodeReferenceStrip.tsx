@@ -21,6 +21,7 @@ function sourcePresentation(
     return {
       name: asset?.display_name ?? source.source_asset_id,
       previewUrl: referencePreview(asset),
+      text: asset?.display_name ?? source.source_asset_id,
     };
   }
   const sourceNode = workflow.nodes.find((item) => item.node_id === source.source_node_id);
@@ -30,6 +31,7 @@ function sourcePresentation(
   return {
     name: sourceNode?.title ?? source.source_node_id,
     previewUrl: referencePreview(asset),
+    text: sourceNode?.title ?? source.source_node_id,
   };
 }
 
@@ -59,10 +61,14 @@ export function NodeReferenceStrip({
           const source = sourcePresentation(workflow, binding);
           const label = binding.label || source.name || `Reference ${index + 1}`;
           return (
-            <article key={binding.binding_id} className={!binding.enabled ? "is-disabled" : ""} title={label}>
+            <article
+              key={binding.binding_id}
+              className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}`}
+              title={label}
+            >
               {source.previewUrl ? (
                 <img src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
-              ) : <span aria-hidden="true">{index + 1}</span>}
+              ) : <span className="agent-node-workbench__reference-text">{source.text || `Reference ${index + 1}`}</span>}
               <button
                 type="button"
                 aria-label={`Remove ${label} reference`}
