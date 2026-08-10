@@ -188,6 +188,70 @@
   -webkit-line-clamp: 5;
 }
 
+.agent-canvas-node__markdown {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.agent-canvas-node__markdown p,
+.agent-canvas-node__markdown ul,
+.agent-canvas-node__markdown ol,
+.agent-canvas-node__markdown h1,
+.agent-canvas-node__markdown h2,
+.agent-canvas-node__markdown h3,
+.agent-canvas-node__markdown h4,
+.agent-canvas-node__markdown h5,
+.agent-canvas-node__markdown h6,
+.agent-canvas-node__markdown blockquote,
+.agent-canvas-node__markdown pre {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 17px;
+  font-weight: 520;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.agent-canvas-node__markdown p:last-child,
+.agent-canvas-node__markdown ul:last-child,
+.agent-canvas-node__markdown ol:last-child,
+.agent-canvas-node__markdown pre:last-child,
+.agent-canvas-node__markdown blockquote:last-child {
+  margin-bottom: 0;
+}
+
+.agent-canvas-node__markdown ul,
+.agent-canvas-node__markdown ol {
+  padding-left: 18px;
+}
+
+.agent-canvas-node__markdown code {
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: rgb(255 255 255 / 10%);
+  font-size: 14px;
+}
+
+.agent-canvas-node__markdown pre {
+  display: block;
+  overflow-x: auto;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgb(15 15 29 / 30%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+}
+
+.agent-canvas-node__markdown blockquote {
+  border-left: 2px solid rgb(255 255 255 / 35%);
+  padding-left: 10px;
+}
+
 .agent-canvas-node--audio {
   --agent-node-accent: #b9acd8;
 

@@ -1920,6 +1920,16 @@ export type NodeRuntimePhaseV2 =
   | "recovering"
   | "publishing";
 
+export interface VideoParameterNormalizationV2 {
+  field: "duration_seconds" | "resolution" | "aspect_ratio" | "generate_audio";
+  requested_value: CanvasParameterScalarV2;
+  effective_value: CanvasParameterScalarV2;
+  normalization_code:
+    | "duration_clamped_to_minimum"
+    | "duration_clamped_to_maximum"
+    | "resolution_reduced_to_supported";
+}
+
 export interface NodeRuntimeV2 {
   node_id: string;
   visible_status: CanvasNodeStatusV2;
@@ -1930,7 +1940,7 @@ export interface NodeRuntimeV2 {
   parameter_compilation_snapshot_id: string | null;
   input_manifest_id?: string | null;
   effective_parameters: Record<string, unknown>;
-  normalizations: string[];
+  normalizations: Array<string | VideoParameterNormalizationV2>;
   omitted_optional_inputs: Array<Record<string, unknown>>;
   waiting_reason?: string | null;
   missing_required_source_node_ids?: string[];
@@ -2051,6 +2061,8 @@ export interface ProviderModelCapabilityV2 {
   max_references: number;
   reference_limits: Partial<Record<AgentCanvasAssetMediaTypeV2, number>>;
   supported_parameters: string[];
+  default_parameters: Record<string, unknown>;
+  supported_resolutions: string[];
   supported_aspect_ratios: string[];
   duration_range_seconds: [number, number] | null;
   pixel_bounds: [number, number] | null;
@@ -2180,9 +2192,20 @@ export interface ProposedDraftReferenceV2 {
   input_role: CanvasBindingInputRoleV2;
   required: boolean;
   display_order: number;
+  semantic_reference_role: SemanticReferenceRoleV2 | null;
   display_name: string;
   media_type: "text" | "image" | "video" | "audio";
 }
+
+export type SemanticReferenceRoleV2 =
+  | "world_setting_reference"
+  | "subject_reference"
+  | "environment_reference"
+  | "product_reference"
+  | "prop_reference"
+  | "style_reference"
+  | "style_composition_reference"
+  | "storyboard_visual_reference";
 
 export type ConceptProposalKindV2 =
   | "world_setting"

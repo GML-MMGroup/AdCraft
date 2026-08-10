@@ -1,5 +1,6 @@
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
+import { isLikelyMarkdown, renderMarkdownAwareText } from "./AgentCanvasMarkdown";
 
 function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -27,6 +28,16 @@ export function AgentCanvasNodeContent({
 }: AgentCanvasNodeContentProps) {
   const copy = agentCanvasNodeDisplayText(node);
   if (copy) {
+    if (isLikelyMarkdown(copy)) {
+      return (
+        <div className="agent-canvas-node__content">
+          <div className="agent-canvas-node__markdown">
+            {renderMarkdownAwareText(copy)}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="agent-canvas-node__content">
         <p>{copy}</p>
