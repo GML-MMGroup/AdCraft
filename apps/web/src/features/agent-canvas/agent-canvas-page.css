@@ -95,17 +95,6 @@
   border-bottom-color: rgb(121 122 145 / 14%);
 }
 
-.agent-canvas-board .react-flow__minimap {
-  right: 18px;
-  bottom: 18px;
-  overflow: hidden;
-  background: rgb(245 246 250 / 76%);
-  border: 1px solid rgb(255 255 255 / 64%);
-  border-radius: 7px;
-  box-shadow: 0 12px 28px rgb(39 39 62 / 14%);
-  backdrop-filter: blur(14px);
-}
-
 .agent-canvas-toolbar {
   position: absolute;
   z-index: 20;
@@ -870,8 +859,7 @@ html[data-theme="dark"] .agent-canvas-inspector__body :is(input, textarea) {
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] .agent-canvas-board .react-flow__controls button,
-html[data-theme="dark"] .agent-canvas-board .react-flow__minimap {
+html[data-theme="dark"] .agent-canvas-board .react-flow__controls button {
   color: #d7d9e4;
   background: rgb(28 31 40 / 88%);
   border-color: rgb(255 255 255 / 10%);
