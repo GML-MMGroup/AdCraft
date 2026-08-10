@@ -84,7 +84,7 @@ export function Layout({ children, workflowControls }: LayoutProps) {
       </nav>
 
       <div
-        className={`app-shell${isWorkflowRoute ? "" : " app-shell--cosmic"}`}
+        className={`app-shell${isWorkflowRoute ? " app-shell--workflow" : " app-shell--cosmic"}`}
         id="app"
       >
         <header className="topbar">

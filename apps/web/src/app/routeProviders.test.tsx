@@ -186,6 +186,10 @@ describe("route providers", () => {
         workflow.container.querySelector(".app-shell--cosmic"),
         `${path} should retain the Workflow canvas shell`,
       ).toBeNull();
+      expect(
+        workflow.container.querySelector(".app-shell--workflow"),
+        `${path} should use the full-height Workflow canvas shell`,
+      ).toBeTruthy();
     }
   });
 

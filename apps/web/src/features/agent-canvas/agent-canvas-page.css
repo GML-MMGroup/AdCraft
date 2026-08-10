@@ -5,7 +5,8 @@
   position: relative;
   display: grid;
   width: auto;
-  height: calc(100vh - 102px);
+  height: calc(100vh - var(--topbar-height));
+  height: calc(100dvh - var(--topbar-height));
   min-height: 620px;
   margin: 0 -40px -64px -94px;
   overflow: hidden;

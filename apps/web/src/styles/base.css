@@ -183,6 +183,13 @@ a {
   backdrop-filter: blur(10px) saturate(1.04);
 }
 
+.app-shell--workflow {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+}
+
 .topbar {
   position: sticky;
   top: 0;
