@@ -39,12 +39,15 @@ class _RecoveryModel(BaseModel):
 
 
 class AgentOperationPolicyV2(_RecoveryModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
     policy_id: str = Field(min_length=1, max_length=160)
     agent_name: Literal["video_agent"] = "video_agent"
     operation: str = Field(min_length=1, max_length=120)
     contract_id: str = Field(min_length=1, max_length=160)
     policy_class: AgentOperationPolicyClassV2
     hard_deadline_seconds: int = Field(ge=1, le=900)
+    max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: Literal[1] = 1
     structured_repair_limit: Literal[1] = 1
     fallback_class: Literal[
