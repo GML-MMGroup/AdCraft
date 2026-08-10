@@ -805,6 +805,17 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(userMessageRule).toContain("background: #343434");
   });
 
+  it("uses a legible AdCraft Bot icon in the collapsed trigger", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const triggerRule = css.match(/\.agent-chat__collapsed-trigger\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const iconRule = css.match(/\.agent-chat__collapsed-trigger img\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(triggerRule).toContain("height: 42px");
+    expect(iconRule).toContain("width: 28px");
+    expect(iconRule).toContain("height: 28px");
+  });
+
   it("collapses to an AdCraft Bot trigger without discarding the message draft", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       workflow_id: "workflow-1",

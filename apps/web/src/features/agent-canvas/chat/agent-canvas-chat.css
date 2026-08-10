@@ -81,10 +81,10 @@
   top: 12px;
   right: 12px;
   display: inline-flex;
-  height: 36px;
+  height: 42px;
   align-items: center;
-  gap: 7px;
-  padding: 0 11px;
+  gap: 8px;
+  padding: 0 12px;
   color: #f0f0f0;
   background: #282828;
   border: 1px solid #484848;
@@ -102,8 +102,8 @@
 }
 
 .agent-chat__collapsed-trigger img {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   object-fit: cover;
   border-radius: 4px;
 }
