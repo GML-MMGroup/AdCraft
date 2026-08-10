@@ -14,6 +14,7 @@ _OPERATIONAL_MUTATION_PATTERNS = (
     re.compile(r"/executions/[^/]+/(?:resume|cancel)$"),
     re.compile(r"/working-version/discard$"),
     re.compile(r"/renders/[^/]+/cancel$"),
+    re.compile(r"^/requirements$"),
 )
 
 
@@ -36,6 +37,34 @@ def project_etag(project_id: str, project_version: int) -> str:
     """Render the exact strong Project metadata ETag."""
 
     return _render_etag("project", project_id, project_version)
+
+
+def requirement_ledger_etag(workflow_id: str, revision_no: int) -> str:
+    """Render the exact weak Requirement Ledger ETag."""
+
+    if not workflow_id or revision_no < 1:
+        raise ValueError("Requirement Ledger ETag identity and revision must be positive.")
+    return f'W/"requirements:{workflow_id}:{revision_no}"'
+
+
+def parse_requirement_if_match(value: str | None, workflow_id: str) -> int:
+    """Parse the mandatory weak Requirement Ledger If-Match value."""
+
+    if value is None or not value.strip():
+        raise V2PreconditionError(
+            "requirement_precondition_required",
+            "If-Match is required for Requirement Ledger mutations.",
+            status_code=428,
+        )
+    pattern = rf'W/"requirements:{re.escape(workflow_id)}:([1-9][0-9]*)"'
+    match = re.fullmatch(pattern, value.strip())
+    if match is None:
+        raise V2PreconditionError(
+            "requirement_revision_conflict",
+            "If-Match must contain the current Requirement Ledger ETag.",
+            status_code=412,
+        )
+    return int(match.group(1))
 
 
 def semantic_workflow_mutation_id(method: str, path: str) -> str | None:
