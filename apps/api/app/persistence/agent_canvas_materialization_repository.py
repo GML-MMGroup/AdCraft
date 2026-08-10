@@ -29,8 +29,14 @@ from app.persistence.models import (
     AgentCanvasGuidanceSessionRow,
 )
 from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
-from app.schemas.agent_canvas_materialization import CapabilityMaterializationEnvelopeV1
+from app.schemas.agent_canvas_materialization import (
+    CapabilityMaterializationEnvelopeV1,
+    ProposalPublicationEnvelopeV1,
+)
 from app.schemas.v2_persistence import V2EventInsert
+
+
+MaterializationEnvelopeV1 = CapabilityMaterializationEnvelopeV1 | ProposalPublicationEnvelopeV1
 
 
 class AgentCanvasMaterializationRepository:
@@ -46,7 +52,7 @@ class AgentCanvasMaterializationRepository:
 
     def queue(
         self,
-        envelope: CapabilityMaterializationEnvelopeV1,
+        envelope: MaterializationEnvelopeV1,
         *,
         max_attempts: int = 5,
         action_request: Mapping[str, object] | None = None,
@@ -309,7 +315,7 @@ class AgentCanvasMaterializationRepository:
 
     def mark_working(
         self,
-        envelope: CapabilityMaterializationEnvelopeV1,
+        envelope: MaterializationEnvelopeV1,
     ) -> ProposalMaterializationProjectionV2:
         now = datetime.now(timezone.utc).isoformat()
         try:
@@ -481,9 +487,12 @@ class AgentCanvasMaterializationRepository:
             raise _error("proposal_not_found", "Concept proposal was not found.")
         return _projection(row)
 
-    def get_envelope(self, envelope_id: str) -> CapabilityMaterializationEnvelopeV1:
+    def get_envelope(self, envelope_id: str) -> MaterializationEnvelopeV1:
         envelope = self._envelopes.get(envelope_id)
-        if not isinstance(envelope, CapabilityMaterializationEnvelopeV1):
+        if not isinstance(
+            envelope,
+            (CapabilityMaterializationEnvelopeV1, ProposalPublicationEnvelopeV1),
+        ):
             raise _error(
                 "capability_materialization_invalid",
                 "Operation envelope is not a capability Materialization.",
