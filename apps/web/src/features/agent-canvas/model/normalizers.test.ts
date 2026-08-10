@@ -237,7 +237,17 @@ describe("Agent Canvas normalizers", () => {
         public_summary: "A restrained premium product direction.",
         key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
       }],
-      proposed_references: [],
+      proposed_references: [{
+        source_kind: "node",
+        source_id: "node-world-setting-1",
+        binding_kind: "text_context",
+        input_role: "text_context",
+        required: true,
+        display_order: 0,
+        semantic_reference_role: "world_setting_reference",
+        display_name: "World Setting",
+        media_type: "text",
+      }],
       target_node_id: null,
       target_node_revision: null,
       proposal_purpose: "Define the product direction.",
@@ -287,6 +297,7 @@ describe("Agent Canvas normalizers", () => {
         public_summary: "A restrained premium product direction.",
         key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
       }],
+      proposed_references: [{ semantic_reference_role: "world_setting_reference" }],
       materialization: {
         status: "failed",
         retryable: true,
@@ -1106,7 +1117,15 @@ describe("Agent Canvas normalizers", () => {
             duration_seconds: 15,
             generate_audio: false,
           },
-          normalizations: ["duration_clamped_to_provider_limit"],
+          normalizations: [
+            "duration_clamped_to_provider_limit",
+            {
+              field: "duration_seconds",
+              requested_value: 20,
+              effective_value: 15,
+              normalization_code: "duration_clamped_to_maximum",
+            },
+          ],
           omitted_optional_inputs: [
             {
               binding_id: "binding-audio-1",
@@ -1139,7 +1158,15 @@ describe("Agent Canvas normalizers", () => {
         duration_seconds: 15,
         generate_audio: false,
       },
-      normalizations: ["duration_clamped_to_provider_limit"],
+      normalizations: [
+        "duration_clamped_to_provider_limit",
+        {
+          field: "duration_seconds",
+          requested_value: 20,
+          effective_value: 15,
+          normalization_code: "duration_clamped_to_maximum",
+        },
+      ],
       omitted_optional_inputs: [
         {
           binding_id: "binding-audio-1",
@@ -1855,6 +1882,10 @@ describe("Agent Canvas normalizers", () => {
           audio: 1,
         },
         supported_parameters: [],
+        default_parameters: {
+          duration_seconds: 5,
+        },
+        supported_resolutions: ["720p", "1080p"],
         supported_aspect_ratios: ["16:9"],
         duration_range_seconds: [3, 12],
         pixel_bounds: null,
@@ -1865,6 +1896,8 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(capabilities[0]?.supports_native_audio).toBe(true);
+    expect(capabilities[0]?.default_parameters).toEqual({ duration_seconds: 5 });
+    expect(capabilities[0]?.supported_resolutions).toEqual(["720p", "1080p"]);
     expect(capabilities[0]?.reference_limits).toEqual({
       image: 4,
       video: 1,

@@ -104,6 +104,7 @@ import type {
   StoryboardPlanGlobalParametersV2,
   StoryboardPlanRowV2,
   StoryboardProductionPlanContentV2,
+  VideoParameterNormalizationV2,
   VideoSkillCatalogResponseV2,
   VideoSkillCategoryV2,
   VideoSkillPreviewV2,
@@ -151,6 +152,18 @@ const CANVAS_BINDING_ROLES = new Set<CanvasBindingInputRoleV2>([
   "image_reference",
   "video_reference",
   "audio_reference",
+]);
+const SEMANTIC_REFERENCE_ROLES = new Set<
+  NonNullable<ProposedDraftReferenceV2["semantic_reference_role"]>
+>([
+  "world_setting_reference",
+  "subject_reference",
+  "environment_reference",
+  "product_reference",
+  "prop_reference",
+  "style_reference",
+  "style_composition_reference",
+  "storyboard_visual_reference",
 ]);
 const AGENT_COMMAND_BINDING_KINDS = new Set<AgentCommandBindingKindV2>([
   "brief_context",
@@ -1598,6 +1611,41 @@ export function normalizeResolvedInputSnapshotV2(value: unknown, path = "resolve
   fail(`${path}.snapshot_type`, "unsupported discriminator");
 }
 
+function normalizeVideoParameterNormalizationV2(
+  value: unknown,
+  path: string,
+): VideoParameterNormalizationV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    ["field", "requested_value", "effective_value", "normalization_code"],
+    path,
+  );
+  return {
+    field: expectLiteral(
+      record.field,
+      new Set<VideoParameterNormalizationV2["field"]>([
+        "duration_seconds",
+        "resolution",
+        "aspect_ratio",
+        "generate_audio",
+      ]),
+      `${path}.field`,
+    ),
+    requested_value: normalizeCanvasParameterScalarV2(record.requested_value, `${path}.requested_value`),
+    effective_value: normalizeCanvasParameterScalarV2(record.effective_value, `${path}.effective_value`),
+    normalization_code: expectLiteral(
+      record.normalization_code,
+      new Set<VideoParameterNormalizationV2["normalization_code"]>([
+        "duration_clamped_to_minimum",
+        "duration_clamped_to_maximum",
+        "resolution_reduced_to_supported",
+      ]),
+      `${path}.normalization_code`,
+    ),
+  };
+}
+
 export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runtime"): NodeRuntimeV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(
@@ -1638,7 +1686,11 @@ export function normalizeNodeRuntimeV2(value: unknown, path = "runtime.node_runt
     ),
     input_manifest_id: nullableStringWithDefault(record.input_manifest_id, `${path}.input_manifest_id`),
     effective_parameters: optionalUnknownRecord(record.effective_parameters, `${path}.effective_parameters`),
-    normalizations: optionalStringArray(record.normalizations, `${path}.normalizations`, []),
+    normalizations: expectArray(record.normalizations ?? [], `${path}.normalizations`).map((item, index) => (
+      typeof item === "string"
+        ? item
+        : normalizeVideoParameterNormalizationV2(item, `${path}.normalizations[${index}]`)
+    )),
     omitted_optional_inputs: expectArray(record.omitted_optional_inputs ?? [], `${path}.omitted_optional_inputs`).map(
       (item, index) => expectRecordValue(item, `${path}.omitted_optional_inputs[${index}]`),
     ),
@@ -1771,6 +1823,8 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
       "max_references",
       "reference_limits",
       "supported_parameters",
+      "default_parameters",
+      "supported_resolutions",
       "supported_aspect_ratios",
       "duration_range_seconds",
       "pixel_bounds",
@@ -1791,6 +1845,8 @@ export function normalizeProviderModelCapabilityV2(value: unknown, path = "capab
     max_references: expectNonNegativeInteger(record.max_references, `${path}.max_references`),
     reference_limits: normalizeProviderReferenceLimits(record.reference_limits, `${path}.reference_limits`),
     supported_parameters: expectStringArray(record.supported_parameters, `${path}.supported_parameters`),
+    default_parameters: optionalUnknownRecord(record.default_parameters, `${path}.default_parameters`, {}),
+    supported_resolutions: optionalStringArray(record.supported_resolutions, `${path}.supported_resolutions`, []),
     supported_aspect_ratios: expectStringArray(record.supported_aspect_ratios, `${path}.supported_aspect_ratios`),
     duration_range_seconds: record.duration_range_seconds === null ? null : expectTuple2Number(record.duration_range_seconds, `${path}.duration_range_seconds`),
     pixel_bounds: record.pixel_bounds === null ? null : expectTuple2Number(record.pixel_bounds, `${path}.pixel_bounds`, true),
@@ -1906,6 +1962,7 @@ function normalizeProposedDraftReferenceV2(
       "input_role",
       "required",
       "display_order",
+      "semantic_reference_role",
       "display_name",
       "media_type",
     ],
@@ -1922,6 +1979,14 @@ function normalizeProposedDraftReferenceV2(
     input_role: expectLiteral(record.input_role, CANVAS_BINDING_ROLES, `${path}.input_role`),
     required: expectBoolean(record.required, `${path}.required`),
     display_order: expectNonNegativeInteger(record.display_order, `${path}.display_order`),
+    semantic_reference_role:
+      record.semantic_reference_role === undefined || record.semantic_reference_role === null
+        ? null
+        : expectLiteral(
+            record.semantic_reference_role,
+            SEMANTIC_REFERENCE_ROLES,
+            `${path}.semantic_reference_role`,
+          ),
     display_name: expectNonEmptyString(record.display_name, `${path}.display_name`),
     media_type: expectLiteral(
       record.media_type,
