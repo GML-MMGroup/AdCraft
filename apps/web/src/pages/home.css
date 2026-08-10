@@ -1,31 +1,7 @@
-@font-face {
-  font-family: "Space Grotesk";
-  font-style: normal;
-  font-weight: 400 700;
-  font-display: swap;
-  src: url("/fonts/space-grotesk-latin-variable.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Barlow Condensed";
-  font-style: italic;
-  font-weight: 900;
-  font-display: swap;
-  src: url("/fonts/barlow-condensed-black-italic.woff2") format("woff2");
-}
-
-@font-face {
-  font-family: "Inter";
-  font-style: normal;
-  font-weight: 400 800;
-  font-display: swap;
-  src: url("/fonts/inter-latin-variable.woff2") format("woff2");
-}
-
 .home-page {
-  --home-font-display: "Space Grotesk", "Smiley Sans", "Noto Sans SC", "PingFang SC", sans-serif;
-  --home-font-accent: "Barlow Condensed", "Space Grotesk", "Smiley Sans", sans-serif;
-  --home-font-ui: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  --home-font-accent: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  --home-font-ui: Arial, "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--home-font-ui);
 }
 
@@ -58,11 +34,6 @@
 .home-product-hero__title {
   max-width: 640px;
   color: #202235;
-  font-family: var(--home-font-display);
-  font-size: 62px;
-  font-weight: 700;
-  line-height: 1.02;
-  letter-spacing: 0;
 }
 
 .home-product-hero__title-line {
@@ -125,11 +96,6 @@
   padding-right: 0.08em;
   white-space: nowrap;
   color: #8f6722;
-  font-family: var(--home-font-accent);
-  font-size: 150px;
-  font-style: italic;
-  font-weight: 900;
-  line-height: 0.9;
   transform: none;
 }
 
@@ -204,9 +170,6 @@
   margin: 28px 0 0;
   opacity: 1;
   color: rgba(52, 57, 81, 0.84);
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1.6;
 }
 
 .home-product-hero__create-stage {
@@ -235,8 +198,6 @@
   box-shadow: 0 12px 28px rgba(82, 65, 147, 0.18), inset 0 1px rgba(255, 255, 255, 0.44);
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
-  font-size: 16px;
-  font-weight: 600;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
   will-change: transform, box-shadow;
 }
@@ -256,11 +217,6 @@
 .home-product-hero__create:focus-visible {
   outline: 3px solid rgba(139, 114, 224, 0.42);
   outline-offset: 3px;
-}
-
-.home-page .home-product-hero__create,
-.home-page .filter-btn {
-  font-weight: 500;
 }
 
 .home-product-film {
@@ -352,13 +308,6 @@
     gap: 38px;
   }
 
-  .home-product-hero__title {
-    font-size: 48px;
-  }
-
-  .home-product-hero__accent {
-    font-size: 92px;
-  }
 }
 
 @media (max-width: 820px) {
@@ -387,20 +336,12 @@
     padding: 34px 0 26px;
   }
 
-  .home-product-hero__title {
-    font-size: 40px;
-    line-height: 1.02;
-  }
-
   .home-product-hero__accent {
     margin-top: 10px;
-    font-size: 70px;
   }
 
   .home-product-hero__description {
     margin-top: 20px;
-    font-size: 16px;
-    line-height: 1.5;
   }
 
   .home-product-hero__create {
@@ -450,20 +391,11 @@
 
 .section-title h2 {
   margin: 0;
-  font-family: var(--home-font-display);
-  font-size: clamp(32px, 3vw, 40px);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: 0;
-  text-transform: uppercase;
 }
 
 .section-title p {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1.6;
 }
 
 .home-reveal-section[data-reveal-state="pending"] [data-reveal-item] {
@@ -564,18 +496,11 @@
 
 .recent-card h3 {
   margin: 0;
-  font-size: clamp(20px, 1.6vw, 24px);
-  font-weight: 600;
-  line-height: 1.12;
-  letter-spacing: 0;
 }
 
 .recent-card p {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
 }
 
 .recent-card.featured p {
@@ -645,9 +570,6 @@
   bottom: 16px;
   z-index: 2;
   color: white;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 1.05;
   content: attr(data-title);
 }
 
@@ -824,4 +746,125 @@ html[data-theme="dark"] .app-shell--cosmic :is(
   background: rgba(13, 15, 20, 0.74);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(22px) saturate(1.08);
+}
+
+/* Exported from /design-lab/home-typography on 2026-08-10. */
+.home-page [data-home-typography-region="heroMain"] {
+  font-family: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 60px;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.1;
+  letter-spacing: 0.016em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="heroAccent"] {
+  font-family: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  font-size: 70px;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.2;
+  letter-spacing: 0.046em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="heroBody"] {
+  font-family: Arial, "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  font-style: italic;
+  line-height: 1.5;
+  letter-spacing: 0.006em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="heroAction"] {
+  font-family: "JetBrains Mono", "Noto Sans SC", "PingFang SC", monospace;
+  font-size: 14px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.1;
+  letter-spacing: 0.004em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="navigation"] {
+  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="sectionHeading"] {
+  font-family: "JetBrains Mono", "Noto Sans SC", "PingFang SC", monospace;
+  font-size: 37px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.05;
+  letter-spacing: -0.004em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="sectionBody"] {
+  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.6;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="cardTitle"] {
+  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.15;
+  letter-spacing: -0.002em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="cardTitle"]::after {
+  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.15;
+  letter-spacing: -0.002em;
+  text-transform: none;
+}
+
+.home-page [data-home-typography-region="cardMeta"] {
+  font-family: "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+@media (max-width: 1100px) {
+  .home-page .home-product-hero__title[data-home-typography-region="heroMain"] {
+    font-size: 48px;
+  }
+
+  .home-page .home-product-hero__accent[data-home-typography-region="heroAccent"] {
+    font-size: 60px;
+  }
+}
+
+@media (max-width: 620px) {
+  .home-page .home-product-hero__title[data-home-typography-region="heroMain"] {
+    font-size: 40px;
+  }
+
+  .home-page .home-product-hero__accent[data-home-typography-region="heroAccent"] {
+    font-size: 56px;
+  }
 }
