@@ -22,7 +22,8 @@
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
     "@earendil-works/pi-coding-agent": "0.81.1",
-    "ajv": "^8.17.1"
+    "ajv": "^8.17.1",
+    "openai": "6.26.0"
   },
   "devDependencies": {
     "@types/node": "22.15.30",

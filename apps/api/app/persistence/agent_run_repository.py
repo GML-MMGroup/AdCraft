@@ -20,6 +20,19 @@ _MAX_AUDIT_BYTES = 16_384
 _MAX_VALIDATION_CONTEXT_BYTES = 16_384
 _MAX_TOOL_RESULTS_BYTES = 65_536
 _SENSITIVE_KEYS = ("api_key", "authorization", "credential", "secret", "token")
+_SAFE_TOKEN_METADATA_KEYS = {
+    "input_tokens",
+    "max_output_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+}
+_UNSAFE_CONTENT_KEYS = (
+    "function_arguments",
+    "provider_payload",
+    "raw_prompt",
+    "raw_response",
+    "request_headers",
+)
 
 
 class AgentRunRepositoryError(RuntimeError):
@@ -515,8 +528,14 @@ def _validate_safe_json(value: Any, *, maximum_bytes: int) -> None:
         raise ValueError("JSON payload exceeds its persistence limit")
 
     def visit(current: Any, key: str | None = None) -> None:
-        if key is not None and any(part in key.casefold() for part in _SENSITIVE_KEYS):
-            raise ValueError("JSON payload contains a sensitive key")
+        if key is not None:
+            normalized_key = key.casefold()
+            if normalized_key not in _SAFE_TOKEN_METADATA_KEYS and any(
+                part in normalized_key for part in _SENSITIVE_KEYS
+            ):
+                raise ValueError("JSON payload contains a sensitive key")
+            if normalized_key in _UNSAFE_CONTENT_KEYS:
+                raise ValueError("JSON payload contains unrestricted content")
         if isinstance(current, dict):
             for child_key, child_value in current.items():
                 visit(child_value, str(child_key))
