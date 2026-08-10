@@ -4,21 +4,23 @@ from __future__ import annotations
 
 import hmac
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import ValidationError
 
 from app.core.config import Settings, get_settings
 from app.persistence.agent_run_repository import AgentRunRepository
-from app.persistence.agent_run_repository import AgentRunRepositoryError
+from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepositoryError
 from app.persistence.database import create_v2_database
 from app.schemas.agent_runtime import (
     AgentName,
+    AgentRunPolicy,
     AgentStructuredSubmission,
     AgentToolCall,
     AgentToolResult,
 )
+from app.schemas.agent_operation_recovery import AgentOperationPolicyV2
 from app.services.v2_agent_credential_broker import (
     AgentCredentialError,
     V2AgentCredentialBroker,
@@ -60,7 +62,7 @@ def get_agent_runtime_config(
     model_policy_id: str,
     model_ref: str,
     settings: Settings = Depends(get_settings),
-) -> dict[str, str | bool]:
+) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-store"
     try:
         database = create_v2_database(settings.media_data_dir)
@@ -68,19 +70,29 @@ def get_agent_runtime_config(
             run = AgentRunRepository(database).load(run_id)
         finally:
             database.dispose()
-        frozen_model_ref = run.audit_metadata.get("model_ref")
-        if frozen_model_ref != model_ref:
-            raise AgentCredentialError(
-                "agent_model_policy_mismatch",
-                "Agent runtime model reference does not match the frozen run policy.",
-            )
+        operation_policy = _frozen_operation_policy(
+            run,
+            agent_name=agent_name,
+            operation=operation,
+            model_policy_id=model_policy_id,
+            model_ref=model_ref,
+        )
         snapshot = V2AgentCredentialBroker(settings).snapshot(
             credential_ref,
             agent_name=agent_name,
             operation=operation,
             model_policy_id=model_policy_id,
             model_ref=model_ref,
+            operation_policy=operation_policy,
         )
+    except AgentRunRepositoryError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "agent_model_policy_mismatch",
+                "message": "Agent runtime run identity is stale or unavailable.",
+            },
+        ) from error
     except AgentCredentialError as error:
         raise HTTPException(
             status_code=503,
@@ -98,8 +110,50 @@ def get_agent_runtime_config(
         "supports_streaming": snapshot.supports_streaming,
         "supports_streamed_tool_calls": snapshot.supports_streamed_tool_calls,
         "supports_reasoning_controls": snapshot.supports_reasoning_controls,
+        "execution_policy": snapshot.execution_policy.model_dump(mode="json"),
         "api_key": snapshot.api_key,
     }
+
+
+def _frozen_operation_policy(
+    run: AgentRunRecord,
+    *,
+    agent_name: AgentName,
+    operation: str,
+    model_policy_id: str,
+    model_ref: str,
+) -> AgentOperationPolicyV2:
+    audit = run.audit_metadata
+    try:
+        operation_policy = AgentOperationPolicyV2.model_validate(
+            audit.get("agent_operation_policy")
+        )
+        run_policy = AgentRunPolicy.model_validate(audit.get("agent_run_policy"))
+    except ValidationError as error:
+        raise AgentCredentialError(
+            "agent_model_policy_mismatch",
+            "Agent runtime frozen policy metadata is invalid.",
+        ) from error
+    if (
+        run.agent_name != agent_name
+        or run.operation != operation
+        or audit.get("model_policy_id") != model_policy_id
+        or audit.get("model_ref") != model_ref
+        or operation_policy.agent_name != agent_name
+        or operation_policy.operation != operation
+        or run_policy.operation_policy_id != operation_policy.policy_id
+        or run_policy.operation_class != operation_policy.policy_class
+        or run_policy.transport_retry_limit != operation_policy.transport_retry_limit
+        or run_policy.structured_repair_limit != operation_policy.structured_repair_limit
+        or run_policy.timeout_seconds != operation_policy.hard_deadline_seconds
+        or run_policy.max_output_tokens != operation_policy.max_output_tokens
+        or run.deadline_at is None
+    ):
+        raise AgentCredentialError(
+            "agent_model_policy_mismatch",
+            "Agent runtime request contradicts the frozen run policy.",
+        )
+    return operation_policy
 
 
 @router.post(

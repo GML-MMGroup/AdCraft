@@ -35,6 +35,7 @@ from app.services.pi_agent_runtime_client import (
 )
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_operation_policy import freeze_agent_run_operation_policy
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
@@ -147,10 +148,12 @@ class StructuredGenerationRuntime:
     ) -> StructuredGenerationResult[TOutput]:
         database = create_v2_database(self._settings.media_data_dir)
         try:
-            request = _freeze_agent_model(
-                _agent_run_request(spec),
-                settings=self._settings,
-                repository=ProviderModelRepository(database),
+            request = freeze_agent_run_operation_policy(
+                _freeze_agent_model(
+                    _agent_run_request(spec),
+                    settings=self._settings,
+                    repository=ProviderModelRepository(database),
+                )
             )
         except Exception:
             database.dispose()
