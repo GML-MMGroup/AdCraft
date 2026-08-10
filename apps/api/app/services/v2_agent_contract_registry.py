@@ -22,7 +22,7 @@ from app.schemas.agent_canvas_capabilities import (
     SceneProposalResultV1,
     ScriptProposalResultV1,
     StoryboardProposalResultV1,
-    TurnIntentDecisionV1,
+    TurnIntentDecisionV2,
     VideoProposalResultV1,
     WorldSettingProposalResultV1,
 )
@@ -64,7 +64,7 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         AgentCanvasTextOutput,
         AgentCommandPlanDraftV2,
         VideoParameterIntentV2,
-        TurnIntentDecisionV1,
+        TurnIntentDecisionV2,
         NextActionCommandV1,
         WorldSettingProposalResultV1,
         ProductProposalResultV1,

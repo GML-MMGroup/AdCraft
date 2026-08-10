@@ -8,18 +8,18 @@ from pydantic import ValidationError
 
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_capabilities import (
-    TurnIntentContextV1,
-    TurnIntentDecisionV1,
+    TurnIntentContextV2,
+    TurnIntentDecisionV2,
 )
 
 
 class TurnIntentGateway(Protocol):
     def classify_turn_intent(
         self,
-        context: TurnIntentContextV1,
+        context: TurnIntentContextV2,
         *,
         turn_id: str,
-    ) -> TurnIntentDecisionV1: ...
+    ) -> TurnIntentDecisionV2: ...
 
 
 class TurnIntentService:
@@ -30,12 +30,12 @@ class TurnIntentService:
 
     def decide(
         self,
-        context: TurnIntentContextV1,
+        context: TurnIntentContextV2,
         *,
         turn_id: str,
-    ) -> TurnIntentDecisionV1:
+    ) -> TurnIntentDecisionV2:
         try:
-            return TurnIntentDecisionV1.model_validate(
+            return TurnIntentDecisionV2.model_validate(
                 self._gateway.classify_turn_intent(context, turn_id=turn_id)
             )
         except ValidationError as error:

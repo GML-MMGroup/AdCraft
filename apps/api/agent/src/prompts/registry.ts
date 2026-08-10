@@ -82,7 +82,9 @@ function instructionForOperation(operation: string): string {
   if (operation === "decide_turn_intent") {
     return [
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
-      "Return only creative intent, explicit element presence, explicit constraints, and an optional bounded assistant message.",
+      "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
+      "Only supersede directive IDs present in context.editable_directives. Approximate values are preference directives, not hard controls.",
       "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",
     ].join(" ");
   }
@@ -111,15 +113,23 @@ function instructionForOperation(operation: string): string {
     return "Summarize only durable facts and unresolved objectives needed by a later turn. Exclude private reasoning and unrelated history.";
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
-    return "Return only concise creative options with title, public_summary, and one to six key_decisions. Do not produce prompts, structured media content, parameters, references, or platform state before selection.";
+    return [
+      "Return concise creative options with title, public_summary, one to six key_decisions, and one matching private_draft_seed per option.",
+      "The private_draft_seed contains only the capability-specific creative facts and one to sixteen concise English accepted_commitments required by the typed result contract.",
+      "Do not place platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, or credentials in the Seed.",
+    ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
-    return "Revise only the supplied capability options under the current instruction and return replacement typed options. Do not publish, select, or mutate platform state.";
+    return [
+      "Revise only the supplied capability options and return replacement typed options with one matching private_draft_seed per option.",
+      "Keep each Seed limited to capability-specific creative facts and one to sixteen concise English accepted_commitments; exclude platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, and credentials.",
+      "Do not publish, select, or mutate platform state.",
+    ].join(" ");
   }
   if (operation.startsWith("free_")) {
     return "Return one bounded prompt plan for the requested single-output media kind using only approved references and supplied deterministic constraints. Do not submit media generation.";
   }
-  if (operation.startsWith("materialize_")) {
+  if (operation === "materialize_quick_media") {
     return [
       "Expand only the selected option into the requested capability Materialization result.",
       "Use only the bounded capability context and accepted reference summaries.",
