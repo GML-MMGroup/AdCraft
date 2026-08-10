@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -126,6 +129,16 @@ function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> 
 afterEach(() => cleanup());
 
 describe("AgentCanvasInlineWorkbench", () => {
+  it("uses a solid black-gray surface without gradients or backdrop blur", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css");
+    const css = readFileSync(cssPath, "utf8");
+    const shellRule = css.match(/^\.agent-node-workbench\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(shellRule).toContain("background: #191a20");
+    expect(shellRule).not.toContain("gradient");
+    expect(shellRule).toContain("backdrop-filter: none");
+  });
+
   it.each<[CanvasNodeTypeV2, string]>([
     ["text", "Text content"],
     ["image", "Generation prompt"],
