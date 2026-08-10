@@ -184,10 +184,9 @@ a {
 }
 
 .app-shell--workflow {
-  width: 100%;
-  min-height: 100vh;
-  min-height: 100dvh;
-  margin: 0;
+  min-height: calc(100vh - 16px);
+  min-height: calc(100dvh - 16px);
+  margin: 16px auto 0;
 }
 
 .topbar {
