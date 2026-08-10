@@ -1,6 +1,5 @@
 import {
   Controls,
-  MiniMap,
   ReactFlow,
   type Connection,
   type Edge,
@@ -691,18 +690,6 @@ export function AgentCanvasPage() {
         >
           <AgentCanvasPointerBackgrounds />
           <Controls position="bottom-left" showInteractive={false} />
-          <MiniMap
-            position="bottom-right"
-            pannable
-            zoomable
-            nodeColor={(node) => {
-              const type = (node.data as AgentCanvasFlowNode["data"]).node.node_type;
-              if (type === "image") return "#4c9d8d";
-              if (type === "audio") return "#b88248";
-              if (type === "video" || type === "editing") return "#567dd0";
-              return "#7667b5";
-            }}
-          />
         </ReactFlow>
 
         <div className="agent-canvas-toolbar" aria-label="Canvas controls">

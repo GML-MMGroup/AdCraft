@@ -805,6 +805,24 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(userMessageRule).toContain("background: #343434");
   });
 
+  it("keeps the Collaboration control visually connected to the chat timeline", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const headerRule = css.match(/\.agent-chat__header\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(headerRule).not.toContain("border-bottom");
+  });
+
+  it("does not include the retired React Flow Mini Map chrome", () => {
+    const pagePath = resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx");
+    const pageSource = readFileSync(pagePath, "utf8");
+    const canvasCssPath = resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css");
+    const canvasCss = readFileSync(canvasCssPath, "utf8");
+
+    expect(pageSource).not.toMatch(/\bMiniMap\b/);
+    expect(canvasCss).not.toContain(".react-flow__minimap");
+  });
+
   it("uses a legible AdCraft Bot icon in the collapsed trigger", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
     const css = readFileSync(cssPath, "utf8");

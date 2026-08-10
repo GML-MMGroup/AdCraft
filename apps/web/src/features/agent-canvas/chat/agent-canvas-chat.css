@@ -32,7 +32,6 @@
   align-items: center;
   gap: 8px 10px;
   padding: 12px 14px;
-  border-bottom: 1px solid #3d3d3d;
 }
 
 .agent-chat__identity {
