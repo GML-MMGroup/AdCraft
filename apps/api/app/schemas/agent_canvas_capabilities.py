@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 from datetime import datetime
-import hashlib
-import json
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas_draft_seeds import (
+    DraftSeedCapabilityIdV1,
+    DraftSeedEnvelopeV1,
+)
+from app.schemas.agent_canvas_requirements import (
+    CapabilityRequirementProjectionV1,
+    EditableRequirementDirectiveV1,
+    RequirementControlV1,
+    RequirementElementPresencePatchV1,
+    RequirementPatchV1,
+)
 
 
 class _CapabilityModel(BaseModel):
@@ -50,23 +59,11 @@ def _validate_bounded_context_fields(value: Any) -> Any:
     return value
 
 
-class ExplicitElementIntentV1(_CapabilityModel):
-    element_kind: Literal[
-        "product",
-        "prop",
-        "character",
-        "scene",
-        "world_setting",
-        "script",
-        "storyboard",
-        "video",
-        "audio",
-    ]
-    presence: Literal["include", "exclude"]
-    requirements: dict[str, JsonValue] = Field(default_factory=dict)
+class ExplicitElementIntentV2(RequirementElementPresencePatchV1):
+    """One exact-evidence element decision from the current user message."""
 
 
-class TurnIntentDecisionV1(_CapabilityModel):
+class TurnIntentDecisionV2(_CapabilityModel):
     mode: Literal[
         "ordinary_conversation",
         "guided_production",
@@ -75,19 +72,19 @@ class TurnIntentDecisionV1(_CapabilityModel):
     ]
     objective: str = Field(min_length=1, max_length=4_096)
     requested_capability: CapabilityIdV1 | None = None
-    explicit_elements: tuple[ExplicitElementIntentV1, ...] = Field(default=(), max_length=16)
-    explicit_constraints: dict[str, JsonValue] = Field(default_factory=dict)
+    explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
     assistant_message: str | None = Field(default=None, max_length=4_000)
+    requirement_patch: RequirementPatchV1 | None = None
 
     @model_validator(mode="after")
-    def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV1":
+    def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV2":
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
         if len(element_kinds) != len(set(element_kinds)):
             raise ValueError("Explicit element decisions must use unique element kinds.")
         return self
 
 
-class TurnIntentContextV1(_CapabilityModel):
+class TurnIntentContextV2(_CapabilityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     workflow_revision: int = Field(ge=1)
     conversation_id: str = Field(min_length=1, max_length=160)
@@ -95,6 +92,13 @@ class TurnIntentContextV1(_CapabilityModel):
     session_exists: bool
     mentioned_node_ids: tuple[str, ...] = Field(default=(), max_length=16)
     mentioned_image_asset_ids: tuple[str, ...] = Field(default=(), max_length=16)
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_no: int = Field(ge=1)
+    requirement_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    current_hard_controls: tuple[RequirementControlV1, ...] = Field(default=(), max_length=16)
+    editable_directives: tuple[EditableRequirementDirectiveV1, ...] = Field(
+        default=(), max_length=32
+    )
 
 
 class NextActionCommandV1(_CapabilityModel):
@@ -201,19 +205,20 @@ class ValidatedNextActionV1(_CapabilityModel):
     source_action: GuidanceSourceActionV1 | None = None
 
 
-class CapabilityContextSnapshotV1(_CapabilityModel):
+class CapabilityContextSnapshotV2(_CapabilityModel):
     snapshot_id: str = Field(min_length=1, max_length=160)
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    shared_summary: str = Field(default="", max_length=8_192)
+    requirement_projection: CapabilityRequirementProjectionV1
     approved_reference_ids: tuple[str, ...] = Field(default=(), max_length=64)
+    reference_plan: CapabilityReferencePlanV1
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
-    reference_plan: CapabilityReferencePlanV1
+    shared_summary: str = Field(default="", max_length=8_192)
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
 
-class CapabilityInvocationContextV1(_CapabilityModel):
+class CapabilityInvocationContextV2(_CapabilityModel):
     context_kind: Literal["capability_operation"]
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
@@ -221,7 +226,7 @@ class CapabilityInvocationContextV1(_CapabilityModel):
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    shared_summary: str | None = Field(default=None, min_length=1, max_length=4_096)
+    requirement_projection: CapabilityRequirementProjectionV1
     approved_reference_ids: tuple[str, ...] = Field(default=(), max_length=64)
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
@@ -230,8 +235,8 @@ class CapabilityInvocationContextV1(_CapabilityModel):
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
 
-class CapabilityCommandEnvelopeV1(_CapabilityModel):
-    schema_version: Literal["1"] = "1"
+class CapabilityCommandEnvelopeV2(_CapabilityModel):
+    schema_version: Literal["2"] = "2"
     envelope_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     conversation_id: str = Field(min_length=1, max_length=160)
@@ -244,8 +249,12 @@ class CapabilityCommandEnvelopeV1(_CapabilityModel):
     objective: str = Field(min_length=1, max_length=4_096)
     context_snapshot_id: str = Field(min_length=1, max_length=160)
     context_snapshot_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_no: int = Field(ge=1)
+    requirement_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    requirement_projection_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    requirement_projection: CapabilityRequirementProjectionV1
     style_skill_run_id: str | None = Field(default=None, max_length=160)
-    shared_summary: str = Field(default="", max_length=8_192)
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     result_contract_name: str = Field(min_length=1, max_length=160)
@@ -256,36 +265,6 @@ class CapabilityCommandEnvelopeV1(_CapabilityModel):
     created_at: datetime
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
-
-    @model_validator(mode="before")
-    @classmethod
-    def restore_legacy_reference_plan(cls, value: Any) -> Any:
-        if not isinstance(value, dict) or "reference_plan" in value:
-            return value
-        capability_id = value.get("capability_id")
-        allowlist = value.get("reference_allowlist") or ()
-        references = [
-            {
-                "source_kind": "node",
-                "source_id": source_id,
-                "input_role": "image_reference",
-                "required": False,
-                "default_selected": True,
-                "priority": index,
-                "display_name": source_id,
-                "media_type": "image",
-            }
-            for index, source_id in enumerate(allowlist)
-        ]
-        payload = {
-            "capability_id": capability_id,
-            "references": references,
-            "warnings": ["legacy_reference_allowlist_restored"],
-        }
-        digest = hashlib.sha256(
-            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        return {**value, "reference_plan": {**payload, "digest": digest}}
 
 
 class NextActionEnvelopeV1(_CapabilityModel):
@@ -326,40 +305,51 @@ class _OptionBaseV1(_CapabilityModel):
     key_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
-class WorldSettingProposalOptionV1(_OptionBaseV1):
-    pass
+class _SeededOptionBaseV1(_OptionBaseV1):
+    expected_capability_id: ClassVar[DraftSeedCapabilityIdV1]
+    private_draft_seed: DraftSeedEnvelopeV1
+
+    @model_validator(mode="after")
+    def validate_seed_capability(self) -> "_SeededOptionBaseV1":
+        if self.private_draft_seed.capability_id != self.expected_capability_id:
+            raise ValueError("Proposal option Draft Seed has the wrong capability.")
+        return self
 
 
-class ProductProposalOptionV1(_OptionBaseV1):
-    pass
+class WorldSettingProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "world_setting"
 
 
-class PropProposalOptionV1(_OptionBaseV1):
-    pass
+class ProductProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "product_design"
 
 
-class CharacterProposalOptionV1(_OptionBaseV1):
-    pass
+class PropProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "prop_design"
 
 
-class SceneProposalOptionV1(_OptionBaseV1):
-    pass
+class CharacterProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "character_design"
 
 
-class ScriptProposalOptionV1(_OptionBaseV1):
-    pass
+class SceneProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "scene_design"
 
 
-class StoryboardProposalOptionV1(_OptionBaseV1):
-    pass
+class ScriptProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "script_authoring"
 
 
-class VideoProposalOptionV1(_OptionBaseV1):
-    pass
+class StoryboardProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "storyboard_design"
 
 
-class BgmProposalOptionV1(_OptionBaseV1):
-    pass
+class VideoProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "video_direction"
+
+
+class BgmProposalOptionV1(_SeededOptionBaseV1):
+    expected_capability_id = "bgm_direction"
 
 
 class QuickMediaProposalOptionV1(_OptionBaseV1):

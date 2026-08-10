@@ -16,6 +16,7 @@ from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
 from app.persistence.database import V2Database
+from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasChatEntryRow,
@@ -23,11 +24,12 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
 )
 from app.schemas.agent_canvas_capabilities import (
-    CapabilityCommandEnvelopeV1,
-    CapabilityContextSnapshotV1,
+    CapabilityCommandEnvelopeV2,
+    CapabilityContextSnapshotV2,
     CapabilityDispatchReceiptV1,
     ValidatedNextActionV1,
 )
+from app.services.agent_canvas_requirement_projection import requirement_projection_digest
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -54,10 +56,11 @@ class CapabilityDispatchService:
         self,
         source_turn: ChatTurnV2,
         command: ValidatedNextActionV1,
-        context_snapshot: CapabilityContextSnapshotV1,
+        context_snapshot: CapabilityContextSnapshotV2,
         *,
         session_id: str | None = None,
         expected_session_revision: int | None = None,
+        allow_completed_source_replacement: bool = False,
     ) -> CapabilityDispatchReceiptV1:
         if command.definition is None or command.command.capability_id is None:
             raise ValueError("Capability dispatch requires an invoke-capability command.")
@@ -75,7 +78,8 @@ class CapabilityDispatchService:
         continuation_id = f"continuation_{identity[:24]}"
         activity_id = f"activity_{identity[8:32]}"
         now = self._clock().astimezone(timezone.utc)
-        envelope = CapabilityCommandEnvelopeV1(
+        projection = context_snapshot.requirement_projection
+        envelope = CapabilityCommandEnvelopeV2(
             envelope_id=envelope_id,
             workflow_id=source_turn.workflow_id,
             conversation_id=source_turn.conversation_id,
@@ -90,8 +94,12 @@ class CapabilityDispatchService:
             objective=objective,
             context_snapshot_id=context_snapshot.snapshot_id,
             context_snapshot_digest=context_snapshot.digest,
+            requirement_revision_id=projection.ledger_revision_id,
+            requirement_revision_no=projection.ledger_revision_no,
+            requirement_digest=projection.ledger_digest,
+            requirement_projection_digest=requirement_projection_digest(projection),
+            requirement_projection=projection,
             style_skill_run_id=_style_skill_run_id(context_snapshot),
-            shared_summary=context_snapshot.shared_summary,
             capability_context=context_snapshot.capability_context,
             style_projection=context_snapshot.style_projection,
             result_contract_name=command.definition.result_contract_name,
@@ -115,20 +123,28 @@ class CapabilityDispatchService:
                     .one()
                 )
                 if str(current["status"]) == "completed":
-                    existing = self._envelopes.get_in_transaction(connection, envelope_id)
-                    if not isinstance(existing, CapabilityCommandEnvelopeV1):
-                        raise ValueError(
-                            "Operation envelope type conflicts with capability dispatch."
+                    try:
+                        existing = self._envelopes.get_in_transaction(connection, envelope_id)
+                    except V2PersistenceError as error:
+                        if (
+                            error.code != "operation_envelope_not_found"
+                            or not allow_completed_source_replacement
+                        ):
+                            raise
+                    else:
+                        if not isinstance(existing, CapabilityCommandEnvelopeV2):
+                            raise ValueError(
+                                "Operation envelope type conflicts with capability dispatch."
+                            )
+                        connection.commit()
+                        return CapabilityDispatchReceiptV1(
+                            envelope_id=existing.envelope_id,
+                            continuation_id=continuation_id,
+                            capability_turn_id=existing.capability_turn_id,
+                            capability_id=existing.capability_id,
+                            activity_id=activity_id,
+                            queued_at=existing.created_at,
                         )
-                    connection.commit()
-                    return CapabilityDispatchReceiptV1(
-                        envelope_id=existing.envelope_id,
-                        continuation_id=continuation_id,
-                        capability_turn_id=existing.capability_turn_id,
-                        capability_id=existing.capability_id,
-                        activity_id=activity_id,
-                        queued_at=existing.created_at,
-                    )
                 connection.execute(
                     insert(AgentCanvasChatTurnRow).values(
                         turn_id=capability_turn_id,
@@ -280,6 +296,6 @@ def _digest(*parts: str) -> str:
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
 
 
-def _style_skill_run_id(context_snapshot: CapabilityContextSnapshotV1) -> str | None:
+def _style_skill_run_id(context_snapshot: CapabilityContextSnapshotV2) -> str | None:
     value = context_snapshot.style_projection.get("skill_run_id")
     return value if isinstance(value, str) and value else None

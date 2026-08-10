@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-import json
 from typing import Protocol
 
 from pydantic import BaseModel, ValidationError
@@ -13,20 +12,21 @@ from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
     CapabilityMaterializationEnvelopeV1,
     CapabilityMaterializationExecutionResultV1,
-    MaterializationNormalizationV1,
-    VideoMaterializationResultV1,
+    ProposalApplicationEnvelopeV1,
 )
 from app.services.agent_canvas_materialization_normalizer import (
     CapabilityMaterializationNormalizer,
 )
 from app.services.agent_canvas_references import canonical_node_reference_facts
-from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
@@ -45,7 +45,7 @@ _FORBIDDEN_KEY_PARTS = (
 )
 
 
-class MaterializationGateway(Protocol):
+class QuickMediaMaterializationGateway(Protocol):
     def run_materialization(
         self,
         *,
@@ -97,13 +97,13 @@ class CapabilityMaterializationContextAssembler:
         return context
 
 
-class CapabilityMaterializationRunner:
-    """Invoke exactly one selected capability and publish its validated result."""
+class QuickMediaMaterializationRunner:
+    """Invoke and publish the sole remaining model-assisted Proposal path."""
 
     def __init__(
         self,
         *,
-        gateway: MaterializationGateway,
+        gateway: QuickMediaMaterializationGateway,
         context_loader: Callable[
             [CapabilityMaterializationEnvelopeV1], CapabilityMaterializationContextV1
         ],
@@ -123,6 +123,12 @@ class CapabilityMaterializationRunner:
         *,
         lease_guard: Callable[[], None],
     ) -> CapabilityMaterializationExecutionResultV1:
+        if envelope.capability_id != "quick_media":
+            raise V2PersistenceError(
+                "quick_media_materialization_invalid",
+                "Only Quick Media uses model-assisted Proposal materialization.",
+                stage="quick_media_materialization",
+            )
         contract = CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS[envelope.capability_id]
         if contract.__name__ != envelope.result_contract_name:
             raise V2PersistenceError(
@@ -131,28 +137,15 @@ class CapabilityMaterializationRunner:
                 stage="capability_materialization",
             )
         context = self._context_loader(envelope)
-        operation = f"materialize_{_operation_stem(envelope.capability_id)}"
+        operation = "materialize_quick_media"
         repaired = False
-        try:
-            raw = self._invoke(
-                envelope,
-                operation,
-                context,
-                child="initial",
-                repair_error=None,
-            )
-        except PiAgentRuntimeError as error:
-            if envelope.capability_id != "video_direction" or error.code != (
-                "agent_deadline_exceeded"
-            ):
-                raise
-            normalization = _video_deadline_fallback(self._normalizer, context)
-            lease_guard()
-            node_id = self._publisher(envelope, normalization, lease_guard)
-            return CapabilityMaterializationExecutionResultV1(
-                materialization_id=envelope.materialization_id,
-                node_id=node_id,
-            )
+        raw = self._invoke(
+            envelope,
+            operation,
+            context,
+            child="initial",
+            repair_error=None,
+        )
         try:
             result = contract.model_validate(raw)
         except ValidationError:
@@ -218,21 +211,6 @@ class CapabilityMaterializationRunner:
         )
 
 
-def _operation_stem(capability_id: str) -> str:
-    return {
-        "world_setting": "world_setting",
-        "product_design": "product",
-        "prop_design": "prop",
-        "character_design": "character",
-        "scene_design": "scene",
-        "script_authoring": "script",
-        "storyboard_design": "storyboard",
-        "video_direction": "video",
-        "bgm_direction": "bgm",
-        "quick_media": "quick_media",
-    }[capability_id]
-
-
 def _reject_unsafe(value: object, key: str = "") -> None:
     normalized = key.casefold()
     if normalized and any(part in normalized for part in _FORBIDDEN_KEY_PARTS):
@@ -261,7 +239,7 @@ def _context_error() -> V2PersistenceError:
 
 
 def materialization_context_from_state(
-    envelope: CapabilityMaterializationEnvelopeV1,
+    envelope: ProposalApplicationEnvelopeV1,
     *,
     conversations: AgentCanvasConversationRepository,
     workflows: AgentCanvasWorkflowRepository,
@@ -279,6 +257,12 @@ def materialization_context_from_state(
     session = conversations.get_guidance_session(envelope.workflow_id)
     memory = conversations.get_creative_memory(envelope.workflow_id)
     workflow = workflows.get_workflow(envelope.workflow_id)
+    requirement_head = AgentCanvasRequirementRepository(workflows.database).get_current(
+        envelope.workflow_id
+    )
+    requirement_controls = {
+        control.control: control.value for control in requirement_head.ledger.hard_controls
+    }
     bound_reference_ids: dict[str, tuple[str, ...]] = {}
     if envelope.target_node_id is not None:
         for binding in workflow.bindings:
@@ -362,8 +346,8 @@ def materialization_context_from_state(
     return CapabilityMaterializationContextAssembler(
         proposal_context=lambda _: {
             "creative_goal": proposal.proposal_purpose or session.goal.summary,
-            "explicit_constraints": session.goal.explicit_constraints,
-            "shared_summary": session.goal.summary,
+            "explicit_constraints": requirement_controls,
+            "shared_summary": "",
             "capability_facts": {
                 "approved_node_ids": list(
                     memory.approved_node_ids.get(_creative_role(envelope.capability_id), ())
@@ -378,7 +362,7 @@ def materialization_context_from_state(
 
 
 def validate_materialization_reference_snapshots(
-    envelope: CapabilityMaterializationEnvelopeV1,
+    envelope: ProposalApplicationEnvelopeV1,
     *,
     workflows: AgentCanvasWorkflowRepository,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
@@ -419,89 +403,6 @@ def _creative_role(capability_id: str) -> str:
         "bgm_direction": "bgm",
         "quick_media": "general_image",
     }[capability_id]
-
-
-def _video_deadline_fallback(
-    normalizer: CapabilityMaterializationNormalizer,
-    context: CapabilityMaterializationContextV1,
-) -> MaterializationNormalizationV1:
-    storyboard_parts: list[str] = []
-    reference_ids: list[str] = []
-    for summary in context.reference_summaries:
-        source_id = summary.get("source_id")
-        if isinstance(source_id, str) and source_id.strip():
-            reference_ids.append(source_id)
-        binding_ids = summary.get("binding_ids")
-        if isinstance(binding_ids, list):
-            reference_ids.extend(str(value) for value in binding_ids if str(value).strip())
-        if summary.get("creative_role") != "storyboard_sequence":
-            continue
-        facts = summary.get("source_identity_facts")
-        if isinstance(facts, dict):
-            storyboard_parts.append(json.dumps(facts, sort_keys=True, ensure_ascii=True))
-    storyboard_content = "\n".join(storyboard_parts).strip()
-    if not storyboard_content:
-        raise V2PersistenceError(
-            "capability_materialization_context_invalid",
-            "Video Direction fallback requires validated Storyboard content.",
-            stage="capability_materialization",
-        )
-    duration = _video_constraint(context.explicit_constraints, "duration_seconds")
-    if not isinstance(duration, (int, float)) or isinstance(duration, bool) or duration <= 0:
-        duration = 5
-    generate_audio = _video_constraint(context.explicit_constraints, "generate_audio")
-    audio_enabled = generate_audio is not False
-    bound_identity = ", ".join(dict.fromkeys(reference_ids)) or "the frozen references"
-    summary = context.selected_option.public_summary.strip()
-    result = VideoMaterializationResultV1(
-        title=context.selected_option.title,
-        summary_prompt=summary,
-        generation_prompt=(
-            f"Animate the accepted Storyboard sequence. {storyboard_content}\n"
-            f"Preserve exact frozen Binding references: {bound_identity}.\n"
-            f"{summary}\n"
-            + (
-                "Preserve native dialogue, ambience, and action effects."
-                if audio_enabled
-                else "Render silent video without generated audio."
-            )
-        ),
-        structured_content={
-            "segment_summary": summary,
-            "duration_seconds": duration,
-            "storyboard_content": storyboard_content,
-            "dialogue": "",
-            "voice_style": "",
-            "environment_sound": (
-                "Preserve native ambience from the accepted Storyboard." if audio_enabled else ""
-            ),
-            "action_effects": (
-                "Preserve native action effects from the accepted Storyboard."
-                if audio_enabled
-                else ""
-            ),
-            "negative_constraints": "Do not generate background music.",
-            "background_music": False,
-        },
-    )
-    normalized = normalizer.normalize(
-        capability_id="video_direction",
-        result=result,
-        context=context,
-    )
-    return normalized.model_copy(
-        update={
-            "mode": "deterministic_fallback",
-            "warnings": ("agent_deadline_exceeded",),
-        }
-    )
-
-
-def _video_constraint(constraints: Mapping[str, object], field: str) -> object | None:
-    if field in constraints:
-        return constraints[field]
-    scoped = constraints.get("required_video_parameters")
-    return scoped.get(field) if isinstance(scoped, dict) else None
 
 
 def _stale_reference_error() -> V2PersistenceError:

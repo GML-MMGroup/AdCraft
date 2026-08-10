@@ -31,6 +31,7 @@ class AgentCanvasContinuationWorker:
         *,
         next_action: Callable[[str], object],
         capability_command: Callable[[str], object],
+        replace_superseded_capability: Callable[[str], object] | None = None,
         capability_materialization: Callable[[str, Callable[[], None]], object] | None = None,
         clock: Callable[[], datetime] | None = None,
         worker_id: str,
@@ -47,6 +48,7 @@ class AgentCanvasContinuationWorker:
             "capability_command": capability_command,
         }
         self._capability_materialization = capability_materialization
+        self._replace_superseded_capability = replace_superseded_capability
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._worker_id = worker_id
         self._batch_limit = batch_limit
@@ -92,6 +94,18 @@ class AgentCanvasContinuationWorker:
         except Exception as error:  # noqa: BLE001 - each delivery is isolated.
             if isinstance(error, V2PersistenceError) and error.code == "continuation_lease_stale":
                 return "retried"
+            if (
+                isinstance(error, V2PersistenceError)
+                and error.code == "requirement_revision_superseded"
+            ):
+                self._outbox.supersede(
+                    delivery.continuation_id,
+                    reason="Capability result used an obsolete Requirement revision.",
+                    now=self._clock(),
+                )
+                if self._replace_superseded_capability is not None:
+                    self._replace_superseded_capability(delivery.envelope_id)
+                return "completed"
             error_code, retryable = _structured_failure(error)
             return self._record_failure(
                 delivery,

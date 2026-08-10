@@ -30,9 +30,14 @@ from fastapi.responses import StreamingResponse
 from app.api.v2.etag import (
     V2PreconditionError,
     parse_project_if_match,
+    parse_requirement_if_match,
     parse_workflow_if_match,
     project_etag,
+    requirement_ledger_etag,
     workflow_etag,
+)
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
 )
 from app.core.config import Settings, get_settings
 from app.persistence.agent_canvas_repository import (
@@ -119,6 +124,10 @@ from app.schemas.agent_canvas_execution_settings import (
     AgentExecutionSettingsPatchV2,
     AgentExecutionSettingsV2,
 )
+from app.schemas.agent_canvas_requirements import (
+    RequirementLedgerPatchRequestV1,
+    RequirementLedgerResponseV1,
+)
 from app.schemas.agent_working_documents import (
     AgentWorkingDocumentKindV2,
     AgentWorkingDocumentPageV2,
@@ -187,6 +196,7 @@ from app.services.agent_canvas_provider_prompts import (
 )
 from app.services.agent_canvas_references import AdReferenceBundleResolver
 from app.services.agent_canvas_projects import AgentCanvasProjectService
+from app.services.agent_canvas_requirements import AgentCanvasRequirementService
 from app.services.agent_canvas_runtime import (
     AgentCanvasRunService,
     CanvasRuntimeSnapshotService,
@@ -216,9 +226,11 @@ from app.services.agent_canvas_materialization_publication import (
     CapabilityMaterializationPublicationService,
 )
 from app.services.agent_canvas_materialization_runtime import (
-    CapabilityMaterializationRunner,
+    QuickMediaMaterializationRunner,
     materialization_context_from_state,
 )
+from app.services.agent_canvas_proposal_publication import ProposalPublicationRunner
+from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_execution_settings import (
     AgentCanvasExecutionSettingsService,
@@ -251,6 +263,7 @@ class AgentCanvasRuntime:
     database: V2Database
     projects: AgentCanvasProjectService
     workflows: AgentCanvasWorkflowRepository
+    requirements: AgentCanvasRequirementService
     nodes: AgentCanvasNodeService
     bindings: AgentCanvasBindingService
     connected_authoring: AgentCanvasConnectedAuthoringService
@@ -327,6 +340,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
     workflow_repository = AgentCanvasWorkflowRepository(
         database,
         project_repository,
+        event_repository,
+    )
+    requirement_repository = AgentCanvasRequirementRepository(database)
+    requirement_service = AgentCanvasRequirementService(
+        database,
+        requirement_repository,
         event_repository,
     )
     execution_settings = AgentCanvasExecutionSettingsService(
@@ -797,6 +816,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         run_nodes=queue_nodes,
         continuation_outbox=continuation_outbox,
         model_selection=model_selection,
+        requirements=requirement_service,
     )
     capability_execution = CapabilityExecutionService(
         database=database,
@@ -828,7 +848,18 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         database,
         event_repository,
     )
-    materialization_runner = CapabilityMaterializationRunner(
+    materialization_publisher = CapabilityMaterializationPublicationService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        asset_resolver=asset_service.resolve_asset,
+        materializer=GuidanceProposalActionService(
+            workflow_repository,
+            conversation_repository,
+            asset_resolver=asset_service.resolve_asset,
+            connection_policy=connection_policy,
+        ),
+    )
+    materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,
         context_loader=lambda envelope: materialization_context_from_state(
             envelope,
@@ -836,22 +867,24 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             workflows=workflow_repository,
             asset_resolver=asset_service.resolve_asset,
         ),
-        publisher=CapabilityMaterializationPublicationService(
-            workflows=workflow_repository,
+        publisher=materialization_publisher.publish,
+    )
+    publication_runner = ProposalPublicationRunner(
+        conversations=conversation_repository,
+        context_loader=lambda envelope: materialization_context_from_state(
+            envelope,
             conversations=conversation_repository,
+            workflows=workflow_repository,
             asset_resolver=asset_service.resolve_asset,
-            materializer=GuidanceProposalActionService(
-                workflow_repository,
-                conversation_repository,
-                asset_resolver=asset_service.resolve_asset,
-                connection_policy=connection_policy,
-            ),
-        ).publish,
+        ),
+        publisher=materialization_publisher.publish,
     )
 
     def execute_materialization(envelope_id: str, lease_guard) -> object:
         envelope = materialization_repository.get_envelope(envelope_id)
         materialization_repository.mark_working(envelope)
+        if isinstance(envelope, ProposalPublicationEnvelopeV1):
+            return publication_runner.execute(envelope, lease_guard=lease_guard)
         return materialization_runner.execute(envelope, lease_guard=lease_guard)
 
     def fail_continuation_turn(turn_id: str, code: str, message: str) -> object:
@@ -867,6 +900,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         continuation_outbox,
         next_action=durable_next_action.execute,
         capability_command=capability_execution.execute,
+        replace_superseded_capability=(durable_next_action.requeue_superseded_capability),
         capability_materialization=execute_materialization,
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
@@ -881,6 +915,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             style_activation,
         ),
         workflows=workflow_repository,
+        requirements=requirement_service,
         nodes=AgentCanvasNodeService(
             workflow_repository,
             model_selection=model_selection,
@@ -1062,6 +1097,63 @@ def get_workflow(
         raise _persistence_http_error(error) from error
     response.headers["ETag"] = workflow_etag(workflow_id, workflow.revision)
     return workflow
+
+
+@router.get(
+    "/workflows/{workflow_id}/requirements",
+    response_model=RequirementLedgerResponseV1,
+)
+def get_requirements(
+    workflow_id: str,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> RequirementLedgerResponseV1:
+    try:
+        requirements = runtime.requirements.get_current(workflow_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = requirement_ledger_etag(
+        workflow_id,
+        requirements.revision_no,
+    )
+    return requirements
+
+
+@router.patch(
+    "/workflows/{workflow_id}/requirements",
+    response_model=RequirementLedgerResponseV1,
+)
+def patch_requirements(
+    workflow_id: str,
+    request: RequirementLedgerPatchRequestV1,
+    response: Response,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> RequirementLedgerResponseV1:
+    if not idempotency_key or len(idempotency_key) > 256:
+        raise _http_error(
+            "idempotency_key_required",
+            422,
+            "A non-empty Idempotency-Key of at most 256 characters is required.",
+        )
+    try:
+        expected_revision = parse_requirement_if_match(if_match, workflow_id)
+        requirements = runtime.requirements.apply_manual_patch(
+            workflow_id,
+            expected_revision_no=expected_revision,
+            idempotency_key=idempotency_key,
+            request=request,
+        )
+    except V2PreconditionError as error:
+        raise _http_error(error.code, error.status_code, str(error)) from error
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    response.headers["ETag"] = requirement_ledger_etag(
+        workflow_id,
+        requirements.revision_no,
+    )
+    return requirements
 
 
 @router.get(
@@ -2277,6 +2369,13 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "locator_invalid": 422,
         "unsupported_canvas_model": 422,
         "workflow_revision_conflict": 412,
+        "requirement_ledger_not_found": 404,
+        "requirement_revision_conflict": 412,
+        "requirement_patch_invalid": 422,
+        "requirement_scope_invalid": 422,
+        "requirement_directive_not_found": 422,
+        "requirement_projection_budget_exceeded": 422,
+        "idempotency_key_required": 422,
         "idempotency_conflict": 409,
         "style_skill_activation_conflict": 409,
         "style_skill_snapshot_invalid": 422,
@@ -2353,6 +2452,10 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_reference_plan_invalid": 422,
         "proposal_target_revision_stale": 409,
         "proposal_reference_revision_stale": 409,
+        "proposal_draft_seed_missing": 422,
+        "proposal_draft_seed_invalid": 422,
+        "proposal_publication_invalid": 422,
+        "proposal_publication_failed": 503,
         "capability_materialization_context_invalid": 422,
         "capability_materialization_contract_invalid": 422,
         "capability_materialization_failed": 503,

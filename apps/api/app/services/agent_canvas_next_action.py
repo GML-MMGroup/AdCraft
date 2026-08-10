@@ -17,9 +17,14 @@ from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
+    CapabilityCommandEnvelopeV2,
+    CapabilityDispatchReceiptV1,
     NextActionCommandV1,
     NextActionContextV1,
     NextActionEnvelopeV1,
@@ -98,6 +103,7 @@ class DurableNextActionExecutionService:
             model_selection=model_selection,
         )
         self._asset_resolver = asset_resolver
+        self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
     def execute(self, envelope_id: str) -> ValidatedNextActionV1:
         envelope = self._envelopes.get(envelope_id)
@@ -143,7 +149,7 @@ class DurableNextActionExecutionService:
                 session_revision=session.revision,
                 objective=envelope.objective,
                 policy=policy,
-                shared_summary=session.goal.summary,
+                shared_summary="",
             ),
             turn_id=envelope.next_action_turn_id,
         )
@@ -173,6 +179,7 @@ class DurableNextActionExecutionService:
                     capability_id=command.command.capability_id,
                     objective=command.command.objective or envelope.objective,
                     reference_plan=reference_plan,
+                    requirement_revision=self._requirements.get_current(envelope.workflow_id),
                     asset_resolver=self._asset_resolver,
                 ),
                 session_id=session.session_id,
@@ -193,3 +200,75 @@ class DurableNextActionExecutionService:
             assistant_message=command.command.message,
         )
         return command
+
+    def requeue_superseded_capability(
+        self,
+        envelope_id: str,
+    ) -> CapabilityDispatchReceiptV1 | None:
+        """Reproject one still-relevant stale capability against the current Ledger."""
+
+        envelope = self._envelopes.get(envelope_id)
+        if not isinstance(envelope, CapabilityCommandEnvelopeV2):
+            raise V2PersistenceError(
+                "capability_envelope_invalid",
+                "Operation envelope does not contain a capability command.",
+                stage="next_action_execution",
+            )
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        if session.status != "active":
+            return None
+        if envelope.capability_id in self._outbox.list_nonterminal_capability_ids(
+            envelope.workflow_id
+        ):
+            return None
+        if any(
+            proposal.capability_id == envelope.capability_id
+            for proposal in self._conversations.list_open_proposals(envelope.workflow_id)
+        ):
+            return None
+
+        workflow = self._workflows.get_workflow(envelope.workflow_id)
+        source_turn = self._conversations.get_turn(envelope.source_turn_id)
+        requirement_revision = self._requirements.get_current(envelope.workflow_id)
+        if requirement_revision.revision_id == envelope.requirement_revision_id:
+            return None
+        reference_plan = self._reference_planner.plan(
+            workflow=workflow,
+            session=session,
+            capability_id=envelope.capability_id,
+            objective=envelope.objective,
+            explicit_node_ids=tuple(source_turn.request.get("mentioned_node_ids") or ()),
+            explicit_image_asset_ids=tuple(
+                source_turn.request.get("mentioned_image_asset_ids") or ()
+            ),
+            approved_node_ids=self._conversations.get_creative_memory(
+                envelope.workflow_id
+            ).approved_node_ids,
+            asset_resolver=self._asset_resolver,
+        )
+        command = ValidatedNextActionV1(
+            command=NextActionCommandV1(
+                action="invoke_capability",
+                capability_id=envelope.capability_id,
+                objective=envelope.objective,
+            ),
+            definition=self._policy.definition(envelope.capability_id),
+            source_action=envelope.source_action,
+        )
+        return self._capability_dispatch.dispatch_next_action(
+            source_turn,
+            command,
+            build_capability_context_snapshot(
+                workflow=workflow,
+                session=session,
+                conversations=self._conversations,
+                capability_id=envelope.capability_id,
+                objective=envelope.objective,
+                reference_plan=reference_plan,
+                requirement_revision=requirement_revision,
+                asset_resolver=self._asset_resolver,
+            ),
+            session_id=session.session_id,
+            expected_session_revision=session.revision,
+            allow_completed_source_replacement=True,
+        )
