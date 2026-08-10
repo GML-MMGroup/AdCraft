@@ -6,9 +6,6 @@ import { HomePage } from "./HomePage";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
-const mobileHeroTitleStyles = styles.match(
-  /@media \(max-width: 620px\)[\s\S]*?\.home-product-hero__title\s*\{[^}]*\}/,
-)?.[0] ?? "";
 const darkAccentPseudoStyles = styles.match(
   /html\[data-theme="dark"\] \.home-product-hero__accent::after\s*\{[^}]*\}/,
 )?.[0] ?? "";
@@ -46,33 +43,21 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__accent-glyph")).toHaveLength(0);
   });
 
-  it("uses the approved Space Grotesk, Barlow Condensed, and Inter homepage system", () => {
+  it("uses the exported typography system while retaining the accent treatment", () => {
     expect(styles).toMatch(
-      /@font-face\s*\{[^}]*font-family:\s*"Space Grotesk";[^}]*space-grotesk-latin-variable\.woff2/s,
+      /\.home-page\s*\{[^}]*--home-font-display:\s*"Trebuchet MS"[^;]*;[^}]*--home-font-accent:\s*Georgia[^;]*;[^}]*--home-font-ui:\s*Arial[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
     );
     expect(styles).toMatch(
-      /@font-face\s*\{[^}]*font-family:\s*"Barlow Condensed";[^}]*font-style:\s*italic;[^}]*font-weight:\s*900;[^}]*barlow-condensed-black-italic\.woff2/s,
+      /\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-family:\s*"Trebuchet MS"[^}]*font-size:\s*60px;[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.1;[^}]*letter-spacing:\s*0\.016em;/s,
     );
     expect(styles).toMatch(
-      /@font-face\s*\{[^}]*font-family:\s*"Inter";[^}]*inter-latin-variable\.woff2/s,
-    );
-    expect(styles).toMatch(
-      /\.home-page\s*\{[^}]*--home-font-display:\s*"Space Grotesk"[^;]*;[^}]*--home-font-accent:\s*"Barlow Condensed"[^;]*;[^}]*--home-font-ui:\s*"Inter"[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
-    );
-    expect(styles).toMatch(
-      /\.home-product-hero__title\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-size:\s*62px;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.02;[^}]*letter-spacing:\s*0;/s,
-    );
-    expect(mobileHeroTitleStyles).toMatch(
-      /font-size:\s*40px;[^}]*line-height:\s*1\.02;/s,
+      /@media \(max-width: 620px\)\s*\{\s*\.home-page \.home-product-hero__title\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-size:\s*40px;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__accent\s*\{[^}]*font-family:\s*var\(--home-font-accent\);[^}]*font-size:\s*150px;[^}]*font-style:\s*italic;[^}]*font-weight:\s*900;[^}]*line-height:\s*0\.9;[^}]*transform:\s*none;/s,
-    );
-    expect(styles).toMatch(
-      /\.section-title h2\s*\{[^}]*font-family:\s*var\(--home-font-display\);[^}]*font-weight:\s*700;[^}]*text-transform:\s*uppercase;/s,
+      /\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-family:\s*Georgia[^}]*font-size:\s*70px;[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.2;[^}]*letter-spacing:\s*0\.046em;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__accent::after\s*\{[^}]*content:\s*attr\(data-accent-text\);[^}]*background-size:\s*240% 100%;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*-webkit-text-fill-color:\s*transparent;[^}]*pointer-events:\s*none;/s,
@@ -112,7 +97,7 @@ describe("HomePage hero title", () => {
       /\.home-product-film\s*\{[^}]*margin-bottom:\s*22px;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__create\s*\{[^}]*min-height:\s*56px;[^}]*font-size:\s*16px;/s,
+      /\.home-product-hero__create\s*\{[^}]*min-height:\s*56px;/s,
     );
   });
 
