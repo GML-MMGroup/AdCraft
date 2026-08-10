@@ -804,4 +804,46 @@ describe("AgentCanvasChatPanel Style integration", () => {
     expect(agentMessageRule).toContain("background: transparent");
     expect(userMessageRule).toContain("background: #343434");
   });
+
+  it("collapses to an AdCraft Bot trigger without discarding the message draft", () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      workflow_id: "workflow-1",
+      conversation_id: null,
+      items: [],
+      next_cursor: 0,
+    }), { headers: { "Content-Type": "application/json" } })));
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 1,
+      layout_revision: 1,
+      nodes: [],
+      bindings: [],
+      assets: [],
+    };
+    const { container } = render(
+      <AgentCanvasChatPanel
+        workflow={workflow}
+        chatRevision={0}
+        chatEvents={[]}
+        onFocusNode={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }), {
+      target: { value: "Keep this draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Collapse AdCraft Bot panel" }));
+
+    expect(screen.queryByRole("complementary", { name: "AdCraft Video Agent" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open AdCraft Bot panel" })).toBeTruthy();
+    expect(container.querySelector('img[src="/imgs/logo.png"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open AdCraft Bot panel" }));
+
+    expect(screen.getByRole("complementary", { name: "AdCraft Video Agent" })).toBeTruthy();
+    expect((screen.getByRole("textbox", { name: "Message AdCraft Video Agent" }) as HTMLTextAreaElement).value).toBe("Keep this draft");
+  });
 });

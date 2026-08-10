@@ -156,6 +156,7 @@ export function AgentCanvasPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentCanvasFlowNode>([]);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [videoPreview, setVideoPreview] = useState<{
     asset: ProjectAssetSummaryV2;
@@ -603,7 +604,7 @@ export function AgentCanvasPage() {
     : null;
   const running = Boolean(live.state.runtime?.active_execution_id);
   return (
-    <div className="agent-canvas-page">
+    <div className={`agent-canvas-page${chatCollapsed ? " is-chat-collapsed" : ""}`}>
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- React Flow owns canvas keyboard and pointer semantics; this listener only distinguishes pane double-clicks. */}
       <div
         ref={pointerSpotlight.hostRef}
@@ -870,6 +871,7 @@ export function AgentCanvasPage() {
         onFocusNode={focusNode}
         onActionReceipt={placeReceiptNodes}
         onWorkflowRefresh={refreshWorkflow}
+        onCollapsedChange={setChatCollapsed}
       />
     </div>
   );

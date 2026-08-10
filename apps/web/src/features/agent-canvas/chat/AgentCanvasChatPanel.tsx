@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AssetsIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ChevronUpIcon,
   CloseIcon,
   DocumentIcon,
@@ -48,6 +49,7 @@ export function AgentCanvasChatPanel({
   onFocusNode,
   onActionReceipt,
   onWorkflowRefresh,
+  onCollapsedChange,
 }: {
   workflow: AgentCanvasWorkflowV2;
   chatRevision: number;
@@ -57,6 +59,7 @@ export function AgentCanvasChatPanel({
   onFocusNode: (nodeId: string) => void;
   onActionReceipt?: (receipt: AgentActionReceiptV2) => void;
   onWorkflowRefresh?: () => Promise<void> | void;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }) {
   const chat = useAgentCanvasChat({
     workflow,
@@ -66,6 +69,7 @@ export function AgentCanvasChatPanel({
     onWorkflowRefresh,
   });
   const [draft, setDraft] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionedNodeIds, setMentionedNodeIds] = useState<string[]>([]);
   const [mentionedAssetIds, setMentionedAssetIds] = useState<string[]>([]);
@@ -125,6 +129,24 @@ export function AgentCanvasChatPanel({
       : [...selected, value]);
   }
 
+  if (collapsed) {
+    return (
+      <button
+        className="agent-chat__collapsed-trigger"
+        type="button"
+        aria-label="Open AdCraft Bot panel"
+        title="Open AdCraft Bot"
+        onClick={() => {
+          setCollapsed(false);
+          onCollapsedChange?.(false);
+        }}
+      >
+        <img src="/imgs/logo.png" alt="" />
+        <span>AdCraft Bot</span>
+      </button>
+    );
+  }
+
   return (
     <aside className="agent-chat" aria-label="AdCraft Video Agent">
       <header className="agent-chat__header">
@@ -142,11 +164,25 @@ export function AgentCanvasChatPanel({
                 : "Ready"}
           </span>
         </div>
-        <AgentCanvasDocumentBrowser
-          workflowId={workflow.workflow_id}
-          documentEvents={documentEvents}
-          onFocusNode={onFocusNode}
-        />
+        <div className="agent-chat__header-actions">
+          <AgentCanvasDocumentBrowser
+            workflowId={workflow.workflow_id}
+            documentEvents={documentEvents}
+            onFocusNode={onFocusNode}
+          />
+          <button
+            className="agent-chat__collapse"
+            type="button"
+            aria-label="Collapse AdCraft Bot panel"
+            title="Collapse AdCraft Bot"
+            onClick={() => {
+              setCollapsed(true);
+              onCollapsedChange?.(true);
+            }}
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
         <AgentCanvasExecutionModeControl
           workflowId={workflow.workflow_id}
           eventRevision={settingsRevision}

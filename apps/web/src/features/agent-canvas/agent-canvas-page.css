@@ -24,6 +24,14 @@
   border-right: 1px solid rgb(255 255 255 / 42%);
 }
 
+.agent-canvas-page.is-chat-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agent-canvas-page.is-chat-collapsed .agent-canvas-board {
+  border-right: 0;
+}
+
 .agent-canvas-board .react-flow,
 .agent-canvas-board .react-flow__renderer {
   width: 100%;
