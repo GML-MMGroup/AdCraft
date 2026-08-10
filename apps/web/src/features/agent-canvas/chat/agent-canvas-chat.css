@@ -206,6 +206,67 @@
   white-space: pre-wrap;
 }
 
+.agent-chat__markdown {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgb(105 96 145 / 13%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 68%);
+  font-size: 13px;
+  line-height: 1.48;
+  white-space: normal;
+}
+
+.agent-chat__markdown p,
+.agent-chat__markdown h1,
+.agent-chat__markdown h2,
+.agent-chat__markdown h3,
+.agent-chat__markdown h4,
+.agent-chat__markdown h5,
+.agent-chat__markdown h6,
+.agent-chat__markdown ul,
+.agent-chat__markdown ol,
+.agent-chat__markdown blockquote,
+.agent-chat__markdown pre {
+  margin: 0 0 8px;
+}
+
+.agent-chat__markdown p:last-child,
+.agent-chat__markdown ul:last-child,
+.agent-chat__markdown ol:last-child,
+.agent-chat__markdown blockquote:last-child,
+.agent-chat__markdown pre:last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat__markdown ul,
+.agent-chat__markdown ol {
+  padding-left: 18px;
+}
+
+.agent-chat__markdown code {
+  border-radius: 6px;
+  padding: 2px 4px;
+  background: rgb(26 24 38 / 10%);
+  font-size: 12px;
+}
+
+.agent-chat__markdown pre {
+  display: block;
+  overflow-x: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgb(15 13 23 / 10%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre;
+}
+
+.agent-chat__markdown blockquote {
+  border-left: 2px solid rgb(102 96 145 / 45%);
+  padding-left: 10px;
+}
+
 .agent-chat__message--user {
   align-self: flex-end;
 }

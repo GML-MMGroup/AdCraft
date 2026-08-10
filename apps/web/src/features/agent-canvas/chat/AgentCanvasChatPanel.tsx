@@ -35,6 +35,7 @@ import {
   AgentCanvasDocumentBrowser,
   AgentCanvasDocumentReferenceCard,
 } from "../documents/AgentCanvasDocuments.tsx";
+import { isLikelyMarkdown, renderMarkdownAwareText } from "../canvas/AgentCanvasMarkdown.tsx";
 import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
@@ -221,7 +222,13 @@ export function AgentCanvasChatPanel({
                     key={`message-${item.message_id}`}
                   >
                     <span>{item.speaker === "user" ? "You" : "AdCraft Video Agent"}</span>
-                    <p>{item.text}</p>
+                    {isLikelyMarkdown(item.text)
+                      ? (
+                        <div className="agent-chat__markdown">
+                          {renderMarkdownAwareText(item.text)}
+                        </div>
+                      )
+                      : <p>{item.text}</p>}
                   </div>
                 );
               }
