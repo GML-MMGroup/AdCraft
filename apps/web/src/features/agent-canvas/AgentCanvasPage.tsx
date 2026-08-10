@@ -46,6 +46,10 @@ import { AgentCanvasPointerBackgrounds } from "./canvas/AgentCanvasPointerBackgr
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import {
+  reconcileDragAwareNodes,
+  setDraggedNodeIds,
+} from "./canvas/draggingNodeState.ts";
+import {
   findAvailableCanvasPosition,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -169,6 +173,7 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   const {
     focusedNodeId,
@@ -330,13 +335,11 @@ export function AgentCanvasPage() {
 
   useEffect(() => {
     setNodes((current) => {
-      const byId = new Map(current.map((node) => [node.id, node]));
-      return canonicalNodes.map((node) => {
-        const existing = byId.get(node.id);
-        return existing?.dragging
-          ? { ...node, position: existing.position, dragging: true, selected: existing.selected }
-          : { ...node, selected: existing?.selected ?? false };
-      });
+      return reconcileDragAwareNodes(
+        canonicalNodes,
+        current,
+        activeDraggedNodeIdsRef.current,
+      );
     });
   }, [canonicalNodes, setNodes]);
 
@@ -639,8 +642,22 @@ export function AgentCanvasPage() {
             setSelectedNodeId(node.id);
             focusCanvasNode(node.id);
           }}
+          onNodeDragStart={(_event, node, draggedNodes) => {
+            setDraggedNodeIds(
+              activeDraggedNodeIdsRef.current,
+              node.id,
+              draggedNodes.map((item) => item.id),
+              true,
+            );
+          }}
           onNodeDragStop={(_event, node, draggedNodes) => {
             const changed = draggedNodes.length ? draggedNodes : [node];
+            setDraggedNodeIds(
+              activeDraggedNodeIdsRef.current,
+              node.id,
+              changed.map((item) => item.id),
+              false,
+            );
             void updateNodePositions(changed.map((item) => ({
               node_id: item.id,
               x: item.position.x,
