@@ -687,6 +687,7 @@ export function AgentCanvasPage() {
           }}
           fitView={false}
           colorMode="system"
+          proOptions={{ hideAttribution: true }}
         >
           <AgentCanvasPointerBackgrounds />
           <Controls position="bottom-left" showInteractive={false} />
