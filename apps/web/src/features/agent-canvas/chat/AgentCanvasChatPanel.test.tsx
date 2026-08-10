@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -781,5 +784,24 @@ describe("AgentCanvasChatPanel Style integration", () => {
 
     expect(screen.getByRole("button", { name: "Mention node or image asset" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Style: Platform Default" })).toBeTruthy();
+  });
+
+  it("uses an opaque edge-aligned chat rail with plain Agent replies", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/chat/agent-canvas-chat.css");
+    const css = readFileSync(cssPath, "utf8");
+    const panelRule = css.match(/^\.agent-chat\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const agentMessageRule = css.match(/\.agent-chat__message--agent\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const userMessageRule = css.match(/\.agent-chat__message--user\s*:\s*is\(p, \.agent-chat__markdown\)\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(panelRule).toContain("top: 0");
+    expect(panelRule).toContain("right: 0");
+    expect(panelRule).toContain("bottom: 0");
+    expect(panelRule).toContain("background: #282828");
+    expect(panelRule).toContain("backdrop-filter: none");
+    expect(panelRule).toContain("border-radius: 0");
+    expect(css).toMatch(/\.agent-chat__message--agent > span\s*\{\s*display: none;/);
+    expect(agentMessageRule).toContain("padding: 0");
+    expect(agentMessageRule).toContain("background: transparent");
+    expect(userMessageRule).toContain("background: #343434");
   });
 });
