@@ -47,15 +47,6 @@
   border-color: rgba(207, 91, 100, 0.86);
 }
 
-.agent-canvas-node--selected {
-  border-color: color-mix(in srgb, var(--agent-node-accent) 84%, white);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--agent-node-accent) 22%, transparent),
-    0 16px 34px rgba(27, 29, 47, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.74);
-  transform: translateY(-1px);
-}
-
 .agent-canvas-node__surface {
   position: absolute;
   inset: 0;
@@ -640,14 +631,6 @@
 :root[data-theme="dark"] .agent-canvas-audio-player::before {
   border-color: rgba(255, 255, 255, 0.3);
   background: transparent;
-}
-
-:root[data-theme="dark"] .agent-canvas-node.agent-canvas-node--selected {
-  border-color: color-mix(in srgb, var(--agent-node-accent) 84%, white);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--agent-node-accent) 24%, transparent),
-    0 20px 50px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
 :root[data-theme="dark"] .agent-canvas-node__media--contain {

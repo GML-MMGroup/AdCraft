@@ -121,10 +121,6 @@ describe("AgentCanvasNodeCard", () => {
     const glassEdgeRule = css.match(
       /:root\[data-theme="dark"\] \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
     )?.[1];
-    const selectedRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-node\.agent-canvas-node--selected\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
-
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("backdrop-filter: none");
     expect(playerRule).toContain("isolation: auto");
@@ -133,7 +129,13 @@ describe("AgentCanvasNodeCard", () => {
     expect(playerRule).not.toContain("gradient");
     expect(glassEdgeRule).toContain("background: transparent");
     expect(glassEdgeRule).not.toContain("gradient");
-    expect(selectedRule).toContain("0 0 0 3px color-mix(in srgb, var(--agent-node-accent) 24%, transparent)");
+  });
+
+  it("does not add a border, glow, or transform when a node is selected", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+
+    expect(css).not.toMatch(/\.agent-canvas-node--selected\s*\{/);
   });
 
   it("uses one transparent glass shell for every visible node type", () => {
