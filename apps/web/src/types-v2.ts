@@ -2214,11 +2214,10 @@ export interface ChatProposalPointerV2 {
   created_at: string;
 }
 
-export interface ChatExpertActivityV2 extends CapabilityIdentityV2 {
+export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   item_type: "expert_activity";
   activity_id: string;
   turn_id: string;
-  operation: string;
   status: "working" | "completed" | "failed";
   sequence: number;
   started_at: string;
@@ -2229,7 +2228,6 @@ export interface ChatExpertActivityV2 extends CapabilityIdentityV2 {
   attempt_stage: "initial" | "transport_retry" | "structured_repair" | "fallback" | null;
   retryable: boolean;
   validation_paths: string[];
-  operation_policy_id: string | null;
   suggested_actions: Array<"retry" | "revise_request">;
   completion_mode: "deterministic_fallback" | null;
   warning_code: "specialist_materialization_fallback" | null;
@@ -2466,7 +2464,7 @@ export type ChatTimelineItemV2 =
   | ChatArtifactCardV2
   | ChatProposalCardV2
   | ChatProposalPointerV2
-  | ChatExpertActivityV2
+  | ChatCapabilityActivityV2
   | ChatCommandPlanCardV2
   | ChatActionReceiptCardV2
   | ChatAgentDocumentReferenceV2;

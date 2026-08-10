@@ -54,7 +54,7 @@ import type {
   CanvasRunAcceptedV2,
   CanvasRunCancelResponseV2,
   ChatArtifactCardV2,
-  ChatExpertActivityV2,
+  ChatCapabilityActivityV2,
   ChatMessageV2,
   ChatProposalCardV2,
   ChatTimelineItemV2,
@@ -238,7 +238,7 @@ const CREATIVE_ELEMENT_KIND_VALUES = {
 const CREATIVE_ELEMENT_KINDS = new Set<CreativeElementDecisionV2["element_kind"]>(
   Object.keys(CREATIVE_ELEMENT_KIND_VALUES) as CreativeElementDecisionV2["element_kind"][],
 );
-const EXPERT_ACTIVITY_STATUSES = new Set<ChatExpertActivityV2["status"]>(["working", "completed", "failed"]);
+const CAPABILITY_ACTIVITY_STATUSES = new Set<ChatCapabilityActivityV2["status"]>(["working", "completed", "failed"]);
 const EDITING_EXPORT_STATUSES = new Set<EditingExportRuntimeV2["status"]>(["queued", "exporting", "completed", "failed", "cancelled"]);
 const EDITING_SKIPPED_REASONS = new Set<EditingSkippedInputV2["reason"]>([
   "source_not_ready",
@@ -2089,7 +2089,7 @@ function normalizeChatProposalCardV2(value: unknown, path: string): ChatProposal
   };
 }
 
-function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpertActivityV2 {
+function normalizeChatCapabilityActivityV2(value: unknown, path: string): ChatCapabilityActivityV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
     "item_type", "activity_id", "turn_id", "capability_id", "capability_display_name", "operation", "status",
@@ -2097,7 +2097,7 @@ function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpert
     "retryable", "validation_paths", "operation_policy_id", "suggested_actions", "completion_mode", "warning_code",
   ], path);
   return {
-    item_type: expectLiteral(record.item_type, new Set<ChatExpertActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
+    item_type: expectLiteral(record.item_type, new Set<ChatCapabilityActivityV2["item_type"]>(["expert_activity"]), `${path}.item_type`),
     activity_id: expectNonEmptyString(record.activity_id, `${path}.activity_id`),
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     capability_id: expectLiteral(record.capability_id, AGENT_CAPABILITY_IDS, `${path}.capability_id`),
@@ -2105,8 +2105,7 @@ function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpert
       record.capability_display_name,
       `${path}.capability_display_name`,
     ),
-    operation: expectNonEmptyString(record.operation, `${path}.operation`),
-    status: expectLiteral(record.status, EXPERT_ACTIVITY_STATUSES, `${path}.status`),
+    status: expectLiteral(record.status, CAPABILITY_ACTIVITY_STATUSES, `${path}.status`),
     sequence: expectNonNegativeInteger(record.sequence, `${path}.sequence`),
     started_at: expectIsoDateTimeString(record.started_at, `${path}.started_at`),
     finished_at: record.finished_at === undefined ? null : nullableString(record.finished_at, `${path}.finished_at`),
@@ -2119,16 +2118,15 @@ function normalizeChatExpertActivityV2(value: unknown, path: string): ChatExpert
       ? null
       : expectLiteral(
         record.attempt_stage,
-        new Set<NonNullable<ChatExpertActivityV2["attempt_stage"]>>([
+        new Set<NonNullable<ChatCapabilityActivityV2["attempt_stage"]>>([
           "initial", "transport_retry", "structured_repair", "fallback",
         ]),
         `${path}.attempt_stage`,
       ),
     retryable: record.retryable === undefined ? false : expectBoolean(record.retryable, `${path}.retryable`),
     validation_paths: optionalStringArray(record.validation_paths, `${path}.validation_paths`, []),
-    operation_policy_id: nullableStringWithDefault(record.operation_policy_id, `${path}.operation_policy_id`),
     suggested_actions: expectArray(record.suggested_actions ?? [], `${path}.suggested_actions`).map((action, index) => (
-      expectLiteral(action, new Set<ChatExpertActivityV2["suggested_actions"][number]>(["retry", "revise_request"]), `${path}.suggested_actions[${index}]`)
+      expectLiteral(action, new Set<ChatCapabilityActivityV2["suggested_actions"][number]>(["retry", "revise_request"]), `${path}.suggested_actions[${index}]`)
     )),
     completion_mode: record.completion_mode === undefined || record.completion_mode === null
       ? null
@@ -2608,7 +2606,7 @@ export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): 
   if (itemType === "message") return normalizeChatMessageV2(record, path);
   if (itemType === "artifact") return normalizeChatArtifactCardV2(record, path);
   if (itemType === "proposal") return normalizeChatProposalCardV2(record, path);
-  if (itemType === "expert_activity") return normalizeChatExpertActivityV2(record, path);
+  if (itemType === "expert_activity") return normalizeChatCapabilityActivityV2(record, path);
   if (itemType === "command_plan") return normalizeChatCommandPlanCardV2(record, path);
   if (itemType === "action_receipt") return normalizeChatActionReceiptCardV2(record, path);
   if (itemType === "proposal_pointer") {
@@ -2725,7 +2723,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           ? null
           : expectLiteral(
             entry.metadata.attempt_stage,
-            new Set<NonNullable<ChatExpertActivityV2["attempt_stage"]>>([
+            new Set<NonNullable<ChatCapabilityActivityV2["attempt_stage"]>>([
               "initial", "transport_retry", "structured_repair", "fallback",
             ]),
             `${path}.items.metadata.attempt_stage`,
@@ -2735,7 +2733,7 @@ export function normalizeAgentCanvasChatTimelineV2(
           `${path}.items.metadata.suggested_actions`,
         ).map((action, index) => expectLiteral(
           action,
-          new Set<ChatExpertActivityV2["suggested_actions"][number]>(["retry", "revise_request"]),
+          new Set<ChatCapabilityActivityV2["suggested_actions"][number]>(["retry", "revise_request"]),
           `${path}.items.metadata.suggested_actions[${index}]`,
         ));
         const publicMessage = typeof entry.metadata.message === "string"
@@ -2755,9 +2753,6 @@ export function normalizeAgentCanvasChatTimelineV2(
             : entry.entry_id,
           capability_id: capabilityId,
           capability_display_name: capabilityDisplayName,
-          operation: typeof entry.metadata.operation === "string"
-            ? entry.metadata.operation
-            : "planning",
           status,
           sequence: entry.sequence_no,
           started_at: typeof entry.metadata.started_at === "string"
@@ -2778,9 +2773,6 @@ export function normalizeAgentCanvasChatTimelineV2(
             `${path}.items.metadata.validation_paths`,
             [],
           ),
-          operation_policy_id: typeof entry.metadata.operation_policy_id === "string"
-            ? entry.metadata.operation_policy_id
-            : null,
           suggested_actions: suggestedActions,
           completion_mode: entry.metadata.completion_mode === "deterministic_fallback"
             ? "deterministic_fallback"

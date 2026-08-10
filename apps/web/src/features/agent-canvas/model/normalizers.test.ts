@@ -527,6 +527,8 @@ describe("Agent Canvas normalizers", () => {
       retryable: true,
       suggested_actions: ["retry", "revise_request"],
     });
+    expect(timeline.items[0]).not.toHaveProperty("operation");
+    expect(timeline.items[0]).not.toHaveProperty("operation_policy_id");
   });
 
   it("normalizes the canonical progressive guidance timeline", () => {

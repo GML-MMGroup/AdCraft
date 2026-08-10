@@ -29,21 +29,18 @@ describe("projectChatEvents", () => {
         turn_id: "turn-1",
         capability_id: "character_design",
         capability_display_name: "Character Designer",
-        operation: "create_concepts",
       }),
       event(2, "expert_activity_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         capability_id: "character_design",
         capability_display_name: "Character Designer",
-        operation: "create_concepts",
       }),
       event(2, "expert_activity_completed", {
         activity_id: "activity-1",
         turn_id: "turn-1",
         capability_id: "character_design",
         capability_display_name: "Character Designer",
-        operation: "create_concepts",
       }),
     ]);
 
@@ -68,14 +65,12 @@ describe("projectChatEvents", () => {
         turn_id: "turn-2",
         capability_id: "scene_design",
         capability_display_name: "Scene Designer",
-        operation: "create_concepts",
       }),
       event(3, "expert_activity_failed", {
         activity_id: "activity-2",
         turn_id: "turn-2",
         capability_id: "scene_design",
         capability_display_name: "Scene Designer",
-        operation: "create_concepts",
         error_code: "agent_transport_failed",
         retryable: true,
         suggested_actions: ["retry", "revise_request"],
@@ -92,6 +87,17 @@ describe("projectChatEvents", () => {
         suggested_actions: ["retry", "revise_request"],
       }),
     ]);
+  });
+
+  it("ignores capability events without a stable activity id", () => {
+    expect(projectChatEvents([
+      event(4, "expert_activity_started", {
+        turn_id: "turn-3",
+        capability_id: "product_design",
+        capability_display_name: "Product Designer",
+        operation: "internal_product_operation",
+      }),
+    ])).toEqual([]);
   });
 
   it("does not synthesize proposals from partial SSE payloads", () => {

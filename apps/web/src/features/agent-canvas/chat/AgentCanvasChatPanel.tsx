@@ -16,7 +16,7 @@ import type {
   CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
   ChatCommandPlanCardV2,
-  ChatExpertActivityV2,
+  ChatCapabilityActivityV2,
   ChatProposalCardV2,
   CapabilityProposalOptionV2,
   GuidanceSessionActionV2,
@@ -190,10 +190,10 @@ export function AgentCanvasChatPanel({
               }
               if (item.item_type === "expert_activity") {
                 return (
-                  <SpecialistActivityRow
+                  <CapabilityActivityRow
                     key={`activity-${item.activity_id}`}
                     activity={item}
-                    onRetry={() => void chat.actions.retrySpecialistActivity(item)}
+                    onRetry={() => void chat.actions.retryCapabilityActivity(item)}
                     onReviseRequest={() => {
                       setDraft(`Revise the ${item.capability_display_name} request: `);
                       window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
@@ -426,12 +426,12 @@ export function AgentWorkingRow() {
   );
 }
 
-export function SpecialistActivityRow({
+export function CapabilityActivityRow({
   activity,
   onRetry,
   onReviseRequest,
 }: {
-  activity: ChatExpertActivityV2;
+  activity: ChatCapabilityActivityV2;
   onRetry?: () => void;
   onReviseRequest?: () => void;
 }) {
@@ -453,7 +453,7 @@ export function SpecialistActivityRow({
               {activity.suggested_actions.includes("retry") && onRetry ? (
                 <button
                   type="button"
-                  aria-label="Retry specialist operation"
+                  aria-label={`Retry ${activity.capability_display_name} activity`}
                   onClick={onRetry}
                 >
                   Retry
@@ -462,7 +462,7 @@ export function SpecialistActivityRow({
               {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
                 <button
                   type="button"
-                  aria-label="Revise specialist request"
+                  aria-label={`Revise ${activity.capability_display_name} request`}
                   onClick={onReviseRequest}
                 >
                   Revise request
@@ -549,13 +549,6 @@ export function GuidanceSessionProgress({
   );
 }
 
-function commandOperationLabel(operationType: string): string {
-  return operationType
-    .split("_")
-    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-}
-
 export function CommandPlanCard({
   card,
   pending,
@@ -574,13 +567,9 @@ export function CommandPlanCard({
         <span>{plan.status.replaceAll("_", " ")}</span>
       </header>
       <p>{plan.target_summary || "Review the proposed canvas changes."}</p>
-      <ul>
-        {plan.operations.map((operation) => (
-          <li key={operation.operation_id}>
-            {commandOperationLabel(operation.operation_type)}
-          </li>
-        ))}
-      </ul>
+      <small>
+        {plan.operations.length} canvas {plan.operations.length === 1 ? "change" : "changes"} will be applied.
+      </small>
       {canDecide ? (
         <div className="agent-chat__command-actions">
           <button

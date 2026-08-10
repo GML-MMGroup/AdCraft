@@ -634,7 +634,7 @@ describe("useAgentCanvasChat", () => {
     );
   });
 
-  it("starts a new idempotent user attempt when retrying a failed specialist activity", async () => {
+  it("starts a new idempotent user attempt without exposing the internal operation name", async () => {
     api.submitAgentCanvasChatMessage.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
@@ -650,13 +650,12 @@ describe("useAgentCanvasChat", () => {
     }));
 
     await act(async () => {
-      await result.current.actions.retrySpecialistActivity({
+      await result.current.actions.retryCapabilityActivity({
         item_type: "expert_activity",
         activity_id: "activity-failed-1",
         turn_id: "turn-failed-1",
         capability_id: "scene_design",
         capability_display_name: "Scene Designer",
-        operation: "materialize_draft",
         status: "failed",
         sequence: 4,
         started_at: "2026-08-07T01:00:00Z",
@@ -667,7 +666,6 @@ describe("useAgentCanvasChat", () => {
         attempt_stage: "transport_retry",
         retryable: true,
         validation_paths: [],
-        operation_policy_id: "agent.materialization.v1",
         suggested_actions: ["retry", "revise_request"],
         completion_mode: null,
         warning_code: null,
@@ -677,13 +675,13 @@ describe("useAgentCanvasChat", () => {
     expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith(
       "workflow-1",
       expect.objectContaining({
-        text: "Retry the failed Scene Designer materialize draft operation.",
+        text: "Retry the failed Scene Designer request.",
       }),
       expect.stringContaining("expert-retry-activity-failed-1"),
     );
   });
 
-  it("keeps a durable terminal specialist state when an older live event is still buffered", async () => {
+  it("keeps a durable terminal capability state when an older live event is still buffered", async () => {
     api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
       items: [{
         item_type: "expert_activity",
@@ -691,7 +689,6 @@ describe("useAgentCanvasChat", () => {
         turn_id: "turn-scene-1",
         capability_id: "scene_design",
         capability_display_name: "Scene Designer",
-        operation: "materialize_draft",
         status: "completed",
         sequence: 12,
         started_at: "2026-08-07T01:00:00Z",
@@ -702,7 +699,6 @@ describe("useAgentCanvasChat", () => {
         attempt_stage: "initial",
         retryable: false,
         validation_paths: [],
-        operation_policy_id: "agent.materialization.v1",
         suggested_actions: [],
         completion_mode: null,
         warning_code: null,
@@ -715,7 +711,6 @@ describe("useAgentCanvasChat", () => {
         activity_id: "activity-scene-1",
         capability_id: "scene_design",
         capability_display_name: "Scene Designer",
-        operation: "materialize_draft",
       },
     };
     const { result } = renderHook(() => useAgentCanvasChat({

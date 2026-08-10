@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ChatActionReceiptCardV2,
   AgentCanvasWorkflowV2,
+  ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
-  ChatExpertActivityV2,
   ChatProposalCardV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -14,11 +14,11 @@ import {
   ActionReceiptCard,
   AgentCanvasChatPanel,
   AgentWorkingRow,
+  CapabilityActivityRow,
   CommandPlanCard,
   GuidanceSessionProgress,
   GuidedActionsCard,
   ProposalCard,
-  SpecialistActivityRow,
 } from "./AgentCanvasChatPanel.tsx";
 import {
   resizeChatComposerTextarea,
@@ -457,6 +457,8 @@ describe("command and receipt cards", () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     render(<CommandPlanCard card={card} pending={false} onAction={onAction} />);
 
+    expect(screen.getByText("1 canvas change will be applied.")).toBeTruthy();
+    expect(screen.queryByText("Delete Node")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Confirm command" }));
     fireEvent.click(screen.getByRole("button", { name: "Reject command" }));
     expect(onAction).toHaveBeenNthCalledWith(1, "plan-1", "confirm");
@@ -506,14 +508,13 @@ describe("command and receipt cards", () => {
     expect(screen.getByText("Planning continues automatically")).toBeTruthy();
   });
 
-  it("shows specialist work as status rather than a specialist chat bubble", () => {
-    const activity: ChatExpertActivityV2 = {
+  it("shows capability work as status rather than another chat speaker", () => {
+    const activity: ChatCapabilityActivityV2 = {
       item_type: "expert_activity",
       activity_id: "activity-1",
       turn_id: "turn-1",
       capability_id: "scene_design",
       capability_display_name: "Scene Designer",
-      operation: "create_concepts",
       status: "working",
       sequence: 4,
       started_at: "2026-08-04T00:00:00Z",
@@ -524,57 +525,54 @@ describe("command and receipt cards", () => {
       attempt_stage: null,
       retryable: false,
       validation_paths: [],
-      operation_policy_id: null,
       suggested_actions: [],
       completion_mode: null,
       warning_code: null,
     };
-    render(<SpecialistActivityRow activity={activity} />);
+    render(<CapabilityActivityRow activity={activity} />);
 
     expect(screen.getByText("Scene Designer is working")).toBeTruthy();
+    expect(screen.queryByText("AdCraft Video Agent", { exact: false })).toBeNull();
   });
 
-  it("shows bounded recovery actions for a backend-owned specialist failure", () => {
+  it("shows bounded recovery actions for a backend-owned capability failure", () => {
     const onRetry = vi.fn();
     const onReviseRequest = vi.fn();
-    render(<SpecialistActivityRow activity={{
+    render(<CapabilityActivityRow activity={{
       item_type: "expert_activity",
       activity_id: "activity-failed",
       turn_id: "turn-failed",
       capability_id: "scene_design",
       capability_display_name: "Scene Designer",
-      operation: "materialize_draft",
       status: "failed",
       sequence: 5,
       started_at: "2026-08-07T01:00:00Z",
       finished_at: "2026-08-07T01:07:00Z",
-      message: "The Specialist request timed out.",
+      message: "The capability request timed out.",
       error_code: "agent_deadline_exceeded",
       elapsed_ms: 420000,
       attempt_stage: "transport_retry",
       retryable: true,
       validation_paths: [],
-      operation_policy_id: "agent.materialization.v1",
       suggested_actions: ["retry", "revise_request"],
       completion_mode: null,
       warning_code: null,
     }} onRetry={onRetry} onReviseRequest={onReviseRequest} />);
 
     expect(screen.getByText("agent_deadline_exceeded")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Retry specialist operation" }));
-    fireEvent.click(screen.getByRole("button", { name: "Revise specialist request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry Scene Designer activity" }));
+    fireEvent.click(screen.getByRole("button", { name: "Revise Scene Designer request" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onReviseRequest).toHaveBeenCalledTimes(1);
   });
 
   it("treats deterministic fallback as completed with a warning", () => {
-    render(<SpecialistActivityRow activity={{
+    render(<CapabilityActivityRow activity={{
       item_type: "expert_activity",
       activity_id: "activity-fallback",
       turn_id: "turn-fallback",
       capability_id: "product_design",
       capability_display_name: "Product Designer",
-      operation: "materialize_draft",
       status: "completed",
       sequence: 6,
       started_at: "2026-08-07T01:00:00Z",
@@ -585,7 +583,6 @@ describe("command and receipt cards", () => {
       attempt_stage: null,
       retryable: false,
       validation_paths: [],
-      operation_policy_id: "agent.materialization.v1",
       suggested_actions: [],
       completion_mode: "deterministic_fallback",
       warning_code: "specialist_materialization_fallback",

@@ -443,7 +443,6 @@
   line-height: 1.45;
 }
 
-.agent-chat__command ul,
 .agent-chat__receipt ul {
   display: grid;
   gap: 3px;
@@ -453,6 +452,7 @@
   font-size: 11px;
 }
 
+.agent-chat__command > small,
 .agent-chat__receipt small {
   display: block;
   margin-top: 8px;

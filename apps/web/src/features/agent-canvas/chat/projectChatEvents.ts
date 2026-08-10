@@ -1,7 +1,7 @@
 import type {
   AgentCapabilityIdV2,
   CanvasRuntimeEventV2,
-  ChatExpertActivityV2,
+  ChatCapabilityActivityV2,
   ChatTimelineItemV2,
 } from "../../../types-v2.ts";
 
@@ -18,7 +18,7 @@ const CAPABILITY_IDS = new Set<AgentCapabilityIdV2>([
   "quick_media",
 ]);
 
-const EXPERT_ACTIVITY_EVENTS = new Set([
+const CAPABILITY_ACTIVITY_EVENTS = new Set([
   "expert_activity_started",
   "expert_activity_completed",
   "expert_activity_failed",
@@ -38,22 +38,21 @@ function capabilityValue(payload: Record<string, unknown>): AgentCapabilityIdV2 
 export function projectChatEvents(
   events: CanvasRuntimeEventV2[],
 ): ChatTimelineItemV2[] {
-  const activities = new Map<string, ChatExpertActivityV2>();
+  const activities = new Map<string, ChatCapabilityActivityV2>();
   const latestSequenceByActivity = new Map<string, number>();
 
   events.forEach((event) => {
     const payload = event.payload ?? {};
-    if (EXPERT_ACTIVITY_EVENTS.has(event.event_type)) {
+    if (CAPABILITY_ACTIVITY_EVENTS.has(event.event_type)) {
       const capabilityId = capabilityValue(payload);
       const capabilityDisplayName = stringValue(payload.capability_display_name);
       const turnId = stringValue(payload.turn_id, event.turn_id ?? "");
-      const operation = stringValue(payload.operation, "planning");
-      if (!capabilityId || !capabilityDisplayName || !turnId) return;
-      const key = stringValue(payload.activity_id, `${turnId}:${capabilityId}:${operation}`);
+      const key = stringValue(payload.activity_id);
+      if (!key || !capabilityId || !capabilityDisplayName || !turnId) return;
       const latestSequence = latestSequenceByActivity.get(key);
       if (latestSequence !== undefined && event.seq <= latestSequence) return;
       const previous = activities.get(key);
-      const status: ChatExpertActivityV2["status"] = event.event_type === "expert_activity_completed"
+      const status: ChatCapabilityActivityV2["status"] = event.event_type === "expert_activity_completed"
         ? "completed"
         : event.event_type === "expert_activity_failed"
           ? "failed"
@@ -66,7 +65,6 @@ export function projectChatEvents(
         turn_id: turnId,
         capability_id: capabilityId,
         capability_display_name: capabilityDisplayName,
-        operation,
         status,
         sequence: previous?.sequence ?? event.seq,
         started_at: previous?.started_at ?? event.created_at,
@@ -79,16 +77,15 @@ export function projectChatEvents(
         attempt_stage: ["initial", "transport_retry", "structured_repair", "fallback"].includes(
           stringValue(payload.attempt_stage),
         )
-          ? stringValue(payload.attempt_stage) as ChatExpertActivityV2["attempt_stage"]
+          ? stringValue(payload.attempt_stage) as ChatCapabilityActivityV2["attempt_stage"]
           : null,
         retryable: payload.retryable === true,
         validation_paths: Array.isArray(payload.validation_paths)
           ? payload.validation_paths.filter((path): path is string => typeof path === "string")
           : [],
-        operation_policy_id: stringValue(payload.operation_policy_id) || null,
         suggested_actions: Array.isArray(payload.suggested_actions)
           ? payload.suggested_actions.filter(
-            (action): action is ChatExpertActivityV2["suggested_actions"][number] => (
+            (action): action is ChatCapabilityActivityV2["suggested_actions"][number] => (
               action === "retry" || action === "revise_request"
             ),
           )

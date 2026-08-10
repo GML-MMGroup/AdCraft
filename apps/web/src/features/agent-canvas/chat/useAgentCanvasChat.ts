@@ -15,7 +15,7 @@ import type {
   AgentCanvasContinuationV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
-  ChatExpertActivityV2,
+  ChatCapabilityActivityV2,
   ChatMessageV2,
   ChatTimelineItemV2,
   GuidanceSessionActionV2,
@@ -663,10 +663,10 @@ export function useAgentCanvasChat({
     }
   }, [actingGuidedActionId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
-  const retrySpecialistActivity = useCallback(async (activity: ChatExpertActivityV2) => {
+  const retryCapabilityActivity = useCallback(async (activity: ChatCapabilityActivityV2) => {
     if (!activity.suggested_actions.includes("retry") || sending) return false;
     return submit({
-      text: `Retry the failed ${activity.capability_display_name} ${activity.operation.replaceAll("_", " ")} operation.`,
+      text: `Retry the failed ${activity.capability_display_name} request.`,
       mentionedNodeIds: [],
       mentionedImageAssetIds: [],
       idempotencyKey: createOperationKey(`expert-retry-${activity.activity_id}`),
@@ -704,7 +704,7 @@ export function useAgentCanvasChat({
       applyProposalAction,
       actOnCommandPlan,
       applyGuidedAction,
-      retrySpecialistActivity,
+      retryCapabilityActivity,
       clearFailedDraft: () => setFailedDraft(null),
       clearNotice: () => setNotice(null),
     },
