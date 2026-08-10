@@ -5,6 +5,16 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
     "The agent took too long to respond. Your input is preserved; retry when ready.",
   guidance_completion_invalid:
     "The guidance session is not ready to finish yet.",
+  journey_transition_invalid:
+    "This action is not valid in the current production stage.",
+  journey_revision_conflict:
+    "The production stage changed. The latest session was loaded; review it and try again.",
+  journey_foundation_queue_invalid:
+    "The production requirements changed. Review the latest decisions and try again.",
+  journey_action_in_progress:
+    "The current production step is still in progress.",
+  journey_evidence_invalid:
+    "The production state could not be verified. Refresh and try again.",
 };
 
 export function agentCanvasChatErrorMessage(

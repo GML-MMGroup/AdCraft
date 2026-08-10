@@ -2503,6 +2503,82 @@ export interface ChatAgentDocumentReferenceV2 {
   created_at: string;
 }
 
+export interface DecisionBundleOptionV2 {
+  option_id: string;
+  label: string;
+  description: string;
+}
+
+export interface DecisionBundleQuestionV2 {
+  question_id: string;
+  prompt: string;
+  selection_mode: "single" | "multiple";
+  allow_custom_answer: boolean;
+  allow_skip: boolean;
+  options: DecisionBundleOptionV2[];
+}
+
+export interface DecisionBundleAnswerV2 {
+  question_id: string;
+  selected_option_ids: string[];
+  custom_answer: string | null;
+  skipped: boolean;
+}
+
+export interface DecisionBundleV2 {
+  bundle_id: string;
+  workflow_id: string;
+  conversation_id: string;
+  source_turn_id: string;
+  replacement_bundle_id: string | null;
+  status: "open" | "answered" | "skipped" | "superseded";
+  revision: number;
+  title: string;
+  introduction: string;
+  questions: DecisionBundleQuestionV2[];
+  answers: DecisionBundleAnswerV2[];
+  requirement_revision_no: number | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+export type DecisionBundleActionRequestV2 =
+  | {
+      action: "submit";
+      expected_revision: number;
+      answers: DecisionBundleAnswerV2[];
+    }
+  | {
+      action: "skip_bundle";
+      expected_revision: number;
+    };
+
+export interface DecisionBundleActionAcceptedV2 {
+  workflow_id: string;
+  bundle_id: string;
+  status: "answered" | "skipped";
+  revision: number;
+  requirement_revision_no: number;
+  turn_id: string;
+  events_cursor: number;
+  replayed: boolean;
+}
+
+export interface ChatDecisionBundlePointerV2 {
+  item_type: "decision_bundle_pointer";
+  bundle_id: string;
+  sequence: number;
+  created_at: string;
+}
+
+export interface ChatDecisionBundleCardV2 {
+  item_type: "decision_bundle";
+  decision_bundle: DecisionBundleV2;
+  sequence: number;
+  created_at: string;
+}
+
 export type ChatTimelineItemV2 =
   | ChatMessageV2
   | ChatArtifactCardV2
@@ -2511,7 +2587,9 @@ export type ChatTimelineItemV2 =
   | ChatCapabilityActivityV2
   | ChatCommandPlanCardV2
   | ChatActionReceiptCardV2
-  | ChatAgentDocumentReferenceV2;
+  | ChatAgentDocumentReferenceV2
+  | ChatDecisionBundleCardV2
+  | ChatDecisionBundlePointerV2;
 
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
@@ -2914,6 +2992,89 @@ export interface GuidedStepCheckpointV2 {
   action_id: string | null;
 }
 
+export type GuidedJourneyStageV2 =
+  | "intake"
+  | "clarification"
+  | "world_setting"
+  | "foundation_design"
+  | "narrative_direction"
+  | "style_lock"
+  | "storyboard_plan"
+  | "storyboard_grids"
+  | "video_segments"
+  | "bgm"
+  | "editing_ready"
+  | "completed";
+
+export type GuidedJourneyStageStatusV2 =
+  | "ready"
+  | "working"
+  | "waiting_user"
+  | "blocked_external"
+  | "failed"
+  | "completed";
+
+export interface FoundationJourneyItemV2 {
+  item_id: string;
+  kind: "product" | "prop" | "character" | "scene";
+  occurrence_index: number;
+  requirement_source: "explicit_user" | "questionnaire" | "delegated";
+  required: boolean;
+  status: "pending" | "active" | "selected" | "deferred" | "excluded";
+  topic_id: string | null;
+  selected_node_ids: string[];
+}
+
+export interface JourneyActionProjectionV2 {
+  action_id: string;
+  action_kind: string;
+  stage: GuidedJourneyStageV2;
+  status: "reserved" | "working" | "waiting_user";
+  turn_id: string | null;
+  foundation_item_id: string | null;
+}
+
+export interface JourneyTransitionEvidenceV2 {
+  evidence_id: string;
+  evidence_kind:
+    | "creative_goal_validated"
+    | "clarification_completed"
+    | "world_setting_selected"
+    | "world_setting_deferred"
+    | "world_setting_excluded"
+    | "foundation_item_selected"
+    | "foundation_item_deferred"
+    | "foundation_item_excluded"
+    | "narrative_direction_selected"
+    | "style_locked"
+    | "storyboard_plan_accepted"
+    | "storyboard_grids_prepared"
+    | "video_segments_prepared"
+    | "bgm_prepared"
+    | "bgm_deferred"
+    | "bgm_excluded"
+    | "editing_prepared"
+    | "targeted_action_started"
+    | "targeted_action_finished"
+    | "stage_failed"
+    | "foundation_queue_amended";
+  source_id: string;
+  source_revision: number | null;
+  recorded_at: string;
+}
+
+export interface GuidedProductionJourneyV2 {
+  policy_version: "fixed_ad_production_v1";
+  stage: GuidedJourneyStageV2;
+  stage_status: GuidedJourneyStageStatusV2;
+  stage_revision: number;
+  foundation_queue: FoundationJourneyItemV2[];
+  foundation_cursor: number | null;
+  active_action: JourneyActionProjectionV2 | null;
+  suspended_action: JourneyActionProjectionV2 | null;
+  transition_evidence: JourneyTransitionEvidenceV2[];
+}
+
 export interface GuidedSessionStateV2 {
   session_id: string;
   workflow_id: string;
@@ -2928,6 +3089,7 @@ export interface GuidedSessionStateV2 {
   active_proposal_id: string | null;
   active_style_skill_run_id: string | null;
   completion: GuidanceCompletionProjectionV2;
+  journey: GuidedProductionJourneyV2;
   revision: number;
   updated_at: string;
 }
@@ -2979,7 +3141,8 @@ export interface AgentCanvasChatTimelineEntryV2 {
     | "planning_progress"
     | "command_plan"
     | "action_receipt"
-    | "agent_document_reference";
+    | "agent_document_reference"
+    | "decision_bundle";
   speaker: "user" | "adcraft_video_agent" | null;
   content: string;
   metadata: Record<string, unknown>;

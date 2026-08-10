@@ -5,9 +5,13 @@ import type {
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasGuidedActionApplyRequestV2,
+  GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
   AgentCanvasProjectCreateRequestV2,
   AgentCanvasProposalActionRequestV2,
+  DecisionBundleActionAcceptedV2,
+  DecisionBundleActionRequestV2,
+  DecisionBundleV2,
   AgentCanvasVideoSkillRunCreateRequestV2,
   AgentCanvasVideoSkillRunV2,
   VideoSkillCatalogResponseV2,
@@ -159,6 +163,9 @@ import {
 import {
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasChatTimelineV2,
+  normalizeDecisionBundleActionAcceptedV2,
+  normalizeDecisionBundleV2,
+  normalizeGuidedSessionStateV2,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
@@ -752,6 +759,42 @@ export const v2Api = {
 
   deleteAgentCanvasAsset(assetId: string): Promise<void> {
     return requestV2(`/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
+  },
+
+  agentCanvasCreativeSession(workflowId: string): Promise<GuidedSessionStateV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/creative-session`,
+      {},
+      normalizeGuidedSessionStateV2,
+    );
+  },
+
+  agentCanvasDecisionBundle(
+    workflowId: string,
+    bundleId: string,
+  ): Promise<DecisionBundleV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/decision-bundles/${encodeURIComponent(bundleId)}`,
+      {},
+      normalizeDecisionBundleV2,
+    );
+  },
+
+  actOnAgentCanvasDecisionBundle(
+    workflowId: string,
+    bundleId: string,
+    request: DecisionBundleActionRequestV2,
+    idempotencyKey: string,
+  ): Promise<DecisionBundleActionAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/decision-bundles/${encodeURIComponent(bundleId)}/answers`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeDecisionBundleActionAcceptedV2,
+    );
   },
 
   agentCanvasChatTimeline(

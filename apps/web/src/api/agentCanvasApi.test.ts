@@ -12,4 +12,13 @@ describe("agentCanvasApi", () => {
     expect(agentCanvasApi.getVideoSkill).toBeTypeOf("function");
     expect(agentCanvasApi.createAgentCanvasVideoSkillRun).toBeTypeOf("function");
   });
+
+  it("exposes the persisted creative-session read model", () => {
+    expect(agentCanvasApi.agentCanvasCreativeSession).toBeTypeOf("function");
+  });
+
+  it("exposes structured production decision bundle actions", () => {
+    expect(agentCanvasApi.agentCanvasDecisionBundle).toBeTypeOf("function");
+    expect(agentCanvasApi.actOnAgentCanvasDecisionBundle).toBeTypeOf("function");
+  });
 });

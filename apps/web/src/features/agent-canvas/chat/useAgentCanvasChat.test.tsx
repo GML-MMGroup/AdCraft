@@ -11,10 +11,13 @@ import type {
 
 const api = vi.hoisted(() => ({
   agentCanvasChatTimeline: vi.fn(),
+  agentCanvasCreativeSession: vi.fn(),
   agentCanvasChatTurn: vi.fn(),
   agentCanvasProposal: vi.fn(),
+  agentCanvasDecisionBundle: vi.fn(),
   submitAgentCanvasChatMessage: vi.fn(),
   actOnAgentCanvasProposal: vi.fn(),
+  actOnAgentCanvasDecisionBundle: vi.fn(),
   actOnAgentCanvasCommandPlan: vi.fn(),
   applyAgentCanvasGuidedAction: vi.fn(),
 }));
@@ -55,6 +58,49 @@ function emptyTimeline(overrides: Partial<AgentCanvasChatViewTimelineV2> = {}): 
     items: [],
     next_cursor: 0,
     ...overrides,
+  };
+}
+
+function guidedSession(stageRevision = 4, revision = 8): GuidedSessionStateV2 {
+  return {
+    session_id: "guidance-1",
+    workflow_id: "workflow-1",
+    status: "active",
+    goal: {
+      requested_output: "video",
+      delivery_scope: "generated_media",
+      summary: "Create a product film.",
+      explicit_constraints: {},
+    },
+    creative_authority: null,
+    current_checkpoint: null,
+    narrative_direction: null,
+    element_decisions: [],
+    current_topic_id: null,
+    topics: [],
+    active_proposal_id: null,
+    active_style_skill_run_id: null,
+    completion: {
+      authoring: "not_ready",
+      delivery: "not_ready",
+      editing_preparation: "not_ready",
+      editing_node_id: null,
+      matching_node_ids: [],
+      matching_asset_ids: [],
+    },
+    journey: {
+      policy_version: "fixed_ad_production_v1",
+      stage: "foundation_design",
+      stage_status: "waiting_user",
+      stage_revision: stageRevision,
+      foundation_queue: [],
+      foundation_cursor: null,
+      active_action: null,
+      suspended_action: null,
+      transition_evidence: [],
+    },
+    revision,
+    updated_at: "2026-08-10T00:00:00Z",
   };
 }
 
@@ -104,6 +150,8 @@ describe("useAgentCanvasChat", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     api.agentCanvasChatTimeline.mockImplementation(() => new Promise(() => {}));
+    api.agentCanvasCreativeSession.mockResolvedValue(null);
+    api.agentCanvasDecisionBundle.mockResolvedValue(null);
     api.agentCanvasChatTurn.mockResolvedValue({
       turn_id: "turn-1",
       workflow_id: "workflow-1",
@@ -181,6 +229,29 @@ describe("useAgentCanvasChat", () => {
 
     expect(result.current.state.items).toEqual([]);
     expect(result.current.state.guidanceSession).toBeNull();
+  });
+
+  it("keeps the newer persisted journey when the timeline response is stale", async () => {
+    const direct = guidedSession(6, 12);
+    const staleTimelineSession = guidedSession(5, 11);
+    api.agentCanvasCreativeSession.mockResolvedValue(direct);
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: staleTimelineSession,
+    }));
+
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.guidanceSession).toBe(direct);
   });
 
   it("submits explicit node and image mentions without requiring an inline continuation", async () => {
@@ -369,6 +440,17 @@ describe("useAgentCanvasChat", () => {
           matching_node_ids: [],
           matching_asset_ids: [],
         },
+        journey: {
+          policy_version: "fixed_ad_production_v1",
+          stage: "foundation_design",
+          stage_status: "waiting_user",
+          stage_revision: 4,
+          foundation_queue: [],
+          foundation_cursor: null,
+          active_action: null,
+          suspended_action: null,
+          transition_evidence: [],
+        },
         revision: 7,
         updated_at: "2026-08-04T10:00:00Z",
       },
@@ -478,6 +560,74 @@ describe("useAgentCanvasChat", () => {
         revision: 2,
       }),
     ]);
+  });
+
+  it("hydrates and submits a decision bundle with its backend revision", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [{
+        item_type: "decision_bundle_pointer",
+        bundle_id: "bundle-1",
+        sequence: 4,
+        created_at: "2026-08-10T00:00:00Z",
+      }],
+      next_cursor: 4,
+    }));
+    api.agentCanvasDecisionBundle.mockResolvedValue({
+      bundle_id: "bundle-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      source_turn_id: "turn-1",
+      replacement_bundle_id: null,
+      status: "open",
+      revision: 4,
+      title: "Creative decisions",
+      introduction: "Choose a mood.",
+      questions: [],
+      answers: [],
+      requirement_revision_no: null,
+      created_at: "2026-08-10T00:00:00Z",
+      updated_at: "2026-08-10T00:00:00Z",
+      closed_at: null,
+    });
+    api.actOnAgentCanvasDecisionBundle.mockResolvedValue({
+      workflow_id: "workflow-1",
+      bundle_id: "bundle-1",
+      status: "skipped",
+      revision: 5,
+      requirement_revision_no: 3,
+      turn_id: "turn-bundle-1",
+      events_cursor: 8,
+      replayed: false,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.refresh();
+    });
+
+    expect(result.current.state.items[0]).toMatchObject({
+      item_type: "decision_bundle",
+      decision_bundle: { bundle_id: "bundle-1", revision: 4 },
+    });
+
+    await act(async () => {
+      await result.current.actions.actOnDecisionBundle("bundle-1", {
+        action: "skip_bundle",
+        expected_revision: 4,
+      });
+    });
+
+    expect(api.actOnAgentCanvasDecisionBundle).toHaveBeenCalledWith(
+      "workflow-1",
+      "bundle-1",
+      { action: "skip_bundle", expected_revision: 4 },
+      expect.stringContaining("decision-bundle-skip_bundle"),
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
   });
 
   it("accepts a queued proposal materialization turn without assuming a synchronous node", async () => {

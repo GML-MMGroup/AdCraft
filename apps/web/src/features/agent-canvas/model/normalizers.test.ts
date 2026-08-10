@@ -212,12 +212,76 @@ function progressiveGuidanceSessionPayload() {
       matching_node_ids: [],
       matching_asset_ids: [],
     },
+    journey: {
+      policy_version: "fixed_ad_production_v1",
+      stage: "foundation_design",
+      stage_status: "waiting_user",
+      stage_revision: 4,
+      foundation_queue: [{
+        item_id: "scene-1",
+        kind: "scene",
+        occurrence_index: 1,
+        requirement_source: "explicit_user",
+        required: true,
+        status: "active",
+        topic_id: "topic-scene",
+        selected_node_ids: [],
+      }],
+      foundation_cursor: 0,
+      active_action: {
+        action_id: "journey-action-1",
+        action_kind: "invoke_capability:scene_design",
+        stage: "foundation_design",
+        status: "waiting_user",
+        turn_id: "turn-scene-1",
+        foundation_item_id: "scene-1",
+      },
+      suspended_action: null,
+      transition_evidence: [{
+        evidence_id: "evidence-1",
+        evidence_kind: "clarification_completed",
+        source_id: "turn-clarification-1",
+        source_revision: 2,
+        recorded_at: "2026-08-04T09:00:00Z",
+      }],
+    },
     revision: 3,
     updated_at: "2026-08-04T09:00:00Z",
   };
 }
 
 describe("Agent Canvas normalizers", () => {
+  it("keeps a durable decision-bundle timeline pointer without treating it as chat text", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [{
+        entry_id: "decision-entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 1,
+        entry_type: "decision_bundle",
+        speaker: null,
+        content: "Choose the creative direction.",
+        metadata: { bundle_id: "bundle-1" },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-10T00:00:00Z",
+      }],
+      next_cursor: 1,
+    });
+
+    expect(timeline.items).toEqual([{
+      item_type: "decision_bundle_pointer",
+      bundle_id: "bundle-1",
+      sequence: 1,
+      created_at: "2026-08-10T00:00:00Z",
+    }]);
+  });
+
   it("accepts slim capability proposals and capability turns without guidance decisions", () => {
     const proposal = normalizeConceptProposalV2({
       proposal_id: "proposal-product-1",

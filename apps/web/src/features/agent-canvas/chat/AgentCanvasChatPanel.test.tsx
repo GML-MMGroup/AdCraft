@@ -503,6 +503,26 @@ describe("progress and action cards", () => {
         matching_node_ids: ["node-character-1"],
         matching_asset_ids: [],
       },
+      journey: {
+        policy_version: "fixed_ad_production_v1",
+        stage: "foundation_design",
+        stage_status: "waiting_user",
+        stage_revision: 4,
+        foundation_queue: [{
+          item_id: "scene-1",
+          kind: "scene",
+          occurrence_index: 1,
+          requirement_source: "explicit_user",
+          required: true,
+          status: "active",
+          topic_id: "topic-scene",
+          selected_node_ids: [],
+        }],
+        foundation_cursor: 0,
+        active_action: null,
+        suspended_action: null,
+        transition_evidence: [],
+      },
       revision: 7,
       updated_at: "2026-08-04T00:00:00Z",
     };
@@ -516,6 +536,8 @@ describe("progress and action cards", () => {
     expect(screen.getByText("Delivery: not ready")).toBeTruthy();
     expect(screen.getByText("Direction: You")).toBeTruthy();
     expect(screen.getByText("Checkpoint: scene · waiting user")).toBeTruthy();
+    expect(screen.getByText("Stage: foundation design · waiting user")).toBeTruthy();
+    expect(screen.getByText("Foundation item: scene 1")).toBeTruthy();
   });
 
   it("renders only current stop or resume guidance actions", () => {

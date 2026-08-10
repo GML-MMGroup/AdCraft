@@ -76,6 +76,10 @@ import type {
   EditingPreviewV2,
   EditingSkippedInputV2,
   EditingVideoEntryV2,
+  DecisionBundleActionAcceptedV2,
+  DecisionBundleAnswerV2,
+  DecisionBundleQuestionV2,
+  DecisionBundleV2,
   NodeRuntimePhaseV2,
   NodeRuntimeV2,
   ProposedDraftReferenceV2,
@@ -93,7 +97,13 @@ import type {
   GuidanceSessionActionV2,
   GuidanceTopicKindV2,
   GuidanceTopicStateV2,
+  GuidedJourneyStageStatusV2,
+  GuidedJourneyStageV2,
+  GuidedProductionJourneyV2,
   GuidedSessionStateV2,
+  FoundationJourneyItemV2,
+  JourneyActionProjectionV2,
+  JourneyTransitionEvidenceV2,
   ProposalActionDescriptorV2,
   ProposalMaterializationErrorV2,
   ProposalMaterializationProjectionV2,
@@ -238,6 +248,74 @@ const GUIDANCE_TOPIC_KINDS = new Set<GuidanceTopicKindV2>([
   "storyboard",
   "video",
   "audio",
+]);
+const GUIDED_JOURNEY_STAGES = new Set<GuidedJourneyStageV2>([
+  "intake",
+  "clarification",
+  "world_setting",
+  "foundation_design",
+  "narrative_direction",
+  "style_lock",
+  "storyboard_plan",
+  "storyboard_grids",
+  "video_segments",
+  "bgm",
+  "editing_ready",
+  "completed",
+]);
+const GUIDED_JOURNEY_STAGE_STATUSES = new Set<GuidedJourneyStageStatusV2>([
+  "ready",
+  "working",
+  "waiting_user",
+  "blocked_external",
+  "failed",
+  "completed",
+]);
+const FOUNDATION_JOURNEY_KINDS = new Set<FoundationJourneyItemV2["kind"]>([
+  "product",
+  "prop",
+  "character",
+  "scene",
+]);
+const FOUNDATION_JOURNEY_REQUIREMENT_SOURCES = new Set<FoundationJourneyItemV2["requirement_source"]>([
+  "explicit_user",
+  "questionnaire",
+  "delegated",
+]);
+const FOUNDATION_JOURNEY_STATUSES = new Set<FoundationJourneyItemV2["status"]>([
+  "pending",
+  "active",
+  "selected",
+  "deferred",
+  "excluded",
+]);
+const JOURNEY_ACTION_STATUSES = new Set<JourneyActionProjectionV2["status"]>([
+  "reserved",
+  "working",
+  "waiting_user",
+]);
+const JOURNEY_EVIDENCE_KINDS = new Set<JourneyTransitionEvidenceV2["evidence_kind"]>([
+  "creative_goal_validated",
+  "clarification_completed",
+  "world_setting_selected",
+  "world_setting_deferred",
+  "world_setting_excluded",
+  "foundation_item_selected",
+  "foundation_item_deferred",
+  "foundation_item_excluded",
+  "narrative_direction_selected",
+  "style_locked",
+  "storyboard_plan_accepted",
+  "storyboard_grids_prepared",
+  "video_segments_prepared",
+  "bgm_prepared",
+  "bgm_deferred",
+  "bgm_excluded",
+  "editing_prepared",
+  "targeted_action_started",
+  "targeted_action_finished",
+  "stage_failed",
+  "foundation_queue_amended",
 ]);
 const CREATIVE_ELEMENT_KIND_VALUES = {
   world_setting: true,
@@ -2825,6 +2903,18 @@ export function normalizeAgentCanvasChatTimelineV2(
           created_at: entry.created_at,
         }];
       }
+      if (entry.entry_type === "decision_bundle") {
+        const bundleId = typeof entry.metadata.bundle_id === "string"
+          ? entry.metadata.bundle_id
+          : "";
+        if (!bundleId) fail(`${path}.items.metadata.bundle_id`, "decision bundle entry requires identity");
+        return [{
+          item_type: "decision_bundle_pointer",
+          bundle_id: bundleId,
+          sequence: entry.sequence_no,
+          created_at: entry.created_at,
+        }];
+      }
       if (entry.entry_type === "expert_activity") {
         const capabilityId = expectLiteral(
           entry.metadata.capability_id,
@@ -3509,7 +3599,141 @@ function normalizeGuidanceCompletionProjectionV2(
   };
 }
 
-function normalizeGuidedSessionStateV2(value: unknown, path: string): GuidedSessionStateV2 {
+export function normalizeDecisionBundleV2(value: unknown, path = "decisionBundle"): DecisionBundleV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "bundle_id",
+    "workflow_id",
+    "conversation_id",
+    "source_turn_id",
+    "replacement_bundle_id",
+    "status",
+    "revision",
+    "title",
+    "introduction",
+    "questions",
+    "answers",
+    "requirement_revision_no",
+    "created_at",
+    "updated_at",
+    "closed_at",
+  ], path);
+  return {
+    bundle_id: expectNonEmptyString(record.bundle_id, `${path}.bundle_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    source_turn_id: expectNonEmptyString(record.source_turn_id, `${path}.source_turn_id`),
+    replacement_bundle_id: nullableStringWithDefault(record.replacement_bundle_id, `${path}.replacement_bundle_id`),
+    status: expectLiteral(
+      record.status,
+      new Set<DecisionBundleV2["status"]>(["open", "answered", "skipped", "superseded"]),
+      `${path}.status`,
+    ),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    title: expectNonEmptyString(record.title, `${path}.title`),
+    introduction: expectNonEmptyString(record.introduction, `${path}.introduction`),
+    questions: expectArray(record.questions ?? [], `${path}.questions`)
+      .map((item, index) => normalizeDecisionBundleQuestionV2(item, `${path}.questions[${index}]`)),
+    answers: expectArray(record.answers ?? [], `${path}.answers`)
+      .map((item, index) => normalizeDecisionBundleAnswerV2(item, `${path}.answers[${index}]`)),
+    requirement_revision_no: record.requirement_revision_no === undefined || record.requirement_revision_no === null
+      ? null
+      : expectPositiveInteger(record.requirement_revision_no, `${path}.requirement_revision_no`),
+    created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+    closed_at: record.closed_at === undefined || record.closed_at === null
+      ? null
+      : expectIsoDateTimeString(record.closed_at, `${path}.closed_at`),
+  };
+}
+
+function normalizeDecisionBundleQuestionV2(value: unknown, path: string): DecisionBundleQuestionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "question_id",
+    "prompt",
+    "selection_mode",
+    "allow_custom_answer",
+    "allow_skip",
+    "options",
+  ], path);
+  return {
+    question_id: expectNonEmptyString(record.question_id, `${path}.question_id`),
+    prompt: expectNonEmptyString(record.prompt, `${path}.prompt`),
+    selection_mode: expectLiteral(
+      record.selection_mode,
+      new Set<DecisionBundleQuestionV2["selection_mode"]>(["single", "multiple"]),
+      `${path}.selection_mode`,
+    ),
+    allow_custom_answer: expectBoolean(record.allow_custom_answer, `${path}.allow_custom_answer`),
+    allow_skip: expectBoolean(record.allow_skip, `${path}.allow_skip`),
+    options: expectArray(record.options ?? [], `${path}.options`).map((item, index) => {
+      const optionPath = `${path}.options[${index}]`;
+      const option = expectRecord(item, optionPath);
+      forbidUnknownFields(option, ["option_id", "label", "description", "effects"], optionPath);
+      expectArray(option.effects ?? [], `${optionPath}.effects`).forEach((effect, effectIndex) => {
+        const effectRecord = expectRecord(effect, `${optionPath}.effects[${effectIndex}]`);
+        expectNonEmptyString(effectRecord.effect_type, `${optionPath}.effects[${effectIndex}].effect_type`);
+      });
+      return {
+        option_id: expectNonEmptyString(option.option_id, `${optionPath}.option_id`),
+        label: expectNonEmptyString(option.label, `${optionPath}.label`),
+        description: expectNonEmptyString(option.description, `${optionPath}.description`),
+      };
+    }),
+  };
+}
+
+function normalizeDecisionBundleAnswerV2(value: unknown, path: string): DecisionBundleAnswerV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["question_id", "selected_option_ids", "custom_answer", "skipped"], path);
+  const selectedOptionIds = optionalStringArray(record.selected_option_ids, `${path}.selected_option_ids`, []);
+  const customAnswer = record.custom_answer === undefined || record.custom_answer === null
+    ? null
+    : expectNonEmptyString(record.custom_answer, `${path}.custom_answer`);
+  const skipped = record.skipped === undefined ? false : expectBoolean(record.skipped, `${path}.skipped`);
+  if (Number(selectedOptionIds.length > 0) + Number(customAnswer !== null) + Number(skipped) !== 1) {
+    fail(path, "expected exactly one answer form");
+  }
+  return {
+    question_id: expectNonEmptyString(record.question_id, `${path}.question_id`),
+    selected_option_ids: selectedOptionIds,
+    custom_answer: customAnswer,
+    skipped,
+  };
+}
+
+export function normalizeDecisionBundleActionAcceptedV2(
+  value: unknown,
+  path = "decisionBundleAccepted",
+): DecisionBundleActionAcceptedV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "workflow_id",
+    "bundle_id",
+    "status",
+    "revision",
+    "requirement_revision_no",
+    "turn_id",
+    "events_cursor",
+    "replayed",
+  ], path);
+  return {
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    bundle_id: expectNonEmptyString(record.bundle_id, `${path}.bundle_id`),
+    status: expectLiteral(record.status, new Set(["answered", "skipped"] as const), `${path}.status`),
+    revision: expectPositiveInteger(record.revision, `${path}.revision`),
+    requirement_revision_no: expectPositiveInteger(
+      record.requirement_revision_no,
+      `${path}.requirement_revision_no`,
+    ),
+    turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+    replayed: record.replayed === undefined ? false : expectBoolean(record.replayed, `${path}.replayed`),
+  };
+}
+
+export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSession"): GuidedSessionStateV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, [
     "session_id",
@@ -3525,6 +3749,7 @@ function normalizeGuidedSessionStateV2(value: unknown, path: string): GuidedSess
     "active_proposal_id",
     "active_style_skill_run_id",
     "completion",
+    "journey",
     "revision",
     "updated_at",
   ], path);
@@ -3555,8 +3780,132 @@ function normalizeGuidedSessionStateV2(value: unknown, path: string): GuidedSess
       `${path}.active_style_skill_run_id`,
     ),
     completion: normalizeGuidanceCompletionProjectionV2(record.completion ?? {}, `${path}.completion`),
+    journey: normalizeGuidedProductionJourneyV2(record.journey, `${path}.journey`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeGuidedProductionJourneyV2(
+  value: unknown,
+  path: string,
+): GuidedProductionJourneyV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "policy_version",
+    "stage",
+    "stage_status",
+    "stage_revision",
+    "foundation_queue",
+    "foundation_cursor",
+    "active_action",
+    "suspended_action",
+    "transition_evidence",
+  ], path);
+  const foundationQueue = expectArray(record.foundation_queue ?? [], `${path}.foundation_queue`)
+    .map((item, index) => normalizeFoundationJourneyItemV2(item, `${path}.foundation_queue[${index}]`));
+  const foundationCursor = record.foundation_cursor === undefined || record.foundation_cursor === null
+    ? null
+    : expectNonNegativeInteger(record.foundation_cursor, `${path}.foundation_cursor`);
+  if (foundationCursor !== null && foundationCursor >= foundationQueue.length) {
+    fail(`${path}.foundation_cursor`, "out of range");
+  }
+  return {
+    policy_version: expectLiteral(
+      record.policy_version,
+      new Set(["fixed_ad_production_v1"] as const),
+      `${path}.policy_version`,
+    ),
+    stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
+    stage_status: expectLiteral(record.stage_status, GUIDED_JOURNEY_STAGE_STATUSES, `${path}.stage_status`),
+    stage_revision: expectPositiveInteger(record.stage_revision, `${path}.stage_revision`),
+    foundation_queue: foundationQueue,
+    foundation_cursor: foundationCursor,
+    active_action: record.active_action === undefined || record.active_action === null
+      ? null
+      : normalizeJourneyActionProjectionV2(record.active_action, `${path}.active_action`),
+    suspended_action: record.suspended_action === undefined || record.suspended_action === null
+      ? null
+      : normalizeJourneyActionProjectionV2(record.suspended_action, `${path}.suspended_action`),
+    transition_evidence: expectArray(record.transition_evidence ?? [], `${path}.transition_evidence`)
+      .map((item, index) => normalizeJourneyTransitionEvidenceV2(item, `${path}.transition_evidence[${index}]`)),
+  };
+}
+
+function normalizeFoundationJourneyItemV2(value: unknown, path: string): FoundationJourneyItemV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "item_id",
+    "kind",
+    "occurrence_index",
+    "requirement_source",
+    "required",
+    "status",
+    "topic_id",
+    "selected_node_ids",
+  ], path);
+  return {
+    item_id: expectNonEmptyString(record.item_id, `${path}.item_id`),
+    kind: expectLiteral(record.kind, FOUNDATION_JOURNEY_KINDS, `${path}.kind`),
+    occurrence_index: expectPositiveInteger(record.occurrence_index, `${path}.occurrence_index`),
+    requirement_source: expectLiteral(
+      record.requirement_source,
+      FOUNDATION_JOURNEY_REQUIREMENT_SOURCES,
+      `${path}.requirement_source`,
+    ),
+    required: expectBoolean(record.required, `${path}.required`),
+    status: expectLiteral(record.status, FOUNDATION_JOURNEY_STATUSES, `${path}.status`),
+    topic_id: record.topic_id === undefined || record.topic_id === null
+      ? null
+      : expectNonEmptyString(record.topic_id, `${path}.topic_id`),
+    selected_node_ids: optionalStringArray(record.selected_node_ids, `${path}.selected_node_ids`, []),
+  };
+}
+
+function normalizeJourneyActionProjectionV2(value: unknown, path: string): JourneyActionProjectionV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "action_id",
+    "action_kind",
+    "stage",
+    "status",
+    "turn_id",
+    "foundation_item_id",
+  ], path);
+  return {
+    action_id: expectNonEmptyString(record.action_id, `${path}.action_id`),
+    action_kind: expectNonEmptyString(record.action_kind, `${path}.action_kind`),
+    stage: expectLiteral(record.stage, GUIDED_JOURNEY_STAGES, `${path}.stage`),
+    status: expectLiteral(record.status, JOURNEY_ACTION_STATUSES, `${path}.status`),
+    turn_id: record.turn_id === undefined || record.turn_id === null
+      ? null
+      : expectNonEmptyString(record.turn_id, `${path}.turn_id`),
+    foundation_item_id: record.foundation_item_id === undefined || record.foundation_item_id === null
+      ? null
+      : expectNonEmptyString(record.foundation_item_id, `${path}.foundation_item_id`),
+  };
+}
+
+function normalizeJourneyTransitionEvidenceV2(
+  value: unknown,
+  path: string,
+): JourneyTransitionEvidenceV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "evidence_id",
+    "evidence_kind",
+    "source_id",
+    "source_revision",
+    "recorded_at",
+  ], path);
+  return {
+    evidence_id: expectNonEmptyString(record.evidence_id, `${path}.evidence_id`),
+    evidence_kind: expectLiteral(record.evidence_kind, JOURNEY_EVIDENCE_KINDS, `${path}.evidence_kind`),
+    source_id: expectNonEmptyString(record.source_id, `${path}.source_id`),
+    source_revision: record.source_revision === undefined || record.source_revision === null
+      ? null
+      : expectPositiveInteger(record.source_revision, `${path}.source_revision`),
+    recorded_at: expectIsoDateTimeString(record.recorded_at, `${path}.recorded_at`),
   };
 }
 
@@ -3753,6 +4102,7 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
         && entryType !== "command_plan"
         && entryType !== "action_receipt"
         && entryType !== "agent_document_reference"
+        && entryType !== "decision_bundle"
       ) {
         fail(`${itemPath}.entry_type`, "invalid timeline entry type");
       }

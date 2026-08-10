@@ -39,6 +39,7 @@ import { isLikelyMarkdown, renderMarkdownAwareText } from "../canvas/AgentCanvas
 import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutionModeControl.tsx";
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
+import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import "./agent-canvas-chat.css";
 
 export function AgentCanvasChatPanel({
@@ -292,6 +293,17 @@ export function AgentCanvasChatPanel({
                 );
               }
               if (item.item_type === "proposal_pointer") return null;
+              if (item.item_type === "decision_bundle_pointer") return null;
+              if (item.item_type === "decision_bundle") {
+                return (
+                  <DecisionBundleCard
+                    key={`decision-bundle-${item.decision_bundle.bundle_id}`}
+                    bundle={item.decision_bundle}
+                    pending={chat.state.actingDecisionBundleId === item.decision_bundle.bundle_id}
+                    onApply={chat.actions.actOnDecisionBundle}
+                  />
+                );
+              }
               return (
                 <ProposalCard
                   key={`proposal-${item.proposal.proposal_id}`}
@@ -554,11 +566,15 @@ export function GuidanceSessionProgress({
 }: {
   session: GuidedSessionStateV2;
 }) {
+  const journey = session.journey;
+  const activeFoundationItem = journey.foundation_cursor === null
+    ? null
+    : journey.foundation_queue[journey.foundation_cursor] ?? null;
   return (
     <section className="agent-chat__recipe" aria-label="Guidance progress">
       <header>
         <strong>{session.goal.summary}</strong>
-        <span>Revision {session.revision}</span>
+        <span>Stage revision {journey.stage_revision}</span>
       </header>
       {session.topics.length ? (
         <ol>
@@ -577,6 +593,12 @@ export function GuidanceSessionProgress({
         <p>The agent is preparing the next creative decision.</p>
       )}
       <div className="agent-chat__completion" aria-label="Guidance completion">
+        <span>
+          Stage: {journey.stage.replaceAll("_", " ")} · {journey.stage_status.replaceAll("_", " ")}
+        </span>
+        {activeFoundationItem ? (
+          <span>Foundation item: {activeFoundationItem.kind} {activeFoundationItem.occurrence_index}</span>
+        ) : null}
         {session.creative_authority ? (
           <span>Direction: {session.creative_authority.authority === "user" ? "You" : "Director"}</span>
         ) : null}

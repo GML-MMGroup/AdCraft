@@ -125,6 +125,21 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes the persisted journey projection without inferring runtime failure", () => {
+    for (const eventType of [
+      "journey_stage_started",
+      "journey_stage_changed",
+      "journey_stage_waiting_user",
+      "journey_stage_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: false,
+        refreshRuntime: false,
+      });
+    }
+  });
+
   it("refreshes editing detail for progress without treating export as a canvas run", () => {
     const policy = runtimeEventPolicy(event("editing_export_progress", {
       execution_id: null,

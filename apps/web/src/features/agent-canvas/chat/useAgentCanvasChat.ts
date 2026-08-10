@@ -18,6 +18,7 @@ import type {
   ChatCapabilityActivityV2,
   ChatMessageV2,
   ChatTimelineItemV2,
+  DecisionBundleActionRequestV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -25,6 +26,7 @@ import type {
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
 import { agentCanvasChatErrorMessage } from "./chatErrorMessage.ts";
+import { mergeGuidedSessionState } from "../session/journeyState.ts";
 
 type SubmitDraft = {
   text: string;
@@ -44,6 +46,7 @@ const PROPOSAL_ACTION_ERROR_CODES = new Set([
 
 const GUIDANCE_CONFLICT_ERROR_CODES = new Set([
   "guidance_revision_conflict",
+  "journey_revision_conflict",
   "proposal_action_stale",
 ]);
 
@@ -86,6 +89,8 @@ function mergeTimelineItems(
     if (item.item_type === "action_receipt") return `receipt:${item.action_receipt.receipt_id}`;
     if (item.item_type === "agent_document") return `document:${item.document_id}:${item.revision}`;
     if (item.item_type === "proposal_pointer") return `proposal:${item.proposal_id}`;
+    if (item.item_type === "decision_bundle") return `decision-bundle:${item.decision_bundle.bundle_id}`;
+    if (item.item_type === "decision_bundle_pointer") return `decision-bundle:${item.bundle_id}`;
     const exhaustiveItem: never = item;
     return exhaustiveItem;
   };
@@ -125,6 +130,7 @@ export function useAgentCanvasChat({
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [actingProposalId, setActingProposalId] = useState<string | null>(null);
+  const [actingDecisionBundleId, setActingDecisionBundleId] = useState<string | null>(null);
   const [actingCommandPlanId, setActingCommandPlanId] = useState<string | null>(null);
   const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -193,30 +199,46 @@ export function useAgentCanvasChat({
       let nextGuidanceSession: GuidedSessionStateV2 | null = null;
       let nextCurrentSessionActions: GuidanceSessionActionV2[] = [];
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
+      try {
+        nextGuidanceSession = await agentCanvasApi.agentCanvasCreativeSession(workflowId);
+      } catch {
+        // The timeline remains a compatible read model while a direct session read is unavailable.
+      }
       let cursor = 0;
       for (;;) {
         const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
-        nextGuidanceSession = timeline.guidanceSession;
+        nextGuidanceSession = mergeGuidedSessionState(nextGuidanceSession, timeline.guidanceSession);
         nextCurrentSessionActions = timeline.current_session_actions ?? [];
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });
         const hydrated = await Promise.all(timeline.items.map(async (item): Promise<ChatTimelineItemV2> => {
-          if (item.item_type !== "proposal_pointer") return item;
-          const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
-          return {
-            item_type: "proposal",
-            proposal,
-            sequence: item.sequence,
-            created_at: item.created_at,
-          };
+          if (item.item_type === "proposal_pointer") {
+            const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
+            return {
+              item_type: "proposal",
+              proposal,
+              sequence: item.sequence,
+              created_at: item.created_at,
+            };
+          }
+          if (item.item_type === "decision_bundle_pointer") {
+            const decisionBundle = await agentCanvasApi.agentCanvasDecisionBundle(workflowId, item.bundle_id);
+            return {
+              item_type: "decision_bundle",
+              decision_bundle: decisionBundle,
+              sequence: item.sequence,
+              created_at: item.created_at,
+            };
+          }
+          return item;
         }));
         items.push(...hydrated);
         if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
         cursor = timeline.next_cursor;
       }
       if (generation !== refreshGenerationRef.current) return;
-      setGuidanceSession(nextGuidanceSession);
+      setGuidanceSession((current) => mergeGuidedSessionState(current, nextGuidanceSession));
       setCurrentSessionActions(nextCurrentSessionActions);
       setContinuationsById(Object.fromEntries(nextContinuations));
       setPersistedItems(items);
@@ -281,6 +303,7 @@ export function useAgentCanvasChat({
     }
     if (
       actionError.code === "guidance_revision_conflict"
+      || actionError.code === "journey_revision_conflict"
       || actionError.code === "proposal_action_stale"
     ) {
       setNotice("The guidance session changed. Review the latest guidance state before trying again.");
@@ -333,6 +356,7 @@ export function useAgentCanvasChat({
     setSending(false);
     setFailedDraft(null);
     setActingProposalId(null);
+    setActingDecisionBundleId(null);
     setActingCommandPlanId(null);
     setActingGuidedActionId(null);
     pendingActionTurnIdsRef.current.clear();
@@ -666,6 +690,36 @@ export function useAgentCanvasChat({
     }
   }, [actingGuidedActionId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
+  const actOnDecisionBundle = useCallback(async (
+    bundleId: string,
+    request: DecisionBundleActionRequestV2,
+  ) => {
+    if (!workflowId || actingDecisionBundleId) return;
+    const workflowGeneration = workflowGenerationRef.current;
+    setActingDecisionBundleId(bundleId);
+    setError(null);
+    try {
+      const accepted = await agentCanvasApi.actOnAgentCanvasDecisionBundle(
+        workflowId,
+        bundleId,
+        request,
+        createOperationKey(`decision-bundle-${request.action}`),
+      );
+      trackAcceptedTurn(accepted);
+      void refresh();
+    } catch (actionError) {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        if (!handleStructuredActionError(actionError)) {
+          setError(chatRequestErrorMessage(actionError, "The production decisions could not be saved."));
+        }
+      }
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingDecisionBundleId(null);
+      }
+    }
+  }, [actingDecisionBundleId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
+
   const retryCapabilityActivity = useCallback(async (activity: ChatCapabilityActivityV2) => {
     if (!activity.suggested_actions.includes("retry") || sending) return false;
     return submit({
@@ -692,6 +746,7 @@ export function useAgentCanvasChat({
       sending,
       agentWorking: sending || pendingAgentTurnIds.length > 0,
       actingProposalId,
+      actingDecisionBundleId,
       actingCommandPlanId,
       actingGuidedActionId,
       error,
@@ -707,6 +762,7 @@ export function useAgentCanvasChat({
       applyProposalAction,
       actOnCommandPlan,
       applyGuidedAction,
+      actOnDecisionBundle,
       retryCapabilityActivity,
       clearFailedDraft: () => setFailedDraft(null),
       clearNotice: () => setNotice(null),

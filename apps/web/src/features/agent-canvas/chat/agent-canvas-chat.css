@@ -548,6 +548,136 @@
   background: rgb(255 255 255 / 46%);
 }
 
+.agent-chat__decision-bundle {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgb(111 96 168 / 20%);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 46%);
+}
+
+.agent-chat__decision-bundle > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.agent-chat__decision-bundle > header span {
+  color: #81749e;
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.agent-chat__decision-bundle > p {
+  margin: 0;
+  color: #6d6e81;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.agent-chat__decision-questions {
+  display: grid;
+  gap: 9px;
+}
+
+.agent-chat__decision-questions fieldset {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.agent-chat__decision-questions legend {
+  margin-bottom: 2px;
+  color: #4e5063;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.agent-chat__decision-questions label {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 6px 7px;
+  border: 1px solid rgb(111 96 168 / 13%);
+  border-radius: 5px;
+  background: rgb(111 96 168 / 5%);
+}
+
+.agent-chat__decision-questions input[type="radio"],
+.agent-chat__decision-questions input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 1px 0 0;
+  accent-color: #7664b7;
+}
+
+.agent-chat__decision-questions label span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-chat__decision-questions label strong {
+  font-size: 10px;
+}
+
+.agent-chat__decision-questions label small {
+  color: #747588;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.agent-chat__decision-questions input[type="text"],
+.agent-chat__decision-questions input:not([type]) {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid rgb(111 96 168 / 16%);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+}
+
+.agent-chat__decision-questions button,
+.agent-chat__decision-actions button {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgb(111 96 168 / 20%);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+}
+
+.agent-chat__decision-questions button.is-selected {
+  border-color: #8d76d4;
+  color: #67529d;
+}
+
+.agent-chat__decision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-chat__decision-actions button:first-child {
+  border-color: rgb(112 92 180 / 46%);
+  color: #65509b;
+}
+
+.agent-chat__decision-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .agent-chat__command > header,
 .agent-chat__receipt > header {
   display: flex;
@@ -618,7 +748,8 @@
 [data-theme="dark"] .agent-chat__proposal,
 [data-theme="dark"] .agent-chat__artifact,
 [data-theme="dark"] .agent-chat__command,
-[data-theme="dark"] .agent-chat__receipt {
+[data-theme="dark"] .agent-chat__receipt,
+[data-theme="dark"] .agent-chat__decision-bundle {
   background: rgb(255 255 255 / 5%);
 }
 
