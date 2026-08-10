@@ -12,6 +12,9 @@ from app.persistence.agent_canvas_repository import (
     AgentCanvasDocumentRepository,
     AgentCanvasWorkflowRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
     CanvasBindingCreateRequestV2,
@@ -67,6 +70,7 @@ class AgentCanvasBindingService:
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
         self._world_setting_policy = WorldSettingBindingPolicy()
+        self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
     def create(
         self,
@@ -342,15 +346,22 @@ class AgentCanvasBindingService:
         result = tuple(
             sorted(snapshots, key=lambda item: (item.display_order, item.binding_id or ""))
         )
+        content_digest = hashlib.sha256(
+            "\n".join(item.content_hash for item in result).encode()
+        ).hexdigest()
+        requirement_lineage = self._requirement_lineage(
+            workflow_id,
+            target_node_id=target_node_id,
+            content_digest=content_digest,
+        )
         return self._documents.put_prompt_context_snapshot(
             workflow_id=workflow_id,
             target_node_id=target_node_id,
             inputs=result,
             operation=node_run_id,
             binding_ids=tuple(item.binding_id for item in result if item.binding_id is not None),
-            content_digest=hashlib.sha256(
-                "\n".join(item.content_hash for item in result).encode()
-            ).hexdigest(),
+            content_digest=content_digest,
+            **requirement_lineage,
         )
 
     def resolve_run_inputs(
@@ -626,15 +637,21 @@ class AgentCanvasBindingService:
             )
 
         if existing is None:
+            content_digest = hashlib.sha256(
+                "\n".join(item.content_hash for item in text_inputs).encode()
+            ).hexdigest()
             text_snapshot = self._documents.put_prompt_context_snapshot(
                 workflow_id=workflow_id,
                 target_node_id=target_node_id,
                 inputs=tuple(text_inputs),
                 operation=node_run_id,
                 binding_ids=tuple(item.binding_id for item in text_inputs if item.binding_id),
-                content_digest=hashlib.sha256(
-                    "\n".join(item.content_hash for item in text_inputs).encode()
-                ).hexdigest(),
+                content_digest=content_digest,
+                **self._requirement_lineage(
+                    workflow_id,
+                    target_node_id=target_node_id,
+                    content_digest=content_digest,
+                ),
             )
         else:
             text_snapshot = existing
@@ -667,6 +684,24 @@ class AgentCanvasBindingService:
                 stage="agent_canvas_binding_service",
             )
         return snapshot
+
+    def _requirement_lineage(
+        self,
+        workflow_id: str,
+        *,
+        target_node_id: str,
+        content_digest: str,
+    ) -> dict[str, object]:
+        revision = self._requirements.get_current(workflow_id)
+        projection_digest = hashlib.sha256(
+            f"{revision.digest}:{target_node_id}:{content_digest}".encode("utf-8")
+        ).hexdigest()
+        return {
+            "requirement_revision_id": revision.revision_id,
+            "requirement_revision_no": revision.revision_no,
+            "requirement_digest": revision.digest,
+            "requirement_projection_digest": projection_digest,
+        }
 
     def resolve_asset(self, asset_id: str) -> ProjectAssetSummaryV2:
         return self._resolve_asset(asset_id)

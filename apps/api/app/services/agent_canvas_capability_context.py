@@ -11,13 +11,18 @@ from app.persistence.agent_canvas_conversation_repository import (
 )
 from app.schemas.agent_canvas import AgentCanvasWorkflowV2, ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
-    CapabilityContextSnapshotV1,
+    CapabilityContextSnapshotV2,
     CapabilityReferencePlanV1,
     PlannedCapabilityReferenceV1,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 from app.services.agent_canvas_creative_direction import CreativeDirectionService
+from app.services.agent_canvas_requirement_projection import (
+    AgentCanvasRequirementProjectionService,
+    requirement_projection_digest,
+)
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
@@ -29,10 +34,20 @@ def build_capability_context_snapshot(
     capability_id: CapabilityIdV1,
     objective: str,
     reference_plan: CapabilityReferencePlanV1,
+    requirement_revision: RequirementLedgerRevisionV1,
+    target_node_id: str | None = None,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
-) -> CapabilityContextSnapshotV1:
+) -> CapabilityContextSnapshotV2:
     """Freeze only the current capability's approved authoring context."""
 
+    projection = AgentCanvasRequirementProjectionService().project(
+        requirement_revision,
+        workflow=workflow,
+        capability_id=capability_id,
+        goal_summary=objective,
+        reference_plan=reference_plan,
+        target_node_id=target_node_id,
+    )
     capability_context: dict[str, object] = {"objective": objective}
     reference_summaries = _reference_summaries(
         workflow,
@@ -47,12 +62,28 @@ def build_capability_context_snapshot(
         conversations,
         capability_id,
     )
+    projection_digest = requirement_projection_digest(projection)
+    capability_context_digest = _digest(capability_context)
+    style_projection_digest = _digest(style_projection)
+    capability_context["audit"] = {
+        "requirement_revision_id": projection.ledger_revision_id,
+        "requirement_revision_no": projection.ledger_revision_no,
+        "requirement_digest": projection.ledger_digest,
+        "included_directive_ids": list(projection.included_directive_ids),
+        "omitted_directives": [
+            item.model_dump(mode="json") for item in projection.omitted_directives
+        ],
+        "reference_plan_digest": reference_plan.digest,
+        "style_projection_digest": style_projection_digest,
+        "capability_context_digest": capability_context_digest,
+        "projection_digest": projection_digest,
+    }
     payload = {
         "workflow_id": workflow.workflow_id,
         "workflow_revision": workflow.revision,
         "session_revision": session.revision,
         "capability_id": capability_id,
-        "shared_summary": session.goal.summary,
+        "requirement_projection": projection.model_dump(mode="json"),
         "approved_reference_ids": reference_plan.approved_reference_ids,
         "reference_plan_digest": reference_plan.digest,
         "capability_context": capability_context,
@@ -61,15 +92,22 @@ def build_capability_context_snapshot(
     digest = hashlib.sha256(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     ).hexdigest()
-    return CapabilityContextSnapshotV1(
+    return CapabilityContextSnapshotV2(
         snapshot_id=f"snapshot_{digest[:32]}",
         digest=digest,
+        requirement_projection=projection,
         shared_summary=session.goal.summary,
         approved_reference_ids=reference_plan.approved_reference_ids,
         capability_context=capability_context,
         style_projection=style_projection,
         reference_plan=reference_plan,
     )
+
+
+def _digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
 
 def _reference_summaries(

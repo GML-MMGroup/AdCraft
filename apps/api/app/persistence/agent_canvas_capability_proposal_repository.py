@@ -21,9 +21,11 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
+    AgentCanvasRequirementLedgerRow,
 )
-from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV1
+from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
+from app.schemas.agent_canvas_draft_seeds import draft_seed_persistence_record
 from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     canonical_guidance_topic_kind,
@@ -54,7 +56,7 @@ class AgentCanvasCapabilityProposalRepository:
         self._database = database
         self._events = events
 
-    def publish(self, envelope: CapabilityCommandEnvelopeV1, result: BaseModel) -> str:
+    def publish(self, envelope: CapabilityCommandEnvelopeV2, result: BaseModel) -> str:
         proposal_id = f"proposal_{_digest(envelope.envelope_id)[:32]}"
         now = datetime.now(timezone.utc)
         timestamp = now.isoformat()
@@ -76,6 +78,35 @@ class AgentCanvasCapabilityProposalRepository:
                 if existing is not None:
                     connection.commit()
                     return str(existing)
+                requirement_head = (
+                    connection.execute(
+                        select(AgentCanvasRequirementLedgerRow).where(
+                            AgentCanvasRequirementLedgerRow.workflow_id == envelope.workflow_id
+                        )
+                    )
+                    .mappings()
+                    .one()
+                )
+                if (
+                    str(requirement_head["current_revision_id"]) != envelope.requirement_revision_id
+                    or int(requirement_head["current_revision_no"])
+                    != envelope.requirement_revision_no
+                ):
+                    error = V2PersistenceError(
+                        "requirement_revision_superseded",
+                        "Requirements changed before capability publication.",
+                        stage="capability_publication",
+                    )
+                    error.details = {
+                        "retryable": False,
+                        "current_requirement_revision_id": str(
+                            requirement_head["current_revision_id"]
+                        ),
+                        "current_requirement_revision_no": int(
+                            requirement_head["current_revision_no"]
+                        ),
+                    }
+                    raise error
                 session = (
                     connection.execute(
                         select(AgentCanvasGuidanceSessionRow).where(
@@ -174,6 +205,9 @@ class AgentCanvasCapabilityProposalRepository:
                         target_node_revision=None,
                         proposal_purpose=envelope.objective,
                         creative_direction_snapshot_id=creative_direction_snapshot_id,
+                        requirement_revision_id=envelope.requirement_revision_id,
+                        requirement_revision_no=envelope.requirement_revision_no,
+                        requirement_digest=envelope.requirement_digest,
                         proposal_revision=1,
                         proposed_references_json=json.dumps(
                             [
@@ -195,6 +229,18 @@ class AgentCanvasCapabilityProposalRepository:
                 for order, option in enumerate(options):
                     option_id = f"option_{_digest(proposal_id, str(order))[:32]}"
                     public_summary = str(option.public_summary)
+                    private_seed = getattr(option, "private_draft_seed", None)
+                    seed_record = (
+                        draft_seed_persistence_record(option_id, private_seed)
+                        if private_seed is not None
+                        else None
+                    )
+                    if envelope.capability_id != "quick_media" and seed_record is None:
+                        raise V2PersistenceError(
+                            "proposal_draft_seed_missing",
+                            "Proposal option has no private Draft Seed.",
+                            stage="capability_publication",
+                        )
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -206,6 +252,15 @@ class AgentCanvasCapabilityProposalRepository:
                                 list(option.key_decisions),
                                 separators=(",", ":"),
                                 sort_keys=True,
+                            ),
+                            draft_seed_schema=(
+                                seed_record.draft_seed_schema if seed_record is not None else None
+                            ),
+                            draft_seed_json=(
+                                seed_record.draft_seed_json if seed_record is not None else None
+                            ),
+                            draft_seed_digest=(
+                                seed_record.draft_seed_digest if seed_record is not None else None
                             ),
                         )
                     )
@@ -344,7 +399,7 @@ class AgentCanvasCapabilityProposalRepository:
 
 
 def _project_references(
-    envelope: CapabilityCommandEnvelopeV1,
+    envelope: CapabilityCommandEnvelopeV2,
 ) -> tuple[ProposedDraftReferenceV2, ...]:
     return tuple(
         ProposedDraftReferenceV2(

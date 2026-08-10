@@ -14,7 +14,7 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_capabilities import (
     CAPABILITY_RESULT_CONTRACTS,
-    CapabilityCommandEnvelopeV1,
+    CapabilityCommandEnvelopeV2,
     CapabilityExecutionResultV1,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
@@ -36,7 +36,7 @@ class CapabilityGateway(Protocol):
 
 
 def capability_context_from_envelope(
-    envelope: CapabilityCommandEnvelopeV1,
+    envelope: CapabilityCommandEnvelopeV2,
 ) -> Mapping[str, object]:
     """Project only immutable, capability-local context for the Pi boundary."""
 
@@ -48,7 +48,7 @@ def capability_context_from_envelope(
         "objective": envelope.objective,
         "context_snapshot_id": envelope.context_snapshot_id,
         "context_snapshot_digest": envelope.context_snapshot_digest,
-        "shared_summary": envelope.shared_summary or envelope.objective,
+        "requirement_projection": envelope.requirement_projection.model_dump(mode="json"),
         "approved_reference_ids": envelope.reference_allowlist,
         "capability_context": envelope.capability_context or {"objective": envelope.objective},
         "style_projection": envelope.style_projection,
@@ -63,9 +63,9 @@ class CapabilityExecutionService:
         *,
         database: V2Database,
         gateway: CapabilityGateway,
-        context_loader: Callable[[CapabilityCommandEnvelopeV1], Mapping[str, object]],
-        current_session_revision: Callable[[CapabilityCommandEnvelopeV1], int | None],
-        publisher: Callable[[CapabilityCommandEnvelopeV1, BaseModel], str],
+        context_loader: Callable[[CapabilityCommandEnvelopeV2], Mapping[str, object]],
+        current_session_revision: Callable[[CapabilityCommandEnvelopeV2], int | None],
+        publisher: Callable[[CapabilityCommandEnvelopeV2, BaseModel], str],
     ) -> None:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(database)
         self._gateway = gateway
@@ -76,7 +76,7 @@ class CapabilityExecutionService:
 
     def execute(self, envelope_id: str) -> CapabilityExecutionResultV1:
         envelope = self._envelopes.get(envelope_id)
-        if not isinstance(envelope, CapabilityCommandEnvelopeV1):
+        if not isinstance(envelope, CapabilityCommandEnvelopeV2):
             raise V2PersistenceError(
                 "capability_envelope_invalid",
                 "Operation envelope does not contain a capability command.",
@@ -137,7 +137,7 @@ class CapabilityExecutionService:
             repaired=repaired,
         )
 
-    def _validate_frozen_state(self, envelope: CapabilityCommandEnvelopeV1) -> None:
+    def _validate_frozen_state(self, envelope: CapabilityCommandEnvelopeV2) -> None:
         if envelope.expected_session_revision is None:
             return
         current = self._current_session_revision(envelope)
@@ -150,7 +150,7 @@ class CapabilityExecutionService:
 
     def _invoke(
         self,
-        envelope: CapabilityCommandEnvelopeV1,
+        envelope: CapabilityCommandEnvelopeV2,
         operation: str,
         context: Mapping[str, object],
         *,

@@ -14,14 +14,20 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import AgentCanvasOperationEnvelopeRow
 from app.schemas.agent_canvas_capabilities import (
-    CapabilityCommandEnvelopeV1,
+    CapabilityCommandEnvelopeV2,
     NextActionEnvelopeV1,
 )
-from app.schemas.agent_canvas_materialization import CapabilityMaterializationEnvelopeV1
+from app.schemas.agent_canvas_materialization import (
+    CapabilityMaterializationEnvelopeV1,
+    ProposalPublicationEnvelopeV1,
+)
 
 
 OperationEnvelopeV1: TypeAlias = (
-    CapabilityCommandEnvelopeV1 | NextActionEnvelopeV1 | CapabilityMaterializationEnvelopeV1
+    CapabilityCommandEnvelopeV2
+    | NextActionEnvelopeV1
+    | CapabilityMaterializationEnvelopeV1
+    | ProposalPublicationEnvelopeV1
 )
 _ENVELOPE_ADAPTER = TypeAdapter(OperationEnvelopeV1)
 
@@ -56,7 +62,7 @@ class AgentCanvasOperationEnvelopeRepository:
                     envelope_id=envelope.envelope_id,
                     turn_id=(
                         envelope.capability_turn_id
-                        if isinstance(envelope, CapabilityCommandEnvelopeV1)
+                        if isinstance(envelope, CapabilityCommandEnvelopeV2)
                         else (
                             envelope.next_action_turn_id
                             if isinstance(envelope, NextActionEnvelopeV1)

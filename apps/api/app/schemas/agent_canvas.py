@@ -674,7 +674,23 @@ class AgentCanvasPromptContextSnapshotV2(_AgentCanvasModel):
     skill_refs: tuple[dict[str, str], ...] = ()
     memory_digest: str | None = None
     upstream_summary_digest: str | None = None
+    requirement_revision_id: str | None = None
+    requirement_revision_no: int | None = Field(default=None, ge=1)
+    requirement_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    requirement_projection_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     byte_estimate: int = Field(default=0, ge=0)
     token_estimate: int = Field(default=0, ge=0)
     content_digest: str | None = None
     created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_requirement_lineage(self) -> "AgentCanvasPromptContextSnapshotV2":
+        lineage = (
+            self.requirement_revision_id,
+            self.requirement_revision_no,
+            self.requirement_digest,
+            self.requirement_projection_digest,
+        )
+        if any(item is not None for item in lineage) and any(item is None for item in lineage):
+            raise ValueError("Prompt context Requirement lineage must be complete.")
+        return self

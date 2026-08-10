@@ -13,6 +13,9 @@ from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
@@ -54,6 +57,9 @@ from app.schemas.agent_canvas_editing import (
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.workflow_v2_projects import ProjectCreate
+from app.services.agent_canvas_requirements import (
+    update_requirement_compatibility_projection_in_transaction,
+)
 
 
 class AgentCanvasWorkflowRepository:
@@ -70,6 +76,7 @@ class AgentCanvasWorkflowRepository:
         self._database = database
         self._projects = projects
         self._events = events
+        self._requirements = AgentCanvasRequirementRepository(database)
 
     @property
     def database(self) -> V2Database:
@@ -114,6 +121,11 @@ class AgentCanvasWorkflowRepository:
                             created_at=now,
                             updated_at=now,
                         )
+                    )
+                    self._requirements.initialize_in_transaction(
+                        connection,
+                        workflow_id=workflow_id,
+                        created_at=now,
                     )
                     conversation_id = f"conversation_{workflow_id}"
                     connection.execute(
@@ -1096,12 +1108,70 @@ class AgentCanvasWorkflowRepository:
                         connection, workflow_id, expected_revision
                     )
                     _require_node(connection, workflow_id, node_id)
+                    requirement_head = self._requirements.get_current_in_transaction(
+                        connection,
+                        workflow_id,
+                    )
+                    retained_directives = []
+                    requirement_changed = False
+                    for directive in requirement_head.ledger.active_directives:
+                        if directive.scope_kind != "node" or (
+                            node_id not in directive.target_node_ids
+                            and directive.source_node_id != node_id
+                        ):
+                            retained_directives.append(directive)
+                            continue
+                        requirement_changed = True
+                        remaining_targets = tuple(
+                            target_id
+                            for target_id in directive.target_node_ids
+                            if target_id != node_id
+                        )
+                        if remaining_targets and directive.source_node_id != node_id:
+                            retained_directives.append(
+                                directive.model_copy(update={"target_node_ids": remaining_targets})
+                            )
                     connection.execute(
                         delete(AgentCanvasDocumentRow).where(
                             AgentCanvasDocumentRow.workflow_id == workflow_id,
                             AgentCanvasDocumentRow.node_id == node_id,
                         )
                     )
+                    if requirement_changed:
+                        requirement_revision = self._requirements.append_in_transaction(
+                            connection,
+                            workflow_id=workflow_id,
+                            expected_revision_no=requirement_head.revision_no,
+                            next_ledger=requirement_head.ledger.model_copy(
+                                update={"active_directives": tuple(retained_directives)}
+                            ),
+                            source_kind="node_deletion",
+                            source_node_id=node_id,
+                            created_at=now,
+                        )
+                        update_requirement_compatibility_projection_in_transaction(
+                            connection,
+                            workflow_id,
+                            requirement_revision.ledger,
+                            now,
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                node_id=node_id,
+                                event_type="requirement_ledger_updated",
+                                created_at=now,
+                                payload={
+                                    "revision_id": requirement_revision.revision_id,
+                                    "revision_no": requirement_revision.revision_no,
+                                    "digest": requirement_revision.digest,
+                                    "source_kind": "node_deletion",
+                                    "source_node_id": node_id,
+                                    "refresh": ["requirements"],
+                                },
+                            ),
+                        )
                     removed_bindings = connection.execute(
                         delete(AgentCanvasBindingRow).where(
                             AgentCanvasBindingRow.workflow_id == workflow_id,
@@ -1636,6 +1706,10 @@ class AgentCanvasDocumentRepository:
         skill_refs: tuple[dict[str, str], ...] = (),
         memory_digest: str | None = None,
         upstream_summary_digest: str | None = None,
+        requirement_revision_id: str | None = None,
+        requirement_revision_no: int | None = None,
+        requirement_digest: str | None = None,
+        requirement_projection_digest: str | None = None,
         byte_estimate: int = 0,
         token_estimate: int = 0,
         content_digest: str | None = None,
@@ -1660,6 +1734,10 @@ class AgentCanvasDocumentRepository:
                         skill_refs_json=_json_dump(skill_refs),
                         memory_digest=memory_digest,
                         upstream_summary_digest=upstream_summary_digest,
+                        requirement_revision_id=requirement_revision_id,
+                        requirement_revision_no=requirement_revision_no,
+                        requirement_digest=requirement_digest,
+                        requirement_projection_digest=requirement_projection_digest,
                         byte_estimate=byte_estimate,
                         token_estimate=token_estimate,
                         content_digest=content_digest,
@@ -1692,6 +1770,10 @@ class AgentCanvasDocumentRepository:
             skill_refs=skill_refs,
             memory_digest=memory_digest,
             upstream_summary_digest=upstream_summary_digest,
+            requirement_revision_id=requirement_revision_id,
+            requirement_revision_no=requirement_revision_no,
+            requirement_digest=requirement_digest,
+            requirement_projection_digest=requirement_projection_digest,
             byte_estimate=byte_estimate,
             token_estimate=token_estimate,
             content_digest=content_digest,
@@ -1736,6 +1818,17 @@ class AgentCanvasDocumentRepository:
             skill_refs=tuple(json.loads(str(row["skill_refs_json"]))),
             memory_digest=cast(str | None, row["memory_digest"]),
             upstream_summary_digest=cast(str | None, row["upstream_summary_digest"]),
+            requirement_revision_id=cast(str | None, row["requirement_revision_id"]),
+            requirement_revision_no=(
+                int(row["requirement_revision_no"])
+                if row["requirement_revision_no"] is not None
+                else None
+            ),
+            requirement_digest=cast(str | None, row["requirement_digest"]),
+            requirement_projection_digest=cast(
+                str | None,
+                row["requirement_projection_digest"],
+            ),
             byte_estimate=int(row["byte_estimate"]),
             token_estimate=int(row["token_estimate"]),
             content_digest=cast(str | None, row["content_digest"]),
