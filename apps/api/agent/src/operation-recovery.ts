@@ -1,5 +1,7 @@
+import type { AgentTransportAttemptMetadataV1 } from "./generated/agent-runtime.js";
+
 export interface AgentTransportClassification {
-  readonly code: "agent_transport_failed";
+  readonly code: "agent_provider_transport_failed";
   readonly retryable: boolean;
   readonly retryAfterMs: number;
 }
@@ -43,6 +45,7 @@ export class AgentOperationFailure extends Error {
     readonly retryable: boolean,
     readonly attemptStage: "initial" | "transport_retry" | "structured_repair" =
       "initial",
+    readonly attemptMetadata?: AgentTransportAttemptMetadataV1,
   ) {
     super(message);
   }
@@ -66,7 +69,7 @@ export function classifyAgentTransportFailure(
     RETRYABLE_MESSAGES.some((part) => message.includes(part)) ||
     (status === 429 && retryAfterSeconds !== undefined);
   return {
-    code: "agent_transport_failed",
+    code: "agent_provider_transport_failed",
     retryable,
     retryAfterMs: Math.max(0, (retryAfterSeconds ?? 0.25) * 1_000),
   };
@@ -97,6 +100,14 @@ export async function runWithOneTransportRetry<T>(
       return await operation();
     } catch (error) {
       if (error instanceof AgentOperationFailure) throw error;
+      if (isProviderTimeoutFailure(error)) {
+        throw new AgentOperationFailure(
+          "agent_provider_timeout",
+          "Agent provider request timed out.",
+          false,
+          attempt === 0 ? "initial" : "transport_retry",
+        );
+      }
       if (
         error instanceof Error &&
         error.message === "agent_structured_output_invalid"
@@ -127,11 +138,29 @@ export async function runWithOneTransportRetry<T>(
     }
   }
   throw new AgentOperationFailure(
-    "agent_transport_failed",
+    "agent_provider_transport_failed",
     "Agent model transport failed.",
     false,
     "transport_retry",
   );
+}
+
+export function isProviderTimeoutFailure(candidate: unknown): boolean {
+  let current: unknown = candidate;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (!current || typeof current !== "object") return false;
+    const error = current as { readonly name?: unknown; readonly cause?: unknown };
+    const name = String(error.name ?? "");
+    if (
+      name === "APIConnectionTimeoutError" ||
+      name === "APITimeoutError" ||
+      name === "TimeoutError"
+    ) {
+      return true;
+    }
+    current = error.cause;
+  }
+  return false;
 }
 
 function asFailureShape(candidate: unknown): TransportFailureShape {

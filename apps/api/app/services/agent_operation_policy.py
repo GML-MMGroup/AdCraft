@@ -3,19 +3,29 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from app.schemas.agent_operation_recovery import (
     AgentOperationPolicyClassV2,
     AgentOperationPolicyV2,
 )
+from app.schemas.agent_runtime import AgentRunRequest
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
-_DEADLINES: Mapping[AgentOperationPolicyClassV2, int] = {
-    "routing": 180,
-    "proposal": 300,
-    "materialization": 420,
-    "long_form": 600,
+@dataclass(frozen=True)
+class _OperationBudget:
+    hard_deadline_seconds: int
+    max_output_tokens: int
+
+
+_CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
+    "routing": _OperationBudget(180, 1_024),
+    "proposal": _OperationBudget(300, 3_072),
+    "materialization": _OperationBudget(420, 4_096),
+    "long_form": _OperationBudget(600, 8_192),
 }
 _ROUTING_OPERATIONS = {
     "command_replan",
@@ -65,19 +75,10 @@ _PROPOSAL_OPERATIONS = {
 }
 _MATERIALIZATION_OPERATIONS = {
     "execute_canvas_text",
-    "materialize_bgm",
-    "materialize_product",
-    "materialize_prop",
     "materialize_quick_media",
-    "materialize_scene",
-    "materialize_script",
-    "materialize_storyboard",
-    "materialize_world_setting",
 }
 _LONG_FORM_OPERATIONS = {
     "execute_canvas_script",
-    "materialize_character",
-    "materialize_video",
     "script_edit_normalization",
     "script_writer",
     "storyboard_detail",
@@ -94,7 +95,16 @@ class AgentOperationPolicyRegistryV2:
         *,
         deadline_overrides: Mapping[AgentOperationPolicyClassV2, int] | None = None,
     ) -> None:
-        self._deadlines = {**_DEADLINES, **(deadline_overrides or {})}
+        self._budgets = {
+            policy_class: _OperationBudget(
+                hard_deadline_seconds=(deadline_overrides or {}).get(
+                    policy_class,
+                    budget.hard_deadline_seconds,
+                ),
+                max_output_tokens=budget.max_output_tokens,
+            )
+            for policy_class, budget in _CLASS_BUDGETS.items()
+        }
         self._capabilities = V2AgentCapabilityContractService().load()
         errors = self.validate_production_operations()
         if errors:
@@ -118,13 +128,15 @@ class AgentOperationPolicyRegistryV2:
             operation=operation,
             contract_id=contract_id,
         )
+        budget = self._budgets[policy_class]
         return AgentOperationPolicyV2(
             policy_id=f"agent.{policy_class}.v1",
             agent_name=agent_name,
             operation=operation,
             contract_id=contract_id,
             policy_class=policy_class,
-            hard_deadline_seconds=self._deadlines[policy_class],
+            hard_deadline_seconds=budget.hard_deadline_seconds,
+            max_output_tokens=budget.max_output_tokens,
             fallback_class="none",
         )
 
@@ -149,20 +161,62 @@ class AgentOperationPolicyRegistryV2:
         return tuple(errors)
 
 
+def freeze_agent_run_operation_policy(
+    request: AgentRunRequest,
+    *,
+    now: datetime | None = None,
+    registry: AgentOperationPolicyRegistryV2 | None = None,
+) -> AgentRunRequest:
+    """Freeze the canonical policy into a durable request before persistence."""
+
+    definition = VideoAgentOperationRegistry().resolve(request.operation)
+    operation_policy = (registry or AgentOperationPolicyRegistryV2()).resolve(
+        agent_name=request.agent_name,
+        operation=request.operation,
+        contract_id=request.contract_name or definition.result_contract_name,
+    )
+    run_policy = request.policy.model_copy(
+        update={
+            "operation_policy_id": operation_policy.policy_id,
+            "operation_class": operation_policy.policy_class,
+            "transport_retry_limit": operation_policy.transport_retry_limit,
+            "structured_repair_limit": operation_policy.structured_repair_limit,
+            "timeout_seconds": float(operation_policy.hard_deadline_seconds),
+            "max_output_tokens": operation_policy.max_output_tokens,
+        }
+    )
+    timestamp = now or datetime.now(timezone.utc)
+    policy_deadline = timestamp + timedelta(seconds=operation_policy.hard_deadline_seconds)
+    return request.model_copy(
+        update={
+            "deadline_at": min(request.deadline_at, policy_deadline),
+            "policy": run_policy,
+            "audit_metadata": {
+                **request.audit_metadata,
+                "agent_operation_policy": operation_policy.model_dump(mode="json"),
+                "agent_run_policy": run_policy.model_dump(mode="json"),
+            },
+        }
+    )
+
+
 def _policy_class(
     *,
     agent_name: str,
     operation: str,
     contract_id: str,
 ) -> AgentOperationPolicyClassV2:
-    if contract_id in {"ScriptSpecialistDraftV2", "StoryboardProductionPlanContentV2"}:
-        return "long_form"
-    if operation in _ROUTING_OPERATIONS:
-        return "routing"
-    if operation in _PROPOSAL_OPERATIONS:
-        return "proposal"
-    if operation in _MATERIALIZATION_OPERATIONS:
-        return "materialization"
-    if operation in _LONG_FORM_OPERATIONS:
-        return "long_form"
-    raise AgentOperationPolicyError("agent_operation_policy_unknown")
+    del agent_name, contract_id
+    matches: tuple[AgentOperationPolicyClassV2, ...] = tuple(
+        policy_class
+        for policy_class, operations in (
+            ("routing", _ROUTING_OPERATIONS),
+            ("proposal", _PROPOSAL_OPERATIONS),
+            ("materialization", _MATERIALIZATION_OPERATIONS),
+            ("long_form", _LONG_FORM_OPERATIONS),
+        )
+        if operation in operations
+    )
+    if len(matches) != 1:
+        raise AgentOperationPolicyError("agent_operation_policy_unknown")
+    return matches[0]

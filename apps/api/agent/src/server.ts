@@ -41,13 +41,19 @@ type AbortCause =
   | "server_shutdown"
   | "client_transport_lost";
 
+type FailureAudit = AgentOperationFailure["attemptMetadata"];
+
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
   "agent_model_incompatible",
+  "agent_model_capability_mismatch",
   "agent_model_policy_mismatch",
   "agent_model_unavailable",
   "agent_operation_not_allowed",
   "agent_structured_output_invalid",
+  "agent_contract_validation_failed",
+  "agent_provider_timeout",
+  "agent_provider_transport_failed",
   "agent_run_budget_exceeded",
   "agent_tool_not_allowed",
   "agent_target_revision_conflict",
@@ -240,6 +246,7 @@ async function handleRun(
     if (!terminalEmitted) {
       const failure = safeRuntimeFailure(error);
       logStructuredRejectionDiagnostic(request, failure);
+      logTerminalProviderDiagnostic(request, failure);
       const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
         event(request, 0, terminal.eventType, {
@@ -252,6 +259,7 @@ async function handleRun(
             agent_name: request.agent_name,
             operation_policy_id: request.policy?.operation_policy_id,
             attempt_stage: terminal.attemptStage,
+            ...(failure?.attemptMetadata ?? {}),
           },
         }),
       );
@@ -329,6 +337,7 @@ class RuntimeFailure extends Error {
     message: string,
     readonly retryable = false,
     readonly attemptStage = "initial",
+    readonly attemptMetadata?: FailureAudit,
   ) {
     super(message);
   }
@@ -347,6 +356,7 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
       error.message,
       error.retryable,
       error.attemptStage,
+      error.attemptMetadata,
     );
   }
   if (error instanceof RuntimeFailure) return error;
@@ -354,6 +364,37 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");
   }
   return undefined;
+}
+
+function logTerminalProviderDiagnostic(
+  request: AgentRunRequest,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (
+    failure?.code !== "agent_provider_timeout" &&
+    failure?.code !== "agent_provider_transport_failed"
+  ) {
+    return;
+  }
+  const audit = failure.attemptMetadata;
+  console.error(
+    JSON.stringify({
+      event: "agent_provider_terminal_failure",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      stable_error_code: failure.code,
+      operation_policy_id:
+        audit?.operation_policy_id ?? request.policy?.operation_policy_id,
+      operation_class: audit?.operation_class ?? request.policy?.operation_class,
+      effective_timeout_ms: audit?.effective_timeout_ms,
+      attempt_stage: audit?.attempt_stage ?? failure.attemptStage,
+      safe_exception_class: audit?.safe_exception_class,
+      safe_error_code: audit?.safe_error_code,
+      http_status: audit?.http_status,
+      provider_trace_id: audit?.provider_trace_id,
+    }),
+  );
 }
 
 function logStructuredRejectionDiagnostic(

@@ -1,5 +1,34 @@
 {
   "$defs": {
+    "AcceptedProposalCommitmentV1": {
+      "additionalProperties": false,
+      "properties": {
+        "normalized_meaning": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "source_fragment": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Source Fragment",
+          "type": "string"
+        },
+        "strength": {
+          "const": "preference",
+          "default": "preference",
+          "title": "Strength",
+          "type": "string"
+        }
+      },
+      "required": [
+        "normalized_meaning",
+        "source_fragment"
+      ],
+      "title": "AcceptedProposalCommitmentV1",
+      "type": "object"
+    },
     "AgentActionEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
@@ -1213,6 +1242,109 @@
       "title": "AgentMaterializeSiblingDraftOperationV2",
       "type": "object"
     },
+    "AgentModelExecutionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "deadline_seconds": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Deadline Seconds",
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_class": {
+          "enum": [
+            "long_form",
+            "materialization",
+            "proposal",
+            "routing"
+          ],
+          "title": "Operation Class",
+          "type": "string"
+        },
+        "reasoning_control": {
+          "enum": [
+            "enable_thinking",
+            "none",
+            "provider_default",
+            "reasoning_effort"
+          ],
+          "title": "Reasoning Control",
+          "type": "string"
+        },
+        "structured_repair_limit": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Structured Repair Limit",
+          "type": "integer"
+        },
+        "structured_transport": {
+          "enum": [
+            "json_object",
+            "non_streaming_tool_call",
+            "streamed_tool_call"
+          ],
+          "title": "Structured Transport",
+          "type": "string"
+        },
+        "supports_streamed_tool_calls": {
+          "title": "Supports Streamed Tool Calls",
+          "type": "boolean"
+        },
+        "supports_tool_calls": {
+          "title": "Supports Tool Calls",
+          "type": "boolean"
+        },
+        "thinking_format": {
+          "enum": [
+            "none",
+            "qwen",
+            "zai"
+          ],
+          "title": "Thinking Format",
+          "type": "string"
+        },
+        "transport_retry_limit": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Transport Retry Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deadline_seconds",
+        "max_output_tokens",
+        "model_ref",
+        "operation",
+        "operation_class",
+        "reasoning_control",
+        "structured_repair_limit",
+        "structured_transport",
+        "supports_streamed_tool_calls",
+        "supports_tool_calls",
+        "thinking_format",
+        "transport_retry_limit"
+      ],
+      "title": "AgentModelExecutionPolicyV1",
+      "type": "object"
+    },
     "AgentNodeIdRefV2": {
       "additionalProperties": false,
       "properties": {
@@ -1372,6 +1504,12 @@
           "title": "Hard Deadline Seconds",
           "type": "integer"
         },
+        "max_output_tokens": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
         "operation": {
           "maxLength": 120,
           "minLength": 1,
@@ -1410,6 +1548,7 @@
       "required": [
         "contract_id",
         "hard_deadline_seconds",
+        "max_output_tokens",
         "operation",
         "policy_class",
         "policy_id"
@@ -2054,6 +2193,20 @@
           "title": "Max Output Bytes",
           "type": "integer"
         },
+        "max_output_tokens": {
+          "anyOf": [
+            {
+              "maximum": 65536,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
+        },
         "max_tool_calls": {
           "default": 16,
           "maximum": 128,
@@ -2208,13 +2361,13 @@
               "$ref": "#/$defs/AgentRunContext"
             },
             {
-              "$ref": "#/$defs/TurnIntentContextV1"
+              "$ref": "#/$defs/TurnIntentContextV2"
             },
             {
               "$ref": "#/$defs/NextActionContextV1"
             },
             {
-              "$ref": "#/$defs/CapabilityInvocationContextV1"
+              "$ref": "#/$defs/CapabilityInvocationContextV2"
             },
             {
               "$ref": "#/$defs/CapabilityMaterializationContextV1"
@@ -2963,6 +3116,266 @@
       "title": "AgentToolResult",
       "type": "object"
     },
+    "AgentTransportAttemptMetadataV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_stage": {
+          "enum": [
+            "initial",
+            "structured_repair",
+            "transport_retry"
+          ],
+          "title": "Attempt Stage",
+          "type": "string"
+        },
+        "deadline_seconds": {
+          "maximum": 900,
+          "minimum": 1,
+          "title": "Deadline Seconds",
+          "type": "integer"
+        },
+        "effective_timeout_ms": {
+          "maximum": 900000,
+          "minimum": 0,
+          "title": "Effective Timeout Ms",
+          "type": "integer"
+        },
+        "finish_reason": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finish Reason"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "first_response_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Response At"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "maximum": 599,
+              "minimum": 100,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "last_activity_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Activity At"
+        },
+        "max_output_tokens": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Output Tokens",
+          "type": "integer"
+        },
+        "model_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Model Ref",
+          "type": "string"
+        },
+        "operation_class": {
+          "enum": [
+            "long_form",
+            "materialization",
+            "proposal",
+            "routing"
+          ],
+          "title": "Operation Class",
+          "type": "string"
+        },
+        "operation_policy_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Policy Id",
+          "type": "string"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        },
+        "provider": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "provider_trace_id": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Trace Id"
+        },
+        "reasoning_control": {
+          "enum": [
+            "enable_thinking",
+            "none",
+            "provider_default",
+            "reasoning_effort"
+          ],
+          "title": "Reasoning Control",
+          "type": "string"
+        },
+        "reasoning_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Tokens"
+        },
+        "safe_error_code": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safe Error Code"
+        },
+        "safe_exception_class": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Safe Exception Class"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "structured_attempt_count": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Structured Attempt Count",
+          "type": "integer"
+        },
+        "structured_transport": {
+          "enum": [
+            "json_object",
+            "non_streaming_tool_call",
+            "streamed_tool_call"
+          ],
+          "title": "Structured Transport",
+          "type": "string"
+        },
+        "thinking_format": {
+          "enum": [
+            "none",
+            "qwen",
+            "zai"
+          ],
+          "title": "Thinking Format",
+          "type": "string"
+        },
+        "transport_retry_count": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Transport Retry Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempt_stage",
+        "deadline_seconds",
+        "effective_timeout_ms",
+        "finished_at",
+        "max_output_tokens",
+        "model_ref",
+        "operation_class",
+        "operation_policy_id",
+        "provider",
+        "reasoning_control",
+        "started_at",
+        "structured_attempt_count",
+        "structured_transport",
+        "thinking_format",
+        "transport_retry_count"
+      ],
+      "title": "AgentTransportAttemptMetadataV1",
+      "type": "object"
+    },
     "AgentWorkingDocumentReferenceV2": {
       "additionalProperties": false,
       "properties": {
@@ -3131,6 +3544,122 @@
         }
       },
       "title": "AnchorRegistryContentV2",
+      "type": "object"
+    },
+    "AspectRatioControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "aspect_ratio",
+          "default": "aspect_ratio",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "AspectRatioControlPatchV1",
+      "type": "object"
+    },
+    "AspectRatioControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "aspect_ratio",
+          "default": "aspect_ratio",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "AspectRatioControlV1",
       "type": "object"
     },
     "AssetRevisionAgentContext": {
@@ -3403,6 +3932,128 @@
       "title": "AttachVideoNodePatchV2",
       "type": "object"
     },
+    "AudioModeControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "audio_mode",
+          "default": "audio_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "bgm_only",
+            "full",
+            "none"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "AudioModeControlPatchV1",
+      "type": "object"
+    },
+    "AudioModeControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "audio_mode",
+          "default": "audio_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "enum": [
+            "bgm_only",
+            "full",
+            "none"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "AudioModeControlV1",
+      "type": "object"
+    },
     "BgmContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -3464,6 +4115,74 @@
         "pace"
       ],
       "title": "BgmContentV2",
+      "type": "object"
+    },
+    "BgmDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "energy_curve": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Energy Curve",
+          "type": "string"
+        },
+        "instrumental_only": {
+          "const": true,
+          "default": true,
+          "title": "Instrumental Only",
+          "type": "boolean"
+        },
+        "instrumentation": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Instrumentation",
+          "type": "string"
+        },
+        "mood": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Mood",
+          "type": "string"
+        },
+        "no_lyrics": {
+          "const": true,
+          "default": true,
+          "title": "No Lyrics",
+          "type": "boolean"
+        },
+        "no_vocals": {
+          "const": true,
+          "default": true,
+          "title": "No Vocals",
+          "type": "boolean"
+        },
+        "pace": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Pace",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "bgm_direction",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "duration_seconds",
+        "energy_curve",
+        "instrumentation",
+        "mood",
+        "pace",
+        "seed_kind"
+      ],
+      "title": "BgmDraftSeedV1",
       "type": "object"
     },
     "BgmExpertAgentContext": {
@@ -3612,6 +4331,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -3627,6 +4349,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -4349,7 +5072,7 @@
       "title": "CanvasVariationDraftV2",
       "type": "object"
     },
-    "CapabilityCommandEnvelopeV1": {
+    "CapabilityCommandEnvelopeV2": {
       "additionalProperties": false,
       "properties": {
         "agent_request_identity": {
@@ -4452,6 +5175,30 @@
         "reference_plan": {
           "$ref": "#/$defs/CapabilityReferencePlanV1"
         },
+        "requirement_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        },
+        "requirement_projection": {
+          "$ref": "#/$defs/CapabilityRequirementProjectionV1"
+        },
+        "requirement_projection_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Requirement Projection Digest",
+          "type": "string"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        },
         "result_contract_name": {
           "maxLength": 160,
           "minLength": 1,
@@ -4459,8 +5206,8 @@
           "type": "string"
         },
         "schema_version": {
-          "const": "1",
-          "default": "1",
+          "const": "2",
+          "default": "2",
           "title": "Schema Version",
           "type": "string"
         },
@@ -4476,12 +5223,6 @@
           ],
           "default": null,
           "title": "Session Id"
-        },
-        "shared_summary": {
-          "default": "",
-          "maxLength": 8192,
-          "title": "Shared Summary",
-          "type": "string"
         },
         "source_action": {
           "anyOf": [
@@ -4544,14 +5285,19 @@
         "envelope_id",
         "objective",
         "reference_plan",
+        "requirement_digest",
+        "requirement_projection",
+        "requirement_projection_digest",
+        "requirement_revision_id",
+        "requirement_revision_no",
         "result_contract_name",
         "source_turn_id",
         "workflow_id"
       ],
-      "title": "CapabilityCommandEnvelopeV1",
+      "title": "CapabilityCommandEnvelopeV2",
       "type": "object"
     },
-    "CapabilityContextSnapshotV1": {
+    "CapabilityContextSnapshotV2": {
       "additionalProperties": false,
       "properties": {
         "approved_reference_ids": {
@@ -4578,6 +5324,9 @@
         "reference_plan": {
           "$ref": "#/$defs/CapabilityReferencePlanV1"
         },
+        "requirement_projection": {
+          "$ref": "#/$defs/CapabilityRequirementProjectionV1"
+        },
         "shared_summary": {
           "default": "",
           "maxLength": 8192,
@@ -4601,9 +5350,10 @@
       "required": [
         "digest",
         "reference_plan",
+        "requirement_projection",
         "snapshot_id"
       ],
-      "title": "CapabilityContextSnapshotV1",
+      "title": "CapabilityContextSnapshotV2",
       "type": "object"
     },
     "CapabilityDefinitionV1": {
@@ -4808,7 +5558,7 @@
       "title": "CapabilityExecutionResultV1",
       "type": "object"
     },
-    "CapabilityInvocationContextV1": {
+    "CapabilityInvocationContextV2": {
       "additionalProperties": false,
       "properties": {
         "approved_reference_ids": {
@@ -4884,19 +5634,8 @@
           "default": null,
           "title": "Repair Error"
         },
-        "shared_summary": {
-          "anyOf": [
-            {
-              "maxLength": 4096,
-              "minLength": 1,
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Shared Summary"
+        "requirement_projection": {
+          "$ref": "#/$defs/CapabilityRequirementProjectionV1"
         },
         "style_projection": {
           "additionalProperties": {
@@ -4919,9 +5658,10 @@
         "context_snapshot_id",
         "conversation_id",
         "objective",
+        "requirement_projection",
         "workflow_id"
       ],
-      "title": "CapabilityInvocationContextV1",
+      "title": "CapabilityInvocationContextV2",
       "type": "object"
     },
     "CapabilityMaterializationContextV1": {
@@ -5591,6 +6331,290 @@
       "title": "CapabilityReferencePlanV1",
       "type": "object"
     },
+    "CapabilityRequirementProjectionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_element_summaries": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Accepted Element Summaries",
+          "type": "array"
+        },
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "quick_media",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "direct_text_inputs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Direct Text Inputs",
+          "type": "array"
+        },
+        "goal_summary": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Goal Summary",
+          "type": "string"
+        },
+        "hard_controls": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/AspectRatioControlV1",
+                "audio_mode": "#/$defs/AudioModeControlV1",
+                "character_count": "#/$defs/CharacterCountControlV1",
+                "duration_seconds": "#/$defs/DurationSecondsControlV1",
+                "frame_rate": "#/$defs/FrameRateControlV1",
+                "output_resolution": "#/$defs/OutputResolutionControlV1",
+                "product_count": "#/$defs/ProductCountControlV1",
+                "prop_count": "#/$defs/PropCountControlV1",
+                "scene_count": "#/$defs/SceneCountControlV1",
+                "spoken_language": "#/$defs/SpokenLanguageControlV1",
+                "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DurationSecondsControlV1"
+              },
+              {
+                "$ref": "#/$defs/AspectRatioControlV1"
+              },
+              {
+                "$ref": "#/$defs/OutputResolutionControlV1"
+              },
+              {
+                "$ref": "#/$defs/FrameRateControlV1"
+              },
+              {
+                "$ref": "#/$defs/SpokenLanguageControlV1"
+              },
+              {
+                "$ref": "#/$defs/AudioModeControlV1"
+              },
+              {
+                "$ref": "#/$defs/ProductCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/PropCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/CharacterCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/SceneCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/StoryboardSequenceCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoSegmentCountControlV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Hard Controls",
+          "type": "array"
+        },
+        "included_directive_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Included Directive Ids",
+          "type": "array"
+        },
+        "ledger_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Ledger Digest",
+          "type": "string"
+        },
+        "ledger_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Ledger Revision Id",
+          "type": "string"
+        },
+        "ledger_revision_no": {
+          "minimum": 1,
+          "title": "Ledger Revision No",
+          "type": "integer"
+        },
+        "omitted_directives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/OmittedRequirementDirectiveV1"
+          },
+          "maxItems": 256,
+          "title": "Omitted Directives",
+          "type": "array"
+        },
+        "relevant_directives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementDirectiveV1"
+          },
+          "maxItems": 256,
+          "title": "Relevant Directives",
+          "type": "array"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "capability_id",
+        "ledger_digest",
+        "ledger_revision_id",
+        "ledger_revision_no"
+      ],
+      "title": "CapabilityRequirementProjectionV1",
+      "type": "object"
+    },
+    "CharacterCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "character_count",
+          "default": "character_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CharacterCountControlPatchV1",
+      "type": "object"
+    },
+    "CharacterCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "character_count",
+          "default": "character_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "CharacterCountControlV1",
+      "type": "object"
+    },
     "CharacterDesignAssetContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -5649,6 +6673,74 @@
         "subject_identity"
       ],
       "title": "CharacterDesignAssetContentV2",
+      "type": "object"
+    },
+    "CharacterDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "appearance": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Appearance",
+          "type": "string"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "performance_role": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Performance Role",
+          "type": "string"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "character_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "visual_medium": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Visual Medium",
+          "type": "string"
+        },
+        "wardrobe": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Wardrobe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "appearance",
+        "identity",
+        "performance_role",
+        "presentation_intent",
+        "seed_kind",
+        "visual_medium",
+        "wardrobe"
+      ],
+      "title": "CharacterDraftSeedV1",
       "type": "object"
     },
     "CharacterExpertAgentContext": {
@@ -5788,6 +6880,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -5803,6 +6898,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -6677,6 +7773,262 @@
       "title": "DraftReferenceIntentV2",
       "type": "object"
     },
+    "DraftSeedEnvelopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_commitments": {
+          "items": {
+            "$ref": "#/$defs/AcceptedProposalCommitmentV1"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Accepted Commitments",
+          "type": "array"
+        },
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed": {
+          "discriminator": {
+            "mapping": {
+              "bgm_direction": "#/$defs/BgmDraftSeedV1",
+              "character_design": "#/$defs/CharacterDraftSeedV1",
+              "product_design": "#/$defs/ProductDraftSeedV1",
+              "prop_design": "#/$defs/PropDraftSeedV1",
+              "scene_design": "#/$defs/SceneDraftSeedV1",
+              "script_authoring": "#/$defs/ScriptDraftSeedV1",
+              "storyboard_design": "#/$defs/StoryboardDraftSeedV1",
+              "video_direction": "#/$defs/VideoDraftSeedV1",
+              "world_setting": "#/$defs/WorldSettingDraftSeedV1"
+            },
+            "propertyName": "seed_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/WorldSettingDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/ProductDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/PropDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/CharacterDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/SceneDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/ScriptDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/StoryboardDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/VideoDraftSeedV1"
+            },
+            {
+              "$ref": "#/$defs/BgmDraftSeedV1"
+            }
+          ],
+          "title": "Seed"
+        }
+      },
+      "required": [
+        "accepted_commitments",
+        "capability_id",
+        "seed"
+      ],
+      "title": "DraftSeedEnvelopeV1",
+      "type": "object"
+    },
+    "DurationSecondsControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "duration_seconds",
+          "default": "duration_seconds",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "DurationSecondsControlPatchV1",
+      "type": "object"
+    },
+    "DurationSecondsControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "duration_seconds",
+          "default": "duration_seconds",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "DurationSecondsControlV1",
+      "type": "object"
+    },
+    "EditableRequirementDirectiveV1": {
+      "additionalProperties": false,
+      "properties": {
+        "directive_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Directive Id",
+          "type": "string"
+        },
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "enum": [
+            "capability",
+            "global",
+            "node"
+          ],
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        }
+      },
+      "required": [
+        "directive_id",
+        "normalized_meaning",
+        "scope_kind",
+        "source_kind",
+        "strength"
+      ],
+      "title": "EditableRequirementDirectiveV1",
+      "type": "object"
+    },
     "EditingBgmEntryV2": {
       "additionalProperties": false,
       "properties": {
@@ -7063,8 +8415,9 @@
       "title": "ExpertActivityV2",
       "type": "object"
     },
-    "ExplicitElementIntentV1": {
+    "ExplicitElementIntentV2": {
       "additionalProperties": false,
+      "description": "One exact-evidence element decision from the current user message.",
       "properties": {
         "element_kind": {
           "enum": [
@@ -7084,24 +8437,141 @@
         "presence": {
           "enum": [
             "exclude",
-            "include"
+            "include",
+            "unspecified"
           ],
           "title": "Presence",
           "type": "string"
         },
-        "requirements": {
-          "additionalProperties": {
-            "$ref": "#/$defs/JsonValue"
-          },
-          "title": "Requirements",
-          "type": "object"
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
         }
       },
       "required": [
         "element_kind",
-        "presence"
+        "presence",
+        "source_quote"
       ],
-      "title": "ExplicitElementIntentV1",
+      "title": "ExplicitElementIntentV2",
+      "type": "object"
+    },
+    "FrameRateControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "frame_rate",
+          "default": "frame_rate",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 240,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "FrameRateControlPatchV1",
+      "type": "object"
+    },
+    "FrameRateControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "frame_rate",
+          "default": "frame_rate",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 240,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "FrameRateControlV1",
       "type": "object"
     },
     "FrontDeskIntentAgentContext": {
@@ -8168,6 +9638,429 @@
       "type": "object"
     },
     "JsonValue": {},
+    "ManualAspectRatioControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "aspect_ratio",
+          "default": "aspect_ratio",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualAspectRatioControlPatchV1",
+      "type": "object"
+    },
+    "ManualAudioModeControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "audio_mode",
+          "default": "audio_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "bgm_only",
+            "full",
+            "none"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualAudioModeControlPatchV1",
+      "type": "object"
+    },
+    "ManualCharacterCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "character_count",
+          "default": "character_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualCharacterCountControlPatchV1",
+      "type": "object"
+    },
+    "ManualDurationSecondsControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "duration_seconds",
+          "default": "duration_seconds",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualDurationSecondsControlPatchV1",
+      "type": "object"
+    },
+    "ManualFrameRateControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "frame_rate",
+          "default": "frame_rate",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 240,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualFrameRateControlPatchV1",
+      "type": "object"
+    },
+    "ManualOutputResolutionControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "output_resolution",
+          "default": "output_resolution",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualOutputResolutionControlPatchV1",
+      "type": "object"
+    },
+    "ManualProductCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "product_count",
+          "default": "product_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualProductCountControlPatchV1",
+      "type": "object"
+    },
+    "ManualPropCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "prop_count",
+          "default": "prop_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualPropCountControlPatchV1",
+      "type": "object"
+    },
+    "ManualRequirementDirectivePatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_ids": {
+          "default": [],
+          "items": {
+            "enum": [
+              "bgm_direction",
+              "character_design",
+              "product_design",
+              "prop_design",
+              "quick_media",
+              "scene_design",
+              "script_authoring",
+              "storyboard_design",
+              "video_direction",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Capability Ids",
+          "type": "array"
+        },
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "enum": [
+            "capability",
+            "global",
+            "node"
+          ],
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        },
+        "target_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Target Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalized_meaning",
+        "scope_kind",
+        "source_text",
+        "strength"
+      ],
+      "title": "ManualRequirementDirectivePatchV1",
+      "type": "object"
+    },
+    "ManualSceneCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "scene_count",
+          "default": "scene_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualSceneCountControlPatchV1",
+      "type": "object"
+    },
+    "ManualSpokenLanguageControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "spoken_language",
+          "default": "spoken_language",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualSpokenLanguageControlPatchV1",
+      "type": "object"
+    },
+    "ManualStoryboardSequenceCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "storyboard_sequence_count",
+          "default": "storyboard_sequence_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualStoryboardSequenceCountControlPatchV1",
+      "type": "object"
+    },
+    "ManualVideoSegmentCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_segment_count",
+          "default": "video_segment_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_text",
+        "value"
+      ],
+      "title": "ManualVideoSegmentCountControlPatchV1",
+      "type": "object"
+    },
     "NextActionCommandV1": {
       "additionalProperties": false,
       "properties": {
@@ -8371,6 +10264,145 @@
         "workflow_id"
       ],
       "title": "NextActionEnvelopeV1",
+      "type": "object"
+    },
+    "OmittedRequirementDirectiveV1": {
+      "additionalProperties": false,
+      "properties": {
+        "directive_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Directive Id",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "directive_id",
+        "reason"
+      ],
+      "title": "OmittedRequirementDirectiveV1",
+      "type": "object"
+    },
+    "OutputResolutionControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "output_resolution",
+          "default": "output_resolution",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "OutputResolutionControlPatchV1",
+      "type": "object"
+    },
+    "OutputResolutionControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "output_resolution",
+          "default": "output_resolution",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "OutputResolutionControlV1",
       "type": "object"
     },
     "PlannedCapabilityReferenceV1": {
@@ -8595,6 +10627,200 @@
       "title": "PlanningSlotSummary",
       "type": "object"
     },
+    "ProductCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "product_count",
+          "default": "product_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "ProductCountControlPatchV1",
+      "type": "object"
+    },
+    "ProductCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "product_count",
+          "default": "product_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "ProductCountControlV1",
+      "type": "object"
+    },
+    "ProductDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "color_palette": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Color Palette",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "form": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Form",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Materials",
+          "type": "array"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "product_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "selling_focus": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Selling Focus",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color_palette",
+        "form",
+        "identity",
+        "materials",
+        "presentation_intent",
+        "seed_kind",
+        "selling_focus"
+      ],
+      "title": "ProductDraftSeedV1",
+      "type": "object"
+    },
     "ProductExpertAgentContext": {
       "additionalProperties": false,
       "properties": {
@@ -8732,6 +10958,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -8747,6 +10976,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -8873,6 +11103,200 @@
       "title": "ProjectCreativeMemoryV2",
       "type": "object"
     },
+    "PropCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "prop_count",
+          "default": "prop_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "PropCountControlPatchV1",
+      "type": "object"
+    },
+    "PropCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "prop_count",
+          "default": "prop_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "PropCountControlV1",
+      "type": "object"
+    },
+    "PropDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "color_palette": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Color Palette",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "form": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Form",
+          "type": "string"
+        },
+        "function": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Function",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Materials",
+          "type": "array"
+        },
+        "presentation_intent": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Presentation Intent",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "prop_design",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "color_palette",
+        "form",
+        "function",
+        "identity",
+        "materials",
+        "presentation_intent",
+        "seed_kind"
+      ],
+      "title": "PropDraftSeedV1",
+      "type": "object"
+    },
     "PropMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -8919,6 +11343,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -8934,6 +11361,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -8957,6 +11385,228 @@
         "options"
       ],
       "title": "PropProposalResultV1",
+      "type": "object"
+    },
+    "ProposalPublicationEnvelopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "delegate_choice",
+            "reuse_direction",
+            "select_option"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "action_turn_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Turn Id",
+          "type": "string"
+        },
+        "attempt_no": {
+          "minimum": 1,
+          "title": "Attempt No",
+          "type": "integer"
+        },
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "context_snapshot_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Context Snapshot Digest",
+          "type": "string"
+        },
+        "context_snapshot_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Snapshot Id",
+          "type": "string"
+        },
+        "conversation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "draft_seed_digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Seed Digest"
+        },
+        "draft_seed_schema": {
+          "anyOf": [
+            {
+              "const": "draft_seed_v1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Draft Seed Schema"
+        },
+        "envelope_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Envelope Id",
+          "type": "string"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "idempotency_identity": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Identity",
+          "type": "string"
+        },
+        "materialization_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Materialization Id",
+          "type": "string"
+        },
+        "proposal_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Proposal Id",
+          "type": "string"
+        },
+        "proposal_revision": {
+          "minimum": 1,
+          "title": "Proposal Revision",
+          "type": "integer"
+        },
+        "reference_plan": {
+          "$ref": "#/$defs/ProposalReferencePlanV1"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selected_option": {
+          "$ref": "#/$defs/SelectedConceptOptionV1"
+        },
+        "selection_actor": {
+          "enum": [
+            "agent",
+            "user"
+          ],
+          "title": "Selection Actor",
+          "type": "string"
+        },
+        "selection_reason": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selection Reason"
+        },
+        "style_skill_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Skill Run Id"
+        },
+        "target_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Id"
+        },
+        "target_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Node Revision"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "action_turn_id",
+        "attempt_no",
+        "capability_id",
+        "context_snapshot_digest",
+        "context_snapshot_id",
+        "conversation_id",
+        "created_at",
+        "envelope_id",
+        "expected_session_revision",
+        "idempotency_identity",
+        "materialization_id",
+        "proposal_id",
+        "proposal_revision",
+        "reference_plan",
+        "selected_option",
+        "selection_actor",
+        "workflow_id"
+      ],
+      "title": "ProposalPublicationEnvelopeV1",
       "type": "object"
     },
     "ProposalReferencePlanV1": {
@@ -9553,6 +12203,1084 @@
       "title": "ReplaceStoryboardRowsPatchV2",
       "type": "object"
     },
+    "RequirementApplicationDeltaV1": {
+      "additionalProperties": false,
+      "properties": {
+        "added_directive_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Added Directive Ids",
+          "type": "array"
+        },
+        "changed_control_names": {
+          "default": [],
+          "items": {
+            "enum": [
+              "aspect_ratio",
+              "audio_mode",
+              "character_count",
+              "duration_seconds",
+              "frame_rate",
+              "output_resolution",
+              "product_count",
+              "prop_count",
+              "scene_count",
+              "spoken_language",
+              "storyboard_sequence_count",
+              "video_segment_count"
+            ],
+            "type": "string"
+          },
+          "title": "Changed Control Names",
+          "type": "array"
+        },
+        "changed_element_kinds": {
+          "default": [],
+          "items": {
+            "enum": [
+              "audio",
+              "character",
+              "product",
+              "prop",
+              "scene",
+              "script",
+              "storyboard",
+              "video",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "title": "Changed Element Kinds",
+          "type": "array"
+        },
+        "conflict_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Conflict Ids",
+          "type": "array"
+        },
+        "superseded_directive_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Superseded Directive Ids",
+          "type": "array"
+        }
+      },
+      "title": "RequirementApplicationDeltaV1",
+      "type": "object"
+    },
+    "RequirementApplicationResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "title": "Changed",
+          "type": "boolean"
+        },
+        "delta": {
+          "$ref": "#/$defs/RequirementApplicationDeltaV1"
+        },
+        "revision": {
+          "$ref": "#/$defs/RequirementLedgerRevisionV1"
+        }
+      },
+      "required": [
+        "changed",
+        "delta",
+        "revision"
+      ],
+      "title": "RequirementApplicationResultV1",
+      "type": "object"
+    },
+    "RequirementConflictPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control_names": {
+          "default": [],
+          "items": {
+            "enum": [
+              "aspect_ratio",
+              "audio_mode",
+              "character_count",
+              "duration_seconds",
+              "frame_rate",
+              "output_resolution",
+              "product_count",
+              "prop_count",
+              "scene_count",
+              "spoken_language",
+              "storyboard_sequence_count",
+              "video_segment_count"
+            ],
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Control Names",
+          "type": "array"
+        },
+        "directive_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Directive Ids",
+          "type": "array"
+        },
+        "explanation": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "source_quotes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Source Quotes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "explanation",
+        "source_quotes"
+      ],
+      "title": "RequirementConflictPatchV1",
+      "type": "object"
+    },
+    "RequirementConflictV1": {
+      "additionalProperties": false,
+      "properties": {
+        "conflict_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Conflict Id",
+          "type": "string"
+        },
+        "control_names": {
+          "default": [],
+          "items": {
+            "enum": [
+              "aspect_ratio",
+              "audio_mode",
+              "character_count",
+              "duration_seconds",
+              "frame_rate",
+              "output_resolution",
+              "product_count",
+              "prop_count",
+              "scene_count",
+              "spoken_language",
+              "storyboard_sequence_count",
+              "video_segment_count"
+            ],
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Control Names",
+          "type": "array"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "directive_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Directive Ids",
+          "type": "array"
+        },
+        "explanation": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        }
+      },
+      "required": [
+        "conflict_id",
+        "created_revision_no",
+        "explanation"
+      ],
+      "title": "RequirementConflictV1",
+      "type": "object"
+    },
+    "RequirementDirectivePatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_ids": {
+          "default": [],
+          "items": {
+            "enum": [
+              "bgm_direction",
+              "character_design",
+              "product_design",
+              "prop_design",
+              "quick_media",
+              "scene_design",
+              "script_authoring",
+              "storyboard_design",
+              "video_direction",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Capability Ids",
+          "type": "array"
+        },
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "enum": [
+            "capability",
+            "global",
+            "node"
+          ],
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        },
+        "target_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Target Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "normalized_meaning",
+        "scope_kind",
+        "source_quote",
+        "strength"
+      ],
+      "title": "RequirementDirectivePatchV1",
+      "type": "object"
+    },
+    "RequirementDirectiveV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_ids": {
+          "default": [],
+          "items": {
+            "enum": [
+              "bgm_direction",
+              "character_design",
+              "product_design",
+              "prop_design",
+              "quick_media",
+              "scene_design",
+              "script_authoring",
+              "storyboard_design",
+              "video_direction",
+              "world_setting"
+            ],
+            "type": "string"
+          },
+          "maxItems": 10,
+          "title": "Capability Ids",
+          "type": "array"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "directive_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Directive Id",
+          "type": "string"
+        },
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "enum": [
+            "capability",
+            "global",
+            "node"
+          ],
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        },
+        "target_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Target Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "directive_id",
+        "normalized_meaning",
+        "scope_kind",
+        "source_kind",
+        "source_text",
+        "strength"
+      ],
+      "title": "RequirementDirectiveV1",
+      "type": "object"
+    },
+    "RequirementElementPresencePatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "element_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video",
+            "world_setting"
+          ],
+          "title": "Element Kind",
+          "type": "string"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "element_kind",
+        "presence",
+        "source_quote"
+      ],
+      "title": "RequirementElementPresencePatchV1",
+      "type": "object"
+    },
+    "RequirementElementPresenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "element_kind": {
+          "enum": [
+            "audio",
+            "character",
+            "product",
+            "prop",
+            "scene",
+            "script",
+            "storyboard",
+            "video",
+            "world_setting"
+          ],
+          "title": "Element Kind",
+          "type": "string"
+        },
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "element_kind",
+        "presence",
+        "source_kind",
+        "source_text"
+      ],
+      "title": "RequirementElementPresenceV1",
+      "type": "object"
+    },
+    "RequirementLedgerPatchRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "controls_to_set": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/ManualAspectRatioControlPatchV1",
+                "audio_mode": "#/$defs/ManualAudioModeControlPatchV1",
+                "character_count": "#/$defs/ManualCharacterCountControlPatchV1",
+                "duration_seconds": "#/$defs/ManualDurationSecondsControlPatchV1",
+                "frame_rate": "#/$defs/ManualFrameRateControlPatchV1",
+                "output_resolution": "#/$defs/ManualOutputResolutionControlPatchV1",
+                "product_count": "#/$defs/ManualProductCountControlPatchV1",
+                "prop_count": "#/$defs/ManualPropCountControlPatchV1",
+                "scene_count": "#/$defs/ManualSceneCountControlPatchV1",
+                "spoken_language": "#/$defs/ManualSpokenLanguageControlPatchV1",
+                "storyboard_sequence_count": "#/$defs/ManualStoryboardSequenceCountControlPatchV1",
+                "video_segment_count": "#/$defs/ManualVideoSegmentCountControlPatchV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/ManualDurationSecondsControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualAspectRatioControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualOutputResolutionControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualFrameRateControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualSpokenLanguageControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualAudioModeControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualProductCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualPropCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualCharacterCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualSceneCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualStoryboardSequenceCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ManualVideoSegmentCountControlPatchV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Controls To Set",
+          "type": "array"
+        },
+        "directive_ids_to_supersede": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Directive Ids To Supersede",
+          "type": "array"
+        },
+        "directives_to_add": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ManualRequirementDirectivePatchV1"
+          },
+          "maxItems": 16,
+          "title": "Directives To Add",
+          "type": "array"
+        }
+      },
+      "title": "RequirementLedgerPatchRequestV1",
+      "type": "object"
+    },
+    "RequirementLedgerResponseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "active_directives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementDirectiveV1"
+          },
+          "maxItems": 256,
+          "title": "Active Directives",
+          "type": "array"
+        },
+        "digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "element_presence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementElementPresenceV1"
+          },
+          "maxItems": 9,
+          "title": "Element Presence",
+          "type": "array"
+        },
+        "hard_controls": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/AspectRatioControlV1",
+                "audio_mode": "#/$defs/AudioModeControlV1",
+                "character_count": "#/$defs/CharacterCountControlV1",
+                "duration_seconds": "#/$defs/DurationSecondsControlV1",
+                "frame_rate": "#/$defs/FrameRateControlV1",
+                "output_resolution": "#/$defs/OutputResolutionControlV1",
+                "product_count": "#/$defs/ProductCountControlV1",
+                "prop_count": "#/$defs/PropCountControlV1",
+                "scene_count": "#/$defs/SceneCountControlV1",
+                "spoken_language": "#/$defs/SpokenLanguageControlV1",
+                "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DurationSecondsControlV1"
+              },
+              {
+                "$ref": "#/$defs/AspectRatioControlV1"
+              },
+              {
+                "$ref": "#/$defs/OutputResolutionControlV1"
+              },
+              {
+                "$ref": "#/$defs/FrameRateControlV1"
+              },
+              {
+                "$ref": "#/$defs/SpokenLanguageControlV1"
+              },
+              {
+                "$ref": "#/$defs/AudioModeControlV1"
+              },
+              {
+                "$ref": "#/$defs/ProductCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/PropCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/CharacterCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/SceneCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/StoryboardSequenceCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoSegmentCountControlV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Hard Controls",
+          "type": "array"
+        },
+        "revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "revision_no": {
+          "minimum": 1,
+          "title": "Revision No",
+          "type": "integer"
+        },
+        "unresolved_conflicts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementConflictV1"
+          },
+          "maxItems": 32,
+          "title": "Unresolved Conflicts",
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "revision_id",
+        "revision_no",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "RequirementLedgerResponseV1",
+      "type": "object"
+    },
+    "RequirementLedgerRevisionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "ledger": {
+          "$ref": "#/$defs/RequirementLedgerV1"
+        },
+        "parent_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Revision Id"
+        },
+        "revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "revision_no": {
+          "minimum": 1,
+          "title": "Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "initialization",
+            "manual_edit",
+            "node_deletion",
+            "proposal_selection",
+            "user_turn"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest",
+        "ledger",
+        "revision_id",
+        "revision_no",
+        "source_kind",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "RequirementLedgerRevisionV1",
+      "type": "object"
+    },
+    "RequirementLedgerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "active_directives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementDirectiveV1"
+          },
+          "maxItems": 256,
+          "title": "Active Directives",
+          "type": "array"
+        },
+        "element_presence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementElementPresenceV1"
+          },
+          "maxItems": 9,
+          "title": "Element Presence",
+          "type": "array"
+        },
+        "hard_controls": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/AspectRatioControlV1",
+                "audio_mode": "#/$defs/AudioModeControlV1",
+                "character_count": "#/$defs/CharacterCountControlV1",
+                "duration_seconds": "#/$defs/DurationSecondsControlV1",
+                "frame_rate": "#/$defs/FrameRateControlV1",
+                "output_resolution": "#/$defs/OutputResolutionControlV1",
+                "product_count": "#/$defs/ProductCountControlV1",
+                "prop_count": "#/$defs/PropCountControlV1",
+                "scene_count": "#/$defs/SceneCountControlV1",
+                "spoken_language": "#/$defs/SpokenLanguageControlV1",
+                "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DurationSecondsControlV1"
+              },
+              {
+                "$ref": "#/$defs/AspectRatioControlV1"
+              },
+              {
+                "$ref": "#/$defs/OutputResolutionControlV1"
+              },
+              {
+                "$ref": "#/$defs/FrameRateControlV1"
+              },
+              {
+                "$ref": "#/$defs/SpokenLanguageControlV1"
+              },
+              {
+                "$ref": "#/$defs/AudioModeControlV1"
+              },
+              {
+                "$ref": "#/$defs/ProductCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/PropCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/CharacterCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/SceneCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/StoryboardSequenceCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoSegmentCountControlV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Hard Controls",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "unresolved_conflicts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementConflictV1"
+          },
+          "maxItems": 32,
+          "title": "Unresolved Conflicts",
+          "type": "array"
+        }
+      },
+      "title": "RequirementLedgerV1",
+      "type": "object"
+    },
+    "RequirementPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "conflicts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementConflictPatchV1"
+          },
+          "maxItems": 8,
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "controls_to_set": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/AspectRatioControlPatchV1",
+                "audio_mode": "#/$defs/AudioModeControlPatchV1",
+                "character_count": "#/$defs/CharacterCountControlPatchV1",
+                "duration_seconds": "#/$defs/DurationSecondsControlPatchV1",
+                "frame_rate": "#/$defs/FrameRateControlPatchV1",
+                "output_resolution": "#/$defs/OutputResolutionControlPatchV1",
+                "product_count": "#/$defs/ProductCountControlPatchV1",
+                "prop_count": "#/$defs/PropCountControlPatchV1",
+                "scene_count": "#/$defs/SceneCountControlPatchV1",
+                "spoken_language": "#/$defs/SpokenLanguageControlPatchV1",
+                "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlPatchV1",
+                "video_segment_count": "#/$defs/VideoSegmentCountControlPatchV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DurationSecondsControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/AspectRatioControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/OutputResolutionControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/FrameRateControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/SpokenLanguageControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/AudioModeControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/ProductCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/PropCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/CharacterCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/SceneCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/StoryboardSequenceCountControlPatchV1"
+              },
+              {
+                "$ref": "#/$defs/VideoSegmentCountControlPatchV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Controls To Set",
+          "type": "array"
+        },
+        "directive_ids_to_supersede": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Directive Ids To Supersede",
+          "type": "array"
+        },
+        "directives_to_add": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RequirementDirectivePatchV1"
+          },
+          "maxItems": 16,
+          "title": "Directives To Add",
+          "type": "array"
+        }
+      },
+      "title": "RequirementPatchV1",
+      "type": "object"
+    },
     "ResolvedImageTargetV2": {
       "additionalProperties": false,
       "properties": {
@@ -9663,6 +13391,122 @@
       "title": "SceneBoardPanelV2",
       "type": "object"
     },
+    "SceneCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "scene_count",
+          "default": "scene_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "SceneCountControlPatchV1",
+      "type": "object"
+    },
+    "SceneCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "scene_count",
+          "default": "scene_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "SceneCountControlV1",
+      "type": "object"
+    },
     "SceneDesignBoardContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -9747,6 +13591,74 @@
         "time_of_day"
       ],
       "title": "SceneDesignBoardContentV2",
+      "type": "object"
+    },
+    "SceneDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "atmosphere": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Atmosphere",
+          "type": "string"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "identity": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "lighting": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "scene_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "spatial_layout": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Spatial Layout",
+          "type": "string"
+        },
+        "time_of_day": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Time Of Day",
+          "type": "string"
+        }
+      },
+      "required": [
+        "atmosphere",
+        "identity",
+        "lighting",
+        "materials",
+        "seed_kind",
+        "spatial_layout",
+        "time_of_day"
+      ],
+      "title": "SceneDraftSeedV1",
       "type": "object"
     },
     "SceneExpertAgentContext": {
@@ -9886,6 +13798,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -9901,6 +13816,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -9942,6 +13858,61 @@
       "title": "ScriptDraftContentV2",
       "type": "object"
     },
+    "ScriptDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "audience_objective": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Audience Objective",
+          "type": "string"
+        },
+        "dialogue_direction": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Dialogue Direction",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "narrative_beats": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Narrative Beats",
+          "type": "array"
+        },
+        "premise": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "script_authoring",
+          "title": "Seed Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "audience_objective",
+        "dialogue_direction",
+        "duration_seconds",
+        "narrative_beats",
+        "premise",
+        "seed_kind"
+      ],
+      "title": "ScriptDraftSeedV1",
+      "type": "object"
+    },
     "ScriptMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -9981,6 +13952,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -9996,6 +13970,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -10216,6 +14191,184 @@
       "title": "SpecialistDraft",
       "type": "object"
     },
+    "SpokenLanguageControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "spoken_language",
+          "default": "spoken_language",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "SpokenLanguageControlPatchV1",
+      "type": "object"
+    },
+    "SpokenLanguageControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "spoken_language",
+          "default": "spoken_language",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "SpokenLanguageControlV1",
+      "type": "object"
+    },
+    "StoryboardDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_language": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Camera Language",
+          "type": "string"
+        },
+        "continuity_anchors": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Continuity Anchors",
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "panel_beats": {
+          "items": {
+            "$ref": "#/$defs/StoryboardPanelSeedV1"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Panel Beats",
+          "type": "array"
+        },
+        "seed_kind": {
+          "const": "storyboard_design",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "sequence_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Sequence Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "camera_language",
+        "continuity_anchors",
+        "panel_beats",
+        "seed_kind",
+        "sequence_summary"
+      ],
+      "title": "StoryboardDraftSeedV1",
+      "type": "object"
+    },
     "StoryboardGridContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -10402,6 +14555,57 @@
         "node_role"
       ],
       "title": "StoryboardNodeRecordV2",
+      "type": "object"
+    },
+    "StoryboardPanelSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "beat": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Beat",
+          "type": "string"
+        },
+        "camera": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Camera",
+          "type": "string"
+        },
+        "composition": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Composition",
+          "type": "string"
+        },
+        "continuity_from_previous": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Continuity From Previous",
+          "type": "string"
+        },
+        "panel_index": {
+          "maximum": 9,
+          "minimum": 1,
+          "title": "Panel Index",
+          "type": "integer"
+        },
+        "subject_action": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Subject Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "beat",
+        "camera",
+        "composition",
+        "continuity_from_previous",
+        "panel_index",
+        "subject_action"
+      ],
+      "title": "StoryboardPanelSeedV1",
       "type": "object"
     },
     "StoryboardPanelV2": {
@@ -10604,6 +14808,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -10619,6 +14826,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -10642,6 +14850,122 @@
         "options"
       ],
       "title": "StoryboardProposalResultV1",
+      "type": "object"
+    },
+    "StoryboardSequenceCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "storyboard_sequence_count",
+          "default": "storyboard_sequence_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "StoryboardSequenceCountControlPatchV1",
+      "type": "object"
+    },
+    "StoryboardSequenceCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "storyboard_sequence_count",
+          "default": "storyboard_sequence_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "StoryboardSequenceCountControlV1",
       "type": "object"
     },
     "StructuredViolation": {
@@ -10802,7 +15126,7 @@
       "title": "StyleGuidanceContextV2",
       "type": "object"
     },
-    "TurnIntentContextV1": {
+    "TurnIntentContextV2": {
       "additionalProperties": false,
       "properties": {
         "conversation_id": {
@@ -10810,6 +15134,78 @@
           "minLength": 1,
           "title": "Conversation Id",
           "type": "string"
+        },
+        "current_hard_controls": {
+          "default": [],
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "aspect_ratio": "#/$defs/AspectRatioControlV1",
+                "audio_mode": "#/$defs/AudioModeControlV1",
+                "character_count": "#/$defs/CharacterCountControlV1",
+                "duration_seconds": "#/$defs/DurationSecondsControlV1",
+                "frame_rate": "#/$defs/FrameRateControlV1",
+                "output_resolution": "#/$defs/OutputResolutionControlV1",
+                "product_count": "#/$defs/ProductCountControlV1",
+                "prop_count": "#/$defs/PropCountControlV1",
+                "scene_count": "#/$defs/SceneCountControlV1",
+                "spoken_language": "#/$defs/SpokenLanguageControlV1",
+                "storyboard_sequence_count": "#/$defs/StoryboardSequenceCountControlV1",
+                "video_segment_count": "#/$defs/VideoSegmentCountControlV1"
+              },
+              "propertyName": "control"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DurationSecondsControlV1"
+              },
+              {
+                "$ref": "#/$defs/AspectRatioControlV1"
+              },
+              {
+                "$ref": "#/$defs/OutputResolutionControlV1"
+              },
+              {
+                "$ref": "#/$defs/FrameRateControlV1"
+              },
+              {
+                "$ref": "#/$defs/SpokenLanguageControlV1"
+              },
+              {
+                "$ref": "#/$defs/AudioModeControlV1"
+              },
+              {
+                "$ref": "#/$defs/ProductCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/PropCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/CharacterCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/SceneCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/StoryboardSequenceCountControlV1"
+              },
+              {
+                "$ref": "#/$defs/VideoSegmentCountControlV1"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Current Hard Controls",
+          "type": "array"
+        },
+        "editable_directives": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EditableRequirementDirectiveV1"
+          },
+          "maxItems": 32,
+          "title": "Editable Directives",
+          "type": "array"
         },
         "mentioned_image_asset_ids": {
           "default": [],
@@ -10828,6 +15224,22 @@
           "maxItems": 16,
           "title": "Mentioned Node Ids",
           "type": "array"
+        },
+        "requirement_digest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
         },
         "session_exists": {
           "title": "Session Exists",
@@ -10853,15 +15265,18 @@
       },
       "required": [
         "conversation_id",
+        "requirement_digest",
+        "requirement_revision_id",
+        "requirement_revision_no",
         "session_exists",
         "user_input",
         "workflow_id",
         "workflow_revision"
       ],
-      "title": "TurnIntentContextV1",
+      "title": "TurnIntentContextV2",
       "type": "object"
     },
-    "TurnIntentDecisionV1": {
+    "TurnIntentDecisionV2": {
       "additionalProperties": false,
       "properties": {
         "assistant_message": {
@@ -10877,17 +15292,10 @@
           "default": null,
           "title": "Assistant Message"
         },
-        "explicit_constraints": {
-          "additionalProperties": {
-            "$ref": "#/$defs/JsonValue"
-          },
-          "title": "Explicit Constraints",
-          "type": "object"
-        },
         "explicit_elements": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/ExplicitElementIntentV1"
+            "$ref": "#/$defs/ExplicitElementIntentV2"
           },
           "maxItems": 16,
           "title": "Explicit Elements",
@@ -10932,13 +15340,24 @@
           ],
           "default": null,
           "title": "Requested Capability"
+        },
+        "requirement_patch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RequirementPatchV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
         "mode",
         "objective"
       ],
-      "title": "TurnIntentDecisionV1",
+      "title": "TurnIntentDecisionV2",
       "type": "object"
     },
     "UpsertAnchorPatchV2": {
@@ -11788,6 +16207,73 @@
       "title": "VideoAgentOperationDefinitionV1",
       "type": "object"
     },
+    "VideoDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "camera_language": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Camera Language",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "motion": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Motion",
+          "type": "string"
+        },
+        "native_audio_direction": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Native Audio Direction",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "video_direction",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "segment_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Segment Summary",
+          "type": "string"
+        },
+        "target_style": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Target Style",
+          "type": "string"
+        },
+        "timing_beats": {
+          "items": {
+            "$ref": "#/$defs/VideoTimingBeatSeedV1"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Timing Beats",
+          "type": "array"
+        }
+      },
+      "required": [
+        "camera_language",
+        "duration_seconds",
+        "motion",
+        "native_audio_direction",
+        "seed_kind",
+        "segment_summary",
+        "target_style",
+        "timing_beats"
+      ],
+      "title": "VideoDraftSeedV1",
+      "type": "object"
+    },
     "VideoMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -12195,6 +16681,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -12210,6 +16699,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],
@@ -12299,6 +16789,152 @@
         "storyboard_content"
       ],
       "title": "VideoSegmentContentV2",
+      "type": "object"
+    },
+    "VideoSegmentCountControlPatchV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_segment_count",
+          "default": "video_segment_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "VideoSegmentCountControlPatchV1",
+      "type": "object"
+    },
+    "VideoSegmentCountControlV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_segment_count",
+          "default": "video_segment_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "created_revision_no": {
+          "minimum": 1,
+          "title": "Created Revision No",
+          "type": "integer"
+        },
+        "source_kind": {
+          "enum": [
+            "accepted_proposal",
+            "manual_edit",
+            "user_message"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Proposal Id"
+        },
+        "source_text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Text",
+          "type": "string"
+        },
+        "source_turn_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Turn Id"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "created_revision_no",
+        "source_kind",
+        "source_text",
+        "value"
+      ],
+      "title": "VideoSegmentCountControlV1",
+      "type": "object"
+    },
+    "VideoTimingBeatSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "end_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "End Seconds",
+          "type": "number"
+        },
+        "start_seconds": {
+          "maximum": 3600,
+          "minimum": 0,
+          "title": "Start Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "action",
+        "end_seconds",
+        "start_seconds"
+      ],
+      "title": "VideoTimingBeatSeedV1",
       "type": "object"
     },
     "VisualStyleContractV2": {
@@ -12657,6 +17293,66 @@
       "title": "WorldSettingDocumentV2",
       "type": "object"
     },
+    "WorldSettingDraftSeedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "era_and_place": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Era And Place",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "prompt_brief": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Prompt Brief",
+          "type": "string"
+        },
+        "seed_kind": {
+          "const": "world_setting",
+          "title": "Seed Kind",
+          "type": "string"
+        },
+        "visual_continuity": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Visual Continuity",
+          "type": "array"
+        },
+        "world_rules": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "World Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "era_and_place",
+        "premise",
+        "prompt_brief",
+        "seed_kind",
+        "visual_continuity",
+        "world_rules"
+      ],
+      "title": "WorldSettingDraftSeedV1",
+      "type": "object"
+    },
     "WorldSettingMaterializationContentV1": {
       "additionalProperties": false,
       "properties": {
@@ -12716,6 +17412,9 @@
           "title": "Key Decisions",
           "type": "array"
         },
+        "private_draft_seed": {
+          "$ref": "#/$defs/DraftSeedEnvelopeV1"
+        },
         "public_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -12731,6 +17430,7 @@
       },
       "required": [
         "key_decisions",
+        "private_draft_seed",
         "public_summary",
         "title"
       ],

@@ -24,6 +24,9 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
+from app.persistence.agent_canvas_requirement_repository import (
+    AgentCanvasRequirementRepository,
+)
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
@@ -92,9 +95,17 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
+from app.schemas.agent_canvas_draft_seeds import (
+    DraftSeedEnvelopeV1,
+    DraftSeedPersistenceRecordV1,
+)
+from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
+from app.services.agent_canvas_requirements import (
+    update_requirement_compatibility_projection_in_transaction,
+)
 
 
 class AgentCanvasConversationRepository:
@@ -106,6 +117,7 @@ class AgentCanvasConversationRepository:
         self._database = database
         self._events = events
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
+        self._requirements = AgentCanvasRequirementRepository(database)
 
     @property
     def database(self) -> V2Database:
@@ -1889,6 +1901,32 @@ class AgentCanvasConversationRepository:
                         updated_at=now,
                     )
                 )
+                timeline_rows = (
+                    connection.execute(
+                        select(AgentCanvasChatEntryRow).where(
+                            AgentCanvasChatEntryRow.conversation_id == turn["conversation_id"]
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+                for timeline_row in timeline_rows:
+                    metadata = json.loads(str(timeline_row["metadata_json"]))
+                    if metadata.get("turn_id") != turn_id:
+                        continue
+                    connection.execute(
+                        update(AgentCanvasChatEntryRow)
+                        .where(AgentCanvasChatEntryRow.entry_id == timeline_row["entry_id"])
+                        .values(
+                            metadata_json=_dump(
+                                {
+                                    **metadata,
+                                    "status": "failed",
+                                    "error_code": code,
+                                }
+                            )
+                        )
+                    )
                 activity = (
                     connection.execute(
                         select(AgentCanvasExpertActivityRow).where(
@@ -2022,6 +2060,7 @@ class AgentCanvasConversationRepository:
     ) -> ConceptProposalV2:
         now = _now()
         proposal_id = f"proposal_{uuid4().hex}"
+        seed_records = _validated_seed_records(proposal)
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
@@ -2099,6 +2138,10 @@ class AgentCanvasConversationRepository:
                             AgentCanvasSkillRunRow.skill_run_id == skill_run_id
                         )
                     ).scalar_one_or_none()
+                requirement_head = self._requirements.get_current_in_transaction(
+                    connection,
+                    str(turn["workflow_id"]),
+                )
                 connection.execute(
                     insert(AgentCanvasConceptProposalRow).values(
                         proposal_id=proposal_id,
@@ -2112,6 +2155,9 @@ class AgentCanvasConversationRepository:
                         target_node_revision=proposal.target_node_revision,
                         proposal_purpose=proposal.proposal_purpose,
                         creative_direction_snapshot_id=creative_direction_snapshot_id,
+                        requirement_revision_id=requirement_head.revision_id,
+                        requirement_revision_no=requirement_head.revision_no,
+                        requirement_digest=requirement_head.digest,
                         proposal_revision=1,
                         proposed_references_json=_dump(
                             [
@@ -2153,6 +2199,7 @@ class AgentCanvasConversationRepository:
                         reserved_ids=reserved_option_ids,
                     )
                     reserved_option_ids.add(option_id)
+                    seed_record = seed_records.get(option.option_id)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -2161,6 +2208,15 @@ class AgentCanvasConversationRepository:
                             title=option.title,
                             description=option.public_summary,
                             key_decisions_json=_dump(list(option.key_decisions)),
+                            draft_seed_schema=(
+                                seed_record.draft_seed_schema if seed_record is not None else None
+                            ),
+                            draft_seed_json=(
+                                seed_record.draft_seed_json if seed_record is not None else None
+                            ),
+                            draft_seed_digest=(
+                                seed_record.draft_seed_digest if seed_record is not None else None
+                            ),
                         )
                     )
                 _append_timeline_entry(
@@ -2266,6 +2322,60 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         return self.get_proposal(proposal_id)
+
+    def get_draft_seed(self, option_id: str) -> DraftSeedPersistenceRecordV1:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasConceptOptionRow).where(
+                            AgentCanvasConceptOptionRow.option_id == option_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
+        if row is None:
+            raise _error("proposal_option_not_found", "Concept option was not found.")
+        return _draft_seed_record_from_row(row)
+
+    def get_draft_seed_envelope(self, option_id: str) -> DraftSeedEnvelopeV1:
+        return DraftSeedEnvelopeV1.model_validate_json(
+            self.get_draft_seed(option_id).draft_seed_json
+        )
+
+    def get_draft_seed_metadata(self, option_id: str) -> tuple[str | None, str | None]:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(
+                            AgentCanvasConceptOptionRow.draft_seed_schema,
+                            AgentCanvasConceptOptionRow.draft_seed_digest,
+                        ).where(AgentCanvasConceptOptionRow.option_id == option_id)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable",
+                "Conversation storage failed.",
+            ) from error
+        if row is None:
+            raise _error("proposal_option_not_found", "Concept option was not found.")
+        schema = row["draft_seed_schema"]
+        digest = row["draft_seed_digest"]
+        return (
+            (str(schema), str(digest))
+            if schema is not None and digest is not None
+            else (None, None)
+        )
 
     def get_proposal(self, proposal_id: str) -> ConceptProposalV2:
         try:
@@ -2451,6 +2561,11 @@ class AgentCanvasConversationRepository:
             raise _error("proposal_not_available", "Concept proposal is not available.")
         if option_id not in {option.option_id for option in proposal.options}:
             raise _error("proposal_option_not_found", "Concept option was not found.")
+        selected_seed = (
+            self.get_draft_seed_envelope(option_id)
+            if proposal.capability_id != "quick_media"
+            else None
+        )
         now = _now()
         try:
             with self._database.engine.connect() as connection:
@@ -2474,6 +2589,9 @@ class AgentCanvasConversationRepository:
                                 AgentCanvasConceptProposalRow.topic_id,
                                 AgentCanvasConceptProposalRow.capability_id,
                                 AgentCanvasConceptProposalRow.creative_direction_snapshot_id,
+                                AgentCanvasConceptProposalRow.requirement_revision_id,
+                                AgentCanvasConceptProposalRow.requirement_revision_no,
+                                AgentCanvasConceptProposalRow.requirement_digest,
                             ).where(
                                 AgentCanvasConceptProposalRow.proposal_id == proposal_id,
                                 AgentCanvasConceptProposalRow.workflow_id == proposal.workflow_id,
@@ -2493,6 +2611,19 @@ class AgentCanvasConversationRepository:
                         raise _error(
                             "proposal_not_available",
                             "Proposal is not available for application.",
+                        )
+                    requirement_head = self._requirements.get_current_in_transaction(
+                        connection,
+                        proposal.workflow_id,
+                    )
+                    if (
+                        proposal_state["requirement_revision_id"] != requirement_head.revision_id
+                        or proposal_state["requirement_revision_no"] != requirement_head.revision_no
+                        or proposal_state["requirement_digest"] != requirement_head.digest
+                    ):
+                        raise _error(
+                            "requirement_revision_superseded",
+                            "Requirements changed before Proposal selection.",
                         )
                     persisted_skill_run_id = (
                         str(proposal_state["video_skill_run_id"])
@@ -2579,6 +2710,68 @@ class AgentCanvasConversationRepository:
                             creative_direction_snapshot_id=creative_direction_snapshot_id,
                             skill_refs=skill_refs,
                             now=now,
+                        )
+                    if selected_seed is not None:
+                        commitments = tuple(
+                            RequirementDirectiveV1(
+                                directive_id=f"reqdir_{uuid4().hex}",
+                                source_kind="accepted_proposal",
+                                source_turn_id=source_turn_id,
+                                source_proposal_id=proposal_id,
+                                source_node_id=node.node_id,
+                                source_text=commitment.source_fragment,
+                                normalized_meaning=commitment.normalized_meaning,
+                                scope_kind="node",
+                                target_node_ids=node_ids,
+                                strength="preference",
+                                created_revision_no=requirement_head.revision_no + 1,
+                            )
+                            for commitment in selected_seed.accepted_commitments
+                        )
+                        requirement_revision = self._requirements.append_in_transaction(
+                            connection,
+                            workflow_id=proposal.workflow_id,
+                            expected_revision_no=requirement_head.revision_no,
+                            next_ledger=requirement_head.ledger.model_copy(
+                                update={
+                                    "active_directives": (
+                                        *requirement_head.ledger.active_directives,
+                                        *commitments,
+                                    )
+                                }
+                            ),
+                            source_kind="proposal_selection",
+                            source_turn_id=source_turn_id,
+                            source_proposal_id=proposal_id,
+                            source_node_id=node.node_id,
+                            created_at=now,
+                        )
+                        update_requirement_compatibility_projection_in_transaction(
+                            connection,
+                            proposal.workflow_id,
+                            requirement_revision.ledger,
+                            now,
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=proposal.workflow_id,
+                                turn_id=source_turn_id,
+                                node_id=node.node_id,
+                                event_type="requirement_ledger_updated",
+                                created_at=now,
+                                payload={
+                                    "revision_id": requirement_revision.revision_id,
+                                    "revision_no": requirement_revision.revision_no,
+                                    "digest": requirement_revision.digest,
+                                    "source_kind": "proposal_selection",
+                                    "source_proposal_id": proposal_id,
+                                    "added_directive_ids": [
+                                        item.directive_id for item in commitments
+                                    ],
+                                    "refresh": ["requirements"],
+                                },
+                            ),
                         )
                     snapshot_id = snapshot_ids[node.node_id]
                     if topic_id is None:
@@ -4879,6 +5072,72 @@ def _available_option_id(
         return requested_id
     suffix = hashlib.sha256(f"{proposal_id}:{requested_id}".encode()).hexdigest()[:12]
     return f"{requested_id[:147]}_{suffix}"
+
+
+def _validated_seed_records(
+    proposal: ConceptProposalCreateV2,
+) -> dict[str, DraftSeedPersistenceRecordV1]:
+    if proposal.capability_id == "quick_media":
+        return {}
+    records: dict[str, DraftSeedPersistenceRecordV1] = {}
+    for record in proposal.draft_seeds:
+        try:
+            seed = DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
+        except (TypeError, ValueError) as error:
+            raise _error(
+                "proposal_draft_seed_invalid",
+                "Proposal Draft Seed is invalid.",
+            ) from error
+        digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
+        if (
+            record.draft_seed_schema != "draft_seed_v1"
+            or digest != record.draft_seed_digest
+            or seed.capability_id != proposal.capability_id
+        ):
+            raise _error(
+                "proposal_draft_seed_invalid",
+                "Proposal Draft Seed is invalid.",
+            )
+        records[record.option_id] = record
+    return records
+
+
+def _draft_seed_record_from_row(row: RowMapping) -> DraftSeedPersistenceRecordV1:
+    values = (
+        row["draft_seed_schema"],
+        row["draft_seed_json"],
+        row["draft_seed_digest"],
+    )
+    if all(value is None for value in values):
+        raise _error(
+            "proposal_draft_seed_missing",
+            "Proposal option has no private Draft Seed; regenerate the Proposal.",
+        )
+    if any(value is None for value in values):
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed is incomplete.",
+        )
+    try:
+        record = DraftSeedPersistenceRecordV1(
+            option_id=str(row["option_id"]),
+            draft_seed_schema=str(row["draft_seed_schema"]),
+            draft_seed_json=str(row["draft_seed_json"]),
+            draft_seed_digest=str(row["draft_seed_digest"]),
+        )
+        DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
+    except (TypeError, ValueError) as error:
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed is invalid.",
+        ) from error
+    digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
+    if digest != record.draft_seed_digest:
+        raise _error(
+            "proposal_draft_seed_invalid",
+            "Proposal Draft Seed digest is invalid.",
+        )
+    return record
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

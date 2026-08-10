@@ -23,6 +23,7 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeError,
 )
 from app.services.v2_agent_event_projector import V2AgentEventProjector
+from app.services.agent_operation_policy import freeze_agent_run_operation_policy
 
 
 _TERMINAL_STATUS_BY_EVENT = {
@@ -111,6 +112,7 @@ class DurablePiRunService:
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
+        request = freeze_agent_run_operation_policy(request)
         identity = derive_durable_pi_run_identity(identity_fields)
         request = request.model_copy(
             update={
@@ -180,7 +182,12 @@ class DurablePiRunService:
                 )
                 owns_lease = True
                 lease_generation = record.lease_generation
-                request = request.model_copy(update={"run_id": record.run_id})
+                request = request.model_copy(
+                    update={
+                        "run_id": record.run_id,
+                        "deadline_at": record.deadline_at or request.deadline_at,
+                    }
+                )
 
             outcome = self._client.run(request, on_event=persist_event)
             terminal = outcome.terminal_event
@@ -215,6 +222,14 @@ class DurablePiRunService:
         except PiAgentRuntimeError as error:
             self._log_structured_rejection(request, error)
             if owns_lease:
+                self._project_failed_trace(
+                    event_projector,
+                    request,
+                    code=error.code,
+                    retryable=error.retryable,
+                    audit=error.details,
+                    model_ref=model_ref,
+                )
                 self._finish_failed(
                     repository,
                     request.run_id,
@@ -231,6 +246,14 @@ class DurablePiRunService:
                 PiAgentRuntimeError(error.code, error.message),
             )
             if owns_lease:
+                self._project_failed_trace(
+                    event_projector,
+                    request,
+                    code=error.code,
+                    retryable=False,
+                    audit={},
+                    model_ref=model_ref,
+                )
                 self._finish_failed(
                     repository,
                     request.run_id,
@@ -243,6 +266,14 @@ class DurablePiRunService:
             raise PiAgentRuntimeError(error.code, error.message) from error
         except Exception as error:
             if owns_lease:
+                self._project_failed_trace(
+                    event_projector,
+                    request,
+                    code="agent_runtime_unavailable",
+                    retryable=True,
+                    audit={},
+                    model_ref=model_ref,
+                )
                 self._finish_failed(
                     repository,
                     request.run_id,
@@ -259,6 +290,34 @@ class DurablePiRunService:
             ) from error
         finally:
             database.dispose()
+
+    @staticmethod
+    def _project_failed_trace(
+        projector: V2AgentEventProjector,
+        request: AgentRunRequest,
+        *,
+        code: str,
+        retryable: bool,
+        audit: Mapping[str, Any],
+        model_ref: str | None,
+    ) -> None:
+        projector.consume(
+            AgentRuntimeEvent(
+                seq=1,
+                run_id=request.run_id,
+                agent_name=request.agent_name,
+                event_type="run_failed",
+                created_at=datetime.now(timezone.utc),
+                payload={
+                    "code": code,
+                    "message": "Agent runtime failed.",
+                    "retryable": retryable,
+                    "audit": _safe_audit_metadata({"audit": dict(audit)}),
+                },
+            ),
+            workflow_id=getattr(request.context, "workflow_id", None),
+            model_id=model_ref,
+        )
 
     @staticmethod
     def _log_structured_rejection(
@@ -362,7 +421,39 @@ def _safe_scope_value(scope: Mapping[str, Any], key: str) -> str | int | None:
 
 def _safe_audit_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
     audit = payload.get("audit")
-    return dict(audit) if isinstance(audit, dict) else {}
+    if not isinstance(audit, dict):
+        return {}
+    allowed = {
+        "agent_name",
+        "attempt_stage",
+        "deadline_seconds",
+        "duration_ms",
+        "effective_timeout_ms",
+        "finish_reason",
+        "finished_at",
+        "first_response_at",
+        "http_status",
+        "input_tokens",
+        "last_activity_at",
+        "max_output_tokens",
+        "model_ref",
+        "operation",
+        "operation_class",
+        "operation_policy_id",
+        "output_tokens",
+        "provider",
+        "provider_trace_id",
+        "reasoning_control",
+        "reasoning_tokens",
+        "safe_error_code",
+        "safe_exception_class",
+        "started_at",
+        "structured_attempt_count",
+        "structured_transport",
+        "thinking_format",
+        "transport_retry_count",
+    }
+    return {key: value for key, value in audit.items() if key in allowed}
 
 
 def _safe_error_code(payload: Mapping[str, Any]) -> str:

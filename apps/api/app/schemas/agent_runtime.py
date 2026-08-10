@@ -11,9 +11,9 @@ from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas import CanvasCreativeRoleV2, ModelSelectionModeV1
 from app.schemas.agent_canvas_capabilities import (
-    CapabilityInvocationContextV1,
+    CapabilityInvocationContextV2,
     NextActionContextV1,
-    TurnIntentContextV1,
+    TurnIntentContextV2,
 )
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
@@ -43,6 +43,12 @@ _MAX_CONTEXT_TEXT = 65_536
 _MAX_COLLECTION_ITEMS = 128
 _MAX_SAFE_PAYLOAD_BYTES = 65_536
 _SENSITIVE_KEY_PARTS = ("api_key", "authorization", "credential", "secret", "token")
+_SAFE_TOKEN_METADATA_KEYS = {
+    "input_tokens",
+    "max_output_tokens",
+    "output_tokens",
+    "reasoning_tokens",
+}
 
 
 class _StrictModel(BaseModel):
@@ -84,8 +90,12 @@ def _validate_safe_payload(value: Any, *, field_name: str = "payload") -> Any:
         raise ValueError(f"{field_name} exceeds the internal payload limit")
 
     def visit(current: Any, key: str | None = None) -> None:
-        if key is not None and any(part in key.casefold() for part in _SENSITIVE_KEY_PARTS):
-            raise ValueError(f"{field_name} contains a sensitive field")
+        if key is not None:
+            normalized_key = key.casefold()
+            if normalized_key not in _SAFE_TOKEN_METADATA_KEYS and any(
+                part in normalized_key for part in _SENSITIVE_KEY_PARTS
+            ):
+                raise ValueError(f"{field_name} contains a sensitive field")
         if isinstance(current, dict):
             for child_key, child_value in current.items():
                 visit(child_value, str(child_key))
@@ -171,9 +181,75 @@ class AgentRunPolicy(_StrictModel):
     max_tool_calls: int = Field(default=16, ge=0, le=128)
     max_handoffs: Literal[0] = 0
     timeout_seconds: float = Field(default=120.0, gt=0, le=900)
+    max_output_tokens: int | None = Field(default=None, ge=1, le=65_536)
     max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
     max_event_bytes: int = Field(default=65_536, ge=1, le=1_048_576)
+
+
+class AgentModelExecutionPolicyV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_ref: str = Field(min_length=1, max_length=320)
+    operation: str = Field(min_length=1, max_length=120)
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"]
+    thinking_format: Literal["zai", "qwen", "none"]
+    reasoning_control: Literal[
+        "provider_default",
+        "enable_thinking",
+        "reasoning_effort",
+        "none",
+    ]
+    structured_transport: Literal[
+        "streamed_tool_call",
+        "non_streaming_tool_call",
+        "json_object",
+    ]
+    supports_tool_calls: bool
+    supports_streamed_tool_calls: bool
+    deadline_seconds: int = Field(ge=1, le=900)
+    max_output_tokens: int = Field(ge=1, le=65_536)
+    transport_retry_limit: int = Field(ge=0, le=1)
+    structured_repair_limit: int = Field(ge=0, le=1)
+
+
+class AgentTransportAttemptMetadataV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    provider: str = Field(min_length=1, max_length=160)
+    model_ref: str = Field(min_length=1, max_length=320)
+    structured_transport: Literal[
+        "streamed_tool_call",
+        "non_streaming_tool_call",
+        "json_object",
+    ]
+    thinking_format: Literal["zai", "qwen", "none"]
+    reasoning_control: Literal[
+        "provider_default",
+        "enable_thinking",
+        "reasoning_effort",
+        "none",
+    ]
+    deadline_seconds: int = Field(ge=1, le=900)
+    max_output_tokens: int = Field(ge=1, le=65_536)
+    operation_policy_id: str = Field(min_length=1, max_length=160)
+    operation_class: Literal["routing", "proposal", "materialization", "long_form"]
+    effective_timeout_ms: int = Field(ge=0, le=900_000)
+    attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
+    started_at: datetime
+    first_response_at: datetime | None = None
+    last_activity_at: datetime | None = None
+    finished_at: datetime
+    finish_reason: str | None = Field(default=None, max_length=120)
+    provider_trace_id: str | None = Field(default=None, max_length=320)
+    safe_exception_class: str | None = Field(default=None, max_length=160)
+    safe_error_code: str | None = Field(default=None, max_length=120)
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    transport_retry_count: int = Field(ge=0, le=1)
+    structured_attempt_count: int = Field(ge=1, le=2)
 
 
 class AgentRunRequest(_StrictModel):
@@ -191,9 +267,9 @@ class AgentRunRequest(_StrictModel):
     context: (
         PlanningAgentContext
         | AgentRunContext
-        | TurnIntentContextV1
+        | TurnIntentContextV2
         | NextActionContextV1
-        | CapabilityInvocationContextV1
+        | CapabilityInvocationContextV2
         | CapabilityMaterializationContextV1
     )
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
