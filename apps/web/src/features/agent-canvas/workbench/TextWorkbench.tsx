@@ -2,6 +2,7 @@ import { SaveIcon, SendIcon } from "../../../icons.tsx";
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
+import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
 import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
@@ -25,8 +26,8 @@ export function TextWorkbench({
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer">
-        <textarea
-          aria-label={isWorldSetting ? "World Setting content" : "Text content"}
+        <FourLinePromptEditor
+          ariaLabel={isWorldSetting ? "World Setting content" : "Text content"}
           value={draft.textContent}
           disabled={draft.pending}
           placeholder={isWorldSetting
@@ -35,22 +36,24 @@ export function TextWorkbench({
           onChange={(event) => draft.setTextContent(event.currentTarget.value)}
         />
       </label>
-      {!isWorldSetting ? (
-        <CanvasModelPicker
-          models={models}
-          loading={modelsLoading}
-          error={modelsError}
-          selectionMode={draft.modelSelectionMode}
-          modelRef={draft.modelRef}
-          modelSummary={node.model_summary}
-          modelResolution={modelResolution}
-          disabled={draft.pending}
-          onChange={draft.setModelSelection}
-        />
-      ) : null}
       <NodeWorkbenchError draft={draft} />
       <footer className="agent-node-workbench__footer agent-node-workbench__footer--composer">
-        <div>
+        <div className="agent-node-workbench__composer-actions">
+          {!isWorldSetting ? (
+            <div className="agent-node-workbench__options agent-node-workbench__options--inline" aria-label="Text generation options">
+              <CanvasModelPicker
+                models={models}
+                loading={modelsLoading}
+                error={modelsError}
+                selectionMode={draft.modelSelectionMode}
+                modelRef={draft.modelRef}
+                modelSummary={node.model_summary}
+                modelResolution={modelResolution}
+                disabled={draft.pending}
+                onChange={draft.setModelSelection}
+              />
+            </div>
+          ) : null}
           <button
             type="button"
             className="agent-node-workbench__run"
