@@ -364,6 +364,27 @@ class AgentWorkingDocumentRepository:
                             ),
                         ),
                     )
+                    self._events.append_in_transaction(
+                        connection,
+                        _document_event(
+                            next_document,
+                            event_type="agent_document_revision_created",
+                            transition_key=(
+                                f"agent-document-revision:{document_id}:{next_document.revision}"
+                            ),
+                        ),
+                    )
+                    if operation == "upsert_anchor":
+                        self._events.append_in_transaction(
+                            connection,
+                            _document_event(
+                                next_document,
+                                event_type="anchor_registered",
+                                transition_key=(
+                                    f"anchor-registered:{document_id}:{next_document.revision}"
+                                ),
+                            ),
+                        )
                     _append_timeline_reference(connection, next_document)
                     connection.commit()
                     return next_document

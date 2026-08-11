@@ -10,6 +10,9 @@ from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas_ad_media import ProviderModelCapabilityV2
 from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardGridAuthoringContextV2,
+    StoryboardSegmentMaterializationDraftV2,
+    StoryboardSegmentAuthoringContextV2,
+    StoryboardSequenceOutlineDraftV2,
     StoryboardSequencePlanDraftV2,
     StoryboardVideoAuthoringContextV2,
 )
@@ -18,16 +21,23 @@ from app.schemas.agent_canvas_creative_session import (
     VideoSpecialistDraftV2,
 )
 from app.schemas.agent_working_documents import (
+    AgentDocumentPatchV2,
     AgentAnchorV2,
     AgentDocumentPatchResultV2,
     AgentWorkingDocumentPageV2,
     AgentWorkingDocumentV2,
+    AttachStoryboardNodePatchV2,
+    AttachVideoNodePatchV2,
     AnchorRegistryContentV2,
+    FreezeStoryboardVisualAnchorPatchV2,
     InitializeStoryboardPlanPatchV2,
+    MaterializeStoryboardSegmentPatchV2,
     StoryboardNarrativeSegmentV2,
     StoryboardPlanGlobalParametersV2,
     StoryboardPlanRowV2,
     StoryboardProductionPlanContentV2,
+    StoryboardSegmentMaterializationV2,
+    StoryboardVisualAnchorV2,
     UpsertAnchorPatchV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
@@ -64,8 +74,12 @@ class _WorkingDocumentReader(Protocol):
         self,
         workflow_id: str,
         agent_run_id: str,
-        patch: InitializeStoryboardPlanPatchV2,
+        patch: AgentDocumentPatchV2,
     ) -> AgentDocumentPatchResultV2: ...
+
+
+class _WorkflowReader(Protocol):
+    def get_node(self, workflow_id: str, node_id: str): ...
 
 
 class StoryboardSequenceAuthoringService:
@@ -76,9 +90,18 @@ class StoryboardSequenceAuthoringService:
         *,
         documents: _WorkingDocumentReader,
         events: EventRepository | None = None,
+        workflows: _WorkflowReader | None = None,
     ) -> None:
         self._documents = documents
         self._events = events
+        self._workflows = workflows
+
+    def list_plans(self, workflow_id: str) -> AgentWorkingDocumentPageV2:
+        return self._documents.list_documents(
+            workflow_id,
+            kind="storyboard_production_plan",
+            limit=20,
+        )
 
     @staticmethod
     def build_plan_content(
@@ -133,6 +156,115 @@ class StoryboardSequenceAuthoringService:
             rows=tuple(rows),
         )
 
+    @staticmethod
+    def build_outline_content(
+        draft: StoryboardSequenceOutlineDraftV2,
+    ) -> StoryboardProductionPlanContentV2:
+        if [segment.order for segment in draft.segments] != list(range(1, len(draft.segments) + 1)):
+            raise _storyboard_error("Storyboard outline order must be contiguous.")
+        previous_end = 0.0
+        segments: list[StoryboardNarrativeSegmentV2] = []
+        for index, item in enumerate(draft.segments):
+            if abs(item.start_seconds - previous_end) > 0.001:
+                raise _storyboard_error("Storyboard outline timing must be contiguous.")
+            if item.end_seconds > draft.total_duration_seconds:
+                raise _storyboard_error("Storyboard outline timing exceeds total duration.")
+            if index and not item.continuity_from_previous:
+                raise _storyboard_error("Later storyboard segments require prior-state continuity.")
+            segments.append(
+                StoryboardNarrativeSegmentV2(
+                    sequence_id=f"sequence-{item.order}",
+                    order=item.order,
+                    start_seconds=item.start_seconds,
+                    end_seconds=item.end_seconds,
+                    narrative_goal=item.narrative_goal,
+                    start_state=item.start_state,
+                    end_state=item.end_state,
+                    continuity_from_previous=item.continuity_from_previous,
+                    terminal_policy=("close" if item.order == len(draft.segments) else "continue"),
+                )
+            )
+            previous_end = item.end_seconds
+        if abs(previous_end - draft.total_duration_seconds) > 0.001:
+            raise _storyboard_error("Storyboard outline must cover the total duration.")
+        return StoryboardProductionPlanContentV2(
+            narrative_outline=draft.narrative_outline,
+            global_parameters=StoryboardPlanGlobalParametersV2(
+                aspect_ratio=draft.aspect_ratio,
+                total_duration_seconds=draft.total_duration_seconds,
+                segment_count=len(segments),
+            ),
+            segments=tuple(segments),
+            rows=(),
+            segment_materializations=tuple(
+                StoryboardSegmentMaterializationV2(sequence_id=item.sequence_id)
+                for item in segments
+            ),
+        )
+
+    @staticmethod
+    def materialize_segment_content(
+        content: StoryboardProductionPlanContentV2,
+        sequence_id: str,
+        draft: StoryboardSegmentMaterializationDraftV2,
+    ) -> StoryboardProductionPlanContentV2:
+        segment = next(
+            (item for item in content.segments if item.sequence_id == sequence_id),
+            None,
+        )
+        if segment is None:
+            raise _storyboard_error("Storyboard sequence was not found.")
+        existing = tuple(row for row in content.rows if row.sequence_id == sequence_id)
+        if existing:
+            raise _storyboard_error("Storyboard sequence is already materialized.")
+        rows_by_sequence = {
+            item.sequence_id: tuple(
+                row for row in content.rows if row.sequence_id == item.sequence_id
+            )
+            for item in content.segments
+        }
+        rows_by_sequence[sequence_id] = tuple(
+            StoryboardPlanRowV2(
+                shot_index=1,
+                sequence_id=sequence_id,
+                panel_index=row.panel_index,
+                content_beat=row.content_beat,
+                anchor_aliases=row.anchor_aliases,
+                camera_description=row.camera_description,
+            )
+            for row in draft.rows
+        )
+        rows: list[StoryboardPlanRowV2] = []
+        for item in content.segments:
+            for row in rows_by_sequence[item.sequence_id]:
+                rows.append(row.model_copy(update={"shot_index": len(rows) + 1}))
+        materializations = content.segment_materializations or tuple(
+            StoryboardSegmentMaterializationV2(
+                sequence_id=item.sequence_id,
+                status=("materialized" if rows_by_sequence[item.sequence_id] else "pending"),
+                generation_prompt=None,
+            )
+            for item in content.segments
+        )
+        materializations = tuple(
+            item.model_copy(
+                update={
+                    "status": "materialized",
+                    "generation_prompt": draft.generation_prompt,
+                }
+            )
+            if item.sequence_id == sequence_id
+            else item
+            for item in materializations
+        )
+        return content.model_copy(
+            update={
+                "rows": tuple(rows),
+                "segment_materializations": materializations,
+                "materialized_panel_cursor": len(rows),
+            }
+        )
+
     def build_grid_context(
         self,
         workflow_id: str,
@@ -163,6 +295,60 @@ class StoryboardSequenceAuthoringService:
             plan_content_digest=document.content_digest,
             sequence=sequence,
             rows=rows,
+            anchors=anchors,
+            style_excerpt=style_excerpt,
+        )
+
+    def build_segment_context(
+        self,
+        workflow_id: str,
+        plan_document_id: str,
+        sequence_id: str,
+        *,
+        style_excerpt: str | None = None,
+    ) -> StoryboardSegmentAuthoringContextV2:
+        document = self._documents.get_document(workflow_id, plan_document_id)
+        if document.kind != "storyboard_production_plan":
+            raise _storyboard_error("The requested document is not a Storyboard plan.")
+        content = cast(StoryboardProductionPlanContentV2, document.content)
+        sequence = next(
+            (item for item in content.segments if item.sequence_id == sequence_id),
+            None,
+        )
+        if sequence is None:
+            raise _storyboard_error("The Storyboard sequence was not found.")
+        aliases = tuple(
+            dict.fromkeys(
+                alias
+                for row in content.rows
+                if row.sequence_id == sequence_id
+                for alias in row.anchor_aliases
+            )
+        )
+        prior = content.segments[sequence.order - 2] if sequence.order > 1 else None
+        anchors = self._resolve_anchors(workflow_id, aliases)
+        if not aliases:
+            page = self._documents.list_documents(
+                workflow_id,
+                kind="anchor_registry",
+                limit=1,
+            )
+            anchors = (
+                tuple(
+                    item
+                    for item in cast(AnchorRegistryContentV2, page.items[0].content).anchors
+                    if item.availability == "available" and item.source_id is not None
+                )
+                if page.items
+                else ()
+            )
+        return StoryboardSegmentAuthoringContextV2(
+            workflow_id=workflow_id,
+            plan_document_id=document.document_id,
+            plan_revision=document.revision,
+            plan_content_digest=document.content_digest,
+            sequence=sequence,
+            prior_end_state=prior.end_state if prior is not None else None,
             anchors=anchors,
             style_excerpt=style_excerpt,
         )
@@ -221,6 +407,297 @@ class StoryboardSequenceAuthoringService:
             )
         )
         return document
+
+    def persist_outline(
+        self,
+        *,
+        workflow_id: str,
+        guidance_session_id: str,
+        agent_run_id: str,
+        idempotency_key: str,
+        draft: StoryboardSequenceOutlineDraftV2,
+    ) -> AgentWorkingDocumentV2:
+        content = self.build_outline_content(draft)
+        document = self._documents.get_or_create_storyboard_plan(
+            workflow_id=workflow_id,
+            guidance_session_id=guidance_session_id,
+            agent_run_id=agent_run_id,
+            content=content,
+        )
+        if document.content != content:
+            document = self._documents.apply_agent_patch(
+                workflow_id,
+                agent_run_id,
+                InitializeStoryboardPlanPatchV2(
+                    operation="initialize_storyboard_plan",
+                    document_id=document.document_id,
+                    expected_revision=document.revision,
+                    idempotency_key=idempotency_key,
+                    content=content,
+                ),
+            ).document
+        self._append_event(
+            workflow_id=workflow_id,
+            document=document,
+            agent_run_id=agent_run_id,
+            guidance_session_id=guidance_session_id,
+            event_type="storyboard_sequence_outline_planned",
+            transition_key=(
+                f"storyboard_sequence_outline_planned:{document.document_id}:{document.revision}"
+            ),
+            payload={
+                "sequence_ids": [item.sequence_id for item in content.segments],
+                "total_duration_seconds": content.global_parameters.total_duration_seconds,
+            },
+        )
+        return document
+
+    def persist_segment(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        sequence_id: str,
+        agent_run_id: str,
+        idempotency_key: str,
+        draft: StoryboardSegmentMaterializationDraftV2,
+    ) -> AgentWorkingDocumentV2:
+        document = self._documents.get_document(workflow_id, plan_document_id)
+        if document.kind != "storyboard_production_plan":
+            raise _storyboard_error("The requested document is not a Storyboard plan.")
+        content = cast(StoryboardProductionPlanContentV2, document.content)
+        segment = next(
+            (item for item in content.segments if item.sequence_id == sequence_id),
+            None,
+        )
+        if segment is None:
+            raise _storyboard_error("Storyboard sequence was not found.")
+        if segment.order > 1:
+            previous = content.segments[segment.order - 2]
+            previous_state = previous.end_state.strip()
+            if previous_state not in segment.start_state and previous_state not in (
+                segment.continuity_from_previous or ""
+            ):
+                raise _storyboard_error("Storyboard segment does not preserve the prior end state.")
+        rows = tuple(
+            StoryboardPlanRowV2(
+                shot_index=index,
+                sequence_id=sequence_id,
+                panel_index=row.panel_index,
+                content_beat=row.content_beat,
+                anchor_aliases=row.anchor_aliases,
+                camera_description=row.camera_description,
+            )
+            for index, row in enumerate(draft.rows, start=1)
+        )
+        updated = self._documents.apply_agent_patch(
+            workflow_id,
+            agent_run_id,
+            MaterializeStoryboardSegmentPatchV2(
+                operation="materialize_storyboard_segment",
+                document_id=document.document_id,
+                expected_revision=document.revision,
+                idempotency_key=idempotency_key,
+                sequence_id=sequence_id,
+                rows=rows,
+                generation_prompt=draft.generation_prompt,
+            ),
+        ).document
+        self._append_event(
+            workflow_id=workflow_id,
+            document=updated,
+            agent_run_id=agent_run_id,
+            guidance_session_id=updated.guidance_session_id,
+            event_type="storyboard_segment_materialized",
+            transition_key=(
+                f"storyboard_segment_materialized:{updated.document_id}:"
+                f"{sequence_id}:{updated.revision}"
+            ),
+            payload={"sequence_id": sequence_id, "panel_count": 9},
+        )
+        self._append_event(
+            workflow_id=workflow_id,
+            document=updated,
+            agent_run_id=agent_run_id,
+            guidance_session_id=updated.guidance_session_id,
+            event_type="storyboard_sequence_materialized",
+            transition_key=(
+                f"storyboard_sequence_materialized:{updated.document_id}:"
+                f"{sequence_id}:{updated.revision}"
+            ),
+            payload={"sequence_id": sequence_id, "panel_count": 9},
+        )
+        return updated
+
+    def freeze_visual_anchor(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        grid_node_id: str,
+        agent_run_id: str,
+        idempotency_key: str,
+    ) -> AgentWorkingDocumentV2:
+        if self._workflows is None:
+            raise V2PersistenceError(
+                "storyboard_sequence_workflow_repository_required",
+                "Storyboard visual-anchor freezing requires the workflow repository.",
+                stage="storyboard_sequence_authoring",
+            )
+        node = self._workflows.get_node(workflow_id, grid_node_id)
+        if (
+            node.node_type != "image"
+            or node.creative_role != "storyboard_sequence"
+            or node.status != "ready"
+            or node.output_asset_id is None
+        ):
+            raise V2PersistenceError(
+                "storyboard_visual_anchor_not_ready",
+                "Grid 1 must have a Ready image Asset before later grids are authored.",
+                stage="storyboard_sequence_authoring",
+            )
+        document = self._documents.get_document(workflow_id, plan_document_id)
+        content = cast(StoryboardProductionPlanContentV2, document.content)
+        if content.visual_anchor is not None:
+            if (
+                content.visual_anchor.node_id == grid_node_id
+                and content.visual_anchor.asset_id == node.output_asset_id
+            ):
+                return document
+            raise _storyboard_error("Storyboard visual anchor is already frozen.")
+        updated = self._documents.apply_agent_patch(
+            workflow_id,
+            agent_run_id,
+            FreezeStoryboardVisualAnchorPatchV2(
+                operation="freeze_storyboard_visual_anchor",
+                document_id=document.document_id,
+                expected_revision=document.revision,
+                idempotency_key=idempotency_key,
+                visual_anchor=StoryboardVisualAnchorV2(
+                    node_id=node.node_id,
+                    asset_id=node.output_asset_id,
+                    node_revision=node.revision,
+                    document_revision=document.revision,
+                ),
+            ),
+        ).document
+        self._append_event(
+            workflow_id=workflow_id,
+            document=updated,
+            agent_run_id=agent_run_id,
+            guidance_session_id=updated.guidance_session_id,
+            event_type="storyboard_visual_anchor_frozen",
+            transition_key=f"storyboard_visual_anchor_frozen:{document.document_id}",
+            payload={"node_id": node.node_id, "asset_id": node.output_asset_id},
+        )
+        return updated
+
+    def attach_grid_node(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        sequence_id: str,
+        node_id: str,
+        agent_run_id: str,
+        idempotency_key: str,
+    ) -> AgentWorkingDocumentV2:
+        document = self._documents.get_document(workflow_id, plan_document_id)
+        content = cast(StoryboardProductionPlanContentV2, document.content)
+        existing = next(
+            (
+                item
+                for item in content.node_records
+                if item.sequence_id == sequence_id and item.node_role == "storyboard_grid"
+            ),
+            None,
+        )
+        if existing is not None:
+            if existing.node_id == node_id:
+                return document
+            raise _storyboard_error("Storyboard sequence already owns another Grid Node.")
+        return self._documents.apply_agent_patch(
+            workflow_id,
+            agent_run_id,
+            AttachStoryboardNodePatchV2(
+                operation="attach_storyboard_node",
+                document_id=document.document_id,
+                expected_revision=document.revision,
+                idempotency_key=idempotency_key,
+                sequence_id=sequence_id,
+                node_id=node_id,
+            ),
+        ).document
+
+    def attach_video_node(
+        self,
+        *,
+        workflow_id: str,
+        plan_document_id: str,
+        sequence_id: str,
+        node_id: str,
+        agent_run_id: str,
+        idempotency_key: str,
+    ) -> AgentWorkingDocumentV2:
+        document = self._documents.get_document(workflow_id, plan_document_id)
+        content = cast(StoryboardProductionPlanContentV2, document.content)
+        existing = next(
+            (
+                item
+                for item in content.node_records
+                if item.sequence_id == sequence_id and item.node_role == "video_segment"
+            ),
+            None,
+        )
+        if existing is not None:
+            if existing.node_id == node_id:
+                return document
+            raise _storyboard_error("Storyboard sequence already owns another Video Node.")
+        return self._documents.apply_agent_patch(
+            workflow_id,
+            agent_run_id,
+            AttachVideoNodePatchV2(
+                operation="attach_video_node",
+                document_id=document.document_id,
+                expected_revision=document.revision,
+                idempotency_key=idempotency_key,
+                sequence_id=sequence_id,
+                node_id=node_id,
+            ),
+        ).document
+
+    def _append_event(
+        self,
+        *,
+        workflow_id: str,
+        document: AgentWorkingDocumentV2,
+        agent_run_id: str,
+        guidance_session_id: str,
+        event_type: str,
+        transition_key: str,
+        payload: dict[str, object],
+    ) -> None:
+        if self._events is None:
+            raise V2PersistenceError(
+                "storyboard_sequence_event_repository_required",
+                "Storyboard plan persistence requires the canonical event repository.",
+                stage="storyboard_sequence_authoring",
+            )
+        self._events.append(
+            V2EventInsert(
+                workflow_id=workflow_id,
+                event_type=event_type,
+                transition_key=transition_key,
+                created_at=document.updated_at.isoformat(),
+                payload={
+                    "agent_run_id": agent_run_id,
+                    "guidance_session_id": guidance_session_id,
+                    "plan_document_id": document.document_id,
+                    "plan_revision": document.revision,
+                    **payload,
+                },
+            )
+        )
 
     def validate_grid_draft(
         self,
