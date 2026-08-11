@@ -165,7 +165,7 @@ class V2AgentCredentialBroker:
                 "agent_model_policy_mismatch",
                 "Agent runtime operation policy does not match the requested run.",
             )
-        expected_policy_id = f"{agent_name}.{operation}.v1"
+        expected_policy_id = operation_policy.policy_id
         if model_policy_id != expected_policy_id:
             raise AgentCredentialError(
                 "agent_model_policy_mismatch",
