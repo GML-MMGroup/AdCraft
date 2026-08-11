@@ -18,14 +18,18 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 @dataclass(frozen=True)
 class _OperationBudget:
     hard_deadline_seconds: int
+    primary_timeout_seconds: int
+    recovery_timeout_seconds: int
+    persistence_reserve_seconds: int
     max_output_tokens: int
+    thinking_budget_tokens: int | None
 
 
 _CLASS_BUDGETS: Mapping[AgentOperationPolicyClassV2, _OperationBudget] = {
-    "routing": _OperationBudget(180, 1_024),
-    "proposal": _OperationBudget(300, 3_072),
-    "materialization": _OperationBudget(420, 4_096),
-    "long_form": _OperationBudget(600, 8_192),
+    "routing": _OperationBudget(180, 110, 50, 20, 1_024, None),
+    "proposal": _OperationBudget(300, 190, 80, 30, 3_072, 2_048),
+    "materialization": _OperationBudget(420, 270, 120, 30, 4_096, 3_072),
+    "long_form": _OperationBudget(600, 390, 180, 30, 8_192, 4_096),
 }
 _ROUTING_OPERATIONS = {
     "command_replan",
@@ -39,6 +43,7 @@ _ROUTING_OPERATIONS = {
     "workflow_creation",
 }
 _PROPOSAL_OPERATIONS = {
+    "author_decision_bundle",
     "bgm_expert_brief",
     "bgm_prompt",
     "character_expert_brief",
@@ -75,6 +80,7 @@ _PROPOSAL_OPERATIONS = {
 }
 _MATERIALIZATION_OPERATIONS = {
     "execute_canvas_text",
+    "materialize_storyboard_segment",
     "materialize_quick_media",
 }
 _LONG_FORM_OPERATIONS = {
@@ -82,6 +88,7 @@ _LONG_FORM_OPERATIONS = {
     "script_edit_normalization",
     "script_writer",
     "storyboard_detail",
+    "plan_storyboard_sequence_outline",
 }
 
 
@@ -95,13 +102,21 @@ class AgentOperationPolicyRegistryV2:
         *,
         deadline_overrides: Mapping[AgentOperationPolicyClassV2, int] | None = None,
     ) -> None:
+        invalid_overrides = {
+            policy_class: seconds
+            for policy_class, seconds in (deadline_overrides or {}).items()
+            if seconds != _CLASS_BUDGETS[policy_class].hard_deadline_seconds
+        }
+        if invalid_overrides:
+            raise AgentOperationPolicyError("agent_operation_policy_invalid:deadline_override")
         self._budgets = {
             policy_class: _OperationBudget(
-                hard_deadline_seconds=(deadline_overrides or {}).get(
-                    policy_class,
-                    budget.hard_deadline_seconds,
-                ),
+                hard_deadline_seconds=budget.hard_deadline_seconds,
+                primary_timeout_seconds=budget.primary_timeout_seconds,
+                recovery_timeout_seconds=budget.recovery_timeout_seconds,
+                persistence_reserve_seconds=budget.persistence_reserve_seconds,
                 max_output_tokens=budget.max_output_tokens,
+                thinking_budget_tokens=budget.thinking_budget_tokens,
             )
             for policy_class, budget in _CLASS_BUDGETS.items()
         }
@@ -136,7 +151,15 @@ class AgentOperationPolicyRegistryV2:
             contract_id=contract_id,
             policy_class=policy_class,
             hard_deadline_seconds=budget.hard_deadline_seconds,
+            primary_timeout_seconds=budget.primary_timeout_seconds,
+            recovery_timeout_seconds=budget.recovery_timeout_seconds,
+            persistence_reserve_seconds=budget.persistence_reserve_seconds,
             max_output_tokens=budget.max_output_tokens,
+            reasoning_mode="low" if policy_class == "routing" else "deep",
+            enable_thinking=policy_class != "routing",
+            thinking_budget_tokens=budget.thinking_budget_tokens,
+            max_model_submissions=2,
+            recovery_mode="transport_retry_or_structured_repair",
             fallback_class="none",
         )
 
@@ -182,7 +205,15 @@ def freeze_agent_run_operation_policy(
             "transport_retry_limit": operation_policy.transport_retry_limit,
             "structured_repair_limit": operation_policy.structured_repair_limit,
             "timeout_seconds": float(operation_policy.hard_deadline_seconds),
+            "primary_timeout_seconds": operation_policy.primary_timeout_seconds,
+            "recovery_timeout_seconds": operation_policy.recovery_timeout_seconds,
+            "persistence_reserve_seconds": operation_policy.persistence_reserve_seconds,
+            "max_model_submissions": operation_policy.max_model_submissions,
+            "recovery_mode": operation_policy.recovery_mode,
             "max_output_tokens": operation_policy.max_output_tokens,
+            "reasoning_mode": operation_policy.reasoning_mode,
+            "enable_thinking": operation_policy.enable_thinking,
+            "thinking_budget_tokens": operation_policy.thinking_budget_tokens,
         }
     )
     timestamp = now or datetime.now(timezone.utc)
