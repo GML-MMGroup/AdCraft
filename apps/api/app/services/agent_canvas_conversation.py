@@ -10,7 +10,6 @@ import json
 import logging
 from math import ceil
 from typing import Literal, Protocol, cast
-from uuid import uuid4
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
@@ -33,14 +32,7 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import (
-    CanvasBindingSourceImageAssetV2,
-    CanvasBindingSourceNodeV2,
-    CanvasBindingV2,
-    CanvasConnectionDecisionV2,
-    CanvasInputRoleV2,
-    CanvasNodeTypeV2,
     CanvasNodeV2,
-    CanvasPositionV2,
     ProjectAssetSummaryV2,
 )
 from app.schemas.agent_canvas_conversation import (
@@ -83,7 +75,6 @@ from app.schemas.agent_canvas_requirements import RequirementPatchV1
 from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
     CreativeGoalV2,
-    DraftReferenceIntentV2,
     GuidanceCompletionProjectionV2,
     GuidanceSessionActionV2,
     SpecialistDraftV2,
@@ -91,7 +82,6 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
-from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
 )
@@ -142,10 +132,6 @@ from app.persistence.agent_canvas_requirement_repository import (
 )
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
-from app.services.agent_canvas_world_setting import (
-    WorldSettingBindingPolicy,
-    WorldSettingPublicationCandidateV2,
-)
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import AgentOperationPolicyRegistryV2
 from app.services.agent_request_digest import frozen_agent_request_digest
@@ -929,471 +915,6 @@ def with_agent_document_provenance(
     )
 
 
-class GuidanceProposalActionService:
-    """Prevalidate and atomically publish one Specialist Draft."""
-
-    def __init__(
-        self,
-        workflows: AgentCanvasWorkflowRepository,
-        conversations: AgentCanvasConversationRepository,
-        *,
-        asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
-        connection_policy: AgentCanvasConnectionPolicyService | None = None,
-    ) -> None:
-        self._workflows = workflows
-        self._conversations = conversations
-        self._asset_resolver = asset_resolver
-        self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
-        self._world_setting_policy = WorldSettingBindingPolicy()
-
-    def materialize(
-        self,
-        proposal_id: str,
-        *,
-        option_id: str,
-        draft: SpecialistDraftV2,
-        expected_session_revision: int,
-        proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"],
-        selection_actor: str = "user",
-        source_turn_id: str | None = None,
-        continuation: ContinuationCommitV2 | None = None,
-        document_context: AgentDocumentContextExcerptV2 | None = None,
-        deterministic_node_id: str | None = None,
-        deterministic_binding_id: Callable[[int], str] | None = None,
-        materialization_id: str | None = None,
-    ) -> CanvasNodeV2:
-        nodes = self.materialize_bundle(
-            proposal_id,
-            option_id=option_id,
-            drafts=(draft,),
-            internal_bindings=(),
-            expected_session_revision=expected_session_revision,
-            proposal_action=proposal_action,
-            selection_actor=selection_actor,
-            source_turn_id=source_turn_id,
-            continuation=continuation,
-            document_context=document_context,
-            deterministic_node_ids=(deterministic_node_id,) if deterministic_node_id else None,
-            deterministic_binding_id=deterministic_binding_id,
-            materialization_id=materialization_id,
-        )
-        return nodes[0]
-
-    def materialize_bundle(
-        self,
-        proposal_id: str,
-        *,
-        option_id: str,
-        drafts: tuple[SpecialistDraftV2, ...],
-        internal_bindings: tuple[CanvasBindingV2, ...],
-        expected_session_revision: int,
-        proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"],
-        selection_actor: str = "user",
-        source_turn_id: str | None = None,
-        continuation: ContinuationCommitV2 | None = None,
-        document_context: AgentDocumentContextExcerptV2 | None = None,
-        deterministic_node_ids: tuple[str, ...] | None = None,
-        deterministic_binding_id: Callable[[int], str] | None = None,
-        materialization_id: str | None = None,
-        queued_prompt_preparation: bool = False,
-    ) -> tuple[CanvasNodeV2, ...]:
-        if not drafts:
-            raise V2PersistenceError(
-                "draft_bundle_invalid",
-                "Draft bundle must contain a Draft.",
-                stage="draft_materialization",
-            )
-        if deterministic_node_ids is not None and len(deterministic_node_ids) != len(drafts):
-            raise V2PersistenceError(
-                "draft_bundle_invalid",
-                "Deterministic Node identities do not match the Draft bundle.",
-                stage="draft_materialization",
-            )
-        proposal = self._conversations.get_proposal(proposal_id)
-        option = next(
-            (item for item in proposal.options if item.option_id == option_id),
-            None,
-        )
-        if option is None:
-            raise V2PersistenceError(
-                "proposal_option_not_found",
-                "Concept option was not found.",
-                stage="draft_materialization",
-            )
-        for draft in drafts:
-            if queued_prompt_preparation:
-                SpecialistDraftValidationService().validate_identity(proposal, draft)
-            else:
-                SpecialistDraftValidationService().validate(proposal, draft)
-        workflow = self._workflows.get_workflow(proposal.workflow_id)
-        now = datetime.now(timezone.utc)
-        provenance_keys = {
-            "materialization_mode",
-            "warning_code",
-            "operation_policy_id",
-            "normalization_mode",
-            "normalization_warnings",
-            "character_pair_id",
-            "character_asset_kind",
-        }
-        nodes: list[CanvasNodeV2] = []
-        for index, draft in enumerate(drafts):
-            provenance = {
-                key: value for key, value in draft.parameters.items() if key in provenance_keys
-            }
-            if draft.prompt_context_snapshot_id is not None:
-                provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
-            node = CanvasNodeV2(
-                node_id=(
-                    deterministic_node_ids[index]
-                    if deterministic_node_ids is not None
-                    else f"node_{uuid4().hex}"
-                ),
-                workflow_id=proposal.workflow_id,
-                node_type=draft.node_type,
-                creative_role=draft.creative_role,
-                title=draft.title,
-                status=(
-                    "draft"
-                    if queued_prompt_preparation
-                    else ("ready" if draft.node_type == "script" else "draft")
-                ),
-                summary_prompt=draft.summary_prompt,
-                generation_prompt=(None if queued_prompt_preparation else draft.generation_prompt),
-                structured_content=(
-                    draft.structured_content.model_dump(mode="json")
-                    if hasattr(draft.structured_content, "model_dump")
-                    else draft.structured_content
-                ),
-                parameters={
-                    key: value
-                    for key, value in draft.parameters.items()
-                    if key not in provenance_keys
-                },
-                metadata=provenance,
-                parameter_provenance=draft.parameter_provenance,
-                position=CanvasPositionV2(x=0, y=0),
-                revision=1,
-                prompt_preparation=(
-                    NodePromptPreparationV1(
-                        status="queued",
-                        operation_id=(
-                            "prompt_"
-                            + hashlib.sha256(
-                                f"{materialization_id}:{draft.title}:{index}".encode("utf-8")
-                            ).hexdigest()[:32]
-                        ),
-                        attempt_no=0,
-                        updated_at=now,
-                    )
-                    if queued_prompt_preparation
-                    else NodePromptPreparationV1.legacy_ready()
-                ),
-                created_at=now,
-                updated_at=now,
-            )
-            if document_context is not None:
-                node = with_agent_document_provenance(node, document_context)
-            nodes.append(node)
-        allowed_sources = {
-            (reference.source_kind, reference.source_id)
-            for reference in proposal.proposed_references
-        }
-        bindings: list[CanvasBindingV2] = []
-        for node, draft in zip(nodes, drafts, strict=True):
-            offset = len(bindings)
-            bindings.extend(
-                self._validated_bindings(
-                    node,
-                    draft.reference_intents,
-                    allowed_sources=allowed_sources,
-                    deterministic_binding_id=(
-                        (lambda index, offset=offset: deterministic_binding_id(offset + index))
-                        if deterministic_binding_id is not None
-                        else None
-                    ),
-                )
-            )
-        self._validate_internal_bindings(tuple(nodes), internal_bindings)
-        bindings.extend(internal_bindings)
-        receipt = (
-            AgentActionReceiptV2(
-                receipt_id=f"receipt_{source_turn_id}",
-                workflow_id=nodes[0].workflow_id,
-                action_id=source_turn_id,
-                proposal_id=proposal.proposal_id,
-                proposal_option_id=option_id,
-                proposal_action=proposal_action,
-                status="applied",
-                summary="The selected concept is now an editable Draft.",
-                created_node_ids=tuple(node.node_id for node in nodes),
-                created_binding_ids=tuple(binding.binding_id for binding in bindings),
-                workflow_revision=workflow.revision + 1,
-            )
-            if source_turn_id is not None
-            else None
-        )
-        if continuation is not None and receipt is not None:
-            if continuation.source_turn_id != source_turn_id:
-                raise V2PersistenceError(
-                    "continuation_context_invalid",
-                    "Continuation source does not match the action turn.",
-                    stage="draft_materialization",
-                )
-            receipt = receipt.model_copy(
-                update={"continuation_turn_id": continuation.continuation_turn_id}
-            )
-        self._conversations.apply_and_materialize_bundle(
-            proposal_id,
-            option_id=option_id,
-            nodes=tuple(nodes),
-            bindings=tuple(bindings),
-            expected_workflow_revision=workflow.revision,
-            selection_actor=selection_actor,
-            source_turn_id=source_turn_id,
-            skill_run_id=proposal.video_skill_run_id,
-            topic_id=proposal.topic_id,
-            expected_session_revision=expected_session_revision,
-            proposal_action=proposal_action,
-            receipt=receipt,
-            continuation=continuation,
-            materialization_id=materialization_id,
-        )
-        return tuple(nodes)
-
-    def publish_world_setting(
-        self,
-        proposal_id: str,
-        *,
-        option_id: str,
-        candidate: WorldSettingPublicationCandidateV2,
-        expected_session_revision: int,
-        proposal_action: Literal["select_option", "delegate_choice", "reuse_direction"],
-        selection_actor: str = "user",
-        source_turn_id: str | None = None,
-        continuation: ContinuationCommitV2 | None = None,
-        materialization_id: str | None = None,
-    ) -> CanvasNodeV2:
-        """Publish one canonical ready World Setting atomically."""
-
-        proposal = self._conversations.get_proposal(proposal_id)
-        if option_id not in {item.option_id for item in proposal.options}:
-            raise V2PersistenceError(
-                "proposal_option_not_found",
-                "Concept option was not found.",
-                stage="world_setting_publication",
-            )
-        node = candidate.node
-        workflow = self._workflows.get_workflow(proposal.workflow_id)
-        receipt = (
-            AgentActionReceiptV2(
-                receipt_id=f"receipt_{source_turn_id}",
-                workflow_id=node.workflow_id,
-                action_id=source_turn_id,
-                proposal_id=proposal.proposal_id,
-                proposal_option_id=option_id,
-                proposal_action=proposal_action,
-                status="applied",
-                summary="The World Setting is ready.",
-                created_node_ids=(node.node_id,),
-                workflow_revision=workflow.revision + 1,
-            )
-            if source_turn_id is not None
-            else None
-        )
-        if continuation is not None and receipt is not None:
-            if continuation.source_turn_id != source_turn_id:
-                raise V2PersistenceError(
-                    "continuation_context_invalid",
-                    "Continuation source does not match the action turn.",
-                    stage="world_setting_publication",
-                )
-            receipt = receipt.model_copy(
-                update={"continuation_turn_id": continuation.continuation_turn_id}
-            )
-        self._conversations.apply_and_materialize(
-            proposal_id,
-            option_id=option_id,
-            node=node,
-            expected_workflow_revision=workflow.revision,
-            selection_actor=selection_actor,
-            source_turn_id=source_turn_id,
-            skill_run_id=proposal.video_skill_run_id,
-            topic_id=proposal.topic_id,
-            expected_session_revision=expected_session_revision,
-            proposal_action=proposal_action,
-            receipt=receipt,
-            continuation=continuation,
-            materialization_id=materialization_id,
-        )
-        return node
-
-    def _validated_bindings(
-        self,
-        node: CanvasNodeV2,
-        intents: tuple[DraftReferenceIntentV2, ...],
-        *,
-        allowed_sources: set[tuple[str, str]],
-        deterministic_binding_id: Callable[[int], str] | None = None,
-    ) -> tuple[CanvasBindingV2, ...]:
-        bindings: list[CanvasBindingV2] = []
-        seen_sources: set[tuple[str, str]] = set()
-        seen_orders: set[int] = set()
-        for intent in sorted(intents, key=lambda item: item.display_order):
-            source_key = (intent.source_kind, intent.source_id)
-            if source_key not in allowed_sources:
-                raise V2PersistenceError(
-                    "draft_reference_not_allowed",
-                    "Draft reference was not included in the Specialist allowlist.",
-                    stage="draft_materialization",
-                )
-            if source_key in seen_sources or intent.display_order in seen_orders:
-                raise V2PersistenceError(
-                    "draft_binding_invalid",
-                    "Draft references must have unique sources and display order.",
-                    stage="draft_materialization",
-                )
-            seen_sources.add(source_key)
-            seen_orders.add(intent.display_order)
-            if intent.source_kind == "node":
-                source = self._workflows.get_node(node.workflow_id, intent.source_id)
-                decision = self._require_draft_connection(
-                    source_node_type=source.node_type,
-                    target_node_type=node.node_type,
-                    input_role=intent.input_role,
-                )
-                binding_source = CanvasBindingSourceNodeV2(source_node_id=source.node_id)
-            else:
-                if self._asset_resolver is None:
-                    raise V2PersistenceError(
-                        "proposal_reference_unavailable",
-                        "Image asset references require the project asset resolver.",
-                        stage="draft_materialization",
-                    )
-                try:
-                    asset = self._asset_resolver(intent.source_id)
-                except (KeyError, LookupError) as error:
-                    raise V2PersistenceError(
-                        "proposal_reference_unavailable",
-                        "Draft reference asset was not found.",
-                        stage="draft_materialization",
-                    ) from error
-                if asset.media_type != "image" or asset.status != "ready":
-                    raise V2PersistenceError(
-                        "proposal_reference_unavailable",
-                        "Draft references must be Ready image assets.",
-                        stage="draft_materialization",
-                    )
-                decision = self._require_draft_connection(
-                    source_node_type="image",
-                    target_node_type=node.node_type,
-                    input_role=intent.input_role,
-                    is_image_asset=True,
-                )
-                binding_source = CanvasBindingSourceImageAssetV2(source_asset_id=asset.asset_id)
-            input_role = intent.input_role
-            if decision.input_role != input_role:
-                raise V2PersistenceError(
-                    "draft_binding_invalid",
-                    "Draft reference binding kind conflicts with the connection policy.",
-                    stage="draft_materialization",
-                )
-            binding_metadata = (
-                self._world_setting_policy.metadata_for_target(node.creative_role)
-                if intent.source_kind == "node" and source.creative_role == "world_setting"
-                else {}
-            )
-            if intent.semantic_reference_role is not None:
-                binding_metadata = {
-                    **binding_metadata,
-                    "semantic_reference_role": intent.semantic_reference_role,
-                }
-            binding_index = len(bindings)
-            bindings.append(
-                CanvasBindingV2(
-                    binding_id=(
-                        deterministic_binding_id(binding_index)
-                        if deterministic_binding_id is not None
-                        else f"binding_{uuid4().hex}"
-                    ),
-                    workflow_id=node.workflow_id,
-                    source=binding_source,
-                    target_node_id=node.node_id,
-                    input_role=decision.input_role or input_role,
-                    required=intent.required,
-                    enabled=True,
-                    order=intent.display_order,
-                    metadata=binding_metadata,
-                    created_at=node.created_at,
-                    updated_at=node.created_at,
-                )
-            )
-        return tuple(bindings)
-
-    def _validate_internal_bindings(
-        self,
-        nodes: tuple[CanvasNodeV2, ...],
-        bindings: tuple[CanvasBindingV2, ...],
-    ) -> None:
-        by_id = {node.node_id: node for node in nodes}
-        for binding in bindings:
-            if binding.source.kind != "node_output":
-                raise V2PersistenceError(
-                    "draft_binding_invalid",
-                    "Internal Draft bindings require a Node output source.",
-                    stage="draft_materialization",
-                )
-            source = by_id.get(binding.source.source_node_id)
-            target = by_id.get(binding.target_node_id)
-            if source is None or target is None:
-                raise V2PersistenceError(
-                    "draft_binding_invalid",
-                    "Internal Draft bindings must connect Nodes in the same bundle.",
-                    stage="draft_materialization",
-                )
-            self._require_draft_connection(
-                source_node_type=source.node_type,
-                target_node_type=target.node_type,
-                input_role=binding.input_role,
-            )
-            if binding.metadata.get("reference_purpose") == "identity_master" and not (
-                source.creative_role == "character"
-                and target.creative_role == "character"
-                and source.structured_content.get("character_asset_kind") == "identity_master"
-                and target.structured_content.get("character_asset_kind") == "turnaround"
-                and binding.required
-                and binding.input_role == "image_reference"
-                and binding.metadata.get("semantic_reference_role") == "subject_reference"
-            ):
-                raise V2PersistenceError(
-                    "draft_binding_invalid",
-                    "Character identity Binding does not match its reference pair.",
-                    stage="draft_materialization",
-                )
-
-    def _require_draft_connection(
-        self,
-        *,
-        source_node_type: CanvasNodeTypeV2,
-        target_node_type: CanvasNodeTypeV2,
-        input_role: CanvasInputRoleV2,
-        is_image_asset: bool = False,
-    ) -> CanvasConnectionDecisionV2:
-        try:
-            return self._connection_policy.require(
-                source_node_type=source_node_type,
-                target_node_type=target_node_type,
-                input_role=input_role,
-                is_image_asset=is_image_asset,
-            )
-        except V2PersistenceError as error:
-            raise V2PersistenceError(
-                "draft_binding_invalid",
-                "Draft reference is incompatible with the connection policy.",
-                stage="draft_materialization",
-            ) from error
-
-
 class SpecialistDraftValidationService:
     """Reject incompatible Specialist Drafts without creatively repairing them."""
 
@@ -1937,6 +1458,17 @@ class AgentConversationService:
                     ),
                     expected_session_revision=session.revision,
                     idempotency_key=f"creative-goal:{turn_id}",
+                )
+            elif session.journey.stage == "style_lock":
+                session = self._journey.apply_evidence(
+                    turn.workflow_id,
+                    evidence=JourneyEvidenceV1(
+                        evidence_id=f"style-lock:{turn_id}",
+                        evidence_kind="style_locked",
+                        source_id=turn_id,
+                    ),
+                    expected_session_revision=session.revision,
+                    idempotency_key=f"style-lock:{turn_id}",
                 )
             session, journey_action = self._journey.reserve_next_action(
                 turn.workflow_id,
