@@ -25,9 +25,11 @@ from app.services.agent_canvas_conversation import VideoAgentGateway
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
 )
+from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
 
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
+StoryboardPipelinePreparedCallback = Callable[[str, str], object]
 
 
 class ProgressiveStoryboardReadyService:
@@ -40,11 +42,13 @@ class ProgressiveStoryboardReadyService:
         authoring: StoryboardSequenceAuthoringService,
         gateway: VideoAgentGateway,
         binding_capability_validator: BindingCapabilityValidator | None = None,
+        on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
         self._authoring = authoring
         self._gateway = gateway
         self._binding_capability_validator = binding_capability_validator
+        self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
 
     def on_node_ready(self, node: CanvasNodeV2) -> tuple[str, ...]:
         if (
@@ -97,6 +101,7 @@ class ProgressiveStoryboardReadyService:
                 first_sequence.sequence_id,
                 node,
                 duration_seconds=first_sequence.end_seconds - first_sequence.start_seconds,
+                aspect_ratio=content.global_parameters.aspect_ratio,
             )
         )
         for sequence in content.segments[1:]:
@@ -157,8 +162,11 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                     existing,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                    aspect_ratio=content.global_parameters.aspect_ratio,
                 )
             )
+        if self._on_storyboard_pipeline_prepared is not None:
+            self._on_storyboard_pipeline_prepared(node.workflow_id, plan.document_id)
         return tuple(created)
 
     def _materialize_sibling_branch(
@@ -176,6 +184,7 @@ class ProgressiveStoryboardReadyService:
                 first_sequence.sequence_id,
                 grid_one,
                 duration_seconds=(first_sequence.end_seconds - first_sequence.start_seconds),
+                aspect_ratio=content.global_parameters.aspect_ratio,
                 node_identity_scope=branch_scope,
                 attach_to_plan=False,
             )
@@ -221,6 +230,7 @@ class ProgressiveStoryboardReadyService:
                     sequence.sequence_id,
                     grid,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
+                    aspect_ratio=content.global_parameters.aspect_ratio,
                     node_identity_scope=branch_scope,
                     attach_to_plan=False,
                 )
@@ -258,6 +268,7 @@ class ProgressiveStoryboardReadyService:
         grid: CanvasNodeV2,
         *,
         duration_seconds: float,
+        aspect_ratio: str,
         node_identity_scope: str | None = None,
         attach_to_plan: bool = True,
     ) -> tuple[str, ...]:
@@ -294,6 +305,10 @@ class ProgressiveStoryboardReadyService:
                 action_effects="Preserve declared action sounds.",
                 background_music=False,
             ).model_dump(mode="json"),
+            parameters={
+                "duration_seconds": duration_seconds,
+                "aspect_ratio": aspect_ratio,
+            },
             position=CanvasPositionV2(x=grid.position.x + 360, y=grid.position.y),
             revision=1,
             created_at=now,
@@ -324,6 +339,10 @@ class ProgressiveStoryboardReadyService:
                         "binding_id": _binding_id(video_id, "element", index),
                         "target_node_id": video.node_id,
                         "order": index,
+                        "metadata": _retarget_binding_metadata(
+                            binding,
+                            target_role=video.creative_role,
+                        ),
                         "created_at": now,
                         "updated_at": now,
                     }
@@ -388,6 +407,19 @@ def _later_grid_bindings(
         )
     )
     return tuple(bindings)
+
+
+def _retarget_binding_metadata(
+    binding: CanvasBindingV2,
+    *,
+    target_role: str,
+) -> dict[str, object]:
+    if binding.metadata.get("context_kind") == "world_setting":
+        return WorldSettingBindingPolicy().metadata_for_target(
+            target_role,
+            binding.metadata,
+        )
+    return dict(binding.metadata)
 
 
 def _grid_node(
