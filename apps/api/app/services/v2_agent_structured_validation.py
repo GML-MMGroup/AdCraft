@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+import unicodedata
 
 from pydantic import ValidationError
 
@@ -30,6 +31,10 @@ class V2AgentStructuredValidationService:
         identity_violations = _identity_violations(run, submission)
         if identity_violations:
             return _rejected(submission, identity_violations)
+        raw_semantic_violations = self._raw_semantic_violations(
+            run,
+            submission.value,
+        )
 
         try:
             normalized = validate_agent_contract(
@@ -44,9 +49,12 @@ class V2AgentStructuredValidationService:
                         code=str(item["type"]),
                         message=str(item["msg"]),
                         field_path=".".join(str(part) for part in item["loc"]) or None,
+                        expected=_safe_violation_value(item.get("ctx")),
+                        actual=_safe_violation_value(item.get("input")),
                     )
                     for item in error.errors()
-                ),
+                )
+                + raw_semantic_violations,
             )
         except ValueError:
             return _rejected(
@@ -63,7 +71,10 @@ class V2AgentStructuredValidationService:
         normalized_value = _canonicalize_profile_value(
             run.validation_profile,
             run.validation_context,
-            normalized.model_dump(mode="json"),
+            normalized.model_dump(
+                mode="json",
+                exclude_unset=run.contract_name == "CompactTurnIntentDecisionV2",
+            ),
         )
         if run.validation_profile == "canary_reject_first_v1":
             if submission.attempt == 1:
@@ -82,7 +93,7 @@ class V2AgentStructuredValidationService:
                 normalized_value=normalized_value,
                 repair_allowed=False,
             )
-        semantic_violations = _semantic_violations(
+        semantic_violations = raw_semantic_violations + _semantic_violations(
             run.validation_profile,
             run.validation_context,
             normalized_value,
@@ -95,6 +106,25 @@ class V2AgentStructuredValidationService:
             normalized_value=normalized_value,
             repair_allowed=False,
         )
+
+    def _raw_semantic_violations(
+        self,
+        run: AgentRunRecord,
+        value: dict[str, Any],
+    ) -> tuple[StructuredViolation, ...]:
+        if run.validation_profile != "agent_intake_source_quotes_v1":
+            return ()
+        source_turn_id = run.validation_context.get("source_turn_id")
+        if not isinstance(source_turn_id, str) or not source_turn_id:
+            return (_invalid_intake_validation_context(),)
+        source_message = self._repository.load_validation_source_message(
+            workflow_id=run.workflow_id,
+            conversation_id=run.conversation_id,
+            turn_id=source_turn_id,
+        )
+        if source_message is None:
+            return (_invalid_intake_validation_context(),)
+        return _intake_source_quote_violations(source_message, value)
 
 
 def _identity_violations(
@@ -127,7 +157,12 @@ def _semantic_violations(
     context: dict[str, Any],
     value: dict[str, Any],
 ) -> tuple[StructuredViolation, ...]:
-    if profile in {None, "schema_only_v1", "video_parameter_intent_v1"}:
+    if profile in {
+        None,
+        "schema_only_v1",
+        "video_parameter_intent_v1",
+        "agent_intake_source_quotes_v1",
+    }:
         return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
@@ -164,6 +199,88 @@ def _semantic_violations(
                 )
             )
     return tuple(violations)
+
+
+def _invalid_intake_validation_context() -> StructuredViolation:
+    return StructuredViolation(
+        code="agent_validation_context_invalid",
+        message="The persisted Agent validation context is incomplete.",
+        field_path="source_turn_id",
+    )
+
+
+def _safe_violation_value(value: Any, *, depth: int = 0) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value[:2_048]
+    if isinstance(value, BaseException):
+        return str(value)[:1_024]
+    if depth >= 4:
+        return type(value).__name__
+    if isinstance(value, dict):
+        return {
+            str(key)[:160]: _safe_violation_value(item, depth=depth + 1)
+            for key, item in tuple(value.items())[:16]
+        }
+    if isinstance(value, (list, tuple)):
+        return [_safe_violation_value(item, depth=depth + 1) for item in value[:16]]
+    return type(value).__name__
+
+
+def _intake_source_quote_violations(
+    source_message: str,
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    normalized_message = unicodedata.normalize("NFKC", source_message)
+    violations: list[StructuredViolation] = []
+    for field_path, quote in _intake_source_quotes(value):
+        if unicodedata.normalize("NFKC", quote) in normalized_message:
+            continue
+        violations.append(
+            StructuredViolation(
+                code="requirement_source_quote_invalid",
+                message="Requirement evidence must quote the current user message exactly.",
+                field_path=field_path,
+                expected="exact substring of the current user message",
+                actual=quote,
+            )
+        )
+    return tuple(violations)
+
+
+def _intake_source_quotes(value: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    quotes: list[tuple[str, str]] = []
+    requirement_patch = value.get("requirement_patch")
+    if isinstance(requirement_patch, dict):
+        controls = requirement_patch.get("controls_to_set")
+        if isinstance(controls, dict):
+            for control_name, control in controls.items():
+                if isinstance(control, dict) and isinstance(control.get("source_quote"), str):
+                    quotes.append(
+                        (
+                            f"requirement_patch.controls_to_set.{control_name}.source_quote",
+                            control["source_quote"],
+                        )
+                    )
+        directives = requirement_patch.get("directives_to_add")
+        if isinstance(directives, list):
+            quotes.extend(
+                (
+                    f"requirement_patch.directives_to_add.{index}.source_quote",
+                    directive["source_quote"],
+                )
+                for index, directive in enumerate(directives)
+                if isinstance(directive, dict) and isinstance(directive.get("source_quote"), str)
+            )
+    explicit_elements = value.get("explicit_elements")
+    if isinstance(explicit_elements, list):
+        quotes.extend(
+            (f"explicit_elements.{index}.source_quote", element["source_quote"])
+            for index, element in enumerate(explicit_elements)
+            if isinstance(element, dict) and isinstance(element.get("source_quote"), str)
+        )
+    return tuple(quotes)
 
 
 def _canonicalize_profile_value(
