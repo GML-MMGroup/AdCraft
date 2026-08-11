@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Mapping
 
 from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingContextAudienceV2,
 )
@@ -59,9 +57,3 @@ class WorldSettingBindingPolicy:
             "target_audience": self.audience_for_role(creative_role),
             "context_contract_version": "world-setting-context-v2",
         }
-
-
-@dataclass(frozen=True, slots=True)
-class WorldSettingPublicationCandidateV2:
-    node: CanvasNodeV2
-    materialization_run_id: str
