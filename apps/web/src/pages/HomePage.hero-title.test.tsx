@@ -62,10 +62,10 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__accent::after\s*\{[^}]*content:\s*attr\(data-accent-text\);[^}]*background-size:\s*240% 100%;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*-webkit-text-fill-color:\s*transparent;[^}]*pointer-events:\s*none;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready \.home-product-hero__accent::after\s*\{[^}]*home-hero-gold-sweep/s,
+      /\.home-product-hero__accent\s*\{[^}]*opacity:\s*1;[^}]*filter:\s*none;[^}]*will-change:\s*auto;/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-gold-sweep[\s\S]*?background-position:\s*0% 50%;/,
+      /\.home-product-hero\.is-motion-ready \.home-product-hero__accent\s*\{[^}]*animation:\s*none;/s,
     );
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
@@ -73,11 +73,9 @@ describe("HomePage hero title", () => {
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent::after\s*\{[^}]*#d7ae59[^}]*#ffe7a6[^}]*#bc8d36/s,
     );
-    expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__accent::after[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
-    );
     expect(styles).not.toContain("home-product-hero__accent-glyph");
     expect(styles).not.toContain("home-hero-character-wave");
+    expect(styles).not.toContain("home-hero-gold-sweep");
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*text-shadow:/s);
     expect(styles).not.toMatch(/\.home-product-hero__accent::after\s*\{[^}]*filter:/s);
     expect(styles).not.toContain("Clash Display");
