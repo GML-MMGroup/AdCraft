@@ -171,7 +171,11 @@ class SpecialistAgentService:
         except StructuredGenerationRuntimeError as exc:
             code = (
                 "specialist_real_mode_unavailable"
-                if exc.code == "structured_generation_unavailable"
+                if exc.code
+                in {
+                    "agent_model_unavailable",
+                    "structured_generation_unavailable",
+                }
                 else "specialist_execution_failed"
             )
             raise SpecialistAgentError(code, str(exc)) from exc

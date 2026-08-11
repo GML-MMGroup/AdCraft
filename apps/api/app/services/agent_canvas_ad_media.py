@@ -104,7 +104,7 @@ def _role_registry() -> dict[str, _RegisteredRole]:
             content_model=model,
         )
 
-    for role in ("creative_brief", "general_text"):
+    for role in ("creative_brief", "world_setting", "general_text"):
         add(role, "text", "text")
     add("script", "script", "text")
     add("general_image", "image", "image")

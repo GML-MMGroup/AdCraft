@@ -12,6 +12,7 @@ from app.schemas.agent_canvas import StorageAccessDescriptorV2
 
 AdMediaSemanticRoleV2 = Literal[
     "creative_brief",
+    "world_setting",
     "script",
     "product",
     "prop",
@@ -181,6 +182,7 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     source_node_id: str | None = None
     source_semantic_role: str | None = None
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
     media_type: Literal["image", "video", "audio"]
     display_order: int = Field(ge=0)

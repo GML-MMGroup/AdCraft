@@ -99,19 +99,21 @@ class ProviderModelBootstrapService:
         return False
 
     def _recognized_defaults(self) -> dict[str, str]:
-        if self._settings.agent_runtime_mode == "fake" or self._settings.media_mode == "mock":
+        text_ref = "fake:deterministic-text"
+        if self._settings.agent_runtime_mode != "fake":
+            text_ref = (
+                "siliconflow:zai-org/GLM-5.2"
+                if self._settings.siliconflow_api_key
+                else "volcengine_ark:doubao-seed-2-0-mini-260428"
+            )
+        if self._settings.media_mode == "mock":
             return {
-                "agent": "fake:deterministic-text",
-                "text": "fake:deterministic-text",
+                "agent": text_ref,
+                "text": text_ref,
                 "image": "fake:deterministic-image",
                 "video": "fake:deterministic-video",
                 "audio": "fake:deterministic-audio",
             }
-        text_ref = (
-            "siliconflow:zai-org/GLM-5.2"
-            if self._settings.siliconflow_api_key
-            else "volcengine_ark:doubao-seed-2-0-mini-260428"
-        )
         return {
             "agent": text_ref,
             "text": text_ref,
