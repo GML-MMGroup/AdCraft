@@ -16,7 +16,6 @@ from app.schemas.agent_canvas_ad_media import (
     VideoSegmentContentV2,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_draft_seeds import DraftSeedCapabilityIdV1
 from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     ScriptDraftContentV2,
@@ -105,10 +104,8 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     action: Literal["select_option", "delegate_choice", "reuse_direction"]
     selection_actor: Literal["user", "agent"]
     selection_reason: str | None = Field(default=None, max_length=2_048)
-    capability_id: DraftSeedCapabilityIdV1
+    capability_id: CapabilityIdV1
     selected_option: SelectedConceptOptionV1
-    draft_seed_schema: Literal["draft_seed_v1"] | None = None
-    draft_seed_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     reference_plan: ProposalReferencePlanV1
     expected_session_revision: int = Field(ge=1)
     target_node_id: str | None = Field(default=None, max_length=160)
@@ -124,8 +121,6 @@ class ProposalPublicationEnvelopeV1(_MaterializationModel):
     def validate_publication_identity(self) -> "ProposalPublicationEnvelopeV1":
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted Proposal publication requires node ID and revision.")
-        if (self.draft_seed_schema is None) != (self.draft_seed_digest is None):
-            raise ValueError("Proposal publication Seed metadata must be complete.")
         return self
 
 

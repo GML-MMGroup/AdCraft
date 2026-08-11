@@ -1,4 +1,4 @@
-"""Atomic publication of private capability results as public Proposals."""
+"""Atomic publication of concise capability results as public Proposals."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ from app.persistence.models import (
 )
 from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
-from app.schemas.agent_canvas_draft_seeds import draft_seed_persistence_record
 from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     canonical_guidance_topic_kind,
@@ -229,18 +228,6 @@ class AgentCanvasCapabilityProposalRepository:
                 for order, option in enumerate(options):
                     option_id = f"option_{_digest(proposal_id, str(order))[:32]}"
                     public_summary = str(option.public_summary)
-                    private_seed = getattr(option, "private_draft_seed", None)
-                    seed_record = (
-                        draft_seed_persistence_record(option_id, private_seed)
-                        if private_seed is not None
-                        else None
-                    )
-                    if envelope.capability_id != "quick_media" and seed_record is None:
-                        raise V2PersistenceError(
-                            "proposal_draft_seed_missing",
-                            "Proposal option has no private Draft Seed.",
-                            stage="capability_publication",
-                        )
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -253,15 +240,9 @@ class AgentCanvasCapabilityProposalRepository:
                                 separators=(",", ":"),
                                 sort_keys=True,
                             ),
-                            draft_seed_schema=(
-                                seed_record.draft_seed_schema if seed_record is not None else None
-                            ),
-                            draft_seed_json=(
-                                seed_record.draft_seed_json if seed_record is not None else None
-                            ),
-                            draft_seed_digest=(
-                                seed_record.draft_seed_digest if seed_record is not None else None
-                            ),
+                            draft_seed_schema=None,
+                            draft_seed_json=None,
+                            draft_seed_digest=None,
                         )
                     )
                     public_options.append(

@@ -283,9 +283,6 @@ class ProposalPublicationSubmissionService(_ProposalSelectionSubmissionService):
         legacy = super()._build_envelope(proposal, action, accepted)
         if isinstance(legacy, ProposalPublicationEnvelopeV1):
             return legacy
-        seed_schema, seed_digest = self._conversations.get_draft_seed_metadata(
-            legacy.selected_option.option_id
-        )
         return ProposalPublicationEnvelopeV1(
             envelope_id=legacy.envelope_id,
             materialization_id=legacy.materialization_id,
@@ -299,8 +296,6 @@ class ProposalPublicationSubmissionService(_ProposalSelectionSubmissionService):
             selection_reason=legacy.selection_reason,
             capability_id=legacy.capability_id,
             selected_option=legacy.selected_option,
-            draft_seed_schema=seed_schema,
-            draft_seed_digest=seed_digest,
             reference_plan=legacy.reference_plan,
             expected_session_revision=legacy.expected_session_revision,
             target_node_id=legacy.target_node_id,

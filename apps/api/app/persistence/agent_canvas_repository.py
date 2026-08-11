@@ -50,6 +50,7 @@ from app.schemas.agent_canvas import (
     ResolvedTextInputSnapshotV2,
 )
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_editing import (
     EditingBgmEntryV2,
     EditingNodeContentV2,
@@ -730,6 +731,101 @@ class AgentCanvasWorkflowRepository:
         except SQLAlchemyError as error:
             raise _unavailable_error() from error
         return self.get_workflow(node.workflow_id)
+
+    def update_node_prompt_preparation(
+        self,
+        node: CanvasNodeV2,
+        *,
+        expected_node_revision: int,
+        expected_workflow_revision: int,
+    ) -> CanvasNodeV2:
+        """Compare-and-swap one prompt operation while tolerating exact replay."""
+
+        if node.revision != expected_node_revision + 1:
+            raise _prompt_preparation_conflict()
+        now = node.updated_at.isoformat()
+        values = _node_values(node)
+        values.pop("node_id")
+        values.pop("workflow_id")
+        replayed = False
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasNodeRow).where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _node_not_found_error()
+                    current = _node_from_row(row)
+                    if current.revision != expected_node_revision:
+                        if _prompt_preparation_replays(current, node):
+                            replayed = True
+                            connection.commit()
+                        else:
+                            raise _prompt_preparation_conflict()
+                    else:
+                        current_workflow_revision = _require_workflow_revision_at_least(
+                            connection,
+                            node.workflow_id,
+                            expected_workflow_revision,
+                        )
+                        updated = connection.execute(
+                            update(AgentCanvasNodeRow)
+                            .where(
+                                AgentCanvasNodeRow.workflow_id == node.workflow_id,
+                                AgentCanvasNodeRow.node_id == node.node_id,
+                                AgentCanvasNodeRow.revision == expected_node_revision,
+                            )
+                            .values(**values)
+                        )
+                        if updated.rowcount != 1:
+                            raise _prompt_preparation_conflict()
+                        _advance_workflow_revision(
+                            connection,
+                            workflow_id=node.workflow_id,
+                            current_revision=current_workflow_revision,
+                            updated_at=now,
+                        )
+                        event_type = {
+                            "working": "node_prompt_preparation_started",
+                            "ready": "node_prompt_preparation_completed",
+                            "failed": "node_prompt_preparation_failed",
+                            "queued": "draft_node_created",
+                        }[node.prompt_preparation.status]
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                event_type=event_type,
+                                created_at=now,
+                                payload={
+                                    "node_revision": node.revision,
+                                    "workflow_revision": current_workflow_revision + 1,
+                                    "creative_role": node.creative_role,
+                                    "prompt_preparation_status": (node.prompt_preparation.status),
+                                    "operation_id": node.prompt_preparation.operation_id,
+                                },
+                            ),
+                        )
+                        connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _unavailable_error() from error
+        restored = self.get_node(node.workflow_id, node.node_id)
+        return restored if replayed else restored
 
     def replace_derived_video_parameters(
         self,
@@ -1929,6 +2025,24 @@ def _require_workflow_revision(
     return current
 
 
+def _require_workflow_revision_at_least(
+    connection: Connection,
+    workflow_id: str,
+    expected_revision: int,
+) -> int:
+    revision = connection.execute(
+        select(AgentCanvasWorkflowRow.revision).where(
+            AgentCanvasWorkflowRow.workflow_id == workflow_id
+        )
+    ).scalar_one_or_none()
+    if revision is None:
+        raise _workflow_not_found_error()
+    current = int(revision)
+    if current < expected_revision:
+        raise _prompt_preparation_conflict()
+    return current
+
+
 def _advance_workflow_revision(
     connection: Connection,
     *,
@@ -2069,6 +2183,7 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "position_y": node.position.y,
         "revision": node.revision,
         "error_json": node.error.model_dump_json() if node.error is not None else None,
+        "prompt_preparation_json": node.prompt_preparation.model_dump_json(),
         "created_at": node.created_at.isoformat(),
         "updated_at": node.updated_at.isoformat(),
     }
@@ -2112,6 +2227,9 @@ def _node_from_row(
             if error_json is not None
             else None
         ),
+        prompt_preparation=NodePromptPreparationV1.model_validate_json(
+            str(row["prompt_preparation_json"])
+        ),
         variation_draft=(_variation_from_row(variation) if variation is not None else None),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
@@ -2137,6 +2255,17 @@ def _parameter_provenance_from_row(
         for field, value in parameters.items()
         if isinstance(value, (str, int, float, bool))
     }
+
+
+def _prompt_preparation_replays(current: CanvasNodeV2, requested: CanvasNodeV2) -> bool:
+    return (
+        current.revision == requested.revision
+        and current.prompt_preparation == requested.prompt_preparation
+        and current.generation_prompt == requested.generation_prompt
+        and current.structured_content == requested.structured_content
+        and current.parameters == requested.parameters
+        and current.prompt_context_snapshot_id == requested.prompt_context_snapshot_id
+    )
 
 
 def _variation_from_row(row: RowMapping) -> CanvasVariationDraftV2:
@@ -2307,6 +2436,14 @@ def _node_not_found_error() -> V2PersistenceError:
         "node_not_found",
         "Canvas node was not found.",
         stage="agent_canvas_workflow_repository",
+    )
+
+
+def _prompt_preparation_conflict() -> V2PersistenceError:
+    return V2PersistenceError(
+        "prompt_preparation_revision_conflict",
+        "Node prompt preparation changed before this operation committed.",
+        stage="prompt_preparation",
     )
 
 

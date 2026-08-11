@@ -64,6 +64,7 @@ from app.services.model_resolution import ModelResolutionService
 MediaPublisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], str]
 ScriptReadyPublisher = Callable[[str, str], object]
 TextReadyPublisher = Callable[[CanvasNodeV2], object]
+MediaReadyPublisher = Callable[[CanvasNodeV2], tuple[str, ...] | None]
 MediaContextPreparer = Callable[
     [CanvasNodeV2, WorldSettingContextEnvelopeV2 | None],
     tuple[CompiledProviderPromptV2 | None, AdReferenceBundleV2 | None],
@@ -236,6 +237,7 @@ class DynamicCanvasScheduler:
         media_publisher: MediaPublisher,
         script_ready_publisher: ScriptReadyPublisher | None = None,
         text_ready_publisher: TextReadyPublisher | None = None,
+        media_ready_publisher: MediaReadyPublisher | None = None,
         media_context_preparer: MediaContextPreparer | None = None,
         stage_trace_writer: StageTraceWriter | None = None,
         input_compiler: AgentCanvasResolvedInputCompiler | None = None,
@@ -260,6 +262,7 @@ class DynamicCanvasScheduler:
         self._media_publisher = media_publisher
         self._script_ready_publisher = script_ready_publisher
         self._text_ready_publisher = text_ready_publisher
+        self._media_ready_publisher = media_ready_publisher
         self._media_context_preparer = media_context_preparer
         self._stage_trace_writer = stage_trace_writer
         self._input_compiler = input_compiler or AgentCanvasResolvedInputCompiler(
@@ -972,6 +975,12 @@ class DynamicCanvasScheduler:
             self._script_ready_publisher(workflow_id, node_id)
         if context.node.node_type == "text" and self._text_ready_publisher is not None:
             self._text_ready_publisher(published_node)
+        if (
+            context.node.node_type in {"image", "video", "audio"}
+            and self._media_ready_publisher is not None
+        ):
+            created_node_ids = self._media_ready_publisher(published_node) or ()
+            self._runtime.add_members(execution_id, created_node_ids, now=now)
         self._runtime.complete_lease(lease, now=now)
 
     def _trace_stage(
@@ -1258,6 +1267,8 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "node_already_working"
     if node.status == "failed" and not request.retry_failed:
         return "failed_node_retry_required"
+    if node.prompt_preparation.status != "ready":
+        return "node_prompt_not_ready"
     return None
 
 
@@ -1267,6 +1278,7 @@ def _skip_message(reason: str) -> str:
         "node_already_ready": "Ready nodes are not rerun in place.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
+        "node_prompt_not_ready": "Node prompt preparation is not ready.",
     }[reason]
 
 

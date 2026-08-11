@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 from uuid import uuid4
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
@@ -14,6 +15,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.schemas.agent_canvas_editing import default_editing_content
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
 from app.services.agent_canvas_authoring_validation import validate_node_patch
 from app.services.model_selection import ModelSelectionService
@@ -69,6 +71,7 @@ class AgentCanvasNodeService:
             position=request.position,
             revision=1,
             error=None,
+            prompt_preparation=_initial_prompt_preparation(request, now),
             created_at=now,
             updated_at=now,
         )
@@ -106,6 +109,11 @@ class AgentCanvasNodeService:
         changes = request.model_dump(exclude_unset=True)
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
+        if "generation_prompt" in changes and request.generation_prompt:
+            changes["prompt_preparation"] = _ready_prompt_preparation(
+                request.generation_prompt,
+                datetime.now(timezone.utc),
+            )
         status = validate_node_patch(
             status=current.status,
             node_type=current.node_type,
@@ -148,6 +156,43 @@ def _initial_status(request: CanvasNodeCreateRequestV2) -> str:
     if request.node_type in {"text", "script"} and request.structured_content:
         return "ready"
     return "draft"
+
+
+def _initial_prompt_preparation(
+    request: CanvasNodeCreateRequestV2,
+    now: datetime,
+) -> NodePromptPreparationV1:
+    prompt = request.generation_prompt
+    if not prompt and request.node_type in {"text", "script"}:
+        prompt = str(request.structured_content.get("content") or "").strip() or None
+    if not prompt and request.source_asset_id is not None:
+        prompt = request.source_asset_id
+    if prompt:
+        return _ready_prompt_preparation(prompt, now)
+    return NodePromptPreparationV1(
+        status="queued",
+        operation_id=None,
+        attempt_no=0,
+        context_snapshot_id=None,
+        prompt_digest=None,
+        error=None,
+        updated_at=now,
+    )
+
+
+def _ready_prompt_preparation(
+    prompt: str,
+    now: datetime,
+) -> NodePromptPreparationV1:
+    return NodePromptPreparationV1(
+        status="ready",
+        operation_id=None,
+        attempt_no=0,
+        context_snapshot_id=None,
+        prompt_digest=sha256(prompt.encode("utf-8")).hexdigest(),
+        error=None,
+        updated_at=now,
+    )
 
 
 def _manual_parameter_provenance(
