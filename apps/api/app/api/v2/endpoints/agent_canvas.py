@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -228,8 +228,8 @@ from app.services.agent_canvas_style_activation import StyleSkillActivationServi
 from app.services.agent_canvas_conversation import (
     AgentConversationService,
     DeterministicVideoAgentGateway,
-    GuidanceProposalActionService,
     PiVideoAgentGateway,
+    VideoAgentGateway,
 )
 from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_continuation_worker import (
@@ -241,11 +241,20 @@ from app.services.agent_canvas_capability_dispatch import CapabilityDispatchServ
 from app.services.agent_canvas_materialization_publication import (
     CapabilityMaterializationPublicationService,
 )
+from app.services.agent_canvas_materialization_commit import (
+    AgentCanvasMaterializationCommitService,
+)
 from app.services.agent_canvas_materialization_runtime import (
     QuickMediaMaterializationRunner,
     materialization_context_from_state,
 )
 from app.services.agent_canvas_proposal_publication import ProposalPublicationRunner
+from app.services.agent_canvas_production_journey_reducer import (
+    GuidedProductionJourneyReducer,
+)
+from app.services.agent_canvas_production_journey_orchestration import (
+    GuidedProductionJourneyService,
+)
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_execution_settings import (
@@ -323,7 +332,13 @@ def get_agent_canvas_runtime(
         runtime.database.dispose()
 
 
-def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
+def create_agent_canvas_runtime(
+    settings: Settings,
+    *,
+    video_agent_gateway_override: VideoAgentGateway | None = None,
+    provider_executor_override: V2ProviderExecutor | None = None,
+    fake_media_bytes_override: Callable[[str], bytes | None] | None = None,
+) -> AgentCanvasRuntime:
     """Build one request/startup-scoped Agent Canvas runtime."""
 
     database = create_v2_database(settings.media_data_dir)
@@ -409,7 +424,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         conversation_repository,
         video_skills,
     )
-    video_agent_gateway = (
+    video_agent_gateway = video_agent_gateway_override or (
         DeterministicVideoAgentGateway()
         if settings.agent_runtime_mode == "fake"
         else PiVideoAgentGateway(
@@ -450,13 +465,14 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
     world_setting_context = WorldSettingContextResolverV2(workflow_repository)
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
     editing_export_repository = AgentCanvasEditingExportRepository(database)
-    provider_executor = V2ProviderExecutor(
+    provider_executor = provider_executor_override or V2ProviderExecutor(
         settings=settings,
         data_dir=settings.media_data_dir,
     )
     dispatcher = build_default_node_dispatcher(
         settings,
         provider_executor=provider_executor,
+        fake_media_bytes_override=fake_media_bytes_override,
     )
     role_registry = AdMediaRoleRegistry()
     reference_resolver = AdReferenceBundleResolver(
@@ -531,6 +547,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         runtime_repository,
         bindings=binding_service,
     )
+    production_journey = GuidedProductionJourneyService(conversation_repository)
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
@@ -540,6 +557,14 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
                 target,
                 required_input_types=input_types,
                 reference_count=reference_count,
+            )
+        ),
+        on_storyboard_pipeline_prepared=(
+            lambda workflow_id, plan_document_id: (
+                production_journey.record_storyboard_pipeline_prepared(
+                    workflow_id,
+                    source_id=plan_document_id,
+                )
             )
         ),
     )
@@ -892,14 +917,12 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         workflows=workflow_repository,
         conversations=conversation_repository,
         asset_resolver=asset_service.resolve_asset,
-        materializer=GuidanceProposalActionService(
-            workflow_repository,
-            conversation_repository,
-            asset_resolver=asset_service.resolve_asset,
-            connection_policy=connection_policy,
-        ),
         storyboard_authoring=storyboard_authoring,
         storyboard_gateway=video_agent_gateway,
+        commit_service=AgentCanvasMaterializationCommitService(
+            materialization_repository,
+            GuidedProductionJourneyReducer(),
+        ),
     )
     materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,

@@ -740,6 +740,7 @@ def build_default_node_dispatcher(
     settings: Settings,
     *,
     provider_executor: _MinimalProviderExecutor | None = None,
+    fake_media_bytes_override: Callable[[str], bytes | None] | None = None,
 ) -> NodeExecutionDispatcher:
     """Build deterministic fakes or configured node-native provider adapters."""
 
@@ -777,9 +778,15 @@ def build_default_node_dispatcher(
                 "video": ("video/mp4", "video.mp4", b"\x00\x00\x00\x18ftypmp42"),
                 "audio": ("audio/mpeg", "audio.mp3", b"ID3\x04\x00\x00"),
             }[context.node.node_type]
+            overridden_content = (
+                fake_media_bytes_override(context.node.node_type)
+                if fake_media_bytes_override is not None
+                else None
+            )
+            content = overridden_content or signature + b"ADCRAFT_FAKE_MEDIA\n" + seed
             return NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
-                    content=signature + b"ADCRAFT_FAKE_MEDIA\n" + seed,
+                    content=content,
                     mime_type=mime_type,
                     filename=filename,
                 )
