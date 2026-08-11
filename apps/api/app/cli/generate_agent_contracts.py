@@ -16,11 +16,14 @@ from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
+from app.schemas import agent_canvas_production_journey
+from app.schemas import agent_canvas_prompt_preparation
 from app.schemas import agent_canvas_capabilities
 from app.schemas import agent_canvas_materialization
 from app.schemas import agent_canvas_requirements
-from app.schemas import agent_canvas_draft_seeds
+from app.schemas import agent_canvas_decision_bundles
 from app.schemas import agent_canvas_world_setting
+from app.schemas import agent_canvas_storyboard_sequences
 from app.schemas import agent_working_documents
 from app.schemas import agent_operation_contexts
 from app.schemas import agent_operation_recovery
@@ -31,6 +34,23 @@ from app.schemas import v2_agent_conversations
 
 
 CONTRACT_MODELS = (
+    agent_canvas_prompt_preparation.NodePromptPreparationV1,
+    agent_canvas_decision_bundles.CreativeDirectiveDecisionEffectV1,
+    agent_canvas_decision_bundles.SetControlDecisionEffectV1,
+    agent_canvas_decision_bundles.SetElementPresenceDecisionEffectV1,
+    agent_canvas_decision_bundles.DecisionBundleOptionDraftV1,
+    agent_canvas_decision_bundles.DecisionBundleQuestionDraftV1,
+    agent_canvas_decision_bundles.DecisionBundleDraftV1,
+    agent_canvas_decision_bundles.DecisionBundleOptionV1,
+    agent_canvas_decision_bundles.DecisionBundleQuestionV1,
+    agent_canvas_decision_bundles.DecisionBundleAnswerV1,
+    agent_canvas_decision_bundles.DecisionBundleV1,
+    agent_canvas_decision_bundles.DecisionBundleActionAcceptedV1,
+    agent_canvas_storyboard_sequences.StoryboardSequenceRowDraftV2,
+    agent_canvas_storyboard_sequences.StoryboardOutlineSegmentDraftV2,
+    agent_canvas_storyboard_sequences.StoryboardSequenceOutlineDraftV2,
+    agent_canvas_storyboard_sequences.StoryboardSegmentMaterializationDraftV2,
+    agent_canvas_storyboard_sequences.StoryboardSegmentAuthoringContextV2,
     agent_canvas.CanvasPositionV2,
     agent_canvas.CanvasNodeErrorV2,
     agent_canvas.CanvasModelSummaryV2,
@@ -79,8 +99,20 @@ CONTRACT_MODELS = (
     agent_canvas_creative_session.CreativeAuthorityResolutionV2,
     agent_canvas_creative_session.GuidedStepCheckpointV2,
     agent_canvas_creative_session.GuidanceStagePolicyResultV2,
+    agent_canvas_production_journey.JourneyElementDecisionV1,
+    agent_canvas_production_journey.FoundationJourneyItemV1,
+    agent_canvas_production_journey.JourneyActionProjectionV1,
+    agent_canvas_production_journey.JourneyTransitionEvidenceV1,
+    agent_canvas_production_journey.JourneyEvidenceV1,
+    agent_canvas_production_journey.GuidedProductionJourneyV1,
+    agent_canvas_production_journey.JourneyPolicyContextV1,
+    agent_canvas_production_journey.JourneyPolicyResultV1,
     agent_canvas_creative_session.GuidedSessionStateV2,
     agent_canvas_capabilities.ExplicitElementIntentV2,
+    agent_canvas_capabilities.CompactRequirementDirectivePatchV1,
+    agent_canvas_capabilities.CompactRequirementControlPatchV1,
+    agent_canvas_capabilities.CompactRequirementPatchV1,
+    agent_canvas_capabilities.CompactTurnIntentDecisionV1,
     agent_canvas_capabilities.TurnIntentDecisionV2,
     agent_canvas_capabilities.TurnIntentContextV2,
     agent_canvas_requirements.RequirementLedgerV1,
@@ -136,6 +168,11 @@ CONTRACT_MODELS = (
     agent_canvas_requirements.OmittedRequirementDirectiveV1,
     agent_canvas_requirements.RequirementApplicationDeltaV1,
     agent_canvas_requirements.RequirementApplicationResultV1,
+    agent_canvas_capabilities.AskUserNextActionCommandV1,
+    agent_canvas_capabilities.AuthorDecisionBundleNextActionCommandV1,
+    agent_canvas_capabilities.InvokeCapabilityNextActionCommandV1,
+    agent_canvas_capabilities.ReplyNextActionCommandV1,
+    agent_canvas_capabilities.FinishNextActionCommandV1,
     agent_canvas_capabilities.NextActionCommandV1,
     agent_canvas_capabilities.NextActionContextV1,
     agent_canvas_capabilities.CapabilityDefinitionV1,
@@ -158,19 +195,6 @@ CONTRACT_MODELS = (
     agent_canvas_materialization.ProposalPublicationEnvelopeV1,
     agent_canvas_materialization.CapabilityMaterializationContextV1,
     agent_canvas_materialization.CapabilityMaterializationExecutionResultV1,
-    agent_canvas_draft_seeds.WorldSettingDraftSeedV1,
-    agent_canvas_draft_seeds.ProductDraftSeedV1,
-    agent_canvas_draft_seeds.PropDraftSeedV1,
-    agent_canvas_draft_seeds.CharacterDraftSeedV1,
-    agent_canvas_draft_seeds.SceneDraftSeedV1,
-    agent_canvas_draft_seeds.ScriptDraftSeedV1,
-    agent_canvas_draft_seeds.StoryboardPanelSeedV1,
-    agent_canvas_draft_seeds.StoryboardDraftSeedV1,
-    agent_canvas_draft_seeds.VideoTimingBeatSeedV1,
-    agent_canvas_draft_seeds.VideoDraftSeedV1,
-    agent_canvas_draft_seeds.BgmDraftSeedV1,
-    agent_canvas_draft_seeds.AcceptedProposalCommitmentV1,
-    agent_canvas_draft_seeds.DraftSeedEnvelopeV1,
     agent_canvas_materialization.WorldSettingMaterializationContentV1,
     agent_canvas_materialization.QuickMediaMaterializationContentV1,
     agent_canvas_materialization.WorldSettingMaterializationResultV1,
@@ -217,6 +241,8 @@ CONTRACT_MODELS = (
     agent_working_documents.StoryboardNarrativeSegmentV2,
     agent_working_documents.StoryboardPlanRowV2,
     agent_working_documents.StoryboardNodeRecordV2,
+    agent_working_documents.StoryboardSegmentMaterializationV2,
+    agent_working_documents.StoryboardVisualAnchorV2,
     agent_working_documents.AgentDocumentLinkedNodeRuntimeV2,
     agent_working_documents.StoryboardProductionPlanContentV2,
     agent_working_documents.AgentWorkingDocumentV2,
@@ -228,6 +254,8 @@ CONTRACT_MODELS = (
     agent_working_documents.InitializeStoryboardPlanPatchV2,
     agent_working_documents.ReplaceNarrativeSegmentPatchV2,
     agent_working_documents.ReplaceStoryboardRowsPatchV2,
+    agent_working_documents.MaterializeStoryboardSegmentPatchV2,
+    agent_working_documents.FreezeStoryboardVisualAnchorPatchV2,
     agent_working_documents.AttachStoryboardNodePatchV2,
     agent_working_documents.AttachVideoNodePatchV2,
     agent_working_documents.AttachAudioNodePatchV2,

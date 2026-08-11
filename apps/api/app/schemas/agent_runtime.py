@@ -48,6 +48,7 @@ _SAFE_TOKEN_METADATA_KEYS = {
     "max_output_tokens",
     "output_tokens",
     "reasoning_tokens",
+    "thinking_budget_tokens",
 }
 
 
@@ -181,7 +182,15 @@ class AgentRunPolicy(_StrictModel):
     max_tool_calls: int = Field(default=16, ge=0, le=128)
     max_handoffs: Literal[0] = 0
     timeout_seconds: float = Field(default=120.0, gt=0, le=900)
+    primary_timeout_seconds: int | None = Field(default=None, ge=1, le=900)
+    recovery_timeout_seconds: int | None = Field(default=None, ge=1, le=900)
+    persistence_reserve_seconds: int | None = Field(default=None, ge=1, le=900)
+    max_model_submissions: Literal[2] | None = None
+    recovery_mode: Literal["transport_retry_or_structured_repair"] | None = None
     max_output_tokens: int | None = Field(default=None, ge=1, le=65_536)
+    reasoning_mode: Literal["low", "deep"] | None = None
+    enable_thinking: bool | None = None
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
     max_event_bytes: int = Field(default=65_536, ge=1, le=1_048_576)
@@ -200,14 +209,23 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         "reasoning_effort",
         "none",
     ]
+    reasoning_mode: Literal["low", "deep"]
+    enable_thinking: bool
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     structured_transport: Literal[
         "streamed_tool_call",
         "non_streaming_tool_call",
+        "non_streaming_json_object",
         "json_object",
     ]
     supports_tool_calls: bool
     supports_streamed_tool_calls: bool
     deadline_seconds: int = Field(ge=1, le=900)
+    primary_timeout_seconds: int = Field(ge=1, le=900)
+    recovery_timeout_seconds: int = Field(ge=1, le=900)
+    persistence_reserve_seconds: int = Field(ge=1, le=900)
+    max_model_submissions: Literal[2]
+    recovery_mode: Literal["transport_retry_or_structured_repair"]
     max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: int = Field(ge=0, le=1)
     structured_repair_limit: int = Field(ge=0, le=1)
@@ -221,6 +239,7 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     structured_transport: Literal[
         "streamed_tool_call",
         "non_streaming_tool_call",
+        "non_streaming_json_object",
         "json_object",
     ]
     thinking_format: Literal["zai", "qwen", "none"]
@@ -230,16 +249,23 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
         "reasoning_effort",
         "none",
     ]
+    reasoning_mode: Literal["low", "deep"]
+    enable_thinking: bool
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     deadline_seconds: int = Field(ge=1, le=900)
     max_output_tokens: int = Field(ge=1, le=65_536)
     operation_policy_id: str = Field(min_length=1, max_length=160)
     operation_class: Literal["routing", "proposal", "materialization", "long_form"]
     effective_timeout_ms: int = Field(ge=0, le=900_000)
+    request_bytes: int = Field(ge=0, le=4_194_304)
+    schema_bytes: int = Field(ge=0, le=4_194_304)
+    response_activity_observed: bool
     attempt_stage: Literal["initial", "transport_retry", "structured_repair"]
     started_at: datetime
     first_response_at: datetime | None = None
     last_activity_at: datetime | None = None
     finished_at: datetime
+    duration_ms: int = Field(ge=0, le=900_000)
     finish_reason: str | None = Field(default=None, max_length=120)
     provider_trace_id: str | None = Field(default=None, max_length=320)
     safe_exception_class: str | None = Field(default=None, max_length=160)

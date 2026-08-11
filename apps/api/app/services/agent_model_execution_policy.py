@@ -46,12 +46,21 @@ def resolve_agent_model_execution_policy(
     structured_transport = _enum(
         capability_metadata,
         "structured_transport",
-        {"streamed_tool_call", "non_streaming_tool_call", "json_object"},
+        {
+            "streamed_tool_call",
+            "non_streaming_tool_call",
+            "non_streaming_json_object",
+            "json_object",
+        },
     )
     supports_tool_calls = _flag(capability_metadata, "supports_tool_calls")
     supports_streamed_tool_calls = _flag(
         capability_metadata,
         "supports_streamed_tool_calls",
+    )
+    supports_reasoning_controls = _flag(
+        capability_metadata,
+        "supports_reasoning_controls",
     )
     model_token_ceiling = _positive_int(
         capability_metadata,
@@ -65,6 +74,8 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("The selected model does not support streamed tool calls.")
     if reasoning_control == "none" and thinking_format != "none":
         raise _mismatch("A disabled reasoning policy cannot select a thinking format.")
+    if reasoning_control != "enable_thinking" or not supports_reasoning_controls:
+        raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,
@@ -72,10 +83,18 @@ def resolve_agent_model_execution_policy(
         operation_class=operation_policy.policy_class,
         thinking_format=thinking_format,
         reasoning_control=reasoning_control,
+        reasoning_mode=operation_policy.reasoning_mode,
+        enable_thinking=operation_policy.enable_thinking,
+        thinking_budget_tokens=operation_policy.thinking_budget_tokens,
         structured_transport=structured_transport,
         supports_tool_calls=supports_tool_calls,
         supports_streamed_tool_calls=supports_streamed_tool_calls,
         deadline_seconds=operation_policy.hard_deadline_seconds,
+        primary_timeout_seconds=operation_policy.primary_timeout_seconds,
+        recovery_timeout_seconds=operation_policy.recovery_timeout_seconds,
+        persistence_reserve_seconds=operation_policy.persistence_reserve_seconds,
+        max_model_submissions=operation_policy.max_model_submissions,
+        recovery_mode=operation_policy.recovery_mode,
         max_output_tokens=min(operation_policy.max_output_tokens, model_token_ceiling),
         transport_retry_limit=operation_policy.transport_retry_limit,
         structured_repair_limit=operation_policy.structured_repair_limit,

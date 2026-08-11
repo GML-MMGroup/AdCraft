@@ -15,6 +15,7 @@ from app.schemas.agent_runtime import (
 from app.schemas.agent_canvas_capabilities import (
     BgmProposalResultV1,
     CharacterProposalResultV1,
+    CompactTurnIntentDecisionV1,
     NextActionCommandV1,
     ProductProposalResultV1,
     PropProposalResultV1,
@@ -64,6 +65,7 @@ _CONTRACTS: dict[str, type[BaseModel]] = {
         AgentCanvasTextOutput,
         AgentCommandPlanDraftV2,
         VideoParameterIntentV2,
+        CompactTurnIntentDecisionV1,
         TurnIntentDecisionV2,
         NextActionCommandV1,
         WorldSettingProposalResultV1,

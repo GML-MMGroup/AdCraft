@@ -64,11 +64,12 @@ const capabilityDefinitions = [
 >;
 
 const metadata = new Map<string, OperationMetadata>([
-  ["decide_turn_intent", { result_contract_name: "TurnIntentDecisionV2" }],
+  ["decide_turn_intent", { result_contract_name: "CompactTurnIntentDecisionV1" }],
   ["decide_next_action", { result_contract_name: "NextActionCommandV1" }],
   ["command_replan", { result_contract_name: "AgentCommandPlanDraftV2" }],
   ["workflow_conversation", { result_contract_name: "WorkflowConversationReply" }],
   ["conversation_summary", { result_contract_name: "ConversationSummaryResult" }],
+  ["author_decision_bundle", { result_contract_name: "DecisionBundleDraftV1" }],
 ]);
 
 for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefinitions) {
@@ -97,6 +98,12 @@ metadata.set("materialize_quick_media", {
   style_projection_role: "quick_media",
   display_name: "Quick Media",
 });
+metadata.set("plan_storyboard_sequence_outline", creativeMetadata(
+  "storyboard_design", "StoryboardSequenceOutlineDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist",
+));
+metadata.set("materialize_storyboard_segment", creativeMetadata(
+  "storyboard_design", "StoryboardSegmentMaterializationDraftV2", "video_agent_storyboard_design", "storyboard", "Storyboard Artist",
+));
 metadata.set("execute_canvas_text", { result_contract_name: "AgentCanvasTextOutput" });
 metadata.set("execute_canvas_script", creativeMetadata(
   "script_authoring", "AgentCanvasScriptOutput", "video_agent_script_authoring", "script", "Script Writer",

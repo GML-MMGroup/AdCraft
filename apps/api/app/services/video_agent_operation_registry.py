@@ -132,11 +132,28 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
 
 
 _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
-    _definition("decide_turn_intent", "TurnIntentDecisionV2"),
+    _definition("decide_turn_intent", "CompactTurnIntentDecisionV1"),
     _definition("decide_next_action", "NextActionCommandV1"),
     _definition("command_replan", "AgentCommandPlanDraftV2"),
     _definition("workflow_conversation", "WorkflowConversationReply"),
     _definition("conversation_summary", "ConversationSummaryResult"),
+    _definition("author_decision_bundle", "DecisionBundleDraftV1"),
+    _definition(
+        "plan_storyboard_sequence_outline",
+        "StoryboardSequenceOutlineDraftV2",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
+    _definition(
+        "materialize_storyboard_segment",
+        "StoryboardSegmentMaterializationDraftV2",
+        capability_id="storyboard_design",
+        internal_skill_id="video_agent_storyboard_design",
+        style_projection_role="storyboard",
+        display_name="Storyboard Artist",
+    ),
     *_capability_definitions(),
     _definition(
         "free_image",

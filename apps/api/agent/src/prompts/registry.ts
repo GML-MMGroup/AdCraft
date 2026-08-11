@@ -18,8 +18,8 @@ const descriptors = Object.freeze(
     const systemPrompt = [
       videoAgentBasePolicy,
       instructionForOperation(operation.operation),
-      `Return exactly the ${operation.result_contract_name} contract by calling submit_structured_result.`,
-      "If Python rejects the first submission, repair only the reported structured violations and submit once more. A second rejection is terminal.",
+      `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
+      "If Python rejects the first result, repair only the reported structured violations once. A second rejection is terminal.",
     ].join("\n\n");
     return Object.freeze({
       prompt_id: `adcraft.video_agent.${operation.operation}.v1`,
@@ -84,13 +84,14 @@ function instructionForOperation(operation: string): string {
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
       "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
       "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
-      "Only supersede directive IDs present in context.editable_directives. Approximate values are preference directives, not hard controls.",
+      "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
       "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",
     ].join(" ");
   }
   if (operation === "decide_next_action") {
     return [
-      "Choose exactly one next action from ask_user, invoke_capability, reply, or finish.",
+      "Choose exactly one next action from ask_user, author_decision_bundle, invoke_capability, reply, or finish.",
+      "Use author_decision_bundle with one bounded objective when several independent creative decisions should be answered together.",
       "When invoking, copy one capability_id from context.policy.allowed_capabilities and provide one bounded objective.",
       "Treat recommended_capabilities as advice and do not invent an unavailable capability.",
     ].join(" ");
@@ -112,17 +113,28 @@ function instructionForOperation(operation: string): string {
   if (operation === "conversation_summary") {
     return "Summarize only durable facts and unresolved objectives needed by a later turn. Exclude private reasoning and unrelated history.";
   }
+  if (operation === "author_decision_bundle") {
+    return [
+      "Author one adaptive Decision Bundle containing one to five independent questions and two to six options per question.",
+      "Use only creative_directive, set_control, or set_element_presence effects and only canonical values available in the supplied context.",
+      "Return wording and bounded effects only. Never author Bundle, question, option, Node, Binding, persistence, provider, path, credential, revision, or platform identities.",
+    ].join(" ");
+  }
+  if (operation === "plan_storyboard_sequence_outline") {
+    return "Return only compact ordered segment timing, narrative states, and continuity facts. Do not author panel rows, provider prompts, or platform identifiers.";
+  }
+  if (operation === "materialize_storyboard_segment") {
+    return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
+  }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return concise creative options with title, public_summary, one to six key_decisions, and one matching private_draft_seed per option.",
-      "The private_draft_seed contains only the capability-specific creative facts and one to sixteen concise English accepted_commitments required by the typed result contract.",
-      "Do not place platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, or credentials in the Seed.",
+      "Return only concise creative options with title, public_summary, and one to six key_decisions.",
+      "Do not return provider prompts, Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {
     return [
-      "Revise only the supplied capability options and return replacement typed options with one matching private_draft_seed per option.",
-      "Keep each Seed limited to capability-specific creative facts and one to sixteen concise English accepted_commitments; exclude platform identity, identifiers, Node state, Bindings, references, provider parameters, paths, and credentials.",
+      "Revise only the supplied capability options and return concise replacement typed options.",
       "Do not publish, select, or mutate platform state.",
     ].join(" ");
   }

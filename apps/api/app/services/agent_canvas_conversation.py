@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import logging
+from math import ceil
 from typing import Literal, Protocol, cast
 from uuid import uuid4
 
@@ -15,6 +16,9 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
+)
+from app.persistence.agent_canvas_decision_bundle_repository import (
+    AgentCanvasDecisionBundleRepository,
 )
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
@@ -53,17 +57,28 @@ from app.schemas.agent_canvas_capabilities import (
     CAPABILITY_RESULT_CONTRACTS,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
+    CompactTurnIntentDecisionV1,
     NextActionCommandV1,
     NextActionContextV1,
     TurnIntentContextV2,
     TurnIntentDecisionV2,
+    expand_compact_turn_intent,
+)
+from app.schemas.agent_canvas_decision_bundles import (
+    DecisionBundleDraftV1,
+)
+from app.schemas.agent_canvas_storyboard_sequences import (
+    StoryboardOutlineSegmentDraftV2,
+    StoryboardSegmentAuthoringContextV2,
+    StoryboardSegmentMaterializationDraftV2,
+    StoryboardSequenceOutlineDraftV2,
+    StoryboardSequenceRowDraftV2,
 )
 from app.schemas.agent_canvas_capability_identity import CAPABILITY_DISPLAY_NAMES
 from app.schemas.agent_canvas_materialization import (
     CAPABILITY_MATERIALIZATION_RESULT_CONTRACTS,
     CapabilityMaterializationContextV1,
 )
-from app.schemas.agent_canvas_draft_seeds import draft_seed_persistence_record
 from app.schemas.agent_canvas_requirements import RequirementPatchV1
 from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
@@ -74,6 +89,9 @@ from app.schemas.agent_canvas_creative_session import (
     SpecialistDraftV2,
     StyleGuidanceContextV2,
 )
+from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
+from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
 from app.schemas.agent_operation_contexts import (
     AgentCommandReplanContextV2,
 )
@@ -103,6 +121,9 @@ from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
 from app.services.agent_canvas_capability_policy import CapabilityPolicyService
+from app.services.agent_canvas_production_journey_orchestration import (
+    GuidedProductionJourneyService,
+)
 from app.services.agent_canvas_capability_reference_planner import CapabilityReferencePlanner
 from app.services.model_selection import ModelSelectionService
 from app.services.agent_canvas_next_action import NextActionExecutionService
@@ -125,6 +146,7 @@ from app.services.agent_canvas_world_setting import (
     WorldSettingBindingPolicy,
     WorldSettingPublicationCandidateV2,
 )
+from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import AgentOperationPolicyRegistryV2
 
 
@@ -149,6 +171,24 @@ class VideoAgentGateway(Protocol):
     def choose_next_action(
         self, context: NextActionContextV1, *, turn_id: str
     ) -> NextActionCommandV1: ...
+
+    def author_decision_bundle(
+        self, context: NextActionContextV1, *, turn_id: str
+    ) -> DecisionBundleDraftV1: ...
+
+    def plan_storyboard_sequence_outline(
+        self,
+        context: CapabilityMaterializationContextV1,
+        *,
+        request_identity: str,
+    ) -> StoryboardSequenceOutlineDraftV2: ...
+
+    def materialize_storyboard_segment(
+        self,
+        context: StoryboardSegmentAuthoringContextV2,
+        *,
+        request_identity: str,
+    ) -> StoryboardSegmentMaterializationDraftV2: ...
 
     def run_capability(
         self,
@@ -198,6 +238,97 @@ class DeterministicVideoAgentGateway:
         return NextActionCommandV1(
             action="reply",
             message="No deterministic creative capability was requested.",
+        )
+
+    def author_decision_bundle(
+        self,
+        context: NextActionContextV1,
+        *,
+        turn_id: str,
+    ) -> DecisionBundleDraftV1:
+        return DecisionBundleDraftV1.model_validate(
+            {
+                "title": "Creative decisions",
+                "introduction": "Choose the direction for the remaining production.",
+                "questions": [
+                    {
+                        "prompt": context.objective,
+                        "selection_mode": "single",
+                        "allow_custom_answer": True,
+                        "allow_skip": True,
+                        "options": [
+                            {
+                                "label": "Recommended direction",
+                                "description": "Use the current creative recommendation.",
+                                "effects": [],
+                            },
+                            {
+                                "label": "Alternative direction",
+                                "description": "Request a bounded alternative direction.",
+                                "effects": [],
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+
+    def plan_storyboard_sequence_outline(
+        self,
+        context: CapabilityMaterializationContextV1,
+        *,
+        request_identity: str,
+    ) -> StoryboardSequenceOutlineDraftV2:
+        duration = float(context.explicit_constraints.get("duration_seconds") or 15)
+        segment_duration = float(
+            context.capability_facts.get("storyboard_segment_duration_seconds") or 5
+        )
+        count = ceil(duration / segment_duration)
+        return StoryboardSequenceOutlineDraftV2(
+            narrative_outline=context.creative_goal,
+            aspect_ratio=str(context.explicit_constraints.get("aspect_ratio") or "16:9"),
+            total_duration_seconds=duration,
+            segments=tuple(
+                StoryboardOutlineSegmentDraftV2(
+                    order=index,
+                    start_seconds=(index - 1) * segment_duration,
+                    end_seconds=min(index * segment_duration, duration),
+                    narrative_goal=f"Advance storyboard sequence {index}.",
+                    start_state=(
+                        "Establish the campaign action."
+                        if index == 1
+                        else f"Continue from sequence {index - 1} end state."
+                    ),
+                    end_state=f"Sequence {index} end state.",
+                    continuity_from_previous=(
+                        None if index == 1 else f"Continue from Sequence {index - 1} end state."
+                    ),
+                )
+                for index in range(1, count + 1)
+            ),
+        )
+
+    def materialize_storyboard_segment(
+        self,
+        context: StoryboardSegmentAuthoringContextV2,
+        *,
+        request_identity: str,
+    ) -> StoryboardSegmentMaterializationDraftV2:
+        aliases = tuple(item.alias for item in context.anchors)
+        return StoryboardSegmentMaterializationDraftV2(
+            generation_prompt=(
+                "Create one ordered 3x3 storyboard grid with exactly nine frames for "
+                f"{context.sequence.narrative_goal}."
+            ),
+            rows=tuple(
+                StoryboardSequenceRowDraftV2(
+                    panel_index=index,
+                    content_beat=f"{context.sequence.narrative_goal} Beat {index}.",
+                    anchor_aliases=aliases,
+                    camera_description=f"Distinct camera composition {index}.",
+                )
+                for index in range(1, 10)
+            ),
         )
 
     def run_capability(
@@ -255,7 +386,7 @@ class PiVideoAgentGateway:
         value, _ = self._run(
             operation="decide_turn_intent",
             context=context,
-            contract=TurnIntentDecisionV2,
+            contract=CompactTurnIntentDecisionV1,
             identity_fields={
                 "workflow_id": context.workflow_id,
                 "conversation_id": context.conversation_id,
@@ -264,7 +395,7 @@ class PiVideoAgentGateway:
                 "operation": "decide_turn_intent",
             },
         )
-        return TurnIntentDecisionV2.model_validate(value)
+        return expand_compact_turn_intent(CompactTurnIntentDecisionV1.model_validate(value))
 
     def choose_next_action(
         self,
@@ -285,6 +416,62 @@ class PiVideoAgentGateway:
             },
         )
         return NextActionCommandV1.model_validate(value)
+
+    def author_decision_bundle(
+        self,
+        context: NextActionContextV1,
+        *,
+        turn_id: str,
+    ) -> DecisionBundleDraftV1:
+        value, _ = self._run(
+            operation="author_decision_bundle",
+            context=context,
+            contract=DecisionBundleDraftV1,
+            identity_fields={
+                "workflow_id": context.workflow_id,
+                "conversation_id": context.conversation_id,
+                "turn_id": turn_id,
+                "agent_name": "video_agent",
+                "operation": "author_decision_bundle",
+            },
+        )
+        return DecisionBundleDraftV1.model_validate(value)
+
+    def plan_storyboard_sequence_outline(
+        self,
+        context: CapabilityMaterializationContextV1,
+        *,
+        request_identity: str,
+    ) -> StoryboardSequenceOutlineDraftV2:
+        completed = self._run_structured(
+            operation="plan_storyboard_sequence_outline",
+            context=context,
+            contract=StoryboardSequenceOutlineDraftV2,
+            identity_fields={
+                "agent_request_identity": request_identity,
+                "capability_id": "storyboard_design",
+                "result_contract_name": "StoryboardSequenceOutlineDraftV2",
+            },
+        )
+        return StoryboardSequenceOutlineDraftV2.model_validate(completed.value)
+
+    def materialize_storyboard_segment(
+        self,
+        context: StoryboardSegmentAuthoringContextV2,
+        *,
+        request_identity: str,
+    ) -> StoryboardSegmentMaterializationDraftV2:
+        completed = self._run_structured(
+            operation="materialize_storyboard_segment",
+            context=context,
+            contract=StoryboardSegmentMaterializationDraftV2,
+            identity_fields={
+                "agent_request_identity": request_identity,
+                "capability_id": "storyboard_design",
+                "result_contract_name": "StoryboardSegmentMaterializationDraftV2",
+            },
+        )
+        return StoryboardSegmentMaterializationDraftV2.model_validate(completed.value)
 
     def run_capability(
         self,
@@ -420,6 +607,11 @@ class PiVideoAgentGateway:
                 structured_repair_limit=operation_policy.structured_repair_limit,
                 max_handoffs=0,
                 timeout_seconds=operation_timeout,
+                primary_timeout_seconds=operation_policy.primary_timeout_seconds,
+                recovery_timeout_seconds=operation_policy.recovery_timeout_seconds,
+                persistence_reserve_seconds=operation_policy.persistence_reserve_seconds,
+                max_model_submissions=operation_policy.max_model_submissions,
+                recovery_mode=operation_policy.recovery_mode,
             ),
             contract_name=contract.__name__,
             contract_schema=contract.model_json_schema(),
@@ -476,132 +668,9 @@ def _deterministic_capability_result(
                     f"Keep the {capability_id} direction coherent.",
                     f"Use option {index} as the selected creative premise.",
                 ],
-                **(
-                    {}
-                    if capability_id == "quick_media"
-                    else {"private_draft_seed": _deterministic_draft_seed(capability_id)}
-                ),
             }
         )
     return {"options": options}
-
-
-def _deterministic_draft_seed(capability_id: str) -> dict[str, object]:
-    common = {"capability_id": capability_id}
-    if capability_id == "world_setting":
-        seed: dict[str, object] = {
-            "seed_kind": capability_id,
-            "premise": "A coherent premium advertising world.",
-            "era_and_place": "A contemporary studio environment.",
-            "world_rules": ["Keep the campaign identity consistent."],
-            "visual_continuity": ["Use one controlled lighting language."],
-            "prompt_brief": "Optimistic premium commercial direction.",
-        }
-    elif capability_id in {"product_design", "prop_design"}:
-        seed = {
-            "seed_kind": capability_id,
-            "identity": f"A coherent {capability_id.replace('_design', '')} design.",
-            **(
-                {"selling_focus": "Make the key benefit immediately legible."}
-                if capability_id == "product_design"
-                else {"function": "Support the advertising action clearly."}
-            ),
-            "form": "A distinctive, production-ready silhouette.",
-            "materials": ["matte metal", "clear glass"],
-            "color_palette": ["neutral base", "controlled accent"],
-            "presentation_intent": "One premium still design study.",
-            "exclusions": ["text", "watermarks"],
-        }
-    elif capability_id == "character_design":
-        seed = {
-            "seed_kind": capability_id,
-            "identity": "A distinctive advertising character.",
-            "appearance": "Readable facial features and coherent proportions.",
-            "wardrobe": "Purposeful contemporary wardrobe.",
-            "performance_role": "A confident and approachable guide.",
-            "visual_medium": "Detailed semi-realistic commercial illustration.",
-            "presentation_intent": "One full-body identity master.",
-            "exclusions": ["text", "watermarks"],
-        }
-    elif capability_id == "scene_design":
-        seed = {
-            "seed_kind": capability_id,
-            "identity": "A coherent advertising environment.",
-            "spatial_layout": "One legible environment with stable zones.",
-            "lighting": "Controlled commercial lighting.",
-            "materials": "Consistent production materials.",
-            "time_of_day": "Day.",
-            "atmosphere": "Premium and inviting.",
-            "exclusions": ["text", "unreferenced entities"],
-        }
-    elif capability_id == "script_authoring":
-        seed = {
-            "seed_kind": capability_id,
-            "premise": "A concise product story reveals a clear benefit.",
-            "audience_objective": "Make the benefit memorable and credible.",
-            "narrative_beats": ["Set up the need.", "Reveal the solution.", "Resolve."],
-            "dialogue_direction": "Concise, natural commercial narration.",
-            "duration_seconds": 30,
-        }
-    elif capability_id == "storyboard_design":
-        seed = {
-            "seed_kind": capability_id,
-            "sequence_summary": "A coherent nine-panel advertising sequence.",
-            "panel_beats": [
-                {
-                    "panel_index": index,
-                    "beat": f"Advertising beat {index}.",
-                    "composition": f"Distinct composition {index}.",
-                    "camera": f"Controlled camera setup {index}.",
-                    "subject_action": f"Clear subject action {index}.",
-                    "continuity_from_previous": (
-                        "Opening frame." if index == 1 else "Continue established identity."
-                    ),
-                }
-                for index in range(1, 10)
-            ],
-            "continuity_anchors": ["subject identity", "lighting direction"],
-            "camera_language": "Measured cinematic coverage.",
-            "exclusions": ["generated text"],
-        }
-    elif capability_id == "video_direction":
-        seed = {
-            "seed_kind": capability_id,
-            "segment_summary": "A concise moving product reveal.",
-            "timing_beats": [
-                {"start_seconds": 0, "end_seconds": 5, "action": "Reveal the subject."}
-            ],
-            "camera_language": "One controlled camera move.",
-            "motion": "Natural subject motion.",
-            "native_audio_direction": "Preserve natural room tone and action effects.",
-            "target_style": "Premium cinematic realism.",
-            "duration_seconds": 5,
-        }
-    elif capability_id == "bgm_direction":
-        seed = {
-            "seed_kind": capability_id,
-            "mood": "Quiet optimism.",
-            "instrumentation": "Warm synth, muted piano, and soft percussion.",
-            "pace": "Steady mid-tempo pulse.",
-            "energy_curve": "Gentle lift and resolved close.",
-            "duration_seconds": 30,
-            "instrumental_only": True,
-            "no_vocals": True,
-            "no_lyrics": True,
-        }
-    else:
-        raise ValueError("Unsupported deterministic Draft Seed capability.")
-    return {
-        **common,
-        "seed": seed,
-        "accepted_commitments": [
-            {
-                "normalized_meaning": f"Preserve the selected {capability_id} direction.",
-                "source_fragment": "Selected creative direction.",
-                "strength": "preference",
-            }
-        ],
-    }
 
 
 def _deterministic_materialization_result(capability_id: str) -> dict[str, object]:
@@ -867,6 +936,7 @@ class GuidanceProposalActionService:
         deterministic_node_ids: tuple[str, ...] | None = None,
         deterministic_binding_id: Callable[[int], str] | None = None,
         materialization_id: str | None = None,
+        queued_prompt_preparation: bool = False,
     ) -> tuple[CanvasNodeV2, ...]:
         if not drafts:
             raise V2PersistenceError(
@@ -892,7 +962,10 @@ class GuidanceProposalActionService:
                 stage="draft_materialization",
             )
         for draft in drafts:
-            SpecialistDraftValidationService().validate(proposal, draft)
+            if queued_prompt_preparation:
+                SpecialistDraftValidationService().validate_identity(proposal, draft)
+            else:
+                SpecialistDraftValidationService().validate(proposal, draft)
         workflow = self._workflows.get_workflow(proposal.workflow_id)
         now = datetime.now(timezone.utc)
         provenance_keys = {
@@ -921,9 +994,13 @@ class GuidanceProposalActionService:
                 node_type=draft.node_type,
                 creative_role=draft.creative_role,
                 title=draft.title,
-                status="ready" if draft.node_type == "script" else "draft",
+                status=(
+                    "draft"
+                    if queued_prompt_preparation
+                    else ("ready" if draft.node_type == "script" else "draft")
+                ),
                 summary_prompt=draft.summary_prompt,
-                generation_prompt=draft.generation_prompt,
+                generation_prompt=(None if queued_prompt_preparation else draft.generation_prompt),
                 structured_content=(
                     draft.structured_content.model_dump(mode="json")
                     if hasattr(draft.structured_content, "model_dump")
@@ -938,6 +1015,21 @@ class GuidanceProposalActionService:
                 parameter_provenance=draft.parameter_provenance,
                 position=CanvasPositionV2(x=0, y=0),
                 revision=1,
+                prompt_preparation=(
+                    NodePromptPreparationV1(
+                        status="queued",
+                        operation_id=(
+                            "prompt_"
+                            + hashlib.sha256(
+                                f"{materialization_id}:{draft.title}:{index}".encode("utf-8")
+                            ).hexdigest()[:32]
+                        ),
+                        attempt_no=0,
+                        updated_at=now,
+                    )
+                    if queued_prompt_preparation
+                    else NodePromptPreparationV1.legacy_ready()
+                ),
                 created_at=now,
                 updated_at=now,
             )
@@ -1251,22 +1343,7 @@ class SpecialistDraftValidationService:
         proposal,
         draft: SpecialistDraftV2,
     ) -> None:
-        if proposal.capability_id == "quick_media":
-            expected_node_type = draft.node_type
-            expected_role = {
-                "image": "general_image",
-                "video": "general_video",
-                "audio": "general_audio",
-            }.get(draft.node_type)
-        else:
-            expected_node_type = _node_type_for_proposal(proposal.proposal_kind)
-            expected_role = _semantic_role_for_proposal(proposal.proposal_kind)
-        if draft.node_type != expected_node_type or draft.creative_role != expected_role:
-            raise V2PersistenceError(
-                "specialist_draft_invalid",
-                "Specialist Draft is incompatible with the selected concept.",
-                stage="draft_materialization",
-            )
+        self.validate_identity(proposal, draft)
         try:
             AdMediaDraftValidationService().validate(
                 node_type=draft.node_type,
@@ -1294,6 +1371,40 @@ class SpecialistDraftValidationService:
                 "Script Draft requires structured content.",
                 stage="draft_materialization",
             )
+
+    def validate_identity(self, proposal, draft: SpecialistDraftV2) -> None:
+        """Validate stage ownership before detailed content exists."""
+
+        if proposal.capability_id == "world_setting":
+            expected_node_type = "text"
+            expected_role = "world_setting"
+        elif proposal.capability_id == "quick_media":
+            expected_node_type = draft.node_type
+            expected_role = {
+                "image": "general_image",
+                "video": "general_video",
+                "audio": "general_audio",
+            }.get(draft.node_type)
+        else:
+            expected_node_type = _node_type_for_proposal(proposal.proposal_kind)
+            expected_role = _semantic_role_for_proposal(proposal.proposal_kind)
+        if draft.node_type != expected_node_type or draft.creative_role != expected_role:
+            raise V2PersistenceError(
+                "specialist_draft_invalid",
+                "Specialist Draft is incompatible with the selected concept.",
+                stage="draft_materialization",
+            )
+
+
+def _journey_state_action_evidence(stage: str, action: str) -> str | None:
+    suffix = "deferred" if action == "defer_topic" else "excluded"
+    if stage == "world_setting":
+        return f"world_setting_{suffix}"
+    if stage == "foundation_design":
+        return f"foundation_item_{suffix}"
+    if stage == "bgm":
+        return f"bgm_{suffix}"
+    return None
 
 
 class AgentConversationService:
@@ -1381,6 +1492,13 @@ class AgentConversationService:
             EventRepository(workflows.database),
         )
         self._next_actions = NextActionExecutionService(gateway)
+        self._journey = GuidedProductionJourneyService(conversations)
+        self._decision_bundles = DecisionBundleAuthoringService(
+            AgentCanvasDecisionBundleRepository(
+                workflows.database,
+                EventRepository(workflows.database),
+            )
+        )
         self._capability_policy = CapabilityPolicyService()
         self._reference_planner = CapabilityReferencePlanner(
             connection_policy=connection_policy,
@@ -1594,6 +1712,9 @@ class AgentConversationService:
                 turn_id,
                 code=error.code,
                 message=error.message,
+                retryable=error.retryable,
+                operation_stage="failed",
+                operation_failure=_agent_operation_failure(error, turn),
             )
         except V2PersistenceError as error:
             return self._conversations.fail_turn(
@@ -1719,6 +1840,66 @@ class AgentConversationService:
                     else None
                 ),
             )
+        if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
+            session = self._journey.apply_evidence(
+                turn.workflow_id,
+                evidence=JourneyEvidenceV1(
+                    evidence_id=f"targeted-start:{turn_id}",
+                    evidence_kind="targeted_action_started",
+                    source_id=turn_id,
+                    action_id=turn_id,
+                ),
+                expected_session_revision=session.revision,
+                idempotency_key=f"targeted-start:{turn_id}",
+            )
+        journey_capability = None
+        if intent.mode == "guided_production":
+            if session.journey.stage == "intake":
+                session = self._journey.apply_evidence(
+                    turn.workflow_id,
+                    evidence=JourneyEvidenceV1(
+                        evidence_id=f"journey-goal:{turn_id}",
+                        evidence_kind="creative_goal_validated",
+                        source_id=turn_id,
+                        source_revision=requirements.revision_no,
+                    ),
+                    expected_session_revision=session.revision,
+                    idempotency_key=f"creative-goal:{turn_id}",
+                )
+            session, journey_action = self._journey.reserve_next_action(
+                turn.workflow_id,
+                action_id=f"journey-action:{turn_id}",
+                turn_id=turn_id,
+                expected_session_revision=session.revision,
+                idempotency_key=f"reserve:{turn_id}",
+            )
+            if journey_action.action in {"wait_for_user", "prepare_editing"}:
+                if journey_action.action == "wait_for_user":
+                    session = self._journey.mark_waiting_for_user(
+                        turn.workflow_id,
+                        expected_session_revision=session.revision,
+                        idempotency_key=f"waiting-user:{turn_id}",
+                    )
+                message = (
+                    "The production journey is ready for Editing preparation."
+                    if journey_action.action == "prepare_editing"
+                    else "Please provide the information required for the current stage."
+                )
+                return self._complete_turn(turn_id, turn.workflow_id, message)
+            if journey_action.action == "complete":
+                return self._complete_turn(
+                    turn_id,
+                    turn.workflow_id,
+                    "Guided production is complete.",
+                )
+            if journey_action.action != "invoke_capability":
+                raise V2PersistenceError(
+                    "journey_transition_invalid",
+                    "The current journey action cannot be dispatched.",
+                    stage="agent_conversation_service",
+                )
+            journey_capability = journey_action.capability_id
+
         open_proposals = self._conversations.list_open_proposals(turn.workflow_id)
         active_capabilities = tuple(
             dict.fromkeys(
@@ -1742,6 +1923,7 @@ class AgentConversationService:
                     if intent.mode in {"targeted_authoring", "quick_media"}
                     else None
                 ),
+                journey_capability=journey_capability,
                 open_proposal_capabilities=tuple(
                     proposal.capability_id for proposal in open_proposals
                 ),
@@ -1764,22 +1946,41 @@ class AgentConversationService:
                 policy,
             )
         else:
-            command = self._next_actions.execute(
-                NextActionContextV1(
-                    workflow_id=turn.workflow_id,
-                    conversation_id=turn.conversation_id,
-                    session_revision=session.revision,
+            assert journey_capability is not None
+            command = self._capability_policy.validate_next_action(
+                NextActionCommandV1(
+                    action="invoke_capability",
+                    capability_id=journey_capability,
                     objective=intent.objective,
-                    policy=policy,
-                    shared_summary="",
                 ),
-                turn_id=turn_id,
+                policy,
             )
         if command.command.action in {"ask_user", "reply"}:
             return self._complete_turn(
                 turn_id,
                 turn.workflow_id,
                 command.command.message or "Please provide more direction.",
+            )
+        if command.command.action == "author_decision_bundle":
+            context = NextActionContextV1(
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                session_revision=session.revision,
+                objective=command.command.objective or intent.objective,
+                policy=policy,
+                shared_summary="",
+            )
+            draft = self._gateway.author_decision_bundle(context, turn_id=turn_id)
+            bundle = self._decision_bundles.author(
+                workflow_id=turn.workflow_id,
+                conversation_id=turn.conversation_id,
+                source_turn_id=turn_id,
+                draft=draft,
+            )
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                f"Decision Bundle ready: {bundle.title}",
             )
         if command.command.action == "finish":
             self._conversations.complete_guidance_session(
@@ -1881,9 +2082,13 @@ class AgentConversationService:
                 stage="agent_conversation_service",
             )
         if action.action in {"defer_topic", "exclude_element"}:
-            continuation = _guidance_state_action_continuation(
-                turn,
-                action_id=action.action_id,
+            continuation = (
+                _guidance_state_action_continuation(
+                    turn,
+                    action_id=action.action_id,
+                )
+                if proposal.target_node_id is not None or proposal.capability_id == "quick_media"
+                else None
             )
             receipt = self._conversations.apply_guidance_state_action(
                 proposal_id,
@@ -1893,6 +2098,28 @@ class AgentConversationService:
                 expected_session_revision=action.expected_session_revision,
                 continuation=continuation,
             )
+            if continuation is None:
+                session = self._conversations.get_guidance_session(turn.workflow_id)
+                evidence_kind = _journey_state_action_evidence(
+                    session.journey.stage,
+                    action.action,
+                )
+                if evidence_kind is not None:
+                    self._journey.apply_evidence(
+                        turn.workflow_id,
+                        evidence=JourneyEvidenceV1(
+                            evidence_id=f"proposal-action:{action.action_id}",
+                            evidence_kind=evidence_kind,
+                            source_id=turn_id,
+                            foundation_item_id=(
+                                session.journey.active_action.foundation_item_id
+                                if session.journey.active_action is not None
+                                else None
+                            ),
+                        ),
+                        expected_session_revision=session.revision,
+                        idempotency_key=f"proposal-action:{action.action_id}",
+                    )
             return self._conversations.get_turn(turn_id)
         if action.action == "revise_options":
             revised = self._revise_capability_proposal(turn, proposal, action)
@@ -1991,16 +2218,11 @@ class AgentConversationService:
 
     def _process_guided_action(self, turn_id: str, turn: ChatTurnV2) -> ChatTurnV2:
         action_id = str(turn.request.get("action_id") or "")
-        action = self._conversations.get_guided_action(action_id)
         receipt = self._conversations.apply_guidance_session_action(
             action_id,
             source_turn_id=turn_id,
             continuation=None,
         )
-        if action.action == "resume_guidance" or (
-            action.action == "set_creative_authority" and action.authority == "director"
-        ):
-            self._dispatch_next_action_after_selection(turn)
         return self._complete_turn(turn_id, turn.workflow_id, receipt.summary)
 
     def _complete_turn(
@@ -2215,17 +2437,6 @@ class AgentConversationService:
                 )
                 for index, option in enumerate(result.options)
             ),
-            draft_seeds=(
-                ()
-                if proposal.capability_id == "quick_media"
-                else tuple(
-                    draft_seed_persistence_record(
-                        option_ids[index],
-                        option.private_draft_seed,
-                    )
-                    for index, option in enumerate(result.options)
-                )
-            ),
             proposed_references=proposal.proposed_references,
             topic_id=proposal.topic_id,
             target_node_id=proposal.target_node_id,
@@ -2253,6 +2464,34 @@ def _guidance_state_action_continuation(
         source_turn_id=turn.turn_id,
         source_action_id=action_id,
         idempotency_key=f"guidance-state-next-action:{turn.turn_id}",
+    )
+
+
+def _agent_operation_failure(
+    error: PiAgentRuntimeError,
+    turn: ChatTurnV2,
+) -> AgentOperationFailureV2:
+    audit = error.details.get("audit")
+    safe_audit = audit if isinstance(audit, dict) else error.details
+    attempt_stage = str(safe_audit.get("attempt_stage") or "initial")
+    if attempt_stage not in {"initial", "transport_retry", "structured_repair", "fallback"}:
+        attempt_stage = "initial"
+    elapsed_ms = safe_audit.get("elapsed_ms", error.details.get("elapsed_ms", 0))
+    return AgentOperationFailureV2(
+        code=error.code,
+        message=error.message,
+        operation=turn.turn_kind,
+        attempt_stage=cast(
+            Literal["initial", "transport_retry", "structured_repair", "fallback"],
+            attempt_stage,
+        ),
+        failure_stage="provider",
+        elapsed_ms=max(0, int(elapsed_ms)) if isinstance(elapsed_ms, (int, float)) else 0,
+        retryable=error.retryable,
+        validation_paths=tuple(
+            str(item) for item in safe_audit.get("validation_paths", ()) if str(item)
+        )[:32],
+        occurred_at=datetime.now(timezone.utc),
     )
 
 

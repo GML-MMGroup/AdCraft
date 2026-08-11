@@ -3,20 +3,27 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    RootModel,
+    TypeAdapter,
+    model_validator,
+)
 
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_draft_seeds import (
-    DraftSeedCapabilityIdV1,
-    DraftSeedEnvelopeV1,
-)
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
     EditableRequirementDirectiveV1,
     RequirementControlV1,
+    RequirementControlPatchV1,
+    RequirementControlNameV1,
+    RequirementDirectivePatchV1,
     RequirementElementPresencePatchV1,
     RequirementPatchV1,
 )
@@ -63,6 +70,67 @@ class ExplicitElementIntentV2(RequirementElementPresencePatchV1):
     """One exact-evidence element decision from the current user message."""
 
 
+class CompactRequirementDirectivePatchV1(_CapabilityModel):
+    source_quote: str = Field(min_length=1, max_length=2_048)
+    normalized_meaning: str = Field(min_length=1, max_length=2_048)
+    scope_kind: Literal["global", "capability"]
+    capability_id: CapabilityIdV1 | None = None
+    strength: Literal["hard", "preference"]
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "CompactRequirementDirectivePatchV1":
+        if self.scope_kind == "global" and self.capability_id is not None:
+            raise ValueError("Global directives cannot select a capability.")
+        if self.scope_kind == "capability" and self.capability_id is None:
+            raise ValueError("Capability directives require one capability.")
+        return self
+
+
+_REQUIREMENT_CONTROL_PATCH_ADAPTER = TypeAdapter(RequirementControlPatchV1)
+
+
+class CompactRequirementControlPatchV1(_CapabilityModel):
+    control: RequirementControlNameV1
+    value: str | int | float | bool
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+    @model_validator(mode="after")
+    def validate_control_value(self) -> "CompactRequirementControlPatchV1":
+        _REQUIREMENT_CONTROL_PATCH_ADAPTER.validate_python(self.model_dump())
+        return self
+
+    def to_requirement_patch(self) -> RequirementControlPatchV1:
+        return _REQUIREMENT_CONTROL_PATCH_ADAPTER.validate_python(self.model_dump())
+
+
+class CompactRequirementPatchV1(_CapabilityModel):
+    controls_to_set: tuple[CompactRequirementControlPatchV1, ...] = Field(default=(), max_length=16)
+    directives_to_add: tuple[CompactRequirementDirectivePatchV1, ...] = Field(
+        default=(), max_length=16
+    )
+
+
+class CompactTurnIntentDecisionV1(_CapabilityModel):
+    mode: Literal[
+        "ordinary_conversation",
+        "guided_production",
+        "targeted_authoring",
+        "quick_media",
+    ]
+    objective: str = Field(min_length=1, max_length=2_048)
+    requested_capability: CapabilityIdV1 | None = None
+    explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
+    assistant_message: str | None = Field(default=None, max_length=2_000)
+    requirement_patch: CompactRequirementPatchV1 | None = None
+
+    @model_validator(mode="after")
+    def validate_unique_explicit_elements(self) -> "CompactTurnIntentDecisionV1":
+        element_kinds = tuple(item.element_kind for item in self.explicit_elements)
+        if len(element_kinds) != len(set(element_kinds)):
+            raise ValueError("Explicit element decisions must use unique element kinds.")
+        return self
+
+
 class TurnIntentDecisionV2(_CapabilityModel):
     mode: Literal[
         "ordinary_conversation",
@@ -84,6 +152,42 @@ class TurnIntentDecisionV2(_CapabilityModel):
         return self
 
 
+def expand_compact_turn_intent(
+    compact: CompactTurnIntentDecisionV1,
+) -> TurnIntentDecisionV2:
+    """Expand model-owned routing fields into the stable public contract."""
+
+    compact_patch = compact.requirement_patch
+    requirement_patch = None
+    if compact_patch is not None:
+        requirement_patch = RequirementPatchV1(
+            controls_to_set=tuple(
+                item.to_requirement_patch() for item in compact_patch.controls_to_set
+            ),
+            directives_to_add=tuple(
+                RequirementDirectivePatchV1(
+                    source_quote=item.source_quote,
+                    normalized_meaning=item.normalized_meaning,
+                    scope_kind=item.scope_kind,
+                    capability_ids=(item.capability_id,) if item.capability_id else (),
+                    target_node_ids=(),
+                    strength=item.strength,
+                )
+                for item in compact_patch.directives_to_add
+            ),
+            directive_ids_to_supersede=(),
+            conflicts=(),
+        )
+    return TurnIntentDecisionV2(
+        mode=compact.mode,
+        objective=compact.objective,
+        requested_capability=compact.requested_capability,
+        explicit_elements=compact.explicit_elements,
+        assistant_message=compact.assistant_message,
+        requirement_patch=requirement_patch,
+    )
+
+
 class TurnIntentContextV2(_CapabilityModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     workflow_revision: int = Field(ge=1)
@@ -101,27 +205,65 @@ class TurnIntentContextV2(_CapabilityModel):
     )
 
 
-class NextActionCommandV1(_CapabilityModel):
-    action: Literal["ask_user", "invoke_capability", "reply", "finish"]
-    capability_id: CapabilityIdV1 | None = None
-    message: str | None = Field(default=None, max_length=4_000)
-    objective: str | None = Field(default=None, max_length=4_096)
+class AskUserNextActionCommandV1(_CapabilityModel):
+    action: Literal["ask_user"]
+    message: str = Field(min_length=1, max_length=4_000)
 
-    @model_validator(mode="after")
-    def validate_action_shape(self) -> "NextActionCommandV1":
-        if self.action == "invoke_capability":
-            if self.capability_id is None or not self.objective:
-                raise ValueError("Capability invocation requires capability_id and objective.")
-            return self
-        if self.action in {"ask_user", "reply"}:
-            if not self.message or self.capability_id is not None or self.objective is not None:
-                raise ValueError(
-                    "Conversation actions require message and forbid capability fields."
-                )
-            return self
-        if self.capability_id is not None or self.objective is not None:
-            raise ValueError("Finish forbids capability fields.")
-        return self
+
+class AuthorDecisionBundleNextActionCommandV1(_CapabilityModel):
+    action: Literal["author_decision_bundle"]
+    objective: str = Field(min_length=1, max_length=4_096)
+
+
+class InvokeCapabilityNextActionCommandV1(_CapabilityModel):
+    action: Literal["invoke_capability"]
+    capability_id: CapabilityIdV1
+    objective: str = Field(min_length=1, max_length=4_096)
+
+
+class ReplyNextActionCommandV1(_CapabilityModel):
+    action: Literal["reply"]
+    message: str = Field(min_length=1, max_length=4_000)
+
+
+class FinishNextActionCommandV1(_CapabilityModel):
+    action: Literal["finish"]
+
+
+_NextActionCommandVariantV1 = Annotated[
+    AskUserNextActionCommandV1
+    | AuthorDecisionBundleNextActionCommandV1
+    | InvokeCapabilityNextActionCommandV1
+    | ReplyNextActionCommandV1
+    | FinishNextActionCommandV1,
+    Field(discriminator="action"),
+]
+
+
+class NextActionCommandV1(RootModel[_NextActionCommandVariantV1]):
+    """Compatibility wrapper around the exact action-specific command union."""
+
+    def __init__(self, **data: Any) -> None:
+        if set(data) == {"root"}:
+            super().__init__(root=data["root"])
+            return
+        super().__init__(root=data)
+
+    @property
+    def action(self) -> str:
+        return self.root.action
+
+    @property
+    def capability_id(self) -> CapabilityIdV1 | None:
+        return getattr(self.root, "capability_id", None)
+
+    @property
+    def message(self) -> str | None:
+        return getattr(self.root, "message", None)
+
+    @property
+    def objective(self) -> str | None:
+        return getattr(self.root, "objective", None)
 
 
 class NextActionContextV1(_CapabilityModel):
@@ -148,6 +290,7 @@ class CapabilityPolicyContextV1(_CapabilityModel):
     is_new_guided_production: bool = False
     world_setting_selected: bool = False
     targeted_capability: CapabilityIdV1 | None = None
+    journey_capability: CapabilityIdV1 | None = None
     completed_capabilities: tuple[CapabilityIdV1, ...] = ()
     excluded_capabilities: tuple[CapabilityIdV1, ...] = ()
     open_proposal_capabilities: tuple[CapabilityIdV1, ...] = ()
@@ -305,51 +448,40 @@ class _OptionBaseV1(_CapabilityModel):
     key_decisions: tuple[str, ...] = Field(min_length=1, max_length=6)
 
 
-class _SeededOptionBaseV1(_OptionBaseV1):
-    expected_capability_id: ClassVar[DraftSeedCapabilityIdV1]
-    private_draft_seed: DraftSeedEnvelopeV1
-
-    @model_validator(mode="after")
-    def validate_seed_capability(self) -> "_SeededOptionBaseV1":
-        if self.private_draft_seed.capability_id != self.expected_capability_id:
-            raise ValueError("Proposal option Draft Seed has the wrong capability.")
-        return self
+class WorldSettingProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class WorldSettingProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "world_setting"
+class ProductProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class ProductProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "product_design"
+class PropProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class PropProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "prop_design"
+class CharacterProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class CharacterProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "character_design"
+class SceneProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class SceneProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "scene_design"
+class ScriptProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class ScriptProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "script_authoring"
+class StoryboardProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class StoryboardProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "storyboard_design"
+class VideoProposalOptionV1(_OptionBaseV1):
+    pass
 
 
-class VideoProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "video_direction"
-
-
-class BgmProposalOptionV1(_SeededOptionBaseV1):
-    expected_capability_id = "bgm_direction"
+class BgmProposalOptionV1(_OptionBaseV1):
+    pass
 
 
 class QuickMediaProposalOptionV1(_OptionBaseV1):
