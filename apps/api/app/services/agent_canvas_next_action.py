@@ -20,6 +20,9 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_canvas_decision_bundle_repository import (
+    AgentCanvasDecisionBundleRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
 from app.schemas.agent_canvas_capabilities import (
@@ -30,6 +33,7 @@ from app.schemas.agent_canvas_capabilities import (
     NextActionEnvelopeV1,
     ValidatedNextActionV1,
 )
+from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
@@ -41,6 +45,7 @@ from app.services.agent_canvas_next_action_context import (
     assemble_capability_policy_context,
 )
 from app.services.model_selection import ModelSelectionService
+from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 
 
 class NextActionGateway(Protocol):
@@ -50,6 +55,10 @@ class NextActionGateway(Protocol):
         *,
         turn_id: str,
     ) -> NextActionCommandV1: ...
+
+    def author_decision_bundle(
+        self, context: NextActionContextV1, *, turn_id: str
+    ) -> DecisionBundleDraftV1: ...
 
 
 class NextActionExecutionService:
@@ -91,6 +100,7 @@ class DurableNextActionExecutionService:
         gateway: NextActionGateway,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         model_selection: ModelSelectionService | None = None,
+        decision_bundles: AgentCanvasDecisionBundleRepository | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -104,6 +114,12 @@ class DurableNextActionExecutionService:
         )
         self._asset_resolver = asset_resolver
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
+        self._decision_bundles = (
+            DecisionBundleAuthoringService(decision_bundles)
+            if decision_bundles is not None
+            else None
+        )
+        self._gateway = gateway
 
     def execute(self, envelope_id: str) -> ValidatedNextActionV1:
         envelope = self._envelopes.get(envelope_id)
@@ -153,6 +169,36 @@ class DurableNextActionExecutionService:
             ),
             turn_id=envelope.next_action_turn_id,
         )
+        if command.command.action == "author_decision_bundle":
+            if self._decision_bundles is None:
+                raise V2PersistenceError(
+                    "decision_bundle_authoring_unavailable",
+                    "Decision Bundle authoring is unavailable.",
+                    stage="next_action_execution",
+                )
+            context = NextActionContextV1(
+                workflow_id=envelope.workflow_id,
+                conversation_id=envelope.conversation_id,
+                session_revision=session.revision,
+                objective=command.command.objective or envelope.objective,
+                policy=policy,
+                shared_summary="",
+            )
+            draft = self._gateway.author_decision_bundle(
+                context,
+                turn_id=envelope.next_action_turn_id,
+            )
+            bundle = self._decision_bundles.author(
+                workflow_id=envelope.workflow_id,
+                conversation_id=envelope.conversation_id,
+                source_turn_id=envelope.next_action_turn_id,
+                draft=draft,
+            )
+            self._conversations.complete_turn(
+                envelope.next_action_turn_id,
+                assistant_message=f"Decision Bundle ready: {bundle.title}",
+            )
+            return command
         if command.command.action == "invoke_capability":
             source_turn = self._conversations.get_turn(envelope.source_turn_id)
             reference_plan = self._reference_planner.plan(

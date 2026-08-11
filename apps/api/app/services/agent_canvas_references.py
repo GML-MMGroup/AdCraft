@@ -99,6 +99,7 @@ class AdReferenceBundleResolver:
                 source_node_id=source_node_id,
                 source_semantic_role=source_role,
                 semantic_reference_role=binding.metadata.get("semantic_reference_role"),
+                storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),
                 asset_id=asset.asset_id,
                 media_type=asset.media_type,
                 display_order=binding.display_order,
@@ -134,6 +135,16 @@ class AdReferenceBundleResolver:
                     "Role reference cardinality is invalid.",
                 )
         ordered = tuple(sorted(references, key=lambda item: (item.display_order, item.binding_id)))
+        anchor_references = tuple(
+            item
+            for item in ordered
+            if item.storyboard_reference_purpose == "sequence_visual_anchor"
+        )
+        if len(anchor_references) > 1:
+            raise _error(
+                "storyboard_visual_anchor_invalid",
+                "A later storyboard grid requires exactly one sequence visual anchor.",
+            )
         digest = hashlib.sha256(
             json.dumps(
                 [item.model_dump(mode="json") for item in ordered],

@@ -78,6 +78,7 @@ class StoryboardNarrativeSegmentV2(_WorkingDocumentModel):
     start_state: str = Field(min_length=1, max_length=2_048)
     end_state: str = Field(min_length=1, max_length=2_048)
     continuity_from_previous: str | None = Field(default=None, max_length=2_048)
+    terminal_policy: Literal["continue", "close"] | None = None
 
     @model_validator(mode="after")
     def validate_timing(self) -> "StoryboardNarrativeSegmentV2":
@@ -107,6 +108,19 @@ class StoryboardNodeRecordV2(_WorkingDocumentModel):
     node_id: str = Field(min_length=1, max_length=160)
 
 
+class StoryboardSegmentMaterializationV2(_WorkingDocumentModel):
+    sequence_id: str = Field(min_length=1, max_length=160)
+    status: Literal["pending", "materialized"] = "pending"
+    generation_prompt: str | None = Field(default=None, max_length=16_384)
+
+
+class StoryboardVisualAnchorV2(_WorkingDocumentModel):
+    node_id: str = Field(min_length=1, max_length=160)
+    asset_id: str = Field(min_length=1, max_length=160)
+    node_revision: int = Field(ge=1)
+    document_revision: int = Field(ge=1)
+
+
 class AgentDocumentLinkedNodeRuntimeV2(_WorkingDocumentModel):
     node_id: str = Field(min_length=1, max_length=160)
     node_type: Literal["text", "script", "image", "video", "audio", "editing"]
@@ -122,6 +136,10 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
     rows: tuple[StoryboardPlanRowV2, ...] = Field(max_length=1_152)
     node_records: tuple[StoryboardNodeRecordV2, ...] = Field(default=(), max_length=384)
     materialized_panel_cursor: int = Field(default=0, ge=0, le=1_152)
+    segment_materializations: tuple[StoryboardSegmentMaterializationV2, ...] = Field(
+        default=(), max_length=128
+    )
+    visual_anchor: StoryboardVisualAnchorV2 | None = None
 
     @model_validator(mode="after")
     def validate_plan_shape(self) -> "StoryboardProductionPlanContentV2":
@@ -151,8 +169,10 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
         ordered_rows: list[StoryboardPlanRowV2] = []
         for sequence_id in sequence_ids:
             sequence_rows = rows_by_sequence[sequence_id]
-            if len(sequence_rows) != 9:
-                raise ValueError("Each storyboard sequence requires exactly nine rows.")
+            if len(sequence_rows) not in {0, 9}:
+                raise ValueError("Each storyboard sequence requires zero or nine rows.")
+            if not sequence_rows:
+                continue
             if [row.panel_index for row in sequence_rows] != list(range(1, 10)):
                 raise ValueError("Storyboard panel indices must be ordered from 1 through 9.")
             ordered_rows.extend(sequence_rows)
@@ -169,6 +189,15 @@ class StoryboardProductionPlanContentV2(_WorkingDocumentModel):
             if key in seen_node_records:
                 raise ValueError("Storyboard node records must have unique roles per sequence.")
             seen_node_records.add(key)
+        if self.segment_materializations:
+            if [item.sequence_id for item in self.segment_materializations] != sequence_ids:
+                raise ValueError("Storyboard materialization records must follow segments.")
+            for item in self.segment_materializations:
+                row_count = len(rows_by_sequence[item.sequence_id])
+                if item.status == "pending" and (row_count or item.generation_prompt):
+                    raise ValueError("Pending storyboard segments cannot contain generated rows.")
+                if item.status == "materialized" and (row_count != 9 or not item.generation_prompt):
+                    raise ValueError("Materialized storyboard segments require rows and prompt.")
         return self
 
 
@@ -268,6 +297,18 @@ class ReplaceStoryboardRowsPatchV2(_AgentDocumentPatchBaseV2):
     rows: tuple[StoryboardPlanRowV2, ...] = Field(min_length=9, max_length=9)
 
 
+class MaterializeStoryboardSegmentPatchV2(_AgentDocumentPatchBaseV2):
+    operation: Literal["materialize_storyboard_segment"]
+    sequence_id: str = Field(min_length=1, max_length=160)
+    rows: tuple[StoryboardPlanRowV2, ...] = Field(min_length=9, max_length=9)
+    generation_prompt: str = Field(min_length=1, max_length=16_384)
+
+
+class FreezeStoryboardVisualAnchorPatchV2(_AgentDocumentPatchBaseV2):
+    operation: Literal["freeze_storyboard_visual_anchor"]
+    visual_anchor: StoryboardVisualAnchorV2
+
+
 class AttachStoryboardNodePatchV2(_AgentDocumentPatchBaseV2):
     operation: Literal["attach_storyboard_node"]
     sequence_id: str = Field(min_length=1, max_length=160)
@@ -296,6 +337,8 @@ AgentDocumentPatchV2 = Annotated[
     | InitializeStoryboardPlanPatchV2
     | ReplaceNarrativeSegmentPatchV2
     | ReplaceStoryboardRowsPatchV2
+    | MaterializeStoryboardSegmentPatchV2
+    | FreezeStoryboardVisualAnchorPatchV2
     | AttachStoryboardNodePatchV2
     | AttachVideoNodePatchV2
     | AttachAudioNodePatchV2

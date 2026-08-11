@@ -34,6 +34,8 @@ from app.schemas.agent_working_documents import (
     AttachVideoNodePatchV2,
     InitializeAnchorRegistryPatchV2,
     InitializeStoryboardPlanPatchV2,
+    MaterializeStoryboardSegmentPatchV2,
+    FreezeStoryboardVisualAnchorPatchV2,
     ReplaceNarrativeSegmentPatchV2,
     ReplaceStoryboardRowsPatchV2,
     StoryboardNodeRecordV2,
@@ -392,6 +394,37 @@ class AgentWorkingDocumentService:
             ) + tuple(patch.rows)
             rows = tuple(sorted(rows, key=lambda row: row.shot_index))
             next_content = content.model_copy(update={"rows": rows})
+        elif isinstance(patch, MaterializeStoryboardSegmentPatchV2):
+            from app.schemas.agent_canvas_storyboard_sequences import (
+                StoryboardSegmentMaterializationDraftV2,
+                StoryboardSequenceRowDraftV2,
+            )
+            from app.services.agent_canvas_storyboard_sequences import (
+                StoryboardSequenceAuthoringService,
+            )
+
+            if any(row.sequence_id != patch.sequence_id for row in patch.rows):
+                raise _sequence_error("Storyboard rows do not match their sequence.")
+            next_content = StoryboardSequenceAuthoringService.materialize_segment_content(
+                content,
+                patch.sequence_id,
+                StoryboardSegmentMaterializationDraftV2(
+                    generation_prompt=patch.generation_prompt,
+                    rows=tuple(
+                        StoryboardSequenceRowDraftV2(
+                            panel_index=row.panel_index,
+                            content_beat=row.content_beat,
+                            anchor_aliases=row.anchor_aliases,
+                            camera_description=row.camera_description,
+                        )
+                        for row in patch.rows
+                    ),
+                ),
+            )
+        elif isinstance(patch, FreezeStoryboardVisualAnchorPatchV2):
+            if content.visual_anchor is not None and content.visual_anchor != patch.visual_anchor:
+                raise _sequence_error("Storyboard visual anchor is already frozen.")
+            next_content = content.model_copy(update={"visual_anchor": patch.visual_anchor})
         elif isinstance(
             patch,
             (

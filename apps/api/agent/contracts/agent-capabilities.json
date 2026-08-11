@@ -4,12 +4,15 @@
     {
       "name": "video_agent",
       "operations": [
+        "author_decision_bundle",
         "decide_turn_intent",
         "decide_next_action",
         "command_replan",
         "workflow_conversation",
         "conversation_summary",
         "materialize_quick_media",
+        "materialize_storyboard_segment",
+        "plan_storyboard_sequence_outline",
         "propose_world_setting_options",
         "revise_world_setting_options",
         "propose_product_options",

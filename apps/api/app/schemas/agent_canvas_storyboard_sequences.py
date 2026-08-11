@@ -60,6 +60,51 @@ class StoryboardSequencePlanDraftV2(_StoryboardSequenceModel):
         return self
 
 
+class StoryboardOutlineSegmentDraftV2(_StoryboardSequenceModel):
+    order: int = Field(ge=1, le=128)
+    start_seconds: float = Field(ge=0, le=3_600)
+    end_seconds: float = Field(gt=0, le=3_600)
+    narrative_goal: str = Field(min_length=1, max_length=4_096)
+    start_state: str = Field(min_length=1, max_length=2_048)
+    end_state: str = Field(min_length=1, max_length=2_048)
+    continuity_from_previous: str | None = Field(default=None, max_length=2_048)
+
+    @model_validator(mode="after")
+    def validate_timing(self) -> "StoryboardOutlineSegmentDraftV2":
+        if self.end_seconds <= self.start_seconds:
+            raise ValueError("Storyboard outline segment end must follow its start.")
+        return self
+
+
+class StoryboardSequenceOutlineDraftV2(_StoryboardSequenceModel):
+    narrative_outline: str = Field(min_length=1, max_length=16_384)
+    aspect_ratio: str = Field(min_length=1, max_length=32)
+    total_duration_seconds: float = Field(gt=0, le=3_600)
+    segments: tuple[StoryboardOutlineSegmentDraftV2, ...] = Field(min_length=1, max_length=128)
+
+
+class StoryboardSegmentMaterializationDraftV2(_StoryboardSequenceModel):
+    rows: tuple[StoryboardSequenceRowDraftV2, ...] = Field(min_length=9, max_length=9)
+    generation_prompt: str = Field(min_length=1, max_length=16_384)
+
+    @model_validator(mode="after")
+    def validate_rows(self) -> "StoryboardSegmentMaterializationDraftV2":
+        if [row.panel_index for row in self.rows] != list(range(1, 10)):
+            raise ValueError("Storyboard segment panels must be ordered from 1 through 9.")
+        return self
+
+
+class StoryboardSegmentAuthoringContextV2(_StoryboardSequenceModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    plan_document_id: str = Field(min_length=1, max_length=160)
+    plan_revision: int = Field(ge=1)
+    plan_content_digest: str = Field(pattern=r"^sha256:[0-9a-zA-Z_-]+$")
+    sequence: StoryboardNarrativeSegmentV2
+    prior_end_state: str | None = Field(default=None, max_length=2_048)
+    anchors: tuple[AgentAnchorV2, ...] = Field(default=(), max_length=64)
+    style_excerpt: str | None = Field(default=None, max_length=8_192)
+
+
 class StoryboardGridAuthoringContextV2(_StoryboardSequenceModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     plan_document_id: str = Field(min_length=1, max_length=160)

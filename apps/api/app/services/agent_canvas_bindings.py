@@ -86,8 +86,10 @@ class AgentCanvasBindingService:
             binding for binding in workflow.bindings if binding.target_node_id == target.node_id
         )
         world_setting_source = False
+        source_node = None
         if isinstance(request.source, CanvasBindingSourceNodeV2):
             source = self._workflows.get_node(workflow_id, request.source.node_id)
+            source_node = source
             world_setting_source = source.creative_role == "world_setting"
             validate_node_binding(
                 bindings=tuple(
@@ -126,6 +128,21 @@ class AgentCanvasBindingService:
             )
         if not policy_decision.accepted or request.input_role != policy_decision.input_role:
             raise _media_incompatible_error()
+        _validate_storyboard_visual_anchor_binding(
+            request,
+            source_node=source_node,
+            target_node=target,
+        )
+        if request.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor":
+            if any(
+                binding.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor"
+                for binding in incoming
+            ):
+                raise V2PersistenceError(
+                    "storyboard_visual_anchor_invalid",
+                    "A storyboard grid cannot have more than one sequence visual anchor.",
+                    stage="agent_canvas_binding_service",
+                )
         if self._binding_capability_validator is not None and target.node_type in {
             "image",
             "video",
@@ -147,6 +164,12 @@ class AgentCanvasBindingService:
                 reference_count,
             )
             if not getattr(capability_decision, "accepted", False):
+                if request.metadata.get("storyboard_reference_purpose") == "sequence_visual_anchor":
+                    raise V2PersistenceError(
+                        "guided_reference_model_incompatible",
+                        "The selected model cannot consume the required sequence visual anchor.",
+                        stage="agent_canvas_binding_service",
+                    )
                 raise _binding_model_incompatible_error(capability_decision)
         now = datetime.now(timezone.utc)
         binding = CanvasBindingV2(
@@ -713,6 +736,35 @@ def _media_incompatible_error() -> V2PersistenceError:
         "Binding kind is incompatible with the source media.",
         stage="agent_canvas_binding_service",
     )
+
+
+def _validate_storyboard_visual_anchor_binding(
+    request: CanvasBindingCreateRequestV2,
+    *,
+    source_node: object | None,
+    target_node: object,
+) -> None:
+    purpose = request.metadata.get("storyboard_reference_purpose")
+    if purpose is None:
+        return
+    valid = (
+        purpose == "sequence_visual_anchor"
+        and request.metadata.get("semantic_reference_role") == "storyboard_visual_reference"
+        and source_node is not None
+        and getattr(source_node, "node_type", None) == "image"
+        and getattr(source_node, "creative_role", None) == "storyboard_sequence"
+        and getattr(target_node, "node_type", None) == "image"
+        and getattr(target_node, "creative_role", None) == "storyboard_sequence"
+        and request.input_role == "image_reference"
+        and request.required
+        and request.enabled
+    )
+    if not valid:
+        raise V2PersistenceError(
+            "storyboard_visual_anchor_invalid",
+            "Storyboard visual-anchor Binding metadata is invalid.",
+            stage="agent_canvas_binding_service",
+        )
 
 
 def _binding_input_type(binding_kind: str) -> str:
