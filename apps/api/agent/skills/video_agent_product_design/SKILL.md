@@ -14,6 +14,8 @@ Use product descriptions, approved asset notes, audience needs, campaign goals, 
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Separate verified product facts from uncertain or missing information.
 - Preserve packaging, color, logo, shape, proportions, and other stated identity constraints.
 - Choose one primary audience-facing benefit and only useful supporting points.

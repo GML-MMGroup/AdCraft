@@ -166,6 +166,7 @@ class DurableNextActionExecutionService:
                 objective=envelope.objective,
                 policy=policy,
                 shared_summary="",
+                response_locale=session.response_locale,
             ),
             turn_id=envelope.next_action_turn_id,
         )
@@ -183,6 +184,7 @@ class DurableNextActionExecutionService:
                 objective=command.command.objective or envelope.objective,
                 policy=policy,
                 shared_summary="",
+                response_locale=session.response_locale,
             )
             draft = self._gateway.author_decision_bundle(
                 context,

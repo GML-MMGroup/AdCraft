@@ -5,7 +5,7 @@ export type RunBudgetCode =
   | "agent_deadline_exceeded";
 
 const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
-  decide_turn_intent: 180,
+  decide_turn_intent: 300,
   decide_next_action: 180,
   command_replan: 180,
   compile_video_parameters: 180,

@@ -14,6 +14,8 @@ Use the approved script, product identity, character and scene designs, timing, 
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Define ordered shot purpose, action, framing, text, timing, and relevant input roles.
 - Keep each beat concrete enough for one storyboard image and a short video segment.
 - Preserve product packaging and proportions, character identity, and scene layout, lighting, and palette.

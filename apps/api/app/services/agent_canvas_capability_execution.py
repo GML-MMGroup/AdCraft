@@ -52,6 +52,7 @@ def capability_context_from_envelope(
         "approved_reference_ids": envelope.reference_allowlist,
         "capability_context": envelope.capability_context or {"objective": envelope.objective},
         "style_projection": envelope.style_projection,
+        "response_locale": envelope.response_locale,
     }
 
 

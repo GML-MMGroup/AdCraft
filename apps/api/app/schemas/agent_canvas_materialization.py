@@ -22,6 +22,7 @@ from app.schemas.agent_canvas_creative_session import (
 )
 from app.schemas.agent_canvas_world_setting import WorldSettingCoreV2
 from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
+from app.schemas.language import BCP47Tag
 
 
 class _MaterializationModel(BaseModel):
@@ -144,6 +145,7 @@ class CapabilityMaterializationContextV1(_MaterializationModel):
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     target_node_summary: dict[str, JsonValue] | None = None
     repair_error: str | None = Field(default=None, max_length=160)
+    response_locale: BCP47Tag = "und"
 
 
 class CapabilityMaterializationExecutionResultV1(_MaterializationModel):

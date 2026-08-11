@@ -108,6 +108,7 @@ class CapabilityDispatchService:
             reference_plan=context_snapshot.reference_plan,
             agent_request_identity=f"capability:{identity}",
             created_at=now,
+            response_locale=context_snapshot.response_locale,
         )
         timestamp = now.isoformat()
         with self._database.engine.connect() as connection:

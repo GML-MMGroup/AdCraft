@@ -357,6 +357,7 @@ def materialization_context_from_state(
             "reference_summaries": reference_summaries,
             "style_projection": style_projection,
             "target_node_summary": target_summary,
+            "response_locale": session.response_locale,
         }
     ).assemble(envelope)
 

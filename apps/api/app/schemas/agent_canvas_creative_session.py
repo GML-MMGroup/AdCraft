@@ -28,6 +28,7 @@ from app.schemas.agent_canvas_capability_identity import (
     CapabilityIdV1,
 )
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.language import BCP47Tag
 
 
 CreationModeV2 = Literal[
@@ -216,6 +217,7 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     journey: GuidedProductionJourneyV1
     revision: int = Field(ge=1)
     updated_at: datetime
+    response_locale: BCP47Tag = "und"
 
 
 class DelegatedProposalChoiceV2(_CreativeSessionModel):

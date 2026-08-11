@@ -14,6 +14,8 @@ Use the current objective, World Setting, product direction, approved references
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Keep each prop concrete, physically plausible, and visually legible.
 - Make function, material, silhouette, scale, and relation to the product clear.
 - Preserve stable identity details when a prop must recur across shots.

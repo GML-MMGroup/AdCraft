@@ -70,7 +70,10 @@ export interface ConformanceCaseResultV1 {
   readonly changed_fields: ReadonlyArray<string>;
 }
 
-export type ConformanceBlockedStage = "credential" | "request_preparation";
+export type ConformanceBlockedStage =
+  | "credential"
+  | "request_preparation"
+  | "request_parity";
 
 export interface ConformanceReportV2 {
   readonly schema_version: 2;
@@ -85,6 +88,16 @@ export interface ConformanceReportV2 {
   readonly production_request_sha256: string;
   readonly production_request_bytes: number;
   readonly production_schema_bytes: number;
+  readonly frozen_agent_request_digest?: string;
+  readonly prompt_digest?: string;
+  readonly contract_schema_digest?: string;
+  readonly model_policy_digest?: string;
+  readonly semantic_request_digest?: string;
+  readonly contract_name?: string;
+  readonly contract_version?: string;
+  readonly prompt_bytes?: number;
+  readonly contract_schema_bytes?: number;
+  readonly semantic_request_bytes?: number;
   readonly maximum_submissions: 6;
   readonly submission_count: number;
   readonly cases: ReadonlyArray<ConformanceCaseResultV1>;
@@ -100,6 +113,42 @@ export interface ConformanceRunOptions {
   readonly per_case_timeout_ms?: number;
   readonly total_timeout_ms?: number;
   readonly maximum_submissions?: number;
+}
+
+export interface ProductionRequestDigestsV1 {
+  readonly frozen_agent_request_digest: string;
+  readonly prompt_digest: string;
+  readonly contract_schema_digest: string;
+  readonly model_policy_digest: string;
+  readonly semantic_request_digest: string;
+  readonly contract_name: string;
+  readonly contract_version: string;
+  readonly prompt_bytes: number;
+  readonly contract_schema_bytes: number;
+  readonly semantic_request_bytes: number;
+}
+
+export function productionRequestDigests(
+  prepared: PreparedStructuredModelInput,
+): ProductionRequestDigestsV1 {
+  if (!prepared.request.contract_name) throw new Error("conformance_parity_failed");
+  const providerRequest = buildPrimaryStructuredCompletionRequest(prepared);
+  const prompt = {
+    system_prompt: prepared.systemPrompt,
+    user_prompt: prepared.userPrompt,
+  };
+  return {
+    frozen_agent_request_digest: `sha256:${requestSha256(prepared.request)}`,
+    prompt_digest: requestSha256(prompt),
+    contract_schema_digest: requestSha256(prepared.schema),
+    model_policy_digest: requestSha256(prepared.credential.execution_policy),
+    semantic_request_digest: canonicalRequestSha256(providerRequest),
+    contract_name: prepared.request.contract_name,
+    contract_version: prepared.request.protocol_version ?? "1",
+    prompt_bytes: byteCount(prompt),
+    contract_schema_bytes: byteCount(prepared.schema),
+    semantic_request_bytes: byteCount(providerRequest),
+  };
 }
 
 export interface ReducedCaseSelection {
@@ -304,6 +353,7 @@ export async function runProviderConformance(
   const startedAt = now();
   const runId = options.run_id;
   const exactRequest = buildPrimaryStructuredCompletionRequest(dependencies.prepared);
+  const digests = productionRequestDigests(dependencies.prepared);
   const exactRequestBytes = byteCount(exactRequest);
   const exactSchemaBytes = byteCount(dependencies.prepared.schema);
   const deadlineAt = startedAt.getTime() + totalTimeoutMs;
@@ -441,6 +491,7 @@ export async function runProviderConformance(
     production_request_sha256: canonicalRequestSha256(exactRequest),
     production_request_bytes: exactRequestBytes,
     production_schema_bytes: exactSchemaBytes,
+    ...digests,
     maximum_submissions: 6,
     submission_count: results.length,
     cases: results,
@@ -464,6 +515,30 @@ export function projectConformanceEvidence(value: unknown): ConformanceReportV2 
     production_request_sha256: report.production_request_sha256,
     production_request_bytes: report.production_request_bytes,
     production_schema_bytes: report.production_schema_bytes,
+    ...(report.frozen_agent_request_digest
+      ? { frozen_agent_request_digest: report.frozen_agent_request_digest }
+      : {}),
+    ...(report.prompt_digest ? { prompt_digest: report.prompt_digest } : {}),
+    ...(report.contract_schema_digest
+      ? { contract_schema_digest: report.contract_schema_digest }
+      : {}),
+    ...(report.model_policy_digest
+      ? { model_policy_digest: report.model_policy_digest }
+      : {}),
+    ...(report.semantic_request_digest
+      ? { semantic_request_digest: report.semantic_request_digest }
+      : {}),
+    ...(report.contract_name ? { contract_name: report.contract_name } : {}),
+    ...(report.contract_version ? { contract_version: report.contract_version } : {}),
+    ...(typeof report.prompt_bytes === "number"
+      ? { prompt_bytes: report.prompt_bytes }
+      : {}),
+    ...(typeof report.contract_schema_bytes === "number"
+      ? { contract_schema_bytes: report.contract_schema_bytes }
+      : {}),
+    ...(typeof report.semantic_request_bytes === "number"
+      ? { semantic_request_bytes: report.semantic_request_bytes }
+      : {}),
     maximum_submissions: 6,
     submission_count: report.submission_count,
     cases: report.cases.map(projectCaseEvidence),
@@ -718,6 +793,22 @@ function renderMarkdown(report: ConformanceReportV2): string {
     "",
     `Submissions: ${report.submission_count}/${report.maximum_submissions}`,
     "",
+    ...(report.contract_name && report.contract_version
+      ? [
+          `Contract: \`${report.contract_name}\` (protocol \`${report.contract_version}\`)`,
+          "",
+        ]
+      : []),
+    ...(report.frozen_agent_request_digest
+      ? [
+          `Frozen request digest: \`${report.frozen_agent_request_digest}\``,
+          `Prompt digest: \`${report.prompt_digest}\` (${report.prompt_bytes} bytes)`,
+          `Contract Schema digest: \`${report.contract_schema_digest}\` (${report.contract_schema_bytes} bytes)`,
+          `Model policy digest: \`${report.model_policy_digest}\``,
+          `Semantic request digest: \`${report.semantic_request_digest}\` (${report.semantic_request_bytes} bytes)`,
+          "",
+        ]
+      : []),
     "| Case | Transport | Status | Duration (ms) |",
     "| --- | --- | --- | ---: |",
     rows,
@@ -876,6 +967,7 @@ function isOperatorErrorCode(value: unknown): value is string {
     "conformance_prerequisite_missing",
     "conformance_credential_unavailable",
     "conformance_request_preparation_failed",
+    "conformance_parity_failed",
     "conformance_budget_exhausted",
     "conformance_evidence_write_failed",
     "conformance_unclassified_result",
@@ -889,7 +981,9 @@ function assertReportInvariants(report: ConformanceReportV2): void {
     report.submission_count === 0 &&
     report.cases.length === 0 &&
     report.verdict === null &&
-    report.blocked_stage !== null;
+    report.blocked_stage !== null &&
+    (report.blocked_stage !== "request_parity" ||
+      report.operator_error_code === "conformance_parity_failed");
   const completed =
     report.schema_version === 2 &&
     report.status === "completed" &&

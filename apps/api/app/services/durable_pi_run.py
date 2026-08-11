@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-from typing import Any, Literal, Mapping
+from typing import Any, Callable, Literal, Mapping
 from uuid import uuid4
 
 from app.core.config import Settings
@@ -109,6 +109,7 @@ class DurablePiRunService:
         *,
         identity_fields: Mapping[str, str | int],
         model_ref: str | None = None,
+        on_dispatch_owned: Callable[[AgentRunRequest], None] | None = None,
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
@@ -221,6 +222,8 @@ class DurablePiRunService:
                     owns_lease = False
                     return replayed
 
+            if on_dispatch_owned is not None:
+                on_dispatch_owned(request)
             outcome = self._client.run(request, on_event=persist_event)
             terminal = outcome.terminal_event
             status = _TERMINAL_STATUS_BY_EVENT.get(terminal.event_type)

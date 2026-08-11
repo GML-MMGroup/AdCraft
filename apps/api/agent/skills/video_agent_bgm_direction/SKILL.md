@@ -14,6 +14,8 @@ Use the creative objective, desired emotion, script beats, storyboard timing, re
 
 # Output Guidance
 
+- Render user-visible and audible content in `response_locale`; keep internal controls in English.
+
 - Describe mood, tempo character, instrumentation, structure, transitions, and synchronization intent.
 - Align intro, lift, and ending behavior to the advertisement's beat structure and duration.
 - Leave appropriate space for narration, dialogue, and important source audio.

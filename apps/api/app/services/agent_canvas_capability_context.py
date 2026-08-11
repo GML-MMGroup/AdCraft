@@ -88,6 +88,7 @@ def build_capability_context_snapshot(
         "reference_plan_digest": reference_plan.digest,
         "capability_context": capability_context,
         "style_projection": style_projection,
+        "response_locale": session.response_locale,
     }
     digest = hashlib.sha256(
         json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
@@ -101,6 +102,7 @@ def build_capability_context_snapshot(
         capability_context=capability_context,
         style_projection=style_projection,
         reference_plan=reference_plan,
+        response_locale=session.response_locale,
     )
 
 

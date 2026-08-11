@@ -428,6 +428,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             ),
             timeout_seconds=settings.agent_runtime_run_timeout_seconds,
             model_resolution=model_resolution,
+            on_provider_waiting=conversation_repository.mark_turn_provider_waiting,
         )
     )
     provider_capabilities = ProviderCapabilityService(model_catalog)

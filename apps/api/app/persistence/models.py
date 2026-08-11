@@ -1220,6 +1220,7 @@ class AgentCanvasGuidanceSessionRow(Base):
         ForeignKey("agent_canvas_workflows.workflow_id"), unique=True, nullable=False
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    response_locale: Mapped[str] = mapped_column(Text, nullable=False, server_default="und")
     creative_goal_json: Mapped[str] = mapped_column(Text, nullable=False)
     element_decisions_json: Mapped[str] = mapped_column(Text, nullable=False)
     creative_authority_json: Mapped[str | None] = mapped_column(Text)
