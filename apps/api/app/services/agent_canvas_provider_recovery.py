@@ -7,11 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.errors import V2PersistenceError
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas import CanvasNodeErrorV2
+from app.schemas.agent_canvas import CanvasNodeErrorV2, CanvasNodeV2
 from app.schemas.agent_canvas_runtime import (
     CanvasProviderTaskV2,
     NodeExecutionLeaseV2,
@@ -39,6 +40,7 @@ Poller = Callable[[CanvasProviderTaskV2], ProviderPollResult]
 Downloader = Callable[[CanvasProviderTaskV2], GeneratedMediaPayload]
 Publisher = Callable[[NodeExecutionContext, GeneratedMediaPayload, str], str]
 BatchCallback = Callable[[tuple[str, ...]], None]
+NodeReadyCallback = Callable[[CanvasNodeV2], tuple[str, ...] | None]
 
 
 class ProviderTaskRecoveryService:
@@ -53,6 +55,7 @@ class ProviderTaskRecoveryService:
         downloader: Downloader,
         media_publisher: Publisher,
         on_batch_reconciled: BatchCallback | None = None,
+        on_node_ready: NodeReadyCallback | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
         owner_id: str = "provider-recovery",
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
@@ -63,6 +66,7 @@ class ProviderTaskRecoveryService:
         self._downloader = downloader
         self._media_publisher = media_publisher
         self._on_batch_reconciled = on_batch_reconciled
+        self._on_node_ready = on_node_ready
         self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
         self._owner_id = owner_id
         self._clock = clock
@@ -160,7 +164,27 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(current, now=now):
             self._runtime.complete_lease(lease, now=now)
             return False
-        payload = self._downloader(current)
+        self._runtime.record_provider_task_event(
+            current,
+            event_type="provider_result_download_waiting",
+            now=now,
+            payload={"status": "recovering"},
+        )
+        try:
+            payload = self._downloader(current)
+        except Exception as error:
+            source_code = getattr(error, "code", None)
+            code = "provider_result_download_failed"
+            if isinstance(error, TimeoutError) or source_code == (
+                "provider_result_download_timeout"
+            ):
+                code = "provider_result_download_timeout"
+            raise V2PersistenceError(
+                code,
+                "Provider result download did not complete.",
+                stage="provider_result_download",
+                details={"source_code": str(source_code)} if source_code else None,
+            ) from error
         node = self._workflows.get_node(task.workflow_id, task.node_id)
         member = next(
             item
@@ -216,13 +240,16 @@ class ProviderTaskRecoveryService:
         ):
             self._runtime.complete_lease(lease, now=now)
             return False
-        self._workflows.publish_node_output(
+        published_node = self._workflows.publish_node_output(
             task.workflow_id,
             task.node_id,
             execution_id=task.execution_id,
             updated_at=now,
             output_asset_id=asset_id,
         )
+        if self._on_node_ready is not None:
+            created_node_ids = self._on_node_ready(published_node) or ()
+            self._runtime.add_members(task.execution_id, created_node_ids, now=now)
         completed = current.model_copy(
             update={
                 "status": "succeeded",
@@ -233,6 +260,12 @@ class ProviderTaskRecoveryService:
         if not self._runtime.put_provider_task(completed, now=now):
             self._runtime.complete_lease(lease, now=now)
             return False
+        self._runtime.record_provider_task_event(
+            completed,
+            event_type="provider_result_download_completed",
+            now=now,
+            payload={"asset_id": asset_id},
+        )
         self._runtime.complete_lease(lease, now=now)
         return True
 
@@ -316,6 +349,16 @@ class ProviderTaskRecoveryService:
         )
         if not self._runtime.put_provider_task(recovering, now=now):
             return
+        if detail.code.startswith("provider_result_download_"):
+            self._runtime.record_provider_task_event(
+                recovering,
+                event_type="provider_result_download_failed",
+                now=now,
+                payload={
+                    "code": detail.code,
+                    "retryable": True,
+                },
+            )
         self._runtime.update_member(
             task.execution_id,
             task.node_id,

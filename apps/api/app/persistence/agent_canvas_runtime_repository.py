@@ -53,6 +53,29 @@ class AgentCanvasRuntimeRepository:
     def event_cursor(self, workflow_id: str) -> int:
         return self._events.max_seq(workflow_id)
 
+    def record_provider_task_event(
+        self,
+        task: CanvasProviderTaskV2,
+        *,
+        event_type: str,
+        now: datetime,
+        payload: dict[str, object] | None = None,
+    ) -> None:
+        self._events.append(
+            V2EventInsert(
+                workflow_id=task.workflow_id,
+                execution_id=task.execution_id,
+                node_id=task.node_id,
+                event_type=event_type,
+                created_at=now.isoformat(),
+                payload={
+                    "provider_task_id": task.task_id,
+                    "remote_task_id": task.remote_task_id,
+                    **(payload or {}),
+                },
+            )
+        )
+
     def put_parameter_compilation_snapshot(
         self,
         snapshot: VideoParameterCompilationSnapshotV2,
