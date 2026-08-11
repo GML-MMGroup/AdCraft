@@ -139,10 +139,14 @@ export class PiStructuredTransportRouter {
           structuredAttempts,
         });
       }
-      if (validation.error_code === "agent_contract_validation_failed") {
+      if (
+        validation.error_code === "agent_contract_validation_failed" &&
+        validation.result?.repair_allowed !== true
+      ) {
         throw terminalValidationFailure(
           validation.error_code,
           auditForAttempt(input, primary, startedAt, structuredAttempts),
+          isManualRetryableIntake(input),
         );
       }
     } else if (policy.structured_transport === "non_streaming_json_object") {
@@ -150,8 +154,9 @@ export class PiStructuredTransportRouter {
     }
     if (policy.structured_repair_limit < 1 || input.signal.aborted) {
       throw structuredFailure(
-        "structured_repair",
+        primary.attemptStage ?? "initial",
         auditForAttempt(input, primary, startedAt, structuredAttempts),
+        isManualRetryableIntake(input),
       );
     }
     if (primary.retryCount > 0) {
@@ -162,7 +167,7 @@ export class PiStructuredTransportRouter {
     }
     structuredAttempts = 2;
     const repair = await this.#executeOnce(
-      repairPayload(input, validation),
+      repairPayload(input, validation, value),
       input,
       "structured_repair",
     );
@@ -171,6 +176,7 @@ export class PiStructuredTransportRouter {
       throw structuredFailure(
         "structured_repair",
         auditForAttempt(input, repair, startedAt, structuredAttempts),
+        isManualRetryableIntake(input),
       );
     }
     const repaired = await input.submit(value, 2, "call_structured_repair");
@@ -180,11 +186,13 @@ export class PiStructuredTransportRouter {
         throw terminalValidationFailure(
           repaired.error_code,
           auditForAttempt(input, repair, startedAt, structuredAttempts),
+          isManualRetryableIntake(input),
         );
       }
       throw structuredFailure(
         "structured_repair",
         auditForAttempt(input, repair, startedAt, structuredAttempts),
+        isManualRetryableIntake(input),
       );
     }
     return resultFor(accepted, input, repair, { startedAt, structuredAttempts });
@@ -228,12 +236,16 @@ export class PiStructuredTransportRouter {
           name: "AbortError",
           code: "ABORT_ERR",
         }),
+        false,
+        isManualRetryableIntake(input),
       );
     }
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
       throw providerTimeout(
         stage,
         failureMetadata(input, startedAt, this.#now().toISOString(), 0, stage),
+        false,
+        isManualRetryableIntake(input),
       );
     }
     try {
@@ -268,6 +280,7 @@ export class PiStructuredTransportRouter {
           stage,
           error,
         ),
+        isManualRetryableIntake(input),
       );
     }
   }
@@ -409,8 +422,10 @@ function malformedJsonValidation(): StructuredValidationResult {
 function repairPayload(
   input: StructuredTransportRunInput,
   validation: StructuredValidationResult | undefined,
+  invalidValue: Readonly<Record<string, unknown>> | undefined,
 ): StructuredCompletionRequest {
   const violations = boundedViolations(validation?.result);
+  const boundedInvalidValue = boundedInvalidResult(invalidValue);
   return {
     model: input.credential.model_id,
     messages: [
@@ -422,6 +437,7 @@ function repairPayload(
         role: "user",
         content: [
           `Validation violations: ${JSON.stringify(violations)}`,
+          ...(boundedInvalidValue ? [`Invalid result: ${boundedInvalidValue}`] : []),
           `JSON Schema: ${JSON.stringify(input.schema)}`,
           `Original request: ${input.userPrompt}`,
         ].join("\n\n"),
@@ -563,8 +579,29 @@ function boundedViolations(result: Readonly<Record<string, unknown>> | undefined
     const message = boundedViolationText(violation.message, 240);
     if (!code || !message) return [];
     const path = boundedViolationText(violation.path ?? violation.field_path, 240);
-    return [{ ...(path ? { path } : {}), code, message }];
+    const expected = boundedViolationValue(violation.expected);
+    const actual = boundedViolationValue(violation.actual);
+    return [{
+      ...(path ? { path } : {}),
+      code,
+      message,
+      ...(expected !== undefined ? { expected } : {}),
+      ...(actual !== undefined ? { actual } : {}),
+    }];
   });
+}
+
+function boundedViolationValue(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  const canonical = canonicalJsonValue(value);
+  return JSON.stringify(canonical).length <= 1_024 ? canonical : undefined;
+}
+
+function boundedInvalidResult(
+  value: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  if (value === undefined) return undefined;
+  return JSON.stringify(canonicalJsonValue(value)).slice(0, 8_192);
 }
 
 function boundedViolationText(value: unknown, limit: number): string | undefined {
@@ -602,6 +639,7 @@ function normalizeTransportFailure(
   signal: AbortSignal,
   stage: ModelAttemptStage = "initial",
   attemptMetadata?: AgentTransportAttemptMetadataV1,
+  manualRetryable = false,
 ): AgentOperationFailure {
   if (
     signal.aborted ||
@@ -609,13 +647,18 @@ function normalizeTransportFailure(
       (error.name === "AbortError" || error.name === "TimeoutError")) ||
     isProviderTimeoutFailure(error)
   ) {
-    return providerTimeout(stage, attemptMetadata, !signal.aborted);
+    return providerTimeout(
+      stage,
+      attemptMetadata,
+      !signal.aborted,
+      manualRetryable,
+    );
   }
   if (error instanceof AgentOperationFailure) return error;
   return new AgentOperationFailure(
     "agent_provider_transport_failed",
     "agent_provider_transport_failed",
-    isPreActivityConnectionFailure(error),
+    manualRetryable || isPreActivityConnectionFailure(error),
     stage,
     attemptMetadata,
   );
@@ -625,11 +668,13 @@ function providerTimeout(
   stage: ModelAttemptStage = "initial",
   attemptMetadata?: AgentTransportAttemptMetadataV1,
   recoveryAllowed = false,
+  manualRetryable = false,
 ): AgentOperationFailure {
-  const retryable = recoveryAllowed &&
-    stage === "initial" &&
-    attemptMetadata?.response_activity_observed === false &&
-    (attemptMetadata?.effective_timeout_ms ?? 0) > 0;
+  const retryable = manualRetryable ||
+    (recoveryAllowed &&
+      stage === "initial" &&
+      attemptMetadata?.response_activity_observed === false &&
+      (attemptMetadata?.effective_timeout_ms ?? 0) > 0);
   return new AgentOperationFailure(
     "agent_provider_timeout",
     "agent_provider_timeout",
@@ -764,13 +809,14 @@ function boundedStatus(value: unknown): number | undefined {
 }
 
 function structuredFailure(
-  stage: "transport_retry" | "structured_repair" = "structured_repair",
+  stage: ModelAttemptStage = "structured_repair",
   attemptMetadata?: AgentTransportAttemptMetadataV1,
+  retryable = false,
 ) {
   return new AgentOperationFailure(
     "agent_structured_output_invalid",
     "agent_structured_output_invalid",
-    false,
+    retryable,
     stage,
     attemptMetadata,
   );
@@ -779,6 +825,11 @@ function structuredFailure(
 function terminalValidationFailure(
   code: string,
   attemptMetadata?: AgentTransportAttemptMetadataV1,
+  retryable = false,
 ) {
-  return new AgentOperationFailure(code, code, false, "initial", attemptMetadata);
+  return new AgentOperationFailure(code, code, retryable, "initial", attemptMetadata);
+}
+
+function isManualRetryableIntake(input: StructuredTransportRunInput): boolean {
+  return input.request.operation === "decide_turn_intent";
 }

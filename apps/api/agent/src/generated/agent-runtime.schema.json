@@ -1235,7 +1235,10 @@
           "type": "boolean"
         },
         "max_model_submissions": {
-          "const": 2,
+          "enum": [
+            1,
+            2
+          ],
           "title": "Max Model Submissions",
           "type": "integer"
         },
@@ -1298,13 +1301,17 @@
           "type": "string"
         },
         "recovery_mode": {
-          "const": "transport_retry_or_structured_repair",
+          "enum": [
+            "none",
+            "structured_repair_only",
+            "transport_retry_or_structured_repair"
+          ],
           "title": "Recovery Mode",
           "type": "string"
         },
         "recovery_timeout_seconds": {
           "maximum": 900,
-          "minimum": 1,
+          "minimum": 0,
           "title": "Recovery Timeout Seconds",
           "type": "integer"
         },
@@ -1550,8 +1557,11 @@
           "type": "integer"
         },
         "max_model_submissions": {
-          "const": 2,
           "default": 2,
+          "enum": [
+            1,
+            2
+          ],
           "title": "Max Model Submissions",
           "type": "integer"
         },
@@ -1604,20 +1614,25 @@
           "type": "string"
         },
         "recovery_mode": {
-          "const": "transport_retry_or_structured_repair",
           "default": "transport_retry_or_structured_repair",
+          "enum": [
+            "none",
+            "structured_repair_only",
+            "transport_retry_or_structured_repair"
+          ],
           "title": "Recovery Mode",
           "type": "string"
         },
         "recovery_timeout_seconds": {
           "maximum": 900,
-          "minimum": 1,
+          "minimum": 0,
           "title": "Recovery Timeout Seconds",
           "type": "integer"
         },
         "structured_repair_limit": {
-          "const": 1,
           "default": 1,
+          "maximum": 1,
+          "minimum": 0,
           "title": "Structured Repair Limit",
           "type": "integer"
         },
@@ -1636,8 +1651,9 @@
           "title": "Thinking Budget Tokens"
         },
         "transport_retry_limit": {
-          "const": 1,
           "default": 1,
+          "maximum": 1,
+          "minimum": 0,
           "title": "Transport Retry Limit",
           "type": "integer"
         }
@@ -2007,6 +2023,45 @@
       "title": "AgentPlacementHintV2",
       "type": "object"
     },
+    "AgentProviderConformanceInputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "diagnostic_case_budget": {
+          "default": 6,
+          "maximum": 6,
+          "minimum": 1,
+          "title": "Diagnostic Case Budget",
+          "type": "integer"
+        },
+        "evidence_destination_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Evidence Destination Id",
+          "type": "string"
+        },
+        "frozen_agent_request": {
+          "$ref": "#/$defs/AgentRunRequest"
+        },
+        "frozen_agent_request_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Frozen Agent Request Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_destination_id",
+        "frozen_agent_request",
+        "frozen_agent_request_digest"
+      ],
+      "title": "AgentProviderConformanceInputV1",
+      "type": "object"
+    },
     "AgentReferenceSummary": {
       "additionalProperties": false,
       "properties": {
@@ -2303,7 +2358,10 @@
         "max_model_submissions": {
           "anyOf": [
             {
-              "const": 2,
+              "enum": [
+                1,
+                2
+              ],
               "type": "integer"
             },
             {
@@ -2426,7 +2484,11 @@
         "recovery_mode": {
           "anyOf": [
             {
-              "const": "transport_retry_or_structured_repair",
+              "enum": [
+                "none",
+                "structured_repair_only",
+                "transport_retry_or_structured_repair"
+              ],
               "type": "string"
             },
             {
@@ -2440,7 +2502,7 @@
           "anyOf": [
             {
               "maximum": 900,
-              "minimum": 1,
+              "minimum": 0,
               "type": "integer"
             },
             {
@@ -5528,6 +5590,13 @@
           "title": "Requirement Revision No",
           "type": "integer"
         },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
         "result_contract_name": {
           "maxLength": 160,
           "minLength": 1,
@@ -5655,6 +5724,13 @@
         },
         "requirement_projection": {
           "$ref": "#/$defs/CapabilityRequirementProjectionV1"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
         },
         "shared_summary": {
           "default": "",
@@ -5966,6 +6042,13 @@
         "requirement_projection": {
           "$ref": "#/$defs/CapabilityRequirementProjectionV1"
         },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
         "style_projection": {
           "additionalProperties": {
             "$ref": "#/$defs/JsonValue"
@@ -6068,6 +6151,13 @@
           ],
           "default": null,
           "title": "Repair Error"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
         },
         "selected_option": {
           "$ref": "#/$defs/SelectedConceptOptionV1"
@@ -7248,27 +7338,9 @@
       "title": "CharacterProposalResultV1",
       "type": "object"
     },
-    "CompactRequirementControlPatchV1": {
+    "CompactAspectRatioControlV2": {
       "additionalProperties": false,
       "properties": {
-        "control": {
-          "enum": [
-            "aspect_ratio",
-            "audio_mode",
-            "character_count",
-            "duration_seconds",
-            "frame_rate",
-            "output_resolution",
-            "product_count",
-            "prop_count",
-            "scene_count",
-            "spoken_language",
-            "storyboard_sequence_count",
-            "video_segment_count"
-          ],
-          "title": "Control",
-          "type": "string"
-        },
         "source_quote": {
           "maxLength": 2048,
           "minLength": 1,
@@ -7276,29 +7348,236 @@
           "type": "string"
         },
         "value": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "integer"
-            },
-            {
-              "type": "number"
-            },
-            {
-              "type": "boolean"
-            }
-          ],
-          "title": "Value"
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
         }
       },
       "required": [
-        "control",
         "source_quote",
         "value"
       ],
-      "title": "CompactRequirementControlPatchV1",
+      "title": "CompactAspectRatioControlV2",
+      "type": "object"
+    },
+    "CompactAudioModeControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "bgm_only",
+            "full",
+            "none"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactAudioModeControlV2",
+      "type": "object"
+    },
+    "CompactCharacterCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactCharacterCountControlV2",
+      "type": "object"
+    },
+    "CompactDurationSecondsControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactDurationSecondsControlV2",
+      "type": "object"
+    },
+    "CompactFrameRateControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 240,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactFrameRateControlV2",
+      "type": "object"
+    },
+    "CompactOutputResolutionControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactOutputResolutionControlV2",
+      "type": "object"
+    },
+    "CompactProductCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactProductCountControlV2",
+      "type": "object"
+    },
+    "CompactPropCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactPropCountControlV2",
+      "type": "object"
+    },
+    "CompactRequirementControlsV2": {
+      "additionalProperties": false,
+      "properties": {
+        "aspect_ratio": {
+          "$ref": "#/$defs/CompactAspectRatioControlV2",
+          "default": null
+        },
+        "audio_mode": {
+          "$ref": "#/$defs/CompactAudioModeControlV2",
+          "default": null
+        },
+        "character_count": {
+          "$ref": "#/$defs/CompactCharacterCountControlV2",
+          "default": null
+        },
+        "duration_seconds": {
+          "$ref": "#/$defs/CompactDurationSecondsControlV2",
+          "default": null
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/CompactFrameRateControlV2",
+          "default": null
+        },
+        "output_resolution": {
+          "$ref": "#/$defs/CompactOutputResolutionControlV2",
+          "default": null
+        },
+        "product_count": {
+          "$ref": "#/$defs/CompactProductCountControlV2",
+          "default": null
+        },
+        "prop_count": {
+          "$ref": "#/$defs/CompactPropCountControlV2",
+          "default": null
+        },
+        "scene_count": {
+          "$ref": "#/$defs/CompactSceneCountControlV2",
+          "default": null
+        },
+        "spoken_language": {
+          "$ref": "#/$defs/CompactSpokenLanguageControlV2",
+          "default": null
+        },
+        "storyboard_sequence_count": {
+          "$ref": "#/$defs/CompactStoryboardSequenceCountControlV2",
+          "default": null
+        },
+        "video_segment_count": {
+          "$ref": "#/$defs/CompactVideoSegmentCountControlV2",
+          "default": null
+        }
+      },
+      "title": "CompactRequirementControlsV2",
       "type": "object"
     },
     "CompactRequirementDirectivePatchV1": {
@@ -7366,17 +7645,11 @@
       "title": "CompactRequirementDirectivePatchV1",
       "type": "object"
     },
-    "CompactRequirementPatchV1": {
+    "CompactRequirementPatchV2": {
       "additionalProperties": false,
       "properties": {
         "controls_to_set": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/CompactRequirementControlPatchV1"
-          },
-          "maxItems": 16,
-          "title": "Controls To Set",
-          "type": "array"
+          "$ref": "#/$defs/CompactRequirementControlsV2"
         },
         "directives_to_add": {
           "default": [],
@@ -7388,10 +7661,79 @@
           "type": "array"
         }
       },
-      "title": "CompactRequirementPatchV1",
+      "title": "CompactRequirementPatchV2",
       "type": "object"
     },
-    "CompactTurnIntentDecisionV1": {
+    "CompactSceneCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactSceneCountControlV2",
+      "type": "object"
+    },
+    "CompactSpokenLanguageControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactSpokenLanguageControlV2",
+      "type": "object"
+    },
+    "CompactStoryboardSequenceCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactStoryboardSequenceCountControlV2",
+      "type": "object"
+    },
+    "CompactTurnIntentDecisionV2": {
       "additionalProperties": false,
       "properties": {
         "assistant_message": {
@@ -7459,20 +7801,57 @@
         "requirement_patch": {
           "anyOf": [
             {
-              "$ref": "#/$defs/CompactRequirementPatchV1"
+              "$ref": "#/$defs/CompactRequirementPatchV2"
             },
             {
               "type": "null"
             }
           ],
           "default": null
+        },
+        "response_locale": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Response Locale"
         }
       },
       "required": [
         "mode",
         "objective"
       ],
-      "title": "CompactTurnIntentDecisionV1",
+      "title": "CompactTurnIntentDecisionV2",
+      "type": "object"
+    },
+    "CompactVideoSegmentCountControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_quote",
+        "value"
+      ],
+      "title": "CompactVideoSegmentCountControlV2",
       "type": "object"
     },
     "ConversationSummaryAgentContext": {
@@ -10524,6 +10903,13 @@
           "default": null,
           "title": "Narrative Direction"
         },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
         "revision": {
           "minimum": 1,
           "title": "Revision",
@@ -11981,6 +12367,13 @@
         },
         "policy": {
           "$ref": "#/$defs/CapabilityPolicyResultV1"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
         },
         "session_revision": {
           "minimum": 1,
@@ -17499,6 +17892,13 @@
           "title": "Current Hard Controls",
           "type": "array"
         },
+        "current_response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Current Response Locale",
+          "type": "string"
+        },
         "editable_directives": {
           "default": [],
           "items": {
@@ -17652,6 +18052,13 @@
             }
           ],
           "default": null
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
         }
       },
       "required": [

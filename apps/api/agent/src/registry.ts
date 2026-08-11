@@ -64,7 +64,7 @@ const capabilityDefinitions = [
 >;
 
 const metadata = new Map<string, OperationMetadata>([
-  ["decide_turn_intent", { result_contract_name: "CompactTurnIntentDecisionV1" }],
+  ["decide_turn_intent", { result_contract_name: "CompactTurnIntentDecisionV2" }],
   ["decide_next_action", { result_contract_name: "NextActionCommandV1" }],
   ["command_replan", { result_contract_name: "AgentCommandPlanDraftV2" }],
   ["workflow_conversation", { result_contract_name: "WorkflowConversationReply" }],

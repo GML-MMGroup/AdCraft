@@ -17,6 +17,7 @@ from pydantic import (
 
 from app.schemas.agent_canvas_ad_media import SemanticReferenceRoleV2
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.language import BCP47Tag
 from app.schemas.agent_canvas_requirements import (
     CapabilityRequirementProjectionV1,
     EditableRequirementDirectiveV1,
@@ -122,9 +123,123 @@ class CompactTurnIntentDecisionV1(_CapabilityModel):
     explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
     assistant_message: str | None = Field(default=None, max_length=2_000)
     requirement_patch: CompactRequirementPatchV1 | None = None
+    response_locale: BCP47Tag | None = None
 
     @model_validator(mode="after")
     def validate_unique_explicit_elements(self) -> "CompactTurnIntentDecisionV1":
+        element_kinds = tuple(item.element_kind for item in self.explicit_elements)
+        if len(element_kinds) != len(set(element_kinds)):
+            raise ValueError("Explicit element decisions must use unique element kinds.")
+        return self
+
+
+class _CompactControlValueV2(_CapabilityModel):
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+
+class CompactDurationSecondsControlV2(_CompactControlValueV2):
+    value: float = Field(ge=1, le=3_600)
+
+
+class CompactAspectRatioControlV2(_CompactControlValueV2):
+    value: str = Field(min_length=1, max_length=32)
+
+
+class CompactOutputResolutionControlV2(_CompactControlValueV2):
+    value: str = Field(min_length=1, max_length=64)
+
+
+class CompactFrameRateControlV2(_CompactControlValueV2):
+    value: float = Field(ge=1, le=240)
+
+
+class CompactSpokenLanguageControlV2(_CompactControlValueV2):
+    value: str = Field(min_length=1, max_length=64)
+
+
+class CompactAudioModeControlV2(_CompactControlValueV2):
+    value: Literal["none", "bgm_only", "full"]
+
+
+class CompactProductCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=32)
+
+
+class CompactPropCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=64)
+
+
+class CompactCharacterCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=32)
+
+
+class CompactSceneCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=32)
+
+
+class CompactStoryboardSequenceCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=64)
+
+
+class CompactVideoSegmentCountControlV2(_CompactControlValueV2):
+    value: int = Field(ge=0, le=64)
+
+
+class CompactRequirementControlsV2(_CapabilityModel):
+    # Non-nullable optional properties keep the model-facing schema precise: omission
+    # means unspecified, while an explicitly supplied control must be a complete object.
+    duration_seconds: CompactDurationSecondsControlV2 = Field(default=None)
+    aspect_ratio: CompactAspectRatioControlV2 = Field(default=None)
+    output_resolution: CompactOutputResolutionControlV2 = Field(default=None)
+    frame_rate: CompactFrameRateControlV2 = Field(default=None)
+    spoken_language: CompactSpokenLanguageControlV2 = Field(default=None)
+    audio_mode: CompactAudioModeControlV2 = Field(default=None)
+    product_count: CompactProductCountControlV2 = Field(default=None)
+    prop_count: CompactPropCountControlV2 = Field(default=None)
+    character_count: CompactCharacterCountControlV2 = Field(default=None)
+    scene_count: CompactSceneCountControlV2 = Field(default=None)
+    storyboard_sequence_count: CompactStoryboardSequenceCountControlV2 = Field(default=None)
+    video_segment_count: CompactVideoSegmentCountControlV2 = Field(default=None)
+
+    def to_requirement_patches(self) -> tuple[RequirementControlPatchV1, ...]:
+        patches: list[RequirementControlPatchV1] = []
+        for control_name in RequirementControlNameV1.__args__:
+            value = getattr(self, control_name)
+            if value is None:
+                continue
+            patches.append(
+                _REQUIREMENT_CONTROL_PATCH_ADAPTER.validate_python(
+                    {"control": control_name, **value.model_dump()}
+                )
+            )
+        return tuple(patches)
+
+
+class CompactRequirementPatchV2(_CapabilityModel):
+    controls_to_set: CompactRequirementControlsV2 = Field(
+        default_factory=CompactRequirementControlsV2
+    )
+    directives_to_add: tuple[CompactRequirementDirectivePatchV1, ...] = Field(
+        default=(), max_length=16
+    )
+
+
+class CompactTurnIntentDecisionV2(_CapabilityModel):
+    mode: Literal[
+        "ordinary_conversation",
+        "guided_production",
+        "targeted_authoring",
+        "quick_media",
+    ]
+    objective: str = Field(min_length=1, max_length=2_048)
+    requested_capability: CapabilityIdV1 | None = None
+    explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
+    assistant_message: str | None = Field(default=None, max_length=2_000)
+    requirement_patch: CompactRequirementPatchV2 | None = None
+    response_locale: BCP47Tag | None = None
+
+    @model_validator(mode="after")
+    def validate_unique_explicit_elements(self) -> "CompactTurnIntentDecisionV2":
         element_kinds = tuple(item.element_kind for item in self.explicit_elements)
         if len(element_kinds) != len(set(element_kinds)):
             raise ValueError("Explicit element decisions must use unique element kinds.")
@@ -143,6 +258,7 @@ class TurnIntentDecisionV2(_CapabilityModel):
     explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
     assistant_message: str | None = Field(default=None, max_length=4_000)
     requirement_patch: RequirementPatchV1 | None = None
+    response_locale: BCP47Tag = "und"
 
     @model_validator(mode="after")
     def validate_unique_explicit_elements(self) -> "TurnIntentDecisionV2":
@@ -153,7 +269,9 @@ class TurnIntentDecisionV2(_CapabilityModel):
 
 
 def expand_compact_turn_intent(
-    compact: CompactTurnIntentDecisionV1,
+    compact: CompactTurnIntentDecisionV2,
+    *,
+    current_response_locale: BCP47Tag | None = None,
 ) -> TurnIntentDecisionV2:
     """Expand model-owned routing fields into the stable public contract."""
 
@@ -161,9 +279,7 @@ def expand_compact_turn_intent(
     requirement_patch = None
     if compact_patch is not None:
         requirement_patch = RequirementPatchV1(
-            controls_to_set=tuple(
-                item.to_requirement_patch() for item in compact_patch.controls_to_set
-            ),
+            controls_to_set=compact_patch.controls_to_set.to_requirement_patches(),
             directives_to_add=tuple(
                 RequirementDirectivePatchV1(
                     source_quote=item.source_quote,
@@ -185,6 +301,7 @@ def expand_compact_turn_intent(
         explicit_elements=compact.explicit_elements,
         assistant_message=compact.assistant_message,
         requirement_patch=requirement_patch,
+        response_locale=compact.response_locale or current_response_locale or "und",
     )
 
 
@@ -203,6 +320,7 @@ class TurnIntentContextV2(_CapabilityModel):
     editable_directives: tuple[EditableRequirementDirectiveV1, ...] = Field(
         default=(), max_length=32
     )
+    current_response_locale: BCP47Tag = "und"
 
 
 class AskUserNextActionCommandV1(_CapabilityModel):
@@ -273,6 +391,7 @@ class NextActionContextV1(_CapabilityModel):
     objective: str = Field(min_length=1, max_length=4_096)
     policy: "CapabilityPolicyResultV1"
     shared_summary: str = Field(default="", max_length=8_192)
+    response_locale: BCP47Tag = "und"
 
 
 class CapabilityDefinitionV1(_CapabilityModel):
@@ -357,6 +476,7 @@ class CapabilityContextSnapshotV2(_CapabilityModel):
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     shared_summary: str = Field(default="", max_length=8_192)
+    response_locale: BCP47Tag = "und"
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
@@ -374,6 +494,7 @@ class CapabilityInvocationContextV2(_CapabilityModel):
     capability_context: dict[str, JsonValue] = Field(default_factory=dict)
     style_projection: dict[str, JsonValue] = Field(default_factory=dict)
     repair_error: str | None = Field(default=None, max_length=160)
+    response_locale: BCP47Tag = "und"
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 
@@ -406,6 +527,7 @@ class CapabilityCommandEnvelopeV2(_CapabilityModel):
     reference_plan: CapabilityReferencePlanV1
     agent_request_identity: str = Field(min_length=1, max_length=256)
     created_at: datetime
+    response_locale: BCP47Tag = "und"
 
     _validate_context = model_validator(mode="before")(_validate_bounded_context_fields)
 

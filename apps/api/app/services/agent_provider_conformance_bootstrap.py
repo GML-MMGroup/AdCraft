@@ -10,15 +10,19 @@ from uuid import uuid4
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.persistence.database import V2Database
 from app.schemas.agent_canvas_capabilities import (
-    CompactTurnIntentDecisionV1,
+    CompactTurnIntentDecisionV2,
     TurnIntentContextV2,
 )
-from app.schemas.agent_runtime import AgentRunRequest
+from app.schemas.agent_runtime import (
+    AgentProviderConformanceInputV1,
+    AgentRunRequest,
+    canonical_agent_run_request_digest,
+)
 from app.services.agent_operation_policy import freeze_agent_run_operation_policy
 from app.services.agent_run_envelope import agent_run_envelope_fields
 
 
-_MODEL_POLICY_ID = "video_agent.decide_turn_intent.v1"
+_MODEL_POLICY_ID = "video_agent.decide_turn_intent.v3"
 _LEASE_DURATION_SECONDS = 600
 _SYNTHETIC_USER_INPUT = (
     "Create a 30-second 16:9 premium sparkling-tea advertisement for urban young adults."
@@ -28,6 +32,7 @@ _SYNTHETIC_USER_INPUT = (
 @dataclass(frozen=True, slots=True)
 class AgentProviderConformanceRunHandle:
     request: AgentRunRequest
+    input_envelope: AgentProviderConformanceInputV1
     record: AgentRunRecord
     lease_owner_id: str
     created: bool
@@ -73,8 +78,8 @@ class AgentProviderConformanceBootstrapService:
             model_policy_id=_MODEL_POLICY_ID,
             model_ref=model_ref,
             context=context,
-            contract_name="CompactTurnIntentDecisionV1",
-            contract_schema=CompactTurnIntentDecisionV1.model_json_schema(),
+            contract_name="CompactTurnIntentDecisionV2",
+            contract_schema=CompactTurnIntentDecisionV2.model_json_schema(),
             audit_metadata={
                 "run_purpose": "provider_conformance",
                 "report_schema_version": 2,
@@ -92,6 +97,12 @@ class AgentProviderConformanceBootstrapService:
         )
         return AgentProviderConformanceRunHandle(
             request=frozen_request,
+            input_envelope=AgentProviderConformanceInputV1(
+                frozen_agent_request=frozen_request,
+                frozen_agent_request_digest=canonical_agent_run_request_digest(frozen_request),
+                diagnostic_case_budget=6,
+                evidence_destination_id=run_id,
+            ),
             record=record,
             lease_owner_id=lease_owner_id,
             created=created,

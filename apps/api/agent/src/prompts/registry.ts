@@ -18,6 +18,7 @@ const descriptors = Object.freeze(
     const systemPrompt = [
       videoAgentBasePolicy,
       instructionForOperation(operation.operation),
+      "Render every model-owned user-visible or audible field in the supplied response_locale. Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English. Style guidance never overrides response_locale.",
       `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
       "If Python rejects the first result, repair only the reported structured violations once. A second rejection is terminal.",
     ].join("\n\n");
@@ -83,6 +84,7 @@ function instructionForOperation(operation: string): string {
     return [
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
       "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
       "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
       "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
       "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",

@@ -48,18 +48,20 @@ class AgentOperationPolicyV2(_RecoveryModel):
     policy_class: AgentOperationPolicyClassV2
     hard_deadline_seconds: int = Field(ge=1, le=900)
     primary_timeout_seconds: int = Field(ge=1, le=900)
-    recovery_timeout_seconds: int = Field(ge=1, le=900)
+    recovery_timeout_seconds: int = Field(ge=0, le=900)
     persistence_reserve_seconds: int = Field(ge=1, le=900)
     max_output_tokens: int = Field(ge=1, le=65_536)
     reasoning_mode: Literal["low", "deep"]
     enable_thinking: bool
     thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
-    transport_retry_limit: Literal[1] = 1
-    structured_repair_limit: Literal[1] = 1
-    max_model_submissions: Literal[2] = 2
-    recovery_mode: Literal["transport_retry_or_structured_repair"] = (
-        "transport_retry_or_structured_repair"
-    )
+    transport_retry_limit: int = Field(default=1, ge=0, le=1)
+    structured_repair_limit: int = Field(default=1, ge=0, le=1)
+    max_model_submissions: Literal[1, 2] = 2
+    recovery_mode: Literal[
+        "none",
+        "structured_repair_only",
+        "transport_retry_or_structured_repair",
+    ] = "transport_retry_or_structured_repair"
     fallback_class: Literal[
         "none",
         "selected_world_setting",
@@ -85,6 +87,20 @@ class AgentOperationPolicyV2(_RecoveryModel):
             and self.thinking_budget_tokens > self.max_output_tokens
         ):
             raise ValueError("Thinking budget exceeds the operation output bound.")
+        if self.max_model_submissions == 1:
+            if (
+                self.recovery_mode != "none"
+                or self.recovery_timeout_seconds != 0
+                or self.transport_retry_limit != 0
+                or self.structured_repair_limit != 0
+            ):
+                raise ValueError("Single-submission policy cannot configure recovery.")
+        elif self.recovery_timeout_seconds == 0 or self.recovery_mode == "none":
+            raise ValueError("Two-submission policy requires bounded recovery.")
+        elif self.recovery_mode == "structured_repair_only" and (
+            self.transport_retry_limit != 0 or self.structured_repair_limit != 1
+        ):
+            raise ValueError("Structured-repair-only policy cannot retry transport.")
         return self
 
 

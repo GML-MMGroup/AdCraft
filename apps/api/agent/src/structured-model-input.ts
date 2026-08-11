@@ -64,6 +64,13 @@ export async function prepareStructuredModelInput(
     request.operation,
     request.contract_name ?? "",
   );
+  const schema = contractSchemaForRequest(request);
+  if (
+    request.operation === "decide_turn_intent" &&
+    Buffer.byteLength(JSON.stringify(schema), "utf8") > 16_384
+  ) {
+    throw new Error("agent_intake_context_too_large");
+  }
   if (!request.model_ref) throw new Error("agent_protocol_mismatch");
   const credential = await python.credential(
     request.credential_ref ?? "llm-default",
@@ -92,12 +99,29 @@ export async function prepareStructuredModelInput(
   ]
     .filter(Boolean)
     .join("\n\n");
+  const userPrompt = promptInputForRequest(request);
+  if (
+    request.operation === "decide_turn_intent" &&
+    Buffer.byteLength(
+      JSON.stringify({
+        model_ref: request.model_ref,
+        operation: request.operation,
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+        schema,
+        policy: credential.execution_policy,
+      }),
+      "utf8",
+    ) > 131_072
+  ) {
+    throw new Error("agent_intake_context_too_large");
+  }
   return {
     credential,
     request,
     systemPrompt,
-    userPrompt: promptInputForRequest(request),
-    schema: contractSchemaForRequest(request),
+    userPrompt,
+    schema,
     loadedSkills,
   };
 }

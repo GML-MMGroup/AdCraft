@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from hashlib import sha256
+import json
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -183,10 +185,17 @@ class AgentRunPolicy(_StrictModel):
     max_handoffs: Literal[0] = 0
     timeout_seconds: float = Field(default=120.0, gt=0, le=900)
     primary_timeout_seconds: int | None = Field(default=None, ge=1, le=900)
-    recovery_timeout_seconds: int | None = Field(default=None, ge=1, le=900)
+    recovery_timeout_seconds: int | None = Field(default=None, ge=0, le=900)
     persistence_reserve_seconds: int | None = Field(default=None, ge=1, le=900)
-    max_model_submissions: Literal[2] | None = None
-    recovery_mode: Literal["transport_retry_or_structured_repair"] | None = None
+    max_model_submissions: Literal[1, 2] | None = None
+    recovery_mode: (
+        Literal[
+            "none",
+            "structured_repair_only",
+            "transport_retry_or_structured_repair",
+        ]
+        | None
+    ) = None
     max_output_tokens: int | None = Field(default=None, ge=1, le=65_536)
     reasoning_mode: Literal["low", "deep"] | None = None
     enable_thinking: bool | None = None
@@ -194,6 +203,36 @@ class AgentRunPolicy(_StrictModel):
     max_input_bytes: int = Field(default=131_072, ge=1, le=4_194_304)
     max_output_bytes: int = Field(default=262_144, ge=1, le=4_194_304)
     max_event_bytes: int = Field(default=65_536, ge=1, le=1_048_576)
+
+    @model_validator(mode="after")
+    def validate_recovery_policy(self) -> "AgentRunPolicy":
+        if self.max_model_submissions is None:
+            return self
+        partitions = (
+            self.primary_timeout_seconds,
+            self.recovery_timeout_seconds,
+            self.persistence_reserve_seconds,
+        )
+        if (
+            any(value is None for value in partitions)
+            or sum(int(value) for value in partitions if value is not None) != self.timeout_seconds
+        ):
+            raise ValueError("Agent run policy partitions must equal its deadline.")
+        if self.max_model_submissions == 1:
+            if (
+                self.recovery_mode != "none"
+                or self.recovery_timeout_seconds != 0
+                or self.transport_retry_limit != 0
+                or self.structured_repair_limit != 0
+            ):
+                raise ValueError("Single-submission Agent run cannot configure recovery.")
+        elif not self.recovery_timeout_seconds or self.recovery_mode == "none":
+            raise ValueError("Two-submission Agent run requires bounded recovery.")
+        elif self.recovery_mode == "structured_repair_only" and (
+            self.transport_retry_limit != 0 or self.structured_repair_limit != 1
+        ):
+            raise ValueError("Structured-repair-only Agent run cannot retry transport.")
+        return self
 
 
 class AgentModelExecutionPolicyV1(_StrictModel):
@@ -222,13 +261,42 @@ class AgentModelExecutionPolicyV1(_StrictModel):
     supports_streamed_tool_calls: bool
     deadline_seconds: int = Field(ge=1, le=900)
     primary_timeout_seconds: int = Field(ge=1, le=900)
-    recovery_timeout_seconds: int = Field(ge=1, le=900)
+    recovery_timeout_seconds: int = Field(ge=0, le=900)
     persistence_reserve_seconds: int = Field(ge=1, le=900)
-    max_model_submissions: Literal[2]
-    recovery_mode: Literal["transport_retry_or_structured_repair"]
+    max_model_submissions: Literal[1, 2]
+    recovery_mode: Literal[
+        "none",
+        "structured_repair_only",
+        "transport_retry_or_structured_repair",
+    ]
     max_output_tokens: int = Field(ge=1, le=65_536)
     transport_retry_limit: int = Field(ge=0, le=1)
     structured_repair_limit: int = Field(ge=0, le=1)
+
+    @model_validator(mode="after")
+    def validate_recovery_policy(self) -> "AgentModelExecutionPolicyV1":
+        if (
+            self.primary_timeout_seconds
+            + self.recovery_timeout_seconds
+            + self.persistence_reserve_seconds
+            != self.deadline_seconds
+        ):
+            raise ValueError("Model policy partitions must equal its deadline.")
+        if self.max_model_submissions == 1:
+            if (
+                self.recovery_mode != "none"
+                or self.recovery_timeout_seconds != 0
+                or self.transport_retry_limit != 0
+                or self.structured_repair_limit != 0
+            ):
+                raise ValueError("Single-submission model policy cannot configure recovery.")
+        elif self.recovery_timeout_seconds == 0 or self.recovery_mode == "none":
+            raise ValueError("Two-submission model policy requires bounded recovery.")
+        elif self.recovery_mode == "structured_repair_only" and (
+            self.transport_retry_limit != 0 or self.structured_repair_limit != 1
+        ):
+            raise ValueError("Structured-repair-only model policy cannot retry transport.")
+        return self
 
 
 class AgentTransportAttemptMetadataV1(_StrictModel):
@@ -305,6 +373,34 @@ class AgentRunRequest(_StrictModel):
     validation_profile: str | None = Field(default=None, max_length=160)
     validation_context: dict[str, Any] = Field(default_factory=dict)
     audit_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def canonical_agent_run_request_digest(request: AgentRunRequest) -> str:
+    payload = json.dumps(
+        request.model_dump(mode="json"),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(payload).hexdigest()}"
+
+
+class AgentProviderConformanceInputV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1"] = "1"
+    frozen_agent_request: AgentRunRequest
+    frozen_agent_request_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    diagnostic_case_budget: int = Field(default=6, ge=1, le=6)
+    evidence_destination_id: str = Field(min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_frozen_request_digest(self) -> "AgentProviderConformanceInputV1":
+        if self.frozen_agent_request_digest != canonical_agent_run_request_digest(
+            self.frozen_agent_request
+        ):
+            raise ValueError("Frozen Agent request digest does not match the request.")
+        return self
 
 
 class AgentRuntimeEvent(_StrictModel):

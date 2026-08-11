@@ -160,17 +160,32 @@ function isExecutionPolicy(
     policy.supports_streamed_tool_calls !== supportsStreamedToolCalls ||
     !isPositiveInteger(policy.deadline_seconds) ||
     !isPositiveInteger(policy.primary_timeout_seconds) ||
-    !isPositiveInteger(policy.recovery_timeout_seconds) ||
+    !isNonNegativeInteger(policy.recovery_timeout_seconds) ||
     !isPositiveInteger(policy.persistence_reserve_seconds) ||
     policy.primary_timeout_seconds +
         policy.recovery_timeout_seconds +
         policy.persistence_reserve_seconds !==
       policy.deadline_seconds ||
-    policy.max_model_submissions !== 2 ||
-    policy.recovery_mode !== "transport_retry_or_structured_repair" ||
+    (policy.max_model_submissions !== 1 && policy.max_model_submissions !== 2) ||
+    (policy.recovery_mode !== "none" &&
+      policy.recovery_mode !== "structured_repair_only" &&
+      policy.recovery_mode !== "transport_retry_or_structured_repair") ||
     !isPositiveInteger(policy.max_output_tokens) ||
     !isBoundedAttempt(policy.transport_retry_limit) ||
     !isBoundedAttempt(policy.structured_repair_limit)
+  ) {
+    return false;
+  }
+  if (
+    (policy.max_model_submissions === 1 &&
+      (policy.recovery_mode !== "none" ||
+        policy.recovery_timeout_seconds !== 0 ||
+        policy.transport_retry_limit !== 0 ||
+        policy.structured_repair_limit !== 0)) ||
+    (policy.max_model_submissions === 2 &&
+      (policy.recovery_mode === "none" || policy.recovery_timeout_seconds < 1)) ||
+    (policy.recovery_mode === "structured_repair_only" &&
+      (policy.transport_retry_limit !== 0 || policy.structured_repair_limit !== 1))
   ) {
     return false;
   }
@@ -199,6 +214,10 @@ function isExecutionPolicy(
 
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isBoundedAttempt(value: unknown): value is number {
