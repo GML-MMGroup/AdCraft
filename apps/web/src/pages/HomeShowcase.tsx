@@ -7,13 +7,6 @@ const heroTitleLines = [
   "BECOMES AN",
   "Ad film.",
 ] as const;
-const HERO_CHARACTER_START_DELAY_MS = 80;
-const HERO_CHARACTER_STAGGER_MS = 28;
-const heroLineCharacterOffsets = heroTitleLines.map((_, lineIndex) => (
-  heroTitleLines
-    .slice(0, lineIndex)
-    .reduce((offset, line) => offset + Array.from(line).length, 0)
-));
 const discoverCards: Array<[string, string, number]> = [
   ["Campaign Flow", images[0], 240],
   ["Character Study", images[1], 330],
@@ -51,10 +44,6 @@ export type HomeShowcaseProps = {
   previewOpen?: boolean;
 };
 
-type HeroCharacterStyle = CSSProperties & {
-  "--home-character-delay": string;
-};
-
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="section-title">
@@ -66,12 +55,6 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) 
 
 function motionStyle(property: "--home-reveal-delay", value: string): CSSProperties {
   return { [property]: value } as CSSProperties;
-}
-
-function heroCharacterStyle(characterIndex: number): HeroCharacterStyle {
-  return {
-    "--home-character-delay": `${HERO_CHARACTER_START_DELAY_MS + characterIndex * HERO_CHARACTER_STAGGER_MS}ms`,
-  };
 }
 
 function HeroTitle() {
@@ -91,21 +74,7 @@ function HeroTitle() {
           data-testid={lineIndex === 2 ? "home-hero-accent" : undefined}
           aria-hidden="true"
         >
-          {Array.from(line).map((character, characterIndex) => {
-            const globalCharacterIndex = heroLineCharacterOffsets[lineIndex] + characterIndex;
-            const isSpace = character === " ";
-
-            return (
-              <span
-                key={`${lineIndex}-${characterIndex}`}
-                className={`home-product-hero__character ${isSpace ? "home-product-hero__character--space" : ""}`}
-                data-character-index={globalCharacterIndex}
-                style={heroCharacterStyle(globalCharacterIndex)}
-              >
-                <span className="home-product-hero__glyph">{character}</span>
-              </span>
-            );
-          })}
+          {line}
         </span>
       ))}
     </h1>

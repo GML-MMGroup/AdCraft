@@ -74,7 +74,7 @@ describe("HomePage motion", () => {
     }
   });
 
-  it("stages one continuous character wave across the three title lines", () => {
+  it("renders the title as three complete lines for the spotlight focus reveal", () => {
     render(<HomePage navigate={vi.fn()} />);
 
     const title = screen.getByRole("heading", {
@@ -91,23 +91,8 @@ describe("HomePage motion", () => {
       "Ad film.",
     ]);
 
-    const characters = Array.from(
-      title.querySelectorAll<HTMLElement>(".home-product-hero__character"),
-    );
-    expect(characters).toHaveLength(30);
-    expect(
-      characters.map((character) => character.dataset.characterIndex),
-    ).toEqual(Array.from({ length: 30 }, (_, index) => String(index)));
-    expect(
-      characters.slice(0, 4).map((character) => (
-        character.style.getPropertyValue("--home-character-delay")
-      )),
-    ).toEqual(["80ms", "108ms", "136ms", "164ms"]);
-    expect(
-      characters.at(-1)?.style.getPropertyValue("--home-character-delay"),
-    ).toBe("892ms");
-    expect(lines[2]?.querySelectorAll(".home-product-hero__glyph")).toHaveLength(8);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
+    expect(title.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
   });
 
   it("starts the hero motion only after fonts and two paint frames are ready", async () => {
@@ -238,9 +223,9 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(0);
   });
 
-  it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
+  it("uses a non-linear spotlight focus entrance with reduced-motion coverage", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__character\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*translate3d\(0,\s*0,\s*0\);/s,
+      /\.home-product-hero__title-line\s*\{[^}]*opacity:\s*0\.03;[^}]*filter:\s*blur\(20px\);[^}]*transform:\s*scale\(0\.968\);/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
@@ -249,14 +234,13 @@ describe("HomePage motion", () => {
       /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__character\s*\{[^}]*animation:[^;}]*home-hero-character-wave/s,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\s*\{[^}]*animation:[^;}]*home-hero-spotlight-focus/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*0,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
+      /@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?blur\(20px\)[\s\S]*?blur\(14px\)[\s\S]*?blur\(2px\)[\s\S]*?filter:\s*none;/,
     );
-    expect(styles).not.toMatch(/home-hero-line-wave/);
-    expect(styles).not.toMatch(
-      /\.home-product-hero__character\s*\{[^}]*will-change:/s,
+    expect(styles).toMatch(
+      /\.home-product-hero__title-line\s*\{[^}]*will-change:\s*filter,\s*opacity,\s*transform;/s,
     );
     expect(styles).toMatch(
       /\.home-reveal-section\[data-reveal-state="pending"\][\s\S]*?opacity:\s*0;/,
@@ -265,7 +249,7 @@ describe("HomePage motion", () => {
       /\.home-reveal-section\[data-reveal-state="visible"\][\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
+      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-line[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;[\s\S]*?filter:\s*none !important;/,
     );
   });
 
