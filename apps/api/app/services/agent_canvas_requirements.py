@@ -616,6 +616,8 @@ def update_requirement_compatibility_projection_in_transaction(
     workflow_id: str,
     ledger: RequirementLedgerV1,
     updated_at: str,
+    *,
+    advance_session_revision: bool = True,
 ) -> None:
     session = (
         connection.execute(
@@ -646,20 +648,22 @@ def update_requirement_compatibility_projection_in_transaction(
             )
             for item in ledger.element_presence
         )
+        values: dict[str, object] = {
+            "creative_goal_json": projected_goal.model_dump_json(),
+            "element_decisions_json": json.dumps(
+                [item.model_dump(mode="json") for item in projected_elements],
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+            "updated_at": updated_at,
+        }
+        if advance_session_revision:
+            values["revision"] = int(session["revision"]) + 1
         connection.execute(
             update(AgentCanvasGuidanceSessionRow)
             .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
-            .values(
-                creative_goal_json=projected_goal.model_dump_json(),
-                element_decisions_json=json.dumps(
-                    [item.model_dump(mode="json") for item in projected_elements],
-                    ensure_ascii=True,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ),
-                revision=int(session["revision"]) + 1,
-                updated_at=updated_at,
-            )
+            .values(**values)
         )
     duration = controls.get("duration_seconds")
     memory_values = {
