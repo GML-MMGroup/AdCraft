@@ -1,6 +1,6 @@
 .home-page {
   --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
-  --home-font-accent: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  --home-font-accent: "Dancing Script", cursive;
   --home-font-ui: Arial, "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--home-font-ui);
 }
@@ -653,12 +653,12 @@ html[data-theme="dark"] .app-shell--cosmic :is(
 }
 
 .home-page [data-home-typography-region="heroAccent"] {
-  font-family: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  font-family: "Dancing Script", cursive;
   font-size: 70px;
   font-weight: 400;
-  font-style: italic;
+  font-style: normal;
   line-height: 1.2;
-  letter-spacing: 0.046em;
+  letter-spacing: 0;
   text-transform: none;
 }
 

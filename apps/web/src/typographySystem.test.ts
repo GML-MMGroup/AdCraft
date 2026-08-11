@@ -23,6 +23,7 @@ const fontFiles = [
   "manrope-latin-variable.woff2",
   "instrument-serif-latin.woff2",
   "instrument-serif-latin-italic.woff2",
+  "dancing-script-latin-variable.woff2",
   "jetbrains-mono-latin-variable.woff2",
 ];
 const approvedWeights = new Set([400, 500, 600, 700, 800, 900]);
@@ -34,7 +35,7 @@ describe("typography system", () => {
   it("applies the exported home typography settings to every homepage region", () => {
     const expectedRules = [
       ['[data-home-typography-region="heroMain"]', '"Trebuchet MS"', '60px', '400', 'italic', '1.1', '0.016em'],
-      ['[data-home-typography-region="heroAccent"]', 'Georgia', '70px', '400', 'italic', '1.2', '0.046em'],
+      ['[data-home-typography-region="heroAccent"]', '"Dancing Script"', '70px', '400', 'normal', '1.2', '0'],
       ['[data-home-typography-region="heroBody"]', 'Arial', '16px', '400', 'italic', '1.5', '0.006em'],
       ['[data-home-typography-region="heroAction"]', '"JetBrains Mono"', '14px', '400', 'normal', '1.1', '0.004em'],
       ['[data-home-typography-region="navigation"]', '"Manrope"', '14px', '400', 'normal', '1.2', '0'],
@@ -63,6 +64,7 @@ describe("typography system", () => {
     expect(styles).toContain('url("/fonts/manrope-latin-variable.woff2")');
     expect(styles).toContain('url("/fonts/instrument-serif-latin.woff2")');
     expect(styles).toContain('url("/fonts/instrument-serif-latin-italic.woff2")');
+    expect(styles).toContain('url("/fonts/dancing-script-latin-variable.woff2")');
     expect(styles).toContain('url("/fonts/jetbrains-mono-latin-variable.woff2")');
     expect(homeStyles).not.toContain('url("/fonts/space-grotesk-latin-variable.woff2")');
     expect(homeStyles).not.toContain('url("/fonts/inter-latin-variable.woff2")');

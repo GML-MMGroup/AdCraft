@@ -40,6 +40,7 @@ export type FontCatalogEntry = {
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   { id: "manrope", label: "Manrope", family: "Manrope", fallback: "sans-serif", source: "local", weights: [400, 500, 600, 700, 800], supportsItalic: false },
   { id: "instrument-serif", label: "Instrument Serif", family: "Instrument Serif", fallback: "serif", source: "local", weights: [400], supportsItalic: true },
+  { id: "dancing-script", label: "Dancing Script", family: "Dancing Script", fallback: "cursive", source: "local", weights: [400, 500, 600, 700], supportsItalic: false },
   { id: "jetbrains-mono", label: "JetBrains Mono", family: "JetBrains Mono", fallback: "monospace", source: "local", weights: [400, 500, 600, 700], supportsItalic: false },
   { id: "arial", label: "Arial", family: "Arial", fallback: "sans-serif", source: "system", weights: [400, 700], supportsItalic: true },
   { id: "georgia", label: "Georgia", family: "Georgia", fallback: "serif", source: "system", weights: [400, 700], supportsItalic: true },
@@ -110,7 +111,7 @@ export const TYPOGRAPHY_REGION_DEFINITIONS: readonly TypographyRegionDefinition[
 
 export const DEFAULT_REGION_SETTINGS: Record<TypographyRegionId, TypographyRegionSettings> = {
   heroMain: { fontId: "instrument-serif", fontWeight: 400, fontStyle: "normal", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0.012, textTransform: "none" },
-  heroAccent: { fontId: "instrument-serif", fontWeight: 400, fontStyle: "italic", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0.012, textTransform: "none" },
+  heroAccent: { fontId: "dancing-script", fontWeight: 400, fontStyle: "normal", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0, textTransform: "none" },
   heroBody: { fontId: "manrope", fontWeight: 400, fontStyle: "normal", fontSizePx: 18, lineHeight: 1.6, letterSpacingEm: 0, textTransform: "none" },
   heroAction: { fontId: "manrope", fontWeight: 700, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },
   navigation: { fontId: "manrope", fontWeight: 600, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },

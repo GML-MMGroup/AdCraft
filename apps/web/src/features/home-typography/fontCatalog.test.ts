@@ -12,11 +12,25 @@ describe("home typography font catalog", () => {
     expect(DEFAULT_REGION_SETTINGS.heroMain)
       .not.toBe(DEFAULT_REGION_SETTINGS.heroAccent);
     expect(resetRegionSettings("heroAccent")).toEqual(DEFAULT_REGION_SETTINGS.heroAccent);
+    expect(DEFAULT_REGION_SETTINGS.heroAccent).toMatchObject({
+      fontId: "dancing-script",
+      fontStyle: "normal",
+    });
   });
 
   it("offers local, system, and web font sources", () => {
     expect(new Set(FONT_CATALOG.map((font) => font.source)))
       .toEqual(new Set(["local", "system", "web"]));
+  });
+
+  it("offers Dancing Script as a locally served Hero accent font", () => {
+    expect(FONT_CATALOG).toContainEqual(expect.objectContaining({
+      id: "dancing-script",
+      family: "Dancing Script",
+      source: "local",
+      weights: [400, 500, 600, 700],
+      supportsItalic: false,
+    }));
   });
 
   it("includes the extended web font set for sans, serif, display, and mono exploration", () => {
