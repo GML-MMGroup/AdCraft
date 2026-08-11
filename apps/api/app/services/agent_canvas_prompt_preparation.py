@@ -265,6 +265,10 @@ def _compile_deterministic(
             instrumentation="Instrumental commercial arrangement.",
             mood=decisions,
         ).model_dump(mode="json")
+    if node.creative_role in {"general_image", "general_video", "general_audio"}:
+        media_kind = node.creative_role.removeprefix("general_")
+        prompt = f"Create one focused {media_kind} asset. {base}"
+        return prompt, dict(node.structured_content)
     if node.creative_role == "world_setting":
         content = f"{summary}\n\nWorld rules and visual continuity: {decisions}"
         rules = tuple(selected.key_decisions if selected else ())

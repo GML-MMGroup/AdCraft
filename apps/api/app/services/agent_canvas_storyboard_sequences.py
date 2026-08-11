@@ -311,6 +311,29 @@ class StoryboardSequenceAuthoringService:
         if document.kind != "storyboard_production_plan":
             raise _storyboard_error("The requested document is not a Storyboard plan.")
         content = cast(StoryboardProductionPlanContentV2, document.content)
+        return self.build_segment_context_from_content(
+            workflow_id,
+            document.document_id,
+            document.revision,
+            document.content_digest,
+            content,
+            sequence_id,
+            style_excerpt=style_excerpt,
+        )
+
+    def build_segment_context_from_content(
+        self,
+        workflow_id: str,
+        plan_document_id: str,
+        plan_revision: int,
+        plan_content_digest: str,
+        content: StoryboardProductionPlanContentV2,
+        sequence_id: str,
+        *,
+        style_excerpt: str | None = None,
+    ) -> StoryboardSegmentAuthoringContextV2:
+        """Build one segment context from validated, not-yet-persisted plan content."""
+
         sequence = next(
             (item for item in content.segments if item.sequence_id == sequence_id),
             None,
@@ -344,9 +367,9 @@ class StoryboardSequenceAuthoringService:
             )
         return StoryboardSegmentAuthoringContextV2(
             workflow_id=workflow_id,
-            plan_document_id=document.document_id,
-            plan_revision=document.revision,
-            plan_content_digest=document.content_digest,
+            plan_document_id=plan_document_id,
+            plan_revision=plan_revision,
+            plan_content_digest=plan_content_digest,
             sequence=sequence,
             prior_end_state=prior.end_state if prior is not None else None,
             anchors=anchors,
