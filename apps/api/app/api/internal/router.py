@@ -146,6 +146,11 @@ def _frozen_operation_policy(
         or run_policy.transport_retry_limit != operation_policy.transport_retry_limit
         or run_policy.structured_repair_limit != operation_policy.structured_repair_limit
         or run_policy.timeout_seconds != operation_policy.hard_deadline_seconds
+        or run_policy.primary_timeout_seconds != operation_policy.primary_timeout_seconds
+        or run_policy.recovery_timeout_seconds != operation_policy.recovery_timeout_seconds
+        or run_policy.persistence_reserve_seconds != operation_policy.persistence_reserve_seconds
+        or run_policy.max_model_submissions != operation_policy.max_model_submissions
+        or run_policy.recovery_mode != operation_policy.recovery_mode
         or run_policy.max_output_tokens != operation_policy.max_output_tokens
         or run.deadline_at is None
     ):

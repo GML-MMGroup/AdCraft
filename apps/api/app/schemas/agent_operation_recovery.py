@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 
@@ -47,14 +47,45 @@ class AgentOperationPolicyV2(_RecoveryModel):
     contract_id: str = Field(min_length=1, max_length=160)
     policy_class: AgentOperationPolicyClassV2
     hard_deadline_seconds: int = Field(ge=1, le=900)
+    primary_timeout_seconds: int = Field(ge=1, le=900)
+    recovery_timeout_seconds: int = Field(ge=1, le=900)
+    persistence_reserve_seconds: int = Field(ge=1, le=900)
     max_output_tokens: int = Field(ge=1, le=65_536)
+    reasoning_mode: Literal["low", "deep"]
+    enable_thinking: bool
+    thinking_budget_tokens: int | None = Field(default=None, ge=1, le=65_536)
     transport_retry_limit: Literal[1] = 1
     structured_repair_limit: Literal[1] = 1
+    max_model_submissions: Literal[2] = 2
+    recovery_mode: Literal["transport_retry_or_structured_repair"] = (
+        "transport_retry_or_structured_repair"
+    )
     fallback_class: Literal[
         "none",
         "selected_world_setting",
         "selected_media_draft",
     ] = "none"
+
+    @model_validator(mode="after")
+    def validate_reasoning_request(self) -> "AgentOperationPolicyV2":
+        if (
+            self.primary_timeout_seconds
+            + self.recovery_timeout_seconds
+            + self.persistence_reserve_seconds
+            != self.hard_deadline_seconds
+        ):
+            raise ValueError("Operation timeout partitions must equal the hard deadline.")
+        if self.reasoning_mode == "low":
+            if self.enable_thinking or self.thinking_budget_tokens is not None:
+                raise ValueError("Low reasoning cannot include a thinking budget.")
+        elif not self.enable_thinking or self.thinking_budget_tokens is None:
+            raise ValueError("Deep reasoning requires a bounded thinking budget.")
+        if (
+            self.thinking_budget_tokens is not None
+            and self.thinking_budget_tokens > self.max_output_tokens
+        ):
+            raise ValueError("Thinking budget exceeds the operation output bound.")
+        return self
 
 
 class AgentTransportClassificationV2(_RecoveryModel):
