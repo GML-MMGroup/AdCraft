@@ -10,13 +10,16 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 
 
-RequirementSourceKindV1: TypeAlias = Literal["user_message", "accepted_proposal", "manual_edit"]
+RequirementSourceKindV1: TypeAlias = Literal[
+    "user_message", "accepted_proposal", "manual_edit", "decision_bundle_answer"
+]
 RequirementRevisionSourceKindV1: TypeAlias = Literal[
     "initialization",
     "user_turn",
     "proposal_selection",
     "manual_edit",
     "node_deletion",
+    "decision_bundle_answer",
 ]
 RequirementScopeKindV1: TypeAlias = Literal["global", "capability", "node"]
 RequirementStrengthV1: TypeAlias = Literal["hard", "preference"]
@@ -59,6 +62,9 @@ class _StoredControlBase(_FrozenModel):
     source_kind: RequirementSourceKindV1
     source_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_question_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_option_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_node_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_text: str = Field(min_length=1, max_length=2_048)
     created_revision_no: int = Field(ge=1)
@@ -308,6 +314,9 @@ class RequirementDirectiveV1(_FrozenModel):
     source_kind: RequirementSourceKindV1
     source_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_question_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_option_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_node_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_text: str = Field(min_length=1, max_length=2_048)
     normalized_meaning: str = Field(min_length=1, max_length=2_048)
@@ -356,6 +365,9 @@ class RequirementElementPresenceV1(_FrozenModel):
     presence: Literal["include", "exclude", "unspecified"]
     source_kind: RequirementSourceKindV1
     source_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_question_id: str | None = Field(default=None, min_length=1, max_length=160)
+    source_option_id: str | None = Field(default=None, min_length=1, max_length=160)
     source_text: str = Field(min_length=1, max_length=2_048)
     created_revision_no: int = Field(ge=1)
 
@@ -434,6 +446,7 @@ class RequirementLedgerRevisionV1(_FrozenModel):
     source_kind: RequirementRevisionSourceKindV1
     source_turn_id: str | None = Field(default=None, max_length=160)
     source_proposal_id: str | None = Field(default=None, max_length=160)
+    source_bundle_id: str | None = Field(default=None, max_length=160)
     source_node_id: str | None = Field(default=None, max_length=160)
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     ledger: RequirementLedgerV1
