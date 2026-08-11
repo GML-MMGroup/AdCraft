@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
 from hashlib import sha256
 
 from pydantic import BaseModel
@@ -11,35 +10,34 @@ from pydantic import BaseModel
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
-from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
-from app.persistence.errors import V2PersistenceError
-from app.schemas.agent_canvas import CanvasNodeV2, CanvasPositionV2, ProjectAssetSummaryV2
-from app.schemas.agent_canvas_ad_media import StoryboardGridContentV2, StoryboardPanelV2
-from app.schemas.agent_canvas_creative_session import (
-    DraftReferenceIntentV2,
-    SpecialistDraftV2,
+from app.persistence.agent_canvas_materialization_repository import (
+    AgentCanvasMaterializationRepository,
 )
-from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
-from app.schemas.agent_canvas_conversation import ContinuationCommitV2
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
+from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import ProjectAssetSummaryV2
+from app.schemas.agent_canvas_ad_media import (
+    StoryboardGridContentV2,
+    StoryboardPanelV2,
+    VisualStyleContractV2,
+)
+from app.schemas.agent_canvas_production_journey import JourneyStageV1
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
     MaterializationNormalizationV1,
     ProposalApplicationEnvelopeV1,
-    QuickMediaMaterializationResultV1,
     StoryboardMaterializationResultV1,
-    WorldSettingMaterializationResultV1,
 )
-from app.schemas.agent_canvas_world_setting import (
-    WorldSettingAuthoringProvenanceV2,
-    WorldSettingDocumentV2,
+from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationAuthoringSnapshotV1,
+    MaterializationDocumentWriteV1,
 )
-from app.services.agent_canvas_capability_policy import CapabilityPolicyService
-from app.services.agent_canvas_production_journey_orchestration import (
-    GuidedProductionJourneyService,
+from app.schemas.agent_working_documents import (
+    AgentWorkingDocumentV2,
+    StoryboardNodeRecordV2,
 )
-from app.services.agent_canvas_character_reference_pairs import CharacterReferencePairFactory
 from app.services.agent_canvas_conversation import (
-    GuidanceProposalActionService,
     VideoAgentGateway,
 )
 from app.services.agent_canvas_materialization_runtime import (
@@ -49,16 +47,20 @@ from app.services.agent_canvas_materialization_runtime import (
 from app.services.agent_canvas_materialization_normalizer import (
     CapabilityMaterializationNormalizer,
 )
-from app.services.agent_canvas_world_setting import WorldSettingPublicationCandidateV2
+from app.services.agent_canvas_materialization_commit import (
+    AgentCanvasMaterializationCommitService,
+)
+from app.services.agent_canvas_materialization_plan import (
+    CapabilityMaterializationPlanCompiler,
+)
+from app.services.agent_canvas_production_journey_reducer import (
+    GuidedProductionJourneyReducer,
+)
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
 )
+from app.services.agent_canvas_stage_authoring import FoundationDraftPublicationService
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
-from app.services.agent_canvas_stage_authoring import (
-    FoundationDraftPublicationService,
-    PersistedStageDraft,
-    StageDraftPublicationService,
-)
 from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
 )
@@ -72,19 +74,19 @@ class CapabilityMaterializationPublicationService:
         *,
         workflows: AgentCanvasWorkflowRepository,
         conversations: AgentCanvasConversationRepository,
-        materializer: GuidanceProposalActionService,
+        commit_service: AgentCanvasMaterializationCommitService | None = None,
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
-        clock: Callable[[], datetime] | None = None,
         storyboard_authoring: StoryboardSequenceAuthoringService | None = None,
         storyboard_gateway: VideoAgentGateway | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
-        self._materializer = materializer
+        self._commit_service = commit_service or AgentCanvasMaterializationCommitService(
+            AgentCanvasMaterializationRepository(workflows.database, conversations.events),
+            GuidedProductionJourneyReducer(),
+        )
+        self._plan_compiler = CapabilityMaterializationPlanCompiler()
         self._asset_resolver = asset_resolver
-        self._policy = CapabilityPolicyService()
-        self._journey = GuidedProductionJourneyService(conversations)
-        self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._storyboard_authoring = storyboard_authoring
         self._storyboard_gateway = storyboard_gateway
 
@@ -94,326 +96,81 @@ class CapabilityMaterializationPublicationService:
         result: BaseModel,
         lease_guard: Callable[[], None],
     ) -> str:
-        if isinstance(result, CapabilityMaterializationContextV1):
-            return self._publish_progressive_stage(envelope, result, lease_guard)
-        existing = self._conversations.get_publication_receipt_for_action(envelope.action_turn_id)
-        if existing is not None and existing.created_node_ids:
-            self._record_journey_evidence(envelope)
-            return existing.created_node_ids[0]
+        completed = self._commit_service.get_completed_outcome(
+            envelope.materialization_id,
+            envelope.action_turn_id,
+        )
+        if completed is not None and completed.node_ids:
+            return completed.node_ids[0]
+
         lease_guard()
-        if envelope.target_node_id is not None:
-            try:
-                target = self._workflows.get_node(
-                    envelope.workflow_id,
-                    envelope.target_node_id,
-                )
-            except V2PersistenceError as error:
-                raise V2PersistenceError(
-                    "proposal_target_revision_stale",
-                    "The targeted Node is no longer available.",
-                    stage="capability_materialization_publication",
-                ) from error
-            if target.revision != envelope.target_node_revision:
-                raise V2PersistenceError(
-                    "proposal_target_revision_stale",
-                    "The targeted Node changed before Materialization publication.",
-                    stage="capability_materialization_publication",
-                )
+        self._validate_target(envelope)
         validate_materialization_reference_snapshots(
             envelope,
             workflows=self._workflows,
             asset_resolver=self._asset_resolver,
         )
-        materialization_context = materialization_context_from_state(
-            envelope,
-            conversations=self._conversations,
-            workflows=self._workflows,
-            asset_resolver=self._asset_resolver,
-        )
-        normalization = (
+        materialization_context = (
             result
-            if isinstance(result, MaterializationNormalizationV1)
-            else CapabilityMaterializationNormalizer().normalize(
+            if isinstance(result, CapabilityMaterializationContextV1)
+            else materialization_context_from_state(
+                envelope,
+                conversations=self._conversations,
+                workflows=self._workflows,
+                asset_resolver=self._asset_resolver,
+            )
+        )
+        if isinstance(result, CapabilityMaterializationContextV1):
+            normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1 = (
+                self._storyboard_normalization(envelope, result)
+                if envelope.capability_id == "storyboard_design"
+                else result
+            )
+        elif isinstance(result, MaterializationNormalizationV1):
+            normalization = result
+        else:
+            normalization = CapabilityMaterializationNormalizer().normalize(
                 capability_id=envelope.capability_id,
                 result=result,
                 context=materialization_context,
             )
-        )
-        normalized_result = normalization.result
-        storyboard_plan_id: str | None = None
-        storyboard_sequence_id: str | None = None
-        if (
-            envelope.capability_id == "storyboard_design"
-            and self._storyboard_authoring is not None
-            and self._storyboard_gateway is not None
-        ):
-            materialization_context = materialization_context.model_copy(
-                update={
-                    "capability_facts": {
-                        **materialization_context.capability_facts,
-                        "storyboard_segment_duration_seconds": 5,
-                    }
-                }
-            )
-            outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
+
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = ()
+        if isinstance(normalization, MaterializationNormalizationV1):
+            normalization, storyboard_documents = self._prepare_storyboard(
+                envelope,
+                normalization,
                 materialization_context,
-                request_identity=f"{envelope.materialization_id}:outline",
+                session.session_id,
             )
-            plan = self._storyboard_authoring.persist_outline(
-                workflow_id=envelope.workflow_id,
-                guidance_session_id=(
-                    self._conversations.get_guidance_session(envelope.workflow_id).session_id
-                ),
-                agent_run_id=envelope.materialization_id,
-                idempotency_key=f"{envelope.materialization_id}:outline",
-                draft=outline,
-            )
-            storyboard_plan_id = plan.document_id
-            storyboard_sequence_id = "sequence-1"
-            segment_context = self._storyboard_authoring.build_segment_context(
-                envelope.workflow_id,
-                plan.document_id,
-                storyboard_sequence_id,
-                style_excerpt=str(materialization_context.style_projection)[:8_192],
-            )
-            segment = self._storyboard_gateway.materialize_storyboard_segment(
-                segment_context,
-                request_identity=f"{envelope.materialization_id}:{storyboard_sequence_id}",
-            )
-            plan = self._storyboard_authoring.persist_segment(
-                workflow_id=envelope.workflow_id,
-                plan_document_id=plan.document_id,
-                sequence_id=storyboard_sequence_id,
-                agent_run_id=envelope.materialization_id,
-                idempotency_key=f"{envelope.materialization_id}:{storyboard_sequence_id}",
-                draft=segment,
-            )
-            original = StoryboardMaterializationResultV1.model_validate(normalized_result)
-            sequence = plan.content.segments[0]
-            normalized_result = original.model_copy(
-                update={
-                    "title": f"{original.title} 1",
-                    "summary_prompt": sequence.narrative_goal,
-                    "generation_prompt": segment.generation_prompt,
-                    "structured_content": StoryboardGridContentV2(
-                        sequence_summary=sequence.narrative_goal,
-                        narrative_goal=sequence.narrative_goal,
-                        style=original.structured_content.style,
-                        panels=tuple(
-                            StoryboardPanelV2(
-                                panel_index=row.panel_index,
-                                beat=row.content_beat,
-                                composition=row.camera_description,
-                                camera=row.camera_description,
-                                subject_action=row.content_beat,
-                                continuity_from_previous=(
-                                    sequence.start_state
-                                    if row.panel_index == 1
-                                    else "Continue the prior panel action."
-                                ),
-                            )
-                            for row in segment.rows
-                        ),
-                    ),
-                }
-            )
-        definition = self._policy.definition(envelope.capability_id)
-        node_id = "node_" + _digest(envelope.materialization_id)[:32]
-        current_session = self._conversations.get_guidance_session(envelope.workflow_id)
-        continuation = (
-            _next_action_continuation(envelope)
-            if (
-                envelope.target_node_id is not None
-                or envelope.capability_id == "quick_media"
-                or current_session.journey.suspended_action is not None
-            )
-            else None
-        )
-        if envelope.capability_id == "world_setting":
-            typed = WorldSettingMaterializationResultV1.model_validate(normalized_result)
-            now = self._clock()
-            document = WorldSettingDocumentV2(
-                content=typed.structured_content.content,
-                core=typed.structured_content.core,
-                authoring_provenance=WorldSettingAuthoringProvenanceV2(
-                    source_proposal_id=envelope.proposal_id,
-                    source_option_id=envelope.selected_option.option_id,
-                    materialization_run_id=envelope.materialization_id,
-                    style_skill_run_id=envelope.style_skill_run_id,
-                    creative_direction_snapshot_id=(
-                        self._conversations.get_proposal(
-                            envelope.proposal_id
-                        ).creative_direction_snapshot_id
-                    ),
-                ),
-            )
-            node = CanvasNodeV2(
-                node_id=node_id,
-                workflow_id=envelope.workflow_id,
-                node_type="text",
-                creative_role="world_setting",
-                title=typed.title,
-                status="ready",
-                summary_prompt=typed.summary_prompt,
-                structured_content=document.model_dump(mode="json"),
-                position=CanvasPositionV2(x=0, y=0),
-                revision=1,
-                created_at=now,
-                updated_at=now,
-            )
-            published = self._materializer.publish_world_setting(
-                envelope.proposal_id,
-                option_id=envelope.selected_option.option_id,
-                candidate=WorldSettingPublicationCandidateV2(
-                    node=node,
-                    materialization_run_id=envelope.materialization_id,
-                ),
-                expected_session_revision=envelope.expected_session_revision,
-                proposal_action=envelope.action,
-                selection_actor=envelope.selection_actor,
-                source_turn_id=envelope.action_turn_id,
-                continuation=continuation,
-                materialization_id=envelope.materialization_id,
-            )
-            self._record_journey_evidence(envelope)
-            return published.node_id
-        if envelope.capability_id == "character_design":
-            pair = CharacterReferencePairFactory().build(
-                envelope=envelope,
-                normalization=normalization,
-            )
-            lease_guard()
-            try:
-                nodes = self._materializer.materialize_bundle(
-                    envelope.proposal_id,
-                    option_id=envelope.selected_option.option_id,
-                    drafts=(pair.main_draft, pair.turnaround_draft),
-                    internal_bindings=(pair.internal_binding,),
-                    expected_session_revision=envelope.expected_session_revision,
-                    proposal_action=envelope.action,
-                    selection_actor=envelope.selection_actor,
-                    source_turn_id=envelope.action_turn_id,
-                    continuation=continuation,
-                    deterministic_node_ids=(pair.main_node_id, pair.turnaround_node_id),
-                    deterministic_binding_id=lambda index: (
-                        "binding_"
-                        + _digest(f"{envelope.materialization_id}:reference:{index}")[:32]
-                    ),
-                    materialization_id=envelope.materialization_id,
-                )
-            except V2PersistenceError as error:
-                raise V2PersistenceError(
-                    "character_pair_publication_failed",
-                    "Character reference pair publication failed atomically.",
-                    stage="capability_materialization_publication",
-                ) from error
-            except Exception as error:
-                raise V2PersistenceError(
-                    "character_pair_publication_failed",
-                    "Character reference pair publication failed atomically.",
-                    stage="capability_materialization_publication",
-                ) from error
-            self._record_journey_evidence(envelope)
-            return nodes[0].node_id
-        if envelope.capability_id == "quick_media":
-            quick_media = QuickMediaMaterializationResultV1.model_validate(normalized_result)
-            node_type = quick_media.structured_content.media_type
-            creative_role = {
-                "image": "general_image",
-                "video": "general_video",
-                "audio": "general_audio",
-            }[node_type]
-        else:
-            if definition.node_type is None or definition.creative_role is None:
-                raise V2PersistenceError(
-                    "capability_policy_invalid",
-                    "Capability does not define a publishable Node role.",
-                    stage="capability_materialization_publication",
-                )
-            node_type = definition.node_type
-            creative_role = definition.creative_role
-        structured = getattr(normalized_result, "structured_content")
-        references = tuple(
-            DraftReferenceIntentV2.model_validate(
-                reference.model_dump(
-                    include={
-                        "source_kind",
-                        "source_id",
-                        "binding_kind",
-                        "input_role",
-                        "required",
-                        "display_order",
-                        "semantic_reference_role",
-                    }
-                )
-            )
-            for reference in envelope.reference_plan.references
-        )
-        draft = SpecialistDraftV2(
-            title=str(getattr(normalized_result, "title")),
-            node_type=node_type,
-            creative_role=creative_role,
-            summary_prompt=str(getattr(normalized_result, "summary_prompt")),
-            generation_prompt=getattr(normalized_result, "generation_prompt", None),
-            structured_content=structured.model_dump(mode="json"),
-            parameters={
-                **normalization.parameters,
-                "normalization_mode": normalization.mode,
-                "normalization_warnings": list(normalization.warnings),
-            },
-            parameter_provenance=normalization.parameter_provenance,
-            prompt_context_snapshot_id=envelope.context_snapshot_id,
-            reference_intents=references,
+        workflow = self._workflows.get_workflow(envelope.workflow_id)
+        plan = self._plan_compiler.compile(
+            envelope,
+            normalization,
+            snapshot=MaterializationAuthoringSnapshotV1(
+                workflow_revision=workflow.revision,
+                session_revision=session.revision,
+                proposal_revision=envelope.proposal_revision,
+                target_node_revision=envelope.target_node_revision,
+                current_journey=session.journey,
+            ),
+            storyboard_documents=storyboard_documents,
         )
         lease_guard()
-        node = self._materializer.materialize(
-            envelope.proposal_id,
-            option_id=envelope.selected_option.option_id,
-            draft=draft,
-            expected_session_revision=envelope.expected_session_revision,
-            proposal_action=envelope.action,
-            selection_actor=envelope.selection_actor,
-            source_turn_id=envelope.action_turn_id,
-            continuation=continuation,
-            deterministic_node_id=node_id,
-            deterministic_binding_id=lambda index: (
-                "binding_" + _digest(f"{envelope.materialization_id}:{index}")[:32]
-            ),
-            materialization_id=envelope.materialization_id,
-        )
-        if storyboard_plan_id is not None and storyboard_sequence_id is not None:
-            self._storyboard_authoring.attach_grid_node(
-                workflow_id=envelope.workflow_id,
-                plan_document_id=storyboard_plan_id,
-                sequence_id=storyboard_sequence_id,
-                node_id=node.node_id,
-                agent_run_id=envelope.materialization_id,
-                idempotency_key=f"{envelope.materialization_id}:attach:{storyboard_sequence_id}",
-            )
-        self._record_journey_evidence(envelope)
-        return node.node_id
-
-    def _publish_progressive_stage(
-        self,
-        envelope: ProposalApplicationEnvelopeV1,
-        context: CapabilityMaterializationContextV1,
-        lease_guard: Callable[[], None],
-    ) -> str:
-        if not hasattr(envelope, "idempotency_identity"):
+        try:
+            outcome = self._commit_service.commit(plan)
+        except Exception as error:
+            if envelope.capability_id != "character_design":
+                raise
             raise V2PersistenceError(
-                "stage_content_mismatch",
-                "Progressive stage publication requires a concise Proposal envelope.",
+                "character_pair_publication_failed",
+                "Character reference pair publication failed atomically.",
                 stage="capability_materialization_publication",
-            )
-        plan = FoundationDraftPublicationService().build(
+            ) from error
+        self._prepare_prompts(
             envelope,
-            context,
-            now=self._clock(),
-        )
-        prompt_service = NodePromptPreparationService(self._workflows)
-        session = self._conversations.get_guidance_session(envelope.workflow_id)
-        stage_context = stage_authoring_context_from_materialization(
-            context,
+            materialization_context,
             session_id=session.session_id,
             session_revision=session.revision,
             stage=session.journey.stage,
@@ -422,144 +179,268 @@ class CapabilityMaterializationPublicationService:
                 if session.journey.active_action is not None
                 else None
             ),
-            references=envelope.reference_plan.references,
+            node_ids=outcome.node_ids,
+            operation_ids=outcome.prompt_preparation_ids,
+            lease_guard=lease_guard,
+        )
+        if not outcome.node_ids:
+            raise V2PersistenceError(
+                "materialization_outcome_invalid",
+                "Materialization did not create a Draft Node.",
+                stage="capability_materialization_publication",
+            )
+        return outcome.node_ids[0]
+
+    @staticmethod
+    def _storyboard_normalization(
+        envelope: ProposalApplicationEnvelopeV1,
+        context: CapabilityMaterializationContextV1,
+    ) -> MaterializationNormalizationV1:
+        foundation = FoundationDraftPublicationService().build(
+            envelope,
+            context,
+            now=envelope.created_at,
+        )
+        draft = foundation.drafts[0]
+        summary = envelope.selected_option.public_summary
+        style_prompt = next(
+            (
+                value.strip()
+                for key in ("role_guidance", "global_guidance", "summary")
+                if isinstance((value := context.style_projection.get(key)), str) and value.strip()
+            ),
+            "Detailed semi-realistic advertising illustration",
+        )
+        style = VisualStyleContractV2(
+            style_prompt=style_prompt,
+            source=("video_skill" if context.style_projection else "platform_default"),
+        )
+        result = StoryboardMaterializationResultV1(
+            title=draft.title,
+            summary_prompt=summary,
+            generation_prompt=f"Create one text-free 3x3 storyboard grid. {summary}",
+            structured_content=StoryboardGridContentV2(
+                sequence_summary=summary,
+                narrative_goal=" ".join(envelope.selected_option.key_decisions),
+                style=style,
+                panels=tuple(
+                    StoryboardPanelV2(
+                        panel_index=index,
+                        beat=f"Narrative beat {index}: {summary}",
+                        composition=f"Distinct composition {index}",
+                        camera=f"Camera setup {index}",
+                        subject_action=f"Ordered action {index}",
+                        continuity_from_previous=(
+                            "Opening state" if index == 1 else f"Continue from panel {index - 1}"
+                        ),
+                    )
+                    for index in range(1, 10)
+                ),
+            ),
+        )
+        return MaterializationNormalizationV1(
+            result=result,
+            parameters=draft.parameters,
+            parameter_provenance=draft.parameter_provenance,
+            mode="deterministic_fallback",
         )
 
-        def publish_bundle(_selection) -> tuple[PersistedStageDraft, ...]:
-            existing = self._conversations.get_publication_receipt_for_action(
-                envelope.action_turn_id
+    def _validate_target(self, envelope: ProposalApplicationEnvelopeV1) -> None:
+        if envelope.target_node_id is None:
+            return
+        try:
+            target = self._workflows.get_node(
+                envelope.workflow_id,
+                envelope.target_node_id,
             )
-            if existing is None:
-                lease_guard()
-                nodes = self._materializer.materialize_bundle(
-                    envelope.proposal_id,
-                    option_id=envelope.selected_option.option_id,
-                    drafts=plan.drafts,
-                    internal_bindings=plan.internal_bindings,
-                    expected_session_revision=envelope.expected_session_revision,
-                    proposal_action=envelope.action,
-                    selection_actor=envelope.selection_actor,
-                    source_turn_id=envelope.action_turn_id,
-                    deterministic_node_ids=plan.node_ids,
-                    deterministic_binding_id=lambda index: (
-                        "binding_"
-                        + _digest(f"{envelope.materialization_id}:reference:{index}")[:32]
-                    ),
-                    materialization_id=envelope.materialization_id,
-                    queued_prompt_preparation=True,
-                )
-                node_ids = tuple(node.node_id for node in nodes)
-                binding_ids = tuple(binding.binding_id for binding in plan.internal_bindings)
-            else:
-                node_ids = existing.created_node_ids
-                binding_ids = existing.created_binding_ids
-            published: list[PersistedStageDraft] = []
-            for node_id in node_ids:
-                node = self._workflows.get_node(envelope.workflow_id, node_id)
-                published.append(
-                    PersistedStageDraft(
+        except V2PersistenceError as error:
+            raise V2PersistenceError(
+                "proposal_target_revision_stale",
+                "The targeted Node is no longer available.",
+                stage="capability_materialization_publication",
+            ) from error
+        if target.revision != envelope.target_node_revision:
+            raise V2PersistenceError(
+                "proposal_target_revision_stale",
+                "The targeted Node changed before Materialization publication.",
+                stage="capability_materialization_publication",
+            )
+
+    def _prepare_storyboard(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        normalization: MaterializationNormalizationV1,
+        context: CapabilityMaterializationContextV1,
+        session_id: str,
+    ) -> tuple[MaterializationNormalizationV1, tuple[MaterializationDocumentWriteV1, ...]]:
+        if (
+            envelope.capability_id != "storyboard_design"
+            or self._storyboard_authoring is None
+            or self._storyboard_gateway is None
+        ):
+            return normalization, ()
+
+        context = context.model_copy(
+            update={
+                "capability_facts": {
+                    **context.capability_facts,
+                    "storyboard_segment_duration_seconds": 5,
+                }
+            }
+        )
+        outline = self._storyboard_gateway.plan_storyboard_sequence_outline(
+            context,
+            request_identity=f"{envelope.materialization_id}:outline",
+        )
+        content = self._storyboard_authoring.build_outline_content(outline)
+        document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
+        sequence_id = content.segments[0].sequence_id
+        content_digest = AgentWorkingDocumentRepository.digest_content(content)
+        segment_context = self._storyboard_authoring.build_segment_context_from_content(
+            envelope.workflow_id,
+            document_id,
+            1,
+            content_digest,
+            content,
+            sequence_id,
+            style_excerpt=str(context.style_projection)[:8_192],
+        )
+        segment = self._storyboard_gateway.materialize_storyboard_segment(
+            segment_context,
+            request_identity=f"{envelope.materialization_id}:{sequence_id}",
+        )
+        content = self._storyboard_authoring.materialize_segment_content(
+            content,
+            sequence_id,
+            segment,
+        )
+        node_id = "node_" + _digest(envelope.materialization_id)[:32]
+        content = content.model_copy(
+            update={
+                "node_records": (
+                    StoryboardNodeRecordV2(
+                        sequence_id=sequence_id,
+                        node_role="storyboard_grid",
                         node_id=node_id,
-                        binding_ids=binding_ids,
-                        prompt_preparation_id=(
-                            node.prompt_preparation.operation_id
-                            or "prompt_" + _digest(f"{envelope.materialization_id}:{node_id}")[:32]
-                        ),
-                        enqueue_required=node.prompt_preparation.status != "ready",
-                    )
+                    ),
                 )
-            self._record_journey_evidence(envelope)
-            return tuple(published)
+            }
+        )
+        document = AgentWorkingDocumentV2(
+            document_id=document_id,
+            workflow_id=envelope.workflow_id,
+            guidance_session_id=session_id,
+            kind="storyboard_production_plan",
+            title="Storyboard Production Plan",
+            revision=1,
+            content_digest=AgentWorkingDocumentRepository.digest_content(content),
+            content=content,
+            created_by_agent_run_id=envelope.materialization_id,
+            updated_by_agent_run_id=envelope.materialization_id,
+            created_at=envelope.created_at,
+            updated_at=envelope.created_at,
+        )
+        original = StoryboardMaterializationResultV1.model_validate(normalization.result)
+        sequence = content.segments[0]
+        result = original.model_copy(
+            update={
+                "title": f"{original.title} 1",
+                "summary_prompt": sequence.narrative_goal,
+                "generation_prompt": segment.generation_prompt,
+                "structured_content": StoryboardGridContentV2(
+                    sequence_summary=sequence.narrative_goal,
+                    narrative_goal=sequence.narrative_goal,
+                    style=original.structured_content.style,
+                    panels=tuple(
+                        StoryboardPanelV2(
+                            panel_index=row.panel_index,
+                            beat=row.content_beat,
+                            composition=row.camera_description,
+                            camera=row.camera_description,
+                            subject_action=row.content_beat,
+                            continuity_from_previous=(
+                                sequence.start_state
+                                if row.panel_index == 1
+                                else "Continue the prior panel action."
+                            ),
+                        )
+                        for row in segment.rows
+                    ),
+                ),
+            }
+        )
+        return (
+            normalization.model_copy(
+                update={
+                    "result": result,
+                    "parameters": {
+                        **normalization.parameters,
+                        "source_agent_document_id": document_id,
+                        "source_sequence_id": sequence_id,
+                    },
+                }
+            ),
+            (
+                MaterializationDocumentWriteV1(
+                    document_type="agent_working_document",
+                    document_id=document_id,
+                    payload=document.model_dump(mode="json"),
+                    relation_metadata={
+                        "node_id": node_id,
+                        "sequence_id": sequence_id,
+                    },
+                ),
+            ),
+        )
 
-        preparation_errors: list[Exception] = []
-
-        def prepare(item: PersistedStageDraft) -> None:
+    def _prepare_prompts(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        context: CapabilityMaterializationContextV1,
+        *,
+        session_id: str,
+        session_revision: int,
+        stage: JourneyStageV1,
+        foundation_item_id: str | None,
+        node_ids: tuple[str, ...],
+        operation_ids: tuple[str, ...],
+        lease_guard: Callable[[], None],
+    ) -> None:
+        if not operation_ids:
+            return
+        stage_context = stage_authoring_context_from_materialization(
+            context,
+            session_id=session_id,
+            session_revision=session_revision,
+            stage=stage,
+            foundation_item_id=foundation_item_id,
+            references=envelope.reference_plan.references,
+        )
+        prompt_service = NodePromptPreparationService(self._workflows)
+        errors: list[Exception] = []
+        operation_by_node = dict(zip(node_ids, operation_ids, strict=True))
+        for node_id in node_ids:
+            operation_id = operation_by_node.get(node_id)
+            if operation_id is None:
+                continue
             lease_guard()
             try:
                 prompt_service.prepare(
                     envelope.workflow_id,
-                    item.node_id,
-                    operation_id=item.prompt_preparation_id,
+                    node_id,
+                    operation_id=operation_id,
                     context=stage_context,
                 )
             except Exception as error:  # noqa: BLE001 - preserve sibling preparation.
-                preparation_errors.append(error)
-
-        result = StageDraftPublicationService(
-            publish_bundle=publish_bundle,
-            enqueue_prompt_preparation=prepare,
-        ).publish_selection(plan.selection)
-        if preparation_errors:
+                errors.append(error)
+        if errors:
             raise V2PersistenceError(
                 "prompt_preparation_failed",
                 "One or more Draft prompts could not be prepared.",
                 stage="capability_materialization_publication",
                 details={"retryable": True},
-            ) from preparation_errors[0]
-        return result.created_node_ids[0]
-
-    def _record_journey_evidence(self, envelope: ProposalApplicationEnvelopeV1) -> None:
-        session = self._conversations.get_guidance_session(envelope.workflow_id)
-        if session.journey.suspended_action is not None:
-            suspended = session.journey.suspended_action
-            self._journey.apply_evidence(
-                envelope.workflow_id,
-                evidence=JourneyEvidenceV1(
-                    evidence_id=f"targeted-finish:{envelope.materialization_id}",
-                    evidence_kind="targeted_action_finished",
-                    source_id=envelope.materialization_id,
-                    action_id=suspended.action_id,
-                ),
-                expected_session_revision=session.revision,
-                idempotency_key=f"targeted-finish:{envelope.materialization_id}",
-            )
-            return
-        if envelope.capability_id == "quick_media":
-            return
-        action = session.journey.active_action
-        if action is None:
-            return
-        evidence_kind_by_stage = {
-            "world_setting": "world_setting_selected",
-            "narrative_direction": "narrative_direction_selected",
-            "storyboard_plan": "storyboard_plan_accepted",
-            "storyboard_grids": "storyboard_grids_prepared",
-            "video_segments": "video_segments_prepared",
-            "bgm": "bgm_prepared",
-        }
-        foundation_item_id = None
-        if session.journey.stage == "foundation_design":
-            evidence_kind = "foundation_item_selected"
-            foundation_item_id = action.foundation_item_id
-        else:
-            evidence_kind = evidence_kind_by_stage.get(session.journey.stage)
-        if evidence_kind is None:
-            return
-        self._journey.apply_evidence(
-            envelope.workflow_id,
-            evidence=JourneyEvidenceV1(
-                evidence_id=f"materialization:{envelope.materialization_id}",
-                evidence_kind=evidence_kind,
-                source_id=envelope.materialization_id,
-                foundation_item_id=foundation_item_id,
-            ),
-            expected_session_revision=session.revision,
-            idempotency_key=f"materialization:{envelope.materialization_id}",
-        )
+            ) from errors[0]
 
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
-
-
-def _next_action_continuation(
-    envelope: ProposalApplicationEnvelopeV1,
-) -> ContinuationCommitV2:
-    digest = _digest(f"materialization-next-action:{envelope.materialization_id}")
-    return ContinuationCommitV2(
-        continuation_id=f"continuation_{digest[:24]}",
-        continuation_turn_id=f"turn_{digest[24:56]}",
-        source_turn_id=envelope.action_turn_id,
-        source_action_id=envelope.action_turn_id,
-        idempotency_key=f"materialization-next-action:{envelope.materialization_id}",
-        video_skill_run_id=envelope.style_skill_run_id,
-    )

@@ -71,6 +71,7 @@ class _ProposalSelectionSubmissionService:
         if proposal.workflow_id != workflow_id:
             raise _error("proposal_not_found", "Concept proposal was not found.")
         source_turn = self._conversations.get_turn(proposal.turn_id)
+        replayed = self._conversations.get_turn_by_idempotency_key(idempotency_key) is not None
         turn_id = (
             "turn_"
             + _digest(f"materialization-action:{workflow_id}:{proposal_id}:{idempotency_key}")[:32]
@@ -92,7 +93,10 @@ class _ProposalSelectionSubmissionService:
             idempotency_key=idempotency_key,
         )
         return accepted.model_copy(
-            update={"events_cursor": self._materializations.events_cursor(workflow_id)}
+            update={
+                "events_cursor": self._materializations.events_cursor(workflow_id),
+                "replayed": replayed,
+            }
         )
 
     def _reference_plan(self, proposal, action) -> ProposalReferencePlanV1:
