@@ -17,6 +17,7 @@ import type {
 } from "../../../types-v2.ts";
 import { AgentCanvasAudioPlayer } from "./AgentCanvasAudioPlayer.tsx";
 import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
+import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
   agentCanvasNodeSize,
   validAgentCanvasMediaDimensions,
@@ -200,6 +201,8 @@ export function AgentCanvasNodeCard({
   const label = semanticNodeLabel(node);
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
     || Boolean(runtime?.blocked_by_node_ids.length);
+  const promptPreparation = promptPreparationForNode(node);
+  const hasPromptPreparationFailure = promptPreparation.status === "failed";
   const usedDeterministicFallback = node.metadata.materialization_mode === "deterministic_fallback"
     && node.metadata.warning_code === "specialist_materialization_fallback";
 
@@ -231,7 +234,7 @@ export function AgentCanvasNodeCard({
             <span className="agent-canvas-node__working-sheen" aria-hidden="true" />
           </div>
         ) : null}
-        {status === "failed" ? (
+        {status === "failed" && !hasPromptPreparationFailure ? (
           <div className="agent-canvas-node__error" title={runtime?.error?.message ?? node.error?.message ?? "Generation failed"}>
             <span aria-hidden="true">!</span>
           </div>

@@ -1549,6 +1549,22 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
+export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed";
+
+/**
+ * Backend-owned prompt authoring progress for a visible Draft node.
+ * It deliberately does not alter the Canvas node's four visible statuses.
+ */
+export interface NodePromptPreparationV1 {
+  status: NodePromptPreparationStatusV1;
+  operation_id: string | null;
+  attempt_no: number;
+  context_snapshot_id: string | null;
+  prompt_digest: string | null;
+  error: CanvasNodeErrorV2 | null;
+  updated_at: string;
+}
+
 export type CanvasModelSelectionModeV2 = "default" | "explicit";
 export type CanvasRoleContractVersionV2 = "ad-media-role-v1" | "ad-media-role-v2";
 
@@ -1622,6 +1638,7 @@ export interface CanvasNodeV2 {
   position: CanvasPositionV2;
   revision: number;
   error: CanvasNodeErrorV2 | null;
+  prompt_preparation: NodePromptPreparationV1;
   variation_draft: CanvasVariationDraftV2 | null;
   created_at: string;
   updated_at: string;

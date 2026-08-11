@@ -1715,6 +1715,49 @@ describe("Agent Canvas normalizers", () => {
     expect(normalized.model_summary?.display_name).toBe("Deterministic Image");
   });
 
+  it("normalizes the persisted prompt preparation projection without changing the visible Draft status", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      generation_prompt: null,
+      error: null,
+      prompt_preparation: {
+        status: "working",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    });
+
+    expect(normalized.status).toBe("draft");
+    expect(normalized.prompt_preparation).toEqual({
+      status: "working",
+      operation_id: "prompt-operation-1",
+      attempt_no: 1,
+      context_snapshot_id: "snapshot-1",
+      prompt_digest: null,
+      error: null,
+      updated_at: "2026-08-11T10:00:00Z",
+    });
+  });
+
+  it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {
+    expect(() => normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    })).toThrowError(/prompt_preparation.error/i);
+  });
+
   it("accepts parameter provenance returned by current canvas workflow reads", () => {
     const normalized = normalizeCanvasNodeV2({
       ...validWorkflowPayload().nodes[1],

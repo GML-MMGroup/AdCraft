@@ -1,4 +1,5 @@
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
+import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
 import { isLikelyMarkdown, renderMarkdownAwareText } from "./AgentCanvasMarkdown";
 
@@ -12,7 +13,10 @@ function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
       ?? nonEmptyString(node.structured_content.text);
   }
   if (node.node_type === "image" || node.node_type === "video") {
-    return nonEmptyString(node.generation_prompt);
+    const preparation = promptPreparationForNode(node);
+    return preparation.status === "ready"
+      ? nonEmptyString(node.generation_prompt)
+      : nonEmptyString(node.summary_prompt);
   }
   return null;
 }

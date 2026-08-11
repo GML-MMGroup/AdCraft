@@ -180,6 +180,81 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
   });
 
+  it("keeps a guided Draft visible while its generation prompt is being prepared and disables only that node Run action", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "working",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
+    expect(screen.queryByLabelText("Generation prompt")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
+  it("renders the prepared generation prompt and enables the existing Run action once preparation is ready", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: "Create a warm product portrait for the campaign opening.",
+      prompt_preparation: {
+        status: "ready",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: "a".repeat(64),
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value).toBe(
+      "Create a warm product portrait for the campaign opening.",
+    );
+    expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a retryable prompt preparation error without presenting it as media generation failure", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 2,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: true,
+        },
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByRole("alert").textContent).toContain("Node prompt preparation failed.");
+    expect(screen.getByRole("alert").textContent).toContain("Retryable");
+    expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
+  });
+
   it("does not render a workbench for a retired Script node", () => {
     const node = makeNode("script");
     const { container } = render(

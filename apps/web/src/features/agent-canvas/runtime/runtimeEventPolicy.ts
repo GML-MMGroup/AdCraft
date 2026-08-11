@@ -55,6 +55,10 @@ const AUTHORING_EVENTS = new Set([
   "workflow_projection_updated",
   "proposal_action_applied",
   "draft_node_created",
+  "node_prompt_preparation_started",
+  "node_prompt_preparation_completed",
+  "node_prompt_preparation_failed",
+  "storyboard_sequence_materialized",
   "guided_action_applied",
   "command_plan_committed",
   "action_receipt_created",
@@ -74,6 +78,8 @@ const CHAT_EVENTS = new Set([
   "continuation_completed",
   "continuation_failed",
   "proposal_created",
+  "decision_bundle_ready",
+  "proposal_ready",
   "proposal_action_applied",
   "proposal_materialization_queued",
   "proposal_materialization_started",
@@ -100,6 +106,10 @@ const NODE_DETAIL_EVENTS = new Set([
   "node_blocked",
   "node_skipped",
   "node_cancelled",
+  "node_prompt_preparation_started",
+  "node_prompt_preparation_completed",
+  "node_prompt_preparation_failed",
+  "storyboard_sequence_materialized",
 ]);
 
 const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
@@ -126,6 +136,8 @@ const GUIDED_CHAT_EVENTS = new Set([
 const DOCUMENT_EVENTS = new Set([
   "agent_document_created",
   "agent_document_updated",
+  "agent_document_revision_created",
+  "anchor_registered",
 ]);
 
 export function runtimeEventPolicy(

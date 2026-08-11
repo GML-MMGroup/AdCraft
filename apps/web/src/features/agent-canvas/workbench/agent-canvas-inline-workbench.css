@@ -52,6 +52,29 @@
   padding: 10px 12px 12px;
 }
 
+.agent-node-workbench__prompt-preparation {
+  display: grid;
+  gap: 5px;
+  padding: 6px 1px 3px;
+  color: rgb(228 231 241 / 78%);
+}
+
+.agent-node-workbench__prompt-preparation > span {
+  color: rgb(224 215 255 / 88%);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.agent-node-workbench__prompt-preparation > p,
+.agent-node-workbench__prompt-preparation > small {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-node-workbench__prompt-preparation > p { color: rgb(244 245 250 / 92%); }
+.agent-node-workbench__prompt-preparation > small { color: #ffb5b9; }
+
 .agent-node-workbench__composer,
 .agent-node-workbench__options label {
   display: grid;

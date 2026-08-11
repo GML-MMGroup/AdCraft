@@ -189,6 +189,54 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByLabelText(`${nodeType} node type`)).toBeNull();
   });
 
+  it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "queued",
+        operation_id: "prompt-operation-1",
+        attempt_no: 0,
+        context_snapshot_id: null,
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.queryByText("Preparing")).toBeNull();
+  });
+
+  it("keeps a prompt preparation failure distinct from a media generation failure", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 2,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: true,
+        },
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.queryByTitle("Node prompt preparation failed.")).toBeNull();
+  });
+
   it("uses the glass player title instead of audio artwork or a status pill", () => {
     const node = makeNode("audio");
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("audio")} />);

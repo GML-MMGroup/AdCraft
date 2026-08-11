@@ -215,4 +215,40 @@ describe("runtimeEventPolicy", () => {
       refreshRuntime: false,
     });
   });
+
+  it("refreshes canonical progressive authoring projections from their additive backend events", () => {
+    for (const eventType of [
+      "decision_bundle_ready",
+      "proposal_ready",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: false,
+        refreshRuntime: false,
+      });
+    }
+
+    for (const eventType of [
+      "node_prompt_preparation_started",
+      "node_prompt_preparation_completed",
+      "node_prompt_preparation_failed",
+      "storyboard_sequence_materialized",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshWorkflow: true,
+        refreshNodeId: "node-1",
+        refreshRuntime: false,
+      });
+    }
+
+    for (const eventType of ["agent_document_revision_created", "anchor_registered"]) {
+      expect(runtimeEventPolicy(event(eventType, {
+        payload: { document_id: "doc-1" },
+      }))).toMatchObject({
+        refreshDocuments: true,
+        refreshDocumentId: "doc-1",
+        refreshChat: true,
+      });
+    }
+  });
 });

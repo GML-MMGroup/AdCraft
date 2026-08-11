@@ -38,6 +38,7 @@ import type {
   CanvasMutationResponseV2,
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
+  NodePromptPreparationV1,
   CanvasModelSelectionModeV2,
   CanvasModelSummaryV2,
   CanvasNodeStatusV2,
@@ -126,6 +127,12 @@ type JsonRecord = Record<string, unknown>;
 const CANVAS_NODE_TYPES = new Set<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"]);
 const COMMAND_NODE_TYPES = new Set<Exclude<CanvasNodeTypeV2, "editing">>(["text", "script", "image", "video", "audio"]);
 const CANVAS_NODE_STATUSES = new Set<CanvasNodeStatusV2>(["draft", "working", "ready", "failed"]);
+const NODE_PROMPT_PREPARATION_STATUSES = new Set<NodePromptPreparationV1["status"]>([
+  "queued",
+  "working",
+  "ready",
+  "failed",
+]);
 const CANVAS_MODEL_SELECTION_MODES = new Set<CanvasModelSelectionModeV2>(["default", "explicit"]);
 const CANVAS_PARAMETER_ORIGINS = new Set<CanvasParameterProvenanceV2["origin"]>([
   "manual",
@@ -644,6 +651,54 @@ export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): Canv
   };
 }
 
+function normalizeNodePromptPreparationV1(
+  value: unknown,
+  path: string,
+): NodePromptPreparationV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(
+    record,
+    [
+      "status",
+      "operation_id",
+      "attempt_no",
+      "context_snapshot_id",
+      "prompt_digest",
+      "error",
+      "updated_at",
+    ],
+    path,
+  );
+  const status = expectLiteral(record.status, NODE_PROMPT_PREPARATION_STATUSES, `${path}.status`);
+  const operationId = nullableString(record.operation_id, `${path}.operation_id`);
+  const contextSnapshotId = nullableString(record.context_snapshot_id, `${path}.context_snapshot_id`);
+  const promptDigest = nullableString(record.prompt_digest, `${path}.prompt_digest`);
+  if (operationId !== null && !operationId.trim()) fail(`${path}.operation_id`, "expected non-empty string");
+  if (contextSnapshotId !== null && !contextSnapshotId.trim()) {
+    fail(`${path}.context_snapshot_id`, "expected non-empty string");
+  }
+  if (promptDigest !== null && !/^[a-f0-9]{64}$/.test(promptDigest)) {
+    fail(`${path}.prompt_digest`, "expected a 64 character lowercase hexadecimal digest");
+  }
+  const error = record.error === null
+    ? null
+    : normalizeCanvasNodeErrorV2(record.error, `${path}.error`);
+  if (status === "failed" && !error) fail(`${path}.error`, "failed prompt preparation requires a safe error");
+  if (status !== "failed" && error) fail(`${path}.error`, "only failed prompt preparation may expose an error");
+  if (status === "ready" && !promptDigest) {
+    fail(`${path}.prompt_digest`, "ready prompt preparation requires a prompt digest");
+  }
+  return {
+    status,
+    operation_id: operationId,
+    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    context_snapshot_id: contextSnapshotId,
+    prompt_digest: promptDigest,
+    error,
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
 export function normalizeCanvasModelSummaryV2(value: unknown, path = "model_summary"): CanvasModelSummaryV2 {
   const record = expectRecord(value, path);
   forbidUnknownFields(
@@ -748,6 +803,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
       "position",
       "revision",
       "error",
+      "prompt_preparation",
       "variation_draft",
       "created_at",
       "updated_at",
@@ -764,6 +820,7 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
   ) {
     fail(`${path}.output_asset_id`, "ready media node requires an output asset");
   }
+  const updatedAt = expectIsoDateTimeString(record.updated_at, `${path}.updated_at`);
   return {
     node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
@@ -801,11 +858,22 @@ export function normalizeCanvasNodeV2(value: unknown, path = "node"): CanvasNode
     position: normalizeCanvasPositionV2(record.position, `${path}.position`),
     revision: expectPositiveInteger(record.revision, `${path}.revision`),
     error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    prompt_preparation: record.prompt_preparation === undefined
+      ? {
+          status: "ready",
+          operation_id: null,
+          attempt_no: 0,
+          context_snapshot_id: null,
+          prompt_digest: "0".repeat(64),
+          error: null,
+          updated_at: updatedAt,
+        }
+      : normalizeNodePromptPreparationV1(record.prompt_preparation, `${path}.prompt_preparation`),
     variation_draft: record.variation_draft === null || record.variation_draft === undefined
       ? null
       : normalizeCanvasVariationDraftV2(record.variation_draft, `${path}.variation_draft`),
     created_at: expectIsoDateTimeString(record.created_at, `${path}.created_at`),
-    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+    updated_at: updatedAt,
   };
 }
 
