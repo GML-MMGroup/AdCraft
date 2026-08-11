@@ -1124,6 +1124,39 @@ class AgentCanvasActionReceiptRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasMaterializationCommitRow(Base):
+    """Immutable replay authority for one completed materialization."""
+
+    __tablename__ = "agent_canvas_materialization_commits"
+    __table_args__ = (
+        UniqueConstraint(
+            "action_turn_id",
+            name="uq_agent_canvas_materialization_commit_action_turn",
+        ),
+        Index(
+            "ix_agent_canvas_materialization_commit_workflow_created",
+            "workflow_id",
+            "created_at",
+        ),
+        Index(
+            "ix_agent_canvas_materialization_commit_proposal",
+            "proposal_id",
+        ),
+    )
+
+    materialization_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    proposal_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_concept_proposals.proposal_id"), nullable=False
+    )
+    action_turn_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class AgentCanvasVariationDraftRow(Base):
     __tablename__ = "agent_canvas_variation_drafts"
     __table_args__ = (
