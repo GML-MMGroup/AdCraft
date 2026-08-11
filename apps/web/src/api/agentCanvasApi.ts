@@ -40,6 +40,7 @@ export const agentCanvasApi = {
   listAgentCanvasDocuments: v2Api.listAgentCanvasDocuments,
   agentCanvasDocument: v2Api.agentCanvasDocument,
   submitAgentCanvasChatMessage: v2Api.submitAgentCanvasChatMessage,
+  retryAgentCanvasChatTurn: v2Api.retryAgentCanvasChatTurn,
   agentCanvasChatTurn: v2Api.agentCanvasChatTurn,
   agentCanvasProposal: v2Api.agentCanvasProposal,
   actOnAgentCanvasProposal: v2Api.actOnAgentCanvasProposal,

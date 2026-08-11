@@ -216,6 +216,39 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("keeps recovery operations in the live read model without inferring a node failure", () => {
+    for (const eventType of [
+      "agent_operation_queued",
+      "agent_operation_started",
+      "agent_operation_waiting",
+      "agent_operation_retrying",
+      "agent_operation_validating",
+      "agent_operation_publishing",
+      "agent_operation_completed",
+      "agent_operation_failed",
+      "chat_turn_retry_accepted",
+      "journey_stage_recovered",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshRuntime: false,
+        refreshWorkflow: false,
+      });
+    }
+
+    for (const eventType of [
+      "provider_result_download_waiting",
+      "provider_result_download_completed",
+      "provider_result_download_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshRuntime: true,
+        refreshWorkflow: false,
+        refreshAssets: false,
+      });
+    }
+  });
+
   it("refreshes canonical progressive authoring projections from their additive backend events", () => {
     for (const eventType of [
       "decision_bundle_ready",

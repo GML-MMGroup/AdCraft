@@ -6,6 +6,14 @@ describe("Agent Canvas SSE subscriptions", () => {
   it("subscribes only to the final authoring, runtime, and editing event contract", () => {
     expect(AGENT_CANVAS_SSE_EVENT_TYPES).toEqual(expect.arrayContaining([
       "agent_turn_queued",
+      "chat_turn_retry_accepted",
+      "agent_operation_waiting",
+      "agent_operation_retrying",
+      "agent_operation_validating",
+      "agent_operation_publishing",
+      "provider_result_download_waiting",
+      "provider_result_download_completed",
+      "provider_result_download_failed",
       "expert_activity_started",
       "expert_activity_completed",
       "expert_activity_failed",

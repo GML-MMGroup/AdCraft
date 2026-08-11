@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   agentCanvasProposal: vi.fn(),
   agentCanvasDecisionBundle: vi.fn(),
   submitAgentCanvasChatMessage: vi.fn(),
+  retryAgentCanvasChatTurn: vi.fn(),
   actOnAgentCanvasProposal: vi.fn(),
   actOnAgentCanvasDecisionBundle: vi.fn(),
   actOnAgentCanvasCommandPlan: vi.fn(),
@@ -817,14 +818,16 @@ describe("useAgentCanvasChat", () => {
     );
   });
 
-  it("starts a new idempotent user attempt without exposing the internal operation name", async () => {
-    api.submitAgentCanvasChatMessage.mockResolvedValue({
+  it("retries an accepted failed turn without creating a duplicate user message", async () => {
+    api.retryAgentCanvasChatTurn.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
-      message_id: "message-retry-1",
       turn_id: "turn-retry-1",
       status: "queued",
       events_cursor: 8,
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      replayed: false,
     });
     const { result } = renderHook(() => useAgentCanvasChat({
       workflow: workflow(),
@@ -855,13 +858,140 @@ describe("useAgentCanvasChat", () => {
       });
     });
 
-    expect(api.submitAgentCanvasChatMessage).toHaveBeenCalledWith(
+    expect(api.retryAgentCanvasChatTurn).toHaveBeenCalledWith(
       "workflow-1",
-      expect.objectContaining({
-        text: "Retry the failed Scene Designer request.",
-      }),
-      expect.stringContaining("expert-retry-activity-failed-1"),
+      "turn-failed-1",
+      {
+        expected_session_revision: 0,
+        expected_workflow_revision: 1,
+      },
+      expect.stringContaining("chat-turn-retry-turn-failed-1"),
     );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the canonical workflow and session after a stale turn retry", async () => {
+    api.retryAgentCanvasChatTurn.mockRejectedValue({
+      code: "chat_turn_retry_stale",
+      message: "The failed turn snapshot is stale.",
+    });
+    const onWorkflowRefresh = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+      onWorkflowRefresh,
+    }));
+
+    await act(async () => {
+      await result.current.actions.retryCapabilityActivity({
+        item_type: "expert_activity",
+        activity_id: "activity-failed-2",
+        turn_id: "turn-failed-2",
+        capability_id: "scene_design",
+        capability_display_name: "Scene Designer",
+        status: "failed",
+        sequence: 5,
+        started_at: "2026-08-07T01:00:00Z",
+        finished_at: "2026-08-07T01:07:00Z",
+        message: "The request timed out.",
+        error_code: "agent_deadline_exceeded",
+        elapsed_ms: 420000,
+        attempt_stage: "transport_retry",
+        retryable: true,
+        validation_paths: [],
+        suggested_actions: ["retry"],
+        completion_mode: null,
+        warning_code: null,
+      });
+    });
+
+    expect(onWorkflowRefresh).toHaveBeenCalledOnce();
+    expect(result.current.state.notice).toContain("latest state");
+  });
+
+  it("restores an in-progress retry relationship from persisted capability turns", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [
+        {
+          item_type: "expert_activity",
+          activity_id: "activity-original",
+          turn_id: "turn-original",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
+          status: "failed",
+          sequence: 1,
+          started_at: "2026-08-11T10:00:00Z",
+          finished_at: "2026-08-11T10:00:03Z",
+          message: "The provider timed out.",
+          error_code: "agent_deadline_exceeded",
+          elapsed_ms: 3000,
+          attempt_stage: "initial",
+          retryable: true,
+          validation_paths: [],
+          suggested_actions: ["retry"],
+          completion_mode: null,
+          warning_code: null,
+        },
+        {
+          item_type: "expert_activity",
+          activity_id: "activity-retry",
+          turn_id: "turn-retry",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
+          status: "working",
+          sequence: 2,
+          started_at: "2026-08-11T10:01:00Z",
+          finished_at: null,
+          message: null,
+          error_code: null,
+          elapsed_ms: null,
+          attempt_stage: "transport_retry",
+          retryable: false,
+          validation_paths: [],
+          suggested_actions: [],
+          completion_mode: null,
+          warning_code: null,
+        },
+      ],
+    }));
+    api.agentCanvasChatTurn.mockImplementation((_workflowId: string, turnId: string) => Promise.resolve({
+      turn_id: turnId,
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: turnId === "turn-retry" ? "running" : "failed",
+      turn_kind: "capability",
+      request: {},
+      error_code: turnId === "turn-retry" ? null : "agent_deadline_exceeded",
+      error_message: turnId === "turn-retry" ? null : "The provider timed out.",
+      creation_mode: null,
+      guidance_session_revision: 8,
+      continuation: null,
+      retry_of_turn_id: turnId === "turn-retry" ? "turn-original" : null,
+      retry_attempt_no: turnId === "turn-retry" ? 2 : 1,
+      retryable: turnId !== "turn-retry",
+      operation_stage: turnId === "turn-retry" ? "validating" : "failed",
+      operation_failure: null,
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:01:00Z",
+    }));
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.retryingSourceTurnIds).toEqual({
+      "turn-original": "turn-retry",
+    });
+    expect(result.current.state.turnsById["turn-retry"]?.operation_stage).toBe("validating");
   });
 
   it("keeps a durable terminal capability state when an older live event is still buffered", async () => {
@@ -1029,7 +1159,7 @@ describe("useAgentCanvasChat", () => {
     );
   });
 
-  it("preserves a submitted message when an asynchronous agent turn fails", async () => {
+  it("offers Turn Retry instead of raw message resubmission after an accepted turn fails", async () => {
     api.submitAgentCanvasChatMessage.mockResolvedValue({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
@@ -1050,6 +1180,22 @@ describe("useAgentCanvasChat", () => {
       creation_mode: null,
       guidance_session_revision: null,
       continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 1,
+      retryable: true,
+      operation_stage: "failed",
+      operation_failure: {
+        code: "agent_runtime_unavailable",
+        message: "The configured agent runtime is unavailable.",
+        operation: "director_message",
+        capability_id: null,
+        attempt_stage: "initial",
+        failure_stage: "provider",
+        elapsed_ms: 1000,
+        retryable: true,
+        validation_paths: [],
+        occurred_at: "2026-08-04T10:00:01Z",
+      },
       created_at: "2026-08-04T10:00:00Z",
       updated_at: "2026-08-04T10:00:01Z",
     });
@@ -1071,9 +1217,7 @@ describe("useAgentCanvasChat", () => {
     expect(result.current.state.error).toBe(
       "agent_runtime_unavailable: The configured agent runtime is unavailable.",
     );
-    expect(result.current.state.failedDraft).toMatchObject({
-      text: "Create a calm product film.",
-      idempotencyKey: undefined,
-    });
+    expect(result.current.state.failedDraft).toBeNull();
+    expect(result.current.state.retryableFailedTurn?.turn_id).toBe("turn-1");
   });
 });

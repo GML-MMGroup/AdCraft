@@ -2632,6 +2632,9 @@ export interface ChatTurnAcceptedV2 {
   turn_id: string;
   status: "queued";
   events_cursor: number;
+  retry_of_turn_id: string | null;
+  retry_attempt_no: number;
+  replayed: boolean;
 }
 
 export interface EditingOutputSettingsV2 {
@@ -3196,8 +3199,39 @@ export interface AgentCanvasChatTurnV2 {
   creation_mode: CreationModeDecisionV2 | null;
   guidance_session_revision: number | null;
   continuation: AgentCanvasContinuationV2 | null;
+  retry_of_turn_id: string | null;
+  retry_attempt_no: number;
+  retryable: boolean;
+  operation_stage: string | null;
+  operation_failure: AgentOperationFailureV2 | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AgentOperationFailureV2 {
+  code: string;
+  message: string;
+  operation: string;
+  capability_id: AgentCapabilityIdV2 | null;
+  attempt_stage: "initial" | "transport_retry" | "structured_repair" | "fallback";
+  failure_stage:
+    | "routing"
+    | "proposal"
+    | "materialization"
+    | "safety"
+    | "model_capability"
+    | "provider"
+    | "asset_publication"
+    | "revision";
+  elapsed_ms: number;
+  retryable: boolean;
+  validation_paths: string[];
+  occurred_at: string;
+}
+
+export interface AgentCanvasChatTurnRetryRequestV2 {
+  expected_session_revision: number;
+  expected_workflow_revision: number;
 }
 
 export type AgentCanvasProposalActionRequestV2 =

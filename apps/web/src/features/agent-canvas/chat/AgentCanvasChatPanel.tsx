@@ -13,6 +13,7 @@ import {
 import type {
   AgentCanvasWorkflowV2,
   AgentCanvasContinuationV2,
+  AgentCanvasChatTurnV2,
   AgentActionReceiptV2,
   CanvasRuntimeEventV2,
   ChatActionReceiptCardV2,
@@ -238,6 +239,8 @@ export function AgentCanvasChatPanel({
                   <CapabilityActivityRow
                     key={`activity-${item.activity_id}`}
                     activity={item}
+                    turn={chat.state.turnsById[item.turn_id] ?? null}
+                    retrying={Boolean(chat.state.retryingSourceTurnIds[item.turn_id])}
                     onRetry={() => void chat.actions.retryCapabilityActivity(item)}
                     onReviseRequest={() => {
                       setDraft(`Revise the ${item.capability_display_name} request: `);
@@ -345,6 +348,16 @@ export function AgentCanvasChatPanel({
           {chat.state.failedDraft ? (
             <button type="button" onClick={() => void chat.actions.submit(chat.state.failedDraft!)}>
               Retry
+            </button>
+          ) : chat.state.retryableFailedTurn ? (
+            <button
+              type="button"
+              onClick={() => void chat.actions.retryTurn(chat.state.retryableFailedTurn!)}
+              disabled={Boolean(chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id])}
+            >
+              {chat.state.retryingSourceTurnIds[chat.state.retryableFailedTurn.turn_id]
+                ? "Retrying"
+                : "Retry"}
             </button>
           ) : null}
         </div>
@@ -484,15 +497,25 @@ export function AgentWorkingRow() {
 
 export function CapabilityActivityRow({
   activity,
+  turn,
+  retrying = false,
   onRetry,
   onReviseRequest,
 }: {
   activity: ChatCapabilityActivityV2;
+  turn?: AgentCanvasChatTurnV2 | null;
+  retrying?: boolean;
   onRetry?: () => void;
   onReviseRequest?: () => void;
 }) {
-  const label = activity.status === "working"
-    ? `${activity.capability_display_name} is working`
+  const retryable = turn?.retryable ?? activity.retryable;
+  const operationStage = recoveryStageLabel(turn?.operation_stage);
+  const errorCode = turn?.operation_failure?.code ?? activity.error_code;
+  const errorMessage = turn?.operation_failure?.message ?? activity.message;
+  const label = retrying
+    ? `${activity.capability_display_name} recovery is working`
+    : activity.status === "working"
+    ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
     : activity.status === "completed"
       ? `${activity.capability_display_name} finished`
       : `${activity.capability_display_name} failed`;
@@ -503,16 +526,17 @@ export function CapabilityActivityRow({
         <span>{label}</span>
         {activity.status === "failed" ? (
           <>
-            {activity.error_code ? <code>{activity.error_code}</code> : null}
-            {activity.message ? <small>{activity.message}</small> : null}
+            {errorCode ? <code>{errorCode}</code> : null}
+            {errorMessage ? <small>{errorMessage}</small> : null}
             <div className="agent-chat__activity-actions">
-              {activity.suggested_actions.includes("retry") && onRetry ? (
+              {retryable && onRetry ? (
                 <button
                   type="button"
                   aria-label={`Retry ${activity.capability_display_name} activity`}
                   onClick={onRetry}
+                  disabled={retrying}
                 >
-                  Retry
+                  {retrying ? "Retrying" : "Retry"}
                 </button>
               ) : null}
               {activity.suggested_actions.includes("revise_request") && onReviseRequest ? (
@@ -536,6 +560,16 @@ export function CapabilityActivityRow({
       </div>
     </div>
   );
+}
+
+function recoveryStageLabel(stage: string | null | undefined): string | null {
+  if (stage === "waiting" || stage === "waiting_provider_response") return "waiting";
+  if (stage === "retrying") return "retrying";
+  if (stage === "validating") return "validating";
+  if (stage === "publishing") return "publishing";
+  if (stage === "queued") return "queued";
+  if (stage === "running") return "working";
+  return null;
 }
 
 function continuationLabel(continuation: AgentCanvasContinuationV2): string {

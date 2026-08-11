@@ -22,6 +22,7 @@ import type {
   AgentCommandBindingKindV2,
   AgentNodeRefV2,
   AgentOperationResultV2,
+  AgentOperationFailureV2,
   AgentPlacementHintV2,
   BindingCapabilityDecisionV2,
   CanvasBindingInputRoleV2,
@@ -648,6 +649,61 @@ export function normalizeCanvasNodeErrorV2(value: unknown, path = "error"): Canv
     code: expectNonEmptyString(record.code, `${path}.code`),
     message: expectNonEmptyString(record.message, `${path}.message`),
     retryable: expectBoolean(record.retryable, `${path}.retryable`),
+  };
+}
+
+function normalizeAgentOperationFailureV2(
+  value: unknown,
+  path: string,
+): AgentOperationFailureV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "code",
+    "message",
+    "operation",
+    "capability_id",
+    "attempt_stage",
+    "failure_stage",
+    "elapsed_ms",
+    "retryable",
+    "validation_paths",
+    "occurred_at",
+  ], path);
+  return {
+    code: expectNonEmptyString(record.code, `${path}.code`),
+    message: expectNonEmptyString(record.message, `${path}.message`),
+    operation: expectNonEmptyString(record.operation, `${path}.operation`),
+    capability_id: record.capability_id === null
+      ? null
+      : expectLiteral(record.capability_id, AGENT_CAPABILITY_IDS, `${path}.capability_id`),
+    attempt_stage: expectLiteral(
+      record.attempt_stage,
+      new Set<AgentOperationFailureV2["attempt_stage"]>([
+        "initial",
+        "transport_retry",
+        "structured_repair",
+        "fallback",
+      ]),
+      `${path}.attempt_stage`,
+    ),
+    failure_stage: expectLiteral(
+      record.failure_stage,
+      new Set<AgentOperationFailureV2["failure_stage"]>([
+        "routing",
+        "proposal",
+        "materialization",
+        "safety",
+        "model_capability",
+        "provider",
+        "asset_publication",
+        "revision",
+      ]),
+      `${path}.failure_stage`,
+    ),
+    elapsed_ms: expectNonNegativeInteger(record.elapsed_ms, `${path}.elapsed_ms`),
+    retryable: expectBoolean(record.retryable, `${path}.retryable`),
+    validation_paths: expectStringArray(record.validation_paths, `${path}.validation_paths`),
+    occurred_at: expectIsoDateTimeString(record.occurred_at, `${path}.occurred_at`),
   };
 }
 
@@ -4209,7 +4265,17 @@ export function normalizeChatTurnAcceptedV2(
   const record = expectRecord(value, path);
   forbidUnknownFields(
     record,
-    ["workflow_id", "conversation_id", "message_id", "turn_id", "status", "events_cursor"],
+    [
+      "workflow_id",
+      "conversation_id",
+      "message_id",
+      "turn_id",
+      "status",
+      "events_cursor",
+      "retry_of_turn_id",
+      "retry_attempt_no",
+      "replayed",
+    ],
     path,
   );
   if (record.status !== "queued") fail(`${path}.status`, "expected queued");
@@ -4222,6 +4288,15 @@ export function normalizeChatTurnAcceptedV2(
     turn_id: expectNonEmptyString(record.turn_id, `${path}.turn_id`),
     status: "queued",
     events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+    retry_of_turn_id: record.retry_of_turn_id === undefined
+      ? null
+      : nullableString(record.retry_of_turn_id, `${path}.retry_of_turn_id`),
+    retry_attempt_no: record.retry_attempt_no === undefined
+      ? 1
+      : expectPositiveInteger(record.retry_attempt_no, `${path}.retry_attempt_no`),
+    replayed: record.replayed === undefined
+      ? false
+      : expectBoolean(record.replayed, `${path}.replayed`),
   };
 }
 
@@ -4244,6 +4319,11 @@ export function normalizeAgentCanvasChatTurnV2(
       "creation_mode",
       "guidance_session_revision",
       "continuation",
+      "retry_of_turn_id",
+      "retry_attempt_no",
+      "retryable",
+      "operation_stage",
+      "operation_failure",
       "created_at",
       "updated_at",
     ],
@@ -4283,6 +4363,21 @@ export function normalizeAgentCanvasChatTurnV2(
     continuation: record.continuation === undefined || record.continuation === null
       ? null
       : normalizeAgentCanvasContinuationV2(record.continuation, `${path}.continuation`),
+    retry_of_turn_id: record.retry_of_turn_id === undefined
+      ? null
+      : nullableString(record.retry_of_turn_id, `${path}.retry_of_turn_id`),
+    retry_attempt_no: record.retry_attempt_no === undefined
+      ? 1
+      : expectPositiveInteger(record.retry_attempt_no, `${path}.retry_attempt_no`),
+    retryable: record.retryable === undefined
+      ? false
+      : expectBoolean(record.retryable, `${path}.retryable`),
+    operation_stage: record.operation_stage === undefined
+      ? null
+      : nullableString(record.operation_stage, `${path}.operation_stage`),
+    operation_failure: record.operation_failure === undefined || record.operation_failure === null
+      ? null
+      : normalizeAgentOperationFailureV2(record.operation_failure, `${path}.operation_failure`),
     created_at: expectNonEmptyString(record.created_at, `${path}.created_at`),
     updated_at: expectNonEmptyString(record.updated_at, `${path}.updated_at`),
   };

@@ -733,6 +733,33 @@ describe("command and receipt cards", () => {
     expect(onReviseRequest).toHaveBeenCalledTimes(1);
   });
 
+  it("disables a failed activity retry while its recovery turn is working", () => {
+    render(<CapabilityActivityRow activity={{
+      item_type: "expert_activity",
+      activity_id: "activity-retrying",
+      turn_id: "turn-failed",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      status: "failed",
+      sequence: 5,
+      started_at: "2026-08-07T01:00:00Z",
+      finished_at: "2026-08-07T01:07:00Z",
+      message: "The capability request timed out.",
+      error_code: "agent_deadline_exceeded",
+      elapsed_ms: 420000,
+      attempt_stage: "transport_retry",
+      retryable: true,
+      validation_paths: [],
+      suggested_actions: ["retry"],
+      completion_mode: null,
+      warning_code: null,
+    }} onRetry={vi.fn()} retrying />);
+
+    expect((screen.getByRole("button", {
+      name: "Retry Scene Designer activity",
+    }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("treats deterministic fallback as completed with a warning", () => {
     render(<CapabilityActivityRow activity={{
       item_type: "expert_activity",

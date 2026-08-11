@@ -1,5 +1,6 @@
 import type {
   AgentCanvasChatMessageRequestV2,
+  AgentCanvasChatTurnRetryRequestV2,
   AgentCanvasChatViewTimelineV2,
   AgentCanvasCommandPlanActionRequestV2,
   AgentCanvasChatTurnV2,
@@ -851,6 +852,23 @@ export const v2Api = {
   ): Promise<ChatTurnAcceptedV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/chat/messages`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+    );
+  },
+
+  retryAgentCanvasChatTurn(
+    workflowId: string,
+    turnId: string,
+    request: AgentCanvasChatTurnRetryRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/turns/${encodeURIComponent(turnId)}/retry`,
       {
         method: "POST",
         headers: idempotencyHeaders(idempotencyKey),

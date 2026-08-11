@@ -371,6 +371,63 @@ describe("Agent Canvas normalizers", () => {
     expect(turn.turn_kind).toBe("capability");
   });
 
+  it("accepts retry lineage and safe operation recovery state for chat turns", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-retry-2",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "running",
+      turn_kind: "capability",
+      request: {},
+      creation_mode: null,
+      guidance_session_revision: 12,
+      continuation: null,
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      retryable: false,
+      operation_stage: "validating",
+      operation_failure: {
+        code: "agent_provider_transport_failed",
+        message: "The provider request could not be completed.",
+        operation: "scene_design",
+        capability_id: "scene_design",
+        attempt_stage: "transport_retry",
+        failure_stage: "provider",
+        elapsed_ms: 5400,
+        retryable: true,
+        validation_paths: ["options[0].title"],
+        occurred_at: "2026-08-11T10:00:01Z",
+      },
+      error_code: null,
+      error_message: null,
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:00:01Z",
+    });
+    const accepted = normalizeChatTurnAcceptedV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: null,
+      turn_id: "turn-retry-2",
+      status: "queued",
+      events_cursor: 42,
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      replayed: false,
+    });
+
+    expect(turn).toMatchObject({
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      operation_stage: "validating",
+      operation_failure: { code: "agent_provider_transport_failed" },
+    });
+    expect(accepted).toMatchObject({
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      replayed: false,
+    });
+  });
+
   it("accepts the canonical World Setting node, proposal, guidance topic, and persisted binding", () => {
     const worldSettingDocument = {
       document_kind: "world_setting",
