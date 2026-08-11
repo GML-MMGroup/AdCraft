@@ -38,18 +38,13 @@
 
 .home-product-hero__title-line {
   display: block;
-  opacity: 0.03;
   filter: blur(20px);
-  transform: scale(0.968);
-  transform-origin: left center;
   white-space: nowrap;
-  will-change: filter, opacity, transform;
+  will-change: filter;
 }
 
 .home-page--static .home-product-hero__title-line {
-  opacity: 1;
   filter: none;
-  transform: none;
   will-change: auto;
 }
 
@@ -67,33 +62,19 @@
 
 @keyframes home-hero-spotlight-focus {
   0% {
-    opacity: 0.03;
     filter: blur(20px);
-    transform: scale(0.968);
   }
 
-  34% {
-    opacity: 0.14;
+  48% {
     filter: blur(14px);
-    transform: scale(0.978);
   }
 
-  74% {
-    opacity: 0.88;
+  76% {
     filter: blur(2px);
-    transform: scale(1.006);
-  }
-
-  88% {
-    opacity: 1;
-    filter: blur(0.5px);
-    transform: scale(1.002);
   }
 
   100% {
-    opacity: 1;
     filter: none;
-    transform: scale(1);
   }
 }
 

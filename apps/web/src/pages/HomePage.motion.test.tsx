@@ -223,9 +223,9 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(0);
   });
 
-  it("uses a non-linear spotlight focus entrance with reduced-motion coverage", () => {
+  it("uses a pure spotlight focus effect without fade or scale entrance motion", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title-line\s*\{[^}]*opacity:\s*0\.03;[^}]*filter:\s*blur\(20px\);[^}]*transform:\s*scale\(0\.968\);/s,
+      /\.home-product-hero__title-line\s*\{[^}]*filter:\s*blur\(20px\);[^}]*will-change:\s*filter;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
@@ -239,9 +239,8 @@ describe("HomePage motion", () => {
     expect(styles).toMatch(
       /@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?blur\(20px\)[\s\S]*?blur\(14px\)[\s\S]*?blur\(2px\)[\s\S]*?filter:\s*none;/,
     );
-    expect(styles).toMatch(
-      /\.home-product-hero__title-line\s*\{[^}]*will-change:\s*filter,\s*opacity,\s*transform;/s,
-    );
+    const focusKeyframes = styles.match(/@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(focusKeyframes).not.toMatch(/\bopacity\b|\btransform\b/);
     expect(styles).not.toMatch(
       /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(description|create-stage|film)\s*\{/,
     );
