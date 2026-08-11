@@ -202,6 +202,22 @@ class CapabilityPolicyService:
         return self._definitions[capability_id]
 
     def evaluate(self, context: CapabilityPolicyContextV1) -> CapabilityPolicyResultV1:
+        if context.journey_capability is not None:
+            unavailable = {
+                *context.open_proposal_capabilities,
+                *context.active_materialization_capabilities,
+            }
+            allowed = (
+                () if context.journey_capability in unavailable else (context.journey_capability,)
+            )
+            return CapabilityPolicyResultV1(
+                allowed_capabilities=allowed,
+                recommended_capabilities=allowed,
+                completion_allowed=False,
+                blocking_facts=(
+                    () if allowed else (f"journey_capability_busy:{context.journey_capability}",)
+                ),
+            )
         if context.targeted_capability is not None:
             hard_unavailable = {
                 *context.completed_capabilities,
@@ -290,10 +306,6 @@ class CapabilityPolicyService:
                 objective=(
                     "Revisit this deferred capability because it remains required "
                     "by the accepted brief."
-                ),
-                message=(
-                    "This deferred topic remains required by the accepted brief, "
-                    "so it is being revisited before completion."
                 ),
             )
             return ValidatedNextActionV1(
