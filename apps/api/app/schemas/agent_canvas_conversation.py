@@ -11,7 +11,6 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
-from app.schemas.agent_canvas_draft_seeds import DraftSeedPersistenceRecordV1
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
@@ -25,6 +24,7 @@ from app.schemas.agent_runtime import (
     AgentOperationResultV2,
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
+from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 
 
 class _ConversationModel(BaseModel):
@@ -45,6 +45,14 @@ class ChatTurnAcceptedV2(_ConversationModel):
     turn_id: str
     status: Literal["queued"] = "queued"
     events_cursor: int = Field(ge=0)
+    retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    retry_attempt_no: int = Field(default=1, ge=1)
+    replayed: bool = False
+
+
+class ChatTurnRetryRequestV1(_ConversationModel):
+    expected_session_revision: int = Field(ge=0)
+    expected_workflow_revision: int = Field(ge=1)
 
 
 class ContinuationDeliveryV2(_ConversationModel):
@@ -107,6 +115,11 @@ class ChatTurnV2(_ConversationModel):
     creation_mode: CreationModeDecisionV2 | None = None
     guidance_session_revision: int | None = Field(default=None, ge=1)
     continuation: ContinuationDeliveryV2 | None = None
+    retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    retry_attempt_no: int = Field(default=1, ge=1)
+    retryable: bool = False
+    operation_stage: str | None = Field(default=None, min_length=1, max_length=120)
+    operation_failure: AgentOperationFailureV2 | None = None
     error_code: str | None = None
     error_message: str | None = None
     created_at: datetime
@@ -127,6 +140,7 @@ class ChatTimelineEntryV2(_ConversationModel):
         "command_plan",
         "action_receipt",
         "agent_document_reference",
+        "decision_bundle",
     ]
     speaker: Literal["user", "adcraft_video_agent"] | None
     content: str
@@ -221,23 +235,7 @@ class _ConceptProposalBaseV2(_ConversationModel):
 
 
 class ConceptProposalCreateV2(_ConceptProposalBaseV2):
-    draft_seeds: tuple[DraftSeedPersistenceRecordV1, ...] = Field(
-        default=(),
-        max_length=4,
-        exclude=True,
-        repr=False,
-    )
-
-    @model_validator(mode="after")
-    def validate_draft_seeds(self) -> "ConceptProposalCreateV2":
-        option_ids = tuple(option.option_id for option in self.options)
-        seed_option_ids = tuple(record.option_id for record in self.draft_seeds)
-        if self.capability_id == "quick_media":
-            if seed_option_ids:
-                raise ValueError("Quick Media proposals do not use private Draft Seeds.")
-        elif seed_option_ids != option_ids:
-            raise ValueError("Every Proposal option requires one ordered private Draft Seed.")
-        return self
+    pass
 
 
 ProposalAvailabilityV2 = Literal["open", "applied", "superseded"]

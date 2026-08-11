@@ -95,17 +95,16 @@ from app.schemas.agent_canvas_capability_identity import (
     CAPABILITY_DISPLAY_NAMES,
     CapabilityIdV1,
 )
-from app.schemas.agent_canvas_draft_seeds import (
-    DraftSeedEnvelopeV1,
-    DraftSeedPersistenceRecordV1,
-)
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
 from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
+from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
+from app.services.agent_canvas_production_journey import initial_production_journey
 
 
 class AgentCanvasConversationRepository:
@@ -203,6 +202,9 @@ class AgentCanvasConversationRepository:
                             active_proposal_id=None,
                             active_style_skill_run_id=active_style_skill_run_id,
                             completion_json=completion.model_dump_json(),
+                            journey_state_json=initial_production_journey(
+                                element_decisions
+                            ).model_dump_json(),
                             revision=1,
                             created_at=now,
                             updated_at=now,
@@ -238,6 +240,90 @@ class AgentCanvasConversationRepository:
         except V2PersistenceError:
             raise
         except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "conversation_persistence_unavailable",
+                "Conversation storage failed.",
+            ) from error
+
+    def replace_guidance_journey(
+        self,
+        session_id: str,
+        *,
+        journey: GuidedProductionJourneyV1,
+        expected_session_revision: int,
+        idempotency_key: str,
+        event_type: str,
+        event_payload: dict[str, object],
+    ) -> GuidedSessionStateV2:
+        if not idempotency_key or len(idempotency_key) > 256:
+            raise _error("journey_evidence_invalid", "Journey idempotency key is invalid.")
+        transition_key = f"journey:{session_id}:{idempotency_key}"
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = _require_guidance_session_row(connection, session_id)
+                    existing_event = connection.execute(
+                        select(WorkflowEventRow.id).where(
+                            WorkflowEventRow.transition_key == transition_key
+                        )
+                    ).scalar_one_or_none()
+                    if existing_event is not None:
+                        result = _guidance_session(connection, row)
+                        connection.commit()
+                        return result
+                    if int(row["revision"]) != expected_session_revision:
+                        raise _error(
+                            "journey_revision_conflict",
+                            "Journey state changed before this transition.",
+                        )
+                    next_revision = expected_session_revision + 1
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == session_id,
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=journey.model_dump_json(),
+                            revision=next_revision,
+                            updated_at=now,
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _error(
+                            "journey_revision_conflict",
+                            "Journey state changed before this transition.",
+                        )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(row["workflow_id"]),
+                            event_type=event_type,
+                            transition_key=transition_key,
+                            created_at=now,
+                            payload={
+                                "session_id": session_id,
+                                "session_revision": next_revision,
+                                "stage": journey.stage,
+                                "stage_revision": journey.stage_revision,
+                                **event_payload,
+                            },
+                        ),
+                    )
+                    result = _guidance_session(
+                        connection,
+                        _require_guidance_session_row(connection, session_id),
+                    )
+                    connection.commit()
+                    return result
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
             raise _error(
                 "conversation_persistence_unavailable",
                 "Conversation storage failed.",
@@ -1217,6 +1303,9 @@ class AgentCanvasConversationRepository:
         request: dict[str, object],
         idempotency_key: str,
         user_message: str | None,
+        retry_of_turn_id: str | None = None,
+        retry_attempt_no: int = 1,
+        retry_snapshot: dict[str, object] | None = None,
     ) -> ChatTurnAcceptedV2:
         now = _now()
         request_json = _dump(request)
@@ -1252,7 +1341,26 @@ class AgentCanvasConversationRepository:
                             message_id=message_id,
                             turn_id=str(existing["turn_id"]),
                             events_cursor=cursor,
+                            retry_of_turn_id=(
+                                str(existing["retry_of_turn_id"])
+                                if existing["retry_of_turn_id"]
+                                else None
+                            ),
+                            retry_attempt_no=int(existing["retry_attempt_no"]),
+                            replayed=True,
                         )
+                    if retry_of_turn_id is not None:
+                        active_retry = connection.execute(
+                            select(AgentCanvasChatTurnRow.turn_id).where(
+                                AgentCanvasChatTurnRow.retry_of_turn_id == retry_of_turn_id,
+                                AgentCanvasChatTurnRow.status.in_(("queued", "running")),
+                            )
+                        ).scalar_one_or_none()
+                        if active_retry is not None:
+                            raise _error(
+                                "chat_turn_retry_in_progress",
+                                "A retry for this chat turn is already in progress.",
+                            )
                     conversation_id = _ensure_conversation(connection, workflow_id, now)
                     turn_id = f"turn_{uuid4().hex}"
                     message_id = None
@@ -1293,6 +1401,16 @@ class AgentCanvasConversationRepository:
                             status="queued",
                             request_json=request_json,
                             idempotency_key=idempotency_key,
+                            retry_of_turn_id=retry_of_turn_id,
+                            retry_attempt_no=retry_attempt_no,
+                            retryable=False,
+                            operation_stage="queued",
+                            operation_failure_json=None,
+                            retry_snapshot_json=_dump(
+                                retry_snapshot
+                                if retry_snapshot is not None
+                                else _turn_retry_snapshot(connection, workflow_id, request)
+                            ),
                             error_code=None,
                             error_message=None,
                             created_at=now,
@@ -1320,6 +1438,40 @@ class AgentCanvasConversationRepository:
                             payload=queued_payload,
                         ),
                     )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            conversation_id=conversation_id,
+                            turn_id=turn_id,
+                            event_type="agent_operation_queued",
+                            transition_key=f"conversation:{turn_id}:agent_operation_queued",
+                            created_at=now,
+                            payload={
+                                **queued_payload,
+                                "operation_stage": "queued",
+                                "retry_of_turn_id": retry_of_turn_id,
+                                "retry_attempt_no": retry_attempt_no,
+                            },
+                        ),
+                    )
+                    if retry_of_turn_id is not None:
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                conversation_id=conversation_id,
+                                turn_id=turn_id,
+                                event_type="chat_turn_retry_accepted",
+                                transition_key=f"conversation:{turn_id}:retry_accepted",
+                                created_at=now,
+                                payload={
+                                    "turn_id": turn_id,
+                                    "retry_of_turn_id": retry_of_turn_id,
+                                    "retry_attempt_no": retry_attempt_no,
+                                },
+                            ),
+                        )
                     connection.commit()
                     return ChatTurnAcceptedV2(
                         workflow_id=workflow_id,
@@ -1327,6 +1479,9 @@ class AgentCanvasConversationRepository:
                         message_id=message_id,
                         turn_id=turn_id,
                         events_cursor=queued.seq,
+                        retry_of_turn_id=retry_of_turn_id,
+                        retry_attempt_no=retry_attempt_no,
+                        replayed=False,
                     )
                 except BaseException:
                     connection.rollback()
@@ -1886,7 +2041,51 @@ class AgentCanvasConversationRepository:
                 raise
         return receipt
 
-    def fail_turn(self, turn_id: str, *, code: str, message: str) -> ChatTurnV2:
+    def create_retry_turn(
+        self,
+        source: ChatTurnV2,
+        *,
+        idempotency_key: str,
+        retry_snapshot: dict[str, object],
+    ) -> ChatTurnAcceptedV2:
+        return self._create_turn(
+            source.workflow_id,
+            turn_kind=source.turn_kind,
+            request=dict(source.request),
+            idempotency_key=idempotency_key,
+            user_message=None,
+            retry_of_turn_id=source.turn_id,
+            retry_attempt_no=source.retry_attempt_no + 1,
+            retry_snapshot=retry_snapshot,
+        )
+
+    def get_retry_snapshot(self, turn_id: str) -> dict[str, object]:
+        try:
+            with self._database.engine.connect() as connection:
+                value = connection.execute(
+                    select(AgentCanvasChatTurnRow.retry_snapshot_json).where(
+                        AgentCanvasChatTurnRow.turn_id == turn_id
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        if value is None:
+            raise _error("chat_turn_not_found", "Chat turn was not found.")
+        loaded = json.loads(str(value))
+        return loaded if isinstance(loaded, dict) else {}
+
+    def fail_turn(
+        self,
+        turn_id: str,
+        *,
+        code: str,
+        message: str,
+        retryable: bool = False,
+        operation_stage: str = "failed",
+        operation_failure: AgentOperationFailureV2 | None = None,
+    ) -> ChatTurnV2:
         now = _now()
         try:
             with self._database.engine.begin() as connection:
@@ -1896,6 +2095,13 @@ class AgentCanvasConversationRepository:
                     .where(AgentCanvasChatTurnRow.turn_id == turn_id)
                     .values(
                         status="failed",
+                        retryable=retryable,
+                        operation_stage=operation_stage,
+                        operation_failure_json=(
+                            operation_failure.model_dump_json()
+                            if operation_failure is not None
+                            else None
+                        ),
                         error_code=code,
                         error_message=message,
                         updated_at=now,
@@ -1923,6 +2129,13 @@ class AgentCanvasConversationRepository:
                                     **metadata,
                                     "status": "failed",
                                     "error_code": code,
+                                    "retryable": retryable,
+                                    "operation_stage": operation_stage,
+                                    "operation_failure": (
+                                        operation_failure.model_dump(mode="json")
+                                        if operation_failure is not None
+                                        else None
+                                    ),
                                 }
                             )
                         )
@@ -1994,6 +2207,23 @@ class AgentCanvasConversationRepository:
                         payload={"turn_id": turn_id, "code": code},
                     ),
                 )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        turn_id=turn_id,
+                        event_type="agent_operation_failed",
+                        transition_key=f"conversation:{turn_id}:agent_operation_failed",
+                        created_at=now,
+                        payload={
+                            "turn_id": turn_id,
+                            "code": code,
+                            "retryable": retryable,
+                            "operation_stage": operation_stage,
+                        },
+                    ),
+                )
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
@@ -2060,7 +2290,6 @@ class AgentCanvasConversationRepository:
     ) -> ConceptProposalV2:
         now = _now()
         proposal_id = f"proposal_{uuid4().hex}"
-        seed_records = _validated_seed_records(proposal)
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
@@ -2199,7 +2428,6 @@ class AgentCanvasConversationRepository:
                         reserved_ids=reserved_option_ids,
                     )
                     reserved_option_ids.add(option_id)
-                    seed_record = seed_records.get(option.option_id)
                     connection.execute(
                         insert(AgentCanvasConceptOptionRow).values(
                             option_id=option_id,
@@ -2208,15 +2436,9 @@ class AgentCanvasConversationRepository:
                             title=option.title,
                             description=option.public_summary,
                             key_decisions_json=_dump(list(option.key_decisions)),
-                            draft_seed_schema=(
-                                seed_record.draft_seed_schema if seed_record is not None else None
-                            ),
-                            draft_seed_json=(
-                                seed_record.draft_seed_json if seed_record is not None else None
-                            ),
-                            draft_seed_digest=(
-                                seed_record.draft_seed_digest if seed_record is not None else None
-                            ),
+                            draft_seed_schema=None,
+                            draft_seed_json=None,
+                            draft_seed_digest=None,
                         )
                     )
                 _append_timeline_entry(
@@ -2264,6 +2486,20 @@ class AgentCanvasConversationRepository:
                             "proposal_id": proposal_id,
                             "capability_id": proposal.capability_id,
                             "capability_display_name": proposal.capability_display_name,
+                            "option_count": len(proposal.options),
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=str(turn["workflow_id"]),
+                        event_type="proposal_ready",
+                        created_at=now,
+                        payload={
+                            "turn_id": turn_id,
+                            "proposal_id": proposal_id,
+                            "capability_id": proposal.capability_id,
                             "option_count": len(proposal.options),
                         },
                     ),
@@ -2322,60 +2558,6 @@ class AgentCanvasConversationRepository:
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         return self.get_proposal(proposal_id)
-
-    def get_draft_seed(self, option_id: str) -> DraftSeedPersistenceRecordV1:
-        try:
-            with self._database.engine.connect() as connection:
-                row = (
-                    connection.execute(
-                        select(AgentCanvasConceptOptionRow).where(
-                            AgentCanvasConceptOptionRow.option_id == option_id
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-        except SQLAlchemyError as error:
-            raise _error(
-                "agent_conversation_unavailable",
-                "Conversation storage failed.",
-            ) from error
-        if row is None:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
-        return _draft_seed_record_from_row(row)
-
-    def get_draft_seed_envelope(self, option_id: str) -> DraftSeedEnvelopeV1:
-        return DraftSeedEnvelopeV1.model_validate_json(
-            self.get_draft_seed(option_id).draft_seed_json
-        )
-
-    def get_draft_seed_metadata(self, option_id: str) -> tuple[str | None, str | None]:
-        try:
-            with self._database.engine.connect() as connection:
-                row = (
-                    connection.execute(
-                        select(
-                            AgentCanvasConceptOptionRow.draft_seed_schema,
-                            AgentCanvasConceptOptionRow.draft_seed_digest,
-                        ).where(AgentCanvasConceptOptionRow.option_id == option_id)
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-        except SQLAlchemyError as error:
-            raise _error(
-                "agent_conversation_unavailable",
-                "Conversation storage failed.",
-            ) from error
-        if row is None:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
-        schema = row["draft_seed_schema"]
-        digest = row["draft_seed_digest"]
-        return (
-            (str(schema), str(digest))
-            if schema is not None and digest is not None
-            else (None, None)
-        )
 
     def get_proposal(self, proposal_id: str) -> ConceptProposalV2:
         try:
@@ -2559,13 +2741,12 @@ class AgentCanvasConversationRepository:
         )
         if not allowed_availability:
             raise _error("proposal_not_available", "Concept proposal is not available.")
-        if option_id not in {option.option_id for option in proposal.options}:
-            raise _error("proposal_option_not_found", "Concept option was not found.")
-        selected_seed = (
-            self.get_draft_seed_envelope(option_id)
-            if proposal.capability_id != "quick_media"
-            else None
+        selected_option = next(
+            (option for option in proposal.options if option.option_id == option_id),
+            None,
         )
+        if selected_option is None:
+            raise _error("proposal_option_not_found", "Concept option was not found.")
         now = _now()
         try:
             with self._database.engine.connect() as connection:
@@ -2711,7 +2892,7 @@ class AgentCanvasConversationRepository:
                             skill_refs=skill_refs,
                             now=now,
                         )
-                    if selected_seed is not None:
+                    if proposal.capability_id != "quick_media":
                         commitments = tuple(
                             RequirementDirectiveV1(
                                 directive_id=f"reqdir_{uuid4().hex}",
@@ -2719,14 +2900,14 @@ class AgentCanvasConversationRepository:
                                 source_turn_id=source_turn_id,
                                 source_proposal_id=proposal_id,
                                 source_node_id=node.node_id,
-                                source_text=commitment.source_fragment,
-                                normalized_meaning=commitment.normalized_meaning,
+                                source_text=decision,
+                                normalized_meaning=decision,
                                 scope_kind="node",
                                 target_node_ids=node_ids,
                                 strength="preference",
                                 created_revision_no=requirement_head.revision_no + 1,
                             )
-                            for commitment in selected_seed.accepted_commitments
+                            for decision in selected_option.key_decisions
                         )
                         requirement_revision = self._requirements.append_in_transaction(
                             connection,
@@ -4120,7 +4301,7 @@ class AgentCanvasConversationRepository:
                 connection.execute(
                     update(AgentCanvasChatTurnRow)
                     .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-                    .values(status=status, updated_at=now)
+                    .values(status=status, operation_stage=status, updated_at=now)
                 )
                 self._events.append_in_transaction(
                     connection,
@@ -4131,6 +4312,19 @@ class AgentCanvasConversationRepository:
                         payload={"turn_id": turn_id},
                     ),
                 )
+                if status == "running":
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(turn["workflow_id"]),
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type="agent_operation_started",
+                            transition_key=f"conversation:{turn_id}:agent_operation_started",
+                            created_at=now,
+                            payload={"turn_id": turn_id, "operation_stage": "running"},
+                        ),
+                    )
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
@@ -4280,7 +4474,13 @@ def _complete_turn_in_transaction(
     connection.execute(
         update(AgentCanvasChatTurnRow)
         .where(AgentCanvasChatTurnRow.turn_id == turn_id)
-        .values(status="completed", updated_at=now)
+        .values(
+            status="completed",
+            retryable=False,
+            operation_stage="completed",
+            operation_failure_json=None,
+            updated_at=now,
+        )
     )
     events.append_in_transaction(
         connection,
@@ -4291,6 +4491,83 @@ def _complete_turn_in_transaction(
             payload={"turn_id": turn_id},
         ),
     )
+    retry_of_turn_id = turn["retry_of_turn_id"]
+    if retry_of_turn_id:
+        events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=workflow_id,
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                event_type="journey_stage_recovered",
+                transition_key=f"conversation:{turn_id}:journey_stage_recovered",
+                created_at=now,
+                payload={
+                    "turn_id": turn_id,
+                    "retry_of_turn_id": str(retry_of_turn_id),
+                    "retry_attempt_no": int(turn["retry_attempt_no"]),
+                },
+            ),
+        )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            event_type="agent_operation_completed",
+            transition_key=f"conversation:{turn_id}:agent_operation_completed",
+            created_at=now,
+            payload={"turn_id": turn_id, "operation_stage": "completed"},
+        ),
+    )
+
+
+def _turn_retry_snapshot(
+    connection: Connection,
+    workflow_id: str,
+    request: Mapping[str, object],
+) -> dict[str, object]:
+    workflow_revision = connection.execute(
+        select(AgentCanvasWorkflowRow.revision).where(
+            AgentCanvasWorkflowRow.workflow_id == workflow_id
+        )
+    ).scalar_one()
+    session_row = (
+        connection.execute(
+            select(AgentCanvasGuidanceSessionRow).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    mentioned_node_ids = tuple(
+        str(item) for item in request.get("mentioned_node_ids", ()) if str(item)
+    )
+    node_rows = (
+        connection.execute(
+            select(AgentCanvasNodeRow.node_id, AgentCanvasNodeRow.revision).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id.in_(mentioned_node_ids),
+            )
+        )
+        .mappings()
+        .all()
+        if mentioned_node_ids
+        else ()
+    )
+    journey = json.loads(str(session_row["journey_state_json"])) if session_row is not None else {}
+    return {
+        "workflow_revision": int(workflow_revision),
+        "session_revision": int(session_row["revision"]) if session_row is not None else 0,
+        "journey_stage": journey.get("stage"),
+        "journey_stage_revision": journey.get("stage_revision"),
+        "node_revisions": {str(row["node_id"]): int(row["revision"]) for row in node_rows},
+        "asset_ids": sorted(
+            str(item) for item in request.get("mentioned_image_asset_ids", ()) if str(item)
+        ),
+    }
 
 
 def _append_timeline_entry(
@@ -4514,6 +4791,15 @@ def _turn(
             else None
         ),
         continuation=continuation,
+        retry_of_turn_id=(str(row["retry_of_turn_id"]) if row["retry_of_turn_id"] else None),
+        retry_attempt_no=int(row["retry_attempt_no"]),
+        retryable=bool(row["retryable"]),
+        operation_stage=(str(row["operation_stage"]) if row["operation_stage"] else None),
+        operation_failure=(
+            AgentOperationFailureV2.model_validate_json(str(row["operation_failure_json"]))
+            if row["operation_failure_json"]
+            else None
+        ),
         error_code=str(row["error_code"]) if row["error_code"] else None,
         error_message=str(row["error_message"]) if row["error_message"] else None,
         created_at=str(row["created_at"]),
@@ -4842,6 +5128,7 @@ def _guidance_session(
             else None
         ),
         completion=GuidanceCompletionProjectionV2.model_validate_json(str(row["completion_json"])),
+        journey=GuidedProductionJourneyV1.model_validate_json(str(row["journey_state_json"])),
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
     )
@@ -4908,6 +5195,7 @@ def _insert_materialized_node(
             position_y=node.position.y,
             revision=node.revision,
             error_json=None,
+            prompt_preparation_json=_dump(node.prompt_preparation.model_dump(mode="json")),
             created_at=node.created_at.isoformat(),
             updated_at=node.updated_at.isoformat(),
         )
@@ -5072,72 +5360,6 @@ def _available_option_id(
         return requested_id
     suffix = hashlib.sha256(f"{proposal_id}:{requested_id}".encode()).hexdigest()[:12]
     return f"{requested_id[:147]}_{suffix}"
-
-
-def _validated_seed_records(
-    proposal: ConceptProposalCreateV2,
-) -> dict[str, DraftSeedPersistenceRecordV1]:
-    if proposal.capability_id == "quick_media":
-        return {}
-    records: dict[str, DraftSeedPersistenceRecordV1] = {}
-    for record in proposal.draft_seeds:
-        try:
-            seed = DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
-        except (TypeError, ValueError) as error:
-            raise _error(
-                "proposal_draft_seed_invalid",
-                "Proposal Draft Seed is invalid.",
-            ) from error
-        digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
-        if (
-            record.draft_seed_schema != "draft_seed_v1"
-            or digest != record.draft_seed_digest
-            or seed.capability_id != proposal.capability_id
-        ):
-            raise _error(
-                "proposal_draft_seed_invalid",
-                "Proposal Draft Seed is invalid.",
-            )
-        records[record.option_id] = record
-    return records
-
-
-def _draft_seed_record_from_row(row: RowMapping) -> DraftSeedPersistenceRecordV1:
-    values = (
-        row["draft_seed_schema"],
-        row["draft_seed_json"],
-        row["draft_seed_digest"],
-    )
-    if all(value is None for value in values):
-        raise _error(
-            "proposal_draft_seed_missing",
-            "Proposal option has no private Draft Seed; regenerate the Proposal.",
-        )
-    if any(value is None for value in values):
-        raise _error(
-            "proposal_draft_seed_invalid",
-            "Proposal Draft Seed is incomplete.",
-        )
-    try:
-        record = DraftSeedPersistenceRecordV1(
-            option_id=str(row["option_id"]),
-            draft_seed_schema=str(row["draft_seed_schema"]),
-            draft_seed_json=str(row["draft_seed_json"]),
-            draft_seed_digest=str(row["draft_seed_digest"]),
-        )
-        DraftSeedEnvelopeV1.model_validate_json(record.draft_seed_json)
-    except (TypeError, ValueError) as error:
-        raise _error(
-            "proposal_draft_seed_invalid",
-            "Proposal Draft Seed is invalid.",
-        ) from error
-    digest = hashlib.sha256(record.draft_seed_json.encode("utf-8")).hexdigest()
-    if digest != record.draft_seed_digest:
-        raise _error(
-            "proposal_draft_seed_invalid",
-            "Proposal Draft Seed digest is invalid.",
-        )
-    return record
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

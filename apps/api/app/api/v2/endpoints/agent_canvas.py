@@ -53,6 +53,9 @@ from app.persistence.agent_canvas_runtime_repository import (
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_decision_bundle_repository import (
+    AgentCanvasDecisionBundleRepository,
+)
 from app.persistence.agent_canvas_capability_proposal_repository import (
     AgentCanvasCapabilityProposalRepository,
 )
@@ -112,12 +115,18 @@ from app.schemas.agent_canvas_conversation import (
     ChatMessageRequestV2,
     ChatTimelineListResponseV2,
     ChatTurnAcceptedV2,
+    ChatTurnRetryRequestV1,
     ChatTurnV2,
     ConceptProposalV2,
     GuidedActionApplyRequestV2,
     ProposalActionRequestV2,
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
+)
+from app.schemas.agent_canvas_decision_bundles import (
+    DecisionBundleActionAcceptedV1,
+    DecisionBundleActionRequestV1,
+    DecisionBundleV1,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_execution_settings import (
@@ -205,6 +214,12 @@ from app.services.agent_canvas_runtime import (
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
+from app.services.agent_canvas_storyboard_sequences import (
+    StoryboardSequenceAuthoringService,
+)
+from app.services.agent_canvas_storyboard_progression import (
+    ProgressiveStoryboardReadyService,
+)
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
@@ -216,6 +231,7 @@ from app.services.agent_canvas_conversation import (
     GuidanceProposalActionService,
     PiVideoAgentGateway,
 )
+from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -271,10 +287,12 @@ class AgentCanvasRuntime:
     assets: AgentCanvasAssetService
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
+    turn_retries: ChatTurnRetryService
     commands: AgentCanvasCommandService
     variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
     conversation_repository: AgentCanvasConversationRepository
+    decision_bundles: AgentCanvasDecisionBundleRepository
     video_skills: VideoSkillRegistry
     style_activation: StyleSkillActivationService
     ad_media_validation: AdMediaDraftValidationService
@@ -343,6 +361,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         event_repository,
     )
     requirement_repository = AgentCanvasRequirementRepository(database)
+    decision_bundles = AgentCanvasDecisionBundleRepository(database, event_repository)
     requirement_service = AgentCanvasRequirementService(
         database,
         requirement_repository,
@@ -373,6 +392,11 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         documents=AgentWorkingDocumentRepository(database, event_repository),
         assets=asset_repository,
         conversations=conversation_repository,
+    )
+    storyboard_authoring = StoryboardSequenceAuthoringService(
+        documents=working_documents,
+        events=event_repository,
+        workflows=workflow_repository,
     )
     continuation_outbox = AgentCanvasContinuationOutboxRepository(
         database,
@@ -506,6 +530,18 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         runtime_repository,
         bindings=binding_service,
     )
+    storyboard_progression = ProgressiveStoryboardReadyService(
+        workflows=workflow_repository,
+        authoring=storyboard_authoring,
+        gateway=video_agent_gateway,
+        binding_capability_validator=lambda target, input_types, reference_count: (
+            provider_capabilities.validate_binding(
+                target,
+                required_input_types=input_types,
+                reference_count=reference_count,
+            )
+        ),
+    )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -540,6 +576,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             document_repository,
             node,
         ),
+        media_ready_publisher=storyboard_progression.on_node_ready,
         media_context_preparer=prepare_media_context,
         input_compiler=AgentCanvasResolvedInputCompiler(
             binding_service,
@@ -673,6 +710,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         on_batch_reconciled=lambda execution_ids: [
             scheduler.resume(execution_id) for execution_id in execution_ids
         ],
+        on_node_ready=storyboard_progression.on_node_ready,
     )
     editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
     editing_exports = EditingExportService(
@@ -843,6 +881,7 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         gateway=video_agent_gateway,
         asset_resolver=asset_service.resolve_asset,
         model_selection=model_selection,
+        decision_bundles=decision_bundles,
     )
     materialization_repository = AgentCanvasMaterializationRepository(
         database,
@@ -858,6 +897,8 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
             asset_resolver=asset_service.resolve_asset,
             connection_policy=connection_policy,
         ),
+        storyboard_authoring=storyboard_authoring,
+        storyboard_gateway=video_agent_gateway,
     )
     materialization_runner = QuickMediaMaterializationRunner(
         gateway=video_agent_gateway,
@@ -870,7 +911,6 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         publisher=materialization_publisher.publish,
     )
     publication_runner = ProposalPublicationRunner(
-        conversations=conversation_repository,
         context_loader=lambda envelope: materialization_context_from_state(
             envelope,
             conversations=conversation_repository,
@@ -937,10 +977,16 @@ def create_agent_canvas_runtime(settings: Settings) -> AgentCanvasRuntime:
         assets=asset_service,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
+        turn_retries=ChatTurnRetryService(
+            workflow_repository,
+            conversation_repository,
+            asset_resolver=asset_service.resolve_asset,
+        ),
         commands=command_service,
         variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
         conversation_repository=conversation_repository,
+        decision_bundles=decision_bundles,
         video_skills=video_skills,
         style_activation=style_activation,
         ad_media_validation=AdMediaDraftValidationService(role_registry),
@@ -1826,12 +1872,62 @@ def submit_chat_message(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    background_tasks.add_task(
-        _process_agent_turn_and_resume,
-        runtime,
-        workflow_id,
-        accepted.turn_id,
-    )
+    if not accepted.replayed:
+        background_tasks.add_task(
+            _process_agent_turn_and_resume,
+            runtime,
+            workflow_id,
+            accepted.turn_id,
+        )
+    return accepted
+
+
+@router.get(
+    "/workflows/{workflow_id}/chat/decision-bundles/{bundle_id}",
+    response_model=DecisionBundleV1,
+)
+def get_decision_bundle(
+    workflow_id: str,
+    bundle_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> DecisionBundleV1:
+    try:
+        return runtime.decision_bundles.get(workflow_id, bundle_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.post(
+    "/workflows/{workflow_id}/chat/decision-bundles/{bundle_id}/answers",
+    response_model=DecisionBundleActionAcceptedV1,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def act_on_decision_bundle(
+    workflow_id: str,
+    bundle_id: str,
+    request: DecisionBundleActionRequestV1,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> DecisionBundleActionAcceptedV1:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.decision_bundles.apply_action(
+            workflow_id=workflow_id,
+            bundle_id=bundle_id,
+            action=request,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    if not accepted.replayed:
+        background_tasks.add_task(
+            _process_agent_turn_and_resume,
+            runtime,
+            workflow_id,
+            accepted.turn_id,
+        )
     return accepted
 
 
@@ -1866,6 +1962,40 @@ def get_chat_turn(
     if turn.workflow_id != workflow_id:
         raise _http_error("chat_turn_not_found", 404, "Chat turn was not found.")
     return turn
+
+
+@router.post(
+    "/workflows/{workflow_id}/chat/turns/{turn_id}/retry",
+    response_model=ChatTurnAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_chat_turn(
+    workflow_id: str,
+    turn_id: str,
+    request: ChatTurnRetryRequestV1,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ChatTurnAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.turn_retries.retry(
+            workflow_id,
+            turn_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    if not accepted.replayed:
+        background_tasks.add_task(
+            _process_agent_turn_and_resume,
+            runtime,
+            workflow_id,
+            accepted.turn_id,
+        )
+    return accepted
 
 
 @router.post(
@@ -2377,6 +2507,11 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "requirement_projection_budget_exceeded": 422,
         "idempotency_key_required": 422,
         "idempotency_conflict": 409,
+        "decision_bundle_not_found": 404,
+        "decision_bundle_closed": 409,
+        "decision_bundle_revision_conflict": 409,
+        "decision_bundle_answer_invalid": 422,
+        "decision_bundle_effect_invalid": 422,
         "style_skill_activation_conflict": 409,
         "style_skill_snapshot_invalid": 422,
         "style_skill_context_budget_exceeded": 422,
@@ -2439,8 +2574,17 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "mentioned_asset_not_found": 422,
         "mentioned_asset_media_type_unsupported": 422,
         "chat_turn_not_found": 404,
+        "chat_turn_not_failed": 409,
+        "chat_turn_not_retryable": 409,
+        "chat_turn_retry_stale": 409,
+        "chat_turn_retry_in_progress": 409,
         "guidance_session_not_found": 404,
         "guidance_revision_conflict": 409,
+        "journey_transition_invalid": 422,
+        "journey_revision_conflict": 409,
+        "journey_foundation_queue_invalid": 422,
+        "journey_action_in_progress": 409,
+        "journey_evidence_invalid": 422,
         "guidance_goal_required": 422,
         "guidance_topic_conflict": 409,
         "guidance_topic_owner_invalid": 422,
@@ -2452,8 +2596,6 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "proposal_reference_plan_invalid": 422,
         "proposal_target_revision_stale": 409,
         "proposal_reference_revision_stale": 409,
-        "proposal_draft_seed_missing": 422,
-        "proposal_draft_seed_invalid": 422,
         "proposal_publication_invalid": 422,
         "proposal_publication_failed": 503,
         "capability_materialization_context_invalid": 422,
@@ -2476,6 +2618,13 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_already_working": 409,
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
+        "node_prompt_not_ready": 409,
+        "prompt_preparation_revision_conflict": 409,
+        "prompt_preparation_failed": 503,
+        "stage_content_mismatch": 422,
+        "storyboard_sequence_invalid": 422,
+        "storyboard_anchor_resolution_failed": 422,
+        "editing_preparation_plan_conflict": 409,
         "upstream_inputs_not_ready": 409,
         "node_executor_unavailable": 503,
     }.get(error.code, 503)

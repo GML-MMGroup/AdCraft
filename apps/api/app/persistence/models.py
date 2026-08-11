@@ -388,6 +388,13 @@ class AgentRunRow(Base):
     terminal_result_json: Mapped[str | None] = mapped_column(Text)
     tool_results_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     safe_error_code: Mapped[str | None] = mapped_column(Text)
+    frozen_policy_digest: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    frozen_input_digest: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    retry_attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    attempt_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    safe_failure_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    operation_stage: Mapped[str] = mapped_column(Text, nullable=False, default="running")
+    completed_result_identity: Mapped[str | None] = mapped_column(Text)
     audit_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -542,7 +549,8 @@ class AgentCanvasRequirementLedgerRevisionRow(Base):
         ),
         CheckConstraint(
             "source_kind IN "
-            "('initialization','user_turn','proposal_selection','manual_edit','node_deletion')",
+            "('initialization','user_turn','proposal_selection','manual_edit','node_deletion',"
+            "'decision_bundle_answer')",
             name="ck_agent_canvas_requirement_revisions_source",
         ),
         UniqueConstraint(
@@ -569,6 +577,7 @@ class AgentCanvasRequirementLedgerRevisionRow(Base):
     source_kind: Mapped[str] = mapped_column(Text, nullable=False)
     source_turn_id: Mapped[str | None] = mapped_column(Text)
     source_proposal_id: Mapped[str | None] = mapped_column(Text)
+    source_bundle_id: Mapped[str | None] = mapped_column(Text)
     source_node_id: Mapped[str | None] = mapped_column(Text)
     ledger_json: Mapped[str] = mapped_column(Text, nullable=False)
     content_digest: Mapped[str] = mapped_column(Text, nullable=False)
@@ -797,6 +806,7 @@ class AgentCanvasNodeRow(Base):
     position_y: Mapped[float] = mapped_column(Float, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     error_json: Mapped[str | None] = mapped_column(Text)
+    prompt_preparation_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -1219,6 +1229,7 @@ class AgentCanvasGuidanceSessionRow(Base):
     active_proposal_id: Mapped[str | None] = mapped_column(Text)
     active_style_skill_run_id: Mapped[str | None] = mapped_column(Text)
     completion_json: Mapped[str] = mapped_column(Text, nullable=False)
+    journey_state_json: Mapped[str] = mapped_column(Text, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1290,6 +1301,14 @@ class AgentCanvasChatEntryRow(Base):
 
 class AgentCanvasChatTurnRow(Base):
     __tablename__ = "agent_canvas_chat_turns"
+    __table_args__ = (
+        Index(
+            "uq_agent_canvas_chat_turn_active_retry",
+            "retry_of_turn_id",
+            unique=True,
+            sqlite_where=text("retry_of_turn_id IS NOT NULL AND status IN ('queued','running')"),
+        ),
+    )
 
     turn_id: Mapped[str] = mapped_column(Text, primary_key=True)
     conversation_id: Mapped[str] = mapped_column(
@@ -1302,6 +1321,14 @@ class AgentCanvasChatTurnRow(Base):
     creation_mode_json: Mapped[str | None] = mapped_column(Text)
     guidance_session_revision: Mapped[int | None] = mapped_column(Integer)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    retry_of_turn_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id")
+    )
+    retry_attempt_no: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    operation_stage: Mapped[str | None] = mapped_column(Text)
+    operation_failure_json: Mapped[str | None] = mapped_column(Text)
+    retry_snapshot_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     error_code: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1409,6 +1436,60 @@ class AgentCanvasConceptProposalRow(Base):
     materialization_updated_at: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasDecisionBundleRow(Base):
+    """One bounded, immutable-definition Decision Bundle aggregate."""
+
+    __tablename__ = "agent_decision_bundles"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('open','answered','skipped','superseded')",
+            name="ck_agent_decision_bundles_status",
+        ),
+        CheckConstraint("revision > 0", name="ck_agent_decision_bundles_revision"),
+        Index(
+            "uq_agent_decision_bundles_open_conversation",
+            "conversation_id",
+            unique=True,
+            sqlite_where=text("status = 'open'"),
+        ),
+        Index(
+            "ix_agent_decision_bundles_workflow_created",
+            "workflow_id",
+            "created_at",
+        ),
+        Index(
+            "ix_agent_decision_bundles_conversation_created",
+            "conversation_id",
+            "created_at",
+        ),
+    )
+
+    bundle_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id", ondelete="CASCADE"), nullable=False
+    )
+    conversation_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_conversations.conversation_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_turn_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_chat_turns.turn_id"), nullable=False
+    )
+    replacement_bundle_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_decision_bundles.bundle_id")
+    )
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    definition_json: Mapped[str] = mapped_column(Text, nullable=False)
+    answer_json: Mapped[str | None] = mapped_column(Text)
+    requirement_revision_no: Mapped[int | None] = mapped_column(Integer)
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
+    request_fingerprint: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    closed_at: Mapped[str | None] = mapped_column(Text)
 
 
 class AgentCanvasConceptOptionRow(Base):
