@@ -192,6 +192,11 @@ class V2AgentCredentialBroker:
 
     @staticmethod
     def _validate_model(record: ProviderModelRecord, *, operation: str) -> None:
+        if record.provider_id != "siliconflow" or record.model_ref != "siliconflow:zai-org/GLM-5.2":
+            raise AgentCredentialError(
+                "agent_model_incompatible",
+                "Agent language operations require the configured SiliconFlow GLM-5.2 model.",
+            )
         if record.availability != "available":
             raise AgentCredentialError(
                 "agent_model_unavailable",
