@@ -33,6 +33,7 @@ _TRANSPORT_AUDIT_KEYS = (
     "first_response_at",
     "last_activity_at",
     "finished_at",
+    "duration_ms",
     "finish_reason",
     "provider_trace_id",
     "safe_exception_class",
@@ -41,6 +42,7 @@ _TRANSPORT_AUDIT_KEYS = (
     "input_tokens",
     "output_tokens",
     "reasoning_tokens",
+    "response_activity_observed",
     "transport_retry_count",
     "structured_attempt_count",
 )

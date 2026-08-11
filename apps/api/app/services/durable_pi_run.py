@@ -146,17 +146,37 @@ class DurablePiRunService:
                     lease_duration_seconds=lease_duration,
                 )
                 lease_generation = renewed.lease_generation
-            repository.record_event_seq(
-                request.run_id,
-                lease_owner_id=lease_owner_id,
-                lease_generation=lease_generation,
-                seq=event.seq,
-            )
-            event_projector.consume(
-                event,
-                workflow_id=getattr(request.context, "workflow_id", None),
-                model_id=model_ref,
-            )
+            if event.event_type == "run_completed":
+                repository.stage_completed_result(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    seq=event.seq,
+                    terminal_result=dict(event.payload),
+                    attempt_metadata=_safe_audit_metadata(event.payload),
+                )
+            else:
+                repository.record_event_seq(
+                    request.run_id,
+                    lease_owner_id=lease_owner_id,
+                    lease_generation=lease_generation,
+                    seq=event.seq,
+                    operation_stage=_operation_stage_for_event(event.event_type),
+                )
+            try:
+                event_projector.consume(
+                    event,
+                    workflow_id=getattr(request.context, "workflow_id", None),
+                    model_id=model_ref,
+                )
+            except Exception as error:
+                if event.event_type == "run_completed":
+                    raise PiAgentRuntimeError(
+                        "agent_publication_failed",
+                        "Agent result publication failed after durable persistence.",
+                        retryable=True,
+                    ) from error
+                raise
 
         try:
             record, created = repository.create_or_load(
@@ -188,6 +208,18 @@ class DurablePiRunService:
                         "deadline_at": record.deadline_at or request.deadline_at,
                     }
                 )
+                if record.completed_result_identity is not None:
+                    replayed = self._replay_staged_result(
+                        repository,
+                        event_projector,
+                        record,
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=lease_generation,
+                        request=request,
+                        model_ref=model_ref,
+                    )
+                    owns_lease = False
+                    return replayed
 
             outcome = self._client.run(request, on_event=persist_event)
             terminal = outcome.terminal_event
@@ -197,6 +229,10 @@ class DurablePiRunService:
                     "agent_protocol_mismatch",
                     "Agent runtime did not emit a terminal event.",
                 )
+            if status == "completed":
+                staged = repository.load(request.run_id)
+                if staged.completed_result_identity is None:
+                    persist_event(terminal)
             repository.finish(
                 request.run_id,
                 lease_owner_id=lease_owner_id,
@@ -222,6 +258,15 @@ class DurablePiRunService:
         except PiAgentRuntimeError as error:
             self._log_structured_rejection(request, error)
             if owns_lease:
+                if error.code == "agent_publication_failed":
+                    repository.release_for_recovery(
+                        request.run_id,
+                        lease_owner_id=lease_owner_id,
+                        lease_generation=lease_generation,
+                        safe_error_code=error.code,
+                    )
+                    owns_lease = False
+                    raise
                 self._project_failed_trace(
                     event_projector,
                     request,
@@ -290,6 +335,60 @@ class DurablePiRunService:
             ) from error
         finally:
             database.dispose()
+
+    @staticmethod
+    def _replay_staged_result(
+        repository: AgentRunRepository,
+        event_projector: V2AgentEventProjector,
+        record: AgentRunRecord,
+        *,
+        lease_owner_id: str,
+        lease_generation: int,
+        request: AgentRunRequest,
+        model_ref: str | None,
+    ) -> DurablePiRunResult:
+        payload = dict(record.terminal_result or {})
+        event = AgentRuntimeEvent(
+            seq=max(1, record.last_event_seq),
+            run_id=record.run_id,
+            agent_name=request.agent_name,
+            event_type="run_completed",
+            created_at=datetime.now(timezone.utc),
+            payload=payload,
+        )
+        try:
+            event_projector.consume(
+                event,
+                workflow_id=getattr(request.context, "workflow_id", None),
+                model_id=model_ref,
+            )
+        except Exception as error:
+            repository.release_for_recovery(
+                record.run_id,
+                lease_owner_id=lease_owner_id,
+                lease_generation=lease_generation,
+                safe_error_code="agent_publication_failed",
+            )
+            raise PiAgentRuntimeError(
+                "agent_publication_failed",
+                "Agent result publication failed after durable persistence.",
+                retryable=True,
+            ) from error
+        completed = repository.finish(
+            record.run_id,
+            lease_owner_id=lease_owner_id,
+            lease_generation=lease_generation,
+            status="completed",
+            terminal_result=payload,
+            audit_metadata=record.attempt_metadata,
+        )
+        return DurablePiRunResult(
+            run_id=completed.run_id,
+            status="completed",
+            terminal_payload=payload,
+            last_event_seq=completed.last_event_seq,
+            replayed=True,
+        )
 
     @staticmethod
     def _project_failed_trace(
@@ -414,6 +513,17 @@ def _has_live_lease(record: AgentRunRecord) -> bool:
     )
 
 
+def _operation_stage_for_event(event_type: str) -> str:
+    return {
+        "run_started": "running",
+        "heartbeat": "waiting_provider_response",
+        "tool_call": "validating",
+        "tool_result": "validating",
+        "run_failed": "failed",
+        "run_cancelled": "cancelled",
+    }.get(event_type, "running")
+
+
 def _safe_scope_value(scope: Mapping[str, Any], key: str) -> str | int | None:
     value = scope.get(key)
     return value if isinstance(value, (str, int)) else None
@@ -445,6 +555,7 @@ def _safe_audit_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
         "provider_trace_id",
         "reasoning_control",
         "reasoning_tokens",
+        "response_activity_observed",
         "safe_error_code",
         "safe_exception_class",
         "started_at",
