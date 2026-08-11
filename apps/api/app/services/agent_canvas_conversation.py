@@ -57,7 +57,7 @@ from app.schemas.agent_canvas_capabilities import (
     CAPABILITY_RESULT_CONTRACTS,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
-    CompactTurnIntentDecisionV1,
+    CompactTurnIntentDecisionV2,
     NextActionCommandV1,
     NextActionContextV1,
     TurnIntentContextV2,
@@ -148,6 +148,7 @@ from app.services.agent_canvas_world_setting import (
 )
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import AgentOperationPolicyRegistryV2
+from app.services.agent_request_digest import frozen_agent_request_digest
 
 
 logger = logging.getLogger(__name__)
@@ -371,11 +372,13 @@ class PiVideoAgentGateway:
         timeout_seconds: float,
         model_resolution: ModelResolutionService,
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
+        on_provider_waiting: Callable[..., object] | None = None,
     ) -> None:
         self._durable_runner = durable_runner
         self._timeout_seconds = timeout_seconds
         self._model_resolution = model_resolution
         self._operation_policies = operation_policies or AgentOperationPolicyRegistryV2()
+        self._on_provider_waiting = on_provider_waiting
 
     def classify_turn_intent(
         self,
@@ -386,7 +389,7 @@ class PiVideoAgentGateway:
         value, _ = self._run(
             operation="decide_turn_intent",
             context=context,
-            contract=CompactTurnIntentDecisionV1,
+            contract=CompactTurnIntentDecisionV2,
             identity_fields={
                 "workflow_id": context.workflow_id,
                 "conversation_id": context.conversation_id,
@@ -395,7 +398,10 @@ class PiVideoAgentGateway:
                 "operation": "decide_turn_intent",
             },
         )
-        return expand_compact_turn_intent(CompactTurnIntentDecisionV1.model_validate(value))
+        return expand_compact_turn_intent(
+            CompactTurnIntentDecisionV2.model_validate(value),
+            current_response_locale=context.current_response_locale,
+        )
 
     def choose_next_action(
         self,
@@ -589,6 +595,12 @@ class PiVideoAgentGateway:
         )
         operation_timeout = float(operation_policy.hard_deadline_seconds)
         style_lineage = _style_skill_lineage(context)
+        turn_id = identity_fields.get("turn_id")
+        validation_profile = None
+        validation_context: dict[str, object] = {}
+        if operation == "decide_turn_intent" and isinstance(turn_id, str):
+            validation_profile = "agent_intake_source_quotes_v1"
+            validation_context = {"source_turn_id": turn_id}
         request = AgentRunRequest(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
@@ -597,7 +609,7 @@ class PiVideoAgentGateway:
             agent_name="video_agent",
             operation=operation,
             deadline_at=datetime.now(timezone.utc) + timedelta(seconds=operation_timeout),
-            model_policy_id=f"video_agent.{operation}.v1",
+            model_policy_id=operation_policy.policy_id,
             model_ref=resolution.model_ref,
             context=context,
             policy=AgentRunPolicy(
@@ -615,6 +627,8 @@ class PiVideoAgentGateway:
             ),
             contract_name=contract.__name__,
             contract_schema=contract.model_json_schema(),
+            validation_profile=validation_profile,
+            validation_context=validation_context,
             audit_metadata={
                 "tool_mode": "structured_only",
                 "agent_operation_policy": operation_policy.model_dump(mode="json"),
@@ -630,10 +644,55 @@ class PiVideoAgentGateway:
                 **({"style_skill_lineage": style_lineage} if style_lineage is not None else {}),
             },
         )
+        if operation == "decide_turn_intent":
+            schema_bytes = len(
+                json.dumps(
+                    request.contract_schema,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            )
+            request_bytes = len(
+                json.dumps(
+                    request.model_dump(mode="json"),
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            )
+            if schema_bytes > 16_384 or request_bytes > 131_072:
+                raise PiAgentRuntimeError(
+                    "agent_intake_context_too_large",
+                    "The Agent intake context exceeds its safe input bound.",
+                    retryable=False,
+                    details={
+                        "schema_bytes": schema_bytes,
+                        "request_bytes": request_bytes,
+                    },
+                )
+        on_dispatch_owned = None
+        if (
+            self._on_provider_waiting is not None
+            and operation == "decide_turn_intent"
+            and isinstance(turn_id, str)
+        ):
+
+            def on_dispatch_owned(frozen_request: AgentRunRequest) -> None:
+                self._on_provider_waiting(
+                    turn_id=turn_id,
+                    operation=operation,
+                    deadline_at=frozen_request.deadline_at,
+                    model_ref=resolution.model_ref,
+                    frozen_agent_request_digest=frozen_agent_request_digest(frozen_request),
+                    response_locale=getattr(context, "current_response_locale", "und"),
+                )
+
         result = self._durable_runner.run(
             request,
             identity_fields=identity_fields,
             model_ref=resolution.model_ref,
+            on_dispatch_owned=on_dispatch_owned,
         )
         return _completed_structured_run(result, model_ref=resolution.model_ref)
 
@@ -1777,6 +1836,9 @@ class AgentConversationService:
                     turn.workflow_id,
                     mentioned_node_ids=mentioned_node_ids,
                 ),
+                current_response_locale=(
+                    existing_session.response_locale if existing_session is not None else "und"
+                ),
             ),
             turn_id=turn_id,
         )
@@ -1798,6 +1860,15 @@ class AgentConversationService:
             )
             requirements = applied.revision
             existing_session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
+        if (
+            existing_session is not None
+            and intent.response_locale != existing_session.response_locale
+        ):
+            existing_session = self._conversations.update_guidance_response_locale(
+                turn.workflow_id,
+                expected_revision=existing_session.revision,
+                response_locale=intent.response_locale,
+            )
         if requirements.ledger.unresolved_conflicts:
             return self._complete_turn(
                 turn_id,
@@ -1839,6 +1910,7 @@ class AgentConversationService:
                     if turn.request.get("video_skill_run_id")
                     else None
                 ),
+                response_locale=intent.response_locale,
             )
         if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
             session = self._journey.apply_evidence(
@@ -1969,6 +2041,7 @@ class AgentConversationService:
                 objective=command.command.objective or intent.objective,
                 policy=policy,
                 shared_summary="",
+                response_locale=session.response_locale,
             )
             draft = self._gateway.author_decision_bundle(context, turn_id=turn_id)
             bundle = self._decision_bundles.author(
@@ -2365,6 +2438,9 @@ class AgentConversationService:
             requirement_projection=projection,
             approved_reference_ids=tuple(
                 reference.source_id for reference in proposal.proposed_references
+            ),
+            response_locale=(
+                self._conversations.get_guidance_session(proposal.workflow_id).response_locale
             ),
         )
         request_identity = f"proposal-revision:{snapshot_digest}"

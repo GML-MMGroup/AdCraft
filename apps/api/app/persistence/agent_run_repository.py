@@ -12,7 +12,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.database import V2Database
-from app.persistence.models import AgentRunRow
+from app.persistence.models import AgentCanvasChatTurnRow, AgentRunRow
 from app.schemas.agent_runtime import AgentRunRequest
 
 
@@ -86,6 +86,32 @@ class AgentRunRepository:
 
     def __init__(self, database: V2Database) -> None:
         self._database = database
+
+    def load_validation_source_message(
+        self,
+        *,
+        workflow_id: str | None,
+        conversation_id: str | None,
+        turn_id: str,
+    ) -> str | None:
+        if workflow_id is None or conversation_id is None:
+            return None
+        with self._database.engine.connect() as connection:
+            request_json = connection.execute(
+                select(AgentCanvasChatTurnRow.request_json).where(
+                    AgentCanvasChatTurnRow.workflow_id == workflow_id,
+                    AgentCanvasChatTurnRow.conversation_id == conversation_id,
+                    AgentCanvasChatTurnRow.turn_id == turn_id,
+                )
+            ).scalar_one_or_none()
+        if request_json is None:
+            return None
+        try:
+            request = json.loads(request_json)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        source_message = request.get("text") if isinstance(request, dict) else None
+        return source_message if isinstance(source_message, str) and source_message else None
 
     def create_or_load(
         self,
