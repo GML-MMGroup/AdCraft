@@ -1,5 +1,6 @@
 import type { CSSProperties, RefObject } from "react";
 import { demoProjects, images, imageSrc } from "../data";
+import { HeroAccentWriting } from "./HeroAccentWriting";
 
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
@@ -57,7 +58,7 @@ function motionStyle(property: "--home-reveal-delay", value: string): CSSPropert
   return { [property]: value } as CSSProperties;
 }
 
-function HeroTitle() {
+function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
   return (
     <h1
       className="home-product-hero__title"
@@ -68,13 +69,13 @@ function HeroTitle() {
       {heroTitleLines.map((line, lineIndex) => (
         <span
           key={line}
-          className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""}`}
+          className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""} ${lineIndex === 2 && useWritingAccent ? "home-product-hero__accent--writing" : ""}`}
           data-accent-text={lineIndex === 2 ? line : undefined}
           data-home-typography-region={lineIndex === 2 ? "heroAccent" : undefined}
           data-testid={lineIndex === 2 ? "home-hero-accent" : undefined}
           aria-hidden="true"
         >
-          {line}
+          {lineIndex === 2 && useWritingAccent ? <HeroAccentWriting /> : line}
         </span>
       ))}
     </h1>
@@ -223,7 +224,7 @@ export function HomeShowcase({
         aria-labelledby="home-product-title"
       >
         <div className="home-product-hero__content">
-          <HeroTitle />
+          <HeroTitle useWritingAccent={isInteractive} />
           <p className="home-product-hero__description" data-home-typography-region="heroBody">
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
           </p>

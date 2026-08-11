@@ -119,6 +119,35 @@
   animation: none;
 }
 
+.home-product-hero__accent--writing::after {
+  content: none;
+}
+
+.home-hero-accent-writing {
+  display: block;
+  width: 4.8em;
+  height: 1.3em;
+  overflow: visible;
+}
+
+.home-hero-accent-writing__stroke {
+  fill: none;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
+  animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) var(--home-hero-accent-delay, 0ms) forwards;
+}
+
+@keyframes home-hero-accent-write {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 .home-product-hero__description {
   max-width: 570px;
   margin: 28px 0 0;
@@ -267,6 +296,11 @@
     opacity: 1 !important;
     filter: none !important;
     transform: none !important;
+  }
+
+  .home-hero-accent-writing__stroke {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
   }
 
   .home-product-hero__create {
