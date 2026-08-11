@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_video_parameters import (
     VideoParameterNormalizationV2,
 )
 from app.services.agent_canvas_ad_media import AdMediaRoleRegistry
+from app.services.agent_canvas_parameter_policy import NON_PROVIDER_NODE_PARAMETER_KEYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +190,8 @@ def _manual_parameters(
     values: dict[str, object] = {}
     provenance: dict[str, CanvasParameterProvenanceV2] = {}
     for field, value in node.parameters.items():
+        if field in NON_PROVIDER_NODE_PARAMETER_KEYS:
+            continue
         item = node.parameter_provenance.get(field)
         if item is not None and item.origin != "manual":
             continue
