@@ -242,6 +242,11 @@ describe("HomePage motion", () => {
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*will-change:\s*filter,\s*opacity,\s*transform;/s,
     );
+    expect(styles).not.toMatch(
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(description|create-stage|film)\s*\{/,
+    );
+    expect(styles).not.toContain("home-hero-support-in");
+    expect(styles).not.toContain("home-hero-media-in");
     expect(styles).toMatch(
       /\.home-reveal-section\[data-reveal-state="pending"\][\s\S]*?opacity:\s*0;/,
     );
