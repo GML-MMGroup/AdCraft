@@ -99,6 +99,7 @@ from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV
 from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 from app.services.agent_canvas_requirements import (
@@ -164,8 +165,10 @@ class AgentCanvasConversationRepository:
         goal: CreativeGoalV2,
         element_decisions: tuple[CreativeElementDecisionV2, ...],
         active_style_skill_run_id: str | None,
+        response_locale: BCP47Tag = "und",
     ) -> GuidedSessionStateV2:
         now = _now()
+        locale = canonicalize_bcp47_tag(response_locale)
         session_id = f"guidance_{uuid4().hex}"
         completion = GuidanceCompletionProjectionV2()
         try:
@@ -191,6 +194,7 @@ class AgentCanvasConversationRepository:
                             session_id=session_id,
                             workflow_id=workflow_id,
                             status="active",
+                            response_locale=locale,
                             creative_goal_json=goal.model_dump_json(),
                             element_decisions_json=_dump(
                                 [item.model_dump(mode="json") for item in element_decisions]
@@ -1496,6 +1500,106 @@ class AgentCanvasConversationRepository:
     def mark_turn_running(self, turn_id: str) -> ChatTurnV2:
         return self._set_turn_status(turn_id, "running", "chat_turn_started")
 
+    def mark_turn_provider_waiting(
+        self,
+        turn_id: str,
+        *,
+        operation: str,
+        deadline_at: datetime,
+        model_ref: str,
+        frozen_agent_request_digest: str | None = None,
+        response_locale: BCP47Tag = "und",
+    ) -> ChatTurnV2:
+        now = _now()
+        try:
+            with self._database.engine.begin() as connection:
+                turn = _require_turn(connection, turn_id)
+                if str(turn["status"]) not in {"queued", "running"}:
+                    return _turn(turn)
+                connection.execute(
+                    update(AgentCanvasChatTurnRow)
+                    .where(AgentCanvasChatTurnRow.turn_id == turn_id)
+                    .values(
+                        status="running",
+                        operation_stage="provider_waiting",
+                        retry_snapshot_json=_dump(
+                            {
+                                **json.loads(str(turn["retry_snapshot_json"])),
+                                "source_message_id": self._message_id_for_turn(connection, turn_id),
+                                "frozen_agent_request_digest": frozen_agent_request_digest,
+                                "response_locale": response_locale,
+                            }
+                        ),
+                        updated_at=now,
+                    )
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=str(turn["workflow_id"]),
+                        conversation_id=str(turn["conversation_id"]),
+                        turn_id=turn_id,
+                        event_type="agent_turn_waiting",
+                        transition_key=f"conversation:{turn_id}:agent_turn_waiting",
+                        created_at=now,
+                        payload={
+                            "turn_id": turn_id,
+                            "operation": operation,
+                            "deadline_at": deadline_at.isoformat(),
+                            "model_ref": model_ref,
+                        },
+                    ),
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+        return self.get_turn(turn_id)
+
+    def update_guidance_response_locale(
+        self,
+        workflow_id: str,
+        *,
+        expected_revision: int,
+        response_locale: str,
+    ) -> GuidedSessionStateV2:
+        locale = canonicalize_bcp47_tag(response_locale)
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = _require_guidance_session_row_by_workflow(connection, workflow_id)
+                    _require_guidance_revision(row, expected_revision)
+                    if str(row["response_locale"]) == locale:
+                        result = _guidance_session(connection, row)
+                        connection.commit()
+                        return result
+                    next_revision = expected_revision + 1
+                    connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(AgentCanvasGuidanceSessionRow.workflow_id == workflow_id)
+                        .values(
+                            response_locale=locale,
+                            revision=next_revision,
+                            updated_at=now,
+                        )
+                    )
+                    updated = _require_guidance_session_row_by_workflow(connection, workflow_id)
+                    result = _guidance_session(connection, updated)
+                    connection.commit()
+                    return result
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "conversation_persistence_unavailable",
+                "Conversation storage failed.",
+            ) from error
+
     def complete_turn(
         self,
         turn_id: str,
@@ -2085,11 +2189,23 @@ class AgentCanvasConversationRepository:
         retryable: bool = False,
         operation_stage: str = "failed",
         operation_failure: AgentOperationFailureV2 | None = None,
+        frozen_agent_request_digest: str | None = None,
+        response_locale: BCP47Tag | None = None,
     ) -> ChatTurnV2:
         now = _now()
         try:
             with self._database.engine.begin() as connection:
                 turn = _require_turn(connection, turn_id)
+                retry_snapshot = json.loads(str(turn["retry_snapshot_json"]))
+                retry_snapshot["source_message_id"] = self._message_id_for_turn(connection, turn_id)
+                if frozen_agent_request_digest is not None:
+                    retry_snapshot["frozen_agent_request_digest"] = frozen_agent_request_digest
+                else:
+                    retry_snapshot.setdefault("frozen_agent_request_digest", None)
+                if response_locale is not None:
+                    retry_snapshot["response_locale"] = response_locale
+                else:
+                    retry_snapshot.setdefault("response_locale", "und")
                 connection.execute(
                     update(AgentCanvasChatTurnRow)
                     .where(AgentCanvasChatTurnRow.turn_id == turn_id)
@@ -2102,6 +2218,7 @@ class AgentCanvasConversationRepository:
                             if operation_failure is not None
                             else None
                         ),
+                        retry_snapshot_json=_dump(retry_snapshot),
                         error_code=code,
                         error_message=message,
                         updated_at=now,
@@ -2932,6 +3049,7 @@ class AgentCanvasConversationRepository:
                             proposal.workflow_id,
                             requirement_revision.ledger,
                             now,
+                            advance_session_revision=False,
                         )
                         self._events.append_in_transaction(
                             connection,
@@ -3066,7 +3184,7 @@ class AgentCanvasConversationRepository:
                             "Materialization attempt is no longer current.",
                         )
                     next_session_revision = expected_session_revision + 1
-                    connection.execute(
+                    session_update = connection.execute(
                         update(AgentCanvasGuidanceSessionRow)
                         .where(
                             AgentCanvasGuidanceSessionRow.session_id == session["session_id"],
@@ -3079,6 +3197,11 @@ class AgentCanvasConversationRepository:
                             updated_at=now,
                         )
                     )
+                    if session_update.rowcount != 1:
+                        raise _error(
+                            "guidance_revision_conflict",
+                            "Guidance state changed before Proposal materialization.",
+                        )
                     connection.execute(
                         update(AgentCanvasWorkflowRow)
                         .where(
@@ -3296,23 +3419,6 @@ class AgentCanvasConversationRepository:
                             update(AgentCanvasExpertActivityRow)
                             .where(AgentCanvasExpertActivityRow.turn_id == source_turn_id)
                             .values(status="completed", updated_at=now)
-                        )
-                        connection.execute(
-                            update(AgentCanvasContinuationOutboxRow)
-                            .where(
-                                AgentCanvasContinuationOutboxRow.continuation_turn_id
-                                == source_turn_id,
-                                AgentCanvasContinuationOutboxRow.operation
-                                == "capability_materialization",
-                            )
-                            .values(
-                                status="completed",
-                                lease_owner=None,
-                                lease_expires_at=None,
-                                last_error_code=None,
-                                last_error_message=None,
-                                updated_at=now,
-                            )
                         )
                         self._events.append_in_transaction(
                             connection,
@@ -5079,6 +5185,7 @@ def _guidance_session(
         session_id=str(row["session_id"]),
         workflow_id=str(row["workflow_id"]),
         status=cast(str, row["status"]),
+        response_locale=str(row["response_locale"]),
         goal=CreativeGoalV2.model_validate_json(str(row["creative_goal_json"])),
         creative_authority=(
             CreativeAuthorityStateV2.model_validate_json(str(row["creative_authority_json"]))
@@ -5142,6 +5249,24 @@ def _require_guidance_session_row(
         connection.execute(
             select(AgentCanvasGuidanceSessionRow).where(
                 AgentCanvasGuidanceSessionRow.session_id == session_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _error("guidance_session_not_found", "Guidance session was not found.")
+    return row
+
+
+def _require_guidance_session_row_by_workflow(
+    connection: Connection,
+    workflow_id: str,
+) -> RowMapping:
+    row = (
+        connection.execute(
+            select(AgentCanvasGuidanceSessionRow).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
             )
         )
         .mappings()

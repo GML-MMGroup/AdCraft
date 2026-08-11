@@ -467,6 +467,7 @@ class CapabilityMaterializationPublicationService:
                         enqueue_required=node.prompt_preparation.status != "ready",
                     )
                 )
+            self._record_journey_evidence(envelope)
             return tuple(published)
 
         preparation_errors: list[Exception] = []
@@ -487,7 +488,6 @@ class CapabilityMaterializationPublicationService:
             publish_bundle=publish_bundle,
             enqueue_prompt_preparation=prepare,
         ).publish_selection(plan.selection)
-        self._record_journey_evidence(envelope)
         if preparation_errors:
             raise V2PersistenceError(
                 "prompt_preparation_failed",
