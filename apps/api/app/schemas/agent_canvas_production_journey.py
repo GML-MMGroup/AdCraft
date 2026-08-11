@@ -121,13 +121,17 @@ class JourneyEvidenceV1(_JourneyModel):
     foundation_item_id: str | None = Field(default=None, max_length=160)
     action_id: str | None = Field(default=None, max_length=160)
 
-    def as_transition(self) -> JourneyTransitionEvidenceV1:
+    def as_transition(
+        self,
+        *,
+        recorded_at: datetime | None = None,
+    ) -> JourneyTransitionEvidenceV1:
         return JourneyTransitionEvidenceV1(
             evidence_id=self.evidence_id,
             evidence_kind=self.evidence_kind,
             source_id=self.source_id,
             source_revision=self.source_revision,
-            recorded_at=datetime.now(timezone.utc),
+            recorded_at=recorded_at or datetime.now(timezone.utc),
         )
 
 
