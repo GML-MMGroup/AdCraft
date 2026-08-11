@@ -2,52 +2,52 @@
   "skills": [
     {
       "path": "video_agent_bgm_direction/SKILL.md",
-      "sha256": "46ae769b381bc939a885cced153eb778db438d86f49e0036138bd4f2a5fa2c10",
+      "sha256": "3100e5e08ddf9462f814770c861df5f8ef0e28b02b14685da20956f25e4a26c8",
       "skill_id": "video_agent_bgm_direction"
     },
     {
       "path": "video_agent_character_design/SKILL.md",
-      "sha256": "e6545fa040d66a72090d12ff9ca78c9855124ec4b3861785afddd1897b7bbb1c",
+      "sha256": "e31340de232352e76cfaa86520b7fc9cad6d523d9e115063c83c13af34ee7ffb",
       "skill_id": "video_agent_character_design"
     },
     {
       "path": "video_agent_product_design/SKILL.md",
-      "sha256": "bf7baf83432c1da7230a0ba0ecf1df4b05f5e167e84db4168e2dd26b6af7e32f",
+      "sha256": "4ca60de958a108261b08ae850e0500b38618da7e3c0c4814f172b061d89c8bd6",
       "skill_id": "video_agent_product_design"
     },
     {
       "path": "video_agent_prop_design/SKILL.md",
-      "sha256": "bdd8eca15d585ba73960faf6a44a4795fdabbb8667526793718b04dfc938c37a",
+      "sha256": "28ebf5dca5ff068d2a5ecf48d043f25b3f0a214af63a9265c830f2a8061cfcdd",
       "skill_id": "video_agent_prop_design"
     },
     {
       "path": "video_agent_quick_media/SKILL.md",
-      "sha256": "b385d8c999d6b6fde1f8aaa5273b6aafda1e62846971549216010c19f59ecfb8",
+      "sha256": "a4a4f32144fa5047729f8137eee630a851b765bafe3b8c11c4434b10b54cb46e",
       "skill_id": "video_agent_quick_media"
     },
     {
       "path": "video_agent_scene_design/SKILL.md",
-      "sha256": "486fbecbea8ada9dd479ec835e969947fcbe402804d04c7d917d7cbbb79c47fe",
+      "sha256": "1bffd56cb8c0e2be851a704f2e936aa0af4e42604be669920eee2e3f693dbed2",
       "skill_id": "video_agent_scene_design"
     },
     {
       "path": "video_agent_script_authoring/SKILL.md",
-      "sha256": "2e5ecb5418368a8750f3ec6ecfac2c27415e10ccb6886eabd75e65592bf44e29",
+      "sha256": "b0d872ec8c7d671c4bd83f6e334a69a4717d05b4af43135462d8469f6d0ac8ee",
       "skill_id": "video_agent_script_authoring"
     },
     {
       "path": "video_agent_storyboard_design/SKILL.md",
-      "sha256": "9734d8a3c9a7ac643114026e468345c00193cb145cc5d996ceff79677b36eef5",
+      "sha256": "9aec19865f7a69d1d2b5ca80ccea74bbcd0728e8e4a43b4d631ca4baa833bbf5",
       "skill_id": "video_agent_storyboard_design"
     },
     {
       "path": "video_agent_video_direction/SKILL.md",
-      "sha256": "56f21d7d8f32eb24b7fc760bbc1e25e097c4a26ca785f8873c4a91ef2dee01bb",
+      "sha256": "db4cfbf8428363fce0843add44813ec1e5bc8bc0caa89e0e8ed6c4f2c49d142f",
       "skill_id": "video_agent_video_direction"
     },
     {
       "path": "video_agent_world_setting/SKILL.md",
-      "sha256": "d5b9b3958d0812ffcfb90560aeae088df8eaeb43734729a1736c4863ba13a6cf",
+      "sha256": "60078ca00977c87d23d73241f138ae0865db8ee4e1ba52ceb3d356163919144c",
       "skill_id": "video_agent_world_setting"
     }
   ],
