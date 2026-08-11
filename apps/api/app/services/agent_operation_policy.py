@@ -138,6 +138,27 @@ class AgentOperationPolicyRegistryV2:
         )
         if capability is None or operation not in capability.operations:
             raise AgentOperationPolicyError("agent_operation_policy_unknown")
+        if agent_name == "video_agent" and operation == "decide_turn_intent":
+            return AgentOperationPolicyV2(
+                policy_id="video_agent.decide_turn_intent.v3",
+                agent_name=agent_name,
+                operation=operation,
+                contract_id=contract_id,
+                policy_class="routing",
+                hard_deadline_seconds=300,
+                primary_timeout_seconds=240,
+                recovery_timeout_seconds=55,
+                persistence_reserve_seconds=5,
+                max_output_tokens=2_048,
+                reasoning_mode="low",
+                enable_thinking=False,
+                thinking_budget_tokens=None,
+                transport_retry_limit=0,
+                structured_repair_limit=1,
+                max_model_submissions=2,
+                recovery_mode="structured_repair_only",
+                fallback_class="none",
+            )
         policy_class = _policy_class(
             agent_name=agent_name,
             operation=operation,
