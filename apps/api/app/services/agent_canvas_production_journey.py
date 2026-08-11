@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_creative_session import CreativeElementDecisionV2
@@ -106,6 +108,8 @@ class GuidedProductionJourneyPolicyService:
         self,
         context: JourneyPolicyContextV1,
         evidence: JourneyEvidenceV1,
+        *,
+        recorded_at: datetime | None = None,
     ) -> GuidedProductionJourneyV1:
         journey = context.journey
         if any(item.evidence_id == evidence.evidence_id for item in journey.transition_evidence):
@@ -117,7 +121,7 @@ class GuidedProductionJourneyPolicyService:
                     "active_action": None,
                     "transition_evidence": (
                         *journey.transition_evidence,
-                        evidence.as_transition(),
+                        evidence.as_transition(recorded_at=recorded_at),
                     ),
                 }
             )
@@ -134,7 +138,7 @@ class GuidedProductionJourneyPolicyService:
                     ),
                     "transition_evidence": (
                         *journey.transition_evidence,
-                        evidence.as_transition(),
+                        evidence.as_transition(recorded_at=recorded_at),
                     ),
                 }
             )
@@ -149,12 +153,16 @@ class GuidedProductionJourneyPolicyService:
                     "suspended_action": None,
                     "transition_evidence": (
                         *journey.transition_evidence,
-                        evidence.as_transition(),
+                        evidence.as_transition(recorded_at=recorded_at),
                     ),
                 }
             )
         if journey.stage == "foundation_design":
-            return self._apply_foundation_evidence(context, evidence)
+            return self._apply_foundation_evidence(
+                context,
+                evidence,
+                recorded_at=recorded_at,
+            )
 
         allowed = _STAGE_EVIDENCE.get(journey.stage, ())
         if evidence.evidence_kind not in allowed:
@@ -174,12 +182,19 @@ class GuidedProductionJourneyPolicyService:
         result = self.evaluate(next_context)
         if result.action != "advance_stage" or result.next_stage is None:
             raise _error("journey_transition_invalid", "Journey cannot advance.")
-        return self._advance(journey, result.next_stage, evidence)
+        return self._advance(
+            journey,
+            result.next_stage,
+            evidence,
+            recorded_at=recorded_at,
+        )
 
     def _apply_foundation_evidence(
         self,
         context: JourneyPolicyContextV1,
         evidence: JourneyEvidenceV1,
+        *,
+        recorded_at: datetime | None,
     ) -> GuidedProductionJourneyV1:
         status_by_kind = {
             "foundation_item_selected": "selected",
@@ -200,20 +215,26 @@ class GuidedProductionJourneyPolicyService:
             (index for index in range(cursor + 1, len(queue)) if queue[index].status == "pending"),
             None,
         )
-        transition = evidence.as_transition()
+        transition = evidence.as_transition(recorded_at=recorded_at)
         if next_cursor is not None:
             queue[next_cursor] = queue[next_cursor].model_copy(update={"status": "active"})
             return journey.model_copy(
                 update={
                     "foundation_queue": tuple(queue),
                     "foundation_cursor": next_cursor,
+                    "active_action": None,
                     "transition_evidence": (*journey.transition_evidence, transition),
                 }
             )
         advanced = journey.model_copy(
             update={"foundation_queue": tuple(queue), "foundation_cursor": None}
         )
-        return self._advance(advanced, "narrative_direction", evidence)
+        return self._advance(
+            advanced,
+            "narrative_direction",
+            evidence,
+            recorded_at=recorded_at,
+        )
 
     def _next_stage(self, context: JourneyPolicyContextV1) -> JourneyStageV1:
         stage = context.journey.stage
@@ -281,8 +302,6 @@ class GuidedProductionJourneyPolicyService:
             "world_setting": "world_setting",
             "narrative_direction": "script_authoring",
             "storyboard_plan": "storyboard_design",
-            "storyboard_grids": "storyboard_design",
-            "video_segments": "video_direction",
             "bgm": "bgm_direction",
         }
         if context.journey.stage == "editing_ready":
@@ -301,6 +320,8 @@ class GuidedProductionJourneyPolicyService:
         journey: GuidedProductionJourneyV1,
         next_stage: JourneyStageV1,
         evidence: JourneyEvidenceV1,
+        *,
+        recorded_at: datetime | None = None,
     ) -> GuidedProductionJourneyV1:
         queue = journey.foundation_queue
         cursor = journey.foundation_cursor
@@ -323,7 +344,7 @@ class GuidedProductionJourneyPolicyService:
                 "active_action": None,
                 "transition_evidence": (
                     *journey.transition_evidence,
-                    evidence.as_transition(),
+                    evidence.as_transition(recorded_at=recorded_at),
                 ),
             }
         )

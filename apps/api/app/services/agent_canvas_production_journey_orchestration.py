@@ -140,6 +140,35 @@ class GuidedProductionJourneyService:
             event_payload={"reason": "user_input_required"},
         )
 
+    def record_storyboard_pipeline_prepared(
+        self,
+        workflow_id: str,
+        *,
+        source_id: str,
+    ) -> GuidedSessionStateV2 | None:
+        """Advance runtime-owned storyboard stages after the complete Draft fan-out."""
+
+        session = self._conversations.get_guidance_session_or_none(workflow_id)
+        if session is None:
+            return None
+        evidence_by_stage = {
+            "storyboard_grids": "storyboard_grids_prepared",
+            "video_segments": "video_segments_prepared",
+        }
+        while session.journey.stage in evidence_by_stage:
+            evidence_kind = evidence_by_stage[session.journey.stage]
+            session = self.apply_evidence(
+                workflow_id,
+                evidence=JourneyEvidenceV1(
+                    evidence_id=f"{evidence_kind}:{source_id}",
+                    evidence_kind=evidence_kind,
+                    source_id=source_id,
+                ),
+                expected_session_revision=session.revision,
+                idempotency_key=f"{evidence_kind}:{source_id}",
+            )
+        return session
+
     def amend_foundation_queue(
         self,
         workflow_id: str,
