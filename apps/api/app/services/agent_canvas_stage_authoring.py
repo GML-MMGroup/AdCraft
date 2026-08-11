@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
-from typing import Protocol
 
 from app.schemas.agent_canvas import (
     CanvasBindingSourceNodeV2,
     CanvasBindingV2,
 )
-from app.schemas.agent_canvas_commands import AgentPlacementHintV2
 from app.schemas.agent_canvas_creative_session import (
     DraftReferenceIntentV2,
     SpecialistDraftV2,
@@ -22,24 +19,9 @@ from app.schemas.agent_canvas_materialization import (
     ProposalPublicationEnvelopeV1,
 )
 from app.schemas.agent_canvas_progressive_authoring import (
-    StageDraftPublicationResultV1,
     StageDraftSelectionV1,
     StageDraftSpecV1,
 )
-
-
-class PublishedStageDraft(Protocol):
-    node_id: str
-    binding_ids: tuple[str, ...]
-    prompt_preparation_id: str
-
-
-@dataclass(frozen=True)
-class PersistedStageDraft:
-    node_id: str
-    binding_ids: tuple[str, ...]
-    prompt_preparation_id: str
-    enqueue_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -145,54 +127,6 @@ class FoundationDraftPublicationService:
         )
 
 
-PublishStageDraftBundle = Callable[
-    [StageDraftSelectionV1],
-    tuple[PublishedStageDraft, ...],
-]
-EnqueuePromptPreparation = Callable[[PublishedStageDraft], None]
-
-
-class StageDraftPublicationService:
-    """Persist the visible Draft boundary before starting prompt preparation."""
-
-    def __init__(
-        self,
-        *,
-        publish_bundle: PublishStageDraftBundle,
-        enqueue_prompt_preparation: EnqueuePromptPreparation,
-    ) -> None:
-        self._publish_bundle = publish_bundle
-        self._enqueue_prompt_preparation = enqueue_prompt_preparation
-
-    def publish_selection(
-        self,
-        selection: StageDraftSelectionV1,
-    ) -> StageDraftPublicationResultV1:
-        published = self._publish_bundle(selection)
-        if len(published) != len(selection.drafts):
-            raise ValueError("stage_draft_publication_incomplete")
-
-        for item in published:
-            if getattr(item, "enqueue_required", True):
-                self._enqueue_prompt_preparation(item)
-
-        return StageDraftPublicationResultV1(
-            workflow_id=selection.workflow_id,
-            created_node_ids=tuple(item.node_id for item in published),
-            created_binding_ids=tuple(
-                binding_id for item in published for binding_id in item.binding_ids
-            ),
-            prompt_preparation_ids=tuple(item.prompt_preparation_id for item in published),
-            placement_hints=tuple(
-                AgentPlacementHintV2(
-                    intent="append_flow",
-                    group_key=f"stage:{selection.proposal_id}",
-                )
-                for _ in published
-            ),
-        )
-
-
 def _stage_definitions(capability_id: str) -> tuple[tuple[str, str, str, str, dict], ...]:
     definitions = {
         "world_setting": (("world-setting", "text", "world_setting", "World Setting", {}),),
@@ -295,12 +229,23 @@ def _stage_parameters(
     if capability_id == "video_direction":
         duration = context.capability_facts.get("duration_seconds", 5)
         parameters["duration_seconds"] = min(15.0, max(1.0, float(duration)))
-        parameters["background_music"] = False
+        aspect_ratio = _explicit_constraint(context, "aspect_ratio")
+        if isinstance(aspect_ratio, str) and aspect_ratio.strip():
+            parameters["aspect_ratio"] = aspect_ratio.strip()
     elif capability_id == "bgm_direction":
         duration = context.capability_facts.get("duration_seconds", 30)
         parameters["duration_seconds"] = max(1.0, float(duration))
-        parameters["instrumental_only"] = True
     return parameters
+
+
+def _explicit_constraint(
+    context: CapabilityMaterializationContextV1,
+    field: str,
+) -> object | None:
+    if field in context.explicit_constraints:
+        return context.explicit_constraints[field]
+    scoped = context.explicit_constraints.get("required_video_parameters")
+    return scoped.get(field) if isinstance(scoped, dict) else None
 
 
 def _bounded_title(base: str, suffix: str) -> str:
