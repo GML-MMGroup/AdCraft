@@ -42,6 +42,15 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
   });
 
+  it("plays the bundled product film when no environment override is configured", () => {
+    const view = render(<HomePage navigate={vi.fn()} />);
+
+    const media = view.container.querySelector<HTMLElement>(".home-product-film");
+    expect(media.querySelector("video")?.getAttribute("src")).toBe(
+      "/assets/home-product-film.mp4",
+    );
+  });
+
   it("uses the exported typography system while retaining the accent treatment", () => {
     expect(styles).toMatch(
       /\.home-page\s*\{[^}]*--home-font-display:\s*"Trebuchet MS"[^;]*;[^}]*--home-font-accent:\s*Georgia[^;]*;[^}]*--home-font-ui:\s*Arial[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,

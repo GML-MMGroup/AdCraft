@@ -6,7 +6,8 @@ import { useHomeHeroMotionReady } from "./useHomeHeroMotionReady";
 import { useHomeSectionReveal } from "./useHomeSectionReveal";
 import "./home.css";
 
-const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim();
+const homeProductVideoUrl = import.meta.env.VITE_HOME_PRODUCT_VIDEO_URL?.trim()
+  || "/assets/home-product-film.mp4";
 
 export function HomePage({ navigate }: { navigate: (route: RouteName, options?: { state?: unknown }) => void }) {
   const [modalOpen, setModalOpen] = useState(false);
