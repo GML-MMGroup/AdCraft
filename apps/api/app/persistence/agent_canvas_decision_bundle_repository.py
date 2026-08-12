@@ -45,6 +45,10 @@ from app.schemas.agent_canvas_requirements import (
     RequirementLedgerV1,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_requirement_directives import (
+    RequirementDirectiveCanonicalizationResult,
+    canonicalize_requirement_directives,
+)
 
 
 class AgentCanvasDecisionBundleRepository:
@@ -363,7 +367,7 @@ class AgentCanvasDecisionBundleRepository:
                     bundle = _bundle(row)
                     answers = _validate_answers(bundle, action)
                     current = self.requirements.get_current_in_transaction(connection, workflow_id)
-                    next_ledger = _apply_answers_to_ledger(
+                    next_ledger, canonical = _apply_answers_to_ledger(
                         current.ledger,
                         bundle=bundle,
                         answers=answers,
@@ -379,6 +383,32 @@ class AgentCanvasDecisionBundleRepository:
                         source_bundle_id=bundle.bundle_id,
                         created_at=now,
                     )
+                    if next_revision.revision_id != current.revision_id:
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=workflow_id,
+                                conversation_id=bundle.conversation_id,
+                                event_type="requirement_ledger_updated",
+                                transition_key=(
+                                    f"decision-bundle:{bundle_id}:requirements:"
+                                    f"{next_revision.revision_no}"
+                                ),
+                                created_at=now,
+                                payload={
+                                    "revision_id": next_revision.revision_id,
+                                    "revision_no": next_revision.revision_no,
+                                    "digest": next_revision.digest,
+                                    "source_kind": "decision_bundle_answer",
+                                    "source_bundle_id": bundle_id,
+                                    "added_directive_ids": list(canonical.added_directive_ids),
+                                    "superseded_directive_ids": list(
+                                        canonical.superseded_directive_ids
+                                    ),
+                                    "refresh": ["requirements"],
+                                },
+                            ),
+                        )
                     turn_id = f"turn_{uuid4().hex}"
                     connection.execute(
                         insert(AgentCanvasChatTurnRow).values(
@@ -642,9 +672,9 @@ def _apply_answers_to_ledger(
     bundle: DecisionBundleV1,
     answers: tuple[DecisionBundleAnswerV1, ...],
     next_revision_no: int,
-) -> RequirementLedgerV1:
+) -> tuple[RequirementLedgerV1, RequirementDirectiveCanonicalizationResult]:
     controls = {item.control: item for item in ledger.hard_controls}
-    directives = list(ledger.active_directives)
+    candidates: list[RequirementDirectiveV1] = []
     elements = {item.element_kind: item for item in ledger.element_presence}
     assigned_controls: dict[str, object] = {}
     by_question = {question.question_id: question for question in bundle.questions}
@@ -683,7 +713,7 @@ def _apply_answers_to_ledger(
                             "Decision Bundle control effect is invalid.",
                         ) from error
                 elif isinstance(effect, CreativeDirectiveDecisionEffectV1):
-                    directives.append(
+                    candidates.append(
                         RequirementDirectiveV1(
                             directive_id=f"directive_{uuid4().hex}",
                             normalized_meaning=effect.directive,
@@ -701,7 +731,7 @@ def _apply_answers_to_ledger(
                         **provenance,
                     )
         if answer.custom_answer is not None:
-            directives.append(
+            candidates.append(
                 RequirementDirectiveV1(
                     directive_id=f"directive_{uuid4().hex}",
                     source_kind="decision_bundle_answer",
@@ -718,10 +748,14 @@ def _apply_answers_to_ledger(
                     created_revision_no=next_revision_no,
                 )
             )
+    canonical = canonicalize_requirement_directives(
+        ledger.active_directives,
+        candidates,
+    )
     return ledger.model_copy(
         update={
             "hard_controls": tuple(controls.values()),
-            "active_directives": tuple(directives),
+            "active_directives": canonical.active_directives,
             "element_presence": tuple(elements.values()),
         }
-    )
+    ), canonical

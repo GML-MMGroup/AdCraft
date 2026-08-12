@@ -81,6 +81,9 @@ from app.schemas.agent_canvas_materialization_commit import (
 )
 from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_requirement_directives import (
+    canonicalize_requirement_directives,
+)
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
@@ -461,17 +464,16 @@ class AgentCanvasMaterializationRepository:
                                 strength,
                             ) in enumerate(commitment_values)
                         )
+                        canonical = canonicalize_requirement_directives(
+                            requirement_head.ledger.active_directives,
+                            commitments,
+                        )
                         requirement_revision = self._requirements.append_in_transaction(
                             connection,
                             workflow_id=proposal.workflow_id,
                             expected_revision_no=requirement_head.revision_no,
                             next_ledger=requirement_head.ledger.model_copy(
-                                update={
-                                    "active_directives": (
-                                        *requirement_head.ledger.active_directives,
-                                        *commitments,
-                                    )
-                                }
+                                update={"active_directives": canonical.active_directives}
                             ),
                             source_kind="proposal_selection",
                             source_turn_id=source_turn_id,
@@ -479,34 +481,36 @@ class AgentCanvasMaterializationRepository:
                             source_node_id=node.node_id,
                             created_at=now,
                         )
-                        update_requirement_compatibility_projection_in_transaction(
-                            connection,
-                            proposal.workflow_id,
-                            requirement_revision.ledger,
-                            now,
-                            advance_session_revision=False,
-                        )
-                        self._events.append_in_transaction(
-                            connection,
-                            V2EventInsert(
-                                workflow_id=proposal.workflow_id,
-                                turn_id=source_turn_id,
-                                node_id=node.node_id,
-                                event_type="requirement_ledger_updated",
-                                created_at=now,
-                                payload={
-                                    "revision_id": requirement_revision.revision_id,
-                                    "revision_no": requirement_revision.revision_no,
-                                    "digest": requirement_revision.digest,
-                                    "source_kind": "proposal_selection",
-                                    "source_proposal_id": proposal_id,
-                                    "added_directive_ids": [
-                                        item.directive_id for item in commitments
-                                    ],
-                                    "refresh": ["requirements"],
-                                },
-                            ),
-                        )
+                        if requirement_revision.revision_id != requirement_head.revision_id:
+                            update_requirement_compatibility_projection_in_transaction(
+                                connection,
+                                proposal.workflow_id,
+                                requirement_revision.ledger,
+                                now,
+                                advance_session_revision=False,
+                            )
+                            self._events.append_in_transaction(
+                                connection,
+                                V2EventInsert(
+                                    workflow_id=proposal.workflow_id,
+                                    turn_id=source_turn_id,
+                                    node_id=node.node_id,
+                                    event_type="requirement_ledger_updated",
+                                    created_at=now,
+                                    payload={
+                                        "revision_id": requirement_revision.revision_id,
+                                        "revision_no": requirement_revision.revision_no,
+                                        "digest": requirement_revision.digest,
+                                        "source_kind": "proposal_selection",
+                                        "source_proposal_id": proposal_id,
+                                        "added_directive_ids": list(canonical.added_directive_ids),
+                                        "superseded_directive_ids": list(
+                                            canonical.superseded_directive_ids
+                                        ),
+                                        "refresh": ["requirements"],
+                                    },
+                                ),
+                            )
                     if fault_injector is not None:
                         fault_injector("requirements")
                     snapshot_id = snapshot_ids[node.node_id]
