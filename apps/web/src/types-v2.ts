@@ -3099,6 +3099,8 @@ export interface GuidedSessionStateV2 {
   session_id: string;
   workflow_id: string;
   status: "active" | "paused" | "completed";
+  /** Informational backend locale for generated creative content. */
+  response_locale: string;
   goal: CreativeGoalV2;
   creative_authority: CreativeAuthorityStateV2 | null;
   current_checkpoint: GuidedStepCheckpointV2 | null;

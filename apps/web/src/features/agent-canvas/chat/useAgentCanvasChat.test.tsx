@@ -5,6 +5,7 @@ import type {
   AgentCanvasChatViewTimelineV2,
   AgentCanvasWorkflowV2,
   CanvasRuntimeEventV2,
+  GuidedSessionStateV2,
   GuidanceSessionActionV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -67,6 +68,7 @@ function guidedSession(stageRevision = 4, revision = 8): GuidedSessionStateV2 {
     session_id: "guidance-1",
     workflow_id: "workflow-1",
     status: "active",
+    response_locale: "und",
     goal: {
       requested_output: "video",
       delivery_scope: "generated_media",
@@ -124,7 +126,7 @@ function descriptor(
 }
 
 function turnEvent(
-  eventType: "agent_turn_queued" | "agent_turn_started" | "agent_turn_completed" | "agent_turn_failed",
+  eventType: "agent_turn_queued" | "agent_turn_waiting" | "agent_turn_started" | "agent_turn_completed" | "agent_turn_failed",
   turnId = "turn-1",
   seq = 1,
 ): CanvasRuntimeEventV2 {
@@ -349,13 +351,69 @@ describe("useAgentCanvasChat", () => {
     rerender({ chatEvents: [turnEvent("agent_turn_started")] });
     expect(result.current.state.agentWorking).toBe(true);
 
+    rerender({ chatEvents: [turnEvent("agent_turn_waiting", "turn-1", 2)] });
+    expect(result.current.state.agentWorking).toBe(true);
+    expect(result.current.state.retryableFailedTurn).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(300_000);
+      await Promise.resolve();
+    });
+    expect(result.current.state.agentWorking).toBe(true);
+    expect(result.current.state.retryableFailedTurn).toBeNull();
+
     rerender({
       chatEvents: [
-        turnEvent("agent_turn_started"),
+        turnEvent("agent_turn_waiting"),
         turnEvent("agent_turn_completed", "turn-1", 2),
       ],
     });
     expect(result.current.state.agentWorking).toBe(false);
+  });
+
+  it("refreshes a provider-waiting turn without adding a duplicate chat message", async () => {
+    api.agentCanvasChatTurn.mockResolvedValue({
+      turn_id: "turn-waiting-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "running",
+      turn_kind: "message",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: null,
+      continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 0,
+      replayed: false,
+      retryable: false,
+      operation_stage: "provider_waiting",
+      operation_failure: null,
+      created_at: "2026-08-12T00:00:00Z",
+      updated_at: "2026-08-12T00:00:00Z",
+    });
+    const { result, rerender } = renderHook(
+      ({ chatEvents }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision: 0,
+        chatEvents,
+      }),
+      { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } },
+    );
+
+    api.agentCanvasChatTurn.mockClear();
+    rerender({ chatEvents: [turnEvent("agent_turn_waiting", "turn-waiting-1")] });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-waiting-1");
+    expect(result.current.state.agentWorking).toBe(true);
+    expect(result.current.state.agentWaitingForModel).toBe(true);
+    expect(result.current.state.items).toEqual([]);
+    expect(result.current.state.retryableFailedTurn).toBeNull();
   });
 
   it("sends the active Workflow Style Skill Run with Director messages", async () => {

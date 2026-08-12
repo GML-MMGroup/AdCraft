@@ -125,6 +125,14 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("keeps an Agent turn waiting for the provider in the live chat read model", () => {
+    expect(runtimeEventPolicy(event("agent_turn_waiting", { turn_id: "turn-waiting-1" }))).toMatchObject({
+      refreshChat: true,
+      refreshRuntime: false,
+      refreshWorkflow: false,
+    });
+  });
+
   it("refreshes the persisted journey projection without inferring runtime failure", () => {
     for (const eventType of [
       "journey_stage_started",

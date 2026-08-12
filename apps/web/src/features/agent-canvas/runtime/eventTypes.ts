@@ -16,6 +16,7 @@ export const AGENT_CANVAS_SSE_EVENT_TYPES = [
   "workflow_projection_updated",
   "chat_message_created",
   "agent_turn_queued",
+  "agent_turn_waiting",
   "agent_turn_started",
   "agent_turn_completed",
   "agent_turn_failed",

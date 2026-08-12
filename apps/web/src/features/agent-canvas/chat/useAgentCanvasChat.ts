@@ -433,7 +433,11 @@ export function useAgentCanvasChat({
       const next = new Set(current);
       chatEvents.forEach((event) => {
         if (event.workflow_id !== workflowId || !event.turn_id) return;
-        if (event.event_type === "agent_turn_queued" || event.event_type === "agent_turn_started") {
+        if (
+          event.event_type === "agent_turn_queued"
+          || event.event_type === "agent_turn_waiting"
+          || event.event_type === "agent_turn_started"
+        ) {
           next.add(event.turn_id);
         }
         if (event.event_type === "agent_turn_completed" || event.event_type === "agent_turn_failed") {
@@ -455,6 +459,8 @@ export function useAgentCanvasChat({
         }
       }
       if (
+        event.event_type === "agent_turn_waiting"
+        ||
         event.event_type.startsWith("continuation_")
         || event.event_type.startsWith("proposal_materialization_")
         || event.event_type.startsWith("agent_operation_")
@@ -853,6 +859,11 @@ export function useAgentCanvasChat({
       ))
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0] ?? null;
   }, [items, turnsById]);
+  const agentWaitingForModel = useMemo(() => (
+    Object.values(turnsById).some((turn) => (
+      turn.status === "running" && turn.operation_stage === "provider_waiting"
+    ))
+  ), [turnsById]);
 
   return {
     state: {
@@ -866,6 +877,7 @@ export function useAgentCanvasChat({
       loading,
       sending,
       agentWorking: sending || pendingAgentTurnIds.length > 0,
+      agentWaitingForModel,
       actingProposalId,
       actingDecisionBundleId,
       actingCommandPlanId,

@@ -3863,6 +3863,7 @@ export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSe
     "session_id",
     "workflow_id",
     "status",
+    "response_locale",
     "goal",
     "creative_authority",
     "current_checkpoint",
@@ -3885,6 +3886,10 @@ export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSe
       new Set<GuidedSessionStateV2["status"]>(["active", "paused", "completed"]),
       `${path}.status`,
     ),
+    // Older persisted sessions predate the additive field; new responses always provide it.
+    response_locale: record.response_locale === undefined
+      ? "und"
+      : expectNonEmptyString(record.response_locale, `${path}.response_locale`),
     goal: normalizeCreativeGoalV2(record.goal, `${path}.goal`),
     creative_authority: record.creative_authority === undefined || record.creative_authority === null
       ? null
