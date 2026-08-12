@@ -9,13 +9,13 @@ type WritingStroke = {
 };
 
 const glyphCoverages = [
-  { delay: "0ms", duration: "540ms" },
-  { delay: "500ms", duration: "430ms" },
-  { delay: "760ms", duration: "560ms" },
-  { delay: "1280ms", duration: "260ms" },
-  { delay: "1520ms", duration: "380ms" },
-  { delay: "1710ms", duration: "520ms" },
-  { delay: "2100ms", duration: "120ms" },
+  { delay: "0ms", duration: "540ms", finalDelay: "540ms" },
+  { delay: "500ms", duration: "430ms", finalDelay: "930ms" },
+  { delay: "760ms", duration: "560ms", finalDelay: "1320ms" },
+  { delay: "1280ms", duration: "260ms", finalDelay: "1540ms" },
+  { delay: "1520ms", duration: "380ms", finalDelay: "1900ms" },
+  { delay: "1710ms", duration: "520ms", finalDelay: "2230ms" },
+  { delay: "2100ms", duration: "120ms", finalDelay: "2220ms" },
 ] as const;
 
 // Water Brush has a 1000-unit em. At 80px, 0.100em tracking is 100 font units.
@@ -188,6 +188,25 @@ export function HeroAccentWriting() {
             transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
           />
         ))}
+      </g>
+      <g fill={`url(#${gradientId})`} transform={waterBrushTransform}>
+        {waterBrushAdFilmGlyphPaths.map((glyph, index) => {
+          const timing = glyphCoverages[index]!;
+
+          return (
+            <path
+              key={glyph.character}
+              className="home-hero-accent-writing__final-glyph"
+              d={glyph.d}
+              transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
+              style={
+                {
+                  "--home-hero-accent-final-delay": timing.finalDelay,
+                } as CSSProperties
+              }
+            />
+          );
+        })}
       </g>
     </svg>
   );
