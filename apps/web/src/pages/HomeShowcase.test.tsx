@@ -31,6 +31,7 @@ describe("HomeShowcase", () => {
     const card = within(view.container).getByRole("button", { name: "Scene Extension" });
 
     expect(orbit.getAttribute("aria-roledescription")).toBe("carousel");
+    expect(orbit.querySelector(".discover-orbit__track")).toBeTruthy();
     expect(orbit.dataset.activeIndex).toBe("3");
     expect(card.getAttribute("aria-current")).toBe("true");
 
