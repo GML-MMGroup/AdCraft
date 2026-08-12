@@ -42,10 +42,12 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
     const writingSvg = lines[2]?.querySelector("svg[aria-label='Ad film.']");
     const glyph = writingSvg?.querySelector<SVGTextElement>(".home-hero-accent-writing__glyph");
+    const completion = writingSvg?.querySelector<SVGRectElement>(".home-hero-accent-writing__completion");
     expect(writingSvg).toBeTruthy();
     expect(glyph?.getAttribute("font-family")).toContain("Georgia");
     expect(glyph?.getAttribute("font-style")).toBe("italic");
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
+    expect(completion?.getAttribute("fill")).toBe("#fff");
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -84,6 +86,9 @@ describe("HomePage hero title", () => {
     );
     expect(styles).toMatch(
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__completion\s*\{[^}]*home-hero-accent-complete/s,
     );
     expect(styles).toMatch(
       /\.home-hero-accent-writing__glyph\s*\{[^}]*font-family:\s*Georgia[^}]*font-style:\s*italic;/s,

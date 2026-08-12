@@ -23,7 +23,6 @@ const fontFiles = [
   "manrope-latin-variable.woff2",
   "instrument-serif-latin.woff2",
   "instrument-serif-latin-italic.woff2",
-  "dancing-script-latin-variable.woff2",
   "jetbrains-mono-latin-variable.woff2",
 ];
 const approvedWeights = new Set([400, 500, 600, 700, 800, 900]);
@@ -64,7 +63,7 @@ describe("typography system", () => {
     expect(styles).toContain('url("/fonts/manrope-latin-variable.woff2")');
     expect(styles).toContain('url("/fonts/instrument-serif-latin.woff2")');
     expect(styles).toContain('url("/fonts/instrument-serif-latin-italic.woff2")');
-    expect(styles).toContain('url("/fonts/dancing-script-latin-variable.woff2")');
+    expect(styles).not.toContain('url("/fonts/dancing-script-latin-variable.woff2")');
     expect(styles).toContain('url("/fonts/jetbrains-mono-latin-variable.woff2")');
     expect(homeStyles).not.toContain('url("/fonts/space-grotesk-latin-variable.woff2")');
     expect(homeStyles).not.toContain('url("/fonts/inter-latin-variable.woff2")');

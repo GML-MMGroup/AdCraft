@@ -23,13 +23,9 @@ describe("home typography font catalog", () => {
       .toEqual(new Set(["local", "system", "web"]));
   });
 
-  it("offers Dancing Script as a locally served Hero accent font", () => {
-    expect(FONT_CATALOG).toContainEqual(expect.objectContaining({
+  it("does not retain the removed Dancing Script experiment", () => {
+    expect(FONT_CATALOG).not.toContainEqual(expect.objectContaining({
       id: "dancing-script",
-      family: "Dancing Script",
-      source: "local",
-      weights: [400, 500, 600, 700],
-      supportsItalic: false,
     }));
   });
 

@@ -40,7 +40,6 @@ export type FontCatalogEntry = {
 export const FONT_CATALOG: readonly FontCatalogEntry[] = [
   { id: "manrope", label: "Manrope", family: "Manrope", fallback: "sans-serif", source: "local", weights: [400, 500, 600, 700, 800], supportsItalic: false },
   { id: "instrument-serif", label: "Instrument Serif", family: "Instrument Serif", fallback: "serif", source: "local", weights: [400], supportsItalic: true },
-  { id: "dancing-script", label: "Dancing Script", family: "Dancing Script", fallback: "cursive", source: "local", weights: [400, 500, 600, 700], supportsItalic: false },
   { id: "jetbrains-mono", label: "JetBrains Mono", family: "JetBrains Mono", fallback: "monospace", source: "local", weights: [400, 500, 600, 700], supportsItalic: false },
   { id: "arial", label: "Arial", family: "Arial", fallback: "sans-serif", source: "system", weights: [400, 700], supportsItalic: true },
   { id: "georgia", label: "Georgia", family: "Georgia", fallback: "serif", source: "system", weights: [400, 700], supportsItalic: true },
