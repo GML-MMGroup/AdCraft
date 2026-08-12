@@ -40,6 +40,8 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
+    expect(lines[2]?.querySelector("svg[aria-label='Ad film.']")).toBeTruthy();
+    expect(lines[2]?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -74,7 +76,10 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__accent\s*\{[^}]*opacity:\s*1;[^}]*filter:\s*none;[^}]*will-change:\s*auto;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready \.home-product-hero__accent\s*\{[^}]*animation:\s*none;/s,
+      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*home-hero-accent-write/s,
+    );
+    expect(styles).toMatch(
+      /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
     );
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
