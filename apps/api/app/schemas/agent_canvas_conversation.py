@@ -110,6 +110,7 @@ class ChatTurnV2(_ConversationModel):
         "guided_action",
         "capability",
         "next_action",
+        "guidance_advance",
     ]
     request: dict[str, JsonValue]
     creation_mode: CreationModeDecisionV2 | None = None

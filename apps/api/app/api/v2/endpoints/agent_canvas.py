@@ -123,6 +123,7 @@ from app.schemas.agent_canvas_conversation import (
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
 )
+from app.schemas.agent_canvas_guidance import GuidanceAdvanceRequestV1
 from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleActionAcceptedV1,
     DecisionBundleActionRequestV1,
@@ -232,6 +233,7 @@ from app.services.agent_canvas_conversation import (
     VideoAgentGateway,
 )
 from app.services.chat_turn_retry import ChatTurnRetryService
+from app.services.agent_canvas_guidance_advance import GuidanceAdvanceService
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -297,6 +299,7 @@ class AgentCanvasRuntime:
     targets: AgentCanvasTargetService
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
+    guidance_advances: GuidanceAdvanceService
     commands: AgentCanvasCommandService
     variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
@@ -954,6 +957,20 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+    turn_retries = ChatTurnRetryService(
+        workflow_repository,
+        conversation_repository,
+        asset_resolver=asset_service.resolve_asset,
+    )
+    guidance_advances = GuidanceAdvanceService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        requirements=requirement_repository,
+        continuations=continuation_outbox,
+        decision_bundles=decision_bundles,
+        retries=turn_retries,
+        events=event_repository,
+    )
     return AgentCanvasRuntime(
         database=database,
         projects=AgentCanvasProjectService(
@@ -986,11 +1003,8 @@ def create_agent_canvas_runtime(
         assets=asset_service,
         targets=AgentCanvasTargetService(workflow_repository, asset_service),
         conversations=conversation_service,
-        turn_retries=ChatTurnRetryService(
-            workflow_repository,
-            conversation_repository,
-            asset_resolver=asset_service.resolve_asset,
-        ),
+        turn_retries=turn_retries,
+        guidance_advances=guidance_advances,
         commands=command_service,
         variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
@@ -1891,6 +1905,41 @@ def submit_chat_message(
     return accepted
 
 
+@router.post(
+    "/workflows/{workflow_id}/chat/guidance/advance",
+    response_model=ChatTurnAcceptedV2,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def advance_guidance(
+    workflow_id: str,
+    request: GuidanceAdvanceRequestV1,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> ChatTurnAcceptedV2:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.guidance_advances.submit(
+            workflow_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    if not accepted.replayed:
+        if accepted.retry_of_turn_id is not None:
+            background_tasks.add_task(
+                _process_agent_turn_and_resume,
+                runtime,
+                workflow_id,
+                accepted.turn_id,
+            )
+        else:
+            background_tasks.add_task(runtime.continuation_worker.run_once)
+    return accepted
+
+
 @router.get(
     "/workflows/{workflow_id}/chat/decision-bundles/{bundle_id}",
     response_model=DecisionBundleV1,
@@ -2587,6 +2636,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "chat_turn_not_retryable": 409,
         "chat_turn_retry_stale": 409,
         "chat_turn_retry_in_progress": 409,
+        "guidance_advance_stale": 409,
+        "guidance_advance_not_available": 409,
+        "guidance_state_inconsistent": 409,
         "guidance_session_not_found": 404,
         "guidance_revision_conflict": 409,
         "journey_transition_invalid": 422,

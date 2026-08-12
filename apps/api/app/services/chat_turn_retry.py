@@ -12,6 +12,7 @@ from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import (
     ChatTurnAcceptedV2,
     ChatTurnRetryRequestV1,
+    ChatTurnV2,
 )
 
 
@@ -37,12 +38,9 @@ class ChatTurnRetryService:
         *,
         idempotency_key: str,
     ) -> ChatTurnAcceptedV2:
-        source = self._conversations.get_turn(turn_id)
-        if source.workflow_id != workflow_id:
-            raise _error("chat_turn_not_found", "Chat turn was not found.")
-
         replay = self._conversations.get_turn_by_idempotency_key(idempotency_key)
         if replay is not None:
+            source = self._conversations.get_turn(turn_id)
             if replay.retry_of_turn_id != source.turn_id:
                 raise _error("idempotency_conflict", "Idempotency key was reused.")
             return self._conversations.create_retry_turn(
@@ -50,6 +48,25 @@ class ChatTurnRetryService:
                 idempotency_key=idempotency_key,
                 retry_snapshot=self._conversations.get_retry_snapshot(source.turn_id),
             )
+
+        source, snapshot = self.validate(workflow_id, turn_id, request)
+        return self._conversations.create_retry_turn(
+            source,
+            idempotency_key=idempotency_key,
+            retry_snapshot=snapshot,
+        )
+
+    def validate(
+        self,
+        workflow_id: str,
+        turn_id: str,
+        request: ChatTurnRetryRequestV1,
+    ) -> tuple[ChatTurnV2, dict[str, object]]:
+        """Validate frozen retry authority without creating a retry Turn."""
+
+        source = self._conversations.get_turn(turn_id)
+        if source.workflow_id != workflow_id:
+            raise _error("chat_turn_not_found", "Chat turn was not found.")
 
         if source.status != "failed":
             raise _error("chat_turn_not_failed", "Only a failed chat turn can be retried.")
@@ -96,11 +113,7 @@ class ChatTurnRetryService:
             except V2PersistenceError as error:
                 raise _stale_error() from error
 
-        return self._conversations.create_retry_turn(
-            source,
-            idempotency_key=idempotency_key,
-            retry_snapshot=snapshot,
-        )
+        return source, snapshot
 
 
 def _stale_error() -> V2PersistenceError:
