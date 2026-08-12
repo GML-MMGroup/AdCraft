@@ -219,7 +219,7 @@ def validate_video_agent_contract_parity(
     errors: list[dict[str, str]] = []
     for definition in definitions:
         try:
-            registry.resolve(definition.result_contract_name)
+            declared_model = registry.resolve(definition.result_contract_name)
         except AgentStructuredContractRegistryError:
             errors.append(
                 {
@@ -227,6 +227,18 @@ def validate_video_agent_contract_parity(
                     "contract_name": definition.result_contract_name[:160],
                 }
             )
+            continue
+        for model in (declared_model, *_compatible_models(declared_model)):
+            try:
+                registry.validate_operation_model(definition, model)
+            except AgentStructuredContractRegistryError:
+                errors.append(
+                    {
+                        "operation": definition.operation[:160],
+                        "contract_name": definition.result_contract_name[:160],
+                        "actual_contract_name": model.__name__[:160],
+                    }
+                )
     if errors:
         raise AgentStructuredContractRegistryError(
             "agent_contract_registry_invalid",
@@ -239,8 +251,13 @@ def _compatible_models(model: type[BaseModel]) -> tuple[type[BaseModel], ...]:
     if not getattr(model, "__pydantic_root_model__", False):
         return (model,)
     annotation = model.model_fields["root"].annotation
-    members = tuple(item for item in get_args(annotation) if isinstance(item, type))
-    return members or (model,)
+    compatible: list[type[BaseModel]] = [model]
+    for item in get_args(annotation):
+        if not isinstance(item, type) or not issubclass(item, BaseModel):
+            continue
+        if all(item is not existing for existing in compatible):
+            compatible.append(item)
+    return tuple(compatible)
 
 
 def validate_agent_contract(contract_name: str, value: object) -> BaseModel:
