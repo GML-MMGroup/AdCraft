@@ -31,6 +31,10 @@ from app.schemas import workflow_v2_expert_brief_contracts
 from app.schemas import workflow_v2_planning
 from app.schemas import workflow_v2_prompt_contracts
 from app.schemas import v2_agent_conversations
+from app.schemas import v2_quick_media
+from app.services.v2_agent_contract_registry import AGENT_STRUCTURED_CONTRACT_REGISTRY
+from app.services.agent_run_context_registry import AGENT_RUN_CONTEXT_REGISTRY
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 CONTRACT_MODELS = (
@@ -300,7 +304,17 @@ CONTRACT_MODELS = (
     workflow_v2_expert_brief_contracts.V2CharacterExpertPlan,
     workflow_v2_expert_brief_contracts.V2SceneExpertPlan,
     workflow_v2_expert_brief_contracts.V2BgmExpertPlan,
+    workflow_v2_prompt_contracts.V2ProductMainPromptPlan,
+    workflow_v2_prompt_contracts.V2ProductMultiViewPromptPlan,
+    workflow_v2_prompt_contracts.V2ProductPromptPlan,
+    workflow_v2_prompt_contracts.V2CharacterMainPromptPlan,
+    workflow_v2_prompt_contracts.V2CharacterThreeViewPromptPlan,
+    workflow_v2_prompt_contracts.V2CharacterPromptPlan,
+    workflow_v2_prompt_contracts.V2SceneMainPromptPlan,
+    workflow_v2_prompt_contracts.V2SceneMultiViewPromptPlan,
+    workflow_v2_prompt_contracts.V2ScenePromptPlan,
     workflow_v2_prompt_contracts.V2BgmPromptPlan,
+    v2_quick_media.V2QuickMediaPromptPlan,
     agent_runtime.AgentReferenceSummary,
     agent_runtime.AgentTargetContext,
     agent_runtime.AgentRunContext,
@@ -354,6 +368,12 @@ def generate_agent_contracts(output_dir: Path) -> tuple[Path, Path]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
         "protocol_version": "1",
+        "x-agent-context-contracts": list(AGENT_RUN_CONTEXT_REGISTRY.names()),
+        "x-agent-structured-contracts": list(AGENT_STRUCTURED_CONTRACT_REGISTRY.names()),
+        "x-video-agent-operations": [
+            definition.model_dump(mode="json")
+            for definition in VideoAgentOperationRegistry().definitions()
+        ],
         "$defs": definitions,
     }
     schema = _canonicalize_schema(schema)

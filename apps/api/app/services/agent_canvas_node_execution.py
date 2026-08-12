@@ -44,6 +44,7 @@ from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
 from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_reference_input_delivery import (
     V2DeliveredProviderReference,
@@ -277,6 +278,7 @@ class ScriptNodeExecutor:
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
+        validate_video_agent_operation_context("execute_canvas_script", run_context)
         request = AgentRunRequest(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
@@ -333,6 +335,7 @@ class TextNodeExecutor:
             target=None,
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
+        validate_video_agent_operation_context("execute_canvas_text", run_context)
         request = AgentRunRequest(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",

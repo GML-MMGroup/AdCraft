@@ -20,6 +20,7 @@ from app.schemas.agent_runtime import (
 )
 from app.services.agent_operation_policy import freeze_agent_run_operation_policy
 from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
 
 
 _MODEL_POLICY_ID = "video_agent.decide_turn_intent.v3"
@@ -68,6 +69,7 @@ class AgentProviderConformanceBootstrapService:
             requirement_revision_no=1,
             requirement_digest="0" * 64,
         )
+        validate_video_agent_operation_context("decide_turn_intent", context)
         request = AgentRunRequest(
             run_id=run_id,
             request_id=f"request_{run_id}",

@@ -35,6 +35,7 @@ from app.services.pi_agent_runtime_client import (
 )
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
 from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
 from app.services.agent_operation_policy import freeze_agent_run_operation_policy
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
@@ -608,6 +609,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         input_payload=payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
+    validate_video_agent_operation_context(operation, context)
     identity = None
     action_id = str(spec.trace_metadata.get("action_id") or "").strip()
     if invocation is None and action_id:

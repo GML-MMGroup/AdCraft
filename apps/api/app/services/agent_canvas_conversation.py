@@ -95,6 +95,10 @@ from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
 from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_run_context_registry import (
+    validate_video_agent_context_parity,
+    validate_video_agent_operation_context,
+)
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.agent_canvas_nodes import AgentCanvasNodeService
 from app.services.agent_canvas_requirement_projection import (
@@ -135,6 +139,10 @@ from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import AgentOperationPolicyRegistryV2
 from app.services.agent_request_digest import frozen_agent_request_digest
+from app.services.v2_agent_contract_registry import (
+    AGENT_STRUCTURED_CONTRACT_REGISTRY,
+)
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 logger = logging.getLogger(__name__)
@@ -365,6 +373,8 @@ class PiVideoAgentGateway:
         self._model_resolution = model_resolution
         self._operation_policies = operation_policies or AgentOperationPolicyRegistryV2()
         self._on_provider_waiting = on_provider_waiting
+        self._operation_registry = VideoAgentOperationRegistry()
+        validate_video_agent_context_parity(self._operation_registry.definitions())
 
     def classify_turn_intent(
         self,
@@ -569,6 +579,12 @@ class PiVideoAgentGateway:
         identity_fields: dict[str, str | int],
         parent_run_id: str | None = None,
     ) -> PiStructuredRunResult:
+        operation_definition = self._operation_registry.resolve(operation)
+        validate_video_agent_operation_context(operation, context)
+        AGENT_STRUCTURED_CONTRACT_REGISTRY.validate_operation_model(
+            operation_definition,
+            contract,
+        )
         resolution = self._model_resolution.resolve_selection(
             node_type="script",
             model_selection_mode="default",

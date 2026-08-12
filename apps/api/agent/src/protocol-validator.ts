@@ -8,6 +8,7 @@ import type {
   AgentProviderConformanceInputV1,
   AgentRunRequest,
 } from "./generated/agent-runtime.js";
+import { getOperationDescriptor } from "./registry.js";
 
 const schemaPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -34,6 +35,11 @@ const validateConformanceInput: ValidateFunction<AgentProviderConformanceInputV1
 
 export function validateAgentRunRequest(value: unknown): AgentRunRequest {
   if (!validate(value)) throw new Error("agent_protocol_mismatch");
+  const descriptor = getOperationDescriptor(value.operation);
+  const contextValidator = contextValidatorFor(descriptor.context_contract_name);
+  if (!contextValidator(value.context)) {
+    throw new Error("agent_context_registry_invalid");
+  }
   return value;
 }
 
@@ -42,6 +48,22 @@ export function validateAgentProviderConformanceInput(
 ): AgentProviderConformanceInputV1 {
   if (!validateConformanceInput(value)) throw new Error("conformance_parity_failed");
   return value;
+}
+
+const contextValidators = new Map<string, ValidateFunction>();
+
+function contextValidatorFor(contractName: string): ValidateFunction {
+  const existing = contextValidators.get(contractName);
+  if (existing) return existing;
+  if (!(contractName in schema.$defs)) {
+    throw new Error("agent_context_registry_invalid");
+  }
+  const validator = ajv.compile({
+    $ref: `#/$defs/${contractName}`,
+    $defs: withoutDiscriminatorAnnotations(schema.$defs),
+  });
+  contextValidators.set(contractName, validator);
+  return validator;
 }
 
 function withoutDiscriminatorAnnotations(value: unknown): unknown {

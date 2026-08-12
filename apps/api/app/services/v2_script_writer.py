@@ -158,20 +158,16 @@ class V2ScriptWriterService:
                 if planning_session
                 else None
             )
-            agent_context = (
-                ScriptWriterAgentContext(
-                    context_kind="script_writer",
-                    user_input=request_model.prompt,
-                    workflow_id=planning_session.workflow_id,
-                    frozen_facts=frozen_facts or FrozenPlanningFacts(),
-                    reference_summaries=_planning_reference_summaries(
-                        payload["input_asset_descriptors"]
-                    ),
-                    ad_request_summary=_bounded_context_summary(payload),
-                    item_inventory=_planning_item_inventory(request_model.metadata),
-                )
-                if planning_session
-                else None
+            agent_context = ScriptWriterAgentContext(
+                context_kind="script_writer",
+                user_input=request_model.prompt,
+                workflow_id=planning_session.workflow_id if planning_session else workflow_id,
+                frozen_facts=frozen_facts or FrozenPlanningFacts(),
+                reference_summaries=_planning_reference_summaries(
+                    payload["input_asset_descriptors"]
+                ),
+                ad_request_summary=_bounded_context_summary(payload),
+                item_inventory=_planning_item_inventory(request_model.metadata),
             )
             spec = StructuredGenerationSpec[V2ScriptPlanV2](
                 stage_name="script_writer",

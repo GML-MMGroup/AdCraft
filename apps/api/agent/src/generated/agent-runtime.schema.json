@@ -2645,6 +2645,9 @@
             },
             {
               "$ref": "#/$defs/CapabilityMaterializationContextV1"
+            },
+            {
+              "$ref": "#/$defs/StoryboardSegmentAuthoringContextV2"
             }
           ],
           "title": "Context"
@@ -18511,6 +18514,213 @@
       "title": "V2CharacterExpertPlan",
       "type": "object"
     },
+    "V2CharacterMainPromptPlan": {
+      "properties": {
+        "forbidden_layouts": {
+          "items": {
+            "enum": [
+              "collage",
+              "contact_sheet",
+              "grid",
+              "multi_view",
+              "sheet",
+              "three_view",
+              "turnaround"
+            ],
+            "type": "string"
+          },
+          "title": "Forbidden Layouts",
+          "type": "array"
+        },
+        "layout_intent": {
+          "const": "single_character",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layout_intent",
+        "provider_prompt",
+        "specialist_prompt",
+        "summary_prompt"
+      ],
+      "title": "V2CharacterMainPromptPlan",
+      "type": "object"
+    },
+    "V2CharacterPromptPlan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/V2CharacterMainPromptPlan"
+        },
+        {
+          "$ref": "#/$defs/V2CharacterThreeViewPromptPlan"
+        }
+      ],
+      "description": "Closed Character prompt contract family used by operation metadata.",
+      "title": "V2CharacterPromptPlan"
+    },
+    "V2CharacterThreeViewPromptPlan": {
+      "properties": {
+        "layout_intent": {
+          "const": "character_three_view",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "must_use_reference_slot_type": {
+          "const": "character_main_image",
+          "title": "Must Use Reference Slot Type",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "required_views": {
+          "items": {
+            "enum": [
+              "back",
+              "front",
+              "side"
+            ],
+            "type": "string"
+          },
+          "title": "Required Views",
+          "type": "array"
+        },
+        "same_identity_required": {
+          "const": true,
+          "title": "Same Identity Required",
+          "type": "boolean"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layout_intent",
+        "must_use_reference_slot_type",
+        "provider_prompt",
+        "required_views",
+        "same_identity_required",
+        "specialist_prompt",
+        "summary_prompt"
+      ],
+      "title": "V2CharacterThreeViewPromptPlan",
+      "type": "object"
+    },
     "V2ProductBrief": {
       "properties": {
         "asset_prompts": {
@@ -18640,6 +18850,298 @@
         }
       },
       "title": "V2ProductExpertPlan",
+      "type": "object"
+    },
+    "V2ProductMainPromptPlan": {
+      "properties": {
+        "forbidden_layouts": {
+          "items": {
+            "enum": [
+              "collage",
+              "contact_sheet",
+              "grid",
+              "multi_view"
+            ],
+            "type": "string"
+          },
+          "title": "Forbidden Layouts",
+          "type": "array"
+        },
+        "layout_intent": {
+          "const": "single_product",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layout_intent",
+        "provider_prompt",
+        "specialist_prompt",
+        "summary_prompt"
+      ],
+      "title": "V2ProductMainPromptPlan",
+      "type": "object"
+    },
+    "V2ProductMultiViewPromptPlan": {
+      "properties": {
+        "grid_layout": {
+          "const": "2x2",
+          "title": "Grid Layout",
+          "type": "string"
+        },
+        "layout_intent": {
+          "const": "product_grid_2x2",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "must_use_reference_slot_type": {
+          "const": "product_main_image",
+          "title": "Must Use Reference Slot Type",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "same_product_required": {
+          "const": true,
+          "title": "Same Product Required",
+          "type": "boolean"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "view_count": {
+          "const": 4,
+          "title": "View Count",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "grid_layout",
+        "layout_intent",
+        "must_use_reference_slot_type",
+        "provider_prompt",
+        "same_product_required",
+        "specialist_prompt",
+        "summary_prompt",
+        "view_count"
+      ],
+      "title": "V2ProductMultiViewPromptPlan",
+      "type": "object"
+    },
+    "V2ProductPromptPlan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/V2ProductMainPromptPlan"
+        },
+        {
+          "$ref": "#/$defs/V2ProductMultiViewPromptPlan"
+        }
+      ],
+      "description": "Closed Product prompt contract family used by operation metadata.",
+      "title": "V2ProductPromptPlan"
+    },
+    "V2QuickMediaPromptPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_name": {
+          "const": "video_agent",
+          "default": "video_agent",
+          "title": "Agent Name",
+          "type": "string"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "operation": {
+          "enum": [
+            "free_audio",
+            "free_image",
+            "free_video"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "output_media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "video"
+          ],
+          "title": "Output Media Type",
+          "type": "string"
+        },
+        "provider_prompt": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "summary_prompt": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "maxItems": 64,
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation",
+        "output_media_type",
+        "provider_prompt",
+        "summary_prompt"
+      ],
+      "title": "V2QuickMediaPromptPlan",
       "type": "object"
     },
     "V2SceneBrief": {
@@ -18773,6 +19275,210 @@
       "title": "V2SceneExpertPlan",
       "type": "object"
     },
+    "V2SceneMainPromptPlan": {
+      "properties": {
+        "forbidden_layouts": {
+          "items": {
+            "enum": [
+              "collage",
+              "grid",
+              "multi_view",
+              "split_screen",
+              "storyboard_sheet"
+            ],
+            "type": "string"
+          },
+          "title": "Forbidden Layouts",
+          "type": "array"
+        },
+        "layout_intent": {
+          "const": "single_scene",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "layout_intent",
+        "provider_prompt",
+        "specialist_prompt",
+        "summary_prompt"
+      ],
+      "title": "V2SceneMainPromptPlan",
+      "type": "object"
+    },
+    "V2SceneMultiViewPromptPlan": {
+      "properties": {
+        "grid_layout": {
+          "const": "2x2",
+          "title": "Grid Layout",
+          "type": "string"
+        },
+        "layout_intent": {
+          "const": "scene_grid_2x2",
+          "title": "Layout Intent",
+          "type": "string"
+        },
+        "must_use_reference_slot_type": {
+          "const": "scene_main_image",
+          "title": "Must Use Reference Slot Type",
+          "type": "string"
+        },
+        "negative_constraints": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Constraints"
+        },
+        "negative_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative Prompt"
+        },
+        "provider_prompt": {
+          "title": "Provider Prompt",
+          "type": "string"
+        },
+        "quality_notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Notes",
+          "type": "array"
+        },
+        "reference_asset_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reference Asset Ids",
+          "type": "array"
+        },
+        "same_location_required": {
+          "const": true,
+          "title": "Same Location Required",
+          "type": "boolean"
+        },
+        "specialist_prompt": {
+          "title": "Specialist Prompt",
+          "type": "string"
+        },
+        "summary_prompt": {
+          "title": "Summary Prompt",
+          "type": "string"
+        },
+        "view_count": {
+          "const": 4,
+          "title": "View Count",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "grid_layout",
+        "layout_intent",
+        "must_use_reference_slot_type",
+        "provider_prompt",
+        "same_location_required",
+        "specialist_prompt",
+        "summary_prompt",
+        "view_count"
+      ],
+      "title": "V2SceneMultiViewPromptPlan",
+      "type": "object"
+    },
+    "V2ScenePromptPlan": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/V2SceneMainPromptPlan"
+        },
+        {
+          "$ref": "#/$defs/V2SceneMultiViewPromptPlan"
+        }
+      ],
+      "description": "Closed Scene prompt contract family used by operation metadata.",
+      "title": "V2ScenePromptPlan"
+    },
     "ValidatedNextActionV1": {
       "additionalProperties": false,
       "properties": {
@@ -18839,6 +19545,12 @@
           ],
           "default": null,
           "title": "Capability Id"
+        },
+        "context_contract_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Context Contract Name",
+          "type": "string"
         },
         "display_name": {
           "anyOf": [
@@ -18909,6 +19621,7 @@
         }
       },
       "required": [
+        "context_contract_name",
         "operation",
         "result_contract_name"
       ],
@@ -20135,5 +20848,651 @@
   },
   "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "protocol_version": "1"
+  "protocol_version": "1",
+  "x-agent-context-contracts": [
+    "AgentRunContext",
+    "FrontDeskIntentAgentContext",
+    "IntentContractAgentContext",
+    "ScriptWriterAgentContext",
+    "ProductExpertAgentContext",
+    "CharacterExpertAgentContext",
+    "SceneExpertAgentContext",
+    "BgmExpertAgentContext",
+    "AssetRevisionAgentContext",
+    "QuickMediaAgentContext",
+    "WorkflowConversationAgentContext",
+    "ConversationSummaryAgentContext",
+    "DirectorTurnContextV2",
+    "AgentCommandReplanContextV2",
+    "VideoParameterIntentContextV2",
+    "TurnIntentContextV2",
+    "NextActionContextV1",
+    "CapabilityInvocationContextV2",
+    "CapabilityMaterializationContextV1",
+    "StoryboardSegmentAuthoringContextV2"
+  ],
+  "x-agent-structured-contracts": [
+    "SpecialistDraft",
+    "AgentActionEnvelopeV2",
+    "AgentCanvasScriptOutput",
+    "AgentCanvasTextOutput",
+    "AgentCommandPlanDraftV2",
+    "VideoParameterIntentV2",
+    "CompactTurnIntentDecisionV2",
+    "TurnIntentDecisionV2",
+    "NextActionCommandV1",
+    "DecisionBundleDraftV1",
+    "WorldSettingProposalResultV1",
+    "ProductProposalResultV1",
+    "PropProposalResultV1",
+    "CharacterProposalResultV1",
+    "SceneProposalResultV1",
+    "ScriptProposalResultV1",
+    "StoryboardProposalResultV1",
+    "VideoProposalResultV1",
+    "BgmProposalResultV1",
+    "QuickMediaProposalResultV1",
+    "SpecialistResult",
+    "FrontDeskIntentOutput",
+    "V2EditableScriptDocument",
+    "V2ExpertBriefPlannerOutput",
+    "V2ProductExpertPlan",
+    "V2CharacterExpertPlan",
+    "V2SceneExpertPlan",
+    "V2BgmExpertPlan",
+    "V2IntentPlan",
+    "V2ScriptPlanV2",
+    "V2StoryboardDetailPlan",
+    "V2VisualStyleScopeRepairOutput",
+    "ConversationSummaryResult",
+    "WorkflowConversationReply",
+    "StoryboardSequenceOutlineDraftV2",
+    "StoryboardSegmentMaterializationDraftV2",
+    "V2QuickMediaPromptPlan",
+    "V2ProductMainPromptPlan",
+    "V2ProductMultiViewPromptPlan",
+    "V2ProductPromptPlan",
+    "V2CharacterMainPromptPlan",
+    "V2CharacterThreeViewPromptPlan",
+    "V2CharacterPromptPlan",
+    "V2SceneMainPromptPlan",
+    "V2SceneMultiViewPromptPlan",
+    "V2ScenePromptPlan",
+    "V2ShotCellPromptPlan",
+    "V2ShotVideoPromptPlan",
+    "V2BgmPromptPlan",
+    "WorldSettingMaterializationResultV1",
+    "ProductMaterializationResultV1",
+    "PropMaterializationResultV1",
+    "CharacterMaterializationResultV1",
+    "SceneMaterializationResultV1",
+    "ScriptMaterializationResultV1",
+    "StoryboardMaterializationResultV1",
+    "VideoMaterializationResultV1",
+    "BgmMaterializationResultV1",
+    "QuickMediaMaterializationResultV1"
+  ],
+  "x-video-agent-operations": [
+    {
+      "capability_id": null,
+      "context_contract_name": "TurnIntentContextV2",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "decide_turn_intent",
+      "result_contract_name": "CompactTurnIntentDecisionV2",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "NextActionContextV1",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "decide_next_action",
+      "result_contract_name": "NextActionCommandV1",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentCommandReplanContextV2",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "command_replan",
+      "result_contract_name": "AgentCommandPlanDraftV2",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "WorkflowConversationAgentContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "workflow_conversation",
+      "result_contract_name": "WorkflowConversationReply",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "ConversationSummaryAgentContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "conversation_summary",
+      "result_contract_name": "ConversationSummaryResult",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "NextActionContextV1",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "author_decision_bundle",
+      "result_contract_name": "DecisionBundleDraftV1",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "CapabilityMaterializationContextV1",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "plan_storyboard_sequence_outline",
+      "result_contract_name": "StoryboardSequenceOutlineDraftV2",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "StoryboardSegmentAuthoringContextV2",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "materialize_storyboard_segment",
+      "result_contract_name": "StoryboardSegmentMaterializationDraftV2",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "world_setting",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "World Setting Designer",
+      "internal_skill_id": "video_agent_world_setting",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_world_setting_options",
+      "result_contract_name": "WorldSettingProposalResultV1",
+      "style_projection_role": "world_setting"
+    },
+    {
+      "capability_id": "world_setting",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "World Setting Designer",
+      "internal_skill_id": "video_agent_world_setting",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_world_setting_options",
+      "result_contract_name": "WorldSettingProposalResultV1",
+      "style_projection_role": "world_setting"
+    },
+    {
+      "capability_id": "product_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Product Designer",
+      "internal_skill_id": "video_agent_product_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_product_options",
+      "result_contract_name": "ProductProposalResultV1",
+      "style_projection_role": "product"
+    },
+    {
+      "capability_id": "product_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Product Designer",
+      "internal_skill_id": "video_agent_product_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_product_options",
+      "result_contract_name": "ProductProposalResultV1",
+      "style_projection_role": "product"
+    },
+    {
+      "capability_id": "prop_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Prop Designer",
+      "internal_skill_id": "video_agent_prop_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_prop_options",
+      "result_contract_name": "PropProposalResultV1",
+      "style_projection_role": "prop"
+    },
+    {
+      "capability_id": "prop_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Prop Designer",
+      "internal_skill_id": "video_agent_prop_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_prop_options",
+      "result_contract_name": "PropProposalResultV1",
+      "style_projection_role": "prop"
+    },
+    {
+      "capability_id": "character_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Character Designer",
+      "internal_skill_id": "video_agent_character_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_character_options",
+      "result_contract_name": "CharacterProposalResultV1",
+      "style_projection_role": "character"
+    },
+    {
+      "capability_id": "character_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Character Designer",
+      "internal_skill_id": "video_agent_character_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_character_options",
+      "result_contract_name": "CharacterProposalResultV1",
+      "style_projection_role": "character"
+    },
+    {
+      "capability_id": "scene_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Scene Designer",
+      "internal_skill_id": "video_agent_scene_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_scene_options",
+      "result_contract_name": "SceneProposalResultV1",
+      "style_projection_role": "scene"
+    },
+    {
+      "capability_id": "scene_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Scene Designer",
+      "internal_skill_id": "video_agent_scene_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_scene_options",
+      "result_contract_name": "SceneProposalResultV1",
+      "style_projection_role": "scene"
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_script_options",
+      "result_contract_name": "ScriptProposalResultV1",
+      "style_projection_role": "script"
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_script_options",
+      "result_contract_name": "ScriptProposalResultV1",
+      "style_projection_role": "script"
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_storyboard_options",
+      "result_contract_name": "StoryboardProposalResultV1",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_storyboard_options",
+      "result_contract_name": "StoryboardProposalResultV1",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "video_direction",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Video Director",
+      "internal_skill_id": "video_agent_video_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_video_options",
+      "result_contract_name": "VideoProposalResultV1",
+      "style_projection_role": "video"
+    },
+    {
+      "capability_id": "video_direction",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "Video Director",
+      "internal_skill_id": "video_agent_video_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_video_options",
+      "result_contract_name": "VideoProposalResultV1",
+      "style_projection_role": "video"
+    },
+    {
+      "capability_id": "bgm_direction",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "BGM Director",
+      "internal_skill_id": "video_agent_bgm_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "propose_bgm_options",
+      "result_contract_name": "BgmProposalResultV1",
+      "style_projection_role": "bgm"
+    },
+    {
+      "capability_id": "bgm_direction",
+      "context_contract_name": "CapabilityInvocationContextV2",
+      "display_name": "BGM Director",
+      "internal_skill_id": "video_agent_bgm_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_bgm_options",
+      "result_contract_name": "BgmProposalResultV1",
+      "style_projection_role": "bgm"
+    },
+    {
+      "capability_id": "quick_media",
+      "context_contract_name": "QuickMediaAgentContext",
+      "display_name": "Quick Media",
+      "internal_skill_id": "video_agent_quick_media",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "free_image",
+      "result_contract_name": "V2QuickMediaPromptPlan",
+      "style_projection_role": "quick_media"
+    },
+    {
+      "capability_id": "quick_media",
+      "context_contract_name": "QuickMediaAgentContext",
+      "display_name": "Quick Media",
+      "internal_skill_id": "video_agent_quick_media",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "free_video",
+      "result_contract_name": "V2QuickMediaPromptPlan",
+      "style_projection_role": "quick_media"
+    },
+    {
+      "capability_id": "quick_media",
+      "context_contract_name": "QuickMediaAgentContext",
+      "display_name": "Quick Media",
+      "internal_skill_id": "video_agent_quick_media",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "free_audio",
+      "result_contract_name": "V2QuickMediaPromptPlan",
+      "style_projection_role": "quick_media"
+    },
+    {
+      "capability_id": "quick_media",
+      "context_contract_name": "CapabilityMaterializationContextV1",
+      "display_name": "Quick Media",
+      "internal_skill_id": "video_agent_quick_media",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "materialize_quick_media",
+      "result_contract_name": "QuickMediaMaterializationResultV1",
+      "style_projection_role": "quick_media"
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "AgentRunContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "execute_canvas_text",
+      "result_contract_name": "AgentCanvasTextOutput",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "execute_canvas_script",
+      "result_contract_name": "AgentCanvasScriptOutput",
+      "style_projection_role": "script"
+    },
+    {
+      "capability_id": "video_direction",
+      "context_contract_name": "VideoParameterIntentContextV2",
+      "display_name": "Video Director",
+      "internal_skill_id": "video_agent_video_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "compile_video_parameters",
+      "result_contract_name": "VideoParameterIntentV2",
+      "style_projection_role": "video"
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "FrontDeskIntentAgentContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "workflow_creation",
+      "result_contract_name": "FrontDeskIntentOutput",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "IntentContractAgentContext",
+      "display_name": null,
+      "internal_skill_id": null,
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "intent_contract_planner",
+      "result_contract_name": "V2IntentPlan",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "ScriptWriterAgentContext",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "script_writer",
+      "result_contract_name": "V2ScriptPlanV2",
+      "style_projection_role": "script"
+    },
+    {
+      "capability_id": "script_authoring",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Script Writer",
+      "internal_skill_id": "video_agent_script_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "script_edit_normalization",
+      "result_contract_name": "V2EditableScriptDocument",
+      "style_projection_role": "script"
+    },
+    {
+      "capability_id": "product_design",
+      "context_contract_name": "ProductExpertAgentContext",
+      "display_name": "Product Designer",
+      "internal_skill_id": "video_agent_product_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "product_expert_brief",
+      "result_contract_name": "V2ProductExpertPlan",
+      "style_projection_role": "product"
+    },
+    {
+      "capability_id": "character_design",
+      "context_contract_name": "CharacterExpertAgentContext",
+      "display_name": "Character Designer",
+      "internal_skill_id": "video_agent_character_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "character_expert_brief",
+      "result_contract_name": "V2CharacterExpertPlan",
+      "style_projection_role": "character"
+    },
+    {
+      "capability_id": "scene_design",
+      "context_contract_name": "SceneExpertAgentContext",
+      "display_name": "Scene Designer",
+      "internal_skill_id": "video_agent_scene_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "scene_expert_brief",
+      "result_contract_name": "V2SceneExpertPlan",
+      "style_projection_role": "scene"
+    },
+    {
+      "capability_id": "bgm_direction",
+      "context_contract_name": "BgmExpertAgentContext",
+      "display_name": "BGM Director",
+      "internal_skill_id": "video_agent_bgm_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "bgm_expert_brief",
+      "result_contract_name": "V2BgmExpertPlan",
+      "style_projection_role": "bgm"
+    },
+    {
+      "capability_id": "product_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Product Designer",
+      "internal_skill_id": "video_agent_product_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "product_prompt",
+      "result_contract_name": "V2ProductPromptPlan",
+      "style_projection_role": "product"
+    },
+    {
+      "capability_id": "character_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Character Designer",
+      "internal_skill_id": "video_agent_character_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "character_prompt",
+      "result_contract_name": "V2CharacterPromptPlan",
+      "style_projection_role": "character"
+    },
+    {
+      "capability_id": "scene_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Scene Designer",
+      "internal_skill_id": "video_agent_scene_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "scene_prompt",
+      "result_contract_name": "V2ScenePromptPlan",
+      "style_projection_role": "scene"
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "storyboard_prompt",
+      "result_contract_name": "V2ShotCellPromptPlan",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "storyboard_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Storyboard Artist",
+      "internal_skill_id": "video_agent_storyboard_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "storyboard_detail",
+      "result_contract_name": "V2StoryboardDetailPlan",
+      "style_projection_role": "storyboard"
+    },
+    {
+      "capability_id": "video_direction",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Video Director",
+      "internal_skill_id": "video_agent_video_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "shot_video_prompt",
+      "result_contract_name": "V2ShotVideoPromptPlan",
+      "style_projection_role": "video"
+    },
+    {
+      "capability_id": "bgm_direction",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "BGM Director",
+      "internal_skill_id": "video_agent_bgm_direction",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "bgm_prompt",
+      "result_contract_name": "V2BgmPromptPlan",
+      "style_projection_role": "bgm"
+    },
+    {
+      "capability_id": "world_setting",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "World Setting Designer",
+      "internal_skill_id": "video_agent_world_setting",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "visual_style_scope_repair",
+      "result_contract_name": "V2VisualStyleScopeRepairOutput",
+      "style_projection_role": "world_setting"
+    },
+    {
+      "capability_id": "character_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Character Designer",
+      "internal_skill_id": "video_agent_character_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_character_asset",
+      "result_contract_name": "SpecialistResult",
+      "style_projection_role": "character"
+    },
+    {
+      "capability_id": "scene_design",
+      "context_contract_name": "AgentRunContext",
+      "display_name": "Scene Designer",
+      "internal_skill_id": "video_agent_scene_design",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "revise_scene_asset",
+      "result_contract_name": "SpecialistResult",
+      "style_projection_role": "scene"
+    }
+  ]
 }
