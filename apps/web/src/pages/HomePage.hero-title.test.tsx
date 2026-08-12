@@ -31,23 +31,21 @@ describe("HomePage hero title", () => {
     );
 
     expect(lines).toHaveLength(3);
-    expect(lines.map((line) => line.textContent)).toEqual([
+    expect(lines.slice(0, 2).map((line) => line.textContent)).toEqual([
       "ONE SENTENCE",
       "BECOMES AN",
-      "Ad film.",
     ]);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
     const writingSvg = lines[2]?.querySelector("svg[aria-label='Ad film.']");
-    const glyph = writingSvg?.querySelector<SVGTextElement>(".home-hero-accent-writing__glyph");
-    const completion = writingSvg?.querySelector<SVGRectElement>(".home-hero-accent-writing__completion");
     expect(writingSvg).toBeTruthy();
-    expect(glyph?.getAttribute("font-family")).toContain("Georgia");
-    expect(glyph?.getAttribute("font-style")).toBe("italic");
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path").length).toBeGreaterThan(0);
+    expect(writingSvg?.querySelector("text")).toBeNull();
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
-    expect(completion?.getAttribute("fill")).toBe("#fff");
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(7);
+    expect(writingSvg?.querySelector(".home-hero-accent-writing__completion")).toBeNull();
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -82,17 +80,13 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__accent\s*\{[^}]*opacity:\s*1;[^}]*filter:\s*none;[^}]*will-change:\s*auto;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*home-hero-accent-write/s,
+      /\.home-product-hero\.is-motion-ready :is\([\s\S]*?home-hero-accent-writing__stroke,[\s\S]*?home-hero-accent-writing__coverage[\s\S]*?\)\s*\{[^}]*home-hero-accent-write/s,
     );
     expect(styles).toMatch(
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
     );
-    expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__completion\s*\{[^}]*home-hero-accent-complete/s,
-    );
-    expect(styles).toMatch(
-      /\.home-hero-accent-writing__glyph\s*\{[^}]*font-family:\s*Georgia[^}]*font-style:\s*italic;/s,
-    );
+    expect(styles).not.toContain("home-hero-accent-writing__completion");
+    expect(styles).not.toContain("home-hero-accent-complete");
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
     );
