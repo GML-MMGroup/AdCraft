@@ -5,54 +5,23 @@ from __future__ import annotations
 from hashlib import sha256
 from typing import Any
 
-from app.schemas.agent_canvas import (
-    CanvasBindingSourceImageAssetV2,
-    CanvasBindingSourceNodeV2,
-    CanvasBindingV2,
-    CanvasNodeV2,
-    CanvasPositionV2,
-)
+from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2, ContinuationCommitV2
-from app.schemas.agent_canvas_creative_session import DraftReferenceIntentV2, SpecialistDraftV2
 from app.schemas.agent_canvas_draft_seeds import AcceptedProposalCommitmentV1
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
     MaterializationNormalizationV1,
     ProposalApplicationEnvelopeV1,
-    QuickMediaMaterializationResultV1,
-    WorldSettingMaterializationResultV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
     MaterializationAuthoringSnapshotV1,
     MaterializationDocumentWriteV1,
     MaterializationPlanV1,
-    NodePromptPreparationIntentV1,
     StageMaterializedJourneyEventV1,
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
 )
-from app.schemas.agent_canvas_prompt_preparation import NodePromptPreparationV1
-from app.schemas.agent_canvas_world_setting import (
-    WorldSettingAuthoringProvenanceV2,
-    WorldSettingDocumentV2,
-)
-from app.services.agent_canvas_capability_policy import CapabilityPolicyService
-from app.services.agent_canvas_character_reference_pairs import CharacterReferencePairFactory
-from app.services.agent_canvas_stage_authoring import FoundationDraftPublicationService
-from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
-
-
-_PROVENANCE_KEYS = {
-    "materialization_mode",
-    "warning_code",
-    "operation_policy_id",
-    "normalization_mode",
-    "normalization_warnings",
-    "character_pair_id",
-    "character_asset_kind",
-    "source_agent_document_id",
-    "source_sequence_id",
-}
+from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBundleBuilder
 
 
 class CapabilityMaterializationPlanCompiler:
@@ -66,16 +35,10 @@ class CapabilityMaterializationPlanCompiler:
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
     ) -> MaterializationPlanV1:
-        if isinstance(normalization, CapabilityMaterializationContextV1):
-            nodes, bindings, preparations = self._progressive_nodes(
-                envelope,
-                normalization,
-            )
-        else:
-            nodes, bindings, preparations = self._normalized_nodes(
-                envelope,
-                normalization,
-            )
+        bundle = CapabilityDraftBundleBuilder().build(envelope, normalization)
+        nodes = bundle.nodes
+        bindings = bundle.bindings
+        preparations = bundle.prompt_preparations
 
         continuation = _continuation(envelope, snapshot)
         receipt = _receipt(
@@ -111,253 +74,6 @@ class CapabilityMaterializationPlanCompiler:
         provisional = MaterializationPlanV1.model_construct(**payload)
         payload["payload_digest"] = materialization_plan_digest(provisional)
         return MaterializationPlanV1.model_validate(payload)
-
-    @staticmethod
-    def _progressive_nodes(
-        envelope: ProposalApplicationEnvelopeV1,
-        context: CapabilityMaterializationContextV1,
-    ) -> tuple[
-        tuple[CanvasNodeV2, ...],
-        tuple[CanvasBindingV2, ...],
-        tuple[NodePromptPreparationIntentV1, ...],
-    ]:
-        foundation = FoundationDraftPublicationService().build(
-            envelope,
-            context,
-            now=envelope.created_at,
-        )
-        nodes, external_bindings, preparations = _draft_nodes(
-            envelope,
-            foundation.drafts,
-            foundation.node_ids,
-        )
-        return (
-            nodes,
-            (*external_bindings, *foundation.internal_bindings),
-            preparations,
-        )
-
-    @staticmethod
-    def _normalized_nodes(
-        envelope: ProposalApplicationEnvelopeV1,
-        normalization: MaterializationNormalizationV1,
-    ) -> tuple[
-        tuple[CanvasNodeV2, ...],
-        tuple[CanvasBindingV2, ...],
-        tuple[NodePromptPreparationIntentV1, ...],
-    ]:
-        result = normalization.result
-        if envelope.capability_id == "world_setting":
-            return (_world_setting_node(envelope, result),), (), ()
-
-        if envelope.capability_id == "character_design":
-            pair = CharacterReferencePairFactory().build(
-                envelope=envelope,
-                normalization=normalization,
-            )
-            nodes, bindings, preparations = _draft_nodes(
-                envelope,
-                (pair.main_draft, pair.turnaround_draft),
-                (pair.main_node_id, pair.turnaround_node_id),
-            )
-            return nodes, (*bindings, pair.internal_binding), preparations
-
-        if envelope.capability_id == "quick_media":
-            quick = QuickMediaMaterializationResultV1.model_validate(result)
-            node_type = quick.structured_content.media_type
-            creative_role = {
-                "image": "general_image",
-                "video": "general_video",
-                "audio": "general_audio",
-            }[node_type]
-        else:
-            definition = CapabilityPolicyService().definition(envelope.capability_id)
-            if definition.node_type is None or definition.creative_role is None:
-                raise ValueError("capability_policy_invalid")
-            node_type = definition.node_type
-            creative_role = definition.creative_role
-
-        structured_content = getattr(result, "structured_content")
-        draft = SpecialistDraftV2(
-            title=str(getattr(result, "title")),
-            node_type=node_type,
-            creative_role=creative_role,
-            summary_prompt=str(getattr(result, "summary_prompt")),
-            generation_prompt=getattr(result, "generation_prompt", None),
-            structured_content=_model_payload(structured_content),
-            parameters={
-                **normalization.parameters,
-                "normalization_mode": normalization.mode,
-                "normalization_warnings": list(normalization.warnings),
-            },
-            parameter_provenance=normalization.parameter_provenance,
-            prompt_context_snapshot_id=envelope.context_snapshot_id,
-            reference_intents=_reference_intents(envelope),
-        )
-        node_id = f"node_{_digest(envelope.materialization_id)[:32]}"
-        return _draft_nodes(envelope, (draft,), (node_id,))
-
-
-def _draft_nodes(
-    envelope: ProposalApplicationEnvelopeV1,
-    drafts: tuple[Any, ...],
-    node_ids: tuple[str, ...],
-) -> tuple[
-    tuple[CanvasNodeV2, ...],
-    tuple[CanvasBindingV2, ...],
-    tuple[NodePromptPreparationIntentV1, ...],
-]:
-    nodes: list[CanvasNodeV2] = []
-    preparations: list[NodePromptPreparationIntentV1] = []
-    for node_id, draft in zip(node_ids, drafts, strict=True):
-        operation_id = f"prompt_{_digest(f'{envelope.materialization_id}:{node_id}')[:32]}"
-        provenance = {
-            key: value for key, value in draft.parameters.items() if key in _PROVENANCE_KEYS
-        }
-        if draft.prompt_context_snapshot_id is not None:
-            provenance["materialization_context_snapshot_id"] = draft.prompt_context_snapshot_id
-        nodes.append(
-            CanvasNodeV2(
-                node_id=node_id,
-                workflow_id=envelope.workflow_id,
-                node_type=draft.node_type,
-                creative_role=draft.creative_role,
-                title=draft.title,
-                status="draft",
-                summary_prompt=draft.summary_prompt,
-                generation_prompt=None,
-                structured_content=_model_payload(draft.structured_content),
-                parameters={
-                    key: value
-                    for key, value in draft.parameters.items()
-                    if key not in _PROVENANCE_KEYS
-                },
-                metadata=provenance,
-                parameter_provenance=draft.parameter_provenance,
-                prompt_context_snapshot_id=(
-                    "snapshot_"
-                    + _digest(f"{envelope.materialization_id}:{node_id}:prompt-context")[:32]
-                ),
-                position=CanvasPositionV2(x=0, y=0),
-                revision=1,
-                prompt_preparation=NodePromptPreparationV1(
-                    status="queued",
-                    operation_id=operation_id,
-                    attempt_no=0,
-                    context_snapshot_id=envelope.context_snapshot_id,
-                    updated_at=envelope.created_at,
-                ),
-                created_at=envelope.created_at,
-                updated_at=envelope.created_at,
-            )
-        )
-        preparations.append(
-            NodePromptPreparationIntentV1(
-                operation_id=operation_id,
-                node_id=node_id,
-                context_snapshot_id=envelope.context_snapshot_id,
-            )
-        )
-
-    bindings: list[CanvasBindingV2] = []
-    for node, draft in zip(nodes, drafts, strict=True):
-        for intent in sorted(draft.reference_intents, key=lambda item: item.display_order):
-            source = (
-                CanvasBindingSourceNodeV2(source_node_id=intent.source_id)
-                if intent.source_kind == "node"
-                else CanvasBindingSourceImageAssetV2(source_asset_id=intent.source_id)
-            )
-            metadata = (
-                WorldSettingBindingPolicy().metadata_for_target(node.creative_role)
-                if intent.semantic_reference_role == "world_setting_reference"
-                else (
-                    {"semantic_reference_role": intent.semantic_reference_role}
-                    if intent.semantic_reference_role is not None
-                    else {}
-                )
-            )
-            binding_index = len(bindings)
-            bindings.append(
-                CanvasBindingV2(
-                    binding_id=(
-                        "binding_"
-                        + _digest(f"{envelope.materialization_id}:reference:{binding_index}")[:32]
-                    ),
-                    workflow_id=envelope.workflow_id,
-                    source=source,
-                    target_node_id=node.node_id,
-                    input_role=intent.input_role,
-                    required=intent.required,
-                    enabled=True,
-                    order=intent.display_order,
-                    metadata=metadata,
-                    created_at=envelope.created_at,
-                    updated_at=envelope.created_at,
-                )
-            )
-    return tuple(nodes), tuple(bindings), tuple(preparations)
-
-
-def _world_setting_node(
-    envelope: ProposalApplicationEnvelopeV1,
-    value: Any,
-) -> CanvasNodeV2:
-    result = WorldSettingMaterializationResultV1.model_validate(value)
-    document = WorldSettingDocumentV2(
-        content=result.structured_content.content,
-        core=result.structured_content.core,
-        authoring_provenance=WorldSettingAuthoringProvenanceV2(
-            source_proposal_id=envelope.proposal_id,
-            source_option_id=envelope.selected_option.option_id,
-            materialization_run_id=envelope.materialization_id,
-            style_skill_run_id=envelope.style_skill_run_id,
-            creative_direction_snapshot_id=None,
-        ),
-    )
-    digest = _digest(result.summary_prompt)
-    return CanvasNodeV2(
-        node_id=f"node_{_digest(envelope.materialization_id)[:32]}",
-        workflow_id=envelope.workflow_id,
-        node_type="text",
-        creative_role="world_setting",
-        title=result.title,
-        status="ready",
-        summary_prompt=result.summary_prompt,
-        structured_content=document.model_dump(mode="json"),
-        position=CanvasPositionV2(x=0, y=0),
-        revision=1,
-        prompt_preparation=NodePromptPreparationV1(
-            status="ready",
-            operation_id=None,
-            attempt_no=0,
-            context_snapshot_id=envelope.context_snapshot_id,
-            prompt_digest=digest,
-            updated_at=envelope.created_at,
-        ),
-        created_at=envelope.created_at,
-        updated_at=envelope.created_at,
-    )
-
-
-def _reference_intents(
-    envelope: ProposalApplicationEnvelopeV1,
-) -> tuple[DraftReferenceIntentV2, ...]:
-    return tuple(
-        DraftReferenceIntentV2.model_validate(
-            reference.model_dump(
-                include={
-                    "source_kind",
-                    "source_id",
-                    "binding_kind",
-                    "input_role",
-                    "required",
-                    "display_order",
-                    "semantic_reference_role",
-                }
-            )
-        )
-        for reference in envelope.reference_plan.references
-    )
 
 
 def _continuation(
@@ -461,12 +177,6 @@ def _journey_event(
             "recorded_at": envelope.created_at,
         }
     )
-
-
-def _model_payload(value: Any) -> dict[str, Any]:
-    if hasattr(value, "model_dump"):
-        return value.model_dump(mode="json")
-    return dict(value)
 
 
 def _digest(value: str) -> str:

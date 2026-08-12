@@ -59,7 +59,11 @@ from app.services.agent_canvas_production_journey_reducer import (
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
 )
-from app.services.agent_canvas_stage_authoring import FoundationDraftPublicationService
+from app.services.agent_canvas_capability_draft_bundle import (
+    stage_definitions,
+    stage_draft_parameters,
+    stage_draft_title,
+)
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
@@ -196,12 +200,7 @@ class CapabilityMaterializationPublicationService:
         envelope: ProposalApplicationEnvelopeV1,
         context: CapabilityMaterializationContextV1,
     ) -> MaterializationNormalizationV1:
-        foundation = FoundationDraftPublicationService().build(
-            envelope,
-            context,
-            now=envelope.created_at,
-        )
-        draft = foundation.drafts[0]
+        draft_key, _, _, title_suffix, _ = stage_definitions("storyboard_design")[0]
         summary = envelope.selected_option.public_summary
         style_prompt = next(
             (
@@ -216,7 +215,7 @@ class CapabilityMaterializationPublicationService:
             source=("video_skill" if context.style_projection else "platform_default"),
         )
         result = StoryboardMaterializationResultV1(
-            title=draft.title,
+            title=stage_draft_title(envelope.selected_option.title, title_suffix),
             summary_prompt=summary,
             generation_prompt=f"Create one text-free 3x3 storyboard grid. {summary}",
             structured_content=StoryboardGridContentV2(
@@ -240,8 +239,8 @@ class CapabilityMaterializationPublicationService:
         )
         return MaterializationNormalizationV1(
             result=result,
-            parameters=draft.parameters,
-            parameter_provenance=draft.parameter_provenance,
+            parameters=stage_draft_parameters("storyboard_design", draft_key, context),
+            parameter_provenance={},
             mode="deterministic_fallback",
         )
 

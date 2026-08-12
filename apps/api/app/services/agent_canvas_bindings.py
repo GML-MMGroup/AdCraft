@@ -37,7 +37,7 @@ from app.services.agent_canvas_authoring_validation import (
     validate_ready_node_input_history,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
-from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
+from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +69,7 @@ class AgentCanvasBindingService:
         self._asset_version_resolver = asset_version_resolver
         self._binding_capability_validator = binding_capability_validator
         self._connection_policy = connection_policy or AgentCanvasConnectionPolicyService()
-        self._world_setting_policy = WorldSettingBindingPolicy()
+        self._reference_semantics = AgentCanvasReferenceSemanticPolicy()
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
     def create(
@@ -185,13 +185,10 @@ class AgentCanvasBindingService:
                 len(incoming),
             ),
             label=request.label,
-            metadata=(
-                self._world_setting_policy.metadata_for_target(
-                    target.creative_role,
-                    request.metadata,
-                )
-                if world_setting_source
-                else request.metadata
+            metadata=self._reference_semantics.external_metadata(
+                source_role="world_setting" if world_setting_source else None,
+                target_role=target.creative_role,
+                metadata=request.metadata,
             ),
             created_at=now,
             updated_at=now,
@@ -298,9 +295,11 @@ class AgentCanvasBindingService:
         target_role: str,
         metadata: dict[str, object],
     ) -> dict[str, object]:
-        if source_role != "world_setting":
-            return metadata
-        return self._world_setting_policy.metadata_for_target(target_role, metadata)
+        return self._reference_semantics.external_metadata(
+            source_role=source_role,
+            target_role=target_role,
+            metadata=metadata,
+        )
 
     def snapshot_prompt_context(
         self,

@@ -16,6 +16,7 @@ from app.schemas.agent_canvas import (
     CanvasNodeV2,
 )
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
+from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 from app.services.model_selection import ModelSelectionService
 
 
@@ -34,6 +35,7 @@ class AgentCanvasConnectedAuthoringService:
         self._connection_policy = connection_policy
         self._model_selection = model_selection
         self._binding_capability_validator = binding_capability_validator
+        self._reference_semantics = AgentCanvasReferenceSemanticPolicy()
 
     def create_connected_node(
         self,
@@ -123,6 +125,10 @@ class AgentCanvasConnectedAuthoringService:
             order=min(
                 request.binding.order if request.binding.order is not None else len(incoming),
                 len(incoming),
+            ),
+            metadata=self._reference_semantics.external_metadata(
+                source_role=source.creative_role,
+                target_role=target.creative_role,
             ),
             created_at=now,
             updated_at=now,
