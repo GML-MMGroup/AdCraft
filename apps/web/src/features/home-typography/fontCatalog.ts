@@ -111,7 +111,7 @@ export const TYPOGRAPHY_REGION_DEFINITIONS: readonly TypographyRegionDefinition[
 
 export const DEFAULT_REGION_SETTINGS: Record<TypographyRegionId, TypographyRegionSettings> = {
   heroMain: { fontId: "instrument-serif", fontWeight: 400, fontStyle: "normal", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0.012, textTransform: "none" },
-  heroAccent: { fontId: "dancing-script", fontWeight: 400, fontStyle: "normal", fontSizePx: 64, lineHeight: 1.15, letterSpacingEm: 0, textTransform: "none" },
+  heroAccent: { fontId: "georgia", fontWeight: 400, fontStyle: "italic", fontSizePx: 70, lineHeight: 1.2, letterSpacingEm: 0.046, textTransform: "none" },
   heroBody: { fontId: "manrope", fontWeight: 400, fontStyle: "normal", fontSizePx: 18, lineHeight: 1.6, letterSpacingEm: 0, textTransform: "none" },
   heroAction: { fontId: "manrope", fontWeight: 700, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },
   navigation: { fontId: "manrope", fontWeight: 600, fontStyle: "normal", fontSizePx: 14, lineHeight: 1.2, letterSpacingEm: 0, textTransform: "none" },

@@ -122,6 +122,6 @@ describe("HomeTypographyLabPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset all typography" }));
 
     expect(screen.getByText("Current recipe")).toBeTruthy();
-    expect(screen.getByLabelText("Font family").textContent).toContain("Dancing Script");
+    expect(screen.getByLabelText("Font family").textContent).toContain("Georgia");
   });
 });
