@@ -1,5 +1,6 @@
 import type { CSSProperties, RefObject } from "react";
 import { demoProjects, images, imageSrc } from "../data";
+import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
 import { HeroAccentWriting } from "./HeroAccentWriting";
 
 const homeProductPoster = "/assets/card1.webp";
@@ -8,15 +9,15 @@ const heroTitleLines = [
   "BECOMES AN",
   "Ad film.",
 ] as const;
-const discoverCards: Array<[string, string, number]> = [
-  ["Campaign Flow", images[0], 240],
-  ["Character Study", images[1], 330],
-  ["Poster Motion", images[2], 260],
-  ["Scene Extension", images[3], 370],
-  ["Product Aura", images[4], 280],
-  ["Editorial Cut", images[5], 320],
-  ["Portrait Spark", images[6], 260],
-  ["Color Script", images[7], 350],
+const discoverCards: readonly DiscoverOrbitItem[] = [
+  { title: "Campaign Flow", image: imageSrc(images[0]) },
+  { title: "Character Study", image: imageSrc(images[1]) },
+  { title: "Poster Motion", image: imageSrc(images[2]) },
+  { title: "Scene Extension", image: imageSrc(images[3]) },
+  { title: "Product Aura", image: imageSrc(images[4]) },
+  { title: "Editorial Cut", image: imageSrc(images[5]) },
+  { title: "Portrait Spark", image: imageSrc(images[6]) },
+  { title: "Color Script", image: imageSrc(images[7]) },
 ];
 
 type RevealState = "pending" | "visible";
@@ -146,27 +147,7 @@ function InteractiveDiscover({ openPreview }: { openPreview: () => void }) {
           </button>
         ))}
       </div>
-      <div className="waterfall">
-        {discoverCards.map(([title, img, height], index) => (
-          <button
-            key={title}
-            className="discover-card"
-            style={{
-              "--h": `${height}px`,
-              "--home-reveal-delay": `${170 + index * 65}ms`,
-            } as CSSProperties}
-            data-title={title}
-            data-home-typography-region="cardTitle"
-            data-reveal-item
-            onClick={openPreview}
-          >
-            <img className="discover-card-image" src={imageSrc(img)} alt="" loading="lazy" decoding="async" />
-            <span className="play-dot">
-              <span><span aria-hidden="true">▶</span></span>
-            </span>
-          </button>
-        ))}
-      </div>
+      <DiscoverOrbit items={discoverCards} interactive onSelect={openPreview} />
     </>
   );
 }
@@ -181,23 +162,7 @@ function StaticDiscover() {
           </span>
         ))}
       </div>
-      <div className="waterfall">
-        {discoverCards.map(([title, img, height], index) => (
-          <article
-            key={title}
-            className="discover-card"
-            style={{
-              "--h": `${height}px`,
-              "--home-reveal-delay": `${170 + index * 65}ms`,
-            } as CSSProperties}
-            data-title={title}
-            data-home-typography-region="cardTitle"
-            data-reveal-item
-          >
-            <img className="discover-card-image" src={imageSrc(img)} alt="" loading="lazy" decoding="async" />
-          </article>
-        ))}
-      </div>
+      <DiscoverOrbit items={discoverCards} interactive={false} />
     </>
   );
 }
