@@ -18,6 +18,9 @@ from app.schemas.agent_canvas_requirements import (
     RequirementDirectiveV1,
     RequirementLedgerRevisionV1,
 )
+from app.services.agent_canvas_requirement_directives import (
+    canonicalize_requirement_directives,
+)
 
 
 _DIRECTIVE_BUDGET = 24 * 1024
@@ -71,7 +74,12 @@ _CONTROL_VISIBILITY: dict[CapabilityIdV1, frozenset[str]] = {
     ),
 }
 
-_SOURCE_PRIORITY = {"user_message": 0, "manual_edit": 0, "accepted_proposal": 1}
+_SOURCE_PRIORITY = {
+    "user_message": 0,
+    "manual_edit": 0,
+    "decision_bundle_answer": 0,
+    "accepted_proposal": 1,
+}
 _SCOPE_PRIORITY = {"node": 0, "capability": 1, "global": 2}
 
 
@@ -108,8 +116,18 @@ class AgentCanvasRequirementProjectionService:
                 direct_node_ids=direct_node_ids,
             )
         ]
-        applicable.sort(key=_directive_sort_key)
-        included, omitted = _bounded_directives(applicable)
+        canonical = canonicalize_requirement_directives(applicable)
+        canonical_directives = list(canonical.active_directives)
+        canonical_directives.sort(key=_directive_sort_key)
+        included, budget_omitted = _bounded_directives(canonical_directives)
+        duplicate_omitted = tuple(
+            OmittedRequirementDirectiveV1(
+                directive_id=directive_id,
+                reason="duplicate_semantic_directive",
+            )
+            for directive_id in canonical.duplicate_directive_ids
+        )
+        omitted = (*duplicate_omitted, *budget_omitted)
         controls = tuple(
             item
             for item in revision.ledger.hard_controls
