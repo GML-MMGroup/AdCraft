@@ -451,8 +451,19 @@
 
 .discover-orbit {
   --discover-track-gap: clamp(56px, 4.6vw, 76px);
+  --discover-card-height: clamp(232px, 23.43vw, 329px);
+  --discover-track-inset-y: 16px;
+  --discover-track-float-space: 10px;
   position: relative;
-  min-height: clamp(620px, 54vw, 720px);
+  min-height: max(
+    clamp(680px, 54vw, 800px),
+    calc(
+      var(--discover-card-height) + var(--discover-card-height)
+      + var(--discover-track-gap)
+      + var(--discover-track-inset-y) + var(--discover-track-inset-y)
+      + var(--discover-track-float-space) + var(--discover-track-float-space)
+    )
+  );
   width: 100%;
   margin: 0 0 34px;
   overflow: hidden;
@@ -474,7 +485,7 @@
   position: absolute;
   right: 0;
   left: 0;
-  height: calc((100% - var(--discover-track-gap)) / 2);
+  height: calc((100% - var(--discover-track-gap) - var(--discover-track-inset-y) - var(--discover-track-inset-y)) / 2);
 }
 
 .discover-orbit--interactive .discover-orbit__track {
@@ -483,11 +494,11 @@
 }
 
 .discover-orbit__track--upper {
-  top: 0;
+  top: var(--discover-track-inset-y);
 }
 
 .discover-orbit__track--lower {
-  bottom: 0;
+  bottom: var(--discover-track-inset-y);
 }
 
 .discover-orbit__card {
