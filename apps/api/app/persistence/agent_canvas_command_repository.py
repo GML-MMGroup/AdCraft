@@ -51,9 +51,10 @@ from app.services.agent_canvas_authoring_validation import (
     validate_node_binding,
     validate_node_patch,
 )
-from app.services.agent_canvas_character_reference_pairs import (
+from app.services.agent_canvas_capability_draft_bundle import (
     character_turnaround_prompt,
 )
+from app.services.agent_canvas_reference_semantics import AgentCanvasReferenceSemanticPolicy
 
 
 ModelSelectionValidator = Callable[[str, str, str | None], object]
@@ -1651,11 +1652,9 @@ class AgentCanvasCommandRepository:
                                 order_index=0,
                                 label="Character identity master",
                                 metadata_json=_dump(
-                                    {
-                                        "character_pair_id": character_pair_id,
-                                        "reference_purpose": "identity_master",
-                                        "semantic_reference_role": "subject_reference",
-                                    }
+                                    AgentCanvasReferenceSemanticPolicy.character_pair_metadata(
+                                        character_pair_id
+                                    )
                                 ),
                                 created_at=now,
                                 updated_at=now,

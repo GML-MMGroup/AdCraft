@@ -5,12 +5,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any
+
+from pydantic import BaseModel
 
 from app.schemas.agent_operation_recovery import (
     AgentOperationPolicyClassV2,
     AgentOperationPolicyV2,
 )
-from app.schemas.agent_runtime import AgentRunRequest
+from app.schemas.agent_runtime import AgentName, AgentRunPolicy, AgentRunRequest
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
+from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
 from app.services.v2_agent_contract_registry import (
     validate_video_agent_contract_parity,
@@ -208,53 +213,151 @@ class AgentOperationPolicyRegistryV2:
         return tuple(errors)
 
 
-def freeze_agent_run_operation_policy(
+class AgentRunRequestFactory:
+    """Build a policy-complete Agent request from semantic execution facts."""
+
+    def __init__(
+        self,
+        *,
+        policy_registry: AgentOperationPolicyRegistryV2 | None = None,
+        operation_registry: VideoAgentOperationRegistry | None = None,
+    ) -> None:
+        self._policy_registry = policy_registry or AgentOperationPolicyRegistryV2()
+        self._operation_registry = operation_registry or VideoAgentOperationRegistry()
+        validate_video_agent_contract_parity(self._operation_registry.definitions())
+
+    def build(
+        self,
+        *,
+        run_id: str,
+        request_id: str,
+        agent_name: AgentName,
+        operation: str,
+        context: BaseModel,
+        contract_name: str,
+        contract_schema: dict[str, Any],
+        model_ref: str | None = None,
+        parent_run_id: str | None = None,
+        credential_ref: str = "llm-default",
+        deadline_cap: datetime | None = None,
+        validation_profile: str | None = None,
+        validation_context: dict[str, Any] | None = None,
+        audit_metadata: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> AgentRunRequest:
+        self._operation_registry.resolve(operation)
+        validate_video_agent_operation_context(operation, context)
+        operation_policy = self._policy_registry.resolve(
+            agent_name=agent_name,
+            operation=operation,
+            contract_id=contract_name,
+        )
+        run_policy = AgentRunPolicy(
+            operation_policy_id=operation_policy.policy_id,
+            operation_class=operation_policy.policy_class,
+            transport_retry_limit=operation_policy.transport_retry_limit,
+            structured_repair_limit=operation_policy.structured_repair_limit,
+            max_handoffs=0,
+            timeout_seconds=float(operation_policy.hard_deadline_seconds),
+            primary_timeout_seconds=operation_policy.primary_timeout_seconds,
+            recovery_timeout_seconds=operation_policy.recovery_timeout_seconds,
+            persistence_reserve_seconds=operation_policy.persistence_reserve_seconds,
+            max_model_submissions=operation_policy.max_model_submissions,
+            recovery_mode=operation_policy.recovery_mode,
+            max_output_tokens=operation_policy.max_output_tokens,
+            reasoning_mode=operation_policy.reasoning_mode,
+            enable_thinking=operation_policy.enable_thinking,
+            thinking_budget_tokens=operation_policy.thinking_budget_tokens,
+        )
+        timestamp = now or datetime.now(timezone.utc)
+        policy_deadline = timestamp + timedelta(seconds=operation_policy.hard_deadline_seconds)
+        deadline_at = min(deadline_cap, policy_deadline) if deadline_cap else policy_deadline
+        audit = {
+            **(audit_metadata or {}),
+            "model_policy_id": operation_policy.policy_id,
+            "result_contract_name": contract_name,
+            "max_handoffs": run_policy.max_handoffs,
+            "agent_operation_policy": operation_policy.model_dump(mode="json"),
+            "agent_run_policy": run_policy.model_dump(mode="json"),
+        }
+        return AgentRunRequest(
+            run_id=run_id,
+            request_id=request_id,
+            **agent_run_envelope_fields(context),
+            parent_run_id=parent_run_id,
+            agent_name=agent_name,
+            operation=operation,
+            deadline_at=deadline_at,
+            model_policy_id=operation_policy.policy_id,
+            model_ref=model_ref,
+            context=context,
+            policy=run_policy,
+            credential_ref=credential_ref,
+            contract_name=contract_name,
+            contract_schema=contract_schema,
+            validation_profile=validation_profile,
+            validation_context=validation_context or {},
+            audit_metadata=audit,
+        )
+
+
+def validate_agent_run_operation_policy(
     request: AgentRunRequest,
     *,
-    now: datetime | None = None,
     registry: AgentOperationPolicyRegistryV2 | None = None,
-) -> AgentRunRequest:
-    """Freeze the canonical policy into a durable request before persistence."""
+) -> None:
+    """Reject a contradictory policy-bearing request before persistence."""
 
     operation_registry = VideoAgentOperationRegistry()
     validate_video_agent_contract_parity(operation_registry.definitions())
     definition = operation_registry.resolve(request.operation)
+    contract_name = request.contract_name or definition.result_contract_name
     operation_policy = (registry or AgentOperationPolicyRegistryV2()).resolve(
         agent_name=request.agent_name,
         operation=request.operation,
-        contract_id=request.contract_name or definition.result_contract_name,
+        contract_id=contract_name,
     )
-    run_policy = request.policy.model_copy(
-        update={
-            "operation_policy_id": operation_policy.policy_id,
-            "operation_class": operation_policy.policy_class,
-            "transport_retry_limit": operation_policy.transport_retry_limit,
-            "structured_repair_limit": operation_policy.structured_repair_limit,
-            "timeout_seconds": float(operation_policy.hard_deadline_seconds),
-            "primary_timeout_seconds": operation_policy.primary_timeout_seconds,
-            "recovery_timeout_seconds": operation_policy.recovery_timeout_seconds,
-            "persistence_reserve_seconds": operation_policy.persistence_reserve_seconds,
-            "max_model_submissions": operation_policy.max_model_submissions,
-            "recovery_mode": operation_policy.recovery_mode,
-            "max_output_tokens": operation_policy.max_output_tokens,
-            "reasoning_mode": operation_policy.reasoning_mode,
-            "enable_thinking": operation_policy.enable_thinking,
-            "thinking_budget_tokens": operation_policy.thinking_budget_tokens,
-        }
+    expected_run_policy = AgentRunRequestFactory(
+        policy_registry=registry,
+        operation_registry=operation_registry,
+    ).build(
+        run_id=request.run_id,
+        request_id=request.request_id,
+        parent_run_id=request.parent_run_id,
+        agent_name=request.agent_name,
+        operation=request.operation,
+        context=request.context,
+        contract_name=contract_name,
+        contract_schema=request.contract_schema,
+        model_ref=request.model_ref,
+        deadline_cap=request.deadline_at,
+        validation_profile=request.validation_profile,
+        validation_context=request.validation_context,
+        audit_metadata={
+            key: value
+            for key, value in request.audit_metadata.items()
+            if key
+            not in {
+                "agent_operation_policy",
+                "agent_run_policy",
+                "max_handoffs",
+                "model_policy_id",
+                "result_contract_name",
+            }
+        },
+        now=request.deadline_at - timedelta(seconds=operation_policy.hard_deadline_seconds),
     )
-    timestamp = now or datetime.now(timezone.utc)
-    policy_deadline = timestamp + timedelta(seconds=operation_policy.hard_deadline_seconds)
-    return request.model_copy(
-        update={
-            "deadline_at": min(request.deadline_at, policy_deadline),
-            "policy": run_policy,
-            "audit_metadata": {
-                **request.audit_metadata,
-                "agent_operation_policy": operation_policy.model_dump(mode="json"),
-                "agent_run_policy": run_policy.model_dump(mode="json"),
-            },
-        }
-    )
+    if (
+        request.model_policy_id != operation_policy.policy_id
+        or request.policy != expected_run_policy.policy
+        or request.audit_metadata.get("model_policy_id") != operation_policy.policy_id
+        or request.audit_metadata.get("result_contract_name") != contract_name
+        or request.audit_metadata.get("agent_operation_policy")
+        != expected_run_policy.audit_metadata["agent_operation_policy"]
+        or request.audit_metadata.get("agent_run_policy")
+        != expected_run_policy.audit_metadata["agent_run_policy"]
+    ):
+        raise AgentOperationPolicyError("agent_model_policy_mismatch")
 
 
 def _policy_class(
