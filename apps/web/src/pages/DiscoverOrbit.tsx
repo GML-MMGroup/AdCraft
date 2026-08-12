@@ -352,13 +352,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       role="region"
       aria-label="Discover inspiration gallery"
       aria-roledescription={interactive ? "carousel" : undefined}
-      aria-describedby={interactive ? "discover-orbit-status" : undefined}
       data-active-index={activeIndex}
       data-paused={isInteracting}
       data-reveal-item
       style={{ "--home-reveal-delay": "170ms" } as CSSProperties}
     >
-      <div className="discover-orbit__ambient" aria-hidden="true" />
       <div className="discover-orbit__track">
         {items.map((item, index) => {
           const isActive = index === activeIndex;
@@ -390,13 +388,6 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
           );
         })}
       </div>
-      <div className="discover-orbit__edge discover-orbit__edge--left" aria-hidden="true" />
-      <div className="discover-orbit__edge discover-orbit__edge--right" aria-hidden="true" />
-      {interactive ? (
-        <p className="discover-orbit__counter" id="discover-orbit-status" aria-live="polite">
-          {activeIndex + 1} / {items.length}
-        </p>
-      ) : null}
     </div>
   );
 }
