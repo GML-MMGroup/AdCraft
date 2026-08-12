@@ -161,6 +161,7 @@ function progressiveGuidanceSessionPayload() {
     session_id: "guidance-1",
     workflow_id: "workflow-1",
     status: "active",
+    response_locale: "zh-CN",
     goal: {
       requested_output: "video",
       delivery_scope: "generated_media",
@@ -745,6 +746,7 @@ describe("Agent Canvas normalizers", () => {
     expect(timeline.guidanceSession).toMatchObject({
       session_id: "guidance-1",
       revision: 3,
+      response_locale: "zh-CN",
       goal: { requested_output: "video" },
     });
     expect(timeline.current_session_actions[0]).toMatchObject({

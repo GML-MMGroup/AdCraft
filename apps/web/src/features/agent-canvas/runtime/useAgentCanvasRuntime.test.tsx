@@ -353,6 +353,63 @@ describe("useAgentCanvasRuntime", () => {
     expect(api.agentCanvasEvents).toHaveBeenCalledWith("workflow-1", 42, 200);
   });
 
+  it("keeps one provider-waiting chat event across an SSE replay", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    const event = (sequence_no: number) => ({
+      sequence_no,
+      workflow_id: "workflow-1",
+      event_type: "agent_turn_waiting",
+      project_id: "project-1",
+      execution_id: null,
+      node_id: null,
+      asset_id: null,
+      binding_id: null,
+      conversation_id: "conversation-1",
+      turn_id: "turn-waiting-1",
+      action_id: null,
+      trace_id: null,
+      span_id: null,
+      transition_key: "turn-waiting-1:provider_waiting:1",
+      attempt: 1,
+      created_at: "2026-08-12T00:00:00Z",
+      payload: {
+        operation: "decide_turn_intent",
+        deadline_at: "2026-08-12T00:05:00Z",
+        model_ref: "siliconflow:zai-org/GLM-5.2",
+      },
+    });
+
+    eventSource.emit("agent_turn_waiting", event(43));
+    await waitFor(() => expect(result.current.state.chatRevision).toBe(1));
+    expect(result.current.state.chatEvents).toEqual([
+      expect.objectContaining({
+        event_type: "agent_turn_waiting",
+        turn_id: "turn-waiting-1",
+      }),
+    ]);
+
+    eventSource.emit("agent_turn_waiting", event(44));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(result.current.state.chatRevision).toBe(1);
+    expect(result.current.state.chatEvents).toHaveLength(1);
+  });
+
   it("persists legacy Draft video parameters before submitting a global Run", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({

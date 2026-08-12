@@ -433,7 +433,11 @@ export function useAgentCanvasChat({
       const next = new Set(current);
       chatEvents.forEach((event) => {
         if (event.workflow_id !== workflowId || !event.turn_id) return;
-        if (event.event_type === "agent_turn_queued" || event.event_type === "agent_turn_started") {
+        if (
+          event.event_type === "agent_turn_queued"
+          || event.event_type === "agent_turn_waiting"
+          || event.event_type === "agent_turn_started"
+        ) {
           next.add(event.turn_id);
         }
         if (event.event_type === "agent_turn_completed" || event.event_type === "agent_turn_failed") {
@@ -455,6 +459,8 @@ export function useAgentCanvasChat({
         }
       }
       if (
+        event.event_type === "agent_turn_waiting"
+        ||
         event.event_type.startsWith("continuation_")
         || event.event_type.startsWith("proposal_materialization_")
         || event.event_type.startsWith("agent_operation_")

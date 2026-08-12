@@ -71,6 +71,7 @@ const AUTHORING_EVENTS = new Set([
 const CHAT_EVENTS = new Set([
   "chat_message_created",
   "agent_turn_queued",
+  "agent_turn_waiting",
   "agent_turn_started",
   "agent_turn_completed",
   "agent_turn_failed",
