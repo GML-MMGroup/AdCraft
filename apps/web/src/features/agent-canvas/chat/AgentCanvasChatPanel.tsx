@@ -157,7 +157,9 @@ export function AgentCanvasChatPanel({
           <strong>AdCraft Video Agent</strong>
           <span>
             {chat.state.agentWorking
-              ? "Working"
+              ? chat.state.agentWaitingForModel
+                ? "Waiting for model"
+                : "Working"
               : activeContinuation
                 ? continuationLabel(activeContinuation)
                 : currentTopic
@@ -326,7 +328,7 @@ export function AgentCanvasChatPanel({
                 onApply={chat.actions.applyGuidedAction}
               />
             ) : null}
-            {chat.state.agentWorking ? <AgentWorkingRow /> : null}
+            {chat.state.agentWorking ? <AgentWorkingRow waitingForModel={chat.state.agentWaitingForModel} /> : null}
           </div>
         </div>
         {timelineScroll.hasUnseenContent ? (
@@ -482,14 +484,17 @@ export function AgentCanvasChatPanel({
   );
 }
 
-export function AgentWorkingRow() {
+export function AgentWorkingRow({ waitingForModel = false }: { waitingForModel?: boolean }) {
+  const label = waitingForModel ? "Waiting for model" : "Working";
   return (
     <div
       className="agent-chat__working"
       role="status"
-      aria-label="AdCraft Video Agent is working"
+      aria-label={waitingForModel
+        ? "AdCraft Video Agent is waiting for the model"
+        : "AdCraft Video Agent is working"}
     >
-      <span>Working</span>
+      <span>{label}</span>
       <i className="agent-chat__working-spinner" aria-hidden="true" />
     </div>
   );

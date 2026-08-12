@@ -859,6 +859,11 @@ export function useAgentCanvasChat({
       ))
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0] ?? null;
   }, [items, turnsById]);
+  const agentWaitingForModel = useMemo(() => (
+    Object.values(turnsById).some((turn) => (
+      turn.status === "running" && turn.operation_stage === "provider_waiting"
+    ))
+  ), [turnsById]);
 
   return {
     state: {
@@ -872,6 +877,7 @@ export function useAgentCanvasChat({
       loading,
       sending,
       agentWorking: sending || pendingAgentTurnIds.length > 0,
+      agentWaitingForModel,
       actingProposalId,
       actingDecisionBundleId,
       actingCommandPlanId,

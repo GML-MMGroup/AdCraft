@@ -411,6 +411,7 @@ describe("useAgentCanvasChat", () => {
     });
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-waiting-1");
     expect(result.current.state.agentWorking).toBe(true);
+    expect(result.current.state.agentWaitingForModel).toBe(true);
     expect(result.current.state.items).toEqual([]);
     expect(result.current.state.retryableFailedTurn).toBeNull();
   });

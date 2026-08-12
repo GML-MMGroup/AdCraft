@@ -69,6 +69,14 @@ describe("AgentWorkingRow", () => {
     expect(screen.getByText("Working")).toBeTruthy();
     expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
   });
+
+  it("announces model waiting as a non-terminal Agent activity", () => {
+    render(<AgentWorkingRow waitingForModel />);
+
+    expect(screen.getByRole("status", { name: "AdCraft Video Agent is waiting for the model" })).toBeTruthy();
+    expect(screen.getByText("Waiting for model")).toBeTruthy();
+    expect(document.querySelector(".agent-chat__working-spinner")).toBeTruthy();
+  });
 });
 
 function proposalAction(
