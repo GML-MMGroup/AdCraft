@@ -139,12 +139,9 @@ export class PiStructuredTransportRouter {
           structuredAttempts,
         });
       }
-      if (
-        validation.error_code === "agent_contract_validation_failed" &&
-        validation.result?.repair_allowed !== true
-      ) {
+      if (validation.result?.repair_allowed === false) {
         throw terminalValidationFailure(
-          validation.error_code,
+          validation.error_code ?? "agent_structured_output_invalid",
           auditForAttempt(input, primary, startedAt, structuredAttempts),
           isManualRetryableIntake(input),
         );
