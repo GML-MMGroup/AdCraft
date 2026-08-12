@@ -37,7 +37,7 @@ class ProviderModelBootstrapService:
 
     def _bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
         registry = ProviderCredentialRegistry()
-        ProviderConnectionService(
+        connection_service = ProviderConnectionService(
             registry=registry,
             dotenv_store=DotenvCredentialStore(
                 PROJECT_ROOT,
@@ -49,11 +49,9 @@ class ProviderModelBootstrapService:
             ),
             metadata_repository=self._repository,
             settings_loader=lambda: self._settings,
-        ).synchronize_metadata(updated_at=now)
-        catalog = ProviderModelCatalogService(
-            self._repository,
-            provider_available=self._provider_available,
         )
+        connection_service.synchronize_metadata(updated_at=now)
+        catalog = ProviderModelCatalogService(self._repository)
         seeded_providers: list[str] = []
         for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
             had_models = bool(self._repository.list_models(provider_id=provider_id))
@@ -82,21 +80,6 @@ class ProviderModelBootstrapService:
             seeded_providers=tuple(seeded_providers),
             seeded_defaults=tuple(valid_candidates),
         )
-
-    def _provider_available(self, provider_id: str) -> bool:
-        if provider_id == "fake":
-            return True
-        if provider_id == "siliconflow":
-            return bool(self._settings.siliconflow_api_key)
-        if provider_id == "volcengine_ark":
-            return bool(
-                self._settings.llm_api_key
-                or self._settings.image_generation_api_key
-                or self._settings.video_generation_api_key
-            )
-        if provider_id == "tianpuyue":
-            return bool(self._settings.bgm_api_key)
-        return False
 
     def _recognized_defaults(self) -> dict[str, str]:
         text_ref = "fake:deterministic-text"

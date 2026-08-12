@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping, Protocol
 from uuid import uuid4
 
@@ -262,7 +262,7 @@ class ProviderModelCatalogService:
         repository: ProviderModelRepository,
         *,
         adapters: tuple[ProviderCatalogAdapter, ...] | None = None,
-        provider_available: Callable[[str], bool] | None = None,
+        capability_available: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._repository = repository
         configured_adapters = adapters or tuple(
@@ -270,7 +270,7 @@ class ProviderModelCatalogService:
             for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake")
         )
         self._adapters = {adapter.provider_id: adapter for adapter in configured_adapters}
-        self._provider_available = provider_available or (lambda _: False)
+        self._capability_available = capability_available or self._repository_capability_available
 
     def sync(self, provider_id: str, *, now: str) -> CatalogSyncResult:
         sync_run_id = f"sync_{uuid4().hex}"
@@ -359,7 +359,6 @@ class ProviderModelCatalogService:
             if manifest.provider_id == provider_id
         }
         models: list[dict[str, Any]] = []
-        available = self._provider_available(provider_id) or provider_id == "fake"
         for provider_model_id in sorted(visible_model_ids):
             manifest = trusted.get(provider_model_id)
             if manifest is None:
@@ -376,7 +375,15 @@ class ProviderModelCatalogService:
                     }
                 )
                 continue
-            models.append(_trusted_projection(manifest, available=available))
+            models.append(
+                _trusted_projection(
+                    manifest,
+                    available=self._capability_is_available(
+                        manifest.provider_id,
+                        manifest.capability,
+                    ),
+                )
+            )
         previously_known = {
             model.provider_model_id
             for model in self._repository.list_models(provider_id=provider_id)
@@ -412,13 +419,21 @@ class ProviderModelCatalogService:
         models = self._repository.list_models(
             provider_id=provider_id,
             capability=required_capability,
-            availability=None if include_unavailable else "available",
+            availability=None,
         )
+        models = tuple(self._with_current_credential_availability(model) for model in models)
+        if not include_unavailable:
+            models = tuple(model for model in models if model.availability == "available")
         if node_type == "script" or purpose == "agent":
             models = tuple(
                 model for model in models if bool(model.capability_metadata.get("agent_compatible"))
             )
         return models
+
+    def get_model(self, model_ref: str) -> ProviderModelRecord:
+        """Return one model with current capability credential availability."""
+
+        return self._with_current_credential_availability(self._repository.get_model(model_ref))
 
     def set_defaults(
         self,
@@ -432,7 +447,7 @@ class ProviderModelCatalogService:
             raise ValueError("model_default_update_invalid")
         for default_key, model_ref in defaults.items():
             try:
-                model = self._repository.get_model(model_ref)
+                model = self.get_model(model_ref)
             except ValueError as exc:
                 raise ValueError("model_not_found") from exc
             if model.availability != "available":
@@ -458,6 +473,40 @@ class ProviderModelCatalogService:
         """Return the public default references with their monotonic revisions."""
 
         return self._repository.get_defaults()
+
+    def _capability_is_available(self, provider_id: str, capability: str) -> bool:
+        return provider_id == "fake" or self._capability_available(provider_id, capability)
+
+    def _repository_capability_available(self, provider_id: str, capability: str) -> bool:
+        try:
+            connection = self._repository.get_connection(provider_id)
+        except ValueError:
+            return False
+        status = connection.credential_status.get(capability)
+        return isinstance(status, Mapping) and status.get("configured") is True
+
+    def _with_current_credential_availability(
+        self,
+        model: ProviderModelRecord,
+    ) -> ProviderModelRecord:
+        if model.provider_id == "fake":
+            return model
+        credential_managed = model.availability == "available" or (
+            model.availability == "unavailable"
+            and model.unavailable_reason == "provider_credentials_missing"
+        )
+        if not credential_managed:
+            return model
+        available = self._capability_is_available(model.provider_id, model.capability)
+        availability = "available" if available else "unavailable"
+        unavailable_reason = None if available else "provider_credentials_missing"
+        if model.availability == availability and model.unavailable_reason == unavailable_reason:
+            return model
+        return replace(
+            model,
+            availability=availability,
+            unavailable_reason=unavailable_reason,
+        )
 
 
 def _required_capability(

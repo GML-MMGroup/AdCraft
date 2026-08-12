@@ -16,6 +16,7 @@ from app.services.agent_model_execution_policy import (
     resolve_agent_model_execution_policy,
 )
 from app.services.provider_credentials import CredentialSettingsError, ProviderCredentialRegistry
+from app.services.provider_model_catalog import ProviderModelCatalogService
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
 
 
@@ -92,7 +93,7 @@ class V2AgentCredentialBroker:
                 "Agent runtime did not supply a frozen model reference.",
             )
         record = self._record(model_ref)
-        self._validate_model(record, operation=operation)
+        self._validate_model(record)
         try:
             provider_definition = self._credential_registry.get(record.provider_id)
             binding = provider_definition.binding_for_capability("text")
@@ -177,7 +178,7 @@ class V2AgentCredentialBroker:
         database: V2Database | None = None
         if repository is None:
             database = create_v2_database(self._settings.media_data_dir)
-            repository = ProviderModelRepository(database)
+            repository = ProviderModelCatalogService(ProviderModelRepository(database))
         try:
             record = repository.get_model(model_ref)
         except ValueError as error:
@@ -191,12 +192,7 @@ class V2AgentCredentialBroker:
         return record
 
     @staticmethod
-    def _validate_model(record: ProviderModelRecord, *, operation: str) -> None:
-        if record.provider_id != "siliconflow" or record.model_ref != "siliconflow:zai-org/GLM-5.2":
-            raise AgentCredentialError(
-                "agent_model_incompatible",
-                "Agent language operations require the configured SiliconFlow GLM-5.2 model.",
-            )
+    def _validate_model(record: ProviderModelRecord) -> None:
         if record.availability != "available":
             raise AgentCredentialError(
                 "agent_model_unavailable",

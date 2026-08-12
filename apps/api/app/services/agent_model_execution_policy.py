@@ -74,8 +74,16 @@ def resolve_agent_model_execution_policy(
         raise _mismatch("The selected model does not support streamed tool calls.")
     if reasoning_control == "none" and thinking_format != "none":
         raise _mismatch("A disabled reasoning policy cannot select a thinking format.")
-    if reasoning_control != "enable_thinking" or not supports_reasoning_controls:
+    if reasoning_control == "enable_thinking" and not supports_reasoning_controls:
         raise _mismatch("The selected model cannot honor the frozen reasoning policy.")
+    if reasoning_control not in {"none", "enable_thinking"}:
+        raise _mismatch("The selected model uses an unsupported reasoning control.")
+
+    enable_thinking = (
+        operation_policy.enable_thinking if reasoning_control == "enable_thinking" else False
+    )
+    thinking_budget_tokens = operation_policy.thinking_budget_tokens if enable_thinking else None
+    reasoning_mode = operation_policy.reasoning_mode if enable_thinking else "low"
 
     return AgentModelExecutionPolicyV1(
         model_ref=model_ref,
@@ -83,9 +91,9 @@ def resolve_agent_model_execution_policy(
         operation_class=operation_policy.policy_class,
         thinking_format=thinking_format,
         reasoning_control=reasoning_control,
-        reasoning_mode=operation_policy.reasoning_mode,
-        enable_thinking=operation_policy.enable_thinking,
-        thinking_budget_tokens=operation_policy.thinking_budget_tokens,
+        reasoning_mode=reasoning_mode,
+        enable_thinking=enable_thinking,
+        thinking_budget_tokens=thinking_budget_tokens,
         structured_transport=structured_transport,
         supports_tool_calls=supports_tool_calls,
         supports_streamed_tool_calls=supports_streamed_tool_calls,

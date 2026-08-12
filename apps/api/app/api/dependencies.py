@@ -14,7 +14,6 @@ from app.services.final_composition_timeline import FinalCompositionTimelineServ
 from app.services.media_tasks import MediaTaskService
 from app.services.provider_identity_certification import IdentityCertificationRegistry
 from app.services.provider_credentials import (
-    CredentialSettingsError,
     DotenvCredentialStore,
     LegacyVolcengineCredentialAdapter,
     ProviderConnectionService,
@@ -142,17 +141,7 @@ def get_provider_model_catalog_service(
 
     database = create_v2_database(settings.media_data_dir)
     repository = ProviderModelRepository(database)
-    connection_service = _provider_connection_service(settings, repository)
-
-    def provider_available(provider_id: str) -> bool:
-        if provider_id == "fake":
-            return True
-        try:
-            return connection_service.status(provider_id).connection_state == "configured"
-        except CredentialSettingsError:
-            return False
-
-    service = ProviderModelCatalogService(repository, provider_available=provider_available)
+    service = ProviderModelCatalogService(repository)
     try:
         yield service
     finally:

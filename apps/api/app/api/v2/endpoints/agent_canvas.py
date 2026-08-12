@@ -346,22 +346,7 @@ def create_agent_canvas_runtime(
     ProviderModelBootstrapService(settings, model_repository).bootstrap(
         now=datetime.now(timezone.utc).isoformat()
     )
-    model_catalog = ProviderModelCatalogService(
-        model_repository,
-        provider_available=lambda provider_id: (
-            provider_id == "fake"
-            or (provider_id == "siliconflow" and bool(settings.siliconflow_api_key))
-            or (
-                provider_id == "volcengine_ark"
-                and bool(
-                    settings.llm_api_key
-                    or settings.image_generation_api_key
-                    or settings.video_generation_api_key
-                )
-            )
-            or (provider_id == "tianpuyue" and bool(settings.bgm_api_key))
-        ),
-    )
+    model_catalog = ProviderModelCatalogService(model_repository)
     model_selection = ModelSelectionService(model_catalog)
     model_resolution = ModelResolutionService(
         model_selection,
