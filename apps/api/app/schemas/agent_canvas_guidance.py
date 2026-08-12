@@ -14,6 +14,10 @@ class _GuidanceModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class _PrivateGuidanceRepairModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class GuidanceAdvanceRequestV1(_GuidanceModel):
     expected_workflow_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
@@ -70,6 +74,64 @@ class GuidanceAuthorityRepairReceiptV1(_GuidanceModel):
     plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     appended_requirement_revision_id: str = Field(min_length=1, max_length=160)
     resulting_session_revision: int = Field(ge=1)
+    event_id: str = Field(min_length=1, max_length=160)
+    applied_at: datetime
+    replayed: bool = False
+
+
+class GuidanceRequirementLedgerRepairRuntimeAssertionV1(_PrivateGuidanceRepairModel):
+    stale_turn_id: str = Field(min_length=1, max_length=160)
+    turn_status: Literal["running"]
+    turn_operation_stage: str = Field(min_length=1, max_length=160)
+    turn_error_code: str = Field(min_length=1, max_length=160)
+    turn_error_message: str = Field(min_length=1, max_length=1_024)
+    stale_continuation_id: str = Field(min_length=1, max_length=160)
+    continuation_status: Literal["retry_wait"]
+    continuation_attempt_count: int = Field(ge=0)
+    continuation_lease_generation: int = Field(ge=0)
+    continuation_error_code: str = Field(min_length=1, max_length=160)
+    continuation_error_message: str = Field(min_length=1, max_length=1_024)
+
+
+class GuidanceRequirementLedgerRepairPlanV1(_PrivateGuidanceRepairModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    expected_workflow_revision: int = Field(ge=1)
+    before_requirement_revision_id: str = Field(min_length=1, max_length=160)
+    before_requirement_revision_no: int = Field(ge=1)
+    before_requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    before_directive_set_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_session_revision: int = Field(ge=1)
+    expected_journey_stage_revision: int = Field(ge=1)
+    selected_topic_ids: tuple[str, ...] = Field(default=(), max_length=64)
+    obsolete_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    duplicate_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    retained_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    representative_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    runtime: GuidanceRequirementLedgerRepairRuntimeAssertionV1
+    ready_assets: tuple[GuidanceReadyAssetAssertionV1, ...] = Field(
+        min_length=6,
+        max_length=6,
+    )
+    ready_asset_set_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    after_requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    repair_error_code: Literal["requirement_projection_budget_exceeded"]
+    repair_error_message: str = Field(min_length=1, max_length=1_024)
+    plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class GuidanceRequirementLedgerRepairReceiptV1(_PrivateGuidanceRepairModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    before_requirement_revision_id: str = Field(min_length=1, max_length=160)
+    before_requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    after_requirement_revision_id: str = Field(min_length=1, max_length=160)
+    after_requirement_revision_no: int = Field(ge=1)
+    after_requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    removed_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    retained_directive_ids: tuple[str, ...] = Field(default=(), max_length=256)
+    terminalized_turn_id: str = Field(min_length=1, max_length=160)
+    terminalized_continuation_id: str = Field(min_length=1, max_length=160)
+    ready_asset_set_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     event_id: str = Field(min_length=1, max_length=160)
     applied_at: datetime
     replayed: bool = False
