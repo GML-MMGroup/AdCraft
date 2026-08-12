@@ -14,6 +14,11 @@ from uuid import uuid4
 
 import httpx
 
+from app.core.evidence_paths import (
+    new_adcraft_evidence_directory,
+    validate_adcraft_evidence_path,
+)
+
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 DEFAULT_FIXTURE = "core_av_canary"
@@ -47,9 +52,17 @@ def run_cli(
         if args.mode == "paid" and not args.acknowledge_paid:
             print("Paid mode requires explicit acknowledgement.", file=stdout)
             return 2
+        try:
+            evidence_root = validate_adcraft_evidence_path(
+                args.evidence_root or _default_evidence_root(),
+                require_unified_root=True,
+            )
+        except ValueError as error:
+            print(str(error), file=stdout)
+            return 2
         config = GoldenJourneyConfig(
             mode=args.mode,
-            evidence_root=args.evidence_root or _default_evidence_root(),
+            evidence_root=evidence_root,
             paid_authorized=args.acknowledge_paid,
             timeout_seconds=int(args.timeout_seconds),
         )
@@ -201,8 +214,7 @@ def _generated_idempotency_key() -> str:
 
 
 def _default_evidence_root() -> Path:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return Path(f"/data/wenwu.meng/adcraft-golden-journey-{stamp}")
+    return new_adcraft_evidence_directory("adcraft-golden-journey")
 
 
 def _run_golden_journey(config: GoldenJourneyConfig) -> int:
