@@ -45,4 +45,5 @@ describe("HomeShowcase", () => {
     fireEvent.click(card);
     expect(openPreview).toHaveBeenCalledTimes(1);
   });
+
 });
