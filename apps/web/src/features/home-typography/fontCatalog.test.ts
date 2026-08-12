@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_REGION_SETTINGS,
   FONT_CATALOG,
+  HANDWRITTEN_FONT_COLLECTIONS,
+  getFontsForRegion,
   resetAllRegionSettings,
   resetRegionSettings,
 } from "./fontCatalog";
@@ -23,10 +25,27 @@ describe("home typography font catalog", () => {
       .toEqual(new Set(["local", "system", "web"]));
   });
 
-  it("does not retain the removed Dancing Script experiment", () => {
-    expect(FONT_CATALOG).not.toContainEqual(expect.objectContaining({
+  it("offers a broad handwritten catalog only for the Hero accent", () => {
+    const accentFonts = getFontsForRegion("heroAccent");
+    const mainFonts = getFontsForRegion("heroMain");
+    const handwrittenFonts = accentFonts.filter((font) => font.collection?.startsWith("handwritten-"));
+
+    expect(handwrittenFonts.length).toBeGreaterThanOrEqual(90);
+    expect(handwrittenFonts).toContainEqual(expect.objectContaining({
       id: "dancing-script",
+      family: "Dancing Script",
+      source: "web",
     }));
+    expect(mainFonts).not.toContainEqual(expect.objectContaining({ id: "dancing-script" }));
+    expect(handwrittenFonts.every((font) => font.allowedRegions?.includes("heroAccent"))).toBe(true);
+    expect(new Set(handwrittenFonts.map((font) => font.collection)))
+      .toEqual(new Set(HANDWRITTEN_FONT_COLLECTIONS.map(({ id }) => id)));
+  });
+
+  it("keeps font identifiers unique after adding the handwritten catalog", () => {
+    const fontIds = FONT_CATALOG.map((font) => font.id);
+
+    expect(new Set(fontIds).size).toBe(fontIds.length);
   });
 
   it("includes the extended web font set for sans, serif, display, and mono exploration", () => {
