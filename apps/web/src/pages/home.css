@@ -450,8 +450,20 @@
 }
 
 .discover-orbit {
+  --discover-track-gap: clamp(56px, 4.6vw, 76px);
+  --discover-card-height: clamp(232px, 23.43vw, 329px);
+  --discover-track-inset-y: 68px;
+  --discover-track-float-space: 10px;
   position: relative;
-  min-height: clamp(430px, 45vw, 560px);
+  min-height: max(
+    clamp(680px, 54vw, 800px),
+    calc(
+      var(--discover-card-height) + var(--discover-card-height)
+      + var(--discover-track-gap)
+      + var(--discover-track-inset-y) + var(--discover-track-inset-y)
+      + var(--discover-track-float-space) + var(--discover-track-float-space)
+    )
+  );
   width: 100%;
   margin: 0 0 34px;
   overflow: hidden;
@@ -471,7 +483,9 @@
 
 .discover-orbit__track {
   position: absolute;
-  inset: 0;
+  right: 0;
+  left: 0;
+  height: calc((100% - var(--discover-track-gap) - var(--discover-track-inset-y) - var(--discover-track-inset-y)) / 2);
 }
 
 .discover-orbit--interactive .discover-orbit__track {
@@ -479,9 +493,17 @@
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.38) 9%, #000 18%, #000 82%, rgba(0, 0, 0, 0.38) 91%, transparent 100%);
 }
 
+.discover-orbit__track--upper {
+  top: var(--discover-track-inset-y);
+}
+
+.discover-orbit__track--lower {
+  bottom: var(--discover-track-inset-y);
+}
+
 .discover-orbit__card {
   position: absolute;
-  top: 46%;
+  top: 50%;
   left: 50%;
   z-index: var(--discover-track-depth);
   display: grid;
@@ -552,7 +574,7 @@
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.58);
 }
 
-.discover-orbit__card:is(:hover, :focus-visible, .is-active) {
+.discover-orbit__card:is(:hover, :focus-visible, .is-selected) {
   z-index: 220;
   border-color: rgba(243, 237, 255, 0.8);
   box-shadow: 0 28px 58px rgba(49, 35, 92, 0.32), 0 0 26px rgba(171, 143, 247, 0.22), inset 0 1px rgba(255, 255, 255, 0.42);
@@ -574,6 +596,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  height: auto;
 }
 
 .discover-orbit--static .discover-orbit__card {
@@ -598,6 +621,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 14px;
+    height: auto;
   }
 
   .discover-orbit__card {
@@ -638,6 +662,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 14px;
+    height: auto;
   }
 
   .discover-orbit__card {
