@@ -12,6 +12,9 @@ from app.schemas.agent_operation_recovery import (
 )
 from app.schemas.agent_runtime import AgentRunRequest
 from app.services.v2_agent_capability_contract import V2AgentCapabilityContractService
+from app.services.v2_agent_contract_registry import (
+    validate_video_agent_contract_parity,
+)
 from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
@@ -213,7 +216,9 @@ def freeze_agent_run_operation_policy(
 ) -> AgentRunRequest:
     """Freeze the canonical policy into a durable request before persistence."""
 
-    definition = VideoAgentOperationRegistry().resolve(request.operation)
+    operation_registry = VideoAgentOperationRegistry()
+    validate_video_agent_contract_parity(operation_registry.definitions())
+    definition = operation_registry.resolve(request.operation)
     operation_policy = (registry or AgentOperationPolicyRegistryV2()).resolve(
         agent_name=request.agent_name,
         operation=request.operation,
