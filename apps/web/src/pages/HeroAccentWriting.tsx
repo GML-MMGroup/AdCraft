@@ -8,18 +8,18 @@ type AccentStroke = {
 };
 
 const accentStrokes: readonly AccentStroke[] = [
-  { d: "M53 112 C66 78 81 39 94 20", delay: "0ms", duration: "400ms", width: 28 },
-  { d: "M94 20 C103 50 111 80 120 112", delay: "180ms", duration: "400ms", width: 28 },
-  { d: "M68 79 C84 75 101 75 113 79", delay: "340ms", duration: "200ms", width: 21 },
-  { d: "M148 79 C129 66 130 96 144 103 C161 111 173 91 159 79 C146 67 128 79 142 93", delay: "500ms", duration: "430ms", width: 29 },
-  { d: "M163 28 C164 56 160 84 159 103 C158 111 170 111 181 99", delay: "760ms", duration: "390ms", width: 25 },
-  { d: "M207 112 C206 76 214 42 233 32 C246 25 254 35 246 48", delay: "930ms", duration: "450ms", width: 26 },
-  { d: "M196 67 C214 64 235 64 251 68", delay: "1130ms", duration: "190ms", width: 20 },
-  { d: "M267 76 C267 89 266 100 268 105 C271 112 281 110 290 99", delay: "1280ms", duration: "280ms", width: 24 },
-  { d: "M270 54 C270 53 271 52 272 52", delay: "1410ms", duration: "130ms", width: 24 },
-  { d: "M306 29 C297 52 298 83 300 102 C302 114 315 111 325 99", delay: "1520ms", duration: "380ms", width: 26 },
-  { d: "M337 105 C337 86 344 74 355 75 C368 76 366 100 367 105 C367 87 375 74 387 75 C401 77 398 101 400 105 C402 112 412 109 423 98", delay: "1710ms", duration: "520ms", width: 27 },
-  { d: "M444 105 C444 103 446 102 448 104", delay: "2100ms", duration: "120ms", width: 24 },
+  { d: "M43 112 C50 85 60 45 69 18", delay: "0ms", duration: "400ms", width: 29 },
+  { d: "M69 18 C77 45 82 80 89 112", delay: "180ms", duration: "400ms", width: 29 },
+  { d: "M52 79 C64 75 77 75 86 79", delay: "340ms", duration: "200ms", width: 21 },
+  { d: "M126 79 C111 65 92 76 98 94 C104 111 128 105 132 89 C134 79 126 73 117 76", delay: "500ms", duration: "430ms", width: 31 },
+  { d: "M134 17 C133 48 131 82 132 103 C133 112 143 111 153 99", delay: "760ms", duration: "390ms", width: 26 },
+  { d: "M181 112 C176 85 181 47 193 22 C198 11 207 12 207 23", delay: "930ms", duration: "450ms", width: 26 },
+  { d: "M164 68 C175 64 189 64 199 67", delay: "1130ms", duration: "190ms", width: 20 },
+  { d: "M207 76 C206 89 207 101 209 105 C212 112 220 110 227 99", delay: "1280ms", duration: "280ms", width: 23 },
+  { d: "M209 52 C209 51 210 50 211 50", delay: "1410ms", duration: "130ms", width: 19 },
+  { d: "M241 18 C233 51 234 85 236 103 C238 113 247 111 255 99", delay: "1520ms", duration: "380ms", width: 25 },
+  { d: "M267 105 C267 86 274 74 284 75 C297 76 295 100 296 105 C296 87 304 74 315 75 C329 77 327 101 329 105 C331 112 339 109 347 98", delay: "1710ms", duration: "520ms", width: 28 },
+  { d: "M354 104 C354 102 356 101 358 103", delay: "2100ms", duration: "120ms", width: 20 },
 ];
 
 export function HeroAccentWriting() {
@@ -58,6 +58,12 @@ export function HeroAccentWriting() {
               data-stroke-index={index}
             />
           ))}
+          <rect
+            className="home-hero-accent-writing__completion"
+            width="480"
+            height="140"
+            fill="#fff"
+          />
         </mask>
       </defs>
       <text
