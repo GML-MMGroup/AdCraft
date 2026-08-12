@@ -23,7 +23,10 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeError,
 )
 from app.services.v2_agent_event_projector import V2AgentEventProjector
-from app.services.agent_operation_policy import freeze_agent_run_operation_policy
+from app.services.agent_operation_policy import (
+    AgentOperationPolicyError,
+    validate_agent_run_operation_policy,
+)
 
 
 _TERMINAL_STATUS_BY_EVENT = {
@@ -113,7 +116,14 @@ class DurablePiRunService:
     ) -> DurablePiRunResult:
         """Run or replay one stable Agent invocation through the existing repository."""
 
-        request = freeze_agent_run_operation_policy(request)
+        try:
+            validate_agent_run_operation_policy(request)
+        except AgentOperationPolicyError as error:
+            raise PiAgentRuntimeError(
+                "agent_model_policy_mismatch",
+                "Agent request policy does not match the canonical operation registry.",
+                retryable=False,
+            ) from error
         identity = derive_durable_pi_run_identity(identity_fields)
         request = request.model_copy(
             update={

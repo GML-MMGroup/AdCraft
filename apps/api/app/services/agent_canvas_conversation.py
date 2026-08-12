@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import hashlib
 import json
 import logging
@@ -87,14 +87,12 @@ from app.schemas.agent_operation_contexts import (
 )
 from app.schemas.agent_runtime import (
     AgentCommandPlanDraftV2,
-    AgentRunPolicy,
     AgentRunRequest,
     AgentRunCompletedPayload,
 )
 from app.schemas.agent_working_documents import AgentDocumentContextExcerptV2
 from app.services.durable_pi_run import DurablePiRunResult, DurablePiRunService
 from app.services.model_resolution import ModelResolutionService
-from app.services.agent_run_envelope import agent_run_envelope_fields
 from app.services.agent_run_context_registry import (
     validate_video_agent_context_parity,
     validate_video_agent_operation_context,
@@ -137,7 +135,10 @@ from app.persistence.agent_canvas_requirement_repository import (
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
-from app.services.agent_operation_policy import AgentOperationPolicyRegistryV2
+from app.services.agent_operation_policy import (
+    AgentOperationPolicyRegistryV2,
+    AgentRunRequestFactory,
+)
 from app.services.agent_request_digest import frozen_agent_request_digest
 from app.services.v2_agent_contract_registry import (
     AGENT_STRUCTURED_CONTRACT_REGISTRY,
@@ -374,6 +375,10 @@ class PiVideoAgentGateway:
         self._operation_policies = operation_policies or AgentOperationPolicyRegistryV2()
         self._on_provider_waiting = on_provider_waiting
         self._operation_registry = VideoAgentOperationRegistry()
+        self._request_factory = AgentRunRequestFactory(
+            policy_registry=self._operation_policies,
+            operation_registry=self._operation_registry,
+        )
         validate_video_agent_context_parity(self._operation_registry.definitions())
 
     def classify_turn_intent(
@@ -590,12 +595,6 @@ class PiVideoAgentGateway:
             model_selection_mode="default",
             model_ref=None,
         )
-        operation_policy = self._operation_policies.resolve(
-            agent_name="video_agent",
-            operation=operation,
-            contract_id=contract.__name__,
-        )
-        operation_timeout = float(operation_policy.hard_deadline_seconds)
         style_lineage = _style_skill_lineage(context)
         turn_id = identity_fields.get("turn_id")
         validation_profile = None
@@ -603,37 +602,20 @@ class PiVideoAgentGateway:
         if operation == "decide_turn_intent" and isinstance(turn_id, str):
             validation_profile = "agent_intake_source_quotes_v1"
             validation_context = {"source_turn_id": turn_id}
-        request = AgentRunRequest(
+        request = self._request_factory.build(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
-            **agent_run_envelope_fields(context),
             parent_run_id=parent_run_id,
             agent_name="video_agent",
             operation=operation,
-            deadline_at=datetime.now(timezone.utc) + timedelta(seconds=operation_timeout),
-            model_policy_id=operation_policy.policy_id,
             model_ref=resolution.model_ref,
             context=context,
-            policy=AgentRunPolicy(
-                operation_policy_id=operation_policy.policy_id,
-                operation_class=operation_policy.policy_class,
-                transport_retry_limit=operation_policy.transport_retry_limit,
-                structured_repair_limit=operation_policy.structured_repair_limit,
-                max_handoffs=0,
-                timeout_seconds=operation_timeout,
-                primary_timeout_seconds=operation_policy.primary_timeout_seconds,
-                recovery_timeout_seconds=operation_policy.recovery_timeout_seconds,
-                persistence_reserve_seconds=operation_policy.persistence_reserve_seconds,
-                max_model_submissions=operation_policy.max_model_submissions,
-                recovery_mode=operation_policy.recovery_mode,
-            ),
             contract_name=contract.__name__,
             contract_schema=contract.model_json_schema(),
             validation_profile=validation_profile,
             validation_context=validation_context,
             audit_metadata={
                 "tool_mode": "structured_only",
-                "agent_operation_policy": operation_policy.model_dump(mode="json"),
                 "model_identity": {
                     "model_ref": resolution.model_ref,
                     "provider_id": resolution.provider_id,

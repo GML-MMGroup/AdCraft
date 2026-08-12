@@ -16,8 +16,6 @@ from app.schemas.agent_runtime import (
     AgentCanvasTextOutput,
     AgentRunCompletedPayload,
     AgentRunContext,
-    AgentRunPolicy,
-    AgentRunRequest,
 )
 from app.schemas.agent_canvas import (
     CanvasNodeV2,
@@ -43,7 +41,7 @@ from app.schemas.seedance_inputs import (
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 from app.services.agent_canvas_seedance_inputs import AgentCanvasSeedanceInputCompiler
 from app.services.durable_pi_run import DurablePiRunService
-from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
 from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_reference_input_delivery import (
@@ -60,6 +58,10 @@ class GeneratedMediaPayload:
     mime_type: str
     filename: str
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+def _deadline_cap(timeout_seconds: float) -> datetime:
+    return datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,20 +281,14 @@ class ScriptNodeExecutor:
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
         validate_video_agent_operation_context("execute_canvas_script", run_context)
-        request = AgentRunRequest(
+        request = AgentRunRequestFactory().build(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
-            **agent_run_envelope_fields(run_context),
             agent_name="video_agent",
             operation="execute_canvas_script",
-            deadline_at=datetime.now(timezone.utc) + timedelta(seconds=self._timeout_seconds),
-            model_policy_id="video_agent.execute_canvas_script.v1",
+            deadline_cap=_deadline_cap(self._timeout_seconds),
             model_ref=_frozen_text_model_ref(context),
             context=run_context,
-            policy=AgentRunPolicy(
-                max_handoffs=0,
-                timeout_seconds=self._timeout_seconds,
-            ),
             contract_name="AgentCanvasScriptOutput",
             contract_schema=AgentCanvasScriptOutput.model_json_schema(),
             audit_metadata={"tool_mode": "structured_only"},
@@ -336,20 +332,14 @@ class TextNodeExecutor:
             input_payload={"resolved_inputs": [_json_input(item) for item in context.inputs]},
         )
         validate_video_agent_operation_context("execute_canvas_text", run_context)
-        request = AgentRunRequest(
+        request = AgentRunRequestFactory().build(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",
-            **agent_run_envelope_fields(run_context),
             agent_name="video_agent",
             operation="execute_canvas_text",
-            deadline_at=datetime.now(timezone.utc) + timedelta(seconds=self._timeout_seconds),
-            model_policy_id="video_agent.execute_canvas_text.v1",
+            deadline_cap=_deadline_cap(self._timeout_seconds),
             model_ref=_frozen_text_model_ref(context),
             context=run_context,
-            policy=AgentRunPolicy(
-                max_handoffs=0,
-                timeout_seconds=self._timeout_seconds,
-            ),
             contract_name="AgentCanvasTextOutput",
             contract_schema=AgentCanvasTextOutput.model_json_schema(),
             audit_metadata={"tool_mode": "structured_only"},

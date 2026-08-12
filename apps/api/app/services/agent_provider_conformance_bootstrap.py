@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Callable, Literal
 from uuid import uuid4
 
@@ -18,12 +18,10 @@ from app.schemas.agent_runtime import (
     AgentRunRequest,
     canonical_agent_run_request_digest,
 )
-from app.services.agent_operation_policy import freeze_agent_run_operation_policy
-from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.agent_run_context_registry import validate_video_agent_operation_context
 
 
-_MODEL_POLICY_ID = "video_agent.decide_turn_intent.v3"
 _LEASE_DURATION_SECONDS = 600
 _SYNTHETIC_USER_INPUT = (
     "Create a 30-second 16:9 premium sparkling-tea advertisement for urban young adults."
@@ -70,14 +68,12 @@ class AgentProviderConformanceBootstrapService:
             requirement_digest="0" * 64,
         )
         validate_video_agent_operation_context("decide_turn_intent", context)
-        request = AgentRunRequest(
+        frozen_request = AgentRunRequestFactory().build(
             run_id=run_id,
             request_id=f"request_{run_id}",
-            **agent_run_envelope_fields(context),
             agent_name="video_agent",
             operation="decide_turn_intent",
-            deadline_at=timestamp + timedelta(seconds=_LEASE_DURATION_SECONDS),
-            model_policy_id=_MODEL_POLICY_ID,
+            now=timestamp,
             model_ref=model_ref,
             context=context,
             contract_name="CompactTurnIntentDecisionV2",
@@ -86,10 +82,8 @@ class AgentProviderConformanceBootstrapService:
                 "run_purpose": "provider_conformance",
                 "report_schema_version": 2,
                 "model_ref": model_ref,
-                "model_policy_id": _MODEL_POLICY_ID,
             },
         )
-        frozen_request = freeze_agent_run_operation_policy(request, now=timestamp)
         lease_owner_id = self._lease_owner_factory()
         record, created = self._repository.create_or_load(
             frozen_request,
