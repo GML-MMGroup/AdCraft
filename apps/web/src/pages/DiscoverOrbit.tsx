@@ -36,6 +36,8 @@ type TrackConfig = {
   phase: number;
 };
 
+type TrackOffsets = Record<TrackId, number>;
+
 const TRACKS: readonly TrackConfig[] = [
   { id: "upper", direction: 1, phase: -3 },
   { id: "lower", direction: -1, phase: -2 },
@@ -127,6 +129,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   const cardRefs = useRef<Record<TrackId, Array<HTMLElement | null>>>({ upper: [], lower: [] });
   const targetRef = useRef(0);
   const currentRef = useRef(0);
+  // Shared browsing moves both tracks. A card click only changes its own offset,
+  // so the other row remains visually stable until the shared browsing resumes.
+  const trackOffsetTargetsRef = useRef<TrackOffsets>({ upper: 0, lower: 0 });
+  const trackOffsetsRef = useRef<TrackOffsets>({ upper: 0, lower: 0 });
+  const trackFocusedIndexesRef = useRef<Record<TrackId, number | null>>({ upper: null, lower: null });
   const activeIndexesRef = useRef<Record<TrackId, number>>({ upper: 0, lower: 0 });
   const pauseAutoUntilRef = useRef(0);
   const inertiaRef = useRef(0);
@@ -145,7 +152,18 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   const syncActiveIndexes = (current: number) => {
     const next = Object.fromEntries(TRACKS.map((track) => [
       track.id,
-      nearestIndex(current, track.phase, track.direction, total),
+      (() => {
+        const isSettled = Math.abs(
+          trackOffsetTargetsRef.current[track.id] - trackOffsetsRef.current[track.id],
+        ) < 0.08;
+        if (isSettled) trackFocusedIndexesRef.current[track.id] = null;
+        return trackFocusedIndexesRef.current[track.id] ?? nearestIndex(
+          current + trackOffsetsRef.current[track.id],
+          track.phase,
+          track.direction,
+          total,
+        );
+      })(),
     ])) as Record<TrackId, number>;
     if (next.upper === activeIndexesRef.current.upper && next.lower === activeIndexesRef.current.lower) return;
     activeIndexesRef.current = next;
@@ -160,6 +178,20 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     syncActiveIndexes(targetRef.current);
   };
 
+  const moveTrackToCard = (track: TrackConfig, index: number, pauseDuration = AUTO_RESUME_DELAY) => {
+    const trackCurrent = currentRef.current + trackOffsetsRef.current[track.id];
+    const targetTrackCurrent = targetForCard(index, track, trackCurrent, total);
+    trackOffsetTargetsRef.current[track.id] = targetTrackCurrent - currentRef.current;
+    trackFocusedIndexesRef.current[track.id] = index;
+    pauseAuto(pauseDuration);
+
+    if (activeIndexesRef.current[track.id] !== index) {
+      const next = { ...activeIndexesRef.current, [track.id]: index };
+      activeIndexesRef.current = next;
+      setActiveIndexes(next);
+    }
+  };
+
   const spacingFor = () => {
     const width = rootRef.current?.clientWidth ?? 1200;
     return Math.min(Math.max(width * 0.205, 225), 330);
@@ -170,7 +202,8 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     TRACKS.forEach((track) => {
       cardRefs.current[track.id].forEach((card, index) => {
         if (!card) return;
-        const delta = wrapDelta(index + track.direction * currentRef.current + track.phase, total);
+        const trackCurrent = currentRef.current + trackOffsetsRef.current[track.id];
+        const delta = wrapDelta(index + track.direction * trackCurrent + track.phase, total);
         const styles = distanceStyle(delta, index, now, spacing, track);
         Object.entries(styles).forEach(([name, value]) => card.style.setProperty(name, String(value)));
       });
@@ -225,6 +258,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
 
       const smoothing = 1 - Math.pow(1 - DAMPING, deltaTime * 60);
       currentRef.current += (targetRef.current - currentRef.current) * smoothing;
+      TRACKS.forEach((track) => {
+        const currentOffset = trackOffsetsRef.current[track.id];
+        const targetOffset = trackOffsetTargetsRef.current[track.id];
+        trackOffsetsRef.current[track.id] += (targetOffset - currentOffset) * smoothing;
+      });
       syncCards(now);
       syncActiveIndexes(currentRef.current);
       frameId = requestAnimationFrame(render);
@@ -331,17 +369,20 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       return;
     }
     const centeredIndex = activeIndexesRef.current[track.id];
-    const settled = Math.abs(targetRef.current - currentRef.current) < 0.08;
+    const settled = (
+      Math.abs(targetRef.current - currentRef.current) < 0.08
+      && Math.abs(trackOffsetTargetsRef.current[track.id] - trackOffsetsRef.current[track.id]) < 0.08
+    );
     if (index === centeredIndex && settled) {
       onSelect?.();
       return;
     }
-    moveTo(targetForCard(index, track, currentRef.current, total));
+    moveTrackToCard(track, index);
   };
 
   const handleCardFocus = (track: TrackConfig, index: number) => {
     if (!interactive) return;
-    moveTo(targetForCard(index, track, currentRef.current, total));
+    moveTrackToCard(track, index);
   };
 
   const setHovering = (value: boolean) => {

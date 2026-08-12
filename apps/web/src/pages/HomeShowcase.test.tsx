@@ -47,6 +47,13 @@ describe("HomeShowcase", () => {
     fireEvent.keyDown(card, { key: "ArrowLeft" });
     expect(orbit.dataset.activeIndex).toContain("upper:3");
 
+    const lowerCard = within(lowerTrack as HTMLElement).getByRole("button", { name: "lower Product Aura" });
+    fireEvent.click(lowerCard);
+    expect(card.getAttribute("aria-current")).toBe("true");
+    expect(lowerCard.getAttribute("aria-current")).toBe("true");
+    expect(orbit.dataset.activeIndex).toContain("upper:3");
+    expect(orbit.dataset.activeIndex).toContain("lower:4");
+
     fireEvent.click(card);
     expect(openPreview).toHaveBeenCalledTimes(1);
   });

@@ -450,8 +450,9 @@
 }
 
 .discover-orbit {
+  --discover-track-gap: clamp(56px, 4.6vw, 76px);
   position: relative;
-  min-height: clamp(580px, 52vw, 680px);
+  min-height: clamp(620px, 54vw, 720px);
   width: 100%;
   margin: 0 0 34px;
   overflow: hidden;
@@ -473,7 +474,7 @@
   position: absolute;
   right: 0;
   left: 0;
-  height: 50%;
+  height: calc((100% - var(--discover-track-gap)) / 2);
 }
 
 .discover-orbit--interactive .discover-orbit__track {
