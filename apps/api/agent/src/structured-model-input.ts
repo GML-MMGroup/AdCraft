@@ -12,6 +12,10 @@ import type {
   PythonInternalClient,
 } from "./python-internal-client.js";
 import {
+  AgentPromptInputProjectionError,
+  getPromptInputProjection,
+} from "./prompt-input-projection.js";
+import {
   getAgentDefinition,
   getOperationDescriptor,
   type OperationDescriptor,
@@ -71,6 +75,8 @@ export async function prepareStructuredModelInput(
   ) {
     throw new Error("agent_intake_context_too_large");
   }
+  const operationDescriptor = dependencies.getOperationDescriptor(request.operation);
+  const userPrompt = promptInputForRequest(request, operationDescriptor);
   if (!request.model_ref) throw new Error("agent_protocol_mismatch");
   const credential = await python.credential(
     request.credential_ref ?? "llm-default",
@@ -81,7 +87,6 @@ export async function prepareStructuredModelInput(
     request.model_ref,
   );
   validateCredentialExecutionPolicy(request, credential);
-  const operationDescriptor = dependencies.getOperationDescriptor(request.operation);
   const loadedSkills = await dependencies.loadRequiredSkills(operationDescriptor);
   const skillContext = loadedSkills
     .map(
@@ -99,7 +104,6 @@ export async function prepareStructuredModelInput(
   ]
     .filter(Boolean)
     .join("\n\n");
-  const userPrompt = promptInputForRequest(request);
   if (
     request.operation === "decide_turn_intent" &&
     Buffer.byteLength(
@@ -174,38 +178,21 @@ export function contractSchemaForRequest(
     : {};
 }
 
-export function promptInputForRequest(request: AgentRunRequest): string {
+export function promptInputForRequest(
+  request: AgentRunRequest,
+  descriptor: OperationDescriptor,
+): string {
   const context = request.context as Readonly<Record<string, unknown>>;
-  let primaryInput = [
-    "user_input",
-    "user_instruction",
-    "original_user_intent",
-    "objective",
-    "creative_goal",
-  ]
-    .map((key) => context[key])
-    .find((value): value is string => typeof value === "string" && value.length > 0);
-  if (
-    !primaryInput &&
-    context.context_kind === "video_parameter_intent" &&
-    Array.isArray(context.sources)
-  ) {
-    primaryInput = context.sources
-      .map((source) =>
-        source && typeof source === "object" && "text" in source
-          ? (source as Readonly<Record<string, unknown>>).text
-          : undefined,
-      )
-      .filter((value): value is string => typeof value === "string" && value.length > 0)
-      .join("\n\n");
+  const projection = getPromptInputProjection(descriptor.context_contract_name);
+  const primaryInput = projection.project(context);
+  if (!primaryInput) {
+    throw new AgentPromptInputProjectionError(
+      "agent_context_input_missing",
+      descriptor.context_contract_name,
+      projection.projectionId,
+    );
   }
-  if (!primaryInput) throw new Error("agent_context_input_missing");
-  const hasTypedOperationContext =
-    "context_kind" in request.context ||
-    "session_exists" in request.context ||
-    "capability_id" in request.context ||
-    "policy" in request.context;
-  if (!hasTypedOperationContext) return primaryInput;
+  if (projection.renderMode === "primary_only") return primaryInput;
 
   const typedContext = Object.fromEntries(
     Object.entries(request.context).filter(([key]) => key !== "contract_schema"),

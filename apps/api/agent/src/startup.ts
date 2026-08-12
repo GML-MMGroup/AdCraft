@@ -3,6 +3,11 @@ import {
   listOperationDescriptors,
   type OperationDescriptor,
 } from "./registry.js";
+import {
+  listPromptInputProjections,
+  type PromptInputProjectionDefinition,
+  validatePromptInputProjectionParity,
+} from "./prompt-input-projection.js";
 import { verifySkillBundle } from "./skills.js";
 
 interface ListenableServer {
@@ -21,11 +26,23 @@ export async function startVerifiedServer(
 
 export async function verifyRuntimeIntegrity(): Promise<void> {
   const bundle = await verifySkillBundle();
-  validateOperationRegistry(
-    listOperationDescriptors(),
+  const operations = listOperationDescriptors();
+  validateRuntimeRegistries(
+    operations,
     AGENT_CAPABILITY_CONTRACT.agents[0].operations,
     [...bundle.skills.keys()],
+    listPromptInputProjections(),
   );
+}
+
+export function validateRuntimeRegistries(
+  descriptors: ReadonlyArray<OperationDescriptor>,
+  capabilityOperations: ReadonlyArray<string>,
+  skillIds: ReadonlyArray<string>,
+  projections: ReadonlyArray<PromptInputProjectionDefinition>,
+): void {
+  validateOperationRegistry(descriptors, capabilityOperations, skillIds);
+  validatePromptInputProjectionParity(descriptors, projections);
 }
 
 interface RuntimeOperationDeclaration {

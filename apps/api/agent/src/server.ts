@@ -19,6 +19,7 @@ import {
   RunBudgetFailure,
 } from "./run-budget.js";
 import { AgentOperationFailure } from "./operation-recovery.js";
+import { AgentPromptInputProjectionError } from "./prompt-input-projection.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -42,6 +43,11 @@ type AbortCause =
   | "client_transport_lost";
 
 type FailureAudit = AgentOperationFailure["attemptMetadata"];
+
+interface ProjectionFailureAudit {
+  readonly context_contract_name: string;
+  readonly projection_id?: string;
+}
 
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
@@ -142,8 +148,12 @@ async function handleRun(
   let request: AgentRunRequest;
   try {
     request = validateAgentRunRequest(await readJson(incoming, maxRequestBytes));
-  } catch {
-    json(response, 422, { code: "agent_protocol_mismatch" });
+  } catch (error) {
+    const code =
+      error instanceof Error && error.message === "agent_context_registry_invalid"
+        ? error.message
+        : "agent_protocol_mismatch";
+    json(response, 422, { code });
     return;
   }
   if (activeRuns.has(request.run_id)) {
@@ -247,6 +257,7 @@ async function handleRun(
       const failure = safeRuntimeFailure(error);
       logStructuredRejectionDiagnostic(request, failure);
       logTerminalProviderDiagnostic(request, failure);
+      logPromptProjectionDiagnostic(request, failure);
       const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
         event(request, 0, terminal.eventType, {
@@ -260,6 +271,7 @@ async function handleRun(
             operation_policy_id: request.policy?.operation_policy_id,
             attempt_stage: terminal.attemptStage,
             ...(failure?.attemptMetadata ?? {}),
+            ...(failure?.projectionMetadata ?? {}),
           },
         }),
       );
@@ -338,6 +350,7 @@ class RuntimeFailure extends Error {
     readonly retryable = false,
     readonly attemptStage = "initial",
     readonly attemptMetadata?: FailureAudit,
+    readonly projectionMetadata?: ProjectionFailureAudit,
   ) {
     super(message);
   }
@@ -357,6 +370,19 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
       error.retryable,
       error.attemptStage,
       error.attemptMetadata,
+    );
+  }
+  if (error instanceof AgentPromptInputProjectionError) {
+    return new RuntimeFailure(
+      error.code,
+      "Agent Prompt input could not be projected.",
+      false,
+      "initial",
+      undefined,
+      {
+        context_contract_name: error.contextContractName,
+        ...(error.projectionId ? { projection_id: error.projectionId } : {}),
+      },
     );
   }
   if (error instanceof RuntimeFailure) return error;
@@ -411,6 +437,31 @@ function logStructuredRejectionDiagnostic(
       stage: "structured_submission",
       safe_error_code: failure.code,
       exception_class: failure.constructor.name,
+      retryable: false,
+    }),
+  );
+}
+
+function logPromptProjectionDiagnostic(
+  request: AgentRunRequest,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (
+    failure?.code !== "agent_context_input_missing" &&
+    failure?.code !== "agent_prompt_input_registry_invalid"
+  ) {
+    return;
+  }
+  console.warn(
+    JSON.stringify({
+      event: "agent_prompt_input_projection_failed",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      context_contract_name: failure.projectionMetadata?.context_contract_name,
+      projection_id: failure.projectionMetadata?.projection_id,
+      stable_error_code: failure.code,
+      attempt_stage: failure.attemptStage,
       retryable: false,
     }),
   );
