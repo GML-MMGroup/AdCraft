@@ -41,6 +41,8 @@ describe("HomePage hero title", () => {
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
     const writingSvg = lines[2]?.querySelector("svg[aria-label='Ad film.']");
     expect(writingSvg).toBeTruthy();
+    expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
+    expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path").length).toBeGreaterThan(0);
     expect(writingSvg?.querySelector("text")).toBeNull();
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
@@ -59,7 +61,7 @@ describe("HomePage hero title", () => {
 
   it("uses the exported typography system while retaining the accent treatment", () => {
     expect(styles).toMatch(
-      /\.home-page\s*\{[^}]*--home-font-display:\s*"Trebuchet MS"[^;]*;[^}]*--home-font-accent:\s*Georgia[^;]*;[^}]*--home-font-ui:\s*Arial[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
+      /\.home-page\s*\{[^}]*--home-font-display:\s*"Trebuchet MS"[^;]*;[^}]*--home-font-accent:\s*"Water Brush"[^;]*;[^}]*--home-font-ui:\s*Arial[^;]*;[^}]*font-family:\s*var\(--home-font-ui\);/s,
     );
     expect(styles).toMatch(
       /\[data-home-typography-region="heroMain"\]\s*\{[^}]*font-family:\s*"Trebuchet MS"[^}]*font-size:\s*60px;[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.1;[^}]*letter-spacing:\s*0\.016em;/s,
@@ -71,7 +73,7 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__title-line\s*\{[^}]*display:\s*block;/s,
     );
     expect(styles).toMatch(
-      /\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-family:\s*Georgia[^}]*font-size:\s*70px;[^}]*font-weight:\s*400;[^}]*font-style:\s*italic;[^}]*line-height:\s*1\.2;[^}]*letter-spacing:\s*0\.046em;/s,
+      /\[data-home-typography-region="heroAccent"\]\s*\{[^}]*font-family:\s*"Water Brush"[^}]*font-size:\s*80px;[^}]*font-weight:\s*400;[^}]*font-style:\s*normal;[^}]*line-height:\s*1\.25;[^}]*letter-spacing:\s*0\.100em;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__accent::after\s*\{[^}]*content:\s*attr\(data-accent-text\);[^}]*background-size:\s*240% 100%;[^}]*-webkit-background-clip:\s*text;[^}]*background-clip:\s*text;[^}]*-webkit-text-fill-color:\s*transparent;[^}]*pointer-events:\s*none;/s,

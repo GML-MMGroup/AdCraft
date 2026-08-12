@@ -1,6 +1,14 @@
+@font-face {
+  font-family: "Water Brush";
+  src: url("/fonts/water-brush-ad-film.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 .home-page {
   --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
-  --home-font-accent: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  --home-font-accent: "Water Brush", cursive;
   --home-font-ui: Arial, "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--home-font-ui);
 }
@@ -125,8 +133,9 @@
 
 .home-hero-accent-writing {
   display: block;
-  width: 4.9em;
-  height: 1.43em;
+  width: 3.92em;
+  height: auto;
+  aspect-ratio: 3880 / 1100;
   overflow: visible;
 }
 
@@ -815,12 +824,12 @@ html[data-theme="dark"] .app-shell--cosmic :is(
 }
 
 .home-page [data-home-typography-region="heroAccent"] {
-  font-family: Georgia, "Instrument Serif", "Noto Serif SC", serif;
-  font-size: 70px;
+  font-family: "Water Brush", cursive;
+  font-size: 80px;
   font-weight: 400;
-  font-style: italic;
-  line-height: 1.2;
-  letter-spacing: 0.046em;
+  font-style: normal;
+  line-height: 1.25;
+  letter-spacing: 0.100em;
   text-transform: none;
 }
 
