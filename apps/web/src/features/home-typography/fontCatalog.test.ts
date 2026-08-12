@@ -13,8 +13,8 @@ describe("home typography font catalog", () => {
       .not.toBe(DEFAULT_REGION_SETTINGS.heroAccent);
     expect(resetRegionSettings("heroAccent")).toEqual(DEFAULT_REGION_SETTINGS.heroAccent);
     expect(DEFAULT_REGION_SETTINGS.heroAccent).toMatchObject({
-      fontId: "dancing-script",
-      fontStyle: "normal",
+      fontId: "georgia",
+      fontStyle: "italic",
     });
   });
 

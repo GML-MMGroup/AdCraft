@@ -1,6 +1,6 @@
 .home-page {
   --home-font-display: "Trebuchet MS", "Manrope", "Noto Sans SC", "PingFang SC", sans-serif;
-  --home-font-accent: "Dancing Script", cursive;
+  --home-font-accent: Georgia, "Instrument Serif", "Noto Serif SC", serif;
   --home-font-ui: Arial, "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-family: var(--home-font-ui);
 }
@@ -125,8 +125,8 @@
 
 .home-hero-accent-writing {
   display: block;
-  width: 4.8em;
-  height: 1.3em;
+  width: 4.9em;
+  height: 1.43em;
   overflow: visible;
 }
 
@@ -136,6 +136,14 @@
   stroke-dashoffset: 1;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.home-hero-accent-writing__glyph {
+  font-family: Georgia, "Instrument Serif", "Noto Serif SC", serif;
+  font-size: 108px;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: 3px;
 }
 
 .home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
@@ -687,12 +695,12 @@ html[data-theme="dark"] .app-shell--cosmic :is(
 }
 
 .home-page [data-home-typography-region="heroAccent"] {
-  font-family: "Dancing Script", cursive;
+  font-family: Georgia, "Instrument Serif", "Noto Serif SC", serif;
   font-size: 70px;
   font-weight: 400;
-  font-style: normal;
+  font-style: italic;
   line-height: 1.2;
-  letter-spacing: 0;
+  letter-spacing: 0.046em;
   text-transform: none;
 }
 
