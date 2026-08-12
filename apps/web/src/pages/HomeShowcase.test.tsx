@@ -13,7 +13,7 @@ describe("HomeShowcase", () => {
     expect(screen.queryByText("Preview Case")).toBeNull();
   });
 
-  it("pauses the Discover orbit while a card is hovered or focused", () => {
+  it("centers an initial Discover card and supports keyboard navigation", () => {
     const openPreview = vi.fn();
     const view = render(
       <HomeShowcase
@@ -28,23 +28,20 @@ describe("HomeShowcase", () => {
     );
 
     const orbit = within(view.container).getByLabelText("Discover inspiration gallery");
-    const card = within(view.container).getByRole("button", { name: "Campaign Flow" });
+    const card = within(view.container).getByRole("button", { name: "Scene Extension" });
 
-    expect(orbit.dataset.paused).toBe("false");
-    fireEvent.pointerEnter(card);
-    expect(orbit.dataset.paused).toBe("true");
-    expect(card.getAttribute("aria-pressed")).toBe("true");
+    expect(orbit.getAttribute("aria-roledescription")).toBe("carousel");
+    expect(orbit.dataset.activeIndex).toBe("3");
+    expect(card.getAttribute("aria-current")).toBe("true");
+
+    fireEvent.keyDown(card, { key: "ArrowRight" });
+    expect(orbit.dataset.activeIndex).toBe("4");
+    expect(card.getAttribute("aria-current")).toBe("false");
+
+    fireEvent.keyDown(card, { key: "ArrowLeft" });
+    expect(orbit.dataset.activeIndex).toBe("3");
 
     fireEvent.click(card);
     expect(openPreview).toHaveBeenCalledTimes(1);
-
-    fireEvent.pointerLeave(card);
-    expect(orbit.dataset.paused).toBe("false");
-    expect(card.getAttribute("aria-pressed")).toBe("false");
-
-    fireEvent.focus(card);
-    expect(orbit.dataset.paused).toBe("true");
-    fireEvent.blur(card);
-    expect(orbit.dataset.paused).toBe("false");
   });
 });
