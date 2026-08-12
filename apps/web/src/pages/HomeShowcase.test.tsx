@@ -38,6 +38,7 @@ describe("HomeShowcase", () => {
     expect(orbit.dataset.activeIndex).toContain("upper:3");
     expect(orbit.dataset.activeIndex).toContain("lower:2");
     expect(card.getAttribute("aria-current")).toBe("true");
+    expect(card.classList.contains("is-selected")).toBe(false);
     expect(within(lowerTrack as HTMLElement).getByRole("button", { name: "lower Poster Motion" }).getAttribute("aria-current")).toBe("true");
 
     fireEvent.keyDown(card, { key: "ArrowRight" });
@@ -50,7 +51,9 @@ describe("HomeShowcase", () => {
     const lowerCard = within(lowerTrack as HTMLElement).getByRole("button", { name: "lower Product Aura" });
     fireEvent.click(lowerCard);
     expect(card.getAttribute("aria-current")).toBe("true");
+    expect(card.classList.contains("is-selected")).toBe(false);
     expect(lowerCard.getAttribute("aria-current")).toBe("true");
+    expect(lowerCard.classList.contains("is-selected")).toBe(true);
     expect(orbit.dataset.activeIndex).toContain("upper:3");
     expect(orbit.dataset.activeIndex).toContain("lower:4");
 

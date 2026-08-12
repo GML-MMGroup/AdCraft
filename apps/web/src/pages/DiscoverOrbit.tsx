@@ -142,6 +142,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
   const didDragRef = useRef(false);
   const hoveringRef = useRef(false);
   const [activeIndexes, setActiveIndexes] = useState<Record<TrackId, number>>({ upper: 0, lower: 0 });
+  const [selectedIndexes, setSelectedIndexes] = useState<Record<TrackId, number | null>>({ upper: null, lower: null });
   const [isInteracting, setIsInteracting] = useState(false);
   const total = items.length;
 
@@ -368,6 +369,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       didDragRef.current = false;
       return;
     }
+    setSelectedIndexes((current) => ({ ...current, [track.id]: index }));
     const centeredIndex = activeIndexesRef.current[track.id];
     const settled = (
       Math.abs(targetRef.current - currentRef.current) < 0.08
@@ -414,9 +416,10 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
         <div className={`discover-orbit__track discover-orbit__track--${track.id}`} data-discover-track={track.id} key={track.id}>
           {items.map((item, index) => {
             const isActive = activeIndexes[track.id] === index;
+            const isSelected = selectedIndexes[track.id] === index;
             const commonProps = {
               ref: (node: HTMLElement | null) => { cardRefs.current[track.id][index] = node; },
-              className: `discover-orbit__card ${isActive ? "is-active" : ""}`,
+              className: `discover-orbit__card ${isActive ? "is-active" : ""} ${isSelected ? "is-selected" : ""}`,
               "data-index": index,
               "aria-current": isActive ? "true" as const : "false" as const,
             };

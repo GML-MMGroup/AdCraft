@@ -574,7 +574,7 @@
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.58);
 }
 
-.discover-orbit__card:is(:hover, :focus-visible, .is-active) {
+.discover-orbit__card:is(:hover, :focus-visible, .is-selected) {
   z-index: 220;
   border-color: rgba(243, 237, 255, 0.8);
   box-shadow: 0 28px 58px rgba(49, 35, 92, 0.32), 0 0 26px rgba(171, 143, 247, 0.22), inset 0 1px rgba(255, 255, 255, 0.42);
