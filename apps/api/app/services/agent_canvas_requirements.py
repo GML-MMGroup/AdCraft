@@ -47,6 +47,9 @@ from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
     CreativeGoalV2,
 )
+from app.services.agent_canvas_requirement_directives import (
+    canonicalize_requirement_directives,
+)
 
 
 _CONTROL_ADAPTER = TypeAdapter(RequirementControlV1)
@@ -388,16 +391,10 @@ def _apply_manual_patch(
         controls[stored.control] = stored
         changed_control_names.append(stored.control)
 
-    directives = [
-        item
-        for item in current.ledger.active_directives
-        if item.directive_id not in request.directive_ids_to_supersede
-    ]
-    added_ids: list[str] = []
+    candidates: list[RequirementDirectiveV1] = []
     for patch in request.directives_to_add:
         directive_id = f"reqdir_{uuid4().hex}"
-        added_ids.append(directive_id)
-        directives.append(
+        candidates.append(
             RequirementDirectiveV1(
                 directive_id=directive_id,
                 source_kind="manual_edit",
@@ -410,16 +407,21 @@ def _apply_manual_patch(
                 created_revision_no=revision_no,
             )
         )
+    canonical = canonicalize_requirement_directives(
+        current.ledger.active_directives,
+        candidates,
+        directive_ids_to_supersede=request.directive_ids_to_supersede,
+    )
     ledger = current.ledger.model_copy(
         update={
             "hard_controls": tuple(controls[key] for key in sorted(controls)),
-            "active_directives": tuple(sorted(directives, key=lambda item: item.directive_id)),
+            "active_directives": canonical.active_directives,
         }
     )
     return ledger, RequirementApplicationDeltaV1(
         changed_control_names=tuple(sorted(changed_control_names)),
-        added_directive_ids=tuple(added_ids),
-        superseded_directive_ids=request.directive_ids_to_supersede,
+        added_directive_ids=canonical.added_directive_ids,
+        superseded_directive_ids=canonical.superseded_directive_ids,
     )
 
 
@@ -452,16 +454,10 @@ def _apply_user_patch(
         controls[stored.control] = stored
         changed_control_names.append(stored.control)
 
-    directives = [
-        item
-        for item in current.ledger.active_directives
-        if item.directive_id not in patch.directive_ids_to_supersede
-    ]
-    added_directive_ids: list[str] = []
+    candidates: list[RequirementDirectiveV1] = []
     for directive_patch in patch.directives_to_add:
         directive_id = f"reqdir_{uuid4().hex}"
-        added_directive_ids.append(directive_id)
-        directives.append(
+        candidates.append(
             RequirementDirectiveV1(
                 directive_id=directive_id,
                 source_kind="user_message",
@@ -475,6 +471,11 @@ def _apply_user_patch(
                 created_revision_no=revision_no,
             )
         )
+    canonical = canonicalize_requirement_directives(
+        current.ledger.active_directives,
+        candidates,
+        directive_ids_to_supersede=patch.directive_ids_to_supersede,
+    )
 
     elements = {item.element_kind: item for item in current.ledger.element_presence}
     for element in explicit_elements:
@@ -506,15 +507,15 @@ def _apply_user_patch(
     ledger = current.ledger.model_copy(
         update={
             "hard_controls": tuple(controls[key] for key in sorted(controls)),
-            "active_directives": tuple(sorted(directives, key=lambda item: item.directive_id)),
+            "active_directives": canonical.active_directives,
             "element_presence": tuple(elements[key] for key in sorted(elements)),
             "unresolved_conflicts": tuple(conflicts),
         }
     )
     return ledger, RequirementApplicationDeltaV1(
         changed_control_names=tuple(sorted(changed_control_names)),
-        added_directive_ids=tuple(added_directive_ids),
-        superseded_directive_ids=patch.directive_ids_to_supersede,
+        added_directive_ids=canonical.added_directive_ids,
+        superseded_directive_ids=canonical.superseded_directive_ids,
         changed_element_kinds=tuple(sorted(item.element_kind for item in explicit_elements)),
         conflict_ids=tuple(conflict_ids),
     )
