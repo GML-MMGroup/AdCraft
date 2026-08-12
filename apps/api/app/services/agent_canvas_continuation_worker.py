@@ -12,6 +12,9 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
+from app.services.v2_agent_contract_registry import (
+    AgentStructuredContractRegistryError,
+)
 
 
 @dataclass(frozen=True)
@@ -227,9 +230,11 @@ class AgentCanvasContinuationWorker:
 
 
 def _structured_failure(error: Exception) -> tuple[str, bool]:
+    if isinstance(error, AgentStructuredContractRegistryError):
+        return error.code, False
     if isinstance(error, PiAgentRuntimeError):
         return error.code, error.retryable and error.code != "agent_deadline_exceeded"
     if isinstance(error, V2PersistenceError):
-        retryable = error.details.get("retryable", True)
+        retryable = error.details.get("retryable", False)
         return error.code, bool(retryable) and error.code != "agent_deadline_exceeded"
     return "continuation_dispatch_failed", True
