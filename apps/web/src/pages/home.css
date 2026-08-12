@@ -452,7 +452,7 @@
 .discover-orbit {
   --discover-track-gap: clamp(56px, 4.6vw, 76px);
   --discover-card-height: clamp(232px, 23.43vw, 329px);
-  --discover-track-inset-y: 16px;
+  --discover-track-inset-y: 68px;
   --discover-track-float-space: 10px;
   position: relative;
   min-height: max(
