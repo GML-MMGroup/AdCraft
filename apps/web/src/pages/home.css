@@ -451,7 +451,7 @@
 
 .discover-orbit {
   position: relative;
-  min-height: clamp(430px, 45vw, 560px);
+  min-height: clamp(580px, 52vw, 680px);
   width: 100%;
   margin: 0 0 34px;
   overflow: hidden;
@@ -471,7 +471,9 @@
 
 .discover-orbit__track {
   position: absolute;
-  inset: 0;
+  right: 0;
+  left: 0;
+  height: 50%;
 }
 
 .discover-orbit--interactive .discover-orbit__track {
@@ -479,9 +481,17 @@
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.38) 9%, #000 18%, #000 82%, rgba(0, 0, 0, 0.38) 91%, transparent 100%);
 }
 
+.discover-orbit__track--upper {
+  top: 0;
+}
+
+.discover-orbit__track--lower {
+  bottom: 0;
+}
+
 .discover-orbit__card {
   position: absolute;
-  top: 46%;
+  top: 50%;
   left: 50%;
   z-index: var(--discover-track-depth);
   display: grid;
@@ -574,6 +584,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
+  height: auto;
 }
 
 .discover-orbit--static .discover-orbit__card {
@@ -598,6 +609,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 14px;
+    height: auto;
   }
 
   .discover-orbit__card {
@@ -638,6 +650,7 @@
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 14px;
+    height: auto;
   }
 
   .discover-orbit__card {

@@ -13,7 +13,7 @@ describe("HomeShowcase", () => {
     expect(screen.queryByText("Preview Case")).toBeNull();
   });
 
-  it("centers an initial Discover card and supports keyboard navigation", () => {
+  it("renders two linked Discover tracks and supports keyboard navigation", () => {
     const openPreview = vi.fn();
     const view = render(
       <HomeShowcase
@@ -28,19 +28,24 @@ describe("HomeShowcase", () => {
     );
 
     const orbit = within(view.container).getByLabelText("Discover inspiration gallery");
-    const card = within(view.container).getByRole("button", { name: "Scene Extension" });
+    const upperTrack = orbit.querySelector("[data-discover-track=upper]");
+    const lowerTrack = orbit.querySelector("[data-discover-track=lower]");
+    const card = within(upperTrack as HTMLElement).getByRole("button", { name: "upper Scene Extension" });
 
     expect(orbit.getAttribute("aria-roledescription")).toBe("carousel");
-    expect(orbit.querySelector(".discover-orbit__track")).toBeTruthy();
-    expect(orbit.dataset.activeIndex).toBe("3");
+    expect(upperTrack).toBeTruthy();
+    expect(lowerTrack).toBeTruthy();
+    expect(orbit.dataset.activeIndex).toContain("upper:3");
+    expect(orbit.dataset.activeIndex).toContain("lower:2");
     expect(card.getAttribute("aria-current")).toBe("true");
+    expect(within(lowerTrack as HTMLElement).getByRole("button", { name: "lower Poster Motion" }).getAttribute("aria-current")).toBe("true");
 
     fireEvent.keyDown(card, { key: "ArrowRight" });
-    expect(orbit.dataset.activeIndex).toBe("4");
+    expect(orbit.dataset.activeIndex).not.toContain("upper:3");
     expect(card.getAttribute("aria-current")).toBe("false");
 
     fireEvent.keyDown(card, { key: "ArrowLeft" });
-    expect(orbit.dataset.activeIndex).toBe("3");
+    expect(orbit.dataset.activeIndex).toContain("upper:3");
 
     fireEvent.click(card);
     expect(openPreview).toHaveBeenCalledTimes(1);

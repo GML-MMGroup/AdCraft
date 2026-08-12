@@ -19,6 +19,8 @@ type DiscoverOrbitProps = {
   onSelect?: () => void;
 };
 
+type TrackId = "upper" | "lower";
+
 type PointerDrag = {
   pointerId: number;
   startX: number;
@@ -28,18 +30,47 @@ type PointerDrag = {
   velocity: number;
 };
 
+type TrackConfig = {
+  id: TrackId;
+  direction: 1 | -1;
+  phase: number;
+};
+
+const TRACKS: readonly TrackConfig[] = [
+  { id: "upper", direction: 1, phase: -3 },
+  { id: "lower", direction: -1, phase: -2 },
+];
 const AUTO_SPEED = 0.055;
 const DAMPING = 0.085;
 const DRAG_THRESHOLD = 5;
 const AUTO_RESUME_DELAY = 3200;
 const DRAG_RESUME_DELAY = 4200;
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
+function wrapDelta(value: number, length: number) {
+  if (length <= 1) return 0;
+  return ((value + length / 2) % length + length) % length - length / 2;
 }
 
-function initialIndex(total: number) {
-  return Math.max(0, Math.floor((total - 1) / 2));
+function wrapIndex(index: number, length: number) {
+  return ((index % length) + length) % length;
+}
+
+function nearestIndex(current: number, phase: number, direction: 1 | -1, length: number) {
+  let closest = 0;
+  let smallestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < length; index += 1) {
+    const delta = wrapDelta(index + direction * current + phase, length);
+    if (Math.abs(delta) < smallestDistance) {
+      closest = index;
+      smallestDistance = Math.abs(delta);
+    }
+  }
+  return closest;
+}
+
+function targetForCard(index: number, track: TrackConfig, current: number, length: number) {
+  const offset = wrapDelta(index + track.direction * current + track.phase, length);
+  return current - offset * track.direction;
 }
 
 function useReducedMotion() {
@@ -61,13 +92,19 @@ function useReducedMotion() {
   return reduced;
 }
 
-function distanceStyle(delta: number, index: number, now: number, spacing: number): CSSProperties {
+function distanceStyle(
+  delta: number,
+  cardIndex: number,
+  now: number,
+  spacing: number,
+  track: TrackConfig,
+): CSSProperties {
   const distance = Math.abs(delta);
-  const trackY = Math.sin(delta * 1.15) * Math.min(distance, 2.5) * 18 + distance * 5;
-  const amplitude = 6 + Math.min(distance, 2.5) * 1.6;
+  const arc = Math.sin(delta * 1.15) * Math.min(distance, 2.5) * 14 + distance * 3;
+  const amplitude = 5 + Math.min(distance, 2.5) * 1.35;
   const floating = (
-    Math.sin(now * 0.00062 + index * 1.37) * amplitude
-    + Math.sin(now * 0.00021 + index * 0.73) * 2
+    Math.sin(now * 0.00062 + cardIndex * 1.37 + track.phase) * amplitude
+    + Math.sin(now * 0.00021 + cardIndex * 0.73 + track.phase) * 1.5
   );
   const scale = Math.max(0.56, 1 - distance * 0.145);
   const blur = Math.min(13, Math.max(0, distance - 0.12) * 3.15);
@@ -75,7 +112,7 @@ function distanceStyle(delta: number, index: number, now: number, spacing: numbe
 
   return {
     "--discover-track-x": `${delta * spacing}px`,
-    "--discover-track-y": `${trackY + floating}px`,
+    "--discover-track-y": `${arc + floating}px`,
     "--discover-track-scale": `${scale}`,
     "--discover-track-rotate": `${delta * -2.8}deg`,
     "--discover-track-blur": `${blur}px`,
@@ -86,69 +123,69 @@ function distanceStyle(delta: number, index: number, now: number, spacing: numbe
 
 export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitProps) {
   const reducedMotion = useReducedMotion();
-  const firstIndex = initialIndex(items.length);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const cardRefs = useRef<Array<HTMLElement | null>>([]);
-  const targetRef = useRef(firstIndex);
-  const currentRef = useRef(firstIndex);
-  const activeIndexRef = useRef(firstIndex);
-  const autoDirectionRef = useRef(1);
+  const cardRefs = useRef<Record<TrackId, Array<HTMLElement | null>>>({ upper: [], lower: [] });
+  const targetRef = useRef(0);
+  const currentRef = useRef(0);
+  const activeIndexesRef = useRef<Record<TrackId, number>>({ upper: 0, lower: 0 });
   const pauseAutoUntilRef = useRef(0);
   const inertiaRef = useRef(0);
   const snapAtRef = useRef<number | null>(null);
   const dragRef = useRef<PointerDrag | null>(null);
   const didDragRef = useRef(false);
   const hoveringRef = useRef(false);
-  const [activeIndex, setActiveIndex] = useState(firstIndex);
+  const [activeIndexes, setActiveIndexes] = useState<Record<TrackId, number>>({ upper: 0, lower: 0 });
   const [isInteracting, setIsInteracting] = useState(false);
-
-  const maxIndex = Math.max(0, items.length - 1);
+  const total = items.length;
 
   const pauseAuto = (duration = AUTO_RESUME_DELAY) => {
     pauseAutoUntilRef.current = performance.now() + duration;
   };
 
-  const setActive = (index: number) => {
-    const nextIndex = clamp(index, 0, maxIndex);
-    activeIndexRef.current = nextIndex;
-    setActiveIndex(nextIndex);
+  const syncActiveIndexes = (current: number) => {
+    const next = Object.fromEntries(TRACKS.map((track) => [
+      track.id,
+      nearestIndex(current, track.phase, track.direction, total),
+    ])) as Record<TrackId, number>;
+    if (next.upper === activeIndexesRef.current.upper && next.lower === activeIndexesRef.current.lower) return;
+    activeIndexesRef.current = next;
+    setActiveIndexes(next);
   };
 
   const moveTo = (nextTarget: number, pauseDuration = AUTO_RESUME_DELAY) => {
-    targetRef.current = clamp(nextTarget, 0, maxIndex);
+    targetRef.current = nextTarget;
     inertiaRef.current = 0;
     snapAtRef.current = performance.now() + 160;
     pauseAuto(pauseDuration);
-    setActive(Math.round(targetRef.current));
+    syncActiveIndexes(targetRef.current);
   };
 
   const spacingFor = () => {
     const width = rootRef.current?.clientWidth ?? 1200;
-    return clamp(width * 0.205, 225, 330);
+    return Math.min(Math.max(width * 0.205, 225), 330);
   };
 
   const syncCards = (now: number) => {
     const spacing = spacingFor();
-    cardRefs.current.forEach((card, index) => {
-      if (!card) return;
-      const styles = distanceStyle(index - currentRef.current, index, now, spacing);
-      Object.entries(styles).forEach(([name, value]) => card.style.setProperty(name, String(value)));
+    TRACKS.forEach((track) => {
+      cardRefs.current[track.id].forEach((card, index) => {
+        if (!card) return;
+        const delta = wrapDelta(index + track.direction * currentRef.current + track.phase, total);
+        const styles = distanceStyle(delta, index, now, spacing, track);
+        Object.entries(styles).forEach(([name, value]) => card.style.setProperty(name, String(value)));
+      });
     });
   };
 
   useLayoutEffect(() => {
-    targetRef.current = clamp(targetRef.current, 0, maxIndex);
-    currentRef.current = clamp(currentRef.current, 0, maxIndex);
-    const nextActiveIndex = clamp(activeIndexRef.current, 0, maxIndex);
-    activeIndexRef.current = nextActiveIndex;
-    setActiveIndex(nextActiveIndex);
+    syncActiveIndexes(currentRef.current);
     syncCards(performance.now());
-    // The references intentionally contain the latest geometry and card elements.
+    // Card references and geometry are mutable to keep the render loop outside React state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items.length, maxIndex]);
+  }, [total]);
 
   useEffect(() => {
-    if (!interactive || reducedMotion || items.length < 2) {
+    if (!interactive || reducedMotion || total < 2) {
       syncCards(performance.now());
       return undefined;
     }
@@ -166,7 +203,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       const dragging = dragRef.current !== null;
 
       if (!dragging && inertiaRef.current !== 0) {
-        targetRef.current = clamp(targetRef.current + inertiaRef.current * deltaTime, 0, maxIndex);
+        targetRef.current += inertiaRef.current * deltaTime;
         inertiaRef.current *= Math.pow(0.88, deltaTime * 60);
         if (Math.abs(inertiaRef.current) < 0.025) inertiaRef.current = 0;
       }
@@ -180,44 +217,24 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       const canAutoMove = (
         !dragging
         && !hoveringRef.current
-        && !document.hidden
         && now >= pauseAutoUntilRef.current
         && inertiaRef.current === 0
         && snapAtRef.current === null
       );
-      if (canAutoMove) {
-        targetRef.current += autoDirectionRef.current * AUTO_SPEED * deltaTime;
-        if (targetRef.current >= maxIndex) {
-          targetRef.current = maxIndex;
-          autoDirectionRef.current = -1;
-          pauseAutoUntilRef.current = now + 1100;
-        } else if (targetRef.current <= 0) {
-          targetRef.current = 0;
-          autoDirectionRef.current = 1;
-          pauseAutoUntilRef.current = now + 1100;
-        }
-      }
+      if (canAutoMove) targetRef.current += AUTO_SPEED * deltaTime;
 
       const smoothing = 1 - Math.pow(1 - DAMPING, deltaTime * 60);
       currentRef.current += (targetRef.current - currentRef.current) * smoothing;
       syncCards(now);
-
-      if (Math.abs(targetRef.current - currentRef.current) < 0.02) {
-        const closestIndex = Math.round(currentRef.current);
-        if (closestIndex !== activeIndexRef.current) {
-          activeIndexRef.current = closestIndex;
-          setActiveIndex(closestIndex);
-        }
-      }
-
+      syncActiveIndexes(currentRef.current);
       frameId = requestAnimationFrame(render);
     };
 
     frameId = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frameId);
-    // The loop deliberately owns a mutable animation model outside React renders.
+    // The loop owns the mutable motion model and intentionally avoids render-time state updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, items.length, maxIndex, reducedMotion]);
+  }, [interactive, reducedMotion, total]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -247,11 +264,11 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       const now = performance.now();
       const deltaX = event.clientX - drag.startX;
       if (Math.abs(deltaX) > DRAG_THRESHOLD) didDragRef.current = true;
-      targetRef.current = clamp(drag.startTarget - deltaX / spacingFor(), 0, maxIndex);
+      targetRef.current = drag.startTarget - deltaX / spacingFor();
       drag.velocity = (event.clientX - drag.lastX) / Math.max(8, now - drag.lastTime);
       drag.lastX = event.clientX;
       drag.lastTime = now;
-      setActive(Math.round(targetRef.current));
+      syncActiveIndexes(targetRef.current);
     };
 
     const finishDrag = (event: globalThis.PointerEvent, cancelled = false) => {
@@ -261,7 +278,7 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       dragRef.current = null;
       setIsInteracting(false);
       if (!cancelled && didDragRef.current) {
-        inertiaRef.current = clamp((-drag.velocity / spacingFor()) * 1000, -4, 4);
+        inertiaRef.current = Math.min(Math.max((-drag.velocity / spacingFor()) * 1000, -4), 4);
         snapAtRef.current = performance.now() + 260;
       } else {
         targetRef.current = Math.round(targetRef.current);
@@ -291,9 +308,9 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       root.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("wheel", onWheel);
     };
-    // Event listeners intentionally bind once to the mutable interaction model.
+    // Event listeners bind to a shared mutable motion model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, maxIndex, reducedMotion]);
+  }, [interactive, reducedMotion]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (!interactive) return;
@@ -303,33 +320,28 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
       moveTo(Math.round(targetRef.current) - 1);
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      moveTo(0);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      moveTo(maxIndex);
     }
   };
 
-  const handleCardClick = (index: number, event: MouseEvent<HTMLElement>) => {
+  const handleCardClick = (track: TrackConfig, index: number, event: MouseEvent<HTMLElement>) => {
     if (!interactive) return;
     if (didDragRef.current) {
       event.preventDefault();
       didDragRef.current = false;
       return;
     }
-    const isCentered = index === activeIndexRef.current && Math.abs(targetRef.current - currentRef.current) < 0.08;
-    if (isCentered) {
+    const centeredIndex = activeIndexesRef.current[track.id];
+    const settled = Math.abs(targetRef.current - currentRef.current) < 0.08;
+    if (index === centeredIndex && settled) {
       onSelect?.();
       return;
     }
-    moveTo(index);
+    moveTo(targetForCard(index, track, currentRef.current, total));
   };
 
-  const handleCardFocus = (index: number) => {
+  const handleCardFocus = (track: TrackConfig, index: number) => {
     if (!interactive) return;
-    moveTo(index);
+    moveTo(targetForCard(index, track, currentRef.current, total));
   };
 
   const setHovering = (value: boolean) => {
@@ -352,42 +364,44 @@ export function DiscoverOrbit({ items, interactive, onSelect }: DiscoverOrbitPro
       role="region"
       aria-label="Discover inspiration gallery"
       aria-roledescription={interactive ? "carousel" : undefined}
-      data-active-index={activeIndex}
+      data-active-index={`upper:${activeIndexes.upper};lower:${activeIndexes.lower}`}
       data-paused={isInteracting}
       data-reveal-item
       style={{ "--home-reveal-delay": "170ms" } as CSSProperties}
     >
-      <div className="discover-orbit__track">
-        {items.map((item, index) => {
-          const isActive = index === activeIndex;
-          const commonProps = {
-            ref: (node: HTMLElement | null) => { cardRefs.current[index] = node; },
-            className: `discover-orbit__card ${isActive ? "is-active" : ""}`,
-            "data-index": index,
-            "aria-current": isActive ? "true" as const : "false" as const,
-          };
+      {TRACKS.map((track) => (
+        <div className={`discover-orbit__track discover-orbit__track--${track.id}`} data-discover-track={track.id} key={track.id}>
+          {items.map((item, index) => {
+            const isActive = activeIndexes[track.id] === index;
+            const commonProps = {
+              ref: (node: HTMLElement | null) => { cardRefs.current[track.id][index] = node; },
+              className: `discover-orbit__card ${isActive ? "is-active" : ""}`,
+              "data-index": index,
+              "aria-current": isActive ? "true" as const : "false" as const,
+            };
 
-          return interactive ? (
-            <button
-              {...commonProps}
-              key={item.title}
-              type="button"
-              aria-label={item.title}
-              onClick={(event) => handleCardClick(index, event)}
-              onFocus={() => handleCardFocus(index)}
-              onKeyDown={handleKeyDown}
-              onPointerEnter={() => setHovering(true)}
-              onPointerLeave={() => setHovering(false)}
-            >
-              <DiscoverTrackCard item={item} />
-            </button>
-          ) : (
-            <article {...commonProps} key={item.title} aria-label={item.title}>
-              <DiscoverTrackCard item={item} />
-            </article>
-          );
-        })}
-      </div>
+            return interactive ? (
+              <button
+                {...commonProps}
+                key={`${track.id}-${item.title}`}
+                type="button"
+                aria-label={`${track.id} ${item.title}`}
+                onClick={(event) => handleCardClick(track, index, event)}
+                onFocus={() => handleCardFocus(track, index)}
+                onKeyDown={handleKeyDown}
+                onPointerEnter={() => setHovering(true)}
+                onPointerLeave={() => setHovering(false)}
+              >
+                <DiscoverTrackCard item={item} />
+              </button>
+            ) : (
+              <article {...commonProps} key={`${track.id}-${item.title}`} aria-label={item.title}>
+                <DiscoverTrackCard item={item} />
+              </article>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
