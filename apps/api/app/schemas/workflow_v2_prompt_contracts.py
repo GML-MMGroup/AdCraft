@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, RootModel, field_validator, model_validator
 
 from app.schemas.workflow_v2_style import V2VisualStyleAudit, V2VisualStyleContract
 
@@ -109,6 +109,18 @@ class V2SceneMultiViewPromptPlan(_SpecialistPromptContract):
     view_count: Literal[4]
     same_location_required: Literal[True]
     must_use_reference_slot_type: Literal["scene_main_image"]
+
+
+class V2ProductPromptPlan(RootModel[V2ProductMainPromptPlan | V2ProductMultiViewPromptPlan]):
+    """Closed Product prompt contract family used by operation metadata."""
+
+
+class V2CharacterPromptPlan(RootModel[V2CharacterMainPromptPlan | V2CharacterThreeViewPromptPlan]):
+    """Closed Character prompt contract family used by operation metadata."""
+
+
+class V2ScenePromptPlan(RootModel[V2SceneMainPromptPlan | V2SceneMultiViewPromptPlan]):
+    """Closed Scene prompt contract family used by operation metadata."""
 
 
 class V2ShotCellPromptPlan(_SpecialistPromptContract):

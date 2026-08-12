@@ -13,7 +13,10 @@ from app.schemas.agent_runtime import (
     AgentStructuredValidationResult,
     StructuredViolation,
 )
-from app.services.v2_agent_contract_registry import validate_agent_contract
+from app.services.v2_agent_contract_registry import (
+    AgentStructuredContractRegistryError,
+    validate_agent_contract,
+)
 
 
 class V2AgentStructuredValidationService:
@@ -56,7 +59,7 @@ class V2AgentStructuredValidationService:
                 )
                 + raw_semantic_violations,
             )
-        except ValueError:
+        except AgentStructuredContractRegistryError:
             return _rejected(
                 submission,
                 (
@@ -66,6 +69,7 @@ class V2AgentStructuredValidationService:
                         field_path="contract_name",
                     ),
                 ),
+                repair_allowed=False,
             )
 
         normalized_value = _canonicalize_profile_value(
@@ -348,9 +352,11 @@ def _value_at_path(value: dict[str, Any], field_path: str) -> Any:
 def _rejected(
     submission: AgentStructuredSubmission,
     violations: tuple[StructuredViolation, ...],
+    *,
+    repair_allowed: bool | None = None,
 ) -> AgentStructuredValidationResult:
     return AgentStructuredValidationResult(
         accepted=False,
         violations=violations,
-        repair_allowed=submission.attempt < 2,
+        repair_allowed=(submission.attempt < 2 if repair_allowed is None else repair_allowed),
     )
