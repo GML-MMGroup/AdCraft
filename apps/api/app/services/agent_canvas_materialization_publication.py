@@ -211,6 +211,21 @@ class CapabilityMaterializationPublicationService:
                 "Materialization did not create a Draft Node.",
                 stage="capability_materialization_publication",
             )
+        pending_preparations = tuple(
+            (node_id, operation_id)
+            for node_id, operation_id in zip(
+                outcome.node_ids,
+                outcome.prompt_preparation_ids,
+                strict=True,
+            )
+            if self._workflows.get_node(
+                envelope.workflow_id,
+                node_id,
+            ).prompt_preparation.status
+            != "ready"
+        )
+        if not pending_preparations:
+            return outcome.node_ids[0]
         context = materialization_context_from_state(
             envelope,
             conversations=self._conversations,
@@ -226,8 +241,8 @@ class CapabilityMaterializationPublicationService:
             session_revision=outcome.session_revision,
             stage=outcome.journey_stage,
             foundation_item_id=None,
-            node_ids=outcome.node_ids,
-            operation_ids=outcome.prompt_preparation_ids,
+            node_ids=tuple(item[0] for item in pending_preparations),
+            operation_ids=tuple(item[1] for item in pending_preparations),
             lease_guard=lease_guard,
         )
         return outcome.node_ids[0]
