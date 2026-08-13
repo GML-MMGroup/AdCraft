@@ -47,17 +47,7 @@ class V2AgentStructuredValidationService:
         except ValidationError as error:
             return _rejected(
                 submission,
-                tuple(
-                    StructuredViolation(
-                        code=str(item["type"]),
-                        message=str(item["msg"]),
-                        field_path=".".join(str(part) for part in item["loc"]) or None,
-                        expected=_safe_violation_value(item.get("ctx")),
-                        actual=_safe_violation_value(item.get("input")),
-                    )
-                    for item in error.errors()
-                )
-                + raw_semantic_violations,
+                _project_validation_errors(error) + raw_semantic_violations,
             )
         except AgentStructuredContractRegistryError:
             return _rejected(
@@ -230,6 +220,51 @@ def _safe_violation_value(value: Any, *, depth: int = 0) -> Any:
     if isinstance(value, (list, tuple)):
         return [_safe_violation_value(item, depth=depth + 1) for item in value[:16]]
     return type(value).__name__
+
+
+def _project_validation_errors(
+    error: ValidationError,
+) -> tuple[StructuredViolation, ...]:
+    errors = error.errors()
+    retained = tuple(item for item in errors if not _is_derived_too_short(item, errors))
+    return tuple(
+        StructuredViolation(
+            code=str(item["type"]),
+            message=str(item["msg"]),
+            field_path=".".join(str(part) for part in item["loc"]) or None,
+            expected=_project_expected_value(item.get("ctx")),
+            actual=_safe_violation_value(item.get("input")),
+        )
+        for item in retained
+    )
+
+
+def _is_derived_too_short(
+    item: dict[str, Any],
+    errors: list[dict[str, Any]],
+) -> bool:
+    if item.get("type") != "too_short":
+        return False
+    raw_collection = item.get("input")
+    context = item.get("ctx")
+    if not isinstance(raw_collection, (list, tuple)) or not isinstance(context, dict):
+        return False
+    minimum = context.get("min_length")
+    if not isinstance(minimum, int) or len(raw_collection) < minimum:
+        return False
+    location = tuple(item.get("loc") or ())
+    return any(
+        other is not item
+        and len(tuple(other.get("loc") or ())) > len(location)
+        and tuple(other.get("loc") or ())[: len(location)] == location
+        for other in errors
+    )
+
+
+def _project_expected_value(context: Any) -> Any:
+    if isinstance(context, dict) and "expected" in context:
+        return _safe_violation_value(context["expected"])
+    return _safe_violation_value(context)
 
 
 def _intake_source_quote_violations(
