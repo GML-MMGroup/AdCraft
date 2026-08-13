@@ -130,44 +130,26 @@
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  clip-path: polygon(0 0, 118% 0, 102% 100%, 0 100%);
   pointer-events: none;
+  will-change: clip-path;
 }
 
-.home-product-hero.is-motion-ready .home-product-hero__accent {
-  animation: none;
+.home-product-hero.is-motion-enabled .home-product-hero__accent::after {
+  clip-path: polygon(0 0, -8% 0, -24% 100%, 0 100%);
 }
 
-.home-product-hero__accent--writing::after {
-  content: none;
+.home-product-hero.is-motion-ready .home-product-hero__accent::after {
+  animation: home-hero-accent-diagonal-reveal 900ms cubic-bezier(0.22, 0.72, 0.28, 1) var(--home-hero-accent-start-delay) both;
 }
 
-.home-hero-accent-writing {
-  display: block;
-  width: 3.92em;
-  height: auto;
-  aspect-ratio: 3880 / 1100;
-  overflow: visible;
-}
+@keyframes home-hero-accent-diagonal-reveal {
+  from {
+    clip-path: polygon(0 0, -8% 0, -24% 100%, 0 100%);
+  }
 
-.home-hero-accent-writing__stroke,
-.home-hero-accent-writing__coverage {
-  fill: none;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.home-product-hero.is-motion-ready :is(
-  .home-hero-accent-writing__stroke,
-  .home-hero-accent-writing__coverage
-) {
-  animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) calc(var(--home-hero-accent-start-delay) + var(--home-hero-accent-delay, 0ms)) forwards;
-}
-
-@keyframes home-hero-accent-write {
   to {
-    stroke-dashoffset: 0;
+    clip-path: polygon(0 0, 118% 0, 102% 100%, 0 100%);
   }
 }
 
@@ -322,10 +304,9 @@
     transform: none !important;
   }
 
-  .home-hero-accent-writing__stroke,
-  .home-hero-accent-writing__coverage {
+  .home-product-hero__accent::after {
     animation: none !important;
-    stroke-dashoffset: 0 !important;
+    clip-path: none !important;
   }
 
   .home-product-hero__create {

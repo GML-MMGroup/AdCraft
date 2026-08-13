@@ -3,7 +3,6 @@ import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
-import { waterBrushAdFilmGlyphPaths } from "./heroWaterBrushGlyphPaths";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
@@ -52,36 +51,11 @@ describe("HomePage hero title", () => {
     expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(0);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
+    expect(lines[2]?.getAttribute("data-home-hero-accent-reveal")).toBe("diagonal");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");
     expect(lines[2]?.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
-    const writingSvg = lines[2]?.querySelector("svg[aria-label='Ad film.']");
-    expect(writingSvg).toBeTruthy();
-    expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
-    expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
-    expect(writingSvg?.getAttribute("data-writing-duration")).toBe("2220ms");
-    const writingMask = writingSvg?.querySelector("mask");
-    expect(writingMask).toBeTruthy();
-    expect(writingMask?.getAttribute("x")).toBe("-256");
-    expect(writingMask?.getAttribute("y")).toBe("-256");
-    expect(writingMask?.getAttribute("width")).toBe("4400");
-    expect(writingMask?.getAttribute("height")).toBe("1500");
-    const maskWritingSpace = writingMask?.querySelector(
-      "[data-writing-mask-space='glyph-space']",
-    );
-    expect(maskWritingSpace?.getAttribute("transform")).toBe(
-      "translate(4 822) scale(1 -1)",
-    );
-    const glyphPaths = Array.from(
-      writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path") ?? [],
-    );
-    expect(glyphPaths).toHaveLength(7);
-    expect(glyphPaths.map((path) => path.getAttribute("d"))).toEqual(
-      waterBrushAdFilmGlyphPaths.map((glyph) => glyph.d),
-    );
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(0);
-    expect(writingSvg?.querySelector("text")).toBeNull();
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(28);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(7);
+    expect(lines[2]?.textContent).toBe("Ad film.");
+    expect(lines[2]?.querySelector("svg")).toBeNull();
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -116,17 +90,16 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__accent\s*\{[^}]*opacity:\s*1;[^}]*filter:\s*none;[^}]*will-change:\s*auto;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready :is\([\s\S]*?\.home-hero-accent-writing__stroke,[\s\S]*?\.home-hero-accent-writing__coverage[\s\S]*?\)\s*\{[^}]*home-hero-accent-write/s,
+      /\.home-product-hero\.is-motion-enabled \.home-product-hero__accent::after\s*\{[^}]*clip-path:\s*polygon\(0 0, -8% 0, -24% 100%, 0 100%\);/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready :is\([\s\S]*?\.home-hero-accent-writing__stroke,[\s\S]*?\.home-hero-accent-writing__coverage[\s\S]*?\)\s*\{[^}]*calc\(var\(--home-hero-accent-start-delay\) \+ var\(--home-hero-accent-delay, 0ms\)\)/s,
+      /\.home-product-hero\.is-motion-ready \.home-product-hero__accent::after\s*\{[^}]*home-hero-accent-diagonal-reveal[^}]*var\(--home-hero-accent-start-delay\)/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
+      /@keyframes home-hero-accent-diagonal-reveal\s*\{[\s\S]*?polygon\(0 0, -8% 0, -24% 100%, 0 100%\)[\s\S]*?polygon\(0 0, 118% 0, 102% 100%, 0 100%\)/,
     );
-    expect(styles).not.toContain("home-hero-accent-writing__completion-glyph");
-    expect(styles).not.toContain("home-hero-accent-finalize");
-    expect(styles).not.toContain("home-hero-accent-complete");
+    expect(styles).not.toContain("home-hero-accent-writing");
+    expect(styles).not.toContain("home-hero-accent-write");
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
     );
