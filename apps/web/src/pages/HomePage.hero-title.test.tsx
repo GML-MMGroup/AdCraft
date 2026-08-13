@@ -43,18 +43,13 @@ describe("HomePage hero title", () => {
     expect(writingSvg).toBeTruthy();
     expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
     expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
-    const writingMask = writingSvg?.querySelector("mask");
-    expect(writingMask).toBeTruthy();
-    expect(writingMask?.getAttribute("x")).toBe("-256");
-    expect(writingMask?.getAttribute("y")).toBe("-256");
-    expect(writingMask?.getAttribute("width")).toBe("4400");
-    expect(writingMask?.getAttribute("height")).toBe("1500");
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(7);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(7);
+    expect(writingSvg?.getAttribute("data-writing-duration")).toBe("2220ms");
+    expect(writingSvg?.querySelectorAll("mask")).toHaveLength(0);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(0);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(0);
     expect(writingSvg?.querySelector("text")).toBeNull();
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(18);
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(0);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(7);
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -95,17 +90,10 @@ describe("HomePage hero title", () => {
       /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*calc\(var\(--home-hero-accent-start-delay\) \+ var\(--home-hero-accent-delay, 0ms\)\)/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__completion-glyph\s*\{[^}]*calc\(var\(--home-hero-accent-start-delay\) \+ var\(--home-hero-accent-completion-delay, 0ms\)\)/s,
-    );
-    expect(styles).toMatch(
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
     );
-    expect(styles).toMatch(
-      /\.home-hero-accent-writing__completion-glyph\s*\{[^}]*opacity:\s*0;/s,
-    );
-    expect(styles).toMatch(
-      /@keyframes home-hero-accent-finalize\s*\{[\s\S]*?opacity:\s*1;/,
-    );
+    expect(styles).not.toContain("home-hero-accent-writing__completion-glyph");
+    expect(styles).not.toContain("home-hero-accent-finalize");
     expect(styles).not.toContain("home-hero-accent-complete");
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
