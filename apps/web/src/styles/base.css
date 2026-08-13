@@ -39,9 +39,9 @@
   --rail-width: 56px;
   --mist-blue: #cbd4e5;
   --mauve: #a795bf;
-  --butter: #fee9a1;
+  --butter: #E1A750;
   --iris: #6c5dab;
-  --rose: #cca2a7;
+  --rose: #CA6F6F;
   --ink: #202235;
   --muted: #6f7183;
   --surface: rgba(255, 255, 255, 0.42);
@@ -68,9 +68,9 @@ html[data-theme="dark"] {
   color-scheme: dark;
   --mist-blue: #08090D;
   --mauve: #9E8BEA;
-  --butter: #E4BC62;
+  --butter: #E1A750;
   --iris: #9E8BEA;
-  --rose: #EB788C;
+  --rose: #CA6F6F;
   --ink: #F1F2F6;
   --muted: #9399A9;
   --surface: #13161D;

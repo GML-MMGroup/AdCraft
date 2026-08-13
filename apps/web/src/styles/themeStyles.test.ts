@@ -50,6 +50,32 @@ describe("theme styles", () => {
     expect(dark).toContain("#9E8BEA");
   });
 
+  test("uses the approved red, green, and yellow semantic palette across theme layers", () => {
+    const themeStyles = source("styles/theme.css");
+    const baseStyles = source("styles/base.css");
+    const typographyLabStyles = source("pages/home-typography-lab.css");
+    const light = declarationBlock(themeStyles, ':root[data-theme="light"]');
+    const dark = declarationBlock(themeStyles, 'html[data-theme="dark"]');
+    const base = declarationBlock(baseStyles, ":root");
+    const baseDark = declarationBlock(baseStyles, 'html[data-theme="dark"]');
+    const typographyLab = declarationBlock(
+      typographyLabStyles,
+      ".home-typography-lab--dark",
+    );
+
+    for (const block of [light, dark]) {
+      expect(block).toContain("--success: #9CD38E");
+      expect(block).toContain("--warning: #E1A750");
+      expect(block).toContain("--error: #CA6F6F");
+    }
+
+    for (const block of [base, baseDark, typographyLab]) {
+      expect(block).toContain("--butter: #E1A750");
+      expect(block).toContain("--rose: #CA6F6F");
+    }
+    expect(typographyLab).toContain("--error: #CA6F6F");
+  });
+
   test("provides scoped dark coverage for every primary product surface", () => {
     for (const path of [
       "pages/home.css",
