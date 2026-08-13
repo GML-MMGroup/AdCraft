@@ -257,8 +257,17 @@ describe("HomePage motion", () => {
     expect(styles).toMatch(
       /\.home-product-hero\s*\{[^}]*--home-hero-character-stagger:\s*250ms;[^}]*--home-hero-accent-start-delay:\s*3020ms;/s,
     );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-enabled \.home-product-hero__description\s*\{[^}]*opacity:\s*0;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready \.home-product-hero__description\s*\{[^}]*home-hero-body-fade[^}]*var\(--home-hero-accent-start-delay\)/s,
+    );
+    expect(styles).toMatch(
+      /@keyframes home-hero-body-fade\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?opacity:\s*1;/,
+    );
     expect(styles).not.toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(description|create-stage|film)\s*\{/,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(create-stage|film)\s*\{/,
     );
     expect(styles).not.toContain("home-hero-support-in");
     expect(styles).not.toContain("home-hero-media-in");

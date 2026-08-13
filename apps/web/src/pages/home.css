@@ -160,6 +160,24 @@
   color: rgba(52, 57, 81, 0.84);
 }
 
+.home-product-hero.is-motion-enabled .home-product-hero__description {
+  opacity: 0;
+}
+
+.home-product-hero.is-motion-ready .home-product-hero__description {
+  animation: home-hero-body-fade 520ms ease-out var(--home-hero-accent-start-delay) both;
+}
+
+@keyframes home-hero-body-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 .home-product-hero__create-stage {
   width: fit-content;
   opacity: 1;
