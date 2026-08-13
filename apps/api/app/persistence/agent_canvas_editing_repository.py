@@ -506,6 +506,69 @@ class AgentCanvasEditingExportRepository:
         if current is None:
             raise _stale_lease_error()
 
+    def append_progress(
+        self,
+        lease: FencedLeaseTokenV2,
+        *,
+        now: datetime,
+        stage: str,
+        progress: float,
+    ) -> int:
+        """Append progress only while the caller owns the current lease."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasEditingExportRow).where(
+                                AgentCanvasEditingExportRow.export_id == lease.resource_id,
+                                AgentCanvasEditingExportRow.status.in_(("queued", "exporting")),
+                                AgentCanvasEditingExportRow.lease_owner_id == lease.owner_id,
+                                AgentCanvasEditingExportRow.lease_generation == lease.generation,
+                                AgentCanvasEditingExportRow.lease_expires_at > now.isoformat(),
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _stale_lease_error()
+                    event = self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=str(row["workflow_id"]),
+                            execution_id=lease.resource_id,
+                            node_id=str(row["node_id"]),
+                            transition_key=(
+                                f"editing:{lease.resource_id}:lease:{lease.generation}:"
+                                f"progress:{stage}"
+                            ),
+                            event_type="editing_export_progress",
+                            created_at=now.isoformat(),
+                            payload={
+                                "export_id": lease.resource_id,
+                                "lease_generation": lease.generation,
+                                "stage": stage,
+                                "progress": progress,
+                                "refresh": ["events"],
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return event.seq
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "editing_export_persistence_failed",
+                "Editing export progress could not be persisted.",
+            ) from error
+
     def create(
         self,
         *,
@@ -738,19 +801,33 @@ class AgentCanvasEditingExportRepository:
         return self.get(export_id)
 
     def request_cancel(self, export_id: str, *, now: datetime) -> EditingExportRuntimeV2:
-        current = self.get(export_id)
-        if current.status not in {"queued", "exporting"}:
-            raise _error(
-                "editing_export_already_terminal",
-                "Editing export is already terminal.",
-            )
         try:
-            with self._database.engine.begin() as connection:
-                connection.execute(
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                changed = connection.execute(
                     update(AgentCanvasEditingExportRow)
-                    .where(AgentCanvasEditingExportRow.export_id == export_id)
+                    .where(
+                        AgentCanvasEditingExportRow.export_id == export_id,
+                        AgentCanvasEditingExportRow.status.in_(("queued", "exporting")),
+                    )
                     .values(cancel_requested=True, updated_at=now.isoformat())
                 )
+                if changed.rowcount != 1:
+                    exists = connection.execute(
+                        select(AgentCanvasEditingExportRow.export_id).where(
+                            AgentCanvasEditingExportRow.export_id == export_id
+                        )
+                    ).scalar_one_or_none()
+                    connection.rollback()
+                    if exists is None:
+                        raise _error("editing_export_not_found", "Editing export was not found.")
+                    raise _error(
+                        "editing_export_already_terminal",
+                        "Editing export is already terminal.",
+                    )
+                connection.commit()
+        except V2PersistenceError:
+            raise
         except SQLAlchemyError as error:
             raise _error(
                 "editing_export_cancel_failed",

@@ -2691,6 +2691,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "chat_turn_retry_in_progress": 409,
         "guidance_advance_stale": 409,
         "guidance_advance_not_available": 409,
+        "active_continuation_conflict": 409,
         "guidance_state_inconsistent": 409,
         "guidance_session_not_found": 404,
         "guidance_revision_conflict": 409,
