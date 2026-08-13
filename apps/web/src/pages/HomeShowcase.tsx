@@ -59,6 +59,37 @@ function motionStyle(property: "--home-reveal-delay", value: string): CSSPropert
   return { [property]: value } as CSSProperties;
 }
 
+type HeroTitleMotionDirection = "left-to-right" | "right-to-left";
+
+function heroCharacterStyle(motionOrder: number, canBump: boolean): CSSProperties {
+  return {
+    "--home-hero-character-index": String(motionOrder),
+    ...(canBump ? { "--home-hero-character-bump-index": String(motionOrder + 1) } : {}),
+  } as CSSProperties;
+}
+
+function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroTitleMotionDirection }) {
+  const characters = Array.from(line);
+
+  return characters.map((character, characterIndex) => {
+    const motionOrder = direction === "left-to-right"
+      ? characterIndex
+      : characters.length - characterIndex - 1;
+    const canBump = motionOrder < characters.length - 1;
+
+    return (
+      <span
+        key={`${character}-${characterIndex}`}
+        className={`home-product-hero__title-character ${canBump ? "home-product-hero__title-character--bump" : ""}`}
+        data-home-hero-character-order={motionOrder}
+        style={heroCharacterStyle(motionOrder, canBump)}
+      >
+        <span className="home-product-hero__title-character__glyph">{character === " " ? "\u00a0" : character}</span>
+      </span>
+    );
+  });
+}
+
 function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
   return (
     <h1
@@ -67,18 +98,35 @@ function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
       aria-label="One Sentence Becomes an Ad film."
       data-home-typography-region="heroMain"
     >
-      {heroTitleLines.map((line, lineIndex) => (
-        <span
-          key={line}
-          className={`home-product-hero__title-line ${lineIndex === 2 ? "home-product-hero__accent" : ""} ${lineIndex === 2 && useWritingAccent ? "home-product-hero__accent--writing" : ""}`}
-          data-accent-text={lineIndex === 2 ? line : undefined}
-          data-home-typography-region={lineIndex === 2 ? "heroAccent" : undefined}
-          data-testid={lineIndex === 2 ? "home-hero-accent" : undefined}
-          aria-hidden="true"
-        >
-          {lineIndex === 2 && useWritingAccent ? <HeroAccentWriting /> : line}
-        </span>
-      ))}
+      {heroTitleLines.map((line, lineIndex) => {
+        const direction: HeroTitleMotionDirection | null = lineIndex === 0
+          ? "left-to-right"
+          : lineIndex === 1
+            ? "right-to-left"
+            : null;
+
+        return (
+          <span
+            key={line}
+            className={[
+              "home-product-hero__title-line",
+              direction ? `home-product-hero__title-line--${direction}` : "",
+              lineIndex === 2 ? "home-product-hero__accent" : "",
+              lineIndex === 2 && useWritingAccent ? "home-product-hero__accent--writing" : "",
+            ].filter(Boolean).join(" ")}
+            data-accent-text={lineIndex === 2 ? line : undefined}
+            data-home-typography-region={lineIndex === 2 ? "heroAccent" : undefined}
+            data-testid={lineIndex === 2 ? "home-hero-accent" : undefined}
+            aria-hidden="true"
+          >
+            {lineIndex === 2 && useWritingAccent
+              ? <HeroAccentWriting />
+              : direction
+                ? <HeroMainTitleLine line={line} direction={direction} />
+                : line}
+          </span>
+        );
+      })}
     </h1>
   );
 }
