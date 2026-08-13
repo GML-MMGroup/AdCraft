@@ -6,7 +6,31 @@ export type NodePromptPreparationV1 = { readonly "status": "failed" | "queued" |
 
 export type CreativeDirectiveDecisionEffectV1 = { readonly "effect_type"?: "creative_directive"; readonly "directive": string; readonly "scope_kind"?: "capability" | "global"; readonly "capability_ids"?: ReadonlyArray<"bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"> };
 
-export type SetControlDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "aspect_ratio" | "audio_mode" | "character_count" | "duration_seconds" | "frame_rate" | "output_resolution" | "product_count" | "prop_count" | "scene_count" | "spoken_language" | "storyboard_sequence_count" | "video_segment_count"; readonly "value": string | number | number };
+export type SetDurationSecondsDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "duration_seconds"; readonly "value": number };
+
+export type SetAspectRatioDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "aspect_ratio"; readonly "value": string };
+
+export type SetOutputResolutionDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "output_resolution"; readonly "value": string };
+
+export type SetFrameRateDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "frame_rate"; readonly "value": number };
+
+export type SetSpokenLanguageDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "spoken_language"; readonly "value": string };
+
+export type SetAudioModeDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "audio_mode"; readonly "value": "bgm_only" | "full" | "none" };
+
+export type SetProductCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "product_count"; readonly "value": number };
+
+export type SetPropCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "prop_count"; readonly "value": number };
+
+export type SetCharacterCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "character_count"; readonly "value": number };
+
+export type SetSceneCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "scene_count"; readonly "value": number };
+
+export type SetStoryboardSequenceCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "storyboard_sequence_count"; readonly "value": number };
+
+export type SetVideoSegmentCountDecisionEffectV1 = { readonly "effect_type"?: "set_control"; readonly "control": "video_segment_count"; readonly "value": number };
+
+export type SetControlDecisionEffectV1 = SetDurationSecondsDecisionEffectV1 | SetAspectRatioDecisionEffectV1 | SetOutputResolutionDecisionEffectV1 | SetFrameRateDecisionEffectV1 | SetSpokenLanguageDecisionEffectV1 | SetAudioModeDecisionEffectV1 | SetProductCountDecisionEffectV1 | SetPropCountDecisionEffectV1 | SetCharacterCountDecisionEffectV1 | SetSceneCountDecisionEffectV1 | SetStoryboardSequenceCountDecisionEffectV1 | SetVideoSegmentCountDecisionEffectV1;
 
 export type SetElementPresenceDecisionEffectV1 = { readonly "effect_type"?: "set_element_presence"; readonly "element_kind": "audio" | "character" | "product" | "prop" | "scene" | "script" | "storyboard" | "video" | "world_setting"; readonly "presence": "exclude" | "include" };
 

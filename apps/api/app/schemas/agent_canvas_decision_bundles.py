@@ -53,62 +53,62 @@ class _SetControlDecisionEffectBaseV1(_FrozenModel):
 
 
 class SetDurationSecondsDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["duration_seconds"] = "duration_seconds"
+    control: Literal["duration_seconds"]
     value: DurationSecondsValueV1
 
 
 class SetAspectRatioDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["aspect_ratio"] = "aspect_ratio"
+    control: Literal["aspect_ratio"]
     value: AspectRatioValueV1
 
 
 class SetOutputResolutionDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["output_resolution"] = "output_resolution"
+    control: Literal["output_resolution"]
     value: OutputResolutionValueV1
 
 
 class SetFrameRateDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["frame_rate"] = "frame_rate"
+    control: Literal["frame_rate"]
     value: FrameRateValueV1
 
 
 class SetSpokenLanguageDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["spoken_language"] = "spoken_language"
+    control: Literal["spoken_language"]
     value: SpokenLanguageValueV1
 
 
 class SetAudioModeDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["audio_mode"] = "audio_mode"
+    control: Literal["audio_mode"]
     value: AudioModeValueV1
 
 
 class SetProductCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["product_count"] = "product_count"
+    control: Literal["product_count"]
     value: ProductCountValueV1
 
 
 class SetPropCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["prop_count"] = "prop_count"
+    control: Literal["prop_count"]
     value: PropCountValueV1
 
 
 class SetCharacterCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["character_count"] = "character_count"
+    control: Literal["character_count"]
     value: CharacterCountValueV1
 
 
 class SetSceneCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["scene_count"] = "scene_count"
+    control: Literal["scene_count"]
     value: SceneCountValueV1
 
 
 class SetStoryboardSequenceCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["storyboard_sequence_count"] = "storyboard_sequence_count"
+    control: Literal["storyboard_sequence_count"]
     value: StoryboardSequenceCountValueV1
 
 
 class SetVideoSegmentCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
-    control: Literal["video_segment_count"] = "video_segment_count"
+    control: Literal["video_segment_count"]
     value: VideoSegmentCountValueV1
 
 

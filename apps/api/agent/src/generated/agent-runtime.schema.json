@@ -16577,24 +16577,11 @@
       "title": "SelectedConceptOptionV1",
       "type": "object"
     },
-    "SetControlDecisionEffectV1": {
+    "SetAspectRatioDecisionEffectV1": {
       "additionalProperties": false,
       "properties": {
         "control": {
-          "enum": [
-            "aspect_ratio",
-            "audio_mode",
-            "character_count",
-            "duration_seconds",
-            "frame_rate",
-            "output_resolution",
-            "product_count",
-            "prop_count",
-            "scene_count",
-            "spoken_language",
-            "storyboard_sequence_count",
-            "video_segment_count"
-          ],
+          "const": "aspect_ratio",
           "title": "Control",
           "type": "string"
         },
@@ -16605,25 +16592,162 @@
           "type": "string"
         },
         "value": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "integer"
-            },
-            {
-              "type": "number"
-            }
-          ],
-          "title": "Value"
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
         }
       },
       "required": [
         "control",
         "value"
       ],
-      "title": "SetControlDecisionEffectV1",
+      "title": "SetAspectRatioDecisionEffectV1",
+      "type": "object"
+    },
+    "SetAudioModeDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "audio_mode",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "bgm_only",
+            "full",
+            "none"
+          ],
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetAudioModeDecisionEffectV1",
+      "type": "object"
+    },
+    "SetCharacterCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "character_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetCharacterCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetControlDecisionEffectV1": {
+      "discriminator": {
+        "mapping": {
+          "aspect_ratio": "#/$defs/SetAspectRatioDecisionEffectV1",
+          "audio_mode": "#/$defs/SetAudioModeDecisionEffectV1",
+          "character_count": "#/$defs/SetCharacterCountDecisionEffectV1",
+          "duration_seconds": "#/$defs/SetDurationSecondsDecisionEffectV1",
+          "frame_rate": "#/$defs/SetFrameRateDecisionEffectV1",
+          "output_resolution": "#/$defs/SetOutputResolutionDecisionEffectV1",
+          "product_count": "#/$defs/SetProductCountDecisionEffectV1",
+          "prop_count": "#/$defs/SetPropCountDecisionEffectV1",
+          "scene_count": "#/$defs/SetSceneCountDecisionEffectV1",
+          "spoken_language": "#/$defs/SetSpokenLanguageDecisionEffectV1",
+          "storyboard_sequence_count": "#/$defs/SetStoryboardSequenceCountDecisionEffectV1",
+          "video_segment_count": "#/$defs/SetVideoSegmentCountDecisionEffectV1"
+        },
+        "propertyName": "control"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SetDurationSecondsDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetAspectRatioDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetOutputResolutionDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetFrameRateDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetSpokenLanguageDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetAudioModeDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetProductCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetPropCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetCharacterCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetSceneCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetStoryboardSequenceCountDecisionEffectV1"
+        },
+        {
+          "$ref": "#/$defs/SetVideoSegmentCountDecisionEffectV1"
+        }
+      ],
+      "title": "SetControlDecisionEffectV1"
+    },
+    "SetDurationSecondsDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "duration_seconds",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetDurationSecondsDecisionEffectV1",
       "type": "object"
     },
     "SetElementPresenceDecisionEffectV1": {
@@ -16664,6 +16788,230 @@
         "presence"
       ],
       "title": "SetElementPresenceDecisionEffectV1",
+      "type": "object"
+    },
+    "SetFrameRateDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "frame_rate",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 240,
+          "minimum": 1,
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetFrameRateDecisionEffectV1",
+      "type": "object"
+    },
+    "SetOutputResolutionDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "output_resolution",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetOutputResolutionDecisionEffectV1",
+      "type": "object"
+    },
+    "SetProductCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "product_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetProductCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetPropCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "prop_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetPropCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetSceneCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "scene_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetSceneCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetSpokenLanguageDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "spoken_language",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetSpokenLanguageDecisionEffectV1",
+      "type": "object"
+    },
+    "SetStoryboardSequenceCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "storyboard_sequence_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetStoryboardSequenceCountDecisionEffectV1",
+      "type": "object"
+    },
+    "SetVideoSegmentCountDecisionEffectV1": {
+      "additionalProperties": false,
+      "properties": {
+        "control": {
+          "const": "video_segment_count",
+          "title": "Control",
+          "type": "string"
+        },
+        "effect_type": {
+          "const": "set_control",
+          "default": "set_control",
+          "title": "Effect Type",
+          "type": "string"
+        },
+        "value": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Value",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "control",
+        "value"
+      ],
+      "title": "SetVideoSegmentCountDecisionEffectV1",
       "type": "object"
     },
     "SpecialistDraft": {
