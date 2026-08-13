@@ -150,22 +150,6 @@
   cursor: default;
 }
 
-.home-typography-lab__preview .home-page--static .filter-btn {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  padding: 0 14px;
-  border-radius: 999px;
-  color: #6f7183;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.home-typography-lab__preview .home-page--static .filter-btn.is-active {
-  background: rgba(108, 93, 171, 0.16);
-  color: #4b3a94;
-}
-
 .home-typography-lab__preview .home-page--static .recent-card,
 .home-typography-lab__preview .home-page--static .discover-card {
   cursor: default;
@@ -672,12 +656,6 @@
   box-shadow: var(--shadow-soft);
 }
 
-.home-typography-lab--dark .discover-tabs {
-  border-color: var(--lab-border);
-  background: rgba(13, 15, 20, 0.9);
-  box-shadow: var(--shadow-soft);
-}
-
 .home-typography-lab--dark .recent-card.featured {
   background:
     linear-gradient(180deg, rgba(8, 9, 13, 0.04), rgba(8, 9, 13, 0.4)),
@@ -690,19 +668,6 @@
 
 .home-typography-lab--dark .recent-card.featured :is(h3, p) {
   color: var(--lab-text);
-}
-
-.home-typography-lab--dark .home-page--static .filter-btn {
-  border: 1px solid var(--border-default);
-  background: var(--surface-raised);
-  box-shadow: var(--glass-button-shadow);
-  color: var(--lab-text-muted);
-}
-
-.home-typography-lab--dark .home-page--static .filter-btn.is-active {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: var(--text-inverse);
 }
 
 .home-typography-lab--dark .discover-card {

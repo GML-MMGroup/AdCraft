@@ -11,6 +11,7 @@ describe("HomeShowcase", () => {
     expect(screen.getByTestId("home-hero-accent").querySelector("svg")).toBeNull();
     expect(screen.queryByRole("button", { name: /create your project/i })).toBeNull();
     expect(screen.queryByText("Preview Case")).toBeNull();
+    expect(screen.queryByText("All")).toBeNull();
   });
 
   it("renders two linked Discover tracks and supports keyboard navigation", () => {
@@ -33,6 +34,7 @@ describe("HomeShowcase", () => {
     const card = within(upperTrack as HTMLElement).getByRole("button", { name: "upper Scene Extension" });
 
     expect(orbit.getAttribute("aria-roledescription")).toBe("carousel");
+    expect(screen.queryByRole("button", { name: "All" })).toBeNull();
     expect(upperTrack).toBeTruthy();
     expect(lowerTrack).toBeTruthy();
     expect(orbit.dataset.activeIndex).toContain("upper:3");

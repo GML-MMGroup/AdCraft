@@ -138,33 +138,11 @@ function StaticRecentCards() {
 }
 
 function InteractiveDiscover({ openPreview }: { openPreview: () => void }) {
-  return (
-    <>
-      <div className="discover-tabs" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
-        {["All", "Product", "Portrait", "Scene", "Motion"].map((tab, index) => (
-          <button key={tab} className={`filter-btn ${index === 0 ? "is-active" : ""}`}>
-            {tab}
-          </button>
-        ))}
-      </div>
-      <DiscoverOrbit items={discoverCards} interactive onSelect={openPreview} />
-    </>
-  );
+  return <DiscoverOrbit items={discoverCards} interactive onSelect={openPreview} />;
 }
 
 function StaticDiscover() {
-  return (
-    <>
-      <div className="discover-tabs" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
-        {["All", "Product", "Portrait", "Scene", "Motion"].map((tab, index) => (
-          <span key={tab} className={`filter-btn ${index === 0 ? "is-active" : ""}`} data-home-typography-region="navigation">
-            {tab}
-          </span>
-        ))}
-      </div>
-      <DiscoverOrbit items={discoverCards} interactive={false} />
-    </>
-  );
+  return <DiscoverOrbit items={discoverCards} interactive={false} />;
 }
 
 export function HomeShowcase({

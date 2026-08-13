@@ -443,17 +443,6 @@
   color: rgba(255, 255, 255, 0.82);
 }
 
-.discover-tabs {
-  position: sticky;
-  top: 70px;
-  z-index: 10;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 9px;
-  margin-bottom: 22px;
-}
-
 .discover-orbit {
   --discover-track-gap: clamp(56px, 4.6vw, 76px);
   --discover-card-height: clamp(232px, 23.43vw, 329px);
