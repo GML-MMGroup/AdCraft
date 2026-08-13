@@ -121,7 +121,11 @@ class DurableNextActionExecutionService:
         )
         self._gateway = gateway
 
-    def execute(self, envelope_id: str) -> ValidatedNextActionV1:
+    def execute(
+        self,
+        envelope_id: str,
+        lease_guard: Callable[[], None],
+    ) -> ValidatedNextActionV1:
         envelope = self._envelopes.get(envelope_id)
         if not isinstance(envelope, NextActionEnvelopeV1):
             raise V2PersistenceError(
@@ -136,6 +140,7 @@ class DurableNextActionExecutionService:
                 "Guidance state changed before Next Action execution.",
                 stage="next_action_execution",
             )
+        lease_guard()
         turn = self._conversations.mark_turn_running(envelope.next_action_turn_id)
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         policy = self._policy.evaluate(
@@ -158,6 +163,7 @@ class DurableNextActionExecutionService:
                 ),
             )
         )
+        lease_guard()
         command = self._next_action.execute(
             NextActionContextV1(
                 workflow_id=envelope.workflow_id,
@@ -170,6 +176,7 @@ class DurableNextActionExecutionService:
             ),
             turn_id=envelope.next_action_turn_id,
         )
+        lease_guard()
         if command.command.action == "author_decision_bundle":
             if self._decision_bundles is None:
                 raise V2PersistenceError(
@@ -186,16 +193,19 @@ class DurableNextActionExecutionService:
                 shared_summary="",
                 response_locale=session.response_locale,
             )
+            lease_guard()
             draft = self._gateway.author_decision_bundle(
                 context,
                 turn_id=envelope.next_action_turn_id,
             )
+            lease_guard()
             bundle = self._decision_bundles.author(
                 workflow_id=envelope.workflow_id,
                 conversation_id=envelope.conversation_id,
                 source_turn_id=envelope.next_action_turn_id,
                 draft=draft,
             )
+            lease_guard()
             self._conversations.complete_turn(
                 envelope.next_action_turn_id,
                 assistant_message=f"Decision Bundle ready: {bundle.title}",
@@ -217,6 +227,7 @@ class DurableNextActionExecutionService:
                 ).approved_node_ids,
                 asset_resolver=self._asset_resolver,
             )
+            lease_guard()
             self._capability_dispatch.dispatch_next_action(
                 turn,
                 command,
@@ -235,6 +246,7 @@ class DurableNextActionExecutionService:
             )
             return command
         if command.command.action == "finish":
+            lease_guard()
             self._conversations.complete_guidance_session(
                 session.session_id,
                 expected_session_revision=session.revision,
@@ -243,6 +255,7 @@ class DurableNextActionExecutionService:
                     delivery="ready",
                 ),
             )
+        lease_guard()
         self._conversations.complete_turn(
             envelope.next_action_turn_id,
             assistant_message=command.command.message,

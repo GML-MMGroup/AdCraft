@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -294,6 +295,7 @@ from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["v2-agent-canvas"])
 
 
@@ -1989,7 +1991,7 @@ def advance_guidance(
                 accepted.turn_id,
             )
         else:
-            background_tasks.add_task(runtime.continuation_worker.run_once)
+            background_tasks.add_task(_drain_agent_canvas_continuations, runtime)
     return accepted
 
 
@@ -2503,6 +2505,25 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
+
+
+def _drain_agent_canvas_continuations(runtime: AgentCanvasRuntime) -> None:
+    """Drain accepted work without raising through a completed HTTP response."""
+
+    started_at = datetime.now(timezone.utc)
+    try:
+        runtime.continuation_worker.run_once()
+    except Exception as error:  # noqa: BLE001 - background task boundary.
+        code = error.code if isinstance(error, V2PersistenceError) else "continuation_drain_failed"
+        elapsed_ms = max(
+            0,
+            int((datetime.now(timezone.utc) - started_at).total_seconds() * 1_000),
+        )
+        logger.error(
+            "Agent Canvas continuation drain failed code=%s elapsed_ms=%s",
+            code,
+            elapsed_ms,
+        )
 
 
 def _persist_text_document(

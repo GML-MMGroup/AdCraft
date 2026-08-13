@@ -75,7 +75,11 @@ class CapabilityExecutionService:
         self._publisher = publisher
         self._policy = CapabilityPolicyService()
 
-    def execute(self, envelope_id: str) -> CapabilityExecutionResultV1:
+    def execute(
+        self,
+        envelope_id: str,
+        lease_guard: Callable[[], None],
+    ) -> CapabilityExecutionResultV1:
         envelope = self._envelopes.get(envelope_id)
         if not isinstance(envelope, CapabilityCommandEnvelopeV2):
             raise V2PersistenceError(
@@ -94,6 +98,7 @@ class CapabilityExecutionService:
         contract = CAPABILITY_RESULT_CONTRACTS[envelope.capability_id]
         context = self._context_loader(envelope)
         repaired = False
+        lease_guard()
         try:
             raw = self._invoke(envelope, definition.operation, context, repair_error=None)
         except V2PersistenceError:
@@ -111,10 +116,12 @@ class CapabilityExecutionService:
                 "Capability execution failed.",
                 stage="capability_execution",
             ) from error
+        lease_guard()
         try:
             result = contract.model_validate(raw)
         except ValidationError:
             repaired = True
+            lease_guard()
             try:
                 repaired_raw = self._invoke(
                     envelope,
@@ -122,6 +129,7 @@ class CapabilityExecutionService:
                     context,
                     repair_error="capability_contract_invalid",
                 )
+                lease_guard()
                 result = contract.model_validate(repaired_raw)
             except (ValidationError, ValueError, TypeError) as error:
                 raise V2PersistenceError(
@@ -129,6 +137,7 @@ class CapabilityExecutionService:
                     "Capability result remained invalid after one repair.",
                     stage="capability_execution",
                 ) from error
+        lease_guard()
         proposal_id = self._publisher(envelope, result)
         return CapabilityExecutionResultV1(
             envelope_id=envelope.envelope_id,

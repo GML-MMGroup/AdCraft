@@ -577,6 +577,27 @@ class AgentCanvasContinuationOutboxRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def supersede_owned(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        reason: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
+        """Supersede only the delivery generation currently owned by a worker."""
+
+        return self._finish_owned(
+            continuation_id,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            status="superseded",
+            now=now,
+            error_code="continuation_superseded",
+            error_message=reason,
+        )
+
     def _finish_owned(
         self,
         continuation_id: str,
@@ -627,6 +648,7 @@ class AgentCanvasContinuationOutboxRepository:
                     "completed": "continuation_completed",
                     "retry_wait": "continuation_retry_scheduled",
                     "failed": "continuation_failed",
+                    "superseded": "continuation_superseded",
                 }[status]
                 self._append_lifecycle_event(
                     connection,
