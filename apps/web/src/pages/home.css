@@ -740,21 +740,23 @@ html[data-theme="dark"] .home-product-hero__description {
 }
 
 html[data-theme="dark"] .home-product-hero__create {
-  border-color: #d9dbea;
-  background: #d9dbea;
+  border-color: rgba(233, 235, 247, 0.38);
+  background: rgba(217, 219, 234, 0.16);
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
+  -webkit-backdrop-filter: blur(2px) saturate(112%) brightness(1.03);
+  backdrop-filter: blur(2px) saturate(112%) brightness(1.03);
   color: #202235;
 }
 
 html[data-theme="dark"] .home-product-hero__create:hover {
-  background: #9dafe6;
-  border-color: #9dafe6;
+  background: rgba(157, 175, 230, 0.3);
+  border-color: rgba(207, 217, 255, 0.52);
   box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
 }
 
 html[data-theme="dark"] .home-product-hero__create:active {
-  background: #9dafe6;
-  border-color: #9dafe6;
+  background: rgba(157, 175, 230, 0.3);
+  border-color: rgba(207, 217, 255, 0.52);
 }
 
 html[data-theme="dark"] .home-product-hero__create:focus-visible {

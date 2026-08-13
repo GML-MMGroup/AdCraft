@@ -147,15 +147,15 @@ describe("HomePage hero title", () => {
     expect(darkAccentPseudoStyles).not.toMatch(/\bbackground\s*:/);
   });
 
-  it("uses the approved default and interactive CTA color states on the dark home surface", () => {
+  it("uses tinted clear-glass CTA states on the dark home surface", () => {
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create\s*\{[^}]*border-color:\s*#d9dbea;[^}]*background:\s*#d9dbea;[^}]*color:\s*#202235;/s,
+      /html\[data-theme="dark"\] \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(233, 235, 247, 0\.38\);[^}]*background:\s*rgba\(217, 219, 234, 0\.16\);[^}]*-webkit-backdrop-filter:\s*blur\(2px\) saturate\(112%\) brightness\(1\.03\);[^}]*backdrop-filter:\s*blur\(2px\) saturate\(112%\) brightness\(1\.03\);[^}]*color:\s*#202235;/s,
     );
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*#9dafe6;[^}]*border-color:\s*#9dafe6;/s,
+      /html\[data-theme="dark"\] \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
     );
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create:active\s*\{[^}]*background:\s*#9dafe6;[^}]*border-color:\s*#9dafe6;/s,
+      /html\[data-theme="dark"\] \.home-product-hero__create:active\s*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
     );
   });
 });
