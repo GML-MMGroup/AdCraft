@@ -12,6 +12,16 @@ type WritingStroke = {
 // Water Brush has a 1000-unit em. At 80px, 0.100em tracking is 100 font units.
 const waterBrushTrackingOffsets = [0, 100, 300, 400, 500, 600, 700] as const;
 
+const glyphCoverageTimings = [
+  { delay: "0ms", duration: "540ms" },
+  { delay: "500ms", duration: "430ms" },
+  { delay: "760ms", duration: "560ms" },
+  { delay: "1280ms", duration: "260ms" },
+  { delay: "1520ms", duration: "380ms" },
+  { delay: "1710ms", duration: "510ms" },
+  { delay: "2100ms", duration: "120ms" },
+] as const;
+
 // The primary paths establish the calligraphic order. The wider finishing passes
 // remain moving pen strokes inside the real glyph outlines; they never reveal a full glyph at once.
 const waterBrushStrokes: readonly WritingStroke[] = [
@@ -70,18 +80,6 @@ export function HeroAccentWriting() {
           <stop offset="67%" stopColor="#cf9839" />
           <stop offset="100%" stopColor="#8f5d16" />
         </linearGradient>
-        {waterBrushAdFilmGlyphPaths.map((glyph, index) => (
-          <clipPath
-            key={glyph.character}
-            id={`${maskId}-glyph-${index}`}
-            clipPathUnits="userSpaceOnUse"
-          >
-            <path
-              d={glyph.d}
-              transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
-            />
-          </clipPath>
-        ))}
         <mask
           id={maskId}
           maskUnits="userSpaceOnUse"
@@ -91,11 +89,8 @@ export function HeroAccentWriting() {
           height="1500"
         >
           <rect x="-256" y="-256" width="4400" height="1500" fill="#000" />
-          {waterBrushStrokes.map((stroke, index) => (
-            <g
-              key={stroke.d}
-              clipPath={`url(#${maskId}-glyph-${stroke.glyphIndex})`}
-            >
+          <g data-writing-mask-space="glyph-space" transform={waterBrushTransform}>
+            {waterBrushStrokes.map((stroke, index) => (
               <path
                 className="home-hero-accent-writing__stroke"
                 d={stroke.d}
@@ -110,9 +105,33 @@ export function HeroAccentWriting() {
                   } as CSSProperties
                 }
                 data-writing-stroke={index + 1}
+                data-writing-glyph={stroke.glyphIndex + 1}
               />
-            </g>
-          ))}
+            ))}
+            {waterBrushAdFilmGlyphPaths.map((glyph, index) => {
+              const timing = glyphCoverageTimings[index]!;
+
+              return (
+                <path
+                  key={glyph.character}
+                  className="home-hero-accent-writing__coverage"
+                  d={glyph.d}
+                  transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
+                  pathLength={1}
+                  fill="none"
+                  stroke="#fff"
+                  strokeWidth={320}
+                  style={
+                    {
+                      "--home-hero-accent-delay": timing.delay,
+                      "--home-hero-accent-duration": timing.duration,
+                    } as CSSProperties
+                  }
+                  data-writing-coverage={index + 1}
+                />
+              );
+            })}
+          </g>
         </mask>
       </defs>
       <g fill={`url(#${gradientId})`} mask={`url(#${maskId})`} transform={waterBrushTransform}>

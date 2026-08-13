@@ -140,7 +140,8 @@
   overflow: visible;
 }
 
-.home-hero-accent-writing__stroke {
+.home-hero-accent-writing__stroke,
+.home-hero-accent-writing__coverage {
   fill: none;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
@@ -148,7 +149,10 @@
   stroke-linejoin: round;
 }
 
-.home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
+.home-product-hero.is-motion-ready :is(
+  .home-hero-accent-writing__stroke,
+  .home-hero-accent-writing__coverage
+) {
   animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) calc(var(--home-hero-accent-start-delay) + var(--home-hero-accent-delay, 0ms)) forwards;
 }
 
@@ -308,7 +312,8 @@
     transform: none !important;
   }
 
-  .home-hero-accent-writing__stroke {
+  .home-hero-accent-writing__stroke,
+  .home-hero-accent-writing__coverage {
     animation: none !important;
     stroke-dashoffset: 0 !important;
   }
