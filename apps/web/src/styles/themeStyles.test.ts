@@ -136,12 +136,12 @@ describe("theme styles", () => {
     );
 
     expect(darkCosmicShell).toContain(
-      'url("/assets/home-dark-black-hole.webp") 50% 66% / cover fixed no-repeat',
+      'url("/assets/home-dark-black-hole.webp") 50% 62% / cover fixed no-repeat',
     );
     expect(source("styles/base.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home-typography-lab.css")).toContain(
-      'url("/assets/home-dark-black-hole.webp") 50% 66% / cover scroll no-repeat',
+      'url("/assets/home-dark-black-hole.webp") 50% 62% / cover scroll no-repeat',
     );
     expect(source("pages/home-typography-lab.css")).not.toContain(
       "home-dark-cosmic.webp",
