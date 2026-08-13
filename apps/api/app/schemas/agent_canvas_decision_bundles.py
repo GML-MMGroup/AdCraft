@@ -5,13 +5,23 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas_requirements import (
-    RequirementControlNameV1,
-    RequirementControlPatchV1,
+    AspectRatioValueV1,
+    AudioModeValueV1,
+    CharacterCountValueV1,
+    DurationSecondsValueV1,
+    FrameRateValueV1,
+    OutputResolutionValueV1,
+    ProductCountValueV1,
+    PropCountValueV1,
     RequirementElementKindV1,
+    SceneCountValueV1,
+    SpokenLanguageValueV1,
+    StoryboardSequenceCountValueV1,
+    VideoSegmentCountValueV1,
 )
 
 
@@ -38,21 +48,102 @@ class CreativeDirectiveDecisionEffectV1(_FrozenModel):
         return self
 
 
-class SetControlDecisionEffectV1(_FrozenModel):
+class _SetControlDecisionEffectBaseV1(_FrozenModel):
     effect_type: Literal["set_control"] = "set_control"
-    control: RequirementControlNameV1
-    value: str | int | float
 
-    @model_validator(mode="after")
-    def validate_control_value(self) -> SetControlDecisionEffectV1:
-        TypeAdapter(RequirementControlPatchV1).validate_python(
-            {
-                "control": self.control,
-                "value": self.value,
-                "source_quote": "Decision Bundle option effect.",
-            }
-        )
-        return self
+
+class SetDurationSecondsDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["duration_seconds"] = "duration_seconds"
+    value: DurationSecondsValueV1
+
+
+class SetAspectRatioDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["aspect_ratio"] = "aspect_ratio"
+    value: AspectRatioValueV1
+
+
+class SetOutputResolutionDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["output_resolution"] = "output_resolution"
+    value: OutputResolutionValueV1
+
+
+class SetFrameRateDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["frame_rate"] = "frame_rate"
+    value: FrameRateValueV1
+
+
+class SetSpokenLanguageDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["spoken_language"] = "spoken_language"
+    value: SpokenLanguageValueV1
+
+
+class SetAudioModeDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["audio_mode"] = "audio_mode"
+    value: AudioModeValueV1
+
+
+class SetProductCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["product_count"] = "product_count"
+    value: ProductCountValueV1
+
+
+class SetPropCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["prop_count"] = "prop_count"
+    value: PropCountValueV1
+
+
+class SetCharacterCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["character_count"] = "character_count"
+    value: CharacterCountValueV1
+
+
+class SetSceneCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["scene_count"] = "scene_count"
+    value: SceneCountValueV1
+
+
+class SetStoryboardSequenceCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["storyboard_sequence_count"] = "storyboard_sequence_count"
+    value: StoryboardSequenceCountValueV1
+
+
+class SetVideoSegmentCountDecisionEffectV1(_SetControlDecisionEffectBaseV1):
+    control: Literal["video_segment_count"] = "video_segment_count"
+    value: VideoSegmentCountValueV1
+
+
+SetControlDecisionEffectMemberV1: TypeAlias = Annotated[
+    SetDurationSecondsDecisionEffectV1
+    | SetAspectRatioDecisionEffectV1
+    | SetOutputResolutionDecisionEffectV1
+    | SetFrameRateDecisionEffectV1
+    | SetSpokenLanguageDecisionEffectV1
+    | SetAudioModeDecisionEffectV1
+    | SetProductCountDecisionEffectV1
+    | SetPropCountDecisionEffectV1
+    | SetCharacterCountDecisionEffectV1
+    | SetSceneCountDecisionEffectV1
+    | SetStoryboardSequenceCountDecisionEffectV1
+    | SetVideoSegmentCountDecisionEffectV1,
+    Field(discriminator="control"),
+]
+
+
+class SetControlDecisionEffectV1(RootModel[SetControlDecisionEffectMemberV1]):
+    root: SetControlDecisionEffectMemberV1
+    model_config = ConfigDict(frozen=True)
+
+    @property
+    def effect_type(self) -> Literal["set_control"]:
+        return self.root.effect_type
+
+    @property
+    def control(self) -> str:
+        return self.root.control
+
+    @property
+    def value(self) -> str | int | float:
+        return self.root.value
 
 
 class SetElementPresenceDecisionEffectV1(_FrozenModel):

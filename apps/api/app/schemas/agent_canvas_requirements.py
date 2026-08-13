@@ -48,6 +48,18 @@ RequirementControlNameV1: TypeAlias = Literal[
     "storyboard_sequence_count",
     "video_segment_count",
 ]
+DurationSecondsValueV1: TypeAlias = Annotated[float, Field(ge=1, le=3_600)]
+AspectRatioValueV1: TypeAlias = Annotated[str, Field(min_length=1, max_length=32)]
+OutputResolutionValueV1: TypeAlias = Annotated[str, Field(min_length=1, max_length=64)]
+FrameRateValueV1: TypeAlias = Annotated[float, Field(ge=1, le=240)]
+SpokenLanguageValueV1: TypeAlias = Annotated[str, Field(min_length=1, max_length=64)]
+AudioModeValueV1: TypeAlias = Literal["none", "bgm_only", "full"]
+ProductCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
+PropCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
+CharacterCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
+SceneCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=32)]
+StoryboardSequenceCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
+VideoSegmentCountValueV1: TypeAlias = Annotated[int, Field(ge=0, le=64)]
 
 
 class _StrictModel(BaseModel):
@@ -72,62 +84,62 @@ class _StoredControlBase(_FrozenModel):
 
 class DurationSecondsControlV1(_StoredControlBase):
     control: Literal["duration_seconds"] = "duration_seconds"
-    value: float = Field(ge=1, le=3_600)
+    value: DurationSecondsValueV1
 
 
 class AspectRatioControlV1(_StoredControlBase):
     control: Literal["aspect_ratio"] = "aspect_ratio"
-    value: str = Field(min_length=1, max_length=32)
+    value: AspectRatioValueV1
 
 
 class OutputResolutionControlV1(_StoredControlBase):
     control: Literal["output_resolution"] = "output_resolution"
-    value: str = Field(min_length=1, max_length=64)
+    value: OutputResolutionValueV1
 
 
 class FrameRateControlV1(_StoredControlBase):
     control: Literal["frame_rate"] = "frame_rate"
-    value: float = Field(ge=1, le=240)
+    value: FrameRateValueV1
 
 
 class SpokenLanguageControlV1(_StoredControlBase):
     control: Literal["spoken_language"] = "spoken_language"
-    value: str = Field(min_length=1, max_length=64)
+    value: SpokenLanguageValueV1
 
 
 class AudioModeControlV1(_StoredControlBase):
     control: Literal["audio_mode"] = "audio_mode"
-    value: Literal["none", "bgm_only", "full"]
+    value: AudioModeValueV1
 
 
 class ProductCountControlV1(_StoredControlBase):
     control: Literal["product_count"] = "product_count"
-    value: int = Field(ge=0, le=32)
+    value: ProductCountValueV1
 
 
 class PropCountControlV1(_StoredControlBase):
     control: Literal["prop_count"] = "prop_count"
-    value: int = Field(ge=0, le=64)
+    value: PropCountValueV1
 
 
 class CharacterCountControlV1(_StoredControlBase):
     control: Literal["character_count"] = "character_count"
-    value: int = Field(ge=0, le=32)
+    value: CharacterCountValueV1
 
 
 class SceneCountControlV1(_StoredControlBase):
     control: Literal["scene_count"] = "scene_count"
-    value: int = Field(ge=0, le=32)
+    value: SceneCountValueV1
 
 
 class StoryboardSequenceCountControlV1(_StoredControlBase):
     control: Literal["storyboard_sequence_count"] = "storyboard_sequence_count"
-    value: int = Field(ge=0, le=64)
+    value: StoryboardSequenceCountValueV1
 
 
 class VideoSegmentCountControlV1(_StoredControlBase):
     control: Literal["video_segment_count"] = "video_segment_count"
-    value: int = Field(ge=0, le=64)
+    value: VideoSegmentCountValueV1
 
 
 RequirementControlV1: TypeAlias = Annotated[
@@ -153,62 +165,62 @@ class _ControlPatchBase(_StrictModel):
 
 class DurationSecondsControlPatchV1(_ControlPatchBase):
     control: Literal["duration_seconds"] = "duration_seconds"
-    value: float = Field(ge=1, le=3_600)
+    value: DurationSecondsValueV1
 
 
 class AspectRatioControlPatchV1(_ControlPatchBase):
     control: Literal["aspect_ratio"] = "aspect_ratio"
-    value: str = Field(min_length=1, max_length=32)
+    value: AspectRatioValueV1
 
 
 class OutputResolutionControlPatchV1(_ControlPatchBase):
     control: Literal["output_resolution"] = "output_resolution"
-    value: str = Field(min_length=1, max_length=64)
+    value: OutputResolutionValueV1
 
 
 class FrameRateControlPatchV1(_ControlPatchBase):
     control: Literal["frame_rate"] = "frame_rate"
-    value: float = Field(ge=1, le=240)
+    value: FrameRateValueV1
 
 
 class SpokenLanguageControlPatchV1(_ControlPatchBase):
     control: Literal["spoken_language"] = "spoken_language"
-    value: str = Field(min_length=1, max_length=64)
+    value: SpokenLanguageValueV1
 
 
 class AudioModeControlPatchV1(_ControlPatchBase):
     control: Literal["audio_mode"] = "audio_mode"
-    value: Literal["none", "bgm_only", "full"]
+    value: AudioModeValueV1
 
 
 class ProductCountControlPatchV1(_ControlPatchBase):
     control: Literal["product_count"] = "product_count"
-    value: int = Field(ge=0, le=32)
+    value: ProductCountValueV1
 
 
 class PropCountControlPatchV1(_ControlPatchBase):
     control: Literal["prop_count"] = "prop_count"
-    value: int = Field(ge=0, le=64)
+    value: PropCountValueV1
 
 
 class CharacterCountControlPatchV1(_ControlPatchBase):
     control: Literal["character_count"] = "character_count"
-    value: int = Field(ge=0, le=32)
+    value: CharacterCountValueV1
 
 
 class SceneCountControlPatchV1(_ControlPatchBase):
     control: Literal["scene_count"] = "scene_count"
-    value: int = Field(ge=0, le=32)
+    value: SceneCountValueV1
 
 
 class StoryboardSequenceCountControlPatchV1(_ControlPatchBase):
     control: Literal["storyboard_sequence_count"] = "storyboard_sequence_count"
-    value: int = Field(ge=0, le=64)
+    value: StoryboardSequenceCountValueV1
 
 
 class VideoSegmentCountControlPatchV1(_ControlPatchBase):
     control: Literal["video_segment_count"] = "video_segment_count"
-    value: int = Field(ge=0, le=64)
+    value: VideoSegmentCountValueV1
 
 
 RequirementControlPatchV1: TypeAlias = Annotated[
@@ -234,62 +246,62 @@ class _ManualControlPatchBase(_StrictModel):
 
 class ManualDurationSecondsControlPatchV1(_ManualControlPatchBase):
     control: Literal["duration_seconds"] = "duration_seconds"
-    value: float = Field(ge=1, le=3_600)
+    value: DurationSecondsValueV1
 
 
 class ManualAspectRatioControlPatchV1(_ManualControlPatchBase):
     control: Literal["aspect_ratio"] = "aspect_ratio"
-    value: str = Field(min_length=1, max_length=32)
+    value: AspectRatioValueV1
 
 
 class ManualOutputResolutionControlPatchV1(_ManualControlPatchBase):
     control: Literal["output_resolution"] = "output_resolution"
-    value: str = Field(min_length=1, max_length=64)
+    value: OutputResolutionValueV1
 
 
 class ManualFrameRateControlPatchV1(_ManualControlPatchBase):
     control: Literal["frame_rate"] = "frame_rate"
-    value: float = Field(ge=1, le=240)
+    value: FrameRateValueV1
 
 
 class ManualSpokenLanguageControlPatchV1(_ManualControlPatchBase):
     control: Literal["spoken_language"] = "spoken_language"
-    value: str = Field(min_length=1, max_length=64)
+    value: SpokenLanguageValueV1
 
 
 class ManualAudioModeControlPatchV1(_ManualControlPatchBase):
     control: Literal["audio_mode"] = "audio_mode"
-    value: Literal["none", "bgm_only", "full"]
+    value: AudioModeValueV1
 
 
 class ManualProductCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["product_count"] = "product_count"
-    value: int = Field(ge=0, le=32)
+    value: ProductCountValueV1
 
 
 class ManualPropCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["prop_count"] = "prop_count"
-    value: int = Field(ge=0, le=64)
+    value: PropCountValueV1
 
 
 class ManualCharacterCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["character_count"] = "character_count"
-    value: int = Field(ge=0, le=32)
+    value: CharacterCountValueV1
 
 
 class ManualSceneCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["scene_count"] = "scene_count"
-    value: int = Field(ge=0, le=32)
+    value: SceneCountValueV1
 
 
 class ManualStoryboardSequenceCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["storyboard_sequence_count"] = "storyboard_sequence_count"
-    value: int = Field(ge=0, le=64)
+    value: StoryboardSequenceCountValueV1
 
 
 class ManualVideoSegmentCountControlPatchV1(_ManualControlPatchBase):
     control: Literal["video_segment_count"] = "video_segment_count"
-    value: int = Field(ge=0, le=64)
+    value: VideoSegmentCountValueV1
 
 
 ManualRequirementControlPatchV1: TypeAlias = Annotated[
