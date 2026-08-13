@@ -184,6 +184,55 @@ html[data-theme="dark"] :is(.account-menu a, .account-menu button, .ghost-btn, .
   background: #202530;
 }
 
+/* The home rail is an unframed holder so each navigation control has one clear glass plane. */
+html[data-theme="dark"]:has(.main-view[data-route="/"]) .floating-rail {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item {
+  border-color: rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.008);
+  box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
+  -webkit-backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
+  backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
+  color: rgba(255, 255, 255, 0.8);
+  transition:
+    background 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease,
+    transform 220ms ease;
+}
+
+html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item.is-active {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.018);
+  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible) {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.018);
+  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
+  color: rgba(255, 255, 255, 0.96);
+  transform: translateY(-1px);
+}
+
+html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item:active {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transform: scale(0.975);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item {
+    background: rgba(20, 24, 40, 0.2);
+  }
+}
+
 html[data-theme="dark"] :is(.api-chip, .route-loading) {
   border-color: var(--border-default);
   background: var(--surface-raised);

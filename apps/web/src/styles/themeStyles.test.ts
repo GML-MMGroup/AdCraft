@@ -140,4 +140,36 @@ describe("theme styles", () => {
     expect(source("styles/base.css")).not.toContain("home-dark-cosmic.webp");
     expect(source("pages/home.css")).not.toContain("home-dark-cosmic.webp");
   });
+
+  test("uses a single clear-glass material for home navigation buttons", () => {
+    const themeStyles = source("styles/theme.css");
+    const homeRail = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .floating-rail',
+    );
+    const homeRailItem = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item',
+    );
+    const homeActiveRailItem = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item.is-active',
+    );
+    const homeRailItemHover = declarationBlock(
+      themeStyles,
+      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible)',
+    );
+
+    expect(homeRail).toContain("background: transparent");
+    expect(homeRail).toContain("box-shadow: none");
+    expect(homeRail).toContain("backdrop-filter: none");
+    expect(homeRailItem).toContain("background: rgba(255, 255, 255, 0.008)");
+    expect(homeRailItem).toContain("border-color: rgba(255, 255, 255, 0.075)");
+    expect(homeRailItem).toContain("blur(1.5px) saturate(114%) brightness(1.025)");
+    expect(homeRailItem).toContain("box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12)");
+    expect(homeActiveRailItem).toContain("background: rgba(255, 255, 255, 0.018)");
+    expect(homeActiveRailItem).toContain("border-color: rgba(255, 255, 255, 0.13)");
+    expect(homeActiveRailItem).not.toContain("transform:");
+    expect(homeRailItemHover).toContain("transform: translateY(-1px)");
+  });
 });
