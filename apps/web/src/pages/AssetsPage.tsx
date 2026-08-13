@@ -1,46 +1,37 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
-import { v2Api } from "../api/v2Client.ts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { PageHeader } from "../components/Layout.tsx";
-import { DeferredVideo } from "../components/media/DeferredVideo.tsx";
-import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from "../icons.tsx";
-import {
-  splitAssetLibraryTags,
-  V2_ASSET_LIBRARY_CATEGORIES,
-  v2AssetEntityTypeForCategory,
-  v2AssetPreviewUrl,
-} from "../features/assets/v2AssetLibraryModel.ts";
-import { useRecommendedCatalog } from "../features/assets/useRecommendedCatalog.ts";
-import { useV2AssetLibrary } from "../features/assets/useV2AssetLibrary.ts";
-import type { V2AssetLibraryCategory, V2AssetLibraryEntityDetail, V2AssetLibraryEntitySummary, V2AssetLibraryScope } from "../types-v2.ts";
+import { CanonicalAssetViewer } from "../features/assets/CanonicalAssetViewer.tsx";
+import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCanvasAssets.ts";
+import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
+import type { V2AssetLibraryCategory } from "../types-v2.ts";
 import "./assets.css";
 
-type AssetPageScope = V2AssetLibraryScope;
+type AssetPageScope = "my" | "recommended";
 
-const AssetEntityViewer = lazy(() => import("../features/assets/AssetEntityViewer.tsx"));
-
-function messageForError(caught: unknown, fallback: string) {
-  return caught instanceof Error && caught.message ? caught.message : fallback;
-}
+const ASSET_CATEGORIES: Array<{ id: V2AssetLibraryCategory; label: string }> = [
+  { id: "characters", label: "Characters" },
+  { id: "scenes", label: "Scenes" },
+  { id: "props", label: "Props" },
+];
 
 export function AssetsPage() {
   const [scope, setScope] = useState<AssetPageScope>("my");
   const [category, setCategory] = useState<V2AssetLibraryCategory>("characters");
   const [search, setSearch] = useState("");
-  const [trashOpen, setTrashOpen] = useState(false);
-  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<V2AssetLibraryEntityDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
-  const [trashedEntities, setTrashedEntities] = useState<V2AssetLibraryEntitySummary[]>([]);
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const assetLibraryRef = useRef<HTMLElement | null>(null);
   const selectedCardRef = useRef<HTMLButtonElement | null>(null);
-  const entityCardRefsRef = useRef(new Map<string, HTMLButtonElement>());
-  const catalog = useRecommendedCatalog(scope === "recommended");
-  const recommendedReady = scope !== "recommended" || catalog.status?.status === "ready";
-  const library = useV2AssetLibrary({ scope, category, search, enabled: recommendedReady });
-  const fetchAssetDetail = library.fetchDetail;
+  const assetCardRefsRef = useRef(new Map<string, HTMLButtonElement>());
+  const library = useAgentCanvasAssets({ scope, category, mediaType: "image", search });
+  const displayedAssets = useMemo(
+    () => library.loading ? [] : library.items,
+    [library.items, library.loading],
+  );
+  const selectedAsset = useMemo(
+    () => displayedAssets.find((asset) => asset.id === selectedAssetId) ?? null,
+    [displayedAssets, selectedAssetId],
+  );
 
   const restoreViewerFocus = useCallback(() => {
     if (selectedCardRef.current?.isConnected) {
@@ -50,84 +41,41 @@ export function AssetsPage() {
     assetLibraryRef.current?.querySelector<HTMLButtonElement>('.v2-asset-library-tabs button[aria-selected="true"]')?.focus();
   }, []);
 
-  const closeDetail = useCallback(({ restoreFocus = true }: { restoreFocus?: boolean } = {}) => {
+  const closePreview = useCallback(({ restoreFocus = true }: { restoreFocus?: boolean } = {}) => {
     if (restoreFocus) restoreViewerFocus();
-    setSelectedEntityId(null);
-    setSelectedDetail(null);
-    setDetailLoading(false);
-    setFeedback(null);
+    setSelectedAssetId(null);
   }, [restoreViewerFocus]);
 
-  const displayedEntities = useMemo(() => {
-    if (library.loading) return [];
-    const currentEntities = library.entities.filter(
-      (entity) => entity.scope === scope && entity.library_category === category,
-    );
-    if (scope !== "my" || !trashOpen) return currentEntities.filter((entity) => entity.status !== "trashed");
-    const serverTrash = currentEntities.filter((entity) => entity.status === "trashed");
-    const ids = new Set(serverTrash.map((entity) => entity.entity_id));
-    return [
-      ...serverTrash,
-      ...trashedEntities.filter(
-        (entity) => entity.scope === scope
-          && entity.library_category === category
-          && !ids.has(entity.entity_id),
-      ),
-    ];
-  }, [category, library.entities, library.loading, scope, trashOpen, trashedEntities]);
-
-  const navigateSelectedEntity = useCallback((direction: -1 | 1) => {
-    if (!selectedEntityId || displayedEntities.length < 2) return;
-    const currentIndex = displayedEntities.findIndex((entity) => entity.entity_id === selectedEntityId);
+  const navigateSelectedAsset = useCallback((direction: -1 | 1) => {
+    if (!selectedAssetId || displayedAssets.length < 2) return;
+    const currentIndex = displayedAssets.findIndex((asset) => asset.id === selectedAssetId);
     if (currentIndex < 0) return;
-    const nextIndex = (currentIndex + direction + displayedEntities.length) % displayedEntities.length;
-    const nextEntity = displayedEntities[nextIndex];
-    if (!nextEntity) return;
-    selectedCardRef.current = entityCardRefsRef.current.get(nextEntity.entity_id) ?? null;
-    setSelectedDetail(null);
-    setDetailLoading(true);
-    setSelectedEntityId(nextEntity.entity_id);
-  }, [displayedEntities, selectedEntityId]);
-  const selectPreviousEntity = useCallback(() => navigateSelectedEntity(-1), [navigateSelectedEntity]);
-  const selectNextEntity = useCallback(() => navigateSelectedEntity(1), [navigateSelectedEntity]);
+    const nextIndex = (currentIndex + direction + displayedAssets.length) % displayedAssets.length;
+    const nextAsset = displayedAssets[nextIndex];
+    if (!nextAsset) return;
+    selectedCardRef.current = assetCardRefsRef.current.get(nextAsset.id) ?? null;
+    setSelectedAssetId(nextAsset.id);
+  }, [displayedAssets, selectedAssetId]);
 
   useEffect(() => {
-    if (!selectedEntityId) return;
-    let cancelled = false;
-    setDetailLoading(true);
-    setSelectedDetail(null);
-    setFeedback(null);
-    void fetchAssetDetail(selectedEntityId)
-      .then((detail) => { if (!cancelled) setSelectedDetail(detail); })
-      .catch((caught) => {
-        if (cancelled) return;
-        restoreViewerFocus();
-        setFeedback(messageForError(caught, "Could not load asset details."));
-        setSelectedEntityId(null);
-      })
-      .finally(() => { if (!cancelled) setDetailLoading(false); });
-    return () => { cancelled = true; };
-  }, [fetchAssetDetail, restoreViewerFocus, selectedEntityId]);
+    if (library.loading || !selectedAssetId || selectedAsset) return;
+    closePreview({ restoreFocus: false });
+  }, [closePreview, library.loading, selectedAsset, selectedAssetId]);
 
-  function selectEntity(entity: V2AssetLibraryEntitySummary, trigger: HTMLButtonElement) {
-    if (selectedEntityId === entity.entity_id) return;
+  function selectAsset(asset: AgentAssetBrowserItem, trigger: HTMLButtonElement) {
     selectedCardRef.current = trigger;
-    setSelectedDetail(null);
-    setDetailLoading(true);
-    setSelectedEntityId(entity.entity_id);
+    setSelectedAssetId(asset.id);
   }
 
   function changeScope(nextScope: AssetPageScope) {
     if (nextScope === scope) return;
-    setTrashOpen(false);
-    closeDetail({ restoreFocus: false });
+    closePreview({ restoreFocus: false });
     setScope(nextScope);
   }
 
   function changeCategory(nextCategory: V2AssetLibraryCategory) {
     if (nextCategory === category) return;
-    setTrashOpen(false);
-    closeDetail({ restoreFocus: false });
+    closePreview({ restoreFocus: false });
     setCategory(nextCategory);
   }
 
@@ -141,246 +89,64 @@ export function AssetsPage() {
         </div>
         <div className="v2-asset-library-actions">
           <input aria-label="Search assets" value={search} placeholder="Search assets" onChange={(event) => setSearch(event.currentTarget.value)} />
-          {scope === "my" ? <button className="small-action" type="button" onClick={() => setTrashOpen((value) => !value)}>{trashOpen ? "All assets" : "Trash"}</button> : null}
-          {scope === "my" ? <button className="send-btn" type="button" onClick={() => setUploadOpen(true)}>Upload</button> : null}
         </div>
       </div>
       <div className="v2-asset-library-categories" role="tablist" aria-label="Asset category">
-        {V2_ASSET_LIBRARY_CATEGORIES.map((item) => (
+        {ASSET_CATEGORIES.map((item) => (
           <button key={item.id} className={category === item.id ? "is-active" : ""} type="button" role="tab" aria-selected={category === item.id} onClick={() => changeCategory(item.id)}>{item.label}</button>
         ))}
       </div>
-      {scope === "recommended" && catalog.status?.status !== "ready" ? (
-        <CatalogInstallStatus status={catalog.status} error={catalog.error} onRetry={() => void catalog.refresh()} />
-      ) : null}
-      {feedback ? <p className="v2-asset-library-feedback" role="status">{feedback}</p> : null}
       <div className="v2-asset-library-layout">
         <div>
           {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
           {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
-          {!library.loading && !displayedEntities.length && (!catalog.status || catalog.status.status === "ready") ? <p className="asset-library-empty">No assets found.</p> : null}
+          {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
           <div className="v2-asset-library-grid">
-            {displayedEntities.map((entity) => (
-              <AssetEntityCard
-                key={entity.entity_id}
-                entity={entity}
-                selected={selectedEntityId === entity.entity_id}
+            {displayedAssets.map((asset) => (
+              <AssetCard
+                key={asset.id}
+                asset={asset}
+                selected={selectedAssetId === asset.id}
                 buttonRef={(button) => {
-                  if (button) entityCardRefsRef.current.set(entity.entity_id, button);
-                  else entityCardRefsRef.current.delete(entity.entity_id);
+                  if (button) assetCardRefsRef.current.set(asset.id, button);
+                  else assetCardRefsRef.current.delete(asset.id);
                 }}
-                onSelect={(trigger) => selectEntity(entity, trigger)}
+                onSelect={selectAsset}
               />
             ))}
           </div>
-          {library.nextCursor && !trashOpen ? <button className="small-action v2-asset-library-load-more" type="button" disabled={library.loadingMore} onClick={() => void library.loadMore()}>{library.loadingMore ? "Loading..." : "Load more"}</button> : null}
         </div>
       </div>
-      {selectedEntityId ? (
-        <Suspense
-          fallback={(
-            <AssetEntityViewerFallback
-              hasEntityNavigation={displayedEntities.length > 1}
-              onPreviousEntity={selectPreviousEntity}
-              onNextEntity={selectNextEntity}
-              onClose={closeDetail}
-            />
-          )}
-        >
-          <AssetEntityViewer
-            key={selectedEntityId}
-            detail={selectedDetail}
-            loading={detailLoading}
-            hasEntityNavigation={displayedEntities.length > 1}
-            onPreviousEntity={selectPreviousEntity}
-            onNextEntity={selectNextEntity}
-            onClose={closeDetail}
-          />
-        </Suspense>
+      {selectedAsset ? (
+        <CanonicalAssetViewer
+          item={selectedAsset}
+          hasAssetNavigation={displayedAssets.length > 1}
+          onPreviousAsset={() => navigateSelectedAsset(-1)}
+          onNextAsset={() => navigateSelectedAsset(1)}
+          onClose={closePreview}
+        />
       ) : null}
-      {uploadOpen ? <AssetUploadDialog category={category} onClose={() => setUploadOpen(false)} onUploaded={async () => { setUploadOpen(false); await library.refresh(); }} /> : null}
     </section>
   );
 }
 
-function CatalogInstallStatus({ status, error, onRetry }: { status: ReturnType<typeof useRecommendedCatalog>["status"]; error: string | null; onRetry: () => void }) {
-  const working = status?.status === "indexing";
-  return (
-    <div className={`v2-catalog-status ${error || status?.status === "invalid" ? "is-error" : ""}`}>
-      <span>{error || status?.message || (working ? "Indexing recommended assets..." : "Extract Recommended Assets to data/assets/catalogs/recommended/ and refresh.")}</span>
-      {status?.status === "invalid" || status?.status === "catalog_missing" || error ? <button className="small-action" type="button" onClick={onRetry}>Refresh</button> : null}
-    </div>
-  );
-}
-
-function AssetEntityCard({
-  entity,
+function AssetCard({
+  asset,
   selected,
   buttonRef,
   onSelect,
 }: {
-  entity: V2AssetLibraryEntitySummary;
+  asset: AgentAssetBrowserItem;
   selected: boolean;
   buttonRef: (button: HTMLButtonElement | null) => void;
-  onSelect: (trigger: HTMLButtonElement) => void;
+  onSelect: (asset: AgentAssetBrowserItem, trigger: HTMLButtonElement) => void;
 }) {
-  const previewUrl = v2AssetPreviewUrl(entity);
-  const previewMember = entity.preview_member;
   return (
-    <button ref={buttonRef} className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${entity.display_name}`} onClick={(event) => onSelect(event.currentTarget)}>
-      <AssetCardMedia
-        url={previewUrl}
-        videoUrl={previewMember?.public_url ?? previewUrl}
-        posterUrl={previewMember?.thumbnail_url ?? entity.preview_url ?? null}
-        mediaType={previewMember?.media_type}
-        label={entity.display_name}
-      />
-      <span className="v2-asset-entity-card-title">{entity.display_name}</span>
+    <button ref={buttonRef} className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${asset.displayName}`} onClick={(event) => onSelect(asset, event.currentTarget)}>
+      {asset.previewUrl
+        ? <img className="v2-asset-media" src={asset.previewUrl} alt={asset.displayName} loading="lazy" decoding="async" />
+        : <span className="v2-asset-media is-empty">{asset.displayName.slice(0, 1).toUpperCase()}</span>}
+      <span className="v2-asset-entity-card-title">{asset.displayName}</span>
     </button>
   );
-}
-
-export function AssetEntityViewerFallback({
-  hasEntityNavigation = false,
-  onPreviousEntity,
-  onNextEntity,
-  onClose,
-}: {
-  hasEntityNavigation?: boolean;
-  onPreviousEntity?: () => void;
-  onNextEntity?: () => void;
-  onClose: () => void;
-}) {
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyboard = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (hasEntityNavigation && event.key === "ArrowLeft") {
-        event.preventDefault();
-        onPreviousEntity?.();
-        return;
-      }
-      if (hasEntityNavigation && event.key === "ArrowRight") {
-        event.preventDefault();
-        onNextEntity?.();
-        return;
-      }
-      if (event.key === "Tab") {
-        event.preventDefault();
-        closeButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyboard);
-    const focusFrame = requestAnimationFrame(() => closeButtonRef.current?.focus());
-    return () => {
-      cancelAnimationFrame(focusFrame);
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyboard);
-    };
-  }, [hasEntityNavigation, onClose, onNextEntity, onPreviousEntity]);
-
-  return createPortal(
-    <div className="v2-asset-viewer-backdrop">
-      <button className="v2-asset-viewer-dismiss" type="button" aria-label="Dismiss asset viewer" onClick={onClose} />
-      <section className="v2-asset-viewer" role="dialog" aria-modal="true" aria-label="Asset viewer">
-        <button className="v2-asset-viewer-close" ref={closeButtonRef} type="button" aria-label="Close asset viewer" title="Close" onClick={onClose}><CloseIcon /></button>
-        <div className="v2-asset-viewer-stage is-loading">
-          Loading asset viewer...
-          {hasEntityNavigation ? (
-            <>
-              <button className="v2-asset-viewer-nav is-previous" type="button" aria-label="Previous asset" title="Previous asset" onClick={onPreviousEntity}><ChevronLeftIcon /></button>
-              <button className="v2-asset-viewer-nav is-next" type="button" aria-label="Next asset" title="Next asset" onClick={onNextEntity}><ChevronRightIcon /></button>
-            </>
-          ) : null}
-        </div>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
-function AssetCardMedia({
-  url,
-  videoUrl,
-  posterUrl,
-  mediaType,
-  label,
-}: {
-  url: string | null;
-  videoUrl: string | null;
-  posterUrl: string | null;
-  mediaType?: string | null;
-  label: string;
-}) {
-  if (!url) return <span className="v2-asset-media is-empty">{label.slice(0, 1).toUpperCase()}</span>;
-  if (mediaType === "video" && videoUrl) return <DeferredVideo className="v2-asset-media is-card" src={videoUrl} poster={posterUrl ?? undefined} muted playsInline />;
-  if (mediaType === "audio") return <span className="v2-asset-media is-empty">Audio</span>;
-  return <img className="v2-asset-media is-card" src={url} alt={label} loading="lazy" decoding="async" />;
-}
-
-function AssetUploadDialog({ category, onClose, onUploaded }: { category: V2AssetLibraryCategory; onClose: () => void; onUploaded: () => Promise<void> }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
-  const [tags, setTags] = useState("");
-  const [semanticTypes, setSemanticTypes] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function changeFiles(nextFiles: FileList | null) {
-    const next = Array.from(nextFiles ?? []);
-    setFiles(next);
-    setSemanticTypes((current) => next.map((file, index) => current[index] || defaultSemanticType(category, file)));
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!files.length) { setError("Choose one or more media files."); return; }
-    setBusy(true);
-    setError(null);
-    try {
-      const form = new FormData();
-      files.forEach((file) => form.append("files[]", file));
-      form.append("entity_type", v2AssetEntityTypeForCategory(category));
-      form.append("library_category", category);
-      semanticTypes.forEach((semanticType) => form.append("semantic_types[]", semanticType));
-      if (displayName.trim()) form.append("display_name", displayName.trim());
-      if (description.trim()) form.append("description", description.trim());
-      splitAssetLibraryTags(tags).forEach((tag) => form.append("tags[]", tag));
-      await v2Api.uploadAssetLibraryEntity(form);
-      await onUploaded();
-    } catch (caught) {
-      setError(messageForError(caught, "Upload failed. Your selected files and metadata are still available to edit."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="v2-asset-dialog-backdrop" role="presentation">
-      <form className="v2-asset-upload-dialog" onSubmit={(event) => void submit(event)}>
-        <div className="v2-asset-detail-heading"><h2>Upload Assets</h2><button className="icon-btn" type="button" aria-label="Close upload" onClick={onClose}>×</button></div>
-        <label><span>Files</span><input type="file" multiple accept="image/*,video/*,audio/*" onChange={(event) => changeFiles(event.currentTarget.files)} /></label>
-        <label><span>Name</span><input value={displayName} onChange={(event) => setDisplayName(event.currentTarget.value)} /></label>
-        <label><span>Description</span><textarea value={description} onChange={(event) => setDescription(event.currentTarget.value)} /></label>
-        <label><span>Tags</span><input value={tags} placeholder="campaign, reusable" onChange={(event) => setTags(event.currentTarget.value)} /></label>
-        {files.length ? <div className="v2-asset-upload-members">{files.map((file, index) => <label key={`${file.name}-${index}`}><span>{file.name}</span><input value={semanticTypes[index] ?? "reference"} onChange={(event) => setSemanticTypes((current) => current.map((value, itemIndex) => itemIndex === index ? event.currentTarget.value : value))} /></label>)}</div> : null}
-        {error ? <p className="v2-asset-library-feedback is-error">{error}</p> : null}
-        <div className="v2-asset-detail-actions"><button className="small-action" type="button" onClick={onClose}>Cancel</button><button className="send-btn" type="submit" disabled={busy}>{busy ? "Uploading..." : "Upload"}</button></div>
-      </form>
-    </div>
-  );
-}
-
-function defaultSemanticType(category: V2AssetLibraryCategory, file: File) {
-  if (category === "characters") return "character_main";
-  if (category === "scenes") return file.type.startsWith("video/") ? "scene_video" : "scene_main";
-  return file.type.startsWith("video/") ? "product_video" : "product_main";
 }
