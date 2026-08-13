@@ -147,17 +147,16 @@
   stroke-linejoin: round;
 }
 
-.home-hero-accent-writing__final-glyph {
+.home-hero-accent-writing__completion-glyph {
   opacity: 0;
-  transition: opacity 90ms linear;
 }
 
 .home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
   animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) var(--home-hero-accent-delay, 0ms) forwards;
 }
 
-.home-product-hero.is-motion-ready .home-hero-accent-writing__final-glyph {
-  animation: home-hero-accent-finalize 90ms linear var(--home-hero-accent-final-delay, 0ms) forwards;
+.home-product-hero.is-motion-ready .home-hero-accent-writing__completion-glyph {
+  animation: home-hero-accent-finalize 1ms linear var(--home-hero-accent-completion-delay, 0ms) forwards;
 }
 
 @keyframes home-hero-accent-write {
@@ -328,7 +327,7 @@
     stroke-dashoffset: 0 !important;
   }
 
-  .home-hero-accent-writing__final-glyph {
+  .home-hero-accent-writing__completion-glyph {
     opacity: 1 !important;
   }
 

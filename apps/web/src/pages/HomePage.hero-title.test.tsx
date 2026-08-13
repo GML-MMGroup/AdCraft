@@ -43,15 +43,13 @@ describe("HomePage hero title", () => {
     expect(writingSvg).toBeTruthy();
     expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
     expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
-    expect(writingSvg?.querySelector("mask")).toBeNull();
-    expect(writingSvg?.querySelectorAll("clipPath")).toHaveLength(1);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__clip-glyph")).toHaveLength(7);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(0);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__final-glyph")).toHaveLength(7);
+    expect(writingSvg?.querySelectorAll("mask")).toHaveLength(1);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(7);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(7);
     expect(writingSvg?.querySelector("text")).toBeNull();
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(0);
-    expect(writingSvg?.querySelector(".home-hero-accent-writing__completion")).toBeNull();
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(7);
   });
 
   it("plays the bundled product film when no environment override is configured", () => {
@@ -92,7 +90,7 @@ describe("HomePage hero title", () => {
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,
     );
     expect(styles).toMatch(
-      /\.home-hero-accent-writing__final-glyph\s*\{[^}]*opacity:\s*0;/s,
+      /\.home-hero-accent-writing__completion-glyph\s*\{[^}]*opacity:\s*0;/s,
     );
     expect(styles).toMatch(
       /@keyframes home-hero-accent-finalize\s*\{[\s\S]*?opacity:\s*1;/,
