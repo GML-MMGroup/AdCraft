@@ -167,11 +167,11 @@
 
 .home-product-hero__create {
   display: inline-flex;
-  min-height: 56px;
+  min-height: 44px;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   margin-top: 48px;
-  padding: 0 26px 0 22px;
+  padding: 0 18px 0 15px;
   border: 1px solid rgba(239, 233, 255, 0.74);
   border-radius: 8px;
   background: rgba(128, 107, 196, 0.3);
@@ -182,9 +182,11 @@
   will-change: transform, box-shadow;
 }
 
-.home-product-hero__create svg {
-  width: 18px;
-  height: 18px;
+.home-product-hero__create-icon {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  fill: currentColor;
 }
 
 .home-product-hero__create:hover {
