@@ -43,11 +43,14 @@ describe("HomePage hero title", () => {
     expect(writingSvg).toBeTruthy();
     expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
     expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(7);
+    expect(writingSvg?.querySelector("mask")).toBeNull();
+    expect(writingSvg?.querySelectorAll("clipPath")).toHaveLength(1);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__clip-glyph")).toHaveLength(7);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(0);
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__final-glyph")).toHaveLength(7);
     expect(writingSvg?.querySelector("text")).toBeNull();
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(12);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(7);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(0);
     expect(writingSvg?.querySelector(".home-hero-accent-writing__completion")).toBeNull();
   });
 
@@ -83,7 +86,7 @@ describe("HomePage hero title", () => {
       /\.home-product-hero__accent\s*\{[^}]*opacity:\s*1;[^}]*filter:\s*none;[^}]*will-change:\s*auto;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready :is\([\s\S]*?home-hero-accent-writing__stroke,[\s\S]*?home-hero-accent-writing__coverage[\s\S]*?\)\s*\{[^}]*home-hero-accent-write/s,
+      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*home-hero-accent-write/s,
     );
     expect(styles).toMatch(
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,

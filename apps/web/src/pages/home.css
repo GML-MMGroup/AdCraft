@@ -139,8 +139,7 @@
   overflow: visible;
 }
 
-.home-hero-accent-writing__stroke,
-.home-hero-accent-writing__coverage {
+.home-hero-accent-writing__stroke {
   fill: none;
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
@@ -150,12 +149,10 @@
 
 .home-hero-accent-writing__final-glyph {
   opacity: 0;
+  transition: opacity 90ms linear;
 }
 
-.home-product-hero.is-motion-ready :is(
-  .home-hero-accent-writing__stroke,
-  .home-hero-accent-writing__coverage
-) {
+.home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
   animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) var(--home-hero-accent-delay, 0ms) forwards;
 }
 
@@ -326,7 +323,7 @@
     transform: none !important;
   }
 
-  :is(.home-hero-accent-writing__stroke, .home-hero-accent-writing__coverage) {
+  .home-hero-accent-writing__stroke {
     animation: none !important;
     stroke-dashoffset: 0 !important;
   }
