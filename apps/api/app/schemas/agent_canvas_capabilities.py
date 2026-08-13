@@ -215,16 +215,60 @@ class CompactRequirementControlsV2(_CapabilityModel):
         return tuple(patches)
 
 
-class CompactRequirementPatchV2(_CapabilityModel):
+class CompactExplicitElementValueV3(_CapabilityModel):
+    presence: Literal["include", "exclude", "unspecified"]
+    source_quote: str = Field(min_length=1, max_length=2_048)
+
+
+class CompactExplicitElementsV3(_CapabilityModel):
+    # Omission means no new decision. Explicit null remains invalid because each field
+    # has a non-nullable annotation even though its omission default is None.
+    product: CompactExplicitElementValueV3 = Field(default=None)
+    prop: CompactExplicitElementValueV3 = Field(default=None)
+    character: CompactExplicitElementValueV3 = Field(default=None)
+    scene: CompactExplicitElementValueV3 = Field(default=None)
+    world_setting: CompactExplicitElementValueV3 = Field(default=None)
+    script: CompactExplicitElementValueV3 = Field(default=None)
+    storyboard: CompactExplicitElementValueV3 = Field(default=None)
+    video: CompactExplicitElementValueV3 = Field(default=None)
+    audio: CompactExplicitElementValueV3 = Field(default=None)
+
+
+class CompactGlobalRequirementDirectivePatchV3(_CapabilityModel):
+    source_quote: str = Field(min_length=1, max_length=2_048)
+    normalized_meaning: str = Field(min_length=1, max_length=2_048)
+    scope_kind: Literal["global"]
+    strength: Literal["hard", "preference"]
+
+
+class CompactCapabilityRequirementDirectivePatchV3(_CapabilityModel):
+    source_quote: str = Field(min_length=1, max_length=2_048)
+    normalized_meaning: str = Field(min_length=1, max_length=2_048)
+    scope_kind: Literal["capability"]
+    capability_id: CapabilityIdV1
+    strength: Literal["hard", "preference"]
+
+
+_CompactRequirementDirectiveVariantV3 = Annotated[
+    CompactGlobalRequirementDirectivePatchV3 | CompactCapabilityRequirementDirectivePatchV3,
+    Field(discriminator="scope_kind"),
+]
+
+
+class CompactRequirementDirectivePatchV3(RootModel[_CompactRequirementDirectiveVariantV3]):
+    """One schema-discriminated compact creative directive."""
+
+
+class CompactRequirementPatchV3(_CapabilityModel):
     controls_to_set: CompactRequirementControlsV2 = Field(
         default_factory=CompactRequirementControlsV2
     )
-    directives_to_add: tuple[CompactRequirementDirectivePatchV1, ...] = Field(
+    directives_to_add: tuple[CompactRequirementDirectivePatchV3, ...] = Field(
         default=(), max_length=16
     )
 
 
-class CompactTurnIntentDecisionV2(_CapabilityModel):
+class CompactTurnIntentDecisionV3(_CapabilityModel):
     mode: Literal[
         "ordinary_conversation",
         "guided_production",
@@ -233,17 +277,10 @@ class CompactTurnIntentDecisionV2(_CapabilityModel):
     ]
     objective: str = Field(min_length=1, max_length=2_048)
     requested_capability: CapabilityIdV1 | None = None
-    explicit_elements: tuple[ExplicitElementIntentV2, ...] = Field(default=(), max_length=16)
+    explicit_elements: CompactExplicitElementsV3 = Field(default_factory=CompactExplicitElementsV3)
     assistant_message: str | None = Field(default=None, max_length=2_000)
-    requirement_patch: CompactRequirementPatchV2 | None = None
+    requirement_patch: CompactRequirementPatchV3 | None = None
     response_locale: BCP47Tag | None = None
-
-    @model_validator(mode="after")
-    def validate_unique_explicit_elements(self) -> "CompactTurnIntentDecisionV2":
-        element_kinds = tuple(item.element_kind for item in self.explicit_elements)
-        if len(element_kinds) != len(set(element_kinds)):
-            raise ValueError("Explicit element decisions must use unique element kinds.")
-        return self
 
 
 class TurnIntentDecisionV2(_CapabilityModel):
@@ -269,7 +306,7 @@ class TurnIntentDecisionV2(_CapabilityModel):
 
 
 def expand_compact_turn_intent(
-    compact: CompactTurnIntentDecisionV2,
+    compact: CompactTurnIntentDecisionV3,
     *,
     current_response_locale: BCP47Tag | None = None,
 ) -> TurnIntentDecisionV2:
@@ -282,23 +319,46 @@ def expand_compact_turn_intent(
             controls_to_set=compact_patch.controls_to_set.to_requirement_patches(),
             directives_to_add=tuple(
                 RequirementDirectivePatchV1(
-                    source_quote=item.source_quote,
-                    normalized_meaning=item.normalized_meaning,
-                    scope_kind=item.scope_kind,
-                    capability_ids=(item.capability_id,) if item.capability_id else (),
+                    source_quote=item.root.source_quote,
+                    normalized_meaning=item.root.normalized_meaning,
+                    scope_kind=item.root.scope_kind,
+                    capability_ids=(
+                        (item.root.capability_id,)
+                        if isinstance(item.root, CompactCapabilityRequirementDirectivePatchV3)
+                        else ()
+                    ),
                     target_node_ids=(),
-                    strength=item.strength,
+                    strength=item.root.strength,
                 )
                 for item in compact_patch.directives_to_add
             ),
             directive_ids_to_supersede=(),
             conflicts=(),
         )
+    explicit_elements = tuple(
+        ExplicitElementIntentV2(
+            element_kind=element_kind,
+            presence=element.presence,
+            source_quote=element.source_quote,
+        )
+        for element_kind in (
+            "product",
+            "prop",
+            "character",
+            "scene",
+            "world_setting",
+            "script",
+            "storyboard",
+            "video",
+            "audio",
+        )
+        if (element := getattr(compact.explicit_elements, element_kind)) is not None
+    )
     return TurnIntentDecisionV2(
         mode=compact.mode,
         objective=compact.objective,
         requested_capability=compact.requested_capability,
-        explicit_elements=compact.explicit_elements,
+        explicit_elements=explicit_elements,
         assistant_message=compact.assistant_message,
         requirement_patch=requirement_patch,
         response_locale=compact.response_locale or current_response_locale or "und",

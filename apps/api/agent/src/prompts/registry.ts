@@ -84,7 +84,9 @@ function instructionForOperation(operation: string): string {
     return [
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
       "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "Represent explicit_elements as one strict object with only the optional product, prop, character, scene, world_setting, script, storyboard, video, and audio keys. Every present key must contain presence and an exact source_quote.",
       "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
+      "Represent each directive as either scope_kind global without capability_id or scope_kind capability with exactly one registered capability_id.",
       "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
       "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
       "Use requirement_patch only for durable creative or output facts supported by exact current-message quotes. Never emit continue, pause, skip, defer, resume, hold, reuse-existing-Drafts, stage-ordering, execution-timing, retry, or export mechanics as Requirement directives; express transient intent through routing or objective, or leave it to the supplied typed action.",

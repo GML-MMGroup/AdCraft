@@ -49,7 +49,7 @@ from app.schemas.agent_canvas_capabilities import (
     CAPABILITY_RESULT_CONTRACTS,
     CapabilityInvocationContextV2,
     CapabilityReferencePlanV1,
-    CompactTurnIntentDecisionV2,
+    CompactTurnIntentDecisionV3,
     NextActionCommandV1,
     NextActionContextV1,
     TurnIntentContextV2,
@@ -390,7 +390,7 @@ class PiVideoAgentGateway:
         value, _ = self._run(
             operation="decide_turn_intent",
             context=context,
-            contract=CompactTurnIntentDecisionV2,
+            contract=CompactTurnIntentDecisionV3,
             identity_fields={
                 "workflow_id": context.workflow_id,
                 "conversation_id": context.conversation_id,
@@ -400,7 +400,7 @@ class PiVideoAgentGateway:
             },
         )
         return expand_compact_turn_intent(
-            CompactTurnIntentDecisionV2.model_validate(value),
+            CompactTurnIntentDecisionV3.model_validate(value),
             current_response_locale=context.current_response_locale,
         )
 

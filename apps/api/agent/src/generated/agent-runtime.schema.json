@@ -7390,6 +7390,61 @@
       "title": "CompactAudioModeControlV2",
       "type": "object"
     },
+    "CompactCapabilityRequirementDirectivePatchV3": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_id": {
+          "enum": [
+            "bgm_direction",
+            "character_design",
+            "product_design",
+            "prop_design",
+            "quick_media",
+            "scene_design",
+            "script_authoring",
+            "storyboard_design",
+            "video_direction",
+            "world_setting"
+          ],
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "const": "capability",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_id",
+        "normalized_meaning",
+        "scope_kind",
+        "source_quote",
+        "strength"
+      ],
+      "title": "CompactCapabilityRequirementDirectivePatchV3",
+      "type": "object"
+    },
     "CompactCharacterCountControlV2": {
       "additionalProperties": false,
       "properties": {
@@ -7436,6 +7491,75 @@
       "title": "CompactDurationSecondsControlV2",
       "type": "object"
     },
+    "CompactExplicitElementValueV3": {
+      "additionalProperties": false,
+      "properties": {
+        "presence": {
+          "enum": [
+            "exclude",
+            "include",
+            "unspecified"
+          ],
+          "title": "Presence",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "presence",
+        "source_quote"
+      ],
+      "title": "CompactExplicitElementValueV3",
+      "type": "object"
+    },
+    "CompactExplicitElementsV3": {
+      "additionalProperties": false,
+      "properties": {
+        "audio": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "character": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "product": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "prop": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "scene": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "script": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "storyboard": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "video": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        },
+        "world_setting": {
+          "$ref": "#/$defs/CompactExplicitElementValueV3",
+          "default": null
+        }
+      },
+      "title": "CompactExplicitElementsV3",
+      "type": "object"
+    },
     "CompactFrameRateControlV2": {
       "additionalProperties": false,
       "properties": {
@@ -7457,6 +7581,44 @@
         "value"
       ],
       "title": "CompactFrameRateControlV2",
+      "type": "object"
+    },
+    "CompactGlobalRequirementDirectivePatchV3": {
+      "additionalProperties": false,
+      "properties": {
+        "normalized_meaning": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Normalized Meaning",
+          "type": "string"
+        },
+        "scope_kind": {
+          "const": "global",
+          "title": "Scope Kind",
+          "type": "string"
+        },
+        "source_quote": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Source Quote",
+          "type": "string"
+        },
+        "strength": {
+          "enum": [
+            "hard",
+            "preference"
+          ],
+          "title": "Strength",
+          "type": "string"
+        }
+      },
+      "required": [
+        "normalized_meaning",
+        "scope_kind",
+        "source_quote",
+        "strength"
+      ],
+      "title": "CompactGlobalRequirementDirectivePatchV3",
       "type": "object"
     },
     "CompactOutputResolutionControlV2": {
@@ -7648,7 +7810,26 @@
       "title": "CompactRequirementDirectivePatchV1",
       "type": "object"
     },
-    "CompactRequirementPatchV2": {
+    "CompactRequirementDirectivePatchV3": {
+      "description": "One schema-discriminated compact creative directive.",
+      "discriminator": {
+        "mapping": {
+          "capability": "#/$defs/CompactCapabilityRequirementDirectivePatchV3",
+          "global": "#/$defs/CompactGlobalRequirementDirectivePatchV3"
+        },
+        "propertyName": "scope_kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CompactGlobalRequirementDirectivePatchV3"
+        },
+        {
+          "$ref": "#/$defs/CompactCapabilityRequirementDirectivePatchV3"
+        }
+      ],
+      "title": "CompactRequirementDirectivePatchV3"
+    },
+    "CompactRequirementPatchV3": {
       "additionalProperties": false,
       "properties": {
         "controls_to_set": {
@@ -7657,14 +7838,14 @@
         "directives_to_add": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/CompactRequirementDirectivePatchV1"
+            "$ref": "#/$defs/CompactRequirementDirectivePatchV3"
           },
           "maxItems": 16,
           "title": "Directives To Add",
           "type": "array"
         }
       },
-      "title": "CompactRequirementPatchV2",
+      "title": "CompactRequirementPatchV3",
       "type": "object"
     },
     "CompactSceneCountControlV2": {
@@ -7736,7 +7917,7 @@
       "title": "CompactStoryboardSequenceCountControlV2",
       "type": "object"
     },
-    "CompactTurnIntentDecisionV2": {
+    "CompactTurnIntentDecisionV3": {
       "additionalProperties": false,
       "properties": {
         "assistant_message": {
@@ -7753,13 +7934,7 @@
           "title": "Assistant Message"
         },
         "explicit_elements": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/ExplicitElementIntentV2"
-          },
-          "maxItems": 16,
-          "title": "Explicit Elements",
-          "type": "array"
+          "$ref": "#/$defs/CompactExplicitElementsV3"
         },
         "mode": {
           "enum": [
@@ -7804,7 +7979,7 @@
         "requirement_patch": {
           "anyOf": [
             {
-              "$ref": "#/$defs/CompactRequirementPatchV2"
+              "$ref": "#/$defs/CompactRequirementPatchV3"
             },
             {
               "type": "null"
@@ -7831,7 +8006,7 @@
         "mode",
         "objective"
       ],
-      "title": "CompactTurnIntentDecisionV2",
+      "title": "CompactTurnIntentDecisionV3",
       "type": "object"
     },
     "CompactVideoSegmentCountControlV2": {
@@ -20878,7 +21053,7 @@
     "AgentCanvasTextOutput",
     "AgentCommandPlanDraftV2",
     "VideoParameterIntentV2",
-    "CompactTurnIntentDecisionV2",
+    "CompactTurnIntentDecisionV3",
     "TurnIntentDecisionV2",
     "NextActionCommandV1",
     "DecisionBundleDraftV1",
@@ -20941,7 +21116,7 @@
       "max_handoffs": 0,
       "max_skill_context_bytes": 8192,
       "operation": "decide_turn_intent",
-      "result_contract_name": "CompactTurnIntentDecisionV2",
+      "result_contract_name": "CompactTurnIntentDecisionV3",
       "style_projection_role": null
     },
     {

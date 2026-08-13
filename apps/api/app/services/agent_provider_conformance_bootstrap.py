@@ -10,7 +10,7 @@ from uuid import uuid4
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.persistence.database import V2Database
 from app.schemas.agent_canvas_capabilities import (
-    CompactTurnIntentDecisionV2,
+    CompactTurnIntentDecisionV3,
     TurnIntentContextV2,
 )
 from app.schemas.agent_runtime import (
@@ -76,8 +76,8 @@ class AgentProviderConformanceBootstrapService:
             now=timestamp,
             model_ref=model_ref,
             context=context,
-            contract_name="CompactTurnIntentDecisionV2",
-            contract_schema=CompactTurnIntentDecisionV2.model_json_schema(),
+            contract_name="CompactTurnIntentDecisionV3",
+            contract_schema=CompactTurnIntentDecisionV3.model_json_schema(),
             audit_metadata={
                 "run_purpose": "provider_conformance",
                 "report_schema_version": 2,

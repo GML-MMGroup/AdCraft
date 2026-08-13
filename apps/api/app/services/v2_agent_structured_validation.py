@@ -77,7 +77,7 @@ class V2AgentStructuredValidationService:
             run.validation_context,
             normalized.model_dump(
                 mode="json",
-                exclude_unset=run.contract_name == "CompactTurnIntentDecisionV2",
+                exclude_unset=run.contract_name == "CompactTurnIntentDecisionV3",
             ),
         )
         if run.validation_profile == "canary_reject_first_v1":
@@ -278,10 +278,10 @@ def _intake_source_quotes(value: dict[str, Any]) -> tuple[tuple[str, str], ...]:
                 if isinstance(directive, dict) and isinstance(directive.get("source_quote"), str)
             )
     explicit_elements = value.get("explicit_elements")
-    if isinstance(explicit_elements, list):
+    if isinstance(explicit_elements, dict):
         quotes.extend(
-            (f"explicit_elements.{index}.source_quote", element["source_quote"])
-            for index, element in enumerate(explicit_elements)
+            (f"explicit_elements.{element_kind}.source_quote", element["source_quote"])
+            for element_kind, element in explicit_elements.items()
             if isinstance(element, dict) and isinstance(element.get("source_quote"), str)
         )
     return tuple(quotes)

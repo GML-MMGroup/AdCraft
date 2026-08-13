@@ -135,7 +135,7 @@ def _capability_definitions() -> tuple[VideoAgentOperationDefinitionV1, ...]:
 
 
 _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
-    _definition("decide_turn_intent", "TurnIntentContextV2", "CompactTurnIntentDecisionV2"),
+    _definition("decide_turn_intent", "TurnIntentContextV2", "CompactTurnIntentDecisionV3"),
     _definition("decide_next_action", "NextActionContextV1", "NextActionCommandV1"),
     _definition("command_replan", "AgentCommandReplanContextV2", "AgentCommandPlanDraftV2"),
     _definition(

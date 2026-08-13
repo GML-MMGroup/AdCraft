@@ -20,7 +20,7 @@ from app.schemas.agent_runtime import (
 from app.schemas.agent_canvas_capabilities import (
     BgmProposalResultV1,
     CharacterProposalResultV1,
-    CompactTurnIntentDecisionV2,
+    CompactTurnIntentDecisionV3,
     NextActionCommandV1,
     ProductProposalResultV1,
     PropProposalResultV1,
@@ -106,7 +106,7 @@ _EXPLICIT_CONTRACT_MODELS: tuple[type[BaseModel], ...] = (
     AgentCanvasTextOutput,
     AgentCommandPlanDraftV2,
     VideoParameterIntentV2,
-    CompactTurnIntentDecisionV2,
+    CompactTurnIntentDecisionV3,
     TurnIntentDecisionV2,
     NextActionCommandV1,
     DecisionBundleDraftV1,
