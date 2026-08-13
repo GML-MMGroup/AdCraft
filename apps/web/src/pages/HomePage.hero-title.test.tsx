@@ -36,22 +36,20 @@ describe("HomePage hero title", () => {
       "ONE SENTENCE",
       "BECOMES AN",
     ]);
-    expect(lines[0]?.classList.contains("home-product-hero__title-line--left-to-right")).toBe(true);
-    expect(lines[1]?.classList.contains("home-product-hero__title-line--right-to-left")).toBe(true);
+    expect(lines[0]?.getAttribute("data-home-hero-queue-origin")).toBe("line-start");
+    expect(lines[1]?.getAttribute("data-home-hero-queue-origin")).toBe("line-start");
     expect(
       Array.from(lines[0]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
         .map((character) => character.dataset.homeHeroCharacterOrder),
-    ).toEqual(Array.from({ length: "ONE SENTENCE".length }, (_, index) => String(index)));
+    ).toEqual(["10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "0"]);
     expect(
       Array.from(lines[1]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
         .map((character) => character.dataset.homeHeroCharacterOrder),
-    ).toEqual(Array.from({ length: "BECOMES AN".length }, (_, index) => String("BECOMES AN".length - index - 1)));
-    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--bump")).toHaveLength(
-      "ONE SENTENCE".length - 1,
-    );
-    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump")).toHaveLength(
-      "BECOMES AN".length - 1,
-    );
+    ).toEqual(["8", "7", "6", "5", "4", "3", "2", "1", "0"]);
+    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(9);
+    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(7);
+    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(9);
+    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(7);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");

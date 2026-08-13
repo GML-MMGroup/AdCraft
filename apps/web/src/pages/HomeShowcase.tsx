@@ -1,4 +1,11 @@
-import type { CSSProperties, RefObject } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type RefObject,
+} from "react";
 import { demoProjects, images, imageSrc } from "../data";
 import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
 import { HeroAccentWriting } from "./HeroAccentWriting";
@@ -59,35 +66,152 @@ function motionStyle(property: "--home-reveal-delay", value: string): CSSPropert
   return { [property]: value } as CSSProperties;
 }
 
-type HeroTitleMotionDirection = "left-to-right" | "right-to-left";
+type HeroQueueCharacter = {
+  characterIndex: number;
+  motionOrder: number;
+  slotIndex: number;
+  shouldCollide: boolean;
+  bumpOrder?: number;
+};
 
-function heroCharacterStyle(motionOrder: number, canBump: boolean): CSSProperties {
+function createHeroQueueCharacters(line: string): HeroQueueCharacter[] {
+  const characters = Array.from(line);
+  const motionOrderByCharacterIndex = new Map<number, number>();
+  let motionOrder = 0;
+
+  for (let characterIndex = characters.length - 1; characterIndex >= 0; characterIndex -= 1) {
+    if (characters[characterIndex] !== " ") {
+      motionOrderByCharacterIndex.set(characterIndex, motionOrder);
+      motionOrder += 1;
+    }
+  }
+
+  let slotIndex = 0;
+  return characters.flatMap((character, characterIndex) => {
+    if (character === " ") return [];
+
+    const queueCharacter: HeroQueueCharacter = {
+      characterIndex,
+      motionOrder: motionOrderByCharacterIndex.get(characterIndex) ?? 0,
+      slotIndex,
+      shouldCollide: characters[characterIndex + 1] !== undefined
+        && characters[characterIndex + 1] !== " ",
+      bumpOrder: characters[characterIndex - 1] && characters[characterIndex - 1] !== " "
+        ? motionOrderByCharacterIndex.get(characterIndex - 1)
+        : undefined,
+    };
+    slotIndex += 1;
+    return [queueCharacter];
+  });
+}
+
+function useHeroQueueStartOffsets(
+  lineRef: RefObject<HTMLSpanElement | null>,
+  characterRefs: RefObject<(HTMLSpanElement | null)[]>,
+  characterCount: number,
+) {
+  const [startOffsets, setStartOffsets] = useState<number[]>([]);
+
+  const measure = useCallback(() => {
+    const line = lineRef.current;
+    if (!line) return;
+
+    const originLeft = line.getBoundingClientRect().left;
+    const nextOffsets = Array.from({ length: characterCount }, (_, slotIndex) => {
+      const character = characterRefs.current[slotIndex];
+      return character ? originLeft - character.getBoundingClientRect().left : null;
+    });
+    if (nextOffsets.some((offset) => offset === null)) return;
+
+    const measuredOffsets = nextOffsets as number[];
+    setStartOffsets((previousOffsets) => {
+      const hasChanged = previousOffsets.length !== measuredOffsets.length
+        || previousOffsets.some((offset, index) => Math.abs(offset - measuredOffsets[index]!) > 0.1);
+      return hasChanged ? measuredOffsets : previousOffsets;
+    });
+  }, [characterCount, characterRefs, lineRef]);
+
+  useLayoutEffect(() => {
+    const line = lineRef.current;
+    if (!line) return;
+
+    measure();
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? undefined
+      : new ResizeObserver(measure);
+    resizeObserver?.observe(line);
+    window.addEventListener("resize", measure);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [lineRef, measure]);
+
+  return startOffsets;
+}
+
+function heroCharacterStyle(
+  motionOrder: number,
+  startOffset: number | undefined,
+  bumpOrder: number | undefined,
+): CSSProperties {
   return {
     "--home-hero-character-index": String(motionOrder),
-    ...(canBump ? { "--home-hero-character-bump-index": String(motionOrder + 1) } : {}),
+    "--home-hero-character-start-offset": `${startOffset ?? 0}px`,
+    ...(bumpOrder === undefined ? {} : { "--home-hero-character-bump-index": String(bumpOrder) }),
   } as CSSProperties;
 }
 
-function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroTitleMotionDirection }) {
+function HeroMainTitleLine({ line }: { line: string }) {
   const characters = Array.from(line);
+  const queueCharacters = createHeroQueueCharacters(line);
+  const queueCharacterByIndex = new Map(
+    queueCharacters.map((queueCharacter) => [queueCharacter.characterIndex, queueCharacter]),
+  );
+  const lineRef = useRef<HTMLSpanElement>(null);
+  const characterRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const startOffsets = useHeroQueueStartOffsets(lineRef, characterRefs, queueCharacters.length);
+  const isQueueReady = startOffsets.length === queueCharacters.length;
 
-  return characters.map((character, characterIndex) => {
-    const motionOrder = direction === "left-to-right"
-      ? characterIndex
-      : characters.length - characterIndex - 1;
-    const canBump = motionOrder < characters.length - 1;
+  return (
+    <span
+      ref={lineRef}
+      className="home-product-hero__title-line home-product-hero__title-line--queue"
+      data-home-hero-queue-origin="line-start"
+      data-home-hero-queue-ready={isQueueReady ? "true" : "false"}
+      aria-hidden="true"
+    >
+      {characters.map((character, characterIndex) => {
+        if (character === " ") return "\u00a0";
 
-    return (
-      <span
-        key={`${character}-${characterIndex}`}
-        className={`home-product-hero__title-character ${canBump ? "home-product-hero__title-character--bump" : ""}`}
-        data-home-hero-character-order={motionOrder}
-        style={heroCharacterStyle(motionOrder, canBump)}
-      >
-        <span className="home-product-hero__title-character__glyph">{character === " " ? "\u00a0" : character}</span>
-      </span>
-    );
-  });
+        const queueCharacter = queueCharacterByIndex.get(characterIndex);
+        if (!queueCharacter) return null;
+
+        return (
+          <span
+            key={`${character}-${characterIndex}`}
+            ref={(element) => {
+              characterRefs.current[queueCharacter.slotIndex] = element;
+            }}
+            className={[
+              "home-product-hero__title-character",
+              queueCharacter.shouldCollide ? "home-product-hero__title-character--collision" : "",
+              queueCharacter.bumpOrder === undefined ? "" : "home-product-hero__title-character--bump-target",
+            ].filter(Boolean).join(" ")}
+            data-home-hero-character-order={queueCharacter.motionOrder}
+            style={heroCharacterStyle(
+              queueCharacter.motionOrder,
+              startOffsets[queueCharacter.slotIndex],
+              queueCharacter.bumpOrder,
+            )}
+          >
+            <span className="home-product-hero__title-character__glyph">{character}</span>
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
@@ -98,35 +222,21 @@ function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
       aria-label="One Sentence Becomes an Ad film."
       data-home-typography-region="heroMain"
     >
-      {heroTitleLines.map((line, lineIndex) => {
-        const direction: HeroTitleMotionDirection | null = lineIndex === 0
-          ? "left-to-right"
-          : lineIndex === 1
-            ? "right-to-left"
-            : null;
-
-        return (
-          <span
-            key={line}
-            className={[
-              "home-product-hero__title-line",
-              direction ? `home-product-hero__title-line--${direction}` : "",
-              lineIndex === 2 ? "home-product-hero__accent" : "",
-              lineIndex === 2 && useWritingAccent ? "home-product-hero__accent--writing" : "",
-            ].filter(Boolean).join(" ")}
-            data-accent-text={lineIndex === 2 ? line : undefined}
-            data-home-typography-region={lineIndex === 2 ? "heroAccent" : undefined}
-            data-testid={lineIndex === 2 ? "home-hero-accent" : undefined}
-            aria-hidden="true"
-          >
-            {lineIndex === 2 && useWritingAccent
-              ? <HeroAccentWriting />
-              : direction
-                ? <HeroMainTitleLine line={line} direction={direction} />
-                : line}
-          </span>
-        );
-      })}
+      <HeroMainTitleLine line={heroTitleLines[0]} />
+      <HeroMainTitleLine line={heroTitleLines[1]} />
+      <span
+        className={[
+          "home-product-hero__title-line",
+          "home-product-hero__accent",
+          useWritingAccent ? "home-product-hero__accent--writing" : "",
+        ].filter(Boolean).join(" ")}
+        data-accent-text={heroTitleLines[2]}
+        data-home-typography-region="heroAccent"
+        data-testid="home-hero-accent"
+        aria-hidden="true"
+      >
+        {useWritingAccent ? <HeroAccentWriting /> : heroTitleLines[2]}
+      </span>
     </h1>
   );
 }
