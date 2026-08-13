@@ -130,7 +130,7 @@ html[data-theme="dark"] .app-shell--cosmic {
       rgba(6, 7, 10, 0.62) 100%
     ),
     linear-gradient(180deg, rgba(5, 6, 9, 0.26), rgba(5, 6, 9, 0.68)),
-    url("/assets/home-dark-black-hole.webp") 50% 57% / cover scroll no-repeat;
+    url("/assets/home-dark-black-hole.webp") 50% 64% / cover scroll no-repeat;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.54);
   backdrop-filter: none;
 }
@@ -286,7 +286,7 @@ html[data-theme="dark"] .card-meta {
 
 @media (max-width: 820px) {
   html[data-theme="dark"] .app-shell--cosmic {
-    background-position: 50% 54%;
+    background-position: 50% 61%;
   }
 }
 
