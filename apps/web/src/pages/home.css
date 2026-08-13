@@ -740,12 +740,13 @@ html[data-theme="dark"] .home-product-hero__description {
 }
 
 html[data-theme="dark"] .home-product-hero__create {
-  border-color: rgba(233, 235, 247, 0.38);
-  background: rgba(217, 219, 234, 0.16);
+  border-color: rgba(255, 255, 255, 0.075);
+  background: transparent;
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
-  -webkit-backdrop-filter: blur(2px) saturate(112%) brightness(1.03);
-  backdrop-filter: blur(2px) saturate(112%) brightness(1.03);
-  color: #202235;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  will-change: auto;
+  color: rgba(255, 255, 255, 0.96);
 }
 
 html[data-theme="dark"] .home-product-hero__create:hover {
@@ -760,7 +761,7 @@ html[data-theme="dark"] .home-product-hero__create:active {
 }
 
 html[data-theme="dark"] .home-product-hero__create:focus-visible {
-  outline-color: rgba(32, 34, 53, 0.62);
+  outline-color: rgba(255, 255, 255, 0.24);
 }
 
 html[data-theme="dark"] .home-product-film::after {
