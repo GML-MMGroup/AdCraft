@@ -135,10 +135,16 @@ describe("theme styles", () => {
       'html[data-theme="dark"] .app-shell--cosmic',
     );
 
-    expect(darkCosmicShell).toContain('url("/assets/home-dark-cosmic.webp")');
+    expect(darkCosmicShell).toContain('url("/assets/home-dark-black-hole.webp")');
     expect(darkCosmicShell).not.toMatch(/\bfixed\b/);
-    expect(source("styles/base.css")).not.toContain("home-dark-cosmic.webp");
-    expect(source("pages/home.css")).not.toContain("home-dark-cosmic.webp");
+    expect(source("styles/base.css")).not.toContain("home-dark-black-hole.webp");
+    expect(source("pages/home.css")).not.toContain("home-dark-black-hole.webp");
+    expect(source("pages/home-typography-lab.css")).toContain(
+      'url("/assets/home-dark-black-hole.webp")',
+    );
+    expect(source("pages/home-typography-lab.css")).not.toContain(
+      "home-dark-cosmic.webp",
+    );
   });
 
   test("keeps clear-glass navigation buttons inside the home navigation rail", () => {
