@@ -162,6 +162,7 @@
 
 .home-product-hero.is-motion-enabled .home-product-hero__description {
   opacity: 0;
+  filter: blur(10px);
 }
 
 .home-product-hero.is-motion-ready .home-product-hero__description {
@@ -171,10 +172,12 @@
 @keyframes home-hero-body-fade {
   from {
     opacity: 0;
+    filter: blur(10px);
   }
 
   to {
     opacity: 1;
+    filter: blur(0);
   }
 }
 
