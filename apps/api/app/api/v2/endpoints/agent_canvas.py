@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -174,6 +173,12 @@ from app.services.agent_canvas_assets import (
     AgentCanvasAssetService,
     deterministic_media_facts_probe,
 )
+from app.services.agent_canvas_accepted_background import (
+    AcceptedBackgroundOperation,
+    AcceptedBackgroundResourceType,
+    AcceptedBackgroundWork,
+    AgentCanvasAcceptedBackgroundRunner,
+)
 from app.services.agent_canvas_auto_run import AgentCanvasAutoRunDispatcher
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
@@ -295,7 +300,6 @@ from app.services.pi_agent_runtime_client import PiAgentRuntimeClient
 from app.services.v2_provider_executor import V2ProviderExecutor
 
 
-logger = logging.getLogger(__name__)
 router = APIRouter(tags=["v2-agent-canvas"])
 
 
@@ -338,6 +342,7 @@ class AgentCanvasRuntime:
     execution_settings: AgentCanvasExecutionSettingsService
     auto_run_dispatcher: AgentCanvasAutoRunDispatcher
     working_documents: AgentWorkingDocumentService
+    accepted_background: AgentCanvasAcceptedBackgroundRunner
 
 
 def get_agent_canvas_runtime(
@@ -1087,6 +1092,7 @@ def create_agent_canvas_runtime(
         execution_settings=execution_settings,
         auto_run_dispatcher=auto_run_dispatcher,
         working_documents=working_documents,
+        accepted_background=AgentCanvasAcceptedBackgroundRunner(),
     )
 
 
@@ -1487,9 +1493,17 @@ def materialize_variation_draft(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     if result.run is not None and result.run.get("execution_id"):
+        execution_id = str(result.run["execution_id"])
         background_tasks.add_task(
-            runtime.scheduler.resume,
-            str(result.run["execution_id"]),
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.VARIATION_EXECUTION_RESUME,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.EXECUTION,
+                resource_id=execution_id,
+                callback=runtime.scheduler.resume,
+                args=(execution_id,),
+            ),
         )
     response.headers["ETag"] = workflow_etag(workflow_id, result.workflow_revision)
     return result
@@ -1572,8 +1586,15 @@ def export_editing_node(
         )
         if accepted.status == "queued":
             background_tasks.add_task(
-                runtime.editing_exports.resume,
-                accepted.export_id,
+                runtime.accepted_background.run,
+                AcceptedBackgroundWork(
+                    operation=AcceptedBackgroundOperation.EDITING_EXPORT_RESUME,
+                    workflow_id=workflow_id,
+                    resource_type=AcceptedBackgroundResourceType.EDITING_EXPORT,
+                    resource_id=accepted.export_id,
+                    callback=runtime.editing_exports.resume,
+                    args=(accepted.export_id,),
+                ),
             )
         return accepted
     except V2PersistenceError as error:
@@ -1952,10 +1973,15 @@ def submit_chat_message(
         raise _persistence_http_error(error) from error
     if not accepted.replayed:
         background_tasks.add_task(
-            _process_agent_turn_and_resume,
-            runtime,
-            workflow_id,
-            accepted.turn_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.CHAT_TURN_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
         )
     return accepted
 
@@ -1985,13 +2011,27 @@ def advance_guidance(
     if not accepted.replayed:
         if accepted.retry_of_turn_id is not None:
             background_tasks.add_task(
-                _process_agent_turn_and_resume,
-                runtime,
-                workflow_id,
-                accepted.turn_id,
+                runtime.accepted_background.run,
+                AcceptedBackgroundWork(
+                    operation=AcceptedBackgroundOperation.GUIDANCE_RETRY_TURN_PROCESS,
+                    workflow_id=workflow_id,
+                    resource_type=AcceptedBackgroundResourceType.TURN,
+                    resource_id=accepted.turn_id,
+                    callback=_process_agent_turn_and_resume,
+                    args=(runtime, workflow_id, accepted.turn_id),
+                ),
             )
         else:
-            background_tasks.add_task(_drain_agent_canvas_continuations, runtime)
+            background_tasks.add_task(
+                runtime.accepted_background.run,
+                AcceptedBackgroundWork(
+                    operation=AcceptedBackgroundOperation.GUIDANCE_CONTINUATION_DRAIN,
+                    workflow_id=workflow_id,
+                    resource_type=AcceptedBackgroundResourceType.TURN,
+                    resource_id=accepted.turn_id,
+                    callback=runtime.continuation_worker.run_once,
+                ),
+            )
     return accepted
 
 
@@ -2036,10 +2076,15 @@ def act_on_decision_bundle(
         raise _persistence_http_error(error) from error
     if not accepted.replayed:
         background_tasks.add_task(
-            _process_agent_turn_and_resume,
-            runtime,
-            workflow_id,
-            accepted.turn_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.DECISION_BUNDLE_TURN_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
         )
     return accepted
 
@@ -2103,10 +2148,15 @@ def retry_chat_turn(
         raise _persistence_http_error(error) from error
     if not accepted.replayed:
         background_tasks.add_task(
-            _process_agent_turn_and_resume,
-            runtime,
-            workflow_id,
-            accepted.turn_id,
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.FAILED_TURN_RETRY_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
         )
     return accepted
 
@@ -2135,12 +2185,18 @@ def act_on_chat_proposal(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    background_tasks.add_task(
-        _process_agent_turn_and_resume,
-        runtime,
-        workflow_id,
-        accepted.turn_id,
-    )
+    if not accepted.replayed:
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.PROPOSAL_TURN_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
+        )
     return accepted
 
 
@@ -2170,12 +2226,18 @@ def act_on_command_plan(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    background_tasks.add_task(
-        _process_agent_turn_and_resume,
-        runtime,
-        workflow_id,
-        accepted.turn_id,
-    )
+    if not accepted.replayed:
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.COMMAND_PLAN_TURN_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
+        )
     return accepted
 
 
@@ -2206,12 +2268,18 @@ def apply_guided_action(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    background_tasks.add_task(
-        _process_agent_turn_and_resume,
-        runtime,
-        workflow_id,
-        accepted.turn_id,
-    )
+    if not accepted.replayed:
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.GUIDED_ACTION_TURN_PROCESS,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.TURN,
+                resource_id=accepted.turn_id,
+                callback=_process_agent_turn_and_resume,
+                args=(runtime, workflow_id, accepted.turn_id),
+            ),
+        )
     return accepted
 
 
@@ -2311,7 +2379,17 @@ def start_canvas_run(
             request,
             idempotency_key=idempotency_key,
         )
-        background_tasks.add_task(runtime.scheduler.resume, accepted.execution_id)
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.CANVAS_RUN_RESUME,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.EXECUTION,
+                resource_id=accepted.execution_id,
+                callback=runtime.scheduler.resume,
+                args=(accepted.execution_id,),
+            ),
+        )
         return accepted
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
@@ -2505,25 +2583,6 @@ def _process_agent_turn_and_resume(
     active = runtime.runtime_repository.get_active_execution(workflow_id)
     if active is not None:
         runtime.scheduler.resume(active.execution_id)
-
-
-def _drain_agent_canvas_continuations(runtime: AgentCanvasRuntime) -> None:
-    """Drain accepted work without raising through a completed HTTP response."""
-
-    started_at = datetime.now(timezone.utc)
-    try:
-        runtime.continuation_worker.run_once()
-    except Exception as error:  # noqa: BLE001 - background task boundary.
-        code = error.code if isinstance(error, V2PersistenceError) else "continuation_drain_failed"
-        elapsed_ms = max(
-            0,
-            int((datetime.now(timezone.utc) - started_at).total_seconds() * 1_000),
-        )
-        logger.error(
-            "Agent Canvas continuation drain failed code=%s elapsed_ms=%s",
-            code,
-            elapsed_ms,
-        )
 
 
 def _persist_text_document(
