@@ -147,6 +147,12 @@ describe("HomePage hero title", () => {
     expect(darkAccentPseudoStyles).not.toMatch(/\bbackground\s*:/);
   });
 
+  it("keeps the Recent Projects card group free of an outer border", () => {
+    expect(styles).toMatch(
+      /\.recent-strip\s*\{[^}]*border:\s*0;[^}]*background:\s*rgba\(255, 255, 255, 0\.38\);/s,
+    );
+  });
+
   it("keeps the dark home CTA transparent until interaction", () => {
     expect(styles).toMatch(
       /html\[data-theme="dark"\] \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*none;[^}]*backdrop-filter:\s*none;[^}]*will-change:\s*auto;[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,

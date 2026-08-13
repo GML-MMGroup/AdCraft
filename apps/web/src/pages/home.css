@@ -368,7 +368,7 @@
 }
 
 .recent-strip {
-  border: 1px solid var(--stroke);
+  border: 0;
   background: rgba(255, 255, 255, 0.38);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(22px) saturate(1.12);
