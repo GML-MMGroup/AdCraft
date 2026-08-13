@@ -37,7 +37,7 @@ describe("HomePage hero title", () => {
       "BECOMES AN",
     ]);
     expect(lines[0]?.getAttribute("data-home-hero-queue-origin")).toBe("line-start");
-    expect(lines[1]?.getAttribute("data-home-hero-queue-origin")).toBe("line-start");
+    expect(lines[1]?.getAttribute("data-home-hero-queue-origin")).toBe("line-end");
     expect(
       Array.from(lines[0]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
         .map((character) => character.dataset.homeHeroCharacterOrder),
@@ -45,11 +45,11 @@ describe("HomePage hero title", () => {
     expect(
       Array.from(lines[1]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
         .map((character) => character.dataset.homeHeroCharacterOrder),
-    ).toEqual(["8", "7", "6", "5", "4", "3", "2", "1", "0"]);
-    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(9);
-    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(7);
-    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(9);
-    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(7);
+    ).toEqual(["0", "1", "2", "3", "4", "5", "6", "7", "8"]);
+    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(0);
+    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--collision")).toHaveLength(0);
+    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(0);
+    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump-target")).toHaveLength(0);
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");

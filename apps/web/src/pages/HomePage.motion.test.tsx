@@ -228,7 +228,7 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(0);
   });
 
-  it("queues every hero character from the shared line-start origin", () => {
+  it("queues title lines from opposite edges without collision effects", () => {
     expect(styles).toMatch(
       /\.home-product-hero__title-line\s*\{[^}]*filter:\s*none;[^}]*white-space:\s*nowrap;/s,
     );
@@ -250,15 +250,9 @@ describe("HomePage motion", () => {
     expect(styles).not.toMatch(
       /home-hero-spotlight-focus/,
     );
-    expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\[data-home-hero-queue-ready="true"\]\s+\.home-product-hero__title-character--collision\s+\.home-product-hero__title-character__glyph\s*\{[^}]*animation-name:\s*home-hero-character-queue-collide/s,
-    );
-    expect(styles).toMatch(
-      /@keyframes home-hero-character-queue-collide\s*\{[\s\S]*?translateX\(var\(--home-hero-character-start-offset\)\)[\s\S]*?translateX\(var\(--home-hero-character-collision-offset\)\)[\s\S]*?translateX\(var\(--home-hero-character-rebound-offset\)\)[\s\S]*?transform:\s*none;/,
-    );
-    expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\[data-home-hero-queue-ready="true"\]\s+\.home-product-hero__title-character--bump-target\s*\{[^}]*home-hero-character-bump-target[^}]*var\(--home-hero-character-bump-index\)/s,
-    );
+    expect(styles).not.toContain("home-hero-character-queue-collide");
+    expect(styles).not.toContain("home-hero-character-bump-target");
+    expect(styles).not.toContain("home-hero-character-collision-offset");
     expect(styles).toMatch(
       /\.home-product-hero\s*\{[^}]*--home-hero-character-stagger:\s*250ms;[^}]*--home-hero-accent-start-delay:\s*3020ms;/s,
     );

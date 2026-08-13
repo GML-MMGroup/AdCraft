@@ -70,16 +70,26 @@ type HeroQueueCharacter = {
   characterIndex: number;
   motionOrder: number;
   slotIndex: number;
-  shouldCollide: boolean;
-  bumpOrder?: number;
 };
 
-function createHeroQueueCharacters(line: string): HeroQueueCharacter[] {
+type HeroQueueDirection = "from-left" | "from-right";
+
+function createHeroQueueCharacters(
+  line: string,
+  direction: HeroQueueDirection,
+): HeroQueueCharacter[] {
   const characters = Array.from(line);
   const motionOrderByCharacterIndex = new Map<number, number>();
   let motionOrder = 0;
 
-  for (let characterIndex = characters.length - 1; characterIndex >= 0; characterIndex -= 1) {
+  const startIndex = direction === "from-left" ? characters.length - 1 : 0;
+  const endIndex = direction === "from-left" ? -1 : characters.length;
+  const step = direction === "from-left" ? -1 : 1;
+  for (
+    let characterIndex = startIndex;
+    characterIndex !== endIndex;
+    characterIndex += step
+  ) {
     if (characters[characterIndex] !== " ") {
       motionOrderByCharacterIndex.set(characterIndex, motionOrder);
       motionOrder += 1;
@@ -94,11 +104,6 @@ function createHeroQueueCharacters(line: string): HeroQueueCharacter[] {
       characterIndex,
       motionOrder: motionOrderByCharacterIndex.get(characterIndex) ?? 0,
       slotIndex,
-      shouldCollide: characters[characterIndex + 1] !== undefined
-        && characters[characterIndex + 1] !== " ",
-      bumpOrder: characters[characterIndex - 1] && characters[characterIndex - 1] !== " "
-        ? motionOrderByCharacterIndex.get(characterIndex - 1)
-        : undefined,
     };
     slotIndex += 1;
     return [queueCharacter];
@@ -109,6 +114,7 @@ function useHeroQueueStartOffsets(
   lineRef: RefObject<HTMLSpanElement | null>,
   characterRefs: RefObject<(HTMLSpanElement | null)[]>,
   characterCount: number,
+  direction: HeroQueueDirection,
 ) {
   const [startOffsets, setStartOffsets] = useState<number[]>([]);
 
@@ -116,10 +122,16 @@ function useHeroQueueStartOffsets(
     const line = lineRef.current;
     if (!line) return;
 
-    const originLeft = line.getBoundingClientRect().left;
+    const lineRect = line.getBoundingClientRect();
+    const origin = direction === "from-left" ? lineRect.left : lineRect.right;
     const nextOffsets = Array.from({ length: characterCount }, (_, slotIndex) => {
       const character = characterRefs.current[slotIndex];
-      return character ? originLeft - character.getBoundingClientRect().left : null;
+      if (!character) return null;
+
+      const characterRect = character.getBoundingClientRect();
+      return direction === "from-left"
+        ? origin - characterRect.left
+        : origin - characterRect.right;
     });
     if (nextOffsets.some((offset) => offset === null)) return;
 
@@ -129,7 +141,7 @@ function useHeroQueueStartOffsets(
         || previousOffsets.some((offset, index) => Math.abs(offset - measuredOffsets[index]!) > 0.1);
       return hasChanged ? measuredOffsets : previousOffsets;
     });
-  }, [characterCount, characterRefs, lineRef]);
+  }, [characterCount, characterRefs, direction, lineRef]);
 
   useLayoutEffect(() => {
     const line = lineRef.current;
@@ -154,31 +166,34 @@ function useHeroQueueStartOffsets(
 function heroCharacterStyle(
   motionOrder: number,
   startOffset: number | undefined,
-  bumpOrder: number | undefined,
 ): CSSProperties {
   return {
     "--home-hero-character-index": String(motionOrder),
     "--home-hero-character-start-offset": `${startOffset ?? 0}px`,
-    ...(bumpOrder === undefined ? {} : { "--home-hero-character-bump-index": String(bumpOrder) }),
   } as CSSProperties;
 }
 
-function HeroMainTitleLine({ line }: { line: string }) {
+function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroQueueDirection }) {
   const characters = Array.from(line);
-  const queueCharacters = createHeroQueueCharacters(line);
+  const queueCharacters = createHeroQueueCharacters(line, direction);
   const queueCharacterByIndex = new Map(
     queueCharacters.map((queueCharacter) => [queueCharacter.characterIndex, queueCharacter]),
   );
   const lineRef = useRef<HTMLSpanElement>(null);
   const characterRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const startOffsets = useHeroQueueStartOffsets(lineRef, characterRefs, queueCharacters.length);
+  const startOffsets = useHeroQueueStartOffsets(
+    lineRef,
+    characterRefs,
+    queueCharacters.length,
+    direction,
+  );
   const isQueueReady = startOffsets.length === queueCharacters.length;
 
   return (
     <span
       ref={lineRef}
       className="home-product-hero__title-line home-product-hero__title-line--queue"
-      data-home-hero-queue-origin="line-start"
+      data-home-hero-queue-origin={direction === "from-left" ? "line-start" : "line-end"}
       data-home-hero-queue-ready={isQueueReady ? "true" : "false"}
       aria-hidden="true"
     >
@@ -194,16 +209,11 @@ function HeroMainTitleLine({ line }: { line: string }) {
             ref={(element) => {
               characterRefs.current[queueCharacter.slotIndex] = element;
             }}
-            className={[
-              "home-product-hero__title-character",
-              queueCharacter.shouldCollide ? "home-product-hero__title-character--collision" : "",
-              queueCharacter.bumpOrder === undefined ? "" : "home-product-hero__title-character--bump-target",
-            ].filter(Boolean).join(" ")}
+            className="home-product-hero__title-character"
             data-home-hero-character-order={queueCharacter.motionOrder}
             style={heroCharacterStyle(
               queueCharacter.motionOrder,
               startOffsets[queueCharacter.slotIndex],
-              queueCharacter.bumpOrder,
             )}
           >
             <span className="home-product-hero__title-character__glyph">{character}</span>
@@ -222,8 +232,8 @@ function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
       aria-label="One Sentence Becomes an Ad film."
       data-home-typography-region="heroMain"
     >
-      <HeroMainTitleLine line={heroTitleLines[0]} />
-      <HeroMainTitleLine line={heroTitleLines[1]} />
+      <HeroMainTitleLine line={heroTitleLines[0]} direction="from-left" />
+      <HeroMainTitleLine line={heroTitleLines[1]} direction="from-right" />
       <span
         className={[
           "home-product-hero__title-line",
