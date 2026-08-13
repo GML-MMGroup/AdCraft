@@ -108,6 +108,7 @@ from app.schemas.agent_operation_recovery import AgentOperationFailureV2
 from app.schemas.agent_working_documents import AgentWorkingDocumentV2
 from app.schemas.language import BCP47Tag, canonicalize_bcp47_tag
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.services.agent_canvas_production_journey import initial_production_journey
 
 
@@ -2820,32 +2821,39 @@ class AgentCanvasConversationRepository:
                     workflow_id=str(turn["workflow_id"]),
                     entry_type="concept_proposal",
                     content=f"Review {len(proposal.options)} {proposal.proposal_kind} option(s).",
-                    metadata={
-                        "proposal_id": proposal_id,
-                        "proposal_kind": proposal.proposal_kind,
-                        "capability_id": proposal.capability_id,
-                        "capability_display_name": proposal.capability_display_name,
-                        "video_skill_run_id": _turn_skill_run_id(turn),
-                        "topic_id": proposal.topic_id or _proposal_topic_id(proposal.proposal_kind),
-                        "target_node_id": proposal.target_node_id,
-                        "target_node_revision": proposal.target_node_revision,
-                        "proposal_purpose": proposal.proposal_purpose,
-                        "creative_direction_snapshot_id": creative_direction_snapshot_id,
-                        "proposal_revision": 1,
-                        "options": [
-                            {
-                                "option_id": option.option_id,
-                                "title": option.title,
-                                "public_summary": option.public_summary,
-                                "key_decisions": list(option.key_decisions),
-                            }
-                            for option in proposal.options
-                        ],
-                        "proposed_references": [
-                            reference.model_dump(mode="json")
-                            for reference in proposal.proposed_references
-                        ],
-                    },
+                    metadata=build_presentation_metadata(
+                        message_key="concept_proposal.review",
+                        message_args={"option_count": len(proposal.options)},
+                        response_locale=str(session_row["response_locale"]),
+                        presentation_key=f"proposal:{proposal_id}",
+                        base={
+                            "proposal_id": proposal_id,
+                            "proposal_kind": proposal.proposal_kind,
+                            "capability_id": proposal.capability_id,
+                            "capability_display_name": proposal.capability_display_name,
+                            "video_skill_run_id": _turn_skill_run_id(turn),
+                            "topic_id": proposal.topic_id
+                            or _proposal_topic_id(proposal.proposal_kind),
+                            "target_node_id": proposal.target_node_id,
+                            "target_node_revision": proposal.target_node_revision,
+                            "proposal_purpose": proposal.proposal_purpose,
+                            "creative_direction_snapshot_id": creative_direction_snapshot_id,
+                            "proposal_revision": 1,
+                            "options": [
+                                {
+                                    "option_id": option.option_id,
+                                    "title": option.title,
+                                    "public_summary": option.public_summary,
+                                    "key_decisions": list(option.key_decisions),
+                                }
+                                for option in proposal.options
+                            ],
+                            "proposed_references": [
+                                reference.model_dump(mode="json")
+                                for reference in proposal.proposed_references
+                            ],
+                        },
+                    ),
                     created_at=now,
                 )
                 self._events.append_in_transaction(
@@ -3118,7 +3126,13 @@ class AgentCanvasConversationRepository:
             workflow_id=workflow_id,
             entry_type="planning_progress",
             content="Planning the next creative action.",
-            metadata={"envelope_id": envelope_id, "operation": "next_action"},
+            metadata=build_presentation_metadata(
+                message_key="planning_progress.next_action",
+                message_args={},
+                response_locale=str(session["response_locale"]),
+                presentation_key=f"planning:{envelope_id}",
+                base={"envelope_id": envelope_id, "operation": "next_action"},
+            ),
             created_at=now,
         )
         self._events.append_in_transaction(
@@ -3299,7 +3313,17 @@ class AgentCanvasConversationRepository:
                     workflow_id=proposal.workflow_id,
                     entry_type="action_receipt",
                     content=receipt.summary,
-                    metadata={"action_receipt": receipt.model_dump(mode="json")},
+                    metadata=build_presentation_metadata(
+                        message_key=(
+                            "action.topic_deferred"
+                            if action == "defer_topic"
+                            else "action.element_excluded"
+                        ),
+                        message_args={},
+                        response_locale=str(session["response_locale"]),
+                        presentation_key=f"receipt:{receipt.receipt_id}",
+                        base={"action_receipt": receipt.model_dump(mode="json")},
+                    ),
                     created_at=now,
                 )
                 if continuation is not None:
@@ -3415,7 +3439,10 @@ class AgentCanvasConversationRepository:
                         .values(
                             content=receipt.summary,
                             metadata_json=_dump(
-                                {"action_receipt": receipt.model_dump(mode="json")}
+                                {
+                                    **metadata,
+                                    "action_receipt": receipt.model_dump(mode="json"),
+                                }
                             ),
                         )
                     )
@@ -3522,16 +3549,25 @@ class AgentCanvasConversationRepository:
                     workflow_id=str(turn["workflow_id"]),
                     entry_type="expert_activity",
                     content=display_name,
-                    metadata={
-                        "activity_id": activity_id,
-                        "capability_id": capability_id,
-                        "operation": operation,
-                        "capability_display_name": display_name,
-                        "status": "working",
-                        "conversation_id": str(turn["conversation_id"]),
-                        "created_at": now,
-                        **(event_details or {}),
-                    },
+                    metadata=build_presentation_metadata(
+                        message_key="expert_activity.working",
+                        message_args={"capability_display_name": display_name},
+                        response_locale=_guidance_response_locale(
+                            connection,
+                            str(turn["workflow_id"]),
+                        ),
+                        presentation_key=f"activity:{activity_id}",
+                        base={
+                            "activity_id": activity_id,
+                            "capability_id": capability_id,
+                            "operation": operation,
+                            "capability_display_name": display_name,
+                            "status": "working",
+                            "conversation_id": str(turn["conversation_id"]),
+                            "created_at": now,
+                            **(event_details or {}),
+                        },
+                    ),
                     created_at=now,
                 )
         except SQLAlchemyError as error:
@@ -3611,15 +3647,30 @@ class AgentCanvasConversationRepository:
                     workflow_id=str(row["workflow_id"]),
                     entry_type="expert_activity",
                     content=str(row["display_name"]),
-                    metadata={
-                        "activity_id": activity_id,
-                        "capability_id": str(row["capability_id"]),
-                        "operation": str(row["operation"]),
-                        "capability_display_name": str(row["display_name"]),
-                        "status": status,
-                        "error_code": error_code,
-                        **(event_details or {}),
-                    },
+                    metadata=build_presentation_metadata(
+                        message_key=(
+                            "expert_activity.completed"
+                            if status == "completed"
+                            else "expert_activity.failed"
+                        ),
+                        message_args={
+                            "capability_display_name": str(row["display_name"]),
+                        },
+                        response_locale=_guidance_response_locale(
+                            connection,
+                            str(row["workflow_id"]),
+                        ),
+                        presentation_key=f"activity:{activity_id}",
+                        base={
+                            "activity_id": activity_id,
+                            "capability_id": str(row["capability_id"]),
+                            "operation": str(row["operation"]),
+                            "capability_display_name": str(row["display_name"]),
+                            "status": status,
+                            "error_code": error_code,
+                            **(event_details or {}),
+                        },
+                    ),
                     created_at=now,
                 )
         except V2PersistenceError:
@@ -4455,6 +4506,15 @@ def _append_timeline_entry(
             created_at=created_at,
         )
     )
+
+
+def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
+    value = connection.execute(
+        select(AgentCanvasGuidanceSessionRow.response_locale).where(
+            AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+        )
+    ).scalar_one_or_none()
+    return str(value or "und")
 
 
 def _skill_run(

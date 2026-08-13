@@ -11,6 +11,7 @@ from typing import cast
 from uuid import uuid4
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.agent_canvas_auto_run_repository import (
@@ -80,6 +81,7 @@ from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_requirement_directives import (
     canonicalize_requirement_directives,
 )
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.services.agent_canvas_requirements import (
     update_requirement_compatibility_projection_in_transaction,
 )
@@ -678,15 +680,27 @@ class AgentCanvasMaterializationRepository:
                             connection,
                             str(receipt.action_id),
                         )
+                        response_locale = _guidance_response_locale(
+                            connection,
+                            receipt.workflow_id,
+                        )
                         _append_timeline_entry(
                             connection,
                             conversation_id=str(receipt_turn["conversation_id"]),
                             workflow_id=receipt.workflow_id,
                             entry_type="action_receipt",
                             content=receipt.summary,
-                            metadata={
-                                "action_receipt": receipt.model_dump(mode="json"),
-                            },
+                            metadata=build_presentation_metadata(
+                                message_key="draft.materialized",
+                                message_args={
+                                    "created_node_count": len(receipt.created_node_ids),
+                                },
+                                response_locale=response_locale,
+                                presentation_key=f"receipt:{receipt.receipt_id}",
+                                base={
+                                    "action_receipt": receipt.model_dump(mode="json"),
+                                },
+                            ),
                             created_at=now,
                         )
                     if fault_injector is not None:
@@ -1270,13 +1284,22 @@ class AgentCanvasMaterializationRepository:
                             speaker="adcraft_video_agent",
                             content="The selected direction is being prepared as an editable Draft.",
                             metadata_json=json.dumps(
-                                {
-                                    "proposal_id": envelope.proposal_id,
-                                    "materialization_id": envelope.materialization_id,
-                                    "option_id": envelope.selected_option.option_id,
-                                    "capability_id": envelope.capability_id,
-                                    "status": "queued",
-                                },
+                                build_presentation_metadata(
+                                    message_key=None,
+                                    message_args={},
+                                    response_locale=_guidance_response_locale(
+                                        connection,
+                                        envelope.workflow_id,
+                                    ),
+                                    presentation_key=(f"planning:{envelope.materialization_id}"),
+                                    base={
+                                        "proposal_id": envelope.proposal_id,
+                                        "materialization_id": envelope.materialization_id,
+                                        "option_id": envelope.selected_option.option_id,
+                                        "capability_id": envelope.capability_id,
+                                        "status": "queued",
+                                    },
+                                ),
                                 separators=(",", ":"),
                                 sort_keys=True,
                             ),
@@ -1502,6 +1525,15 @@ class AgentCanvasMaterializationRepository:
 
     def events_cursor(self, workflow_id: str) -> int:
         return self._events.max_seq(workflow_id)
+
+
+def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
+    value = connection.execute(
+        select(AgentCanvasGuidanceSessionRow.response_locale).where(
+            AgentCanvasGuidanceSessionRow.workflow_id == workflow_id
+        )
+    ).scalar_one_or_none()
+    return str(value or "und")
 
 
 def _projection(row) -> ProposalMaterializationProjectionV2:

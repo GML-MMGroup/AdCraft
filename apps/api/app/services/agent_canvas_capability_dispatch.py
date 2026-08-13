@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_capabilities import (
     ValidatedNextActionV1,
 )
 from app.services.agent_canvas_requirement_projection import requirement_projection_digest
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -223,14 +224,22 @@ class CapabilityDispatchService:
                         speaker="adcraft_video_agent",
                         content=f"{command.definition.display_name} is working.",
                         metadata_json=json.dumps(
-                            {
-                                "activity_id": activity_id,
-                                "turn_id": capability_turn_id,
-                                "capability_id": capability_id,
-                                "capability_display_name": command.definition.display_name,
-                                "operation": command.definition.operation,
-                                "status": "working",
-                            },
+                            build_presentation_metadata(
+                                message_key="expert_activity.working",
+                                message_args={
+                                    "capability_display_name": command.definition.display_name,
+                                },
+                                response_locale=context_snapshot.response_locale,
+                                presentation_key=f"activity:{activity_id}",
+                                base={
+                                    "activity_id": activity_id,
+                                    "turn_id": capability_turn_id,
+                                    "capability_id": capability_id,
+                                    "capability_display_name": command.definition.display_name,
+                                    "operation": command.definition.operation,
+                                    "status": "working",
+                                },
+                            ),
                             separators=(",", ":"),
                             sort_keys=True,
                         ),

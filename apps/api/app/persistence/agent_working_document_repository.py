@@ -22,6 +22,7 @@ from app.persistence.models import (
     AgentWorkingDocumentRow,
     AgentCanvasChatEntryRow,
     AgentCanvasConversationRow,
+    AgentCanvasGuidanceSessionRow,
 )
 from app.schemas.agent_working_documents import (
     AgentWorkingDocumentContentV2,
@@ -32,6 +33,7 @@ from app.schemas.agent_working_documents import (
     StoryboardProductionPlanContentV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
 class AgentWorkingDocumentRepository:
@@ -502,14 +504,25 @@ def _append_timeline_reference(
         )
         + 1
     )
-    metadata = {
-        "type": "agent_document_reference",
-        "document_id": document.document_id,
-        "document_kind": document.kind,
-        "revision": document.revision,
-        "content_digest": document.content_digest,
-        "title": document.title,
-    }
+    response_locale = connection.execute(
+        select(AgentCanvasGuidanceSessionRow.response_locale).where(
+            AgentCanvasGuidanceSessionRow.session_id == document.guidance_session_id
+        )
+    ).scalar_one_or_none()
+    metadata = build_presentation_metadata(
+        message_key=None,
+        message_args={},
+        response_locale=str(response_locale or "und"),
+        presentation_key=f"document:{document.document_id}",
+        base={
+            "type": "agent_document_reference",
+            "document_id": document.document_id,
+            "document_kind": document.kind,
+            "revision": document.revision,
+            "content_digest": document.content_digest,
+            "title": document.title,
+        },
+    )
     connection.execute(
         insert(AgentCanvasChatEntryRow).values(
             entry_id=f"entry_{uuid4().hex}",

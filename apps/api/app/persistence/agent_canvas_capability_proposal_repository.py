@@ -30,6 +30,7 @@ from app.schemas.agent_canvas_creative_session import (
     canonical_guidance_topic_kind,
 )
 from app.schemas.v2_persistence import V2EventInsert
+from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
 
 _PROPOSAL_KIND = {
@@ -316,14 +317,21 @@ class AgentCanvasCapabilityProposalRepository:
                         speaker="adcraft_video_agent",
                         content=f"Review {len(options)} option(s).",
                         metadata_json=json.dumps(
-                            {
-                                "proposal_id": proposal_id,
-                                "capability_id": envelope.capability_id,
-                                "capability_display_name": CAPABILITY_DISPLAY_NAMES[
-                                    envelope.capability_id
-                                ],
-                                "options": public_options,
-                            },
+                            build_presentation_metadata(
+                                message_key="concept_proposal.review",
+                                message_args={"option_count": len(options)},
+                                response_locale=envelope.response_locale,
+                                presentation_key=f"proposal:{proposal_id}",
+                                base={
+                                    "proposal_id": proposal_id,
+                                    "capability_id": envelope.capability_id,
+                                    "capability_display_name": CAPABILITY_DISPLAY_NAMES[
+                                        envelope.capability_id
+                                    ],
+                                    "proposal_revision": 1,
+                                    "options": public_options,
+                                },
+                            ),
                             separators=(",", ":"),
                             sort_keys=True,
                         ),
