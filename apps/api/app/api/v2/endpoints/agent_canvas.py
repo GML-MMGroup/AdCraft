@@ -1022,6 +1022,9 @@ def create_agent_canvas_runtime(
 
     def execute_materialization(envelope_id: str, lease_guard) -> object:
         envelope = materialization_repository.get_envelope(envelope_id)
+        recovered = materialization_publisher.resume_committed(envelope, lease_guard)
+        if recovered is not None:
+            return recovered
         materialization_repository.mark_working(envelope)
         if isinstance(envelope, ProposalPublicationEnvelopeV1):
             return publication_runner.execute(envelope, lease_guard=lease_guard)

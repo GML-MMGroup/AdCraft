@@ -244,14 +244,16 @@ def materialization_context_from_state(
     conversations: AgentCanvasConversationRepository,
     workflows: AgentCanvasWorkflowRepository,
     asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
+    validate_references: bool = True,
 ) -> CapabilityMaterializationContextV1:
     """Project safe current facts for the selected capability only."""
 
-    validate_materialization_reference_snapshots(
-        envelope,
-        workflows=workflows,
-        asset_resolver=asset_resolver,
-    )
+    if validate_references:
+        validate_materialization_reference_snapshots(
+            envelope,
+            workflows=workflows,
+            asset_resolver=asset_resolver,
+        )
 
     proposal = conversations.get_proposal(envelope.proposal_id)
     session = conversations.get_guidance_session(envelope.workflow_id)
@@ -287,7 +289,7 @@ def materialization_context_from_state(
             "required": reference.required,
             "display_order": reference.display_order,
         }
-        if reference.source_kind == "node":
+        if reference.source_kind == "node" and validate_references:
             node = workflows.get_node(envelope.workflow_id, reference.source_id)
             summary.update(
                 {
@@ -308,7 +310,7 @@ def materialization_context_from_state(
             source_identity_facts = canonical_node_reference_facts(node)
             if source_identity_facts:
                 summary["source_identity_facts"] = source_identity_facts
-        elif asset_resolver is not None:
+        elif reference.source_kind != "node" and asset_resolver is not None and validate_references:
             asset = asset_resolver(reference.source_id)
             summary.update(
                 {

@@ -100,12 +100,9 @@ class CapabilityMaterializationPublicationService:
         result: BaseModel,
         lease_guard: Callable[[], None],
     ) -> str:
-        completed = self._commit_service.get_completed_outcome(
-            envelope.materialization_id,
-            envelope.action_turn_id,
-        )
-        if completed is not None and completed.node_ids:
-            return completed.node_ids[0]
+        recovered = self.resume_committed(envelope, lease_guard)
+        if recovered is not None:
+            return recovered
 
         lease_guard()
         self._validate_target(envelope)
@@ -193,6 +190,46 @@ class CapabilityMaterializationPublicationService:
                 "Materialization did not create a Draft Node.",
                 stage="capability_materialization_publication",
             )
+        return outcome.node_ids[0]
+
+    def resume_committed(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        lease_guard: Callable[[], None],
+    ) -> str | None:
+        """Resume only prompt preparation after an immutable commit."""
+
+        outcome = self._commit_service.get_completed_outcome(
+            envelope.materialization_id,
+            envelope.action_turn_id,
+        )
+        if outcome is None:
+            return None
+        if not outcome.node_ids:
+            raise V2PersistenceError(
+                "materialization_outcome_invalid",
+                "Materialization did not create a Draft Node.",
+                stage="capability_materialization_publication",
+            )
+        context = materialization_context_from_state(
+            envelope,
+            conversations=self._conversations,
+            workflows=self._workflows,
+            asset_resolver=self._asset_resolver,
+            validate_references=False,
+        )
+        session = self._conversations.get_guidance_session(envelope.workflow_id)
+        self._prepare_prompts(
+            envelope,
+            context,
+            session_id=session.session_id,
+            session_revision=outcome.session_revision,
+            stage=outcome.journey_stage,
+            foundation_item_id=None,
+            node_ids=outcome.node_ids,
+            operation_ids=outcome.prompt_preparation_ids,
+            lease_guard=lease_guard,
+        )
         return outcome.node_ids[0]
 
     @staticmethod
