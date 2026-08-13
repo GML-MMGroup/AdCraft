@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
+import { waterBrushAdFilmGlyphPaths } from "./heroWaterBrushGlyphPaths";
 
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
@@ -44,11 +45,22 @@ describe("HomePage hero title", () => {
     expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
     expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
     expect(writingSvg?.getAttribute("data-writing-duration")).toBe("2220ms");
-    expect(writingSvg?.querySelectorAll("mask")).toHaveLength(0);
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(0);
+    const writingMask = writingSvg?.querySelector("mask");
+    expect(writingMask).toBeTruthy();
+    expect(writingMask?.getAttribute("x")).toBe("-256");
+    expect(writingMask?.getAttribute("y")).toBe("-256");
+    expect(writingMask?.getAttribute("width")).toBe("4400");
+    expect(writingMask?.getAttribute("height")).toBe("1500");
+    const glyphPaths = Array.from(
+      writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path") ?? [],
+    );
+    expect(glyphPaths).toHaveLength(7);
+    expect(glyphPaths.map((path) => path.getAttribute("d"))).toEqual(
+      waterBrushAdFilmGlyphPaths.map((glyph) => glyph.d),
+    );
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(0);
     expect(writingSvg?.querySelector("text")).toBeNull();
-    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(18);
+    expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__stroke")).toHaveLength(28);
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__coverage")).toHaveLength(0);
   });
 
