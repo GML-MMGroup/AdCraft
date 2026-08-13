@@ -43,7 +43,12 @@ describe("HomePage hero title", () => {
     expect(writingSvg).toBeTruthy();
     expect(writingSvg?.getAttribute("data-writing-font")).toBe("Water Brush");
     expect(writingSvg?.getAttribute("data-writing-tracking")).toBe("0.100em");
-    expect(writingSvg?.querySelectorAll("mask")).toHaveLength(1);
+    const writingMask = writingSvg?.querySelector("mask");
+    expect(writingMask).toBeTruthy();
+    expect(writingMask?.getAttribute("x")).toBe("-256");
+    expect(writingMask?.getAttribute("y")).toBe("-256");
+    expect(writingMask?.getAttribute("width")).toBe("4400");
+    expect(writingMask?.getAttribute("height")).toBe("1500");
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__glyph-path")).toHaveLength(7);
     expect(writingSvg?.querySelectorAll(".home-hero-accent-writing__completion-glyph")).toHaveLength(7);
     expect(writingSvg?.querySelector("text")).toBeNull();
@@ -85,6 +90,12 @@ describe("HomePage hero title", () => {
     );
     expect(styles).toMatch(
       /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*home-hero-accent-write/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__stroke\s*\{[^}]*calc\(var\(--home-hero-accent-start-delay\) \+ var\(--home-hero-accent-delay, 0ms\)\)/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready \.home-hero-accent-writing__completion-glyph\s*\{[^}]*calc\(var\(--home-hero-accent-start-delay\) \+ var\(--home-hero-accent-completion-delay, 0ms\)\)/s,
     );
     expect(styles).toMatch(
       /@keyframes home-hero-accent-write\s*\{[\s\S]*?stroke-dashoffset:\s*0;/,

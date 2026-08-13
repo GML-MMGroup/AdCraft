@@ -85,13 +85,13 @@ describe("HomePage motion", () => {
       title.querySelectorAll<HTMLElement>(".home-product-hero__title-line"),
     );
 
-    expect(lines.map((line) => line.textContent)).toEqual([
+    expect(lines.slice(0, 2).map((line) => line.textContent)).toEqual([
       "ONE SENTENCE",
       "BECOMES AN",
-      "Ad film.",
     ]);
 
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
+    expect(lines[2]?.querySelector("svg[aria-label='Ad film.']")).toBeTruthy();
     expect(title.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
   });
 
@@ -105,7 +105,12 @@ describe("HomePage motion", () => {
         }),
       },
     });
+    let heroPaintFrames = 0;
     const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      if (callback.name === "render") {
+        return requestFrame.mock.calls.length;
+      }
+      heroPaintFrames += 1;
       callback(0);
       return requestFrame.mock.calls.length;
     });
@@ -128,7 +133,7 @@ describe("HomePage motion", () => {
       await Promise.resolve();
     });
 
-    expect(requestFrame).toHaveBeenCalledTimes(2);
+    expect(heroPaintFrames).toBe(2);
     expect(hero?.classList.contains("is-motion-ready")).toBe(true);
   });
 
@@ -234,7 +239,10 @@ describe("HomePage motion", () => {
       /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\s*\{[^}]*animation:[^;}]*home-hero-spotlight-focus/s,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line:not\(\.home-product-hero__accent\)\s*\{[^}]*animation:[^;}]*home-hero-spotlight-focus/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\s*\{[^}]*--home-hero-accent-start-delay:\s*1120ms;/s,
     );
     expect(styles).toMatch(
       /@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?blur\(20px\)[\s\S]*?blur\(14px\)[\s\S]*?blur\(2px\)[\s\S]*?filter:\s*none;/,
