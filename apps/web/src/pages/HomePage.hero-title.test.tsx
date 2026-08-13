@@ -146,4 +146,13 @@ describe("HomePage hero title", () => {
     expect(darkAccentPseudoStyles).toContain("background-image:");
     expect(darkAccentPseudoStyles).not.toMatch(/\bbackground\s*:/);
   });
+
+  it("uses the clear-glass CTA treatment on the dark home surface", () => {
+    expect(styles).toMatch(
+      /html\[data-theme="dark"\] \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*rgba\(255, 255, 255, 0\.008\);[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*blur\(1\.5px\) saturate\(114%\) brightness\(1\.025\);[^}]*backdrop-filter:\s*blur\(1\.5px\) saturate\(114%\) brightness\(1\.025\);/s,
+    );
+    expect(styles).toMatch(
+      /html\[data-theme="dark"\] \.home-product-hero__create:hover\s*\{[^}]*background:\s*rgba\(255, 255, 255, 0\.018\);[^}]*border-color:\s*rgba\(255, 255, 255, 0\.13\);[^}]*box-shadow:\s*0 11px 26px rgba\(0, 13, 24, 0\.17\);/s,
+    );
+  });
 });
