@@ -3,8 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("shared static cosmic background", () => {
-  it("ships the original optimized WebP and removes the animated ring asset", () => {
+  it("ships the black-hole wallpaper and removes retired background assets", () => {
     const path = resolve(
+      process.cwd(),
+      "public/assets/home-dark-black-hole.webp",
+    );
+    const retiredBackgroundPath = resolve(
       process.cwd(),
       "public/assets/home-dark-cosmic.webp",
     );
@@ -14,7 +18,8 @@ describe("shared static cosmic background", () => {
     );
 
     expect(existsSync(path)).toBe(true);
-    expect(statSync(path).size).toBeLessThan(900_000);
+    expect(statSync(path).size).toBeLessThan(1_200_000);
+    expect(existsSync(retiredBackgroundPath)).toBe(false);
     expect(existsSync(removedRingPath)).toBe(false);
   });
 
