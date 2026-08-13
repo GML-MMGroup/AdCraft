@@ -141,11 +141,49 @@ class AgentCanvasContinuationOutboxRepository:
         if existing is not None:
             _require_same_enqueue(existing, values)
             return _delivery(existing)
-        active = self.get_active_for_workflow_in_transaction(connection, workflow_id)
-        if active is not None:
-            raise _error(
-                "active_continuation_conflict",
-                "Another continuation already owns this workflow.",
+        active_row = _select_active_for_workflow(connection, workflow_id)
+        if active_row is not None:
+            if str(active_row["continuation_turn_id"]) != source_turn_id:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Another continuation already owns this workflow.",
+                )
+            completed = {
+                **active_row,
+                "status": "completed",
+                "lease_owner": None,
+                "lease_expires_at": None,
+                "updated_at": _iso(timestamp),
+            }
+            changed = connection.execute(
+                update(AgentCanvasContinuationOutboxRow)
+                .where(
+                    AgentCanvasContinuationOutboxRow.continuation_id
+                    == active_row["continuation_id"],
+                    AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased", "retry_wait")),
+                )
+                .values(
+                    status="completed",
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    updated_at=_iso(timestamp),
+                )
+            )
+            if changed.rowcount != 1:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Continuation handoff authority changed before commit.",
+                )
+            self._append_lifecycle_event(
+                connection,
+                completed,
+                event_type="continuation_completed",
+                transition_key=(
+                    "conversation:"
+                    f"{active_row['continuation_turn_id']}:"
+                    f"continuation_completed:{active_row['lease_generation']}"
+                ),
+                created_at=timestamp,
             )
         try:
             connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
@@ -180,23 +218,7 @@ class AgentCanvasContinuationOutboxRepository:
     ) -> ContinuationDeliveryV2 | None:
         """Read the single active owner through a caller-owned transaction."""
 
-        row = (
-            connection.execute(
-                select(AgentCanvasContinuationOutboxRow)
-                .where(
-                    AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
-                    AgentCanvasContinuationOutboxRow.status.in_(
-                        ("queued", "leased", "retry_wait")
-                    ),
-                )
-                .order_by(
-                    AgentCanvasContinuationOutboxRow.created_at.asc(),
-                    AgentCanvasContinuationOutboxRow.continuation_id.asc(),
-                )
-            )
-            .mappings()
-            .first()
-        )
+        row = _select_active_for_workflow(connection, workflow_id)
         return _delivery(row) if row is not None else None
 
     def get(self, continuation_id: str) -> ContinuationDeliveryV2:
@@ -662,6 +684,27 @@ def _select_one(connection: Connection, continuation_id: str) -> RowMapping | No
         )
         .mappings()
         .one_or_none()
+    )
+
+
+def _select_active_for_workflow(
+    connection: Connection,
+    workflow_id: str,
+) -> RowMapping | None:
+    return (
+        connection.execute(
+            select(AgentCanvasContinuationOutboxRow)
+            .where(
+                AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased", "retry_wait")),
+            )
+            .order_by(
+                AgentCanvasContinuationOutboxRow.created_at.asc(),
+                AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+            )
+        )
+        .mappings()
+        .first()
     )
 
 
