@@ -91,7 +91,8 @@ describe("HomePage motion", () => {
     ]);
 
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
-    expect(lines[2]?.querySelector("svg[aria-label='Ad film.']")).toBeTruthy();
+    expect(lines[2]?.getAttribute("data-home-hero-accent-reveal")).toBe("diagonal");
+    expect(lines[2]?.querySelector("svg")).toBeNull();
     expect(title.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
   });
 

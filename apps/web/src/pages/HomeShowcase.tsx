@@ -8,7 +8,6 @@ import {
 } from "react";
 import { demoProjects, images, imageSrc } from "../data";
 import { DiscoverOrbit, type DiscoverOrbitItem } from "./DiscoverOrbit";
-import { HeroAccentWriting } from "./HeroAccentWriting";
 
 const homeProductPoster = "/assets/card1.webp";
 const heroTitleLines = [
@@ -224,7 +223,7 @@ function HeroMainTitleLine({ line, direction }: { line: string; direction: HeroQ
   );
 }
 
-function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
+function HeroTitle() {
   return (
     <h1
       className="home-product-hero__title"
@@ -235,17 +234,14 @@ function HeroTitle({ useWritingAccent }: { useWritingAccent: boolean }) {
       <HeroMainTitleLine line={heroTitleLines[0]} direction="from-left" />
       <HeroMainTitleLine line={heroTitleLines[1]} direction="from-right" />
       <span
-        className={[
-          "home-product-hero__title-line",
-          "home-product-hero__accent",
-          useWritingAccent ? "home-product-hero__accent--writing" : "",
-        ].filter(Boolean).join(" ")}
+        className="home-product-hero__title-line home-product-hero__accent"
         data-accent-text={heroTitleLines[2]}
+        data-home-hero-accent-reveal="diagonal"
         data-home-typography-region="heroAccent"
         data-testid="home-hero-accent"
         aria-hidden="true"
       >
-        {useWritingAccent ? <HeroAccentWriting /> : heroTitleLines[2]}
+        {heroTitleLines[2]}
       </span>
     </h1>
   );
@@ -331,11 +327,11 @@ export function HomeShowcase({
   return (
     <div className={`home-page home-page--${mode}`}>
       <section
-        className={`home-product-hero ${heroMotionReady ? "is-motion-ready" : ""}`}
+        className={`home-product-hero ${isInteractive ? "is-motion-enabled" : ""} ${heroMotionReady ? "is-motion-ready" : ""}`}
         aria-labelledby="home-product-title"
       >
         <div className="home-product-hero__content">
-          <HeroTitle useWritingAccent={isInteractive} />
+          <HeroTitle />
           <p className="home-product-hero__description" data-home-typography-region="heroBody">
             AdCraft — The first agentic video production platform for marketing and advertising. Infinite canvas · shot-by-shot replication · fully automated, from idea to final cut.
           </p>
