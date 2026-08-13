@@ -115,6 +115,8 @@ describe("HomePage hero title", () => {
   });
 
   it("matches the approved wide desktop hero proportions", () => {
+    render(<HomePage navigate={vi.fn()} />);
+
     expect(styles).toMatch(
       /\.home-product-hero\s*\{[^}]*--home-product-hero-height:\s*607px;[^}]*--home-product-media-height:\s*458px;[^}]*width:\s*min\(1230px, calc\(100vw - 180px\)\);/s,
     );
@@ -125,7 +127,13 @@ describe("HomePage hero title", () => {
       /\.home-product-film\s*\{[^}]*margin-bottom:\s*22px;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero__create\s*\{[^}]*min-height:\s*56px;/s,
+      /\.home-product-hero__create\s*\{[^}]*min-height:\s*44px;[^}]*gap:\s*8px;[^}]*padding:\s*0 18px 0 15px;/s,
+    );
+    const [createButton] = screen.getAllByRole("button", { name: "Create Your Project" });
+    const createIcon = createButton.querySelector("svg.home-product-hero__create-icon");
+    expect(createIcon?.getAttribute("viewBox")).toBe("0 0 256 256");
+    expect(createIcon?.querySelector("path")?.getAttribute("d")).toBe(
+      "M220,128a4,4,0,0,1-4,4H132v84a4,4,0,0,1-8,0V132H40a4,4,0,0,1,0-8h84V40a4,4,0,0,1,8,0v84h84A4,4,0,0,1,220,128Z",
     );
   });
 

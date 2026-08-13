@@ -247,6 +247,21 @@ function HeroTitle() {
   );
 }
 
+function CreateProjectButtonContent() {
+  return (
+    <>
+      <svg
+        className="home-product-hero__create-icon"
+        aria-hidden="true"
+        viewBox="0 0 256 256"
+      >
+        <path d="M220,128a4,4,0,0,1-4,4H132v84a4,4,0,0,1-8,0V132H40a4,4,0,0,1,0-8h84V40a4,4,0,0,1,8,0v84h84A4,4,0,0,1,220,128Z" />
+      </svg>
+      <span>Create Your Project</span>
+    </>
+  );
+}
+
 function InteractiveRecentCards({ openWorkflow }: { openWorkflow: () => void }) {
   return (
     <div className="recent-strip" data-reveal-item style={motionStyle("--home-reveal-delay", "100ms")}>
@@ -338,13 +353,11 @@ export function HomeShowcase({
           <div className="home-product-hero__create-stage">
             {isInteractive && interactions ? (
               <button className="home-product-hero__create" type="button" onClick={interactions.createProject} data-home-typography-region="heroAction">
-                <span aria-hidden="true">+</span>
-                <span>Create Your Project</span>
+                <CreateProjectButtonContent />
               </button>
             ) : (
               <span className="home-product-hero__create home-product-hero__create--static" data-home-typography-region="heroAction">
-                <span aria-hidden="true">+</span>
-                <span>Create Your Project</span>
+                <CreateProjectButtonContent />
               </span>
             )}
           </div>
