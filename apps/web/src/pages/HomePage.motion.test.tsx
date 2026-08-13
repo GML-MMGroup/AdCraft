@@ -74,7 +74,7 @@ describe("HomePage motion", () => {
     }
   });
 
-  it("renders the title as three complete lines for the spotlight focus reveal", () => {
+  it("renders the title as three complete lines for the character reveal", () => {
     render(<HomePage navigate={vi.fn()} />);
 
     const title = screen.getByRole("heading", {
@@ -85,7 +85,7 @@ describe("HomePage motion", () => {
       title.querySelectorAll<HTMLElement>(".home-product-hero__title-line"),
     );
 
-    expect(lines.slice(0, 2).map((line) => line.textContent)).toEqual([
+    expect(lines.slice(0, 2).map((line) => line.textContent?.replace(/\u00a0/g, " "))).toEqual([
       "ONE SENTENCE",
       "BECOMES AN",
     ]);
@@ -228,9 +228,9 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(0);
   });
 
-  it("uses a pure spotlight focus effect without fade or scale entrance motion", () => {
+  it("reveals hero title characters in opposite directions with a contained bump", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__title-line\s*\{[^}]*filter:\s*blur\(20px\);[^}]*will-change:\s*filter;/s,
+      /\.home-product-hero__title-line\s*\{[^}]*filter:\s*none;[^}]*white-space:\s*nowrap;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
@@ -239,16 +239,26 @@ describe("HomePage motion", () => {
       /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line:not\(\.home-product-hero__accent\)\s*\{[^}]*animation:[^;}]*home-hero-spotlight-focus/s,
+      /\.home-product-hero__title-line--left-to-right\s*\{[^}]*--home-hero-character-enter-offset:\s*-0\.34em;[^}]*--home-hero-character-bump-offset:\s*-0\.07em;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\s*\{[^}]*--home-hero-accent-start-delay:\s*1120ms;/s,
+      /\.home-product-hero__title-line--right-to-left\s*\{[^}]*--home-hero-character-enter-offset:\s*0\.34em;[^}]*--home-hero-character-bump-offset:\s*0\.07em;/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?blur\(20px\)[\s\S]*?blur\(14px\)[\s\S]*?blur\(2px\)[\s\S]*?filter:\s*none;/,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-character__glyph\s*\{[^}]*home-hero-character-enter[^}]*calc\(var\(--home-hero-line-delay\) \+ var\(--home-hero-character-index\) \* var\(--home-hero-character-stagger\)\)/s,
     );
-    const focusKeyframes = styles.match(/@keyframes home-hero-spotlight-focus\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
-    expect(focusKeyframes).not.toMatch(/\bopacity\b|\btransform\b/);
+    expect(styles).not.toMatch(
+      /home-hero-spotlight-focus/,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-character--bump\s*\{[^}]*home-hero-character-bump[^}]*var\(--home-hero-character-bump-index\)/s,
+    );
+    expect(styles).toMatch(
+      /@keyframes home-hero-character-bump\s*\{[\s\S]*?translateX\(var\(--home-hero-character-bump-offset\)\)[\s\S]*?translateX\(var\(--home-hero-character-bump-rebound-offset\)\)[\s\S]*?transform:\s*none;/,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\s*\{[^}]*--home-hero-accent-start-delay:\s*1200ms;/s,
+    );
     expect(styles).not.toMatch(
       /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(description|create-stage|film)\s*\{/,
     );
@@ -261,7 +271,7 @@ describe("HomePage motion", () => {
       /\.home-reveal-section\[data-reveal-state="visible"\][\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-line[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;[\s\S]*?filter:\s*none !important;/,
+      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;[\s\S]*?transform:\s*none !important;/,
     );
   });
 

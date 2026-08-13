@@ -92,6 +92,7 @@ export function HeroAccentWriting() {
           <g data-writing-mask-space="glyph-space" transform={waterBrushTransform}>
             {waterBrushStrokes.map((stroke, index) => (
               <path
+                key={`${stroke.glyphIndex}-${index}`}
                 className="home-hero-accent-writing__stroke"
                 d={stroke.d}
                 pathLength={1}

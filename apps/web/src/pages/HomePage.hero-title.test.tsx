@@ -32,10 +32,26 @@ describe("HomePage hero title", () => {
     );
 
     expect(lines).toHaveLength(3);
-    expect(lines.slice(0, 2).map((line) => line.textContent)).toEqual([
+    expect(lines.slice(0, 2).map((line) => line.textContent?.replace(/\u00a0/g, " "))).toEqual([
       "ONE SENTENCE",
       "BECOMES AN",
     ]);
+    expect(lines[0]?.classList.contains("home-product-hero__title-line--left-to-right")).toBe(true);
+    expect(lines[1]?.classList.contains("home-product-hero__title-line--right-to-left")).toBe(true);
+    expect(
+      Array.from(lines[0]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
+        .map((character) => character.dataset.homeHeroCharacterOrder),
+    ).toEqual(Array.from({ length: "ONE SENTENCE".length }, (_, index) => String(index)));
+    expect(
+      Array.from(lines[1]?.querySelectorAll<HTMLElement>(".home-product-hero__title-character") ?? [])
+        .map((character) => character.dataset.homeHeroCharacterOrder),
+    ).toEqual(Array.from({ length: "BECOMES AN".length }, (_, index) => String("BECOMES AN".length - index - 1)));
+    expect(lines[0]?.querySelectorAll(".home-product-hero__title-character--bump")).toHaveLength(
+      "ONE SENTENCE".length - 1,
+    );
+    expect(lines[1]?.querySelectorAll(".home-product-hero__title-character--bump")).toHaveLength(
+      "BECOMES AN".length - 1,
+    );
     expect(lines[2]?.classList.contains("home-product-hero__accent")).toBe(true);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
     expect(lines[2]?.getAttribute("data-home-typography-region")).toBe("heroAccent");
