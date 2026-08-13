@@ -276,10 +276,15 @@ class DeterministicVideoAgentGateway:
         request_identity: str,
     ) -> StoryboardSequenceOutlineDraftV2:
         duration = float(context.explicit_constraints.get("duration_seconds") or 15)
-        segment_duration = float(
-            context.capability_facts.get("storyboard_segment_duration_seconds") or 5
-        )
-        count = ceil(duration / segment_duration)
+        requested_count = context.explicit_constraints.get("storyboard_sequence_count")
+        if isinstance(requested_count, int) and not isinstance(requested_count, bool):
+            count = max(1, requested_count)
+            segment_duration = duration / count
+        else:
+            segment_duration = float(
+                context.capability_facts.get("storyboard_segment_duration_seconds") or 5
+            )
+            count = ceil(duration / segment_duration)
         return StoryboardSequenceOutlineDraftV2(
             narrative_outline=context.creative_goal,
             aspect_ratio=str(context.explicit_constraints.get("aspect_ratio") or "16:9"),

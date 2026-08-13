@@ -275,6 +275,7 @@ from app.services.agent_canvas_production_journey_reducer import (
 from app.services.agent_canvas_production_journey_orchestration import (
     GuidedProductionJourneyService,
 )
+from app.services.agent_canvas_guided_editing import GuidedEditingPreparationService
 from app.schemas.agent_canvas_materialization import ProposalPublicationEnvelopeV1
 from app.services.agent_canvas_next_action import DurableNextActionExecutionService
 from app.services.agent_canvas_execution_settings import (
@@ -416,6 +417,33 @@ def create_agent_canvas_runtime(
         assets=asset_repository,
         conversations=conversation_repository,
     )
+    guided_editing = GuidedEditingPreparationService(
+        workflows=workflow_repository,
+        documents=working_documents,
+        conversations=conversation_repository,
+        events=event_repository,
+        asset_resolver=asset_service.resolve_asset,
+    )
+
+    def prepare_current_editing(workflow_id: str) -> object:
+        plans = working_documents.list_documents(
+            workflow_id,
+            kind="storyboard_production_plan",
+            limit=2,
+        ).items
+        if len(plans) != 1:
+            raise V2PersistenceError(
+                "editing_preparation_plan_missing",
+                "Editing preparation requires one current Storyboard production plan.",
+                stage="guided_editing_preparation",
+            )
+        plan = plans[0]
+        return guided_editing.prepare(
+            workflow_id,
+            plan.document_id,
+            expected_plan_revision=plan.revision,
+        )
+
     storyboard_authoring = StoryboardSequenceAuthoringService(
         documents=working_documents,
         events=event_repository,
@@ -955,6 +983,7 @@ def create_agent_canvas_runtime(
         asset_resolver=asset_service.resolve_asset,
         model_selection=model_selection,
         decision_bundles=decision_bundles,
+        editing_preparer=prepare_current_editing,
     )
     materialization_repository = AgentCanvasMaterializationRepository(
         database,

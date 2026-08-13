@@ -92,6 +92,14 @@ class GuidedEditingPreparationService:
             ),
             None,
         )
+        if audio_node is None:
+            authored_bgm_nodes = tuple(
+                node
+                for node in workflow.nodes
+                if node.node_type == "audio" and node.creative_role == "bgm"
+            )
+            if len(authored_bgm_nodes) == 1:
+                audio_node = authored_bgm_nodes[0]
         available_videos = tuple(
             node for node in ordered_video_nodes if self._ready_media(node, "video")
         )

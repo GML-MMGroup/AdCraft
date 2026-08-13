@@ -35,6 +35,7 @@ from app.schemas.agent_canvas_capabilities import (
 )
 from app.schemas.agent_canvas_decision_bundles import DecisionBundleDraftV1
 from app.schemas.agent_canvas_creative_session import GuidanceCompletionProjectionV2
+from app.schemas.agent_canvas_production_journey import JourneyEvidenceV1
 from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
@@ -43,6 +44,9 @@ from app.services.agent_canvas_capability_policy import CapabilityPolicyService
 from app.services.agent_canvas_capability_reference_planner import CapabilityReferencePlanner
 from app.services.agent_canvas_next_action_context import (
     assemble_capability_policy_context,
+)
+from app.services.agent_canvas_production_journey_orchestration import (
+    GuidedProductionJourneyService,
 )
 from app.services.model_selection import ModelSelectionService
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
@@ -101,6 +105,7 @@ class DurableNextActionExecutionService:
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         model_selection: ModelSelectionService | None = None,
         decision_bundles: AgentCanvasDecisionBundleRepository | None = None,
+        editing_preparer: Callable[[str], object] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -120,6 +125,8 @@ class DurableNextActionExecutionService:
             else None
         )
         self._gateway = gateway
+        self._journey = GuidedProductionJourneyService(conversations)
+        self._editing_preparer = editing_preparer
 
     def execute(
         self,
@@ -142,11 +149,77 @@ class DurableNextActionExecutionService:
             )
         lease_guard()
         turn = self._conversations.mark_turn_running(envelope.next_action_turn_id)
+        journey_action = None
+        if session.journey.stage != "intake":
+            if session.journey.stage == "style_lock":
+                session = self._journey.apply_evidence(
+                    envelope.workflow_id,
+                    evidence=JourneyEvidenceV1(
+                        evidence_id=f"style-lock:{envelope.next_action_turn_id}",
+                        evidence_kind="style_locked",
+                        source_id=envelope.next_action_turn_id,
+                    ),
+                    expected_session_revision=session.revision,
+                    idempotency_key=f"style-lock:{envelope.envelope_id}",
+                )
+            session, journey_action = self._journey.reserve_next_action(
+                envelope.workflow_id,
+                action_id=f"journey-action:{envelope.next_action_turn_id}",
+                turn_id=envelope.next_action_turn_id,
+                expected_session_revision=session.revision,
+                idempotency_key=f"reserve-next-action:{envelope.envelope_id}",
+            )
+        if journey_action is not None and journey_action.action in {
+            "wait_for_user",
+            "prepare_editing",
+            "complete",
+        }:
+            lease_guard()
+            if journey_action.action == "prepare_editing":
+                if self._editing_preparer is None:
+                    raise V2PersistenceError(
+                        "editing_preparation_unavailable",
+                        "Editing preparation is unavailable.",
+                        stage="next_action_execution",
+                    )
+                self._editing_preparer(envelope.workflow_id)
+                lease_guard()
+            if journey_action.action == "complete":
+                self._conversations.complete_guidance_session(
+                    session.session_id,
+                    expected_session_revision=session.revision,
+                    completion=GuidanceCompletionProjectionV2(
+                        authoring="ready",
+                        delivery="ready",
+                    ),
+                )
+                command = NextActionCommandV1(action="finish")
+                message = "Guided production is complete."
+            else:
+                command = NextActionCommandV1(
+                    action="reply",
+                    message=(
+                        "The production journey is ready for Editing preparation."
+                        if journey_action.action == "prepare_editing"
+                        else "Run the current Drafts before continuing guided production."
+                    ),
+                )
+                message = command.message
+            self._conversations.complete_turn(
+                envelope.next_action_turn_id,
+                assistant_message=message,
+            )
+            return ValidatedNextActionV1(command=command)
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         policy = self._policy.evaluate(
             assemble_capability_policy_context(
                 workflow=workflow,
                 session=session,
+                journey_capability=(
+                    journey_action.capability_id
+                    if journey_action is not None and journey_action.action == "invoke_capability"
+                    else None
+                ),
                 open_proposal_capabilities=tuple(
                     proposal.capability_id
                     for proposal in self._conversations.list_open_proposals(envelope.workflow_id)

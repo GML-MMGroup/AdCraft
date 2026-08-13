@@ -524,7 +524,20 @@ def _stage_parameters(
 ) -> dict[str, object]:
     parameters: dict[str, object] = {"stage_draft_key": draft_key}
     if capability_id == "video_direction":
-        duration = context.capability_facts.get("duration_seconds", 5)
+        duration = context.capability_facts.get("duration_seconds")
+        if duration is None:
+            total_duration = _explicit_constraint(context, "duration_seconds")
+            segment_count = _explicit_constraint(context, "video_segment_count")
+            if (
+                isinstance(total_duration, (int, float))
+                and not isinstance(total_duration, bool)
+                and isinstance(segment_count, int)
+                and not isinstance(segment_count, bool)
+                and segment_count > 0
+            ):
+                duration = float(total_duration) / segment_count
+        if duration is None:
+            duration = 5
         parameters["duration_seconds"] = min(15.0, max(1.0, float(duration)))
         aspect_ratio = _explicit_constraint(context, "aspect_ratio")
         if isinstance(aspect_ratio, str) and aspect_ratio.strip():
