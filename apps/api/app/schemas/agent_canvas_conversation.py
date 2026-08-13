@@ -151,6 +151,15 @@ class ChatTimelineEntryV2(_ConversationModel):
     created_at: datetime
 
 
+class ChatTimelinePresentationItemV2(ChatTimelineEntryV2):
+    presentation_key: str = Field(min_length=1, max_length=320)
+    presentation_revision: int = Field(ge=1)
+    source_entry_ids: tuple[str, ...] = Field(min_length=1, max_length=256)
+    message_key: str | None = Field(default=None, min_length=1, max_length=160)
+    message_args: dict[str, JsonValue] = Field(default_factory=dict)
+    response_locale: str = Field(default="und", min_length=2, max_length=64)
+
+
 class ChatTimelineListResponseV2(_ConversationModel):
     workflow_id: str
     conversation_id: str | None
@@ -161,6 +170,7 @@ class ChatTimelineListResponseV2(_ConversationModel):
         max_length=2,
     )
     items: tuple[ChatTimelineEntryV2, ...] = ()
+    presentation_items: tuple[ChatTimelinePresentationItemV2, ...] = ()
     next_cursor: int = Field(ge=0)
 
 
