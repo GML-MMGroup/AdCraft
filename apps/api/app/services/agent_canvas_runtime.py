@@ -34,6 +34,8 @@ from app.schemas.agent_canvas_runtime import (
     NodeRuntimeV2,
     ResolvedModelExecutionV1,
 )
+from app.schemas.agent_canvas_runtime_authority import CanvasExecutionStartCommandV2
+from app.schemas.agent_canvas_runtime_authority import CanvasExecutionResultCommitCommandV2
 from app.schemas.agent_canvas_world_setting import (
     WorldSettingContextEnvelopeV2,
     WorldSettingResolvedInputV2,
@@ -51,7 +53,17 @@ from app.services.agent_canvas_execution_parameters import (
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityService,
 )
-from app.services.agent_canvas_execution_state import AgentCanvasExecutionStateMachine
+from app.services.agent_canvas_execution_state import (
+    AgentCanvasExecutionStateMachine,
+    safe_execution_error,
+)
+from app.services.agent_canvas_fenced_lease import NodeLeaseService
+from app.services.agent_canvas_execution_result_commit import (
+    AgentCanvasExecutionResultCommitService,
+)
+from app.services.agent_canvas_output_preparation import (
+    AgentCanvasOutputPreparationService,
+)
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
@@ -162,48 +174,34 @@ class AgentCanvasRunService:
             else:
                 skipped.append(CanvasRunSkippedNodeV2(node_id=node.node_id, reason=reason))
         now = self._clock()
-        active = self._runtime.get_active_execution(workflow_id)
-        if active is None:
-            execution = self._runtime.create_execution(
+        snapshot_service = self._run_snapshots or AgentCanvasRunIntentSnapshotService(
+            self._workflows,
+            self._runtime,
+        )
+        accepted_nodes = tuple(nodes[node_id] for node_id in accepted)
+        admission = self._runtime.start_or_join_execution(
+            CanvasExecutionStartCommandV2(
                 workflow_id=workflow_id,
+                expected_workflow_revision=workflow.revision,
                 scope=request.scope,
-                node_ids=tuple(accepted),
                 idempotency_key=idempotency_key,
-                request_fingerprint=_fingerprint(request),
-                now=now,
+                request_digest=_fingerprint(request),
+                member_intents=snapshot_service.prepare_member_intents(
+                    workflow,
+                    accepted_nodes,
+                ),
+                created_at=now,
             )
-            joined: tuple[str, ...] = ()
-        else:
-            execution = active
-            joined = self._runtime.add_members(
-                active.execution_id,
-                tuple(accepted),
-                now=now,
-            )
-            accepted = [
-                node_id
-                for node_id in accepted
-                if node_id
-                not in {
-                    member.node_id for member in self._runtime.list_members(active.execution_id)
-                }
-                or node_id in joined
-            ]
-        if self._run_snapshots is not None:
-            freeze_node_ids = tuple(accepted) if active is None else joined
-            self._run_snapshots.freeze_members(
-                execution.execution_id,
-                now=now,
-                node_ids=freeze_node_ids,
-            )
+        )
+        execution = admission.execution
         members = self._runtime.list_members(execution.execution_id)
         cursor = self._events.max_seq(workflow_id)
         return CanvasRunAcceptedV2(
             workflow_id=workflow_id,
             execution_id=execution.execution_id,
             status=execution.status,
-            accepted_node_ids=tuple(accepted) if active is None else (),
-            joined_node_ids=joined,
+            accepted_node_ids=admission.accepted_node_ids,
+            joined_node_ids=admission.joined_node_ids,
             skipped=tuple(skipped),
             waiting_node_ids=(),
             events_cursor=cursor,
@@ -246,6 +244,8 @@ class DynamicCanvasScheduler:
         video_parameter_compiler: AgentCanvasVideoParameterCompiler | None = None,
         world_settings: WorldSettingContextResolverV2 | None = None,
         state_machine: AgentCanvasExecutionStateMachine | None = None,
+        output_preparer: AgentCanvasOutputPreparationService | None = None,
+        result_committer: AgentCanvasExecutionResultCommitService | None = None,
         owner_id: str | None = None,
         image_limit: int = 4,
         video_limit: int = 1,
@@ -273,6 +273,9 @@ class DynamicCanvasScheduler:
         self._execution_parameters = execution_parameters or AgentCanvasExecutionParameterResolver()
         self._video_parameter_compiler = video_parameter_compiler
         self._state_machine = state_machine or AgentCanvasExecutionStateMachine()
+        self._leases = NodeLeaseService(runtime, clock=clock)
+        self._output_preparer = output_preparer
+        self._result_committer = result_committer
         self._owner_id = owner_id or f"worker_{uuid4().hex}"
         self._limits = {
             "image": image_limit,
@@ -365,7 +368,7 @@ class DynamicCanvasScheduler:
                         (
                             lease,
                             context,
-                            executor.submit(self._execute_member, context),
+                            executor.submit(self._execute_member_guarded, lease, context),
                         )
                     )
                 for lease, context, future in prepared:
@@ -851,6 +854,13 @@ class DynamicCanvasScheduler:
         )
         return outcome
 
+    def _execute_member_guarded(
+        self,
+        lease: NodeExecutionLeaseV2,
+        context: NodeExecutionContext,
+    ) -> NodeExecutionOutcome:
+        return self._leases.guard(lease).run(lambda: self._execute_member(context))
+
     def _complete_member(
         self,
         workflow_id: str,
@@ -859,6 +869,7 @@ class DynamicCanvasScheduler:
         outcome: NodeExecutionOutcome,
     ) -> None:
         now = self._clock()
+        self._leases.assert_current(lease)
         execution_id = lease.execution_id
         node_id = lease.node_id
         if outcome.provider_task_id is not None:
@@ -868,6 +879,7 @@ class DynamicCanvasScheduler:
                     workflow_id=workflow_id,
                     execution_id=execution_id,
                     node_id=node_id,
+                    submission_intent_id=outcome.submission_intent_id,
                     provider=outcome.provider or "configured",
                     remote_task_id=outcome.remote_task_id,
                     status="submitted",
@@ -927,6 +939,33 @@ class DynamicCanvasScheduler:
                 self._runtime.complete_lease(lease, now=now)
                 return
             self._runtime.complete_lease(lease, now=now)
+            return
+        if self._output_preparer is not None and self._result_committer is not None:
+            fingerprint = _execution_fingerprint(context)
+            prepared = self._output_preparer.prepare(
+                context,
+                outcome,
+                fingerprint=fingerprint,
+            )
+            member = next(
+                item for item in self._runtime.list_members(execution_id) if item.node_id == node_id
+            )
+            self._result_committer.commit(
+                CanvasExecutionResultCommitCommandV2(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    member_id=member.member_id,
+                    node_id=node_id,
+                    lease_owner_id=lease.owner_id,
+                    lease_generation=lease.generation,
+                    logical_result_key=prepared.logical_result_key,
+                    payload_digest=prepared.payload_digest,
+                    provider_task_id=outcome.provider_task_id,
+                    outcome="succeeded",
+                    prepared_result=prepared,
+                    committed_at=now,
+                )
+            )
             return
         asset_id = None
         if outcome.media is not None:
@@ -1038,16 +1077,36 @@ class DynamicCanvasScheduler:
         error: Exception,
     ) -> None:
         now = self._clock()
-        detail = CanvasNodeErrorV2(
-            code=getattr(error, "code", "node_execution_failed"),
-            message=str(error),
-            retryable=bool(getattr(error, "details", {}).get("retryable", False)),
-        )
+        detail = safe_execution_error(error, default_code="node_execution_failed")
         member = next(
             item
             for item in self._runtime.list_members(lease.execution_id)
             if item.node_id == lease.node_id
         )
+        if self._result_committer is not None:
+            failure_key = f"{lease.execution_id}:{lease.node_id}:{lease.generation}:failed"
+            failure_digest = hashlib.sha256(detail.model_dump_json().encode()).hexdigest()
+            try:
+                self._result_committer.commit(
+                    CanvasExecutionResultCommitCommandV2(
+                        workflow_id=workflow_id,
+                        execution_id=lease.execution_id,
+                        member_id=member.member_id,
+                        node_id=lease.node_id,
+                        lease_owner_id=lease.owner_id,
+                        lease_generation=lease.generation,
+                        logical_result_key=failure_key,
+                        payload_digest=failure_digest,
+                        provider_task_id=member.provider_task_id,
+                        outcome="failed",
+                        error=detail,
+                        committed_at=now,
+                    )
+                )
+            except V2PersistenceError as commit_error:
+                if commit_error.code != "stale_execution_lease":
+                    raise
+            return
         if member.state == "succeeded" or not self._state_machine.transition_member(
             self._runtime,
             member,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from datetime import datetime, timedelta
 from typing import cast
 from uuid import uuid4
@@ -15,11 +16,17 @@ from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.persistence.models import (
+    AgentCanvasBindingRow,
+    AgentCanvasExecutionAdmissionRow,
     AgentCanvasExecutionMemberRow,
     AgentCanvasExecutionRow,
+    AgentCanvasNodeRow,
     AgentCanvasNodeLeaseRow,
     AgentCanvasProviderTaskRow,
+    AgentCanvasProviderSubmissionIntentRow,
     AgentCanvasVideoParameterCompilationSnapshotRow,
+    AgentCanvasWorkflowRow,
+    AssetVersionRow,
 )
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime import (
@@ -32,6 +39,12 @@ from app.schemas.agent_canvas_runtime import (
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.schemas.agent_canvas_video_parameters import VideoParameterCompilationSnapshotV2
+from app.schemas.agent_canvas_runtime_authority import (
+    CanvasExecutionMemberIntentV2,
+    CanvasExecutionStartCommandV2,
+    CanvasExecutionStartResultV2,
+    ProviderSubmissionIntentV2,
+)
 
 
 _ACTIVE_EXECUTION_STATES = ("queued", "running", "waiting")
@@ -189,6 +202,23 @@ class AgentCanvasRuntimeRepository:
                             )
                         connection.commit()
                         return _execution(existing)
+                    active = self._active_execution_in_transaction(connection, workflow_id)
+                    if active is not None:
+                        next_member_order = self._next_member_order(connection, active.execution_id)
+                        for node_id in node_ids:
+                            if self._member_exists(connection, active.execution_id, node_id):
+                                continue
+                            self._insert_member(
+                                connection,
+                                execution_id=active.execution_id,
+                                workflow_id=workflow_id,
+                                node_id=node_id,
+                                member_order=next_member_order,
+                                now=now.isoformat(),
+                            )
+                            next_member_order += 1
+                        connection.commit()
+                        return self.get_execution(active.execution_id)
                     execution_id = f"exec_{uuid4().hex}"
                     timestamp = now.isoformat()
                     connection.execute(
@@ -240,6 +270,130 @@ class AgentCanvasRuntimeRepository:
                 "Execution storage is unavailable.",
             ) from error
         return self.get_execution(execution_id)
+
+    def start_or_join_execution(
+        self,
+        command: CanvasExecutionStartCommandV2,
+    ) -> CanvasExecutionStartResultV2:
+        """Atomically replay, join, or create one Workflow execution."""
+
+        timestamp = command.created_at.isoformat()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    replay = self._load_admission(connection, command)
+                    if replay is not None:
+                        connection.commit()
+                        return replay
+                    self._validate_start_intent(connection, command)
+                    active = self._active_execution_in_transaction(connection, command.workflow_id)
+                    created = active is None
+                    if active is None:
+                        execution_id = f"exec_{uuid4().hex}"
+                        connection.execute(
+                            insert(AgentCanvasExecutionRow).values(
+                                execution_id=execution_id,
+                                workflow_id=command.workflow_id,
+                                scope=command.scope,
+                                status="queued",
+                                cancel_requested=False,
+                                idempotency_key=command.idempotency_key,
+                                request_fingerprint=command.request_digest,
+                                created_at=timestamp,
+                                updated_at=timestamp,
+                            )
+                        )
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=command.workflow_id,
+                                execution_id=execution_id,
+                                event_type="execution_queued",
+                                created_at=timestamp,
+                                payload={
+                                    "scope": command.scope,
+                                    "node_ids": [
+                                        intent.node_id for intent in command.member_intents
+                                    ],
+                                },
+                            ),
+                        )
+                    else:
+                        execution_id = active.execution_id
+                    next_order = self._next_member_order(connection, execution_id)
+                    inserted: list[str] = []
+                    snapshot_ids: dict[str, str] = {}
+                    for intent in command.member_intents:
+                        if self._member_exists(connection, execution_id, intent.node_id):
+                            continue
+                        member_id = f"member_{uuid4().hex}"
+                        snapshot = self._snapshot_for_intent(
+                            command,
+                            intent,
+                            execution_id=execution_id,
+                            member_id=member_id,
+                        )
+                        self._insert_member(
+                            connection,
+                            execution_id=execution_id,
+                            workflow_id=command.workflow_id,
+                            node_id=intent.node_id,
+                            member_order=next_order,
+                            now=timestamp,
+                            member_id=member_id,
+                            run_intent_snapshot=snapshot,
+                            prompt_metadata={
+                                "frozen_node": intent.frozen_node,
+                                **(
+                                    {
+                                        "execution_parameter_normalizations": list(
+                                            intent.parameter_normalizations
+                                        )
+                                    }
+                                    if intent.parameter_normalizations
+                                    else {}
+                                ),
+                            },
+                        )
+                        inserted.append(intent.node_id)
+                        snapshot_ids[intent.node_id] = snapshot.snapshot_id
+                        next_order += 1
+                    execution = self._execution_in_transaction(connection, execution_id)
+                    result = CanvasExecutionStartResultV2(
+                        execution=execution,
+                        accepted_node_ids=tuple(inserted) if created else (),
+                        joined_node_ids=() if created else tuple(inserted),
+                        snapshot_ids=snapshot_ids,
+                    )
+                    connection.execute(
+                        insert(AgentCanvasExecutionAdmissionRow).values(
+                            admission_id=f"admission_{uuid4().hex}",
+                            idempotency_key=command.idempotency_key,
+                            request_digest=command.request_digest,
+                            workflow_id=command.workflow_id,
+                            execution_id=execution_id,
+                            result_json=result.model_dump_json(),
+                            created_at=timestamp,
+                        )
+                    )
+                    connection.commit()
+                    return result
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _error(
+                "execution_admission_conflict",
+                "Execution admission conflicted with current durable state.",
+            ) from error
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Execution storage is unavailable.",
+            ) from error
 
     def add_members(
         self,
@@ -731,6 +885,65 @@ class AgentCanvasRuntimeRepository:
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
 
+    def renew_lease(
+        self,
+        lease: NodeExecutionLeaseV2,
+        *,
+        now: datetime,
+        ttl: timedelta,
+    ) -> NodeExecutionLeaseV2:
+        expires_at = now + ttl
+        try:
+            with self._database.engine.begin() as connection:
+                result = connection.execute(
+                    update(AgentCanvasNodeLeaseRow)
+                    .where(
+                        AgentCanvasNodeLeaseRow.execution_id == lease.execution_id,
+                        AgentCanvasNodeLeaseRow.node_id == lease.node_id,
+                        AgentCanvasNodeLeaseRow.owner_id == lease.owner_id,
+                        AgentCanvasNodeLeaseRow.generation == lease.generation,
+                        AgentCanvasNodeLeaseRow.state == "claimed",
+                        AgentCanvasNodeLeaseRow.expires_at > now.isoformat(),
+                    )
+                    .values(
+                        heartbeat_at=now.isoformat(),
+                        expires_at=expires_at.isoformat(),
+                    )
+                )
+                if result.rowcount != 1:
+                    raise _error(
+                        "stale_execution_lease",
+                        "Execution lease ownership was lost.",
+                    )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
+        return lease.model_copy(update={"heartbeat_at": now, "expires_at": expires_at})
+
+    def assert_current_lease(
+        self,
+        lease: NodeExecutionLeaseV2,
+        *,
+        now: datetime,
+    ) -> None:
+        try:
+            with self._database.engine.connect() as connection:
+                exists = connection.execute(
+                    select(AgentCanvasNodeLeaseRow.lease_id).where(
+                        AgentCanvasNodeLeaseRow.execution_id == lease.execution_id,
+                        AgentCanvasNodeLeaseRow.node_id == lease.node_id,
+                        AgentCanvasNodeLeaseRow.owner_id == lease.owner_id,
+                        AgentCanvasNodeLeaseRow.generation == lease.generation,
+                        AgentCanvasNodeLeaseRow.state == "claimed",
+                        AgentCanvasNodeLeaseRow.expires_at > now.isoformat(),
+                    )
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error("execution_persistence_failed", "Lease storage is unavailable.") from error
+        if exists is None:
+            raise _error("stale_execution_lease", "Execution lease ownership was lost.")
+
     def put_provider_task(self, task: CanvasProviderTaskV2, *, now: datetime) -> bool:
         """Persist one provider transition unless a newer terminal lease won."""
 
@@ -772,6 +985,140 @@ class AgentCanvasRuntimeRepository:
         except SQLAlchemyError as error:
             raise _error("execution_persistence_failed", "Provider task storage failed.") from error
         return True
+
+    def put_submission_intent(
+        self,
+        intent: ProviderSubmissionIntentV2,
+    ) -> ProviderSubmissionIntentV2:
+        values = intent.model_dump(mode="json")
+        try:
+            with self._database.engine.begin() as connection:
+                existing = (
+                    connection.execute(
+                        select(AgentCanvasProviderSubmissionIntentRow).where(
+                            AgentCanvasProviderSubmissionIntentRow.logical_operation_key
+                            == intent.logical_operation_key
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is not None:
+                    stored = _submission_intent(existing)
+                    if stored.request_digest != intent.request_digest:
+                        raise _error(
+                            "provider_submission_intent_conflict",
+                            "Provider submission intent content is immutable.",
+                        )
+                    return stored
+                connection.execute(insert(AgentCanvasProviderSubmissionIntentRow).values(**values))
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
+        return intent
+
+    def get_submission_intent(self, intent_id: str) -> ProviderSubmissionIntentV2:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasProviderSubmissionIntentRow).where(
+                            AgentCanvasProviderSubmissionIntentRow.intent_id == intent_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
+        if row is None:
+            raise _error(
+                "provider_submission_intent_not_found",
+                "Provider submission intent was not found.",
+            )
+        return _submission_intent(row)
+
+    def list_submission_intents(
+        self,
+        *,
+        execution_id: str | None = None,
+    ) -> tuple[ProviderSubmissionIntentV2, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                statement = select(AgentCanvasProviderSubmissionIntentRow)
+                if execution_id is not None:
+                    statement = statement.where(
+                        AgentCanvasProviderSubmissionIntentRow.execution_id == execution_id
+                    )
+                rows = (
+                    connection.execute(
+                        statement.order_by(AgentCanvasProviderSubmissionIntentRow.created_at.asc())
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
+        return tuple(_submission_intent(row) for row in rows)
+
+    def update_submission_intent(
+        self,
+        intent: ProviderSubmissionIntentV2,
+        *,
+        expected_state: str,
+    ) -> ProviderSubmissionIntentV2:
+        values = intent.model_dump(mode="json")
+        values.pop("intent_id")
+        try:
+            with self._database.engine.begin() as connection:
+                result = connection.execute(
+                    update(AgentCanvasProviderSubmissionIntentRow)
+                    .where(
+                        AgentCanvasProviderSubmissionIntentRow.intent_id == intent.intent_id,
+                        AgentCanvasProviderSubmissionIntentRow.state == expected_state,
+                    )
+                    .values(**values)
+                )
+                if result.rowcount != 1:
+                    row = (
+                        connection.execute(
+                            select(AgentCanvasProviderSubmissionIntentRow).where(
+                                AgentCanvasProviderSubmissionIntentRow.intent_id == intent.intent_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        raise _error(
+                            "provider_submission_intent_not_found",
+                            "Provider submission intent was not found.",
+                        )
+                    current = _submission_intent(row)
+                    if current.request_digest == intent.request_digest and current == intent:
+                        return current
+                    raise _error(
+                        "provider_submission_intent_transition_conflict",
+                        "Provider submission intent is no longer in the expected state.",
+                    )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "execution_persistence_failed",
+                "Provider submission intent storage failed.",
+            ) from error
+        return intent
 
     def list_recoverable_tasks(self) -> tuple[CanvasProviderTaskV2, ...]:
         return self.list_provider_tasks(
@@ -834,10 +1181,13 @@ class AgentCanvasRuntimeRepository:
         node_id: str,
         member_order: int,
         now: str,
+        member_id: str | None = None,
+        run_intent_snapshot: NodeRunIntentSnapshotV2 | None = None,
+        prompt_metadata: dict[str, object] | None = None,
     ) -> None:
         connection.execute(
             insert(AgentCanvasExecutionMemberRow).values(
-                member_id=f"member_{uuid4().hex}",
+                member_id=member_id or f"member_{uuid4().hex}",
                 execution_id=execution_id,
                 workflow_id=workflow_id,
                 node_id=node_id,
@@ -847,15 +1197,21 @@ class AgentCanvasRuntimeRepository:
                 attempt_no=0,
                 waiting_for_node_ids_json="[]",
                 provider_task_id=None,
-                run_intent_snapshot_id=None,
-                run_intent_snapshot_json=None,
-                run_intent_snapshot_digest=None,
+                run_intent_snapshot_id=(
+                    run_intent_snapshot.snapshot_id if run_intent_snapshot else None
+                ),
+                run_intent_snapshot_json=(
+                    run_intent_snapshot.model_dump_json() if run_intent_snapshot else None
+                ),
+                run_intent_snapshot_digest=(
+                    run_intent_snapshot.snapshot_digest if run_intent_snapshot else None
+                ),
                 resolved_input_manifest_id=None,
                 resolved_input_manifest_json=None,
                 resolved_input_manifest_digest=None,
                 effective_parameters_json=None,
                 omitted_optional_inputs_json="[]",
-                prompt_metadata_json="{}",
+                prompt_metadata_json=json.dumps(prompt_metadata or {}, sort_keys=True),
                 error_json=None,
                 updated_at=now,
             )
@@ -870,6 +1226,158 @@ class AgentCanvasRuntimeRepository:
                 created_at=now,
                 payload={},
             ),
+        )
+
+    @staticmethod
+    def _next_member_order(connection: Connection, execution_id: str) -> int:
+        return (
+            int(
+                connection.execute(
+                    select(
+                        func.coalesce(func.max(AgentCanvasExecutionMemberRow.member_order), -1)
+                    ).where(AgentCanvasExecutionMemberRow.execution_id == execution_id)
+                ).scalar_one()
+            )
+            + 1
+        )
+
+    @staticmethod
+    def _member_exists(connection: Connection, execution_id: str, node_id: str) -> bool:
+        return (
+            connection.execute(
+                select(AgentCanvasExecutionMemberRow.member_id).where(
+                    AgentCanvasExecutionMemberRow.execution_id == execution_id,
+                    AgentCanvasExecutionMemberRow.node_id == node_id,
+                )
+            ).scalar_one_or_none()
+            is not None
+        )
+
+    @staticmethod
+    def _active_execution_in_transaction(
+        connection: Connection,
+        workflow_id: str,
+    ) -> CanvasExecutionRecordV2 | None:
+        row = (
+            connection.execute(
+                select(AgentCanvasExecutionRow)
+                .where(
+                    AgentCanvasExecutionRow.workflow_id == workflow_id,
+                    AgentCanvasExecutionRow.status.in_(_ACTIVE_EXECUTION_STATES),
+                )
+                .order_by(AgentCanvasExecutionRow.created_at.asc())
+                .limit(1)
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return _execution(row) if row is not None else None
+
+    @staticmethod
+    def _load_admission(
+        connection: Connection,
+        command: CanvasExecutionStartCommandV2,
+    ) -> CanvasExecutionStartResultV2 | None:
+        row = (
+            connection.execute(
+                select(AgentCanvasExecutionAdmissionRow).where(
+                    AgentCanvasExecutionAdmissionRow.idempotency_key == command.idempotency_key
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        if (
+            str(row["workflow_id"]) != command.workflow_id
+            or str(row["request_digest"]) != command.request_digest
+        ):
+            raise _error(
+                "idempotency_conflict",
+                "Idempotency key was reused with another run request.",
+            )
+        return CanvasExecutionStartResultV2.model_validate_json(str(row["result_json"]))
+
+    @staticmethod
+    def _validate_start_intent(
+        connection: Connection,
+        command: CanvasExecutionStartCommandV2,
+    ) -> None:
+        workflow_revision = connection.execute(
+            select(AgentCanvasWorkflowRow.revision).where(
+                AgentCanvasWorkflowRow.workflow_id == command.workflow_id
+            )
+        ).scalar_one_or_none()
+        if workflow_revision is None:
+            raise _error("workflow_not_found", "Workflow was not found.")
+        if int(workflow_revision) != command.expected_workflow_revision:
+            raise _error(
+                "run_intent_stale",
+                "Workflow authoring changed before Run admission.",
+            )
+        for intent in command.member_intents:
+            node_revision = connection.execute(
+                select(AgentCanvasNodeRow.revision).where(
+                    AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                    AgentCanvasNodeRow.node_id == intent.node_id,
+                )
+            ).scalar_one_or_none()
+            if node_revision is None or int(node_revision) != intent.node_revision:
+                raise _error("run_intent_stale", "Node authoring changed before Run admission.")
+            current_bindings = (
+                connection.execute(
+                    select(AgentCanvasBindingRow).where(
+                        AgentCanvasBindingRow.workflow_id == command.workflow_id,
+                        AgentCanvasBindingRow.target_node_id == intent.node_id,
+                        AgentCanvasBindingRow.enabled.is_(True),
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            current_ids = {str(row["binding_id"]) for row in current_bindings}
+            expected_ids = {binding.binding_id for binding in intent.binding_snapshots}
+            if current_ids != expected_ids:
+                raise _error("run_intent_stale", "Bindings changed before Run admission.")
+            for asset_id, expected_digest in intent.expected_source_asset_digests.items():
+                digest = connection.execute(
+                    select(AssetVersionRow.sha256)
+                    .where(AssetVersionRow.asset_id == asset_id)
+                    .order_by(AssetVersionRow.version_no.desc())
+                    .limit(1)
+                ).scalar_one_or_none()
+                if digest is None or str(digest) != expected_digest:
+                    raise _error("run_intent_stale", "Source Asset changed before Run admission.")
+
+    @staticmethod
+    def _snapshot_for_intent(
+        command: CanvasExecutionStartCommandV2,
+        intent: CanvasExecutionMemberIntentV2,
+        *,
+        execution_id: str,
+        member_id: str,
+    ) -> NodeRunIntentSnapshotV2:
+        node = intent.frozen_node
+        return NodeRunIntentSnapshotV2(
+            snapshot_id=intent.snapshot_id,
+            workflow_id=command.workflow_id,
+            execution_id=execution_id,
+            member_id=member_id,
+            node_id=intent.node_id,
+            node_revision=intent.node_revision,
+            node_type=cast(str, node["node_type"]),
+            creative_role=cast(str, node["creative_role"]),
+            role_contract_version=cast(str, node["role_contract_version"]),
+            summary_prompt=cast(str | None, node.get("summary_prompt")),
+            generation_prompt=cast(str | None, node.get("generation_prompt")),
+            structured_content_digest=_json_digest(node.get("structured_content", {})),
+            model_selection_mode=cast(str, node["model_selection_mode"]),
+            model_ref=cast(str | None, node.get("model_ref")),
+            requested_parameters=cast(dict[str, object], node.get("parameters", {})),
+            binding_snapshots=intent.binding_snapshots,
+            snapshot_digest=intent.snapshot_digest,
+            created_at=command.created_at,
         )
 
     @staticmethod
@@ -956,6 +1464,7 @@ def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
         workflow_id=str(row["workflow_id"]),
         execution_id=str(row["execution_id"]),
         node_id=str(row["node_id"]),
+        submission_intent_id=cast(str | None, row["submission_intent_id"]),
         provider=str(row["provider"]),
         remote_task_id=cast(str | None, row["remote_task_id"]),
         status=cast(str, row["status"]),
@@ -967,5 +1476,34 @@ def _provider_task(row: RowMapping) -> CanvasProviderTaskV2:
     )
 
 
+def _submission_intent(row: RowMapping) -> ProviderSubmissionIntentV2:
+    return ProviderSubmissionIntentV2(
+        intent_id=str(row["intent_id"]),
+        logical_operation_key=str(row["logical_operation_key"]),
+        request_digest=str(row["request_digest"]),
+        workflow_id=str(row["workflow_id"]),
+        execution_id=str(row["execution_id"]),
+        member_id=str(row["member_id"]),
+        node_id=str(row["node_id"]),
+        provider=str(row["provider"]),
+        model_id=str(row["model_id"]),
+        attempt_no=int(row["attempt_no"]),
+        supports_idempotency_token=bool(row["supports_idempotency_token"]),
+        supports_remote_task_lookup=bool(row["supports_remote_task_lookup"]),
+        provider_idempotency_token=cast(str | None, row["provider_idempotency_token"]),
+        remote_task_id=cast(str | None, row["remote_task_id"]),
+        provider_task_id=cast(str | None, row["provider_task_id"]),
+        state=cast(str, row["state"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
+
 def _error(code: str, message: str) -> V2PersistenceError:
     return V2PersistenceError(code, message, stage="agent_canvas_runtime_repository")
+
+
+def _json_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()

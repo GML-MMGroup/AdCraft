@@ -711,6 +711,16 @@ class V2AssetLibraryRepository:
         )
         return _get_version(connection, version.version_id)
 
+    def register_asset_version_in_transaction(
+        self,
+        connection: Connection,
+        asset: AssetRecordCreate,
+        version: AssetVersionCreate,
+    ) -> AssetVersionMetadataV2:
+        """Register prepared immutable media inside the result authority transaction."""
+
+        return self._create_asset_version_in_transaction(connection, asset, version)
+
     def _import_asset_version_in_transaction(
         self,
         connection: Connection,

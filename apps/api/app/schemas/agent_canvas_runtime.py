@@ -385,6 +385,7 @@ class CanvasProviderTaskV2(_RuntimeModel):
     workflow_id: str
     execution_id: str
     node_id: str
+    submission_intent_id: str | None = None
     provider: str
     remote_task_id: str | None = None
     status: Literal[

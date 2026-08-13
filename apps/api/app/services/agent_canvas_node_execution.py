@@ -92,6 +92,7 @@ class NodeExecutionOutcome:
     provider: str | None = None
     result_descriptor: dict[str, object] | None = None
     prompt_metadata: dict[str, object] | None = None
+    submission_intent_id: str | None = None
 
 
 NodeExecutor = Callable[[NodeExecutionContext], NodeExecutionOutcome]
@@ -377,6 +378,8 @@ class MediaNodeExecutor:
         settings: Settings | None = None,
         reference_delivery: V2ProviderReferenceInputDeliveryService | None = None,
         seedance_inputs: AgentCanvasSeedanceInputCompiler | None = None,
+        submission_intents=None,
+        clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     ) -> None:
         self._provider = provider
         self._data_dir = data_dir.resolve()
@@ -386,6 +389,8 @@ class MediaNodeExecutor:
             settings=self._settings,
         )
         self._seedance_inputs = seedance_inputs or AgentCanvasSeedanceInputCompiler()
+        self._submission_intents = submission_intents
+        self._clock = clock
 
     def prepare(self, context: NodeExecutionContext) -> NodeExecutionContext:
         """Resolve provider-safe media before the scheduler starts provider work."""
@@ -543,12 +548,19 @@ class MediaNodeExecutor:
             provider_payload["reference_asset_ids"] = [
                 reference.asset_id for reference in prepared.delivered_references
             ]
-        result = self._provider.execute_minimal(
-            workflow_id=context.node.workflow_id,
-            slot_type=context.node.semantic_role,
-            media_type=media_type,
-            provider_payload=provider_payload,
-        )
+        intent = self._prepare_submission_intent(context, provider_payload)
+        if intent is not None and intent.provider_idempotency_token is not None:
+            provider_payload["idempotency_token"] = intent.provider_idempotency_token
+        try:
+            result = self._provider.execute_minimal(
+                workflow_id=context.node.workflow_id,
+                slot_type=context.node.semantic_role,
+                media_type=media_type,
+                provider_payload=provider_payload,
+            )
+        except Exception as error:
+            self._handle_submission_error(intent, error)
+            raise
         if result.status == "completed":
             content = result.asset_bytes
             if content is None and result.local_file_path:
@@ -559,6 +571,8 @@ class MediaNodeExecutor:
                     "Provider result did not include media content.",
                 )
             mime_type, filename = _generated_media_identity(media_type, content)
+            if intent is not None:
+                self._submission_intents.complete(intent, now=self._clock())
             return NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
                     content=content,
@@ -573,11 +587,19 @@ class MediaNodeExecutor:
                 provider=result.provider,
                 remote_task_id=result.remote_task_id,
                 result_descriptor=dict(result.metadata),
+                submission_intent_id=(intent.intent_id if intent is not None else None),
             )
         if result.status == "waiting" and result.remote_task_id:
             task_digest = hashlib.sha256(
                 f"{context.execution_id}:{context.node.node_id}:{result.remote_task_id}".encode()
             ).hexdigest()[:24]
+            if intent is not None:
+                intent = self._submission_intents.confirm_remote_task(
+                    intent,
+                    provider_task_id=f"task_{task_digest}",
+                    remote_task_id=result.remote_task_id,
+                    now=self._clock(),
+                )
             return NodeExecutionOutcome(
                 provider_task_id=f"task_{task_digest}",
                 remote_task_id=result.remote_task_id,
@@ -589,6 +611,7 @@ class MediaNodeExecutor:
                     "provider_payload": result.provider_payload_snapshot,
                     **result.metadata,
                 },
+                submission_intent_id=(intent.intent_id if intent is not None else None),
             )
         raise _error(
             result.error_code or "provider_generation_failed",
@@ -608,12 +631,23 @@ class MediaNodeExecutor:
                 "provider_reference_delivery_unavailable",
                 "The configured provider does not support Agent Canvas Seedance manifests.",
             )
-        result = execute(
-            workflow_id=context.node.workflow_id,
-            node_id=context.node.node_id,
-            manifest=manifest,
-            audit=audit,
+        intent = self._prepare_submission_intent(
+            context,
+            {
+                "manifest": manifest.model_dump(mode="json"),
+                "audit": audit.model_dump(mode="json"),
+            },
         )
+        try:
+            result = execute(
+                workflow_id=context.node.workflow_id,
+                node_id=context.node.node_id,
+                manifest=manifest,
+                audit=audit,
+            )
+        except Exception as error:
+            self._handle_submission_error(intent, error)
+            raise
         audit_payload = {"seedance_input_manifest": audit.model_dump(mode="json")}
         if result.status == "completed":
             content = result.asset_bytes
@@ -623,6 +657,8 @@ class MediaNodeExecutor:
                 raise _error(
                     "provider_output_missing", "Provider result did not include media content."
                 )
+            if intent is not None:
+                self._submission_intents.complete(intent, now=self._clock())
             return NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
                     content=content,
@@ -638,11 +674,19 @@ class MediaNodeExecutor:
                 remote_task_id=result.remote_task_id,
                 result_descriptor=dict(result.metadata),
                 prompt_metadata=audit_payload,
+                submission_intent_id=(intent.intent_id if intent is not None else None),
             )
         if result.status == "waiting" and result.remote_task_id:
             task_digest = hashlib.sha256(
                 f"{context.execution_id}:{context.node.node_id}:{result.remote_task_id}".encode()
             ).hexdigest()[:24]
+            if intent is not None:
+                intent = self._submission_intents.confirm_remote_task(
+                    intent,
+                    provider_task_id=f"task_{task_digest}",
+                    remote_task_id=result.remote_task_id,
+                    now=self._clock(),
+                )
             return NodeExecutionOutcome(
                 provider_task_id=f"task_{task_digest}",
                 remote_task_id=result.remote_task_id,
@@ -655,11 +699,34 @@ class MediaNodeExecutor:
                     **result.metadata,
                 },
                 prompt_metadata=audit_payload,
+                submission_intent_id=(intent.intent_id if intent is not None else None),
             )
         raise _error(
             result.error_code or "provider_generation_failed",
             result.error_message or "Provider generation failed.",
         )
+
+    def _prepare_submission_intent(self, context, request_payload):
+        if self._submission_intents is None or context.model_resolution is None:
+            return None
+        return self._submission_intents.prepare(
+            workflow_id=context.node.workflow_id,
+            execution_id=context.execution_id,
+            node_id=context.node.node_id,
+            model_resolution=context.model_resolution,
+            request_payload=request_payload,
+            now=self._clock(),
+        )
+
+    def _handle_submission_error(self, intent, error: Exception) -> None:
+        if intent is None or self._submission_intents is None:
+            return
+        updated = self._submission_intents.mark_outcome_unknown(intent, now=self._clock())
+        if updated.state == "outcome_unknown":
+            raise _error(
+                "provider_submission_outcome_unknown",
+                "Provider submission outcome cannot be recovered automatically.",
+            ) from error
 
     def _read_provider_file(self, value: str) -> bytes:
         candidate = Path(value)
@@ -734,6 +801,7 @@ def build_default_node_dispatcher(
     *,
     provider_executor: _MinimalProviderExecutor | None = None,
     fake_media_bytes_override: Callable[[str], bytes | None] | None = None,
+    submission_intents=None,
 ) -> NodeExecutionDispatcher:
     """Build deterministic fakes or configured node-native provider adapters."""
 
@@ -763,6 +831,22 @@ def build_default_node_dispatcher(
                 if context.compiled_prompt is not None
                 else context.node.generation_prompt
             )
+            now = datetime.now(timezone.utc)
+            intent = (
+                submission_intents.prepare(
+                    workflow_id=context.node.workflow_id,
+                    execution_id=context.execution_id,
+                    node_id=context.node.node_id,
+                    model_resolution=context.model_resolution,
+                    request_payload={
+                        "node_type": context.node.node_type,
+                        "prompt": prompt,
+                    },
+                    now=now,
+                )
+                if submission_intents is not None and context.model_resolution is not None
+                else None
+            )
             seed = hashlib.sha256(
                 (f"{context.node.node_type}:{prompt}:{context.model_id}").encode()
             ).digest()
@@ -777,18 +861,23 @@ def build_default_node_dispatcher(
                 else None
             )
             content = overridden_content or signature + b"ADCRAFT_FAKE_MEDIA\n" + seed
-            return NodeExecutionOutcome(
+            outcome = NodeExecutionOutcome(
                 media=GeneratedMediaPayload(
                     content=content,
                     mime_type=mime_type,
                     filename=filename,
-                )
+                ),
+                submission_intent_id=(intent.intent_id if intent is not None else None),
             )
+            if intent is not None:
+                submission_intents.complete(intent, now=now)
+            return outcome
 
         fake_video = MediaNodeExecutor(
             provider_executor or _default_provider_executor(settings),
             data_dir=settings.media_data_dir,
             settings=settings,
+            submission_intents=submission_intents,
         )
 
         return NodeExecutionDispatcher(
@@ -803,6 +892,7 @@ def build_default_node_dispatcher(
         provider_executor or _default_provider_executor(settings),
         data_dir=settings.media_data_dir,
         settings=settings,
+        submission_intents=submission_intents,
     )
 
     def unavailable(_: NodeExecutionContext) -> NodeExecutionOutcome:

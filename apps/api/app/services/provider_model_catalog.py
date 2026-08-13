@@ -106,6 +106,8 @@ _TRUSTED_MANIFESTS = (
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "ark_image",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": False,
         },
     ),
     TrustedModelManifest(
@@ -134,6 +136,8 @@ _TRUSTED_MANIFESTS = (
                 "generate_audio": False,
             },
             "provider_protocol": "ark_video",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": True,
         },
     ),
     TrustedModelManifest(
@@ -149,6 +153,8 @@ _TRUSTED_MANIFESTS = (
             "duration_range_seconds": [1, 120],
             "automatic_tier_priority": 1,
             "provider_protocol": "tianpuyue_audio",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": True,
         },
     ),
     TrustedModelManifest(
@@ -164,6 +170,8 @@ _TRUSTED_MANIFESTS = (
             "duration_range_seconds": [1, 270],
             "automatic_tier_priority": 2,
             "provider_protocol": "tianpuyue_audio",
+            "supports_provider_idempotency_token": False,
+            "supports_remote_task_lookup": True,
         },
     ),
     TrustedModelManifest(
@@ -200,6 +208,8 @@ _TRUSTED_MANIFESTS = (
             "supported_sizes_by_aspect_ratio": dict(GUIDED_IMAGE_SIZES_BY_ASPECT_RATIO),
             "pixel_bounds": [512, 4096],
             "provider_protocol": "fake",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
         },
     ),
     TrustedModelManifest(
@@ -221,6 +231,8 @@ _TRUSTED_MANIFESTS = (
                 "aspect_ratio": "16:9",
             },
             "provider_protocol": "fake",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
         },
     ),
     TrustedModelManifest(
@@ -235,6 +247,8 @@ _TRUSTED_MANIFESTS = (
             "supported_parameters": ["duration_seconds"],
             "duration_range_seconds": [1, 600],
             "provider_protocol": "fake",
+            "supports_provider_idempotency_token": True,
+            "supports_remote_task_lookup": True,
         },
     ),
 )

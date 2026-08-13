@@ -1624,6 +1624,12 @@ class AgentCanvasExecutionRow(Base):
             "status",
             "created_at",
         ),
+        Index(
+            "uq_agent_canvas_executions_active_workflow",
+            "workflow_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued','running','waiting')"),
+        ),
     )
 
     execution_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -1684,6 +1690,22 @@ class AgentCanvasExecutionMemberRow(Base):
     prompt_metadata_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     error_json: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasExecutionAdmissionRow(Base):
+    """Immutable idempotency receipt for one Run admission request."""
+
+    __tablename__ = "agent_canvas_execution_admissions"
+
+    admission_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    result_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class AgentCanvasVideoParameterCompilationSnapshotRow(Base):
@@ -1760,6 +1782,9 @@ class AgentCanvasProviderTaskRow(Base):
         ForeignKey("agent_canvas_executions.execution_id"), nullable=False
     )
     node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    submission_intent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_canvas_provider_submission_intents.intent_id")
+    )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     remote_task_id: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1767,6 +1792,130 @@ class AgentCanvasProviderTaskRow(Base):
     next_poll_at: Mapped[str | None] = mapped_column(Text)
     recovery_deadline: Mapped[str] = mapped_column(Text, nullable=False)
     result_descriptor_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    error_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasProviderSubmissionIntentRow(Base):
+    """Immutable paid-provider submission authority preceding one adapter call."""
+
+    __tablename__ = "agent_canvas_provider_submission_intents"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('prepared','submitted','outcome_unknown','completed')",
+            name="ck_agent_canvas_provider_submission_intents_state",
+        ),
+        UniqueConstraint(
+            "logical_operation_key",
+            name="uq_agent_canvas_provider_submission_intents_operation",
+        ),
+        Index(
+            "ix_agent_canvas_provider_submission_intents_recovery",
+            "state",
+            "updated_at",
+        ),
+    )
+
+    intent_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    logical_operation_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_members.member_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    supports_idempotency_token: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    supports_remote_task_lookup: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    provider_idempotency_token: Mapped[str | None] = mapped_column(Text)
+    remote_task_id: Mapped[str | None] = mapped_column(Text)
+    provider_task_id: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasExecutionResultCommitRow(Base):
+    """Immutable receipt for the sole terminal result transaction."""
+
+    __tablename__ = "agent_canvas_execution_result_commits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('succeeded','failed','cancelled')",
+            name="ck_agent_canvas_execution_result_commits_outcome",
+        ),
+        UniqueConstraint(
+            "logical_result_key",
+            name="uq_agent_canvas_execution_result_commits_result_key",
+        ),
+        UniqueConstraint(
+            "execution_id",
+            "member_id",
+            name="uq_agent_canvas_execution_result_commits_member",
+        ),
+    )
+
+    commit_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    logical_result_key: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    execution_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_executions.execution_id"), nullable=False
+    )
+    member_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_members.member_id"), nullable=False
+    )
+    node_id: Mapped[str] = mapped_column(ForeignKey("agent_canvas_nodes.node_id"), nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_id: Mapped[str | None] = mapped_column(Text)
+    version_id: Mapped[str | None] = mapped_column(Text)
+    event_cursor: Mapped[int] = mapped_column(Integer, nullable=False)
+    receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
+    committed_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasPostReadyEffectRow(Base):
+    """Typed replay-safe effect emitted by a successful result commit."""
+
+    __tablename__ = "agent_canvas_post_ready_effects"
+    __table_args__ = (
+        CheckConstraint(
+            "effect_type IN "
+            "('persist_script_document','persist_text_document','advance_storyboard_progression')",
+            name="ck_agent_canvas_post_ready_effects_type",
+        ),
+        CheckConstraint(
+            "status IN ('queued','running','completed','failed')",
+            name="ck_agent_canvas_post_ready_effects_status",
+        ),
+        Index(
+            "ix_agent_canvas_post_ready_effects_due",
+            "status",
+            "lease_expires_at",
+            "updated_at",
+        ),
+    )
+
+    effect_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    effect_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_commit_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_execution_result_commits.commit_id"), nullable=False
+    )
+    workflow_id: Mapped[str] = mapped_column(Text, nullable=False)
+    node_id: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    lease_owner_id: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
     error_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)

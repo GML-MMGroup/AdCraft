@@ -127,6 +127,7 @@ def _recover_agent_canvas_executions(settings: Settings) -> None:
     runtime = create_agent_canvas_runtime(settings)
     try:
         runtime.provider_recovery.recover_due_tasks()
+        runtime.post_ready_effects.run_once()
         state_machine = AgentCanvasExecutionStateMachine()
         for execution in runtime.runtime_repository.list_executions():
             state_machine.reconcile(
@@ -188,6 +189,9 @@ def _recover_agent_canvas_provider_tasks(settings: Settings) -> None:
     runtime = create_agent_canvas_runtime(settings)
     try:
         runtime.provider_recovery.recover_due_tasks()
+        runtime.post_ready_effects.run_once()
+        for execution in runtime.runtime_repository.list_active_executions():
+            runtime.scheduler.resume(execution.execution_id)
     finally:
         runtime.database.dispose()
 

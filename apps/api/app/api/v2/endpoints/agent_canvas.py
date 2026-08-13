@@ -196,6 +196,18 @@ from app.services.agent_canvas_provider_recovery import (
     ProviderPollResult,
     ProviderTaskRecoveryService,
 )
+from app.services.agent_canvas_provider_submission import ProviderSubmissionIntentService
+from app.persistence.agent_canvas_post_ready_repository import (
+    AgentCanvasPostReadyEffectRepository,
+)
+from app.persistence.agent_canvas_result_commit_repository import (
+    AgentCanvasResultCommitRepository,
+)
+from app.services.agent_canvas_execution_result_commit import (
+    AgentCanvasExecutionResultCommitService,
+)
+from app.services.agent_canvas_output_preparation import AgentCanvasOutputPreparationService
+from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEffectWorker
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -315,6 +327,7 @@ class AgentCanvasRuntime:
     runtime_snapshots: CanvasRuntimeSnapshotService
     provider_capabilities: ProviderCapabilityService
     provider_recovery: ProviderTaskRecoveryService
+    post_ready_effects: AgentCanvasPostReadyEffectWorker
     editing_nodes: EditingNodeService
     editing_exports: EditingExportService
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -461,6 +474,7 @@ def create_agent_canvas_runtime(
         settings,
         provider_executor=provider_executor,
         fake_media_bytes_override=fake_media_bytes_override,
+        submission_intents=ProviderSubmissionIntentService(runtime_repository),
     )
     role_registry = AdMediaRoleRegistry()
     reference_resolver = AdReferenceBundleResolver(
@@ -556,6 +570,14 @@ def create_agent_canvas_runtime(
             )
         ),
     )
+    output_preparer = AgentCanvasOutputPreparationService(asset_service)
+    result_committer = AgentCanvasExecutionResultCommitService(
+        AgentCanvasResultCommitRepository(
+            database,
+            asset_repository,
+            event_repository,
+        )
+    )
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -579,18 +601,6 @@ def create_agent_canvas_runtime(
                 },
             ).asset_id
         ),
-        script_ready_publisher=lambda workflow_id, node_id: (
-            conversation_repository.publish_script_artifact(
-                workflow_id,
-                script_node_id=node_id,
-                source_turn_id=None,
-            )
-        ),
-        text_ready_publisher=lambda node: _persist_text_document(
-            document_repository,
-            node,
-        ),
-        media_ready_publisher=storyboard_progression.on_node_ready,
         media_context_preparer=prepare_media_context,
         input_compiler=AgentCanvasResolvedInputCompiler(
             binding_service,
@@ -612,6 +622,8 @@ def create_agent_canvas_runtime(
         video_limit=settings.v2_max_parallel_video_jobs,
         audio_limit=settings.v2_max_parallel_audio_jobs,
         total_limit=settings.v2_max_parallel_generation_jobs,
+        output_preparer=output_preparer,
+        result_committer=result_committer,
     )
 
     def poll_provider_task(task) -> ProviderPollResult:
@@ -645,7 +657,12 @@ def create_agent_canvas_runtime(
                 result_descriptor=descriptor,
             )
         if bool(result.metadata.get("retryable")):
-            raise RuntimeError(result.error_message or "Provider polling failed.")
+            raise V2PersistenceError(
+                "provider_poll_temporary_failure",
+                result.error_message or "Provider polling failed.",
+                stage="agent_canvas_provider_recovery",
+                details={"retryable": True},
+            )
         return ProviderPollResult(
             status="failed",
             remote_task_id=task.remote_task_id,
@@ -724,7 +741,8 @@ def create_agent_canvas_runtime(
         on_batch_reconciled=lambda execution_ids: [
             scheduler.resume(execution_id) for execution_id in execution_ids
         ],
-        on_node_ready=storyboard_progression.on_node_ready,
+        output_preparer=output_preparer,
+        result_committer=result_committer,
     )
     editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
     editing_exports = EditingExportService(
@@ -747,6 +765,40 @@ def create_agent_canvas_runtime(
         runtime_repository,
         event_repository,
         run_snapshots=run_snapshots,
+    )
+
+    def handle_storyboard_progression(effect) -> None:
+        node = workflow_repository.get_node(effect.workflow_id, effect.node_id)
+        created_node_ids = storyboard_progression.on_node_ready(node)
+        if not created_node_ids:
+            return
+        run_service.start_or_extend(
+            effect.workflow_id,
+            CanvasRunRequestV2(
+                scope="selected_nodes",
+                node_ids=created_node_ids,
+                source_action="agent_command",
+            ),
+            idempotency_key=f"post-ready:{effect.effect_id}:progression",
+        )
+
+    post_ready_effects = AgentCanvasPostReadyEffectWorker(
+        AgentCanvasPostReadyEffectRepository(database, event_repository),
+        handlers={
+            "persist_script_document": lambda effect: (
+                conversation_repository.publish_script_artifact(
+                    effect.workflow_id,
+                    script_node_id=effect.node_id,
+                    source_turn_id=None,
+                )
+            ),
+            "persist_text_document": lambda effect: _persist_text_document(
+                document_repository,
+                workflow_repository.get_node(effect.workflow_id, effect.node_id),
+            ),
+            "advance_storyboard_progression": handle_storyboard_progression,
+        },
+        worker_id=f"agent-canvas-post-ready:{uuid4().hex}",
     )
     auto_run_dispatcher = AgentCanvasAutoRunDispatcher(
         AgentCanvasAutomaticRunRepository(database, event_repository),
@@ -1024,6 +1076,7 @@ def create_agent_canvas_runtime(
         ),
         provider_capabilities=provider_capabilities,
         provider_recovery=provider_recovery,
+        post_ready_effects=post_ready_effects,
         editing_nodes=editing_nodes,
         editing_exports=editing_exports,
         editing_export_repository=editing_export_repository,
