@@ -128,6 +128,7 @@ from app.services.agent_canvas_materialization_submission import (
     QuickMediaMaterializationSubmissionService,
 )
 from app.services.agent_canvas_turn_intent import TurnIntentService
+from app.services.agent_canvas_user_presentation import AgentCanvasTimelinePresentation
 from app.services.agent_canvas_requirements import AgentCanvasRequirementService
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
@@ -1891,10 +1892,15 @@ class AgentConversationService:
         limit: int = 100,
     ) -> ChatTimelineListResponseV2:
         self._workflows.get_workflow(workflow_id)
-        return self._conversations.list_timeline(
+        raw = self._conversations.list_timeline(
             workflow_id,
             after_seq=after_seq,
             limit=limit,
+        )
+        return raw.model_copy(
+            update={
+                "presentation_items": AgentCanvasTimelinePresentation().project(raw.items),
+            }
         )
 
     def get_proposal(self, workflow_id: str, proposal_id: str):

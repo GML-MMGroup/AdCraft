@@ -156,9 +156,7 @@ def _presentation_identity(entry: ChatTimelineEntryV2) -> tuple[str, int]:
     if entry.entry_type == "concept_proposal":
         proposal_id = _bounded_identity(metadata.get("proposal_id"))
         if proposal_id is not None:
-            return f"proposal:{proposal_id}", _positive_int(
-                metadata.get("proposal_revision")
-            )
+            return f"proposal:{proposal_id}", _positive_int(metadata.get("proposal_revision"))
     stored_key = metadata.get("presentation_key")
     if (
         isinstance(stored_key, str)
