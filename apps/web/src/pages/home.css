@@ -20,6 +20,7 @@
 .home-product-hero {
   --home-product-hero-height: 607px;
   --home-product-media-height: 458px;
+  --home-hero-accent-start-delay: 1120ms;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(400px, 1fr);
   grid-template-rows: minmax(0, 1fr);
@@ -64,7 +65,7 @@
   --home-hero-focus-delay: 160ms;
 }
 
-.home-product-hero.is-motion-ready .home-product-hero__title-line {
+.home-product-hero.is-motion-ready .home-product-hero__title-line:not(.home-product-hero__accent) {
   animation: home-hero-spotlight-focus 900ms cubic-bezier(0.18, 0.76, 0.23, 1) var(--home-hero-focus-delay, 0ms) both;
 }
 
@@ -152,11 +153,11 @@
 }
 
 .home-product-hero.is-motion-ready .home-hero-accent-writing__stroke {
-  animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) var(--home-hero-accent-delay, 0ms) forwards;
+  animation: home-hero-accent-write var(--home-hero-accent-duration, 400ms) cubic-bezier(0.22, 0.75, 0.3, 1) calc(var(--home-hero-accent-start-delay) + var(--home-hero-accent-delay, 0ms)) forwards;
 }
 
 .home-product-hero.is-motion-ready .home-hero-accent-writing__completion-glyph {
-  animation: home-hero-accent-finalize 1ms linear var(--home-hero-accent-completion-delay, 0ms) forwards;
+  animation: home-hero-accent-finalize 1ms linear calc(var(--home-hero-accent-start-delay) + var(--home-hero-accent-completion-delay, 0ms)) forwards;
 }
 
 @keyframes home-hero-accent-write {

@@ -150,12 +150,12 @@ export function HeroAccentWriting() {
         <mask
           id={maskId}
           maskUnits="userSpaceOnUse"
-          x="-40"
-          y="-40"
-          width="3880"
-          height="1100"
+          x="-256"
+          y="-256"
+          width="4400"
+          height="1500"
         >
-          <rect x="-40" y="-40" width="3880" height="1100" fill="#000" />
+          <rect x="-256" y="-256" width="4400" height="1500" fill="#000" />
           <g>
             {waterBrushStrokes.map((stroke, index) => (
               <g
