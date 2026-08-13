@@ -47,19 +47,26 @@ class AgentCanvasContinuationOutboxRepository:
         now: datetime,
     ) -> ContinuationDeliveryV2:
         try:
-            with self._database.engine.begin() as connection:
-                return self.enqueue_in_transaction(
-                    connection,
-                    continuation_id=continuation_id,
-                    workflow_id=workflow_id,
-                    conversation_id=conversation_id,
-                    source_turn_id=source_turn_id,
-                    continuation_turn_id=continuation_turn_id,
-                    operation=operation,
-                    payload=payload,
-                    max_attempts=max_attempts,
-                    now=now,
-                )
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    delivery = self.enqueue_in_transaction(
+                        connection,
+                        continuation_id=continuation_id,
+                        workflow_id=workflow_id,
+                        conversation_id=conversation_id,
+                        source_turn_id=source_turn_id,
+                        continuation_turn_id=continuation_turn_id,
+                        operation=operation,
+                        payload=payload,
+                        max_attempts=max_attempts,
+                        now=now,
+                    )
+                    connection.commit()
+                    return delivery
+                except BaseException:
+                    connection.rollback()
+                    raise
         except V2PersistenceError:
             raise
         except IntegrityError as error:
@@ -134,7 +141,29 @@ class AgentCanvasContinuationOutboxRepository:
         if existing is not None:
             _require_same_enqueue(existing, values)
             return _delivery(existing)
-        connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
+        active = self.get_active_for_workflow_in_transaction(connection, workflow_id)
+        if active is not None:
+            raise _error(
+                "active_continuation_conflict",
+                "Another continuation already owns this workflow.",
+            )
+        try:
+            connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
+        except IntegrityError as error:
+            replay = _select_one(connection, continuation_id)
+            if replay is not None:
+                _require_same_enqueue(replay, values)
+                return _delivery(replay)
+            active = self.get_active_for_workflow_in_transaction(connection, workflow_id)
+            if active is not None:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Another continuation already owns this workflow.",
+                ) from error
+            raise _error(
+                "idempotency_conflict",
+                "Continuation identity conflicts with an existing delivery.",
+            ) from error
         self._append_lifecycle_event(
             connection,
             values,
@@ -143,6 +172,32 @@ class AgentCanvasContinuationOutboxRepository:
             created_at=timestamp,
         )
         return _delivery(values)
+
+    def get_active_for_workflow_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> ContinuationDeliveryV2 | None:
+        """Read the single active owner through a caller-owned transaction."""
+
+        row = (
+            connection.execute(
+                select(AgentCanvasContinuationOutboxRow)
+                .where(
+                    AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                    AgentCanvasContinuationOutboxRow.status.in_(
+                        ("queued", "leased", "retry_wait")
+                    ),
+                )
+                .order_by(
+                    AgentCanvasContinuationOutboxRow.created_at.asc(),
+                    AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return _delivery(row) if row is not None else None
 
     def get(self, continuation_id: str) -> ContinuationDeliveryV2:
         try:

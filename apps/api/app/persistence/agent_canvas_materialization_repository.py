@@ -11,7 +11,6 @@ from typing import cast
 from uuid import uuid4
 
 from sqlalchemy import func, insert, select, update
-from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.persistence.agent_canvas_auto_run_repository import (
@@ -63,10 +62,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas_conversation import (
-    ContinuationCommitV2,
-    ProposalMaterializationProjectionV2,
-)
+from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV1,
     JourneyElementDecisionV1,
@@ -702,7 +698,7 @@ class AgentCanvasMaterializationRepository:
                                 "Continuation source does not match the action transaction.",
                             )
                         event_turn = _require_turn(connection, continuation.source_turn_id)
-                        self._insert_continuation_in_transaction(
+                        self._conversations.insert_continuation_in_transaction(
                             connection,
                             workflow_id=node.workflow_id,
                             conversation_id=str(event_turn["conversation_id"]),
@@ -1054,23 +1050,6 @@ class AgentCanvasMaterializationRepository:
                 "Materialization transaction did not produce an outcome.",
             )
         return materialization_outcome
-
-    def _insert_continuation_in_transaction(
-        self,
-        connection: Connection,
-        *,
-        workflow_id: str,
-        conversation_id: str,
-        continuation: ContinuationCommitV2,
-        now: str,
-    ) -> None:
-        self._conversations._insert_continuation_in_transaction(
-            connection,
-            workflow_id=workflow_id,
-            conversation_id=conversation_id,
-            continuation=continuation,
-            now=now,
-        )
 
     def queue(
         self,

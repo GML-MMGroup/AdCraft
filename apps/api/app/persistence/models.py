@@ -1385,7 +1385,7 @@ class AgentCanvasContinuationOutboxRow(Base):
             name="ck_agent_canvas_continuation_lease_generation",
         ),
         CheckConstraint(
-            "operation IN ('next_action','capability_command')",
+            "operation IN ('next_action','capability_command','capability_materialization')",
             name="ck_agent_canvas_continuation_operation",
         ),
         UniqueConstraint(
