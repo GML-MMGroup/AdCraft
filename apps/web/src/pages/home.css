@@ -740,20 +740,22 @@ html[data-theme="dark"] .home-product-hero__description {
 }
 
 html[data-theme="dark"] .home-product-hero__create {
-  border-color: var(--brand);
-  background: var(--brand);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
-  color: var(--text-inverse);
+  border-color: rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.008);
+  box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
+  -webkit-backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
+  backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
+  color: rgba(255, 255, 255, 0.96);
 }
 
 html[data-theme="dark"] .home-product-hero__create:hover {
-  border-color: var(--brand-hover);
-  background: var(--brand-hover);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
+  background: rgba(255, 255, 255, 0.018);
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
 }
 
 html[data-theme="dark"] .home-product-hero__create:focus-visible {
-  outline-color: var(--focus-ring);
+  outline-color: rgba(255, 255, 255, 0.24);
 }
 
 html[data-theme="dark"] .home-product-film::after {
