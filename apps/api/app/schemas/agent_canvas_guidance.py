@@ -18,6 +18,10 @@ class _PrivateGuidanceRepairModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class _PrivateGuidanceAuthorityModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class GuidanceAdvanceRequestV1(_GuidanceModel):
     expected_workflow_revision: int = Field(ge=1)
     expected_session_revision: int = Field(ge=1)
@@ -40,6 +44,71 @@ class GuidanceAdvanceTargetV1(_GuidanceModel):
         if has_retry != (self.source_kind == "retry_current_turn"):
             raise ValueError("Retry target identity does not match the source kind.")
         return self
+
+
+class GuidanceAdvanceRequestSnapshotV1(_PrivateGuidanceAuthorityModel):
+    expected_workflow_revision: int = Field(ge=1)
+    expected_session_revision: int = Field(ge=1)
+    expected_journey_stage: JourneyStageV1
+    expected_journey_stage_revision: int = Field(ge=1)
+
+
+class GuidanceAdvanceAuthorityPlanV1(_PrivateGuidanceAuthorityModel):
+    """Read-only plan whose complete authority is rechecked before delivery."""
+
+    workflow_id: str = Field(min_length=1, max_length=160)
+    request: GuidanceAdvanceRequestSnapshotV1
+    idempotency_key: str = Field(min_length=1, max_length=256)
+    request_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    session_id: str = Field(min_length=1, max_length=160)
+    session_status: Literal["active", "paused", "completed"]
+    journey_active_action_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    open_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
+    open_decision_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
+    active_continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    target: GuidanceAdvanceTargetV1
+    retry_snapshot_json: str | None = Field(default=None, min_length=2, max_length=65_536)
+    retry_snapshot_digest: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+    )
+    command_turn_id: str = Field(min_length=1, max_length=160)
+    executable_turn_id: str = Field(min_length=1, max_length=160)
+    continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    continuation_idempotency_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+    )
+    created_at: datetime
+
+    @model_validator(mode="after")
+    def validate_delivery_shape(self) -> "GuidanceAdvanceAuthorityPlanV1":
+        has_retry = self.target.source_kind == "retry_current_turn"
+        if has_retry != (self.retry_snapshot_json is not None):
+            raise ValueError("Retry authority must include the exact frozen snapshot.")
+        if has_retry != (self.retry_snapshot_digest is not None):
+            raise ValueError("Retry authority must include the snapshot digest.")
+        if has_retry == (self.continuation_id is not None):
+            raise ValueError("Only fresh next-action delivery owns a Continuation.")
+        if has_retry == (self.continuation_idempotency_key is not None):
+            raise ValueError("Only fresh next-action delivery owns Continuation idempotency.")
+        return self
+
+
+class GuidanceAdvanceCommitReceiptV1(_PrivateGuidanceAuthorityModel):
+    workflow_id: str = Field(min_length=1, max_length=160)
+    command_turn_id: str = Field(min_length=1, max_length=160)
+    executable_turn_id: str = Field(min_length=1, max_length=160)
+    continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    event_cursor: int = Field(ge=1)
+    request_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    retry_of_turn_id: str | None = Field(default=None, min_length=1, max_length=160)
+    retry_attempt_no: int = Field(ge=1)
+    replayed: bool
 
 
 class GuidanceProgressSnapshotV1(_GuidanceModel):

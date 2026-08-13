@@ -1937,6 +1937,13 @@ class AgentCanvasEditingExportRow(Base):
             "status",
             "created_at",
         ),
+        Index(
+            "uq_agent_canvas_editing_export_active_node",
+            "workflow_id",
+            "node_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued','exporting')"),
+        ),
         UniqueConstraint(
             "workflow_id",
             "node_id",
@@ -1961,7 +1968,43 @@ class AgentCanvasEditingExportRow(Base):
     output_asset_id: Mapped[str | None] = mapped_column(Text)
     error_json: Mapped[str | None] = mapped_column(Text)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    lease_owner_id: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_heartbeat_at: Mapped[str | None] = mapped_column(Text)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     started_at: Mapped[str | None] = mapped_column(Text)
     finished_at: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasEditingExportCommitRow(Base):
+    """Immutable receipt for one terminal Editing Export transition."""
+
+    __tablename__ = "agent_canvas_editing_export_commits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome IN ('completed','failed','cancelled')",
+            name="ck_agent_canvas_editing_export_commits_outcome",
+        ),
+        UniqueConstraint(
+            "logical_commit_key",
+            name="uq_agent_canvas_editing_export_commits_logical_key",
+        ),
+        UniqueConstraint(
+            "export_id",
+            name="uq_agent_canvas_editing_export_commits_export",
+        ),
+    )
+
+    commit_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    export_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_editing_exports.export_id"), nullable=False
+    )
+    logical_commit_key: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    asset_id: Mapped[str | None] = mapped_column(Text)
+    version_id: Mapped[str | None] = mapped_column(Text)
+    receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
+    committed_at: Mapped[str] = mapped_column(Text, nullable=False)

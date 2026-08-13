@@ -21,6 +21,10 @@ from app.schemas.agent_canvas_editing import (
     EditingExportRequestV2,
     EditingExportRuntimeV2,
 )
+from app.schemas.agent_canvas_editing_authority import (
+    EditingExportStartCommandV2,
+    RevisionAssertionV2,
+)
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_composition_renderer import (
@@ -74,56 +78,72 @@ class EditingExportService:
                 "Editing manifest revision does not match.",
             )
         resolved = self._inputs.resolve(workflow_id, node_id, manifest)
-        fingerprint = _fingerprint(
-            manifest.model_dump(mode="json"),
-            resolved,
-            _renderer_fingerprint_payload(self._renderer),
-        )
-        existing = self._exports.find_by_idempotency(
-            workflow_id,
-            node_id,
-            idempotency_key,
-        )
-        if existing is not None:
-            if existing.fingerprint != fingerprint:
-                raise _error(
-                    "idempotency_conflict",
-                    "Idempotency key was reused with another Editing export.",
-                )
-            return self._accepted(workflow_id, node_id, existing)
-        if self._exports.find_active(workflow_id, node_id) is not None:
-            raise _error(
-                "editing_export_already_active",
-                "An Editing export is already active for this node.",
-            )
+        renderer_payload = _renderer_fingerprint_payload(self._renderer)
+        fingerprint = _fingerprint(manifest.model_dump(mode="json"), resolved, renderer_payload)
         reusable = self._exports.find_completed(workflow_id, node_id, fingerprint)
+        reusable_export_id = None
         if reusable is not None and reusable.output_asset_id is not None:
             self._assets.resolve_asset_path(reusable.output_asset_id)
-            return self._accepted(workflow_id, node_id, reusable)
-        runtime = self._exports.create(
+            reusable_export_id = reusable.export_id
+        workflow = self._workflows.get_workflow(workflow_id)
+        node = self._workflows.get_node(workflow_id, node_id)
+        source_assets = tuple(
+            dict.fromkeys(
+                [item.asset.asset_id for item in resolved.videos]
+                + ([resolved.bgm.asset.asset_id] if resolved.bgm is not None else [])
+            )
+        )
+        source_assertions = tuple(
+            RevisionAssertionV2(
+                asset_id=asset_id,
+                sha256=next(
+                    item.asset.checksum
+                    for item in (*resolved.videos, *((resolved.bgm,) if resolved.bgm else ()))
+                    if item.asset.asset_id == asset_id
+                ),
+            )
+            for asset_id in source_assets
+        )
+        now = self._clock()
+        command = EditingExportStartCommandV2(
             workflow_id=workflow_id,
+            expected_workflow_revision=workflow.revision,
             node_id=node_id,
+            expected_node_revision=node.revision,
+            manifest_revision=manifest.manifest_revision,
             manifest=manifest,
+            renderer_digest=_sha256_json(renderer_payload),
+            resolved_input_digest=_sha256_json(
+                {
+                    "videos": [
+                        {"asset_id": item.asset.asset_id, "sha256": item.asset.checksum}
+                        for item in resolved.videos
+                    ],
+                    "bgm": (
+                        {
+                            "asset_id": resolved.bgm.asset.asset_id,
+                            "sha256": resolved.bgm.asset.checksum,
+                        }
+                        if resolved.bgm is not None
+                        else None
+                    ),
+                    "skipped": [item.model_dump(mode="json") for item in resolved.skipped],
+                }
+            ),
             fingerprint=fingerprint,
             idempotency_key=idempotency_key,
+            request_digest=_sha256_json(request.model_dump(mode="json")),
             ready_video_node_ids=tuple(
                 item.node_id for item in resolved.videos if item.node_id is not None
             ),
+            source_asset_assertions=source_assertions,
             skipped_inputs=resolved.skipped,
             bgm_node_id=resolved.bgm.node_id if resolved.bgm else None,
-            now=self._clock(),
+            verified_reusable_export_id=reusable_export_id,
+            created_at=now,
         )
-        updated_content = content.model_copy(update={"active_export": runtime})
-        self._workflows.set_editing_runtime_state(
-            workflow_id,
-            node_id,
-            status="working",
-            structured_content=updated_content.model_dump(mode="json"),
-            updated_at=self._clock(),
-            event_type="editing_export_queued",
-            export_id=runtime.export_id,
-        )
-        return self._accepted(workflow_id, node_id, runtime)
+        result = self._exports.start_or_reuse(command)
+        return self._accepted(workflow_id, node_id, result.export)
 
     def resume(self, export_id: str) -> None:
         workflow_id, node_id = self._exports.identity(export_id)
@@ -413,6 +433,16 @@ def _renderer_fingerprint_payload(renderer: object) -> dict[str, object]:
         "contract": "agent-canvas-composition-renderer-v2",
         "implementation": f"{type(renderer).__module__}.{type(renderer).__qualname__}",
     }
+
+
+def _sha256_json(payload: object) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _error(code: str, message: str) -> V2PersistenceError:
