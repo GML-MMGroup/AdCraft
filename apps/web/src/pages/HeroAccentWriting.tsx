@@ -8,22 +8,22 @@ type WritingStroke = {
   width: number;
 };
 
-const glyphCoverages = [
-  { delay: "0ms", duration: "540ms" },
-  { delay: "500ms", duration: "430ms" },
-  { delay: "760ms", duration: "560ms" },
-  { delay: "1280ms", duration: "260ms" },
-  { delay: "1520ms", duration: "380ms" },
-  { delay: "1710ms", duration: "520ms" },
-  { delay: "2100ms", duration: "120ms" },
+const glyphTimings = [
+  { delay: "0ms", duration: "540ms", finalDelay: "540ms" },
+  { delay: "500ms", duration: "430ms", finalDelay: "930ms" },
+  { delay: "760ms", duration: "560ms", finalDelay: "1320ms" },
+  { delay: "1280ms", duration: "260ms", finalDelay: "1540ms" },
+  { delay: "1520ms", duration: "380ms", finalDelay: "1900ms" },
+  { delay: "1710ms", duration: "520ms", finalDelay: "2230ms" },
+  { delay: "2100ms", duration: "120ms", finalDelay: "2220ms" },
 ] as const;
 
 // Water Brush has a 1000-unit em. At 80px, 0.100em tracking is 100 font units.
 // The source font already places the word space; tracking is also applied on either side of it.
 const waterBrushTrackingOffsets = [0, 100, 300, 400, 500, 600, 700] as const;
 
-// These trajectories follow the character order of the bundled Water Brush outline.
-// The wider matching outline passes complete each character without substituting a CSS skew.
+// These authored trajectories follow the character order of the bundled Water Brush outline.
+// They remain visible after drawing, then resolve into the complete matching glyph.
 const waterBrushStrokes: readonly WritingStroke[] = [
   {
     d: "M25 -105 C150 88 332 258 560 374",
@@ -103,7 +103,7 @@ const waterBrushTransform = "translate(4 822) scale(1 -1)";
 
 export function HeroAccentWriting() {
   const gradientId = `home-hero-accent-gold-${useId().replaceAll(":", "")}`;
-  const maskId = `home-hero-accent-writing-mask-${useId().replaceAll(":", "")}`;
+  const clipPathId = `home-hero-accent-writing-clip-${useId().replaceAll(":", "")}`;
 
   return (
     <svg
@@ -122,72 +122,57 @@ export function HeroAccentWriting() {
           <stop offset="67%" stopColor="#cf9839" />
           <stop offset="100%" stopColor="#8f5d16" />
         </linearGradient>
-        <mask
-          id={maskId}
-          maskUnits="userSpaceOnUse"
-          x="-40"
-          y="-40"
-          width="3880"
-          height="1100"
-        >
-          <rect x="-40" y="-40" width="3880" height="1100" fill="#000" />
+        <clipPath id={clipPathId} clipPathUnits="userSpaceOnUse">
           <g transform={waterBrushTransform}>
-            {waterBrushStrokes.map((stroke, index) => (
+            {waterBrushAdFilmGlyphPaths.map((glyph, index) => (
               <path
-                key={stroke.d}
-                className="home-hero-accent-writing__stroke"
-                d={stroke.d}
-                pathLength={1}
-                stroke="#fff"
-                strokeWidth={stroke.width}
-                style={
-                  {
-                    "--home-hero-accent-delay": stroke.delay,
-                    "--home-hero-accent-duration": stroke.duration,
-                  } as CSSProperties
-                }
-                data-stroke-index={index}
+                key={glyph.character}
+                className="home-hero-accent-writing__clip-glyph"
+                d={glyph.d}
+                transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
               />
             ))}
-            {waterBrushAdFilmGlyphPaths.map((glyph, index) => {
-              const timing = glyphCoverages[index]!;
-              const trackingOffset = waterBrushTrackingOffsets[index]!;
-
-              return (
-                <path
-                  key={glyph.character}
-                  className="home-hero-accent-writing__coverage"
-                  d={glyph.d}
-                  transform={`translate(${trackingOffset} 0) ${glyph.transform}`}
-                  pathLength={1}
-                  fill="none"
-                  stroke="#fff"
-                  strokeWidth={250}
-                  style={
-                    {
-                      "--home-hero-accent-delay": timing.delay,
-                      "--home-hero-accent-duration": timing.duration,
-                    } as CSSProperties
-                  }
-                />
-              );
-            })}
           </g>
-        </mask>
+        </clipPath>
       </defs>
-      <g
-        fill={`url(#${gradientId})`}
-        mask={`url(#${maskId})`}
-        transform={waterBrushTransform}
-      >
-        {waterBrushAdFilmGlyphPaths.map((glyph, index) => (
+      <g clipPath={`url(#${clipPathId})`} transform={waterBrushTransform}>
+        {waterBrushStrokes.map((stroke, index) => (
           <path
-            key={glyph.character}
-            className="home-hero-accent-writing__glyph-path"
-            d={glyph.d}
-            transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
+            key={stroke.d}
+            className="home-hero-accent-writing__stroke"
+            d={stroke.d}
+            pathLength={1}
+            fill="none"
+            stroke={`url(#${gradientId})`}
+            strokeWidth={stroke.width}
+            style={
+              {
+                "--home-hero-accent-delay": stroke.delay,
+                "--home-hero-accent-duration": stroke.duration,
+              } as CSSProperties
+            }
+            data-stroke-index={index}
           />
         ))}
+      </g>
+      <g fill={`url(#${gradientId})`} transform={waterBrushTransform}>
+        {waterBrushAdFilmGlyphPaths.map((glyph, index) => {
+          const timing = glyphTimings[index]!;
+
+          return (
+            <path
+              key={glyph.character}
+              className="home-hero-accent-writing__final-glyph"
+              d={glyph.d}
+              transform={`translate(${waterBrushTrackingOffsets[index]!} 0) ${glyph.transform}`}
+              style={
+                {
+                  "--home-hero-accent-final-delay": timing.finalDelay,
+                } as CSSProperties
+              }
+            />
+          );
+        })}
       </g>
     </svg>
   );
