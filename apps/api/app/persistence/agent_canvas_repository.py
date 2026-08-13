@@ -83,6 +83,20 @@ class AgentCanvasWorkflowRepository:
     def database(self) -> V2Database:
         return self._database
 
+    def exists(self, workflow_id: str) -> bool:
+        """Return whether SQLite owns the workflow without loading its graph."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                workflow = connection.execute(
+                    select(AgentCanvasWorkflowRow.workflow_id)
+                    .where(AgentCanvasWorkflowRow.workflow_id == workflow_id)
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as exc:
+            raise _unavailable_error() from exc
+        return workflow is not None
+
     def create_empty(
         self,
         *,

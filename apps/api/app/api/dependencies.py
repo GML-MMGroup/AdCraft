@@ -1,9 +1,12 @@
 from collections.abc import Iterator
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 
 from app.core.config import PROJECT_ROOT, Settings, get_settings
 from app.persistence.database import create_v2_database
+from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.event_repository import EventRepository
+from app.persistence.project_repository import ProjectRepository
 from app.persistence.provider_model_repository import ProviderModelRepository
 from app.services.asset_library import AssetLibraryService
 from app.services.asset_reference_suggestions import AssetReferenceSuggestionService
@@ -30,6 +33,10 @@ from app.services.workflow_nodes import WorkflowNodeExecutionService
 from app.services.workflow_plan import AdWorkflowPlanService
 from app.services.workflow_quality_review import WorkflowQualityReviewService
 from app.services.workflow_working_versions import WorkflowWorkingVersionService
+from app.services.v1_workflow_authority import (
+    V1WorkflowAuthorityBoundary,
+    V1WorkflowAuthorityError,
+)
 
 
 def get_front_desk_service() -> FrontDeskService:
@@ -106,6 +113,35 @@ def get_workflow_quality_review_service() -> WorkflowQualityReviewService:
 
 def get_workflow_working_version_service() -> WorkflowWorkingVersionService:
     return WorkflowWorkingVersionService(settings=get_settings())
+
+
+def get_v1_workflow_authority_boundary(
+    settings: Settings = Depends(get_settings),
+) -> Iterator[V1WorkflowAuthorityBoundary]:
+    """Build the read-only SQLite authority boundary for one V1 request."""
+
+    database = create_v2_database(settings.media_data_dir)
+    repository = AgentCanvasWorkflowRepository(
+        database,
+        ProjectRepository(database),
+        EventRepository(database),
+    )
+    try:
+        yield V1WorkflowAuthorityBoundary(repository)
+    finally:
+        database.dispose()
+
+
+def require_v1_workflow_authority(
+    workflow_id: str,
+    boundary: V1WorkflowAuthorityBoundary = Depends(get_v1_workflow_authority_boundary),
+) -> None:
+    """Fail before a legacy route touches an SQLite-owned workflow."""
+
+    try:
+        boundary.assert_legacy_workflow(workflow_id)
+    except V1WorkflowAuthorityError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 def get_runtime_credential_service() -> Iterator[LegacyVolcengineCredentialAdapter]:
