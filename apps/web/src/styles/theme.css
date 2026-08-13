@@ -130,7 +130,7 @@ html[data-theme="dark"] .app-shell--cosmic {
       rgba(6, 7, 10, 0.62) 100%
     ),
     linear-gradient(180deg, rgba(5, 6, 9, 0.26), rgba(5, 6, 9, 0.68)),
-    url("/assets/home-dark-black-hole.webp") 50% 62% / cover fixed no-repeat;
+    url("/assets/home-dark-black-hole.webp") 50% 60% / cover fixed no-repeat;
   box-shadow: 0 28px 90px rgba(0, 0, 0, 0.54);
   backdrop-filter: none;
 }

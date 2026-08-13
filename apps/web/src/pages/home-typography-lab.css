@@ -596,7 +596,7 @@
   background:
     linear-gradient(90deg, rgba(5, 6, 9, 0.9) 0%, rgba(6, 7, 10, 0.82) 38%, rgba(6, 7, 10, 0.46) 70%, rgba(6, 7, 10, 0.62) 100%),
     linear-gradient(180deg, rgba(5, 6, 9, 0.26), rgba(5, 6, 9, 0.68)),
-    url("/assets/home-dark-black-hole.webp") 50% 62% / cover scroll no-repeat;
+    url("/assets/home-dark-black-hole.webp") 50% 60% / cover scroll no-repeat;
 }
 
 .home-typography-lab--dark .home-typography-lab__preview-header {
