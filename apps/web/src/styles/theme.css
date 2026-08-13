@@ -184,13 +184,13 @@ html[data-theme="dark"] :is(.account-menu a, .account-menu button, .ghost-btn, .
   background: #202530;
 }
 
-/* The home rail is an unframed holder so each navigation control has one clear glass plane. */
+/* The home rail and its controls are separate clear-glass surfaces. */
 html[data-theme="dark"]:has(.main-view[data-route="/"]) .floating-rail {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  border-color: rgba(255, 255, 255, 0.075);
+  background: rgba(255, 255, 255, 0.008);
+  box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
+  -webkit-backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
+  backdrop-filter: blur(1.5px) saturate(114%) brightness(1.025);
 }
 
 html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item {
