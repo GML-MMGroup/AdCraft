@@ -126,7 +126,14 @@ function instructionForOperation(operation: string): string {
     ].join(" ");
   }
   if (operation === "plan_storyboard_sequence_outline") {
-    return "Return only compact ordered segment timing, narrative states, and continuity facts. Do not author panel rows, provider prompts, or platform identifiers.";
+    return [
+      "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
+      "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered 3x3 storyboard grid, not one shot, camera setup, panel, or story beat.",
+      "When deterministic context supplies an exact sequence count or timing windows, preserve them exactly.",
+      "Otherwise use the minimum sequence count required by the total duration and the 15-second maximum; group multiple ordered shots and beats inside each sequence.",
+      "Cover the total duration with contiguous, non-overlapping sequences and preserve the narrative handoff between adjacent sequences.",
+      "Do not author panel rows, provider prompts, or platform identifiers.",
+    ].join(" ");
   }
   if (operation === "materialize_storyboard_segment") {
     return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";

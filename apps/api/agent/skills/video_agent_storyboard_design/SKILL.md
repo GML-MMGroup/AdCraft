@@ -6,7 +6,7 @@ description: Convert approved script beats into ordered, visually continuous sto
 
 # Purpose
 
-Break the script into executable shots and image directions while preserving product, character, and scene continuity.
+Organize the approved script into bounded Storyboard Sequences and executable image directions while preserving product, character, and scene continuity.
 
 # Inputs
 
@@ -16,8 +16,11 @@ Use the approved script, product identity, character and scene designs, timing, 
 
 - Render user-visible and audible content in `response_locale`; keep internal controls in English.
 
+- One Storyboard Sequence equals one ordered 3x3 storyboard grid and one downstream video segment.
+- Shots, camera changes, panels, and story beats are internal content of a Sequence; organize them into its nine-panel progression instead of promoting each one to a separate Sequence.
+- Preserve platform-supplied Sequence counts and timing windows exactly. When they are not supplied, use the minimum number of contiguous Sequences required by the total duration and the 15-second maximum.
 - Define ordered shot purpose, action, framing, text, timing, and relevant input roles.
-- Keep each beat concrete enough for one storyboard image and a short video segment.
+- Keep each beat concrete enough to occupy a clear place within its owning storyboard grid and video segment.
 - Preserve product packaging and proportions, character identity, and scene layout, lighting, and palette.
 - Keep total shot timing compatible with the requested advertisement duration.
 - Give each adjacent segment a distinct narrative responsibility with non-overlapping primary beats.
@@ -31,6 +34,7 @@ Use the approved script, product identity, character and scene designs, timing, 
 
 # Do Not
 
+- Never convert the script shot count into the Sequence count.
 - Do not mix identities or borrow private Drafts and references from another shot.
 - Do not create abstract, unfilmable beats or silently omit required product visibility.
 - Do not duplicate an earlier segment's complete beat progression as a generic continuation.
