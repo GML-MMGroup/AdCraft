@@ -18,7 +18,7 @@ const descriptors = Object.freeze(
     const systemPrompt = [
       videoAgentBasePolicy,
       instructionForOperation(operation.operation),
-      "Render every model-owned user-visible or audible field in the supplied response_locale. Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English. Style guidance never overrides response_locale.",
+      localeInstructionForOperation(operation.operation),
       `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
       "If Python rejects the first result, repair only the reported structured violations once. A second rejection is terminal.",
     ].join("\n\n");
@@ -83,6 +83,12 @@ function instructionForOperation(operation: string): string {
   if (operation === "decide_turn_intent") {
     return [
       "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
+      "ordinary_conversation is for greetings, informational questions, explanations, and messages that request no authoring or Canvas work.",
+      "guided_production is for a request to create, plan, or continue an advertising production.",
+      "targeted_authoring is for authoring or revising a specifically referenced Node or image Asset.",
+      "quick_media is for one bounded media output through the Quick Media boundary.",
+      "Missing, ambiguous, or contradictory creative details do not change guided_production; ask a focused clarification while preserving guided intent.",
+      'For example, "Create an advertisement." is guided_production, while "What makes an advertisement effective?" is ordinary_conversation.',
       "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
       "Represent explicit_elements as one strict object with only the optional product, prop, character, scene, world_setting, script, storyboard, video, and audio keys. Every present key must contain presence and an exact source_quote.",
       "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
@@ -167,4 +173,16 @@ function instructionForOperation(operation: string): string {
     return "Return one complete editable Script Node result under the supplied contract and deterministic timing constraints.";
   }
   return `Perform only the ${operation} operation using its typed context, trusted internal Skill when declared, approved references, and exact result schema.`;
+}
+
+function localeInstructionForOperation(operation: string): string {
+  if (operation === "decide_turn_intent") {
+    return [
+      "Treat current_response_locale as prior conversation state, not as a command to render in an unresolved locale.",
+      "When current_response_locale is und and the current message clearly establishes a language, return its canonical BCP 47 response_locale and render assistant_message in that language.",
+      "When the current message does not establish a language change, preserve an existing resolved locale or leave the fresh locale unresolved.",
+      "Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English.",
+    ].join(" ");
+  }
+  return "Render every model-owned user-visible or audible field in the supplied response_locale. Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English. Style guidance never overrides response_locale.";
 }

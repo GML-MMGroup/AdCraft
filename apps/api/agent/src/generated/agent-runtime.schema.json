@@ -8064,6 +8064,7 @@
           "$ref": "#/$defs/CompactExplicitElementsV3"
         },
         "mode": {
+          "description": "Interaction intent. Use guided_production for requests to create, plan, or continue advertising even when details are missing, ambiguous, or contradictory; ordinary_conversation is limited to greetings, informational questions, explanations, and other non-authoring messages. Use targeted_authoring for a specifically referenced Node or image Asset and quick_media for one bounded media output.",
           "enum": [
             "guided_production",
             "ordinary_conversation",
@@ -8126,6 +8127,7 @@
             }
           ],
           "default": null,
+          "description": "Canonical BCP 47 locale for the current response. Treat an input locale of und as unresolved prior state; when the current message clearly establishes a language, return that language rather than inheriting und.",
           "title": "Response Locale"
         }
       },

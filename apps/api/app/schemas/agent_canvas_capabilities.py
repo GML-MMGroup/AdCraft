@@ -276,13 +276,42 @@ class CompactTurnIntentDecisionV3(_CapabilityModel):
         "guided_production",
         "targeted_authoring",
         "quick_media",
-    ]
+    ] = Field(
+        description=(
+            "Interaction intent. Use guided_production for requests to create, plan, or "
+            "continue advertising even when details are missing, ambiguous, or "
+            "contradictory; ordinary_conversation is limited to greetings, informational "
+            "questions, explanations, and other non-authoring messages. Use "
+            "targeted_authoring for a specifically referenced Node or image Asset and "
+            "quick_media for one bounded media output."
+        )
+    )
     objective: str = Field(min_length=1, max_length=2_048)
     requested_capability: CapabilityIdV1 | None = None
     explicit_elements: CompactExplicitElementsV3 = Field(default_factory=CompactExplicitElementsV3)
     assistant_message: str | None = Field(default=None, max_length=2_000)
     requirement_patch: CompactRequirementPatchV3 | None = None
-    response_locale: BCP47Tag | None = None
+    response_locale: BCP47Tag | None = Field(
+        default=None,
+        description=(
+            "Canonical BCP 47 locale for the current response. Treat an input locale of "
+            "und as unresolved prior state; when the current message clearly establishes "
+            "a language, return that language rather than inheriting und."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_mode_shape(self) -> "CompactTurnIntentDecisionV3":
+        if self.mode != "ordinary_conversation":
+            return self
+        has_explicit_elements = bool(self.explicit_elements.model_dump(exclude_none=True))
+        has_requirement_patch = self.requirement_patch is not None and bool(
+            self.requirement_patch.controls_to_set.model_dump(exclude_none=True)
+            or self.requirement_patch.directives_to_add
+        )
+        if self.requested_capability or has_explicit_elements or has_requirement_patch:
+            raise ValueError("ordinary_conversation cannot carry authoring-only structured fields.")
+        return self
 
 
 class TurnIntentDecisionV2(_CapabilityModel):
