@@ -1398,12 +1398,6 @@ class AgentConversationService:
                 expected_revision=existing_session.revision,
                 response_locale=intent.response_locale,
             )
-        if requirements.ledger.unresolved_conflicts:
-            return self._complete_turn(
-                turn_id,
-                turn.workflow_id,
-                intent.assistant_message or "Please clarify the conflicting campaign requirements.",
-            )
         if intent.mode == "ordinary_conversation":
             return self._complete_turn(
                 turn_id,
@@ -1440,6 +1434,23 @@ class AgentConversationService:
                     else None
                 ),
                 response_locale=intent.response_locale,
+            )
+        if requirements.ledger.unresolved_conflicts:
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                intent.assistant_message or "Please clarify the conflicting campaign requirements.",
+            )
+        if (
+            intent.mode == "guided_production"
+            and intent.requirement_patch is None
+            and not intent.explicit_elements
+            and intent.assistant_message is not None
+        ):
+            return self._complete_turn(
+                turn_id,
+                turn.workflow_id,
+                intent.assistant_message,
             )
         if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
             session = self._journey.apply_evidence(
