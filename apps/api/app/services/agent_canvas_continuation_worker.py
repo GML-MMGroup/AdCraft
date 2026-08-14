@@ -17,6 +17,7 @@ from app.services.agent_canvas_continuation_lease import (
     HeartbeatWait,
     wait_for_heartbeat,
 )
+from app.services.agent_canvas_explicit_retry import explicit_turn_retryable
 from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
@@ -53,7 +54,7 @@ class AgentCanvasContinuationWorker:
         base_backoff: timedelta = timedelta(seconds=5),
         maximum_backoff: timedelta = timedelta(minutes=5),
         jitter: Callable[[int], timedelta] | None = None,
-        fail_turn: Callable[[str, str, str], object] | None = None,
+        fail_turn: Callable[[str, str, str, bool], object] | None = None,
         heartbeat_wait: HeartbeatWait = wait_for_heartbeat,
     ) -> None:
         self._outbox = outbox
@@ -248,6 +249,7 @@ class AgentCanvasContinuationWorker:
                     delivery.continuation_turn_id,
                     error_code,
                     error_message[:1_024],
+                    explicit_turn_retryable(error_code),
                 )
             except Exception as error:  # noqa: BLE001 - continuation error is authoritative.
                 logger.error(

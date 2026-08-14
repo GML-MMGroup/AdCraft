@@ -258,6 +258,43 @@ class AgentCanvasContinuationOutboxRepository:
             raise _persistence_error() from error
         return tuple(_delivery(row) for row in rows)
 
+    def list_for_workflow(self, workflow_id: str) -> tuple[ContinuationDeliveryV2, ...]:
+        """Return causal delivery records without filtering terminal history."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow)
+                        .where(AgentCanvasContinuationOutboxRow.workflow_id == workflow_id)
+                        .order_by(
+                            AgentCanvasContinuationOutboxRow.created_at.asc(),
+                            AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(_delivery(row) for row in rows)
+
+    def get_for_turn(self, turn_id: str) -> ContinuationDeliveryV2 | None:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow).where(
+                            AgentCanvasContinuationOutboxRow.continuation_turn_id == turn_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _delivery(row) if row is not None else None
+
     def list_nonterminal_capability_ids(
         self,
         workflow_id: str,

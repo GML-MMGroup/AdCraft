@@ -19,9 +19,12 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_canvas_operation_envelope_repository import (
+    AgentCanvasOperationEnvelopeRepository,
+)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.schemas.agent_canvas_conversation import ChatTurnAcceptedV2, ChatTurnRetryRequestV1
+from app.schemas.agent_canvas_conversation import ChatTurnAcceptedV2
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
 from app.schemas.agent_canvas_guidance import (
     GuidanceAdvanceAuthorityPlanV1,
@@ -30,6 +33,9 @@ from app.schemas.agent_canvas_guidance import (
 )
 from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 from app.services.chat_turn_retry import ChatTurnRetryService
+from app.services.agent_canvas_guided_action_lineage import (
+    GuidedActionExecutionLeafResolver,
+)
 
 
 _TOPIC_ELEMENTS = {
@@ -87,8 +93,21 @@ class GuidanceAuthorityConsistencyValidator:
 class GuidanceAdvanceTargetResolver:
     """Resolve one current target without consulting timeline order."""
 
-    def __init__(self, conversations: AgentCanvasConversationRepository) -> None:
+    def __init__(
+        self,
+        conversations: AgentCanvasConversationRepository,
+        continuations: AgentCanvasContinuationOutboxRepository | None = None,
+    ) -> None:
         self._conversations = conversations
+        self._lineage = (
+            GuidedActionExecutionLeafResolver(
+                conversations,
+                continuations,
+                AgentCanvasOperationEnvelopeRepository(conversations.database),
+            )
+            if continuations is not None
+            else None
+        )
 
     def resolve(
         self,
@@ -101,26 +120,32 @@ class GuidanceAdvanceTargetResolver:
             if journey.active_action is not None
             else f"stage:{journey.stage}:{journey.stage_revision}"
         )
-        retry_turn_id: str | None = None
-        if journey.active_action is not None and journey.active_action.turn_id:
-            candidate = self._conversations.get_turn(journey.active_action.turn_id)
-            snapshot = self._conversations.get_retry_snapshot(candidate.turn_id)
-            if (
-                candidate.status == "failed"
-                and candidate.retryable
-                and snapshot.get("session_revision") == session.revision
-                and snapshot.get("journey_stage") == journey.stage
-                and snapshot.get("journey_stage_revision") == journey.stage_revision
-            ):
-                retry_turn_id = candidate.turn_id
-            elif candidate.status in {"queued", "running"}:
-                raise _not_available("Current journey work is already active.")
+        leaf = (
+            self._lineage.resolve(requirements.workflow_id, session)
+            if self._lineage is not None and journey.active_action is not None
+            else None
+        )
+        if leaf is not None and (
+            leaf.leaf_status in {"queued", "running"}
+            or leaf.continuation_status in {"queued", "leased", "retry_wait"}
+        ):
+            raise _not_available("Current journey work is already active.")
+        if leaf is not None and leaf.leaf_status == "failed":
+            raise V2PersistenceError(
+                "guidance_advance_blocked_by_failed_turn",
+                "Current guided work must be resolved before continuing.",
+                stage="guidance_advance_service",
+                details={
+                    "turn_id": leaf.leaf_turn_id,
+                    "error_code": leaf.error_code or "agent_operation_failed",
+                    "retryable": leaf.retryable,
+                },
+            )
         return GuidanceAdvanceTargetV1(
-            source_kind=("retry_current_turn" if retry_turn_id else "fresh_next_action"),
+            source_kind="fresh_next_action",
             source_id=source_id,
             journey_stage=journey.stage,
             journey_stage_revision=journey.stage_revision,
-            retry_turn_id=retry_turn_id,
             requirement_revision_id=requirements.revision_id,
             guidance_session_revision=session.revision,
         )
@@ -147,7 +172,7 @@ class GuidanceAdvanceService:
         self._decision_bundles = decision_bundles
         self._retries = retries
         self._events = events
-        self._resolver = GuidanceAdvanceTargetResolver(conversations)
+        self._resolver = GuidanceAdvanceTargetResolver(conversations, continuations)
         self._consistency = GuidanceAuthorityConsistencyValidator()
 
     def submit(
@@ -173,7 +198,7 @@ class GuidanceAdvanceService:
     ) -> GuidanceAdvanceAuthorityPlanV1:
         """Build an immutable read-only plan for one authoritative commit."""
 
-        workflow = self._workflows.get_workflow(workflow_id)
+        self._workflows.get_workflow(workflow_id)
         session = self._conversations.get_guidance_session(workflow_id)
         timeline = self._conversations.list_timeline(workflow_id, limit=1)
         open_proposals = self._conversations.list_open_proposals(workflow_id)
@@ -186,26 +211,11 @@ class GuidanceAdvanceService:
         requirements = self._requirements.get_current(workflow_id)
         self._consistency.validate(session, requirements)
         target = self._resolver.resolve(session, requirements)
-        retry_snapshot_json: str | None = None
-        retry_snapshot_digest: str | None = None
-        if target.source_kind == "retry_current_turn":
-            assert target.retry_turn_id is not None
-            _, retry_snapshot = self._retries.validate(
-                workflow_id,
-                target.retry_turn_id,
-                ChatTurnRetryRequestV1(
-                    expected_session_revision=session.revision,
-                    expected_workflow_revision=workflow.revision,
-                ),
-            )
-            retry_snapshot_json = _canonical_json(retry_snapshot)
-            retry_snapshot_digest = _digest(retry_snapshot)
         request_payload = request.model_dump(mode="json")
         request_digest = _digest(request_payload)
         identity = hashlib.sha256(
             f"{workflow_id}:{idempotency_key}:{request_digest}".encode("utf-8")
         ).hexdigest()
-        is_fresh = target.source_kind == "fresh_next_action"
         return GuidanceAdvanceAuthorityPlanV1(
             workflow_id=workflow_id,
             request=request_payload,
@@ -229,12 +239,10 @@ class GuidanceAdvanceService:
                 active_continuations[0].continuation_id if active_continuations else None
             ),
             target=target,
-            retry_snapshot_json=retry_snapshot_json,
-            retry_snapshot_digest=retry_snapshot_digest,
             command_turn_id=f"turn_{identity[:32]}",
             executable_turn_id=f"turn_{identity[32:]}",
-            continuation_id=(f"continuation_{identity[:24]}" if is_fresh else None),
-            continuation_idempotency_key=(f"guidance-next-action:{identity}" if is_fresh else None),
+            continuation_id=f"continuation_{identity[:24]}",
+            continuation_idempotency_key=f"guidance-next-action:{identity}",
             created_at=datetime.now(timezone.utc),
         )
 

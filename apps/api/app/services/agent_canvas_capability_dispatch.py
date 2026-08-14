@@ -22,6 +22,9 @@ from app.persistence.models import (
     AgentCanvasChatEntryRow,
     AgentCanvasChatTurnRow,
     AgentCanvasExpertActivityRow,
+    AgentCanvasGuidanceSessionRow,
+    AgentCanvasNodeRow,
+    AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas_capabilities import (
     CapabilityCommandEnvelopeV2,
@@ -32,6 +35,8 @@ from app.schemas.agent_canvas_capabilities import (
 from app.services.agent_canvas_requirement_projection import requirement_projection_digest
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.schemas.agent_canvas_conversation import ChatTurnV2
+from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
 from app.schemas.v2_persistence import V2EventInsert
 
 
@@ -162,6 +167,12 @@ class CapabilityDispatchService:
                         creation_mode_json=None,
                         guidance_session_revision=source_turn.guidance_session_revision,
                         idempotency_key=f"capability:{envelope_id}",
+                        retry_snapshot_json=_retry_snapshot_json(
+                            connection,
+                            envelope=envelope,
+                            source_turn=source_turn,
+                            context_snapshot=context_snapshot,
+                        ),
                         error_code=None,
                         error_message=None,
                         created_at=timestamp,
@@ -309,3 +320,86 @@ def _digest(*parts: str) -> str:
 def _style_skill_run_id(context_snapshot: CapabilityContextSnapshotV2) -> str | None:
     value = context_snapshot.style_projection.get("skill_run_id")
     return value if isinstance(value, str) and value else None
+
+
+def _retry_snapshot_json(
+    connection,
+    *,
+    envelope: CapabilityCommandEnvelopeV2,
+    source_turn: ChatTurnV2,
+    context_snapshot: CapabilityContextSnapshotV2,
+) -> str:
+    workflow_revision = int(
+        connection.execute(
+            select(AgentCanvasWorkflowRow.revision).where(
+                AgentCanvasWorkflowRow.workflow_id == envelope.workflow_id
+            )
+        ).scalar_one()
+    )
+    session = (
+        connection.execute(
+            select(AgentCanvasGuidanceSessionRow).where(
+                AgentCanvasGuidanceSessionRow.workflow_id == envelope.workflow_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if session is None:
+        # Unguided compatibility dispatches remain executable but are deliberately
+        # ineligible for typed explicit retry because no journey authority exists.
+        return "{}"
+    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+    active_action = journey.active_action
+    logical_action_id = (
+        active_action.action_id
+        if active_action is not None and active_action.turn_id == source_turn.turn_id
+        else str(source_turn.request.get("source_action_id") or source_turn.turn_id)
+    )
+    nodes = connection.execute(
+        select(AgentCanvasNodeRow.node_id, AgentCanvasNodeRow.revision).where(
+            AgentCanvasNodeRow.workflow_id == envelope.workflow_id
+        )
+    ).all()
+    skill_run_id = _style_skill_run_id(context_snapshot)
+    snapshot = ContinuationTurnRetrySnapshotV1(
+        workflow_id=envelope.workflow_id,
+        conversation_id=envelope.conversation_id,
+        session_id=str(session["session_id"]),
+        workflow_revision=workflow_revision,
+        session_revision=int(session["revision"]),
+        journey_stage=journey.stage,
+        journey_stage_revision=journey.stage_revision,
+        logical_action_id=logical_action_id,
+        root_turn_id=source_turn.turn_id,
+        operation="capability_command",
+        envelope_id=envelope.envelope_id,
+        envelope_digest=hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest(),
+        requirement_revision_id=envelope.requirement_revision_id,
+        requirement_digest=envelope.requirement_digest,
+        node_revisions={str(node_id): int(revision) for node_id, revision in nodes},
+        asset_ids=tuple(context_snapshot.approved_reference_ids),
+        response_locale=envelope.response_locale,
+        policy_identity_digest=_capability_policy_identity(envelope),
+        skill_identity_digest=(
+            hashlib.sha256(skill_run_id.encode("utf-8")).hexdigest()
+            if skill_run_id is not None
+            else None
+        ),
+    )
+    return snapshot.model_dump_json()
+
+
+def _capability_policy_identity(envelope: CapabilityCommandEnvelopeV2) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            {
+                "capability_id": envelope.capability_id,
+                "result_contract_name": envelope.result_contract_name,
+                "candidate_count": envelope.candidate_count,
+                "reference_plan_digest": envelope.reference_plan.digest,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()

@@ -123,7 +123,10 @@ from app.schemas.agent_canvas_conversation import (
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
 )
-from app.schemas.agent_canvas_guidance import GuidanceAdvanceRequestV1
+from app.schemas.agent_canvas_guidance import (
+    ContinuationTurnRetrySnapshotV1,
+    GuidanceAdvanceRequestV1,
+)
 from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleActionAcceptedV1,
     DecisionBundleActionRequestV1,
@@ -1030,14 +1033,31 @@ def create_agent_canvas_runtime(
             return publication_runner.execute(envelope, lease_guard=lease_guard)
         return materialization_runner.execute(envelope, lease_guard=lease_guard)
 
-    def fail_continuation_turn(turn_id: str, code: str, message: str) -> object:
+    def fail_continuation_turn(
+        turn_id: str,
+        code: str,
+        message: str,
+        explicit_retryable: bool,
+    ) -> object:
         if materialization_repository.fail_for_turn(
             turn_id,
             error_code=code,
             error_message=message,
         ):
             return conversation_repository.get_turn(turn_id)
-        return conversation_repository.fail_turn(turn_id, code=code, message=message)
+        if explicit_retryable:
+            try:
+                ContinuationTurnRetrySnapshotV1.model_validate(
+                    conversation_repository.get_retry_snapshot(turn_id)
+                )
+            except ValueError:
+                explicit_retryable = False
+        return conversation_repository.fail_turn(
+            turn_id,
+            code=code,
+            message=message,
+            retryable=explicit_retryable,
+        )
 
     continuation_worker = AgentCanvasContinuationWorker(
         continuation_outbox,
@@ -2179,6 +2199,22 @@ def retry_chat_turn(
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
     if not accepted.replayed:
+        typed_delivery = runtime.continuation_outbox.get_for_turn(accepted.turn_id)
+        if typed_delivery is not None and typed_delivery.operation in {
+            "next_action",
+            "capability_command",
+        }:
+            background_tasks.add_task(
+                runtime.accepted_background.run,
+                AcceptedBackgroundWork(
+                    operation=AcceptedBackgroundOperation.GUIDANCE_CONTINUATION_DRAIN,
+                    workflow_id=workflow_id,
+                    resource_type=AcceptedBackgroundResourceType.TURN,
+                    resource_id=accepted.turn_id,
+                    callback=runtime.continuation_worker.run_once,
+                ),
+            )
+            return accepted
         background_tasks.add_task(
             runtime.accepted_background.run,
             AcceptedBackgroundWork(
@@ -2803,6 +2839,8 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "chat_turn_retry_in_progress": 409,
         "guidance_advance_stale": 409,
         "guidance_advance_not_available": 409,
+        "guidance_advance_blocked_by_failed_turn": 409,
+        "guidance_action_lineage_invalid": 409,
         "active_continuation_conflict": 409,
         "guidance_state_inconsistent": 409,
         "guidance_session_not_found": 404,
