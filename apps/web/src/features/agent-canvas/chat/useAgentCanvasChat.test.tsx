@@ -58,6 +58,7 @@ function emptyTimeline(overrides: Partial<AgentCanvasChatViewTimelineV2> = {}): 
     continuations: [],
     current_session_actions: [],
     items: [],
+    presentationItems: null,
     next_cursor: 0,
     ...overrides,
   };
@@ -255,6 +256,151 @@ describe("useAgentCanvasChat", () => {
     });
 
     expect(result.current.state.guidanceSession).toBe(direct);
+  });
+
+  it("uses the latest localized presentation item instead of raw or stale timeline rows", async () => {
+    api.agentCanvasChatTimeline
+      .mockResolvedValueOnce(emptyTimeline({
+        items: [{
+          item_type: "message",
+          message_id: "entry-1",
+          conversation_id: "conversation-1",
+          speaker: "adcraft_video_agent",
+          text: "Raw fallback content",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          sequence: 7,
+          created_at: "2026-08-13T10:10:00Z",
+        }],
+        presentationItems: [{
+          presentation_key: "planning:next-action-1",
+          presentation_revision: 2,
+          source_entry_ids: ["entry-1"],
+          message_key: "planning_progress.next_action",
+          message_args: {},
+          response_locale: "zh-CN",
+          item: {
+            item_type: "message",
+            message_id: "entry-1",
+            conversation_id: "conversation-1",
+            speaker: "adcraft_video_agent",
+            text: "Planning the next creative action.",
+            linked_node_ids: [],
+            script_node_id: null,
+            proposal_id: null,
+            sequence: 7,
+            created_at: "2026-08-13T10:10:00Z",
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(emptyTimeline({
+        items: [{
+          item_type: "message",
+          message_id: "entry-1",
+          conversation_id: "conversation-1",
+          speaker: "adcraft_video_agent",
+          text: "Stale raw content",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          sequence: 7,
+          created_at: "2026-08-13T10:10:00Z",
+        }],
+        presentationItems: [{
+          presentation_key: "planning:next-action-1",
+          presentation_revision: 1,
+          source_entry_ids: ["entry-1"],
+          message_key: "planning_progress.next_action",
+          message_args: {},
+          response_locale: "en-US",
+          item: {
+            item_type: "message",
+            message_id: "entry-1",
+            conversation_id: "conversation-1",
+            speaker: "adcraft_video_agent",
+            text: "Stale presentation content",
+            linked_node_ids: [],
+            script_node_id: null,
+            proposal_id: null,
+            sequence: 7,
+            created_at: "2026-08-13T10:10:00Z",
+          },
+        }],
+      }));
+
+    const { result, rerender } = renderHook(
+      ({ chatRevision }) => useAgentCanvasChat({
+        workflow: workflow(),
+        chatRevision,
+        chatEvents: [],
+      }),
+      { initialProps: { chatRevision: 0 } },
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.state.items).toMatchObject([{
+      item_type: "message",
+      text: "正在规划下一项创作操作。",
+    }]);
+
+    rerender({ chatRevision: 1 });
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.state.items).toMatchObject([{
+      item_type: "message",
+      text: "正在规划下一项创作操作。",
+    }]);
+  });
+
+  it("uses backend content when a presentation message key or locale is unsupported", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      items: [],
+      presentationItems: [{
+        presentation_key: "entry:unknown-message",
+        presentation_revision: 1,
+        source_entry_ids: ["entry-unknown-message"],
+        message_key: "future.message.key",
+        message_args: { unsupported: true },
+        response_locale: "fr-CA",
+        item: {
+          item_type: "message",
+          message_id: "entry-unknown-message",
+          conversation_id: "conversation-1",
+          speaker: "adcraft_video_agent",
+          text: "Backend fallback content",
+          linked_node_ids: [],
+          script_node_id: null,
+          proposal_id: null,
+          sequence: 8,
+          created_at: "2026-08-13T10:11:00Z",
+        },
+      }],
+    }));
+
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.state.items).toMatchObject([{
+      item_type: "message",
+      text: "Backend fallback content",
+    }]);
   });
 
   it("submits explicit node and image mentions without requiring an inline continuation", async () => {

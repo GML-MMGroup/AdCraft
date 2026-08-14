@@ -19,6 +19,7 @@ import type {
   ChatCapabilityActivityV2,
   ChatMessageV2,
   ChatTimelineItemV2,
+  ChatTimelinePresentationViewItemV2,
   DecisionBundleActionRequestV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
@@ -27,6 +28,10 @@ import type {
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
 import { agentCanvasChatErrorMessage } from "./chatErrorMessage.ts";
+import {
+  mergeTimelinePresentationItems,
+  visibleTimelinePresentationItems,
+} from "./timelinePresentation.ts";
 import { mergeGuidedSessionState } from "../session/journeyState.ts";
 
 type SubmitDraft = {
@@ -147,6 +152,7 @@ export function useAgentCanvasChat({
   const expectedReceiptIdsRef = useRef(new Set<string>());
   const deliveredReceiptIdsRef = useRef(new Set<string>());
   const retryingSourceTurnIdsRef = useRef(new Set<string>());
+  const presentationItemsByKeyRef = useRef(new Map<string, ChatTimelinePresentationViewItemV2>());
   const workflowId = workflow?.workflow_id ?? null;
   const workflowRevision = workflow?.revision ?? null;
   const activeVideoSkillRunId = workflow?.active_style_skill?.skill_run_id ?? null;
@@ -251,7 +257,9 @@ export function useAgentCanvasChat({
     refreshGenerationRef.current = generation;
     setLoading(true);
     try {
-      const items: ChatTimelineItemV2[] = [];
+      const rawItems: ChatTimelineItemV2[] = [];
+      let presentationItems = new Map(presentationItemsByKeyRef.current);
+      let usingPresentationProjection = false;
       let nextGuidanceSession: GuidedSessionStateV2 | null = null;
       let nextCurrentSessionActions: GuidanceSessionActionV2[] = [];
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
@@ -268,7 +276,7 @@ export function useAgentCanvasChat({
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
         });
-        const hydrated = await Promise.all(timeline.items.map(async (item): Promise<ChatTimelineItemV2> => {
+        const hydrateTimelineItem = async (item: ChatTimelineItemV2): Promise<ChatTimelineItemV2> => {
           if (item.item_type === "proposal_pointer") {
             const proposal = await agentCanvasApi.agentCanvasProposal(workflowId, item.proposal_id);
             return {
@@ -288,8 +296,22 @@ export function useAgentCanvasChat({
             };
           }
           return item;
-        }));
-        items.push(...hydrated);
+        };
+        if (timeline.presentationItems !== null) {
+          usingPresentationProjection = true;
+          const hydratedPresentationItems = await Promise.all(
+            timeline.presentationItems.map(async (presentation) => ({
+              ...presentation,
+              item: await hydrateTimelineItem(presentation.item),
+            })),
+          );
+          presentationItems = mergeTimelinePresentationItems(
+            presentationItems,
+            hydratedPresentationItems,
+          );
+        } else {
+          rawItems.push(...await Promise.all(timeline.items.map(hydrateTimelineItem)));
+        }
         if (timeline.items.length < 200 || timeline.next_cursor <= cursor) break;
         cursor = timeline.next_cursor;
       }
@@ -297,6 +319,14 @@ export function useAgentCanvasChat({
       setGuidanceSession((current) => mergeGuidedSessionState(current, nextGuidanceSession));
       setCurrentSessionActions(nextCurrentSessionActions);
       setContinuationsById(Object.fromEntries(nextContinuations));
+      const items = usingPresentationProjection
+        ? visibleTimelinePresentationItems(presentationItems)
+        : rawItems;
+      if (usingPresentationProjection) {
+        presentationItemsByKeyRef.current = presentationItems;
+      } else {
+        presentationItemsByKeyRef.current.clear();
+      }
       setPersistedItems(items);
       hydrateCapabilityTurns(items, generation);
       items.forEach((item) => {
@@ -423,6 +453,7 @@ export function useAgentCanvasChat({
     expectedReceiptIdsRef.current.clear();
     deliveredReceiptIdsRef.current.clear();
     retryingSourceTurnIdsRef.current.clear();
+    presentationItemsByKeyRef.current.clear();
     setError(null);
     setNotice(null);
     setProposalIssues({});
