@@ -659,7 +659,7 @@
   }
 }
 
-:root[data-theme="dark"] .agent-canvas-node {
+:root .agent-canvas-node {
   border-color: rgba(255, 255, 255, 0.4);
   background: transparent;
   box-shadow:
@@ -670,7 +670,7 @@
   -webkit-backdrop-filter: none;
 }
 
-:root[data-theme="dark"] .agent-canvas-node--audio {
+:root .agent-canvas-node--audio {
   border-color: rgba(255, 255, 255, 0.4);
   background: transparent;
   box-shadow:
@@ -681,7 +681,7 @@
   -webkit-backdrop-filter: none;
 }
 
-:root[data-theme="dark"] .agent-canvas-audio-player {
+:root .agent-canvas-audio-player {
   isolation: auto;
   background: rgba(255, 255, 255, 0.06);
   box-shadow:
@@ -692,11 +692,11 @@
   -webkit-backdrop-filter: none;
 }
 
-:root[data-theme="dark"] .agent-canvas-audio-player::before {
+:root .agent-canvas-audio-player::before {
   border-color: rgba(255, 255, 255, 0.3);
   background: transparent;
 }
 
-:root[data-theme="dark"] .agent-canvas-node__media--contain {
+:root .agent-canvas-node__media--contain {
   background: rgba(9, 10, 16, 0.38);
 }

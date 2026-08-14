@@ -723,15 +723,15 @@
   }
 }
 
-html[data-theme="dark"] .home-product-hero__title {
+:root .home-product-hero__title {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .home-product-hero__accent {
+:root .home-product-hero__accent {
   color: transparent;
 }
 
-html[data-theme="dark"] .home-product-hero__accent::after {
+:root .home-product-hero__accent::after {
   background-image: linear-gradient(
     100deg,
     #d7ae59 0%,
@@ -742,11 +742,11 @@ html[data-theme="dark"] .home-product-hero__accent::after {
   );
 }
 
-html[data-theme="dark"] .home-product-hero__description {
+:root .home-product-hero__description {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .home-product-hero__create {
+:root .home-product-hero__create {
   border-color: rgba(255, 255, 255, 0.075);
   background: transparent;
   box-shadow: 0 8px 22px rgba(0, 13, 24, 0.12);
@@ -756,58 +756,58 @@ html[data-theme="dark"] .home-product-hero__create {
   color: rgba(255, 255, 255, 0.96);
 }
 
-html[data-theme="dark"] .home-product-hero__create:hover {
+:root .home-product-hero__create:hover {
   background: rgba(157, 175, 230, 0.3);
   border-color: rgba(207, 217, 255, 0.52);
   box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
 }
 
-html[data-theme="dark"] .home-product-hero__create:active {
+:root .home-product-hero__create:active {
   background: rgba(157, 175, 230, 0.3);
   border-color: rgba(207, 217, 255, 0.52);
 }
 
-html[data-theme="dark"] .home-product-hero__create:focus-visible {
+:root .home-product-hero__create:focus-visible {
   outline-color: rgba(255, 255, 255, 0.24);
 }
 
-html[data-theme="dark"] .home-product-film::after {
+:root .home-product-film::after {
   background: rgba(8, 9, 13, 0.08);
 }
 
-html[data-theme="dark"] :is(.recent-strip, .recent-card) {
+:root :is(.recent-strip, .recent-card) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .recent-card.featured::after {
+:root .recent-card.featured::after {
   background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.7));
 }
 
-html[data-theme="dark"] :is(.recent-card h3, .section-title h2) {
+:root :is(.recent-card h3, .section-title h2) {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.recent-card p, .section-title p) {
+:root :is(.recent-card p, .section-title p) {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .recent-card.featured p {
+:root .recent-card.featured p {
   color: rgba(241, 242, 246, 0.82);
 }
 
-html[data-theme="dark"] .video-modal {
+:root .video-modal {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] .modal-card {
+:root .modal-card {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow);
 }
 
-html[data-theme="dark"] .app-shell--cosmic :is(
+:root .app-shell--cosmic :is(
   .recent-strip,
   .recent-card:not(.featured)
 ) {

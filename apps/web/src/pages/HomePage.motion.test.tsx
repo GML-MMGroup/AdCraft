@@ -60,7 +60,7 @@ describe("HomePage motion", () => {
   beforeEach(() => {
     startNewProject.mockReset();
     IntersectionObserverMock.instances = [];
-    document.documentElement.dataset.theme = "light";
+    document.documentElement.removeAttribute("data-theme");
     vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
   });
 
@@ -283,7 +283,6 @@ describe("HomePage motion", () => {
   });
 
   it("does not mount an animated cosmic layer over the shared static background", () => {
-    document.documentElement.dataset.theme = "dark";
     const view = render(<HomePage navigate={vi.fn()} />);
 
     expect(

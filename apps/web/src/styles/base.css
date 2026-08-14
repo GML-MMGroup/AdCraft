@@ -31,41 +31,12 @@
 }
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   --shell-max-width: 1480px;
   --composer-width: 720px;
   --content-width: 1120px;
   --topbar-height: 70px;
   --rail-width: 56px;
-  --mist-blue: #cbd4e5;
-  --mauve: #a795bf;
-  --butter: #fee9a1;
-  --iris: #6c5dab;
-  --rose: #cca2a7;
-  --ink: #202235;
-  --muted: #6f7183;
-  --surface: rgba(255, 255, 255, 0.42);
-  --surface-strong: rgba(255, 255, 255, 0.62);
-  --surface-soft: rgba(255, 255, 255, 0.28);
-  --stroke: rgba(255, 255, 255, 0.72);
-  --stroke-dark: rgba(108, 93, 171, 0.16);
-  --shadow: 0 24px 70px rgba(74, 82, 111, 0.18);
-  --shadow-soft: 0 16px 36px rgba(74, 82, 111, 0.12);
-  --glass-button: rgba(255, 255, 255, 0.46);
-  --glass-button-shadow: 0 10px 22px rgba(74, 82, 111, 0.09), inset 0 1px rgba(255, 255, 255, 0.64);
-  --radius-shell: 32px;
-  --radius-card: 24px;
-  --font-ui: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-brand: "Instrument Serif", "Songti SC", "STSong", serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
-  --font-display: var(--font-ui);
-  --font-editorial: var(--font-brand);
-  --font-body: var(--font-ui);
-}
-
-/* Keep the first painted frame dark while the lazy application shell loads theme.css. */
-html[data-theme="dark"] {
-  color-scheme: dark;
   --mist-blue: #08090D;
   --mauve: #9E8BEA;
   --butter: #E4BC62;
@@ -82,6 +53,14 @@ html[data-theme="dark"] {
   --shadow-soft: 0 16px 36px rgba(0, 0, 0, 0.32);
   --glass-button: #191D26;
   --glass-button-shadow: 0 10px 22px rgba(0, 0, 0, 0.24), inset 0 1px rgba(255, 255, 255, 0.025);
+  --radius-shell: 32px;
+  --radius-card: 24px;
+  --font-ui: "Manrope", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-brand: "Instrument Serif", "Songti SC", "STSong", serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+  --font-display: var(--font-ui);
+  --font-editorial: var(--font-brand);
+  --font-body: var(--font-ui);
 }
 
 * {
@@ -97,29 +76,15 @@ html {
 body {
   min-height: 100vh;
   margin: 0;
-  background:
-    linear-gradient(115deg, rgba(254, 233, 161, 0.2), transparent 32%),
-    linear-gradient(245deg, rgba(167, 149, 191, 0.24), transparent 38%),
-    linear-gradient(rgba(203, 212, 229, 0.38), rgba(203, 212, 229, 0.5)),
-    url("/assets/bg.jpg") center / cover fixed no-repeat,
-    var(--mist-blue);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  letter-spacing: 0;
-  overflow-x: hidden;
-}
-
-html[data-theme="dark"],
-html[data-theme="dark"] body {
   background: #08090D;
-}
-
-html[data-theme="dark"] body {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
   background-size: 44px 44px;
   color: var(--ink);
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+  overflow-x: hidden;
 }
 
 code,
@@ -134,10 +99,10 @@ body::before {
   inset: 0;
   pointer-events: none;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
   background-size: 44px 44px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.28), transparent 72%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.46), transparent 72%);
   content: "";
 }
 
@@ -374,25 +339,6 @@ a {
   box-shadow: var(--glass-button-shadow);
   backdrop-filter: blur(20px) saturate(1.16);
   transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
-}
-
-.theme-toggle {
-  display: grid;
-  width: 40px;
-  min-width: 40px;
-  place-items: center;
-  padding: 0;
-  color: var(--muted);
-}
-
-.theme-toggle svg {
-  width: 18px;
-  height: 18px;
-}
-
-.theme-toggle:focus-visible {
-  outline: 3px solid var(--focus-ring, rgba(108, 93, 171, 0.36));
-  outline-offset: 3px;
 }
 
 .send-btn {

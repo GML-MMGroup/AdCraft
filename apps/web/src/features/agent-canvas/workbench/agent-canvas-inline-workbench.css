@@ -125,7 +125,7 @@
   box-shadow: none;
 }
 
-html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible {
+:root .agent-node-workbench__composer textarea:focus-visible {
   outline: none;
 }
 

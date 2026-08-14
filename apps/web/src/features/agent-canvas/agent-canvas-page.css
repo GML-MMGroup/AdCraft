@@ -813,7 +813,7 @@
   font-size: 18px;
 }
 
-html[data-theme="dark"] .agent-canvas-page {
+:root .agent-canvas-page {
   --agent-canvas-base-dot-color: rgb(142 146 164 / 20%);
   --agent-canvas-pointer-dot-color: rgb(201 187 255 / 100%);
 
@@ -823,17 +823,17 @@ html[data-theme="dark"] .agent-canvas-page {
     linear-gradient(145deg, #161820, #101219);
 }
 
-html[data-theme="dark"] .agent-canvas-board {
+:root .agent-canvas-board {
   border-right-color: rgb(255 255 255 / 10%);
 }
 
-html[data-theme="dark"] .agent-canvas-pointer-dot {
+:root .agent-canvas-pointer-dot {
   filter:
     drop-shadow(0 0 1.5px rgb(198 181 255 / 92%))
     drop-shadow(0 0 5px rgb(130 96 236 / 58%));
 }
 
-html[data-theme="dark"] :is(
+:root :is(
   .agent-canvas-toolbar,
   .agent-canvas-add-menu,
   .agent-canvas-context-menu,
@@ -845,22 +845,22 @@ html[data-theme="dark"] :is(
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] :is(
+:root :is(
   .agent-canvas-add-menu,
   .agent-canvas-context-menu
 ) .agent-canvas-node-picker button,
-html[data-theme="dark"] .agent-canvas-context-menu__action,
-html[data-theme="dark"] .agent-canvas-inspector {
+:root .agent-canvas-context-menu__action,
+:root .agent-canvas-inspector {
   color: #e4e5ee;
 }
 
-html[data-theme="dark"] .agent-canvas-inspector__body :is(input, textarea) {
+:root .agent-canvas-inspector__body :is(input, textarea) {
   color: #eef0f6;
   background: rgb(8 10 15 / 56%);
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] .agent-canvas-board .react-flow__controls button {
+:root .agent-canvas-board .react-flow__controls button {
   color: #d7d9e4;
   background: rgb(28 31 40 / 88%);
   border-color: rgb(255 255 255 / 10%);

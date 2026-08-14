@@ -109,68 +109,68 @@
   .v2-screenplay-confirm { flex: 0 0 auto; }
 }
 
-html[data-theme="dark"] .v2-screenplay-drawer,
-html[data-theme="dark"] :is(.v2-screenplay-drawer__header, .v2-screenplay-drawer__footer) {
+:root .v2-screenplay-drawer,
+:root :is(.v2-screenplay-drawer__header, .v2-screenplay-drawer__footer) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-tabs, .v2-screenplay-section, .v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version, .v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats, .v2-screenplay-beat) {
+:root :is(.v2-screenplay-tabs, .v2-screenplay-section, .v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version, .v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats, .v2-screenplay-beat) {
   border-color: var(--border-default);
 }
 
-html[data-theme="dark"] .v2-screenplay-tabs button[aria-selected="true"] {
+:root .v2-screenplay-tabs button[aria-selected="true"] {
   background: var(--brand-subtle);
   color: var(--brand);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-icon-button, .v2-screenplay-icon-actions button, .v2-screenplay-secondary-action) {
+:root :is(.v2-screenplay-icon-button, .v2-screenplay-icon-actions button, .v2-screenplay-secondary-action) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .v2-screenplay-confirm {
+:root .v2-screenplay-confirm {
   background: var(--brand);
   color: var(--text-inverse);
 }
 
-html[data-theme="dark"] .v2-screenplay-danger-action {
+:root .v2-screenplay-danger-action {
   border-color: var(--error);
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select) {
+:root :is(.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-field em, .v2-screenplay-empty em) {
+:root :is(.v2-screenplay-field em, .v2-screenplay-empty em) {
   color: var(--error);
 }
 
-html[data-theme="dark"] .v2-screenplay-validation-summary,
-html[data-theme="dark"] .v2-screenplay-request-error {
+:root .v2-screenplay-validation-summary,
+:root .v2-screenplay-request-error {
   border-color: var(--error);
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] .v2-screenplay-conflict {
+:root .v2-screenplay-conflict {
   border-color: var(--warning);
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] .v2-screenplay-discard-confirmation {
+:root .v2-screenplay-discard-confirmation {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] .v2-screenplay-discard-confirmation > dialog {
+:root .v2-screenplay-discard-confirmation > dialog {
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);

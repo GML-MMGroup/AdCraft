@@ -18,7 +18,7 @@
   -webkit-backdrop-filter: none;
 }
 
-[data-theme="dark"] .agent-chat {
+:root .agent-chat {
   border-color: #454545;
   background: #282828;
   color: #f1f1f1;
@@ -170,14 +170,14 @@
   height: 15px;
 }
 
-[data-theme="dark"] .agent-chat__jump-to-latest {
+:root .agent-chat__jump-to-latest {
   border-color: rgb(255 255 255 / 14%);
   background: rgb(35 33 45 / 96%);
   box-shadow: 0 8px 22px rgb(0 0 0 / 36%);
   color: #c0b2f5;
 }
 
-[data-theme="dark"] .agent-chat__jump-to-latest:hover {
+:root .agent-chat__jump-to-latest:hover {
   background: rgb(47 44 60 / 98%);
   color: #ddd5ff;
 }
@@ -345,11 +345,11 @@
   color: #9c751d !important;
 }
 
-[data-theme="dark"] .agent-chat__activity code {
+:root .agent-chat__activity code {
   color: #f09aa8;
 }
 
-[data-theme="dark"] .agent-chat__activity-warning {
+:root .agent-chat__activity-warning {
   color: #e4c67c !important;
 }
 
@@ -507,7 +507,7 @@
   text-transform: capitalize;
 }
 
-[data-theme="dark"] .agent-chat__recipe {
+:root .agent-chat__recipe {
   background: rgb(255 255 255 / 5%);
 }
 
@@ -745,11 +745,11 @@
   border-color: rgb(183 87 102 / 32%);
 }
 
-[data-theme="dark"] .agent-chat__proposal,
-[data-theme="dark"] .agent-chat__artifact,
-[data-theme="dark"] .agent-chat__command,
-[data-theme="dark"] .agent-chat__receipt,
-[data-theme="dark"] .agent-chat__decision-bundle {
+:root .agent-chat__proposal,
+:root .agent-chat__artifact,
+:root .agent-chat__command,
+:root .agent-chat__receipt,
+:root .agent-chat__decision-bundle {
   background: rgb(255 255 255 / 5%);
 }
 
@@ -1107,7 +1107,7 @@
   background: #222222;
 }
 
-[data-theme="dark"] .agent-chat__composer {
+:root .agent-chat__composer {
   background: #222222;
 }
 
@@ -1152,16 +1152,16 @@
   height: 0;
 }
 
-[data-theme="dark"] :is(.agent-chat__timeline, .agent-chat__composer textarea) {
+:root :is(.agent-chat__timeline, .agent-chat__composer textarea) {
   scrollbar-color: rgb(181 168 231 / 38%) transparent;
 }
 
-[data-theme="dark"] :is(.agent-chat__timeline, .agent-chat__composer textarea)::-webkit-scrollbar-thumb {
+:root :is(.agent-chat__timeline, .agent-chat__composer textarea)::-webkit-scrollbar-thumb {
   background: rgb(181 168 231 / 38%);
   background-clip: padding-box;
 }
 
-html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {
+:root .agent-chat__composer textarea:focus-visible {
   outline: none;
 }
 
@@ -1248,7 +1248,7 @@ html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {
   backdrop-filter: blur(22px) saturate(135%);
 }
 
-[data-theme="dark"] .agent-chat__style-menu {
+:root .agent-chat__style-menu {
   border-color: rgb(190 176 239 / 18%);
   background: rgb(25 24 35 / 94%);
   box-shadow: 0 22px 62px rgb(0 0 0 / 42%);
@@ -1362,7 +1362,7 @@ html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {
   font-size: 10px;
 }
 
-[data-theme="dark"] .agent-chat__style-search {
+:root .agent-chat__style-search {
   background: rgb(255 255 255 / 5%);
 }
 
@@ -1502,7 +1502,7 @@ html[data-theme="dark"] .agent-chat__composer textarea:focus-visible {
   box-shadow: 0 18px 45px rgb(39 30 64 / 18%);
 }
 
-[data-theme="dark"] .agent-chat__mention-menu {
+:root .agent-chat__mention-menu {
   background: rgb(28 27 39 / 98%);
 }
 

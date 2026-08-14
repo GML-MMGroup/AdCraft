@@ -7092,168 +7092,168 @@ button.canvas-entity-media {
   }
 }
 
-html[data-theme="dark"] .workflow-page,
-html[data-theme="dark"] .workflow-board {
+:root .workflow-page,
+:root .workflow-board {
   background: var(--page-bg);
 }
 
-html[data-theme="dark"] .workflow-board {
+:root .workflow-board {
   background-image:
     radial-gradient(circle at 18% 16%, rgba(158, 139, 234, 0.12), transparent 34%),
     radial-gradient(circle at 78% 72%, rgba(127, 159, 232, 0.08), transparent 38%),
     linear-gradient(135deg, #08090D, #0D0F14);
 }
 
-html[data-theme="dark"] .workflow-restore-state {
+:root .workflow-restore-state {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .workflow-restore-state span {
+:root .workflow-restore-state span {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__edge-path {
+:root .workflow-board .react-flow__edge-path {
   filter: drop-shadow(0 5px 9px rgba(158, 139, 234, 0.2));
 }
 
-html[data-theme="dark"] :is(.workflow-board .react-flow__edge.selected .react-flow__edge-path, .workflow-board .react-flow__edge:focus .react-flow__edge-path, .workflow-board .react-flow__connection-path) {
+:root :is(.workflow-board .react-flow__edge.selected .react-flow__edge-path, .workflow-board .react-flow__edge:focus .react-flow__edge-path, .workflow-board .react-flow__connection-path) {
   stroke: var(--brand);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__edge.is-runtime-active-edge .react-flow__edge-path {
+:root .workflow-board .react-flow__edge.is-runtime-active-edge .react-flow__edge-path {
   stroke: var(--success);
 }
 
-html[data-theme="dark"] :is(.workflow-board .react-flow__controls, .workflow-board .react-flow__minimap) {
+:root :is(.workflow-board .react-flow__controls, .workflow-board .react-flow__minimap) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__controls-button {
+:root .workflow-board .react-flow__controls-button {
   border-bottom-color: var(--border-default);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__controls-button:hover {
+:root .workflow-board .react-flow__controls-button:hover {
   background: var(--brand-subtle);
 }
 
-html[data-theme="dark"] :is(.copilot-panel, .workflow-card, .prompt-composer, .node-run-panel, .ad-workflow-panel, .video-editing-panel, .workflow-side-panel, .node-detail-panel, .requirements-summary-panel) {
+:root :is(.copilot-panel, .workflow-card, .prompt-composer, .node-run-panel, .ad-workflow-panel, .video-editing-panel, .workflow-side-panel, .node-detail-panel, .requirements-summary-panel) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .bottom-toolbar {
+:root .bottom-toolbar {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] :is(.copilot-title, .composer-footer) {
+:root :is(.copilot-title, .composer-footer) {
   border-color: var(--border-default);
 }
 
-html[data-theme="dark"] :is(.conversation-list button, .node-detail-panel > .draggable-panel-heading, .requirement-field, .advanced-node-details, .prompt-insight-panel, .v2-workbench-item, .v2-slot-card, .v2-slot-version) {
+:root :is(.conversation-list button, .node-detail-panel > .draggable-panel-heading, .requirement-field, .advanced-node-details, .prompt-insight-panel, .v2-workbench-item, .v2-slot-card, .v2-slot-version) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: none;
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.prompt-composer textarea, .node-run-panel select, .node-run-panel textarea, .node-config-field input, .node-config-field textarea, .node-config-field select, .variable-card input, .variable-card textarea, .variable-card select, .compact-select, .node-workbench-composer textarea, .v2-slot-prompt textarea, .v2-item-prompt textarea) {
+:root :is(.prompt-composer textarea, .node-run-panel select, .node-run-panel textarea, .node-config-field input, .node-config-field textarea, .node-config-field select, .variable-card input, .variable-card textarea, .variable-card select, .compact-select, .node-workbench-composer textarea, .v2-slot-prompt textarea, .v2-item-prompt textarea) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.prompt-composer textarea::placeholder, .node-config-field span, .requirement-field span, .advanced-node-details summary, .node-prompt-field > span, .asset-preview-heading, .prompt-insight-heading > span, .v2-slot-prompt, .v2-slot-version span, .v2-slot-version em, .v2-slot-history) {
+:root :is(.prompt-composer textarea::placeholder, .node-config-field span, .requirement-field span, .advanced-node-details summary, .node-prompt-field > span, .asset-preview-heading, .prompt-insight-heading > span, .v2-slot-prompt, .v2-slot-version span, .v2-slot-version em, .v2-slot-history) {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] :is(.state-chip, .v2-slot-status, .v2-workbench-item-heading span, .v2-workbench-item-heading em) {
+:root :is(.state-chip, .v2-slot-status, .v2-workbench-item-heading span, .v2-workbench-item-heading em) {
   background: var(--surface-input);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .bubble,
-html[data-theme="dark"] :is(.conversation-error, .conversation-send-state, .workflow-card-note, .status-pill) {
+:root .bubble,
+:root :is(.conversation-error, .conversation-send-state, .workflow-card-note, .status-pill) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .bubble.user {
+:root .bubble.user {
   background: var(--brand);
   color: var(--text-inverse);
 }
 
-html[data-theme="dark"] .workflow-card-identity h3 {
+:root .workflow-card-identity h3 {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .workflow-port-label {
+:root .workflow-port-label {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .workflow-handle {
+:root .workflow-handle {
   border-color: var(--surface-raised);
 }
 
-html[data-theme="dark"] :is(.state-chip.locked, .state-chip.warning, .v2-slot-version em) {
+:root :is(.state-chip.locked, .state-chip.warning, .v2-slot-version em) {
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] :is(.state-chip.stale, .dynamic-media-item-error) {
+:root :is(.state-chip.stale, .dynamic-media-item-error) {
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] .state-chip.candidate {
+:root .state-chip.candidate {
   background: var(--brand-subtle);
   color: var(--brand);
 }
 
-html[data-theme="dark"] :is(.status-pill.completed, .status-pill.success, .status-pill.finish) {
+:root :is(.status-pill.completed, .status-pill.success, .status-pill.finish) {
   color: var(--success);
 }
 
-html[data-theme="dark"] :is(.status-pill.error, .status-pill.failed) {
+:root :is(.status-pill.error, .status-pill.failed) {
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.node-attachment-tile, .asset-revision-history-item, .asset-revision-candidate-card, .asset-library-save-modal, .v2-floating-slot-composer, .asset-revision-panel, .node-preview-panel) {
+:root :is(.node-attachment-tile, .asset-revision-history-item, .asset-revision-candidate-card, .asset-library-save-modal, .v2-floating-slot-composer, .asset-revision-panel, .node-preview-panel) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.canvas-entity-card, .node-run-panel, .node-detail-panel, .node-workbench-composer, .v2-slot-card) {
+:root :is(.canvas-entity-card, .node-run-panel, .node-detail-panel, .node-workbench-composer, .v2-slot-card) {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.canvas-entity-card.status-failed, .asset-quality-notice.status-failed) {
+:root :is(.canvas-entity-card.status-failed, .asset-quality-notice.status-failed) {
   border-color: var(--error);
   background: var(--error-subtle);
 }
 
-html[data-theme="dark"] .asset-quality-notice.status-warning {
+:root .asset-quality-notice.status-warning {
   border-color: var(--warning);
   background: var(--warning-subtle);
 }
 
-html[data-theme="dark"] .media-lightbox {
+:root .media-lightbox {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] .media-lightbox-close {
+:root .media-lightbox-close {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
