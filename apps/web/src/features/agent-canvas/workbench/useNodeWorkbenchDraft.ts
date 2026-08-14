@@ -43,6 +43,8 @@ function errorState(error: unknown): { message: string; action: WorkbenchErrorAc
 function structuredText(node: CanvasNodeV2): string {
   const preferred = node.structured_content.content;
   if (typeof preferred === "string") return preferred;
+  const legacyScript = node.structured_content.script_text;
+  if (typeof legacyScript === "string") return legacyScript;
   const fallback = node.structured_content.text;
   return typeof fallback === "string" ? fallback : "";
 }
@@ -101,9 +103,9 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
-  const editsTextContent = node.node_type === "text";
+  const editsTextContent = ["text", "script"].includes(node.node_type);
   const editsGenerationPrompt = ["image", "video", "audio"].includes(node.node_type);
-  const usesProvider = !isWorldSetting && ["text", "image", "video", "audio"].includes(node.node_type);
+  const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);

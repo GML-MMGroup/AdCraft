@@ -255,29 +255,37 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
   });
 
-  it("does not render a workbench for a retired Script node", () => {
-    const node = makeNode("script");
-    const { container } = render(
-      <AgentCanvasInlineWorkbench
-        workflow={makeWorkflow(node)}
-        node={node}
-        patchNode={vi.fn().mockResolvedValue(undefined)}
-        patchBinding={vi.fn().mockResolvedValue(undefined)}
-        deleteBinding={vi.fn().mockResolvedValue(undefined)}
-        onRun={vi.fn().mockResolvedValue(undefined)}
-        onSaveVariation={vi.fn().mockResolvedValue(undefined)}
-        onDiscardVariation={vi.fn().mockResolvedValue(undefined)}
-        onMaterializeVariation={vi.fn().mockResolvedValue(null)}
-        onSaveImageToLibrary={vi.fn().mockResolvedValue(undefined)}
-        onDelete={vi.fn().mockResolvedValue(undefined)}
-        onOpenEditing={vi.fn()}
-        onOpenAssets={vi.fn()}
-        onUploadReferences={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
+  it("edits legacy Script content before running it", async () => {
+    const node = {
+      ...makeNode("script"),
+      structured_content: {
+        document_kind: "script",
+        script_text: "Open on dawn.",
+        authoring_provenance: { source_option_id: "option-script-1" },
+      },
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node);
 
-    expect(container.childElementCount).toBe(0);
+    expect((screen.getByLabelText("Script content") as HTMLTextAreaElement).value)
+      .toBe("Open on dawn.");
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "Open on a quiet office before the first meeting." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: {
+          document_kind: "script",
+          script_text: "Open on dawn.",
+          authoring_provenance: { source_option_id: "option-script-1" },
+          content: "Open on a quiet office before the first meeting.",
+        },
+      }),
+    ));
+    expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
   it("saves structured text before running a Text node", async () => {
