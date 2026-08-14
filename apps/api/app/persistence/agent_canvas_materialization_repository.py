@@ -63,6 +63,7 @@ from app.persistence.models import (
     AgentCanvasWorkflowRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
+from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV1,
@@ -75,6 +76,10 @@ from app.schemas.agent_canvas_materialization import (
 from app.schemas.agent_canvas_materialization_commit import (
     MaterializationOutcomeV1,
     MaterializationPlanV1,
+)
+from app.schemas.agent_canvas_guided_checkpoint import (
+    GuidedCheckpointOriginV1,
+    guided_checkpoint_id,
 )
 from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
 from app.schemas.v2_persistence import V2EventInsert
@@ -390,6 +395,19 @@ class AgentCanvasMaterializationRepository:
                             for item in json.loads(str(session["element_decisions_json"]))
                         ),
                     )
+                    nodes = _with_guided_checkpoint_origin(
+                        nodes,
+                        workflow_id=proposal.workflow_id,
+                        guidance_session_id=str(session["session_id"]),
+                        next_journey=next_journey,
+                        runnable_storyboard_draft=(
+                            materialization_plan.journey_event is not None
+                            and materialization_plan.journey_event.event_type
+                            == "stage_materialized"
+                            and materialization_plan.journey_event.runnable_storyboard_draft
+                        ),
+                    )
+                    node = nodes[0]
                     if (
                         proposal_action != "reuse_direction"
                         and str(session["active_proposal_id"]) != proposal_id
@@ -1539,6 +1557,49 @@ class AgentCanvasMaterializationRepository:
 
     def events_cursor(self, workflow_id: str) -> int:
         return self._events.max_seq(workflow_id)
+
+
+def _with_guided_checkpoint_origin(
+    nodes: tuple[CanvasNodeV2, ...],
+    *,
+    workflow_id: str,
+    guidance_session_id: str,
+    next_journey: GuidedProductionJourneyV1,
+    runnable_storyboard_draft: bool,
+) -> tuple[CanvasNodeV2, ...]:
+    if (
+        not runnable_storyboard_draft
+        or next_journey.stage != "storyboard_grids"
+        or next_journey.stage_status != "waiting_user"
+    ):
+        return nodes
+    origin = GuidedCheckpointOriginV1(
+        checkpoint_id=guided_checkpoint_id(
+            workflow_id,
+            guidance_session_id,
+            stage_revision=next_journey.stage_revision,
+        ),
+        guidance_session_id=guidance_session_id,
+        stage_revision=next_journey.stage_revision,
+    )
+    updated: list[CanvasNodeV2] = []
+    attached = False
+    for node in nodes:
+        if attached or node.creative_role != "storyboard_sequence":
+            updated.append(node)
+            continue
+        metadata = dict(node.metadata)
+        existing_value = metadata.get("guided_checkpoint")
+        existing = (
+            GuidedCheckpointOriginV1.model_validate(existing_value)
+            if isinstance(existing_value, dict)
+            else None
+        )
+        if existing is None or existing.stage_revision < origin.stage_revision:
+            metadata["guided_checkpoint"] = origin.model_dump(mode="json")
+        updated.append(node.model_copy(update={"metadata": metadata}))
+        attached = True
+    return tuple(updated)
 
 
 def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
