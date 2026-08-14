@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationAuthoringSnapshotV1,
     MaterializationDocumentWriteV1,
     MaterializationPlanV1,
+    NodePromptPreparationIntentV1,
     StageMaterializedJourneyEventV1,
     TargetedActionCompletedJourneyEventV1,
     materialization_plan_digest,
@@ -39,6 +40,20 @@ class CapabilityMaterializationPlanCompiler:
         nodes = bundle.nodes
         bindings = bundle.bindings
         preparations = bundle.prompt_preparations
+        runnable_storyboard_draft = _has_runnable_storyboard_draft(
+            envelope,
+            nodes=nodes,
+            preparations=preparations,
+            documents=storyboard_documents,
+        )
+        if (
+            envelope.capability_id == "storyboard_design"
+            and snapshot.current_journey.stage == "storyboard_plan"
+            and not runnable_storyboard_draft
+        ):
+            raise ValueError(
+                "Storyboard plan materialization requires a runnable Storyboard Grid Draft."
+            )
 
         continuation = _continuation(envelope, snapshot)
         receipt = _receipt(
@@ -68,7 +83,11 @@ class CapabilityMaterializationPlanCompiler:
             "receipt": receipt,
             "continuation": continuation,
             "prompt_preparations": preparations,
-            "journey_event": _journey_event(envelope, snapshot),
+            "journey_event": _journey_event(
+                envelope,
+                snapshot,
+                runnable_storyboard_draft=runnable_storyboard_draft,
+            ),
             "payload_digest": "0" * 64,
         }
         provisional = MaterializationPlanV1.model_construct(**payload)
@@ -141,6 +160,8 @@ def _commitments(
 def _journey_event(
     envelope: ProposalApplicationEnvelopeV1,
     snapshot: MaterializationAuthoringSnapshotV1,
+    *,
+    runnable_storyboard_draft: bool,
 ) -> StageMaterializedJourneyEventV1 | TargetedActionCompletedJourneyEventV1 | None:
     journey = snapshot.current_journey
     if journey.suspended_action is not None:
@@ -174,9 +195,35 @@ def _journey_event(
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
             "foundation_item_id": foundation_item_id,
+            "runnable_storyboard_draft": runnable_storyboard_draft,
             "recorded_at": envelope.created_at,
         }
     )
+
+
+def _has_runnable_storyboard_draft(
+    envelope: ProposalApplicationEnvelopeV1,
+    *,
+    nodes: tuple[CanvasNodeV2, ...],
+    preparations: tuple[NodePromptPreparationIntentV1, ...],
+    documents: tuple[MaterializationDocumentWriteV1, ...],
+) -> bool:
+    if envelope.capability_id != "storyboard_design":
+        return False
+    grid_node_ids = {
+        node.node_id
+        for node in nodes
+        if node.node_type == "image"
+        and node.creative_role == "storyboard_sequence"
+        and node.status == "draft"
+    }
+    prepared_node_ids = {item.node_id for item in preparations}
+    has_plan = any(
+        item.document_type == "agent_working_document"
+        and item.payload.get("kind") == "storyboard_production_plan"
+        for item in documents
+    )
+    return bool(grid_node_ids and grid_node_ids <= prepared_node_ids and has_plan)
 
 
 def _digest(value: str) -> str:

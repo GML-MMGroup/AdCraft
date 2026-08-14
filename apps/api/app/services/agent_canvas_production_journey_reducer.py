@@ -45,7 +45,7 @@ class GuidedProductionJourneyReducer:
             )
 
         evidence = self._evidence(current, event)
-        return self._policy.apply_evidence(
+        updated = self._policy.apply_evidence(
             JourneyPolicyContextV1(
                 journey=current,
                 element_decisions=element_decisions,
@@ -53,6 +53,16 @@ class GuidedProductionJourneyReducer:
             evidence,
             recorded_at=event.recorded_at,
         )
+        if isinstance(event, StageMaterializedJourneyEventV1) and (
+            event.evidence_kind == "storyboard_plan_accepted"
+        ):
+            if not event.runnable_storyboard_draft:
+                raise _error(
+                    "journey_evidence_invalid",
+                    "Storyboard plan evidence requires a runnable Storyboard Grid Draft.",
+                )
+            return updated.model_copy(update={"stage_status": "waiting_user"})
+        return updated
 
     @staticmethod
     def _evidence(

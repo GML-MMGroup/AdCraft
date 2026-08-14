@@ -868,9 +868,14 @@ class AgentCanvasMaterializationRepository:
                                 turn_id=str(event_turn["turn_id"]),
                                 action_id=source_turn_id,
                                 event_type=(
-                                    "journey_stage_changed"
-                                    if next_journey.stage != current_journey.stage
-                                    else "journey_stage_started"
+                                    "journey_stage_waiting_user"
+                                    if next_journey.stage == "storyboard_grids"
+                                    and next_journey.stage_status == "waiting_user"
+                                    else (
+                                        "journey_stage_changed"
+                                        if next_journey.stage != current_journey.stage
+                                        else "journey_stage_started"
+                                    )
                                 ),
                                 created_at=now,
                                 payload={
@@ -892,6 +897,15 @@ class AgentCanvasMaterializationRepository:
                                     "source_id": (
                                         materialization_plan.journey_event.source_id
                                         if materialization_plan.journey_event is not None
+                                        else None
+                                    ),
+                                    "source_materialization_id": (
+                                        materialization_plan.materialization_id
+                                    ),
+                                    "reason": (
+                                        "runnable_storyboard_draft"
+                                        if next_journey.stage == "storyboard_grids"
+                                        and next_journey.stage_status == "waiting_user"
                                         else None
                                     ),
                                     "foundation_item_id": (

@@ -40,7 +40,16 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     evidence_kind: JourneyEvidenceKindV1
     source_id: str = Field(min_length=1, max_length=160)
     foundation_item_id: str | None = Field(default=None, max_length=160)
+    runnable_storyboard_draft: bool = False
     recorded_at: datetime
+
+    @model_validator(mode="after")
+    def validate_storyboard_checkpoint(self) -> "StageMaterializedJourneyEventV1":
+        if self.runnable_storyboard_draft and self.evidence_kind != "storyboard_plan_accepted":
+            raise ValueError(
+                "Runnable Storyboard Draft evidence requires storyboard plan acceptance."
+            )
+        return self
 
 
 class TargetedActionCompletedJourneyEventV1(_MaterializationCommitModel):
