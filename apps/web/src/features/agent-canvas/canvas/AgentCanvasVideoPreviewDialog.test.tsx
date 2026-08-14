@@ -3,8 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectAssetSummaryV2 } from "../../../types-v2.ts";
 import { AgentCanvasVideoPreviewDialog } from "./AgentCanvasVideoPreviewDialog.tsx";
+import { fitVideoDimensionsWithinStage } from "./agentCanvasVideoPreviewSizing.ts";
 
-function makeVideoAsset(): ProjectAssetSummaryV2 {
+function makeVideoAsset(
+  dimensions: Pick<ProjectAssetSummaryV2, "width" | "height"> = {
+    width: 1920,
+    height: 1080,
+  },
+): ProjectAssetSummaryV2 {
   return {
     asset_id: "video-asset",
     project_id: "project-1",
@@ -18,8 +24,8 @@ function makeVideoAsset(): ProjectAssetSummaryV2 {
     storage_key: null,
     preview_url: "/media/campaign-poster.webp",
     media_url: "/media/campaign-cut.mp4",
-    width: 1920,
-    height: 1080,
+    width: dimensions.width,
+    height: dimensions.height,
     duration_seconds: 15,
     checksum: "video-checksum",
     source_semantic_role: null,
@@ -36,6 +42,15 @@ function makeVideoAsset(): ProjectAssetSummaryV2 {
 afterEach(() => cleanup());
 
 describe("AgentCanvasVideoPreviewDialog", () => {
+  it("fits a portrait video inside a landscape preview stage without cropping", () => {
+    expect(
+      fitVideoDimensionsWithinStage(
+        { width: 720, height: 1280 },
+        { width: 1280, height: 816 },
+      ),
+    ).toEqual({ width: 459, height: 816 });
+  });
+
   it("renders the generated video in a modal native player without cropping it", () => {
     render(
       <AgentCanvasVideoPreviewDialog
@@ -56,6 +71,48 @@ describe("AgentCanvasVideoPreviewDialog", () => {
     expect(player.hasAttribute("controls")).toBe(true);
     expect(player.hasAttribute("autoplay")).toBe(true);
     expect(player.classList).toContain("agent-canvas-video-preview__player");
+  });
+
+  it("identifies portrait video assets before native metadata finishes loading", () => {
+    render(
+      <AgentCanvasVideoPreviewDialog
+        asset={makeVideoAsset({ width: 720, height: 1280 })}
+        title="Portrait campaign video"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const stage = document.querySelector(".agent-canvas-video-preview__stage");
+
+    expect(stage).not.toBeNull();
+    expect(stage?.getAttribute("data-orientation")).toBe("portrait");
+  });
+
+  it("uses the available stage size to render a portrait player without letterboxing", () => {
+    const originalBounds = HTMLElement.prototype.getBoundingClientRect;
+    const boundsSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function bounds() {
+      if (this.classList.contains("agent-canvas-video-preview__stage")) {
+        return new DOMRect(0, 0, 1280, 816);
+      }
+      return originalBounds.call(this);
+    });
+
+    try {
+      render(
+        <AgentCanvasVideoPreviewDialog
+          asset={makeVideoAsset({ width: 720, height: 1280 })}
+          title="Portrait campaign video"
+          onClose={vi.fn()}
+        />,
+      );
+
+      const player = screen.getByLabelText("Portrait campaign video player");
+
+      expect(player.getAttribute("style")).toContain("width: 459px");
+      expect(player.getAttribute("style")).toContain("height: 816px");
+    } finally {
+      boundsSpy.mockRestore();
+    }
   });
 
   it("closes from the close control and Escape key", () => {
