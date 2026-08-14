@@ -344,6 +344,23 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
+  it("uses the live Failed status when retrying a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "failed" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry script node" }));
+
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: node.node_id,
+        status: "failed",
+      }),
+    ));
+  });
+
   it("saves structured text before running a Text node", async () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);

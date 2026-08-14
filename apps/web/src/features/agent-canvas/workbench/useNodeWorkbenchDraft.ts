@@ -113,6 +113,9 @@ export function useNodeWorkbenchDraft({
   const editsGenerationPrompt = isRunnableScript
     || ["image", "video", "audio"].includes(node.node_type);
   const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
+    ? { ...node, status: effectiveStatus }
+    : node;
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
@@ -237,7 +240,7 @@ export function useNodeWorkbenchDraft({
 
   const run = async () => {
     if ((dirty || parameterMigrationRequired) && !(await save())) return;
-    await perform(() => onRun(node));
+    await perform(() => onRun(nodeForRun));
   };
 
   const materializeVariation = async (action: "create_draft" | "generate") => {

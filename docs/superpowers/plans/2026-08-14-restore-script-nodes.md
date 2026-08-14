@@ -156,7 +156,7 @@ const usesProvider = !isWorldSetting
   && ["text", "script", "image", "video", "audio"].includes(node.node_type);
 ```
 
-Render `ScriptWorkbench` for Script nodes. Its run button uses `draft.run()` for Draft/Failed and `draft.save()` for Ready, matching existing node lifecycle behavior. Pass the projected `NodeRuntimeV2.visible_status` through the renderer, use it for both UI and patch-shape decisions, and disable editing and actions while the live status is Working.
+Render `ScriptWorkbench` for Script nodes. Its run button uses `draft.run()` for Draft/Failed and `draft.save()` for Ready, matching existing node lifecycle behavior. Pass the projected `NodeRuntimeV2.visible_status` through the renderer, use it for UI, patch-shape, and retry-request decisions, and disable editing and actions while the live status is Working.
 
 - [ ] **Step 4: Run tests and verify GREEN**
 
