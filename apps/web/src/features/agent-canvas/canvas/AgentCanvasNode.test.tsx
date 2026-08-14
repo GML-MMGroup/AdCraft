@@ -709,6 +709,34 @@ describe("AgentCanvasNodeRenderer", () => {
     },
   );
 
+  it("passes the live runtime state to the inline workbench renderer", () => {
+    const node = makeNode("script");
+    const runtime = makeRuntime("working");
+    const renderWorkbench = vi.fn(() => <div>Script controls</div>);
+    const data: AgentCanvasNodeData = { node, runtime, renderWorkbench };
+
+    render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
+  });
+
   it("centers the inline workbench beneath its card", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");

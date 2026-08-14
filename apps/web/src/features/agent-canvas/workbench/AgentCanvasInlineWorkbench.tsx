@@ -20,6 +20,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
   const {
     workflow,
     node,
+    visibleStatus,
     deleteBinding,
     providerModels = [],
     providerModelsLoading = false,
@@ -71,6 +72,7 @@ function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       {node.node_type === "script" ? (
         <ScriptWorkbench
           node={node}
+          status={visibleStatus ?? node.status}
           draft={draft}
           models={providerModels}
           modelsLoading={providerModelsLoading}

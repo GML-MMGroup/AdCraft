@@ -1,6 +1,10 @@
 import type { ProviderModelSummaryV1 } from "../../../api/providerRegistry.ts";
 import { SendIcon } from "../../../icons.tsx";
-import type { CanvasNodeV2, CanvasRuntimeModelResolutionV2 } from "../../../types-v2.ts";
+import type {
+  CanvasNodeStatusV2,
+  CanvasNodeV2,
+  CanvasRuntimeModelResolutionV2,
+} from "../../../types-v2.ts";
 import { CanvasModelPicker } from "./CanvasModelPicker.tsx";
 import { FourLinePromptEditor } from "./FourLinePromptEditor.tsx";
 import { NodeWorkbenchError } from "./NodeWorkbenchError.tsx";
@@ -8,6 +12,7 @@ import type { NodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 
 export function ScriptWorkbench({
   node,
+  status,
   draft,
   models,
   modelsLoading,
@@ -15,14 +20,15 @@ export function ScriptWorkbench({
   modelResolution,
 }: {
   node: CanvasNodeV2;
+  status: CanvasNodeStatusV2;
   draft: NodeWorkbenchDraft;
   models: ProviderModelSummaryV1[];
   modelsLoading: boolean;
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
 }) {
-  const canRun = node.status === "draft" || node.status === "failed";
-  const isWorking = node.status === "working";
+  const canRun = status === "draft" || status === "failed";
+  const isWorking = status === "working";
   const editorDisabled = draft.pending || isWorking;
 
   return (
@@ -66,12 +72,12 @@ export function ScriptWorkbench({
             aria-label={isWorking
               ? "Script node is working"
               : canRun
-              ? node.status === "failed" ? "Retry script node" : "Run script node"
+              ? status === "failed" ? "Retry script node" : "Run script node"
               : "Save script node"}
             title={isWorking
               ? "Script generation is in progress"
               : canRun
-              ? node.status === "failed" ? "Retry script" : "Run script"
+              ? status === "failed" ? "Retry script" : "Run script"
               : "Save script"}
             disabled={editorDisabled}
             onClick={() => void (canRun ? draft.run() : draft.save())}

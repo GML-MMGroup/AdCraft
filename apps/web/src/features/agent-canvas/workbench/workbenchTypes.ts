@@ -4,6 +4,7 @@ import type {
   CanvasBindingPatchRequestV2,
   CanvasConnectionPolicyV2,
   CanvasNodePatchRequestV2,
+  CanvasNodeStatusV2,
   CanvasNodeV2,
   CanvasRuntimeModelResolutionV2,
   CanvasVariationDraftUpsertV2,
@@ -27,6 +28,7 @@ export type PatchBinding = (
 export interface AgentCanvasInlineWorkbenchProps {
   workflow: AgentCanvasWorkflowV2;
   node: CanvasNodeV2;
+  visibleStatus?: CanvasNodeStatusV2;
   patchNode: PatchNode;
   patchBinding?: PatchBinding;
   deleteBinding?: (bindingId: string) => Promise<void>;

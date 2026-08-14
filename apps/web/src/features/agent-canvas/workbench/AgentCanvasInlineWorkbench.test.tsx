@@ -310,9 +310,9 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
-  it("does not allow a working Script node to be edited or saved", () => {
-    const node = makeNode("script", "working");
-    const props = renderWorkbench(node);
+  it("uses the live Working status to prevent editing a canonically Draft Script", () => {
+    const node = makeNode("script", "draft");
+    const props = renderWorkbench(node, { visibleStatus: "working" });
 
     expect(screen.getByLabelText("Script content")).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Script node is working" }))
