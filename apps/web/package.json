@@ -40,6 +40,7 @@
   "devDependencies": {
     "@colbymchenry/codegraph": "^1.0.1",
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.62.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
     "@types/react": "^19.1.8",
