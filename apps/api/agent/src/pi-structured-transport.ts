@@ -653,13 +653,21 @@ function validationAttemptAudit(
   const rawViolations = Array.isArray(candidate) ? candidate.slice(0, 128) : [];
   const paths: string[] = [];
   const codes: string[] = [];
+  let pathOverflow = false;
+  let codeOverflow = false;
   for (const item of rawViolations) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const violation = item as Readonly<Record<string, unknown>>;
     const path = boundedViolationText(violation.path ?? violation.field_path, 512);
     const code = boundedViolationText(violation.code, 160);
-    if (path && !paths.includes(path) && paths.length < 32) paths.push(path);
-    if (code && !codes.includes(code) && codes.length < 32) codes.push(code);
+    if (path && !paths.includes(path)) {
+      if (paths.length < 32) paths.push(path);
+      else pathOverflow = true;
+    }
+    if (code && !codes.includes(code)) {
+      if (codes.length < 32) codes.push(code);
+      else codeOverflow = true;
+    }
   }
   if (codes.length === 0) {
     codes.push(validation.error_code ?? "agent_structured_output_invalid");
@@ -672,7 +680,7 @@ function validationAttemptAudit(
     violation_codes: codes,
     repair_allowed: validation.result?.repair_allowed === true,
     truncated: Array.isArray(candidate) &&
-      (candidate.length > 128 || paths.length > 32 || codes.length > 32),
+      (candidate.length > 128 || pathOverflow || codeOverflow),
   };
 }
 
