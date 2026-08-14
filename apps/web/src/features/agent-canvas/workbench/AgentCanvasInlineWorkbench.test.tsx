@@ -323,6 +323,27 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).not.toHaveBeenCalled();
   });
 
+  it("uses the live Ready status when saving a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "ready" });
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A recovered Script result." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: { content: "A recovered Script result." },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
   it("saves structured text before running a Text node", async () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);

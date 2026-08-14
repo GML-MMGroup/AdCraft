@@ -52,6 +52,7 @@ function structuredText(node: CanvasNodeV2): string {
 export function useNodeWorkbenchDraft({
   workflow,
   node,
+  visibleStatus,
   patchNode,
   onRun,
   onSaveVariation,
@@ -62,6 +63,7 @@ export function useNodeWorkbenchDraft({
   AgentCanvasInlineWorkbenchProps,
   | "workflow"
   | "node"
+  | "visibleStatus"
   | "patchNode"
   | "onRun"
   | "onSaveVariation"
@@ -103,8 +105,9 @@ export function useNodeWorkbenchDraft({
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
   const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
+  const effectiveStatus = visibleStatus ?? node.status;
   const isRunnableScript = node.node_type === "script"
-    && (node.status === "draft" || node.status === "failed");
+    && (effectiveStatus === "draft" || effectiveStatus === "failed");
   const editsTextContent = node.node_type === "text"
     || (node.node_type === "script" && !isRunnableScript);
   const editsGenerationPrompt = isRunnableScript
