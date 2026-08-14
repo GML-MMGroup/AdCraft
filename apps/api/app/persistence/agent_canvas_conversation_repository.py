@@ -345,6 +345,157 @@ class AgentCanvasConversationRepository:
                 "Conversation storage failed.",
             ) from error
 
+    def complete_turn_with_clarification(
+        self,
+        turn_id: str,
+        *,
+        expected_session_revision: int,
+        journey: GuidedProductionJourneyV1,
+        assistant_message: str,
+        transition_key: str,
+    ) -> ChatTurnV2:
+        """Atomically publish clarification authority and complete its source Turn."""
+
+        if not transition_key or len(transition_key) > 256 or turn_id not in transition_key:
+            raise _error(
+                "journey_evidence_invalid",
+                "Clarification transition identity is invalid.",
+            )
+        if journey.stage != "clarification" or journey.stage_status != "waiting_user":
+            raise _error(
+                "journey_transition_invalid",
+                "Clarification completion requires a waiting clarification journey.",
+            )
+        now = _now()
+        journey_payload = journey.model_dump(mode="json")
+        journey_digest = _sha256_json(journey_payload)
+        assistant_digest = hashlib.sha256(assistant_message.encode("utf-8")).hexdigest()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    turn = _require_turn(connection, turn_id)
+                    workflow_id = str(turn["workflow_id"])
+                    session_row = _require_guidance_session_row_by_workflow(
+                        connection,
+                        workflow_id,
+                    )
+                    session_id = str(session_row["session_id"])
+                    event_transition_key = f"journey:{session_id}:{transition_key}"
+                    existing_event = (
+                        connection.execute(
+                            select(WorkflowEventRow).where(
+                                WorkflowEventRow.transition_key == event_transition_key
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if existing_event is not None:
+                        payload = json.loads(str(existing_event["payload_json"]))
+                        if (
+                            str(turn["status"]) != "completed"
+                            or payload.get("turn_id") != turn_id
+                            or payload.get("journey_digest") != journey_digest
+                            or payload.get("assistant_digest") != assistant_digest
+                        ):
+                            raise _error(
+                                "journey_transition_conflict",
+                                "Clarification transition identity was reused with different content.",
+                            )
+                        result = _turn(turn)
+                        connection.commit()
+                        return result
+
+                    if int(session_row["revision"]) != expected_session_revision:
+                        raise _error(
+                            "journey_revision_conflict",
+                            "Journey state changed before this transition.",
+                        )
+                    current_journey = GuidedProductionJourneyV1.model_validate_json(
+                        str(session_row["journey_state_json"])
+                    )
+                    _validate_clarification_target(
+                        current=current_journey,
+                        target=journey,
+                        turn_id=turn_id,
+                    )
+                    next_revision = expected_session_revision + 1
+                    updated = connection.execute(
+                        update(AgentCanvasGuidanceSessionRow)
+                        .where(
+                            AgentCanvasGuidanceSessionRow.session_id == session_id,
+                            AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                        )
+                        .values(
+                            journey_state_json=journey.model_dump_json(),
+                            revision=next_revision,
+                            updated_at=now,
+                        )
+                    )
+                    if updated.rowcount != 1:
+                        raise _error(
+                            "journey_revision_conflict",
+                            "Journey state changed before this transition.",
+                        )
+                    evidence = next(
+                        (
+                            item
+                            for item in reversed(journey.transition_evidence)
+                            if item.source_id == turn_id
+                        ),
+                        None,
+                    )
+                    event_type = (
+                        "journey_stage_changed"
+                        if current_journey.stage != journey.stage
+                        else "journey_stage_waiting_user"
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            conversation_id=str(turn["conversation_id"]),
+                            turn_id=turn_id,
+                            event_type=event_type,
+                            transition_key=event_transition_key,
+                            created_at=now,
+                            payload={
+                                "session_id": session_id,
+                                "session_revision": next_revision,
+                                "turn_id": turn_id,
+                                "previous_stage": current_journey.stage,
+                                "next_stage": journey.stage,
+                                "stage": journey.stage,
+                                "stage_status": journey.stage_status,
+                                "stage_revision": journey.stage_revision,
+                                "evidence_id": evidence.evidence_id if evidence else None,
+                                "evidence_kind": evidence.evidence_kind if evidence else None,
+                                "journey_digest": journey_digest,
+                                "assistant_digest": assistant_digest,
+                            },
+                        ),
+                    )
+                    _complete_turn_in_transaction(
+                        connection,
+                        events=self._events,
+                        turn=turn,
+                        assistant_message=assistant_message,
+                        now=now,
+                    )
+                    connection.commit()
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "conversation_persistence_unavailable",
+                "Conversation storage failed.",
+            ) from error
+        return self.get_turn(turn_id)
+
     def set_creative_authority(
         self,
         session_id: str,
@@ -4492,6 +4643,39 @@ def _require_turn(connection: Connection, turn_id: str) -> RowMapping:
     if row is None:
         raise _error("chat_turn_not_found", "Chat turn was not found.")
     return row
+
+
+def _validate_clarification_target(
+    *,
+    current: GuidedProductionJourneyV1,
+    target: GuidedProductionJourneyV1,
+    turn_id: str,
+) -> None:
+    if current.stage == "intake":
+        evidence = target.transition_evidence[-1] if target.transition_evidence else None
+        if (
+            target.stage_revision != current.stage_revision + 1
+            or evidence is None
+            or evidence.evidence_kind != "creative_goal_validated"
+            or evidence.source_id != turn_id
+        ):
+            raise _error(
+                "journey_transition_invalid",
+                "Intake clarification target does not match its source Turn.",
+            )
+        return
+    if current.stage == "clarification":
+        expected = current.model_copy(update={"stage_status": "waiting_user"})
+        if target != expected:
+            raise _error(
+                "journey_transition_invalid",
+                "Repeated clarification may only retain the current waiting journey.",
+            )
+        return
+    raise _error(
+        "journey_transition_invalid",
+        "Only Intake or clarification may publish Intake clarification authority.",
+    )
 
 
 def _turn_skill_run_id(turn: RowMapping) -> str | None:

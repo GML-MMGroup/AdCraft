@@ -1371,6 +1371,7 @@ class AgentConversationService:
             ),
             turn_id=turn_id,
         )
+        requirement_changed = False
         if intent.requirement_patch is not None or intent.explicit_elements:
             applied = self._requirements.apply_user_turn_patch(
                 turn.workflow_id,
@@ -1388,6 +1389,7 @@ class AgentConversationService:
                 ),
             )
             requirements = applied.revision
+            requirement_changed = applied.changed
             existing_session = self._conversations.get_guidance_session_or_none(turn.workflow_id)
         if (
             existing_session is not None
@@ -1435,6 +1437,40 @@ class AgentConversationService:
                 ),
                 response_locale=intent.response_locale,
             )
+        clarification_required = bool(requirements.ledger.unresolved_conflicts) or (
+            intent.mode == "guided_production"
+            and not requirement_changed
+            and intent.assistant_message is not None
+        )
+        if clarification_required and session.journey.stage in {"intake", "clarification"}:
+            if session.journey.stage == "intake":
+                evidence = JourneyEvidenceV1(
+                    evidence_id=f"journey-goal:{turn_id}",
+                    evidence_kind="creative_goal_validated",
+                    source_id=turn_id,
+                    source_revision=requirements.revision_no,
+                )
+                clarification_journey = self._journey.project_evidence(
+                    session,
+                    evidence=evidence,
+                    clarification_required=True,
+                ).model_copy(update={"stage_status": "waiting_user"})
+            else:
+                clarification_journey = session.journey.model_copy(
+                    update={"stage_status": "waiting_user"}
+                )
+            return self._conversations.complete_turn_with_clarification(
+                turn_id,
+                expected_session_revision=session.revision,
+                journey=clarification_journey,
+                assistant_message=(
+                    intent.assistant_message
+                    or "Please clarify the conflicting campaign requirements."
+                ),
+                transition_key=(
+                    f"intake-clarification:{turn_id}:requirements:{requirements.revision_id}"
+                ),
+            )
         if requirements.ledger.unresolved_conflicts:
             return self._complete_turn(
                 turn_id,
@@ -1443,14 +1479,27 @@ class AgentConversationService:
             )
         if (
             intent.mode == "guided_production"
-            and intent.requirement_patch is None
-            and not intent.explicit_elements
+            and not requirement_changed
             and intent.assistant_message is not None
         ):
-            return self._complete_turn(
-                turn_id,
+            return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
+        if (
+            intent.mode == "guided_production"
+            and session.journey.stage == "clarification"
+            and requirement_changed
+        ):
+            session = self._journey.apply_evidence(
                 turn.workflow_id,
-                intent.assistant_message,
+                evidence=JourneyEvidenceV1(
+                    evidence_id=f"clarification-completed:{turn_id}",
+                    evidence_kind="clarification_completed",
+                    source_id=turn_id,
+                    source_revision=requirements.revision_no,
+                ),
+                expected_session_revision=session.revision,
+                idempotency_key=(
+                    f"clarification-completed:{turn_id}:requirements:{requirements.revision_id}"
+                ),
             )
         if intent.mode == "targeted_authoring" and session.journey.suspended_action is None:
             session = self._journey.apply_evidence(

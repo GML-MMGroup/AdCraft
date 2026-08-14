@@ -10,6 +10,7 @@ from app.schemas.agent_canvas_creative_session import (
     GuidedSessionStateV2,
 )
 from app.schemas.agent_canvas_production_journey import (
+    GuidedProductionJourneyV1,
     JourneyActionProjectionV1,
     JourneyEvidenceV1,
     JourneyPolicyContextV1,
@@ -93,9 +94,10 @@ class GuidedProductionJourneyService:
         clarification_required: bool = False,
     ) -> GuidedSessionStateV2:
         session = self._conversations.get_guidance_session(workflow_id)
-        next_journey = self._policy.apply_evidence(
-            _context(session, clarification_required=clarification_required),
-            evidence,
+        next_journey = self.project_evidence(
+            session,
+            evidence=evidence,
+            clarification_required=clarification_required,
         )
         event_type = (
             "journey_stage_failed"
@@ -120,6 +122,20 @@ class GuidedProductionJourneyService:
                 "action_id": evidence.action_id,
                 "foundation_item_id": evidence.foundation_item_id,
             },
+        )
+
+    def project_evidence(
+        self,
+        session: GuidedSessionStateV2,
+        *,
+        evidence: JourneyEvidenceV1,
+        clarification_required: bool = False,
+    ) -> GuidedProductionJourneyV1:
+        """Project deterministic journey evidence without persisting it."""
+
+        return self._policy.apply_evidence(
+            _context(session, clarification_required=clarification_required),
+            evidence,
         )
 
     def mark_waiting_for_user(
