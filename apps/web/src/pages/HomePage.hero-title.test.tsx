@@ -7,7 +7,7 @@ import { HomePage } from "./HomePage";
 const startNewProject = vi.fn();
 const styles = readFileSync(resolve(process.cwd(), "src/pages/home.css"), "utf8");
 const darkAccentPseudoStyles = styles.match(
-  /html\[data-theme="dark"\] \.home-product-hero__accent::after\s*\{[^}]*\}/,
+  /:root \.home-product-hero__accent::after\s*\{[^}]*\}/,
 )?.[0] ?? "";
 
 vi.mock("../app/useHealth", () => ({
@@ -101,10 +101,10 @@ describe("HomePage hero title", () => {
     expect(styles).not.toContain("home-hero-accent-writing");
     expect(styles).not.toContain("home-hero-accent-write");
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
+      /:root \.home-product-hero__accent\s*\{[^}]*color:\s*transparent;/s,
     );
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__accent::after\s*\{[^}]*#d7ae59[^}]*#ffe7a6[^}]*#bc8d36/s,
+      /:root \.home-product-hero__accent::after\s*\{[^}]*#d7ae59[^}]*#ffe7a6[^}]*#bc8d36/s,
     );
     expect(styles).not.toContain("home-product-hero__accent-glyph");
     expect(styles).not.toContain("home-hero-character-wave");
@@ -150,13 +150,13 @@ describe("HomePage hero title", () => {
 
   it("keeps the dark home CTA transparent until interaction", () => {
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*none;[^}]*backdrop-filter:\s*none;[^}]*will-change:\s*auto;[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,
+      /:root \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*none;[^}]*backdrop-filter:\s*none;[^}]*will-change:\s*auto;[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,
     );
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
+      /:root \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
     );
     expect(styles).toMatch(
-      /html\[data-theme="dark"\] \.home-product-hero__create:active\s*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
+      /:root \.home-product-hero__create:active\s*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
     );
   });
 });

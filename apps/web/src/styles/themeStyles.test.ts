@@ -36,21 +36,21 @@ function declarationBlock(styles: string, selector: string) {
 }
 
 describe("theme styles", () => {
-  test("defines every semantic token for light and deep ink themes", () => {
+  test("defines every semantic token once for the fixed dark theme", () => {
     const styles = source("styles/theme.css");
-    const light = declarationBlock(styles, ':root[data-theme="light"]');
-    const dark = declarationBlock(styles, 'html[data-theme="dark"]');
+    const dark = declarationBlock(styles, ":root");
 
     for (const token of requiredTokens) {
-      expect(light).toContain(token);
       expect(dark).toContain(token);
     }
 
     expect(dark).toContain("#08090D");
     expect(dark).toContain("#9E8BEA");
+    expect(styles).not.toContain("data-theme");
+    expect(source("styles/base.css")).toContain("color-scheme: dark");
   });
 
-  test("provides scoped dark coverage for every primary product surface", () => {
+  test("provides fixed dark coverage for every primary product surface", () => {
     for (const path of [
       "pages/home.css",
       "pages/projects.css",
@@ -60,7 +60,8 @@ describe("theme styles", () => {
       "features/workflow/final-composition/final-composition.css",
       "features/workflow/v2/screenplay/screenplay.css",
     ]) {
-      expect(source(path)).toContain('html[data-theme="dark"]');
+      expect(source(path)).toContain(":root");
+      expect(source(path)).not.toContain("data-theme");
     }
   });
 
@@ -68,7 +69,7 @@ describe("theme styles", () => {
     const chatStyles = source("features/agent-canvas/chat/agent-canvas-chat.css");
     const focusBlock = declarationBlock(
       chatStyles,
-      'html[data-theme="dark"] .agent-chat__composer textarea:focus-visible',
+      ":root .agent-chat__composer textarea:focus-visible",
     );
 
     expect(focusBlock).toContain("outline: none");
@@ -105,17 +106,17 @@ describe("theme styles", () => {
     );
     const focusBlock = declarationBlock(
       workbenchStyles,
-      'html[data-theme="dark"] .agent-node-workbench__composer textarea:focus-visible',
+      ":root .agent-node-workbench__composer textarea:focus-visible",
     );
 
     expect(focusBlock).toContain("outline: none");
   });
 
-  test("keeps the dark theme brand logo in its illuminated hover treatment", () => {
+  test("keeps the fixed dark brand logo in its illuminated treatment", () => {
     const themeStyles = source("styles/theme.css");
     const brandBlock = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"] .brand-logo',
+      ":root .brand-logo",
     );
 
     expect(brandBlock).toContain("transform: scale(1.06)");
@@ -123,16 +124,16 @@ describe("theme styles", () => {
     expect(brandBlock).toContain("drop-shadow(0 0 28px rgba(202, 177, 255, 0.38))");
   });
 
-  test("keeps non-critical theme rules out of the initial style entry", () => {
-    expect(source("main.tsx")).not.toContain('import "./styles/theme.css"');
-    expect(source("components/Layout.tsx")).toContain('import "../styles/theme.css"');
+  test("loads fixed theme rules with the initial style entry", () => {
+    expect(source("main.tsx")).toContain('import "./styles/theme.css"');
+    expect(source("components/Layout.tsx")).not.toContain('import "../styles/theme.css"');
   });
 
-  test("scopes the static cosmic artwork to shared dark non-Workflow shells", () => {
+  test("scopes the static cosmic artwork to shared non-Workflow shells", () => {
     const themeStyles = source("styles/theme.css");
     const darkCosmicShell = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"] .app-shell--cosmic',
+      ":root .app-shell--cosmic",
     );
 
     expect(darkCosmicShell).toContain(
@@ -153,19 +154,19 @@ describe("theme styles", () => {
     const themeStyles = source("styles/theme.css");
     const homeRail = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .floating-rail',
+      ':root:has(.main-view[data-route="/"]) .floating-rail',
     );
     const homeRailItem = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item',
+      ':root:has(.main-view[data-route="/"]) .rail-item',
     );
     const homeActiveRailItem = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item.is-active',
+      ':root:has(.main-view[data-route="/"]) .rail-item.is-active',
     );
     const homeRailItemHover = declarationBlock(
       themeStyles,
-      'html[data-theme="dark"]:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible)',
+      ':root:has(.main-view[data-route="/"]) .rail-item:is(:hover, :focus-visible)',
     );
 
     expect(homeRail).toContain("background: rgba(255, 255, 255, 0.008)");

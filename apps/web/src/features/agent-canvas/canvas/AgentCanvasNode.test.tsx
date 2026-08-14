@@ -113,13 +113,13 @@ describe("AgentCanvasNodeCard", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const shellRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const playerRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const glassEdgeRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("backdrop-filter: none");
