@@ -50,6 +50,17 @@ const storyboardDocument: AgentWorkingDocumentV2 = {
       node_id: "node-grid-1",
     }],
     materialized_panel_cursor: 1,
+    segment_materializations: [{
+      sequence_id: "sequence-1",
+      status: "materialized",
+      generation_prompt: "Generate a calm product reveal with a slow push in.",
+    }],
+    visual_anchor: {
+      node_id: "node-grid-1",
+      asset_id: "asset-grid-1",
+      node_revision: 3,
+      document_revision: 4,
+    },
   },
   created_by_agent_run_id: "run-1",
   updated_by_agent_run_id: "run-2",
