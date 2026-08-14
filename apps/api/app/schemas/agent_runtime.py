@@ -309,8 +309,8 @@ class AgentStructuredValidationAttemptAuditV1(_StrictModel):
     validation_paths: tuple[Annotated[str, Field(min_length=1, max_length=512)], ...] = Field(
         max_length=32
     )
-    violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = (
-        Field(min_length=1, max_length=32)
+    violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = Field(
+        min_length=1, max_length=32
     )
     repair_allowed: bool
     truncated: bool
@@ -372,9 +372,9 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     reasoning_tokens: int | None = Field(default=None, ge=0)
     transport_retry_count: int = Field(ge=0, le=1)
     structured_attempt_count: int = Field(ge=1, le=2)
-    structured_validation_attempts: tuple[
-        AgentStructuredValidationAttemptAuditV1, ...
-    ] = Field(default=(), max_length=2)
+    structured_validation_attempts: tuple[AgentStructuredValidationAttemptAuditV1, ...] = Field(
+        default=(), max_length=2
+    )
 
     @model_validator(mode="after")
     def validate_structured_validation_attempt_order(self) -> "AgentTransportAttemptMetadataV1":

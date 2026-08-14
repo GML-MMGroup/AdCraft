@@ -7,6 +7,9 @@ from typing import Any
 
 from app.schemas.agent_runtime import AgentRuntimeEvent
 from app.services.agent_trace import V2AgentTraceWriter
+from app.services.agent_structured_validation_audit import (
+    safe_structured_validation_attempts,
+)
 
 
 _AUDITED_EVENTS = {
@@ -103,12 +106,18 @@ def _coarse_payload(event: AgentRuntimeEvent) -> dict[str, Any]:
     return output
 
 
-def _safe_transport_audit(candidate: Any) -> dict[str, str | int | float | bool | None]:
+def _safe_transport_audit(candidate: Any) -> dict[str, Any]:
     if not isinstance(candidate, dict):
         return {}
-    return {
+    safe = {
         key: value
         for key in _TRANSPORT_AUDIT_KEYS
         if (value := candidate.get(key)) is None or isinstance(value, (str, int, float, bool))
         if key in candidate
     }
+    validation_attempts = safe_structured_validation_attempts(
+        candidate.get("structured_validation_attempts")
+    )
+    if validation_attempts:
+        safe["structured_validation_attempts"] = validation_attempts
+    return safe

@@ -134,6 +134,8 @@ class CompactTurnIntentDecisionV1(_CapabilityModel):
 
 
 class _CompactControlValueV2(_CapabilityModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     source_quote: str = Field(min_length=1, max_length=2_048)
 
 

@@ -141,6 +141,7 @@ from app.services.agent_operation_policy import (
     AgentRunRequestFactory,
 )
 from app.services.agent_request_digest import frozen_agent_request_digest
+from app.services.agent_structured_validation_audit import ordered_validation_path_union
 from app.services.v2_agent_contract_registry import (
     AGENT_STRUCTURED_CONTRACT_REGISTRY,
 )
@@ -2097,6 +2098,13 @@ def _agent_operation_failure(
     if attempt_stage not in {"initial", "transport_retry", "structured_repair", "fallback"}:
         attempt_stage = "initial"
     elapsed_ms = safe_audit.get("elapsed_ms", error.details.get("elapsed_ms", 0))
+    validation_paths = ordered_validation_path_union(
+        safe_audit.get("structured_validation_attempts")
+    )
+    if not validation_paths:
+        validation_paths = tuple(
+            str(item) for item in safe_audit.get("validation_paths", ()) if str(item)
+        )[:32]
     return AgentOperationFailureV2(
         code=error.code,
         message=error.message,
@@ -2108,9 +2116,7 @@ def _agent_operation_failure(
         failure_stage="provider",
         elapsed_ms=max(0, int(elapsed_ms)) if isinstance(elapsed_ms, (int, float)) else 0,
         retryable=error.retryable,
-        validation_paths=tuple(
-            str(item) for item in safe_audit.get("validation_paths", ()) if str(item)
-        )[:32],
+        validation_paths=validation_paths,
         occurred_at=datetime.now(timezone.utc),
     )
 

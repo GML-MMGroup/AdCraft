@@ -13,9 +13,7 @@ from app.schemas.agent_runtime import StructuredViolation
 DECISION_BUNDLE_CAPABILITY_ALIAS_RULE_ID = (
     "decision_bundle.creative_directive.capability_ids_alias.v1"
 )
-COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = (
-    "compact_turn_intent_v3.omittable_nulls.v1"
-)
+COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = "compact_turn_intent_v3.omittable_nulls.v1"
 
 _INTAKE_ELEMENT_NAMES = (
     "product",
@@ -148,11 +146,7 @@ def _normalize_compact_turn_intent_omittable_nulls(
 
     return AgentStructuredNormalizationResult(
         value=candidate,
-        rule_ids=(
-            (COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID,)
-            if normalized_path_count
-            else ()
-        ),
+        rule_ids=((COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID,) if normalized_path_count else ()),
         normalized_path_count=normalized_path_count,
     )
 

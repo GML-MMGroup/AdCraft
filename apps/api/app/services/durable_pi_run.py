@@ -27,6 +27,9 @@ from app.services.agent_operation_policy import (
     AgentOperationPolicyError,
     validate_agent_run_operation_policy,
 )
+from app.services.agent_structured_validation_audit import (
+    safe_structured_validation_attempts,
+)
 
 
 _TERMINAL_STATUS_BY_EVENT = {
@@ -577,7 +580,13 @@ def _safe_audit_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
         "thinking_format",
         "transport_retry_count",
     }
-    return {key: value for key, value in audit.items() if key in allowed}
+    safe = {key: value for key, value in audit.items() if key in allowed}
+    validation_attempts = safe_structured_validation_attempts(
+        audit.get("structured_validation_attempts")
+    )
+    if validation_attempts:
+        safe["structured_validation_attempts"] = validation_attempts
+    return safe
 
 
 def _safe_error_code(payload: Mapping[str, Any]) -> str:
