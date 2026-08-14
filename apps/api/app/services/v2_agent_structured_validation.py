@@ -14,6 +14,9 @@ from app.schemas.agent_runtime import (
     AgentStructuredValidationResult,
     StructuredViolation,
 )
+from app.schemas.agent_canvas_storyboard_sequences import (
+    StoryboardSequenceAuthorityPlanV2,
+)
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
     validate_agent_contract,
@@ -112,7 +115,18 @@ class V2AgentStructuredValidationService:
             normalized_value,
         )
         if semantic_violations:
-            return _rejected(submission, semantic_violations)
+            return _rejected(
+                submission,
+                semantic_violations,
+                repair_allowed=(
+                    False
+                    if any(
+                        item.code == "agent_validation_context_invalid"
+                        for item in semantic_violations
+                    )
+                    else None
+                ),
+            )
         return AgentStructuredValidationResult(
             accepted=True,
             normalized_result_id=submission.submission_id,
@@ -199,6 +213,8 @@ def _semantic_violations(
         return ()
     if profile == "front_desk_core_v1":
         return _front_desk_core_violations(value)
+    if profile == "storyboard_sequence_window_parity_v1":
+        return _storyboard_sequence_window_violations(context, value)
     if profile != "frozen_fields_v1":
         return (
             StructuredViolation(
@@ -231,6 +247,83 @@ def _semantic_violations(
                     actual=actual,
                 )
             )
+    return tuple(violations)
+
+
+def _storyboard_sequence_window_violations(
+    context: dict[str, Any],
+    value: dict[str, Any],
+) -> tuple[StructuredViolation, ...]:
+    try:
+        authority = StoryboardSequenceAuthorityPlanV2.model_validate(context)
+    except (ValidationError, ValueError, TypeError):
+        return (
+            StructuredViolation(
+                code="agent_validation_context_invalid",
+                message="The persisted Storyboard Sequence authority plan is invalid.",
+                field_path="validation_context",
+            ),
+        )
+
+    violations: list[StructuredViolation] = []
+    for field_name, expected in (
+        ("aspect_ratio", authority.aspect_ratio),
+        ("total_duration_seconds", authority.total_duration_seconds),
+    ):
+        actual = value.get(field_name)
+        if actual != expected:
+            violations.append(
+                StructuredViolation(
+                    code="storyboard_sequence_parameter_mismatch",
+                    message="The Storyboard outline changed a frozen sequence parameter.",
+                    field_path=field_name,
+                    expected=expected,
+                    actual=actual,
+                )
+            )
+
+    segments = value.get("segments")
+    if not isinstance(segments, list):
+        return tuple(violations)
+    if len(segments) != len(authority.windows):
+        violations.append(
+            StructuredViolation(
+                code="storyboard_sequence_count_mismatch",
+                message="The Storyboard outline changed the frozen sequence count.",
+                field_path="segments",
+                expected=len(authority.windows),
+                actual=len(segments),
+            )
+        )
+
+    for index, (segment, window) in enumerate(zip(segments, authority.windows)):
+        if not isinstance(segment, dict):
+            continue
+        if segment.get("order") != window.order:
+            violations.append(
+                StructuredViolation(
+                    code="storyboard_sequence_order_mismatch",
+                    message="The Storyboard outline changed a frozen sequence order.",
+                    field_path=f"segments.{index}.order",
+                    expected=window.order,
+                    actual=segment.get("order"),
+                )
+            )
+        for field_name, expected in (
+            ("start_seconds", window.start_seconds),
+            ("end_seconds", window.end_seconds),
+        ):
+            actual = segment.get(field_name)
+            if actual != expected:
+                violations.append(
+                    StructuredViolation(
+                        code="storyboard_sequence_timing_mismatch",
+                        message="The Storyboard outline changed a frozen sequence boundary.",
+                        field_path=f"segments.{index}.{field_name}",
+                        expected=expected,
+                        actual=actual,
+                    )
+                )
     return tuple(violations)
 
 

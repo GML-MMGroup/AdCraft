@@ -12,6 +12,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardGridAuthoringContextV2,
     StoryboardSegmentMaterializationDraftV2,
     StoryboardSegmentAuthoringContextV2,
+    StoryboardSequenceAuthorityPlanV2,
     StoryboardSequenceOutlineDraftV2,
     StoryboardSequencePlanDraftV2,
     StoryboardVideoAuthoringContextV2,
@@ -159,40 +160,43 @@ class StoryboardSequenceAuthoringService:
     @staticmethod
     def build_outline_content(
         draft: StoryboardSequenceOutlineDraftV2,
+        authority_plan: StoryboardSequenceAuthorityPlanV2,
     ) -> StoryboardProductionPlanContentV2:
-        if [segment.order for segment in draft.segments] != list(range(1, len(draft.segments) + 1)):
-            raise _storyboard_error("Storyboard outline order must be contiguous.")
-        previous_end = 0.0
+        if draft.aspect_ratio != authority_plan.aspect_ratio or (
+            draft.total_duration_seconds != authority_plan.total_duration_seconds
+        ):
+            raise _storyboard_error("Storyboard outline parameters do not match authority.")
+        if len(draft.segments) != len(authority_plan.windows):
+            raise _storyboard_error("Storyboard outline count does not match authority.")
         segments: list[StoryboardNarrativeSegmentV2] = []
-        for index, item in enumerate(draft.segments):
-            if abs(item.start_seconds - previous_end) > 0.001:
-                raise _storyboard_error("Storyboard outline timing must be contiguous.")
-            if item.end_seconds > draft.total_duration_seconds:
-                raise _storyboard_error("Storyboard outline timing exceeds total duration.")
+        for index, (item, window) in enumerate(zip(draft.segments, authority_plan.windows)):
+            if item.order != window.order:
+                raise _storyboard_error("Storyboard outline order does not match authority.")
+            if item.start_seconds != window.start_seconds or item.end_seconds != window.end_seconds:
+                raise _storyboard_error("Storyboard outline timing does not match authority.")
             if index and not item.continuity_from_previous:
                 raise _storyboard_error("Later storyboard segments require prior-state continuity.")
             segments.append(
                 StoryboardNarrativeSegmentV2(
-                    sequence_id=f"sequence-{item.order}",
-                    order=item.order,
-                    start_seconds=item.start_seconds,
-                    end_seconds=item.end_seconds,
+                    sequence_id=f"sequence-{window.order}",
+                    order=window.order,
+                    start_seconds=window.start_seconds,
+                    end_seconds=window.end_seconds,
                     narrative_goal=item.narrative_goal,
                     start_state=item.start_state,
                     end_state=item.end_state,
                     continuity_from_previous=item.continuity_from_previous,
-                    terminal_policy=("close" if item.order == len(draft.segments) else "continue"),
+                    terminal_policy=(
+                        "close" if window.order == len(authority_plan.windows) else "continue"
+                    ),
                 )
             )
-            previous_end = item.end_seconds
-        if abs(previous_end - draft.total_duration_seconds) > 0.001:
-            raise _storyboard_error("Storyboard outline must cover the total duration.")
         return StoryboardProductionPlanContentV2(
             narrative_outline=draft.narrative_outline,
             global_parameters=StoryboardPlanGlobalParametersV2(
-                aspect_ratio=draft.aspect_ratio,
-                total_duration_seconds=draft.total_duration_seconds,
-                segment_count=len(segments),
+                aspect_ratio=authority_plan.aspect_ratio,
+                total_duration_seconds=authority_plan.total_duration_seconds,
+                segment_count=len(authority_plan.windows),
             ),
             segments=tuple(segments),
             rows=(),
@@ -439,8 +443,9 @@ class StoryboardSequenceAuthoringService:
         agent_run_id: str,
         idempotency_key: str,
         draft: StoryboardSequenceOutlineDraftV2,
+        authority_plan: StoryboardSequenceAuthorityPlanV2,
     ) -> AgentWorkingDocumentV2:
-        content = self.build_outline_content(draft)
+        content = self.build_outline_content(draft, authority_plan)
         document = self._documents.get_or_create_storyboard_plan(
             workflow_id=workflow_id,
             guidance_session_id=guidance_session_id,

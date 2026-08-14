@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
-from math import ceil
 from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -63,6 +62,7 @@ from app.schemas.agent_canvas_storyboard_sequences import (
     StoryboardOutlineSegmentDraftV2,
     StoryboardSegmentAuthoringContextV2,
     StoryboardSegmentMaterializationDraftV2,
+    StoryboardSequenceAuthorityPlanV2,
     StoryboardSequenceOutlineDraftV2,
     StoryboardSequenceRowDraftV2,
 )
@@ -276,37 +276,32 @@ class DeterministicVideoAgentGateway:
         *,
         request_identity: str,
     ) -> StoryboardSequenceOutlineDraftV2:
-        duration = float(context.explicit_constraints.get("duration_seconds") or 15)
-        requested_count = context.explicit_constraints.get("storyboard_sequence_count")
-        if isinstance(requested_count, int) and not isinstance(requested_count, bool):
-            count = max(1, requested_count)
-            segment_duration = duration / count
-        else:
-            segment_duration = float(
-                context.capability_facts.get("storyboard_segment_duration_seconds") or 5
-            )
-            count = ceil(duration / segment_duration)
+        authority = StoryboardSequenceAuthorityPlanV2.model_validate(
+            context.capability_facts.get("storyboard_sequence_plan")
+        )
         return StoryboardSequenceOutlineDraftV2(
             narrative_outline=context.creative_goal,
-            aspect_ratio=str(context.explicit_constraints.get("aspect_ratio") or "16:9"),
-            total_duration_seconds=duration,
+            aspect_ratio=authority.aspect_ratio,
+            total_duration_seconds=authority.total_duration_seconds,
             segments=tuple(
                 StoryboardOutlineSegmentDraftV2(
-                    order=index,
-                    start_seconds=(index - 1) * segment_duration,
-                    end_seconds=min(index * segment_duration, duration),
-                    narrative_goal=f"Advance storyboard sequence {index}.",
+                    order=window.order,
+                    start_seconds=window.start_seconds,
+                    end_seconds=window.end_seconds,
+                    narrative_goal=f"Advance storyboard sequence {window.order}.",
                     start_state=(
                         "Establish the campaign action."
-                        if index == 1
-                        else f"Continue from sequence {index - 1} end state."
+                        if window.order == 1
+                        else f"Continue from sequence {window.order - 1} end state."
                     ),
-                    end_state=f"Sequence {index} end state.",
+                    end_state=f"Sequence {window.order} end state.",
                     continuity_from_previous=(
-                        None if index == 1 else f"Continue from Sequence {index - 1} end state."
+                        None
+                        if window.order == 1
+                        else f"Continue from Sequence {window.order - 1} end state."
                     ),
                 )
-                for index in range(1, count + 1)
+                for window in authority.windows
             ),
         )
 
@@ -608,6 +603,14 @@ class PiVideoAgentGateway:
         if operation == "decide_turn_intent" and isinstance(turn_id, str):
             validation_profile = "agent_intake_source_quotes_v1"
             validation_context = {"source_turn_id": turn_id}
+        elif operation == "plan_storyboard_sequence_outline" and isinstance(
+            context, CapabilityMaterializationContextV1
+        ):
+            authority = StoryboardSequenceAuthorityPlanV2.model_validate(
+                context.capability_facts.get("storyboard_sequence_plan")
+            )
+            validation_profile = "storyboard_sequence_window_parity_v1"
+            validation_context = authority.model_dump(mode="json")
         request = self._request_factory.build(
             run_id="candidate_agent_run",
             request_id="candidate_agent_request",

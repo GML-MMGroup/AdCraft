@@ -59,6 +59,9 @@ from app.services.agent_canvas_production_journey_reducer import (
 from app.services.agent_canvas_storyboard_sequences import (
     StoryboardSequenceAuthoringService,
 )
+from app.services.agent_canvas_storyboard_sequence_windows import (
+    StoryboardSequenceWindowPlanner,
+)
 from app.services.agent_canvas_capability_draft_bundle import (
     stage_definitions,
     stage_draft_parameters,
@@ -331,11 +334,16 @@ class CapabilityMaterializationPublicationService:
         ):
             return normalization, ()
 
+        authority_plan = StoryboardSequenceWindowPlanner.plan(
+            total_duration_seconds=context.explicit_constraints.get("duration_seconds", 15),
+            aspect_ratio=context.explicit_constraints.get("aspect_ratio", "16:9"),
+            explicit_sequence_count=context.explicit_constraints.get("storyboard_sequence_count"),
+        )
         context = context.model_copy(
             update={
                 "capability_facts": {
                     **context.capability_facts,
-                    "storyboard_segment_duration_seconds": 5,
+                    "storyboard_sequence_plan": authority_plan.model_dump(mode="json"),
                 }
             }
         )
@@ -343,7 +351,7 @@ class CapabilityMaterializationPublicationService:
             context,
             request_identity=f"{envelope.materialization_id}:outline",
         )
-        content = self._storyboard_authoring.build_outline_content(outline)
+        content = self._storyboard_authoring.build_outline_content(outline, authority_plan)
         document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
         sequence_id = content.segments[0].sequence_id
         content_digest = AgentWorkingDocumentRepository.digest_content(content)
