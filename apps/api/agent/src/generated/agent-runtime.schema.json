@@ -2974,6 +2974,46 @@
       "title": "AgentRuntimeHealth",
       "type": "object"
     },
+    "AgentStructuredNormalizationAuditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_name": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Contract Name",
+          "type": "string"
+        },
+        "normalized_path_count": {
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Normalized Path Count",
+          "type": "integer"
+        },
+        "rule_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Rule Ids",
+          "type": "array"
+        },
+        "submission_attempt": {
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Submission Attempt",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "contract_name",
+        "normalized_path_count",
+        "rule_ids",
+        "submission_attempt"
+      ],
+      "title": "AgentStructuredNormalizationAuditV1",
+      "type": "object"
+    },
     "AgentStructuredSubmission": {
       "additionalProperties": false,
       "properties": {
@@ -3029,6 +3069,17 @@
         "accepted": {
           "title": "Accepted",
           "type": "boolean"
+        },
+        "normalization_audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AgentStructuredNormalizationAuditV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "normalized_result_id": {
           "anyOf": [

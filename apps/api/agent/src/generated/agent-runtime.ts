@@ -620,7 +620,9 @@ export type AgentStructuredSubmission = { readonly "protocol_version"?: "1"; rea
 
 export type StructuredViolation = { readonly "code": string; readonly "message": string; readonly "field_path"?: string | null; readonly "expected"?: unknown | null; readonly "actual"?: unknown | null };
 
-export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean };
+export type AgentStructuredNormalizationAuditV1 = { readonly "contract_name": string; readonly "rule_ids": ReadonlyArray<string>; readonly "normalized_path_count": number; readonly "submission_attempt": number };
+
+export type AgentStructuredValidationResult = { readonly "protocol_version"?: "1"; readonly "accepted": boolean; readonly "normalized_result_id"?: string | null; readonly "normalized_value"?: Readonly<Record<string, unknown>> | null; readonly "violations"?: ReadonlyArray<StructuredViolation>; readonly "repair_allowed"?: boolean; readonly "normalization_audit"?: AgentStructuredNormalizationAuditV1 | null };
 
 export type AgentRuntimeHealth = { readonly "protocol_version"?: "1"; readonly "runtime_version": string; readonly "status": "degraded" | "ready" | "unavailable"; readonly "mode": "fake" | "real"; readonly "contract_digest": string; readonly "capability_digest": string; readonly "prompt_digest": string; readonly "skill_digest": string; readonly "pi_version": string; readonly "active_runs"?: number };
 
