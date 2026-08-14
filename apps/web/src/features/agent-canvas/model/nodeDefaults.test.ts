@@ -8,9 +8,10 @@ import {
 } from "./nodeDefaults.ts";
 
 describe("Agent Canvas node defaults", () => {
-  it("exposes only the five visible authoring node types", () => {
+  it("exposes all six backend-supported authoring node types", () => {
     expect(AGENT_CANVAS_VISIBLE_NODE_TYPES).toEqual([
       "text",
+      "script",
       "image",
       "video",
       "audio",
@@ -20,6 +21,7 @@ describe("Agent Canvas node defaults", () => {
 
   it.each([
     ["text", "general_text"],
+    ["script", "script"],
     ["image", "general_image"],
     ["video", "general_video"],
     ["audio", "bgm"],
@@ -50,6 +52,17 @@ describe("Agent Canvas node defaults", () => {
       music_summary: "Imported score",
       duration_seconds: 18,
     });
+  });
+
+  it("creates an empty Script as a runnable draft", () => {
+    const request = createDefaultCanvasNodeRequest("script", { x: 0, y: 0 });
+
+    expect(request).toMatchObject({
+      node_type: "script",
+      creative_role: "script",
+      generation_prompt: "",
+    });
+    expect(request.structured_content).toBeUndefined();
   });
 
 });

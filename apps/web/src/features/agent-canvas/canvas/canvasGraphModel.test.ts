@@ -167,7 +167,7 @@ describe("canvasGraphModel", () => {
     expect(imageNode?.data).not.toHaveProperty("focused");
   });
 
-  it("removes Script nodes and their incident bindings from the visible canvas", () => {
+  it("keeps Script nodes and their incident bindings on the visible canvas", () => {
     const script = node("script-1", "script");
     const workflowWithScript: AgentCanvasWorkflowV2 = {
       ...workflow,
@@ -188,9 +188,13 @@ describe("canvasGraphModel", () => {
     };
 
     expect(toAgentCanvasFlowNodes(workflowWithScript, null, {}).map((item) => item.id))
-      .toEqual(["image-1", "video-1"]);
+      .toEqual(["image-1", "script-1", "video-1"]);
     expect(toAgentCanvasFlowEdges(workflowWithScript.bindings, workflowWithScript.nodes))
-      .toEqual([expect.objectContaining({ id: "binding-1" })]);
+      .toEqual([
+        expect.objectContaining({ id: "binding-1" }),
+        expect.objectContaining({ id: "binding-to-script" }),
+        expect.objectContaining({ id: "binding-from-script" }),
+      ]);
   });
 
   it("leaves React Flow dimensions measurable when image metadata is unavailable", () => {
@@ -268,14 +272,14 @@ describe("canvasGraphModel", () => {
     });
   });
 
-  it("does not reserve layout space for a retired Script node", () => {
-    const retiredScript = { ...node("script", "script"), position: { x: 100, y: 100 } };
+  it("reserves layout space for a Script node", () => {
+    const script = { ...node("script", "script"), position: { x: 100, y: 100 } };
 
     expect(findAvailableCanvasPosition(
-      [retiredScript],
+      [script],
       { x: 100, y: 100 },
       { candidateNodeType: "image" },
-    )).toEqual({ x: 100, y: 100 });
+    )).toEqual({ x: 440, y: 100 });
   });
 
   it("uses adaptive image rectangles when placing a node beside generated media", () => {

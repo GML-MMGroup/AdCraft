@@ -9,10 +9,11 @@ import type {
 
 export const AGENT_CANVAS_ROLE_CONTRACT_VERSION: CanvasRoleContractVersionV2 = "ad-media-role-v2";
 
-export type AgentCanvasVisibleNodeTypeV2 = Exclude<CanvasNodeTypeV2, "script">;
+export type AgentCanvasVisibleNodeTypeV2 = CanvasNodeTypeV2;
 
 export const AGENT_CANVAS_VISIBLE_NODE_TYPES: readonly AgentCanvasVisibleNodeTypeV2[] = [
   "text",
+  "script",
   "image",
   "video",
   "audio",
@@ -22,7 +23,7 @@ export const AGENT_CANVAS_VISIBLE_NODE_TYPES: readonly AgentCanvasVisibleNodeTyp
 export function isAgentCanvasVisibleNodeType(
   nodeType: CanvasNodeTypeV2,
 ): nodeType is AgentCanvasVisibleNodeTypeV2 {
-  return nodeType !== "script";
+  return AGENT_CANVAS_VISIBLE_NODE_TYPES.includes(nodeType);
 }
 
 export const AGENT_CANVAS_NODE_LABELS: Record<CanvasNodeTypeV2, string> = {
