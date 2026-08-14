@@ -442,7 +442,7 @@ function repairPayload(
     ],
     stream: false,
     max_tokens: input.credential.execution_policy.max_output_tokens,
-    ...reasoningPayload(input.credential.execution_policy),
+    enable_thinking: false,
     response_format: { type: "json_object" },
   };
 }
