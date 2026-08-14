@@ -517,13 +517,14 @@ export function CapabilityActivityRow({
   const operationStage = recoveryStageLabel(turn?.operation_stage);
   const errorCode = turn?.operation_failure?.code ?? activity.error_code;
   const errorMessage = turn?.operation_failure?.message ?? activity.message;
-  const label = retrying
+  const fallbackLabel = retrying
     ? `${activity.capability_display_name} recovery is working`
     : activity.status === "working"
     ? `${activity.capability_display_name} is ${operationStage ?? "working"}`
     : activity.status === "completed"
       ? `${activity.capability_display_name} finished`
       : `${activity.capability_display_name} failed`;
+  const label = activity.presentation_text ?? fallbackLabel;
   return (
     <div className={`agent-chat__activity is-${activity.status}`}>
       <i aria-hidden="true" />

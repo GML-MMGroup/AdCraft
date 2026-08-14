@@ -5,6 +5,8 @@ import type {
   AgentCanvasProjectCreateResponseV2,
   AgentCanvasWorkflowV2,
   AgentCanvasChatTurnV2,
+  AgentCanvasChatTimelineEntryV2,
+  AgentCanvasChatTimelinePresentationItemV2,
   AgentCanvasChatTimelineResponseV2,
   AgentCanvasChatViewTimelineV2,
   AgentDocumentLinkedNodeRuntimeV2,
@@ -61,6 +63,7 @@ import type {
   ChatProposalCardV2,
   ChatTimelineItemV2,
   ChatTimelineListResponseV2,
+  ChatTimelinePresentationViewItemV2,
   ChatTurnAcceptedV2,
   CapabilityProposalOptionV2,
   ConceptProposalV2,
@@ -2961,6 +2964,44 @@ export function normalizeChatTimelineListResponseV2(value: unknown, path = "chat
   };
 }
 
+function normalizeChatTimelinePresentationViewItemsV2(
+  entries: AgentCanvasChatTimelinePresentationItemV2[],
+  path: string,
+): ChatTimelinePresentationViewItemV2[] {
+  return entries.map((entry, index) => {
+    const {
+      presentation_key,
+      presentation_revision,
+      source_entry_ids,
+      message_key,
+      message_args,
+      response_locale,
+      ...rawEntry
+    } = entry;
+    // Keep the raw and projected entry adapters identical so every timeline card
+    // follows one conversion path regardless of backend generation.
+    const [item] = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: rawEntry.workflow_id,
+      conversation_id: rawEntry.conversation_id,
+      guidance_session: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [rawEntry],
+      next_cursor: 0,
+    }, `${path}[${index}].entry`).items;
+    if (!item) fail(`${path}[${index}]`, "presentation entry has no visible timeline item");
+    return {
+      presentation_key,
+      presentation_revision,
+      source_entry_ids,
+      message_key,
+      message_args,
+      response_locale,
+      item,
+    };
+  });
+}
+
 export function normalizeAgentCanvasChatTimelineV2(
   value: unknown,
   path = "chatTimeline",
@@ -2973,6 +3014,12 @@ export function normalizeAgentCanvasChatTimelineV2(
     continuations: persisted.continuations,
     current_session_actions: persisted.current_session_actions,
     next_cursor: persisted.next_cursor,
+    presentationItems: persisted.presentation_items === null
+      ? null
+      : normalizeChatTimelinePresentationViewItemsV2(
+        persisted.presentation_items,
+        `${path}.presentation_items`,
+      ),
     items: persisted.items.flatMap((entry): ChatTimelineItemV2[] => {
       if (entry.entry_type === "message") {
         if (!entry.speaker) fail(`${path}.items`, "persisted message requires speaker");
@@ -4166,6 +4213,105 @@ function normalizeCreationModeDecisionV2(
   };
 }
 
+function normalizeAgentCanvasChatTimelineEntryV2(
+  value: unknown,
+  path: string,
+  additionalAllowedFields: readonly string[] = [],
+): AgentCanvasChatTimelineEntryV2 {
+  const entry = expectRecord(value, path);
+  forbidUnknownFields(
+    entry,
+    [
+      "entry_id",
+      "workflow_id",
+      "conversation_id",
+      "sequence_no",
+      "entry_type",
+      "speaker",
+      "content",
+      "metadata",
+      "command_plan",
+      "action_receipt",
+      "created_at",
+      ...additionalAllowedFields,
+    ],
+    path,
+  );
+  const entryType = expectString(entry.entry_type, `${path}.entry_type`);
+  if (
+    entryType !== "message"
+    && entryType !== "script_artifact"
+    && entryType !== "concept_proposal"
+    && entryType !== "expert_activity"
+    && entryType !== "planning_progress"
+    && entryType !== "command_plan"
+    && entryType !== "action_receipt"
+    && entryType !== "agent_document_reference"
+    && entryType !== "decision_bundle"
+  ) {
+    fail(`${path}.entry_type`, "invalid timeline entry type");
+  }
+  const speaker = entry.speaker === null
+    ? null
+    : expectLiteral(entry.speaker, CHAT_MESSAGE_SPEAKERS, `${path}.speaker`);
+  if (entryType === "message" && speaker === null) {
+    fail(`${path}.speaker`, "message requires speaker");
+  }
+  return {
+    entry_id: expectNonEmptyString(entry.entry_id, `${path}.entry_id`),
+    workflow_id: expectNonEmptyString(entry.workflow_id, `${path}.workflow_id`),
+    conversation_id: expectNonEmptyString(entry.conversation_id, `${path}.conversation_id`),
+    sequence_no: expectPositiveInteger(entry.sequence_no, `${path}.sequence_no`),
+    entry_type: entryType,
+    speaker,
+    content: expectString(entry.content, `${path}.content`),
+    metadata: optionalUnknownRecord(entry.metadata, `${path}.metadata`, {}),
+    command_plan: entry.command_plan === null || entry.command_plan === undefined
+      ? null
+      : normalizeAgentCommandPlanV2(entry.command_plan, `${path}.command_plan`),
+    action_receipt: entry.action_receipt === null || entry.action_receipt === undefined
+      ? null
+      : normalizeAgentActionReceiptV2(entry.action_receipt, `${path}.action_receipt`),
+    created_at: expectIsoDateTimeString(entry.created_at, `${path}.created_at`),
+  };
+}
+
+function normalizeAgentCanvasChatTimelinePresentationItemV2(
+  value: unknown,
+  path: string,
+): AgentCanvasChatTimelinePresentationItemV2 {
+  const entry = normalizeAgentCanvasChatTimelineEntryV2(value, path, [
+    "presentation_key",
+    "presentation_revision",
+    "source_entry_ids",
+    "message_key",
+    "message_args",
+    "response_locale",
+  ]);
+  const record = expectRecord(value, path);
+  const sourceEntryIds = expectArray(record.source_entry_ids, `${path}.source_entry_ids`)
+    .map((sourceEntryId, index) => expectNonEmptyString(
+      sourceEntryId,
+      `${path}.source_entry_ids[${index}]`,
+    ));
+  if (sourceEntryIds.length === 0) {
+    fail(`${path}.source_entry_ids`, "expected at least one source entry");
+  }
+  return {
+    ...entry,
+    presentation_key: expectNonEmptyString(record.presentation_key, `${path}.presentation_key`),
+    presentation_revision: expectPositiveInteger(record.presentation_revision, `${path}.presentation_revision`),
+    source_entry_ids: sourceEntryIds,
+    message_key: record.message_key === undefined || record.message_key === null
+      ? null
+      : expectNonEmptyString(record.message_key, `${path}.message_key`),
+    message_args: optionalUnknownRecord(record.message_args, `${path}.message_args`, {}),
+    response_locale: record.response_locale === undefined
+      ? "und"
+      : expectNonEmptyString(record.response_locale, `${path}.response_locale`),
+  };
+}
+
 export function normalizeAgentCanvasChatTimelineResponseV2(
   value: unknown,
   path = "chatTimeline",
@@ -4178,6 +4324,7 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     "continuations",
     "current_session_actions",
     "items",
+    "presentation_items",
     "next_cursor",
   ], path);
   const currentSessionActions = expectArray(
@@ -4201,64 +4348,17 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     continuations: expectArray(record.continuations ?? [], `${path}.continuations`)
       .map((item, index) => normalizeAgentCanvasContinuationV2(item, `${path}.continuations[${index}]`)),
     current_session_actions: currentSessionActions,
-    items: expectArray(record.items ?? [], `${path}.items`).map((item, index) => {
-      const itemPath = `${path}.items[${index}]`;
-      const entry = expectRecord(item, itemPath);
-      forbidUnknownFields(
-        entry,
-        [
-          "entry_id",
-          "workflow_id",
-          "conversation_id",
-          "sequence_no",
-          "entry_type",
-          "speaker",
-          "content",
-          "metadata",
-          "command_plan",
-          "action_receipt",
-          "created_at",
-        ],
-        itemPath,
-      );
-      const entryType = expectString(entry.entry_type, `${itemPath}.entry_type`);
-      if (
-        entryType !== "message"
-        && entryType !== "script_artifact"
-        && entryType !== "concept_proposal"
-        && entryType !== "expert_activity"
-        && entryType !== "planning_progress"
-        && entryType !== "command_plan"
-        && entryType !== "action_receipt"
-        && entryType !== "agent_document_reference"
-        && entryType !== "decision_bundle"
-      ) {
-        fail(`${itemPath}.entry_type`, "invalid timeline entry type");
-      }
-      const speaker = entry.speaker === null
-        ? null
-        : expectLiteral(entry.speaker, CHAT_MESSAGE_SPEAKERS, `${itemPath}.speaker`);
-      if (entryType === "message" && speaker === null) {
-        fail(`${itemPath}.speaker`, "message requires speaker");
-      }
-      return {
-        entry_id: expectNonEmptyString(entry.entry_id, `${itemPath}.entry_id`),
-        workflow_id: expectNonEmptyString(entry.workflow_id, `${itemPath}.workflow_id`),
-        conversation_id: expectNonEmptyString(entry.conversation_id, `${itemPath}.conversation_id`),
-        sequence_no: expectPositiveInteger(entry.sequence_no, `${itemPath}.sequence_no`),
-        entry_type: entryType,
-        speaker,
-        content: expectString(entry.content, `${itemPath}.content`),
-        metadata: optionalUnknownRecord(entry.metadata, `${itemPath}.metadata`, {}),
-        command_plan: entry.command_plan === null || entry.command_plan === undefined
-          ? null
-          : normalizeAgentCommandPlanV2(entry.command_plan, `${itemPath}.command_plan`),
-        action_receipt: entry.action_receipt === null || entry.action_receipt === undefined
-          ? null
-          : normalizeAgentActionReceiptV2(entry.action_receipt, `${itemPath}.action_receipt`),
-        created_at: expectIsoDateTimeString(entry.created_at, `${itemPath}.created_at`),
-      };
-    }),
+    items: expectArray(record.items ?? [], `${path}.items`).map((item, index) => (
+      normalizeAgentCanvasChatTimelineEntryV2(item, `${path}.items[${index}]`)
+    )),
+    presentation_items: record.presentation_items === undefined
+      ? null
+      : expectArray(record.presentation_items, `${path}.presentation_items`).map((item, index) => (
+        normalizeAgentCanvasChatTimelinePresentationItemV2(
+          item,
+          `${path}.presentation_items[${index}]`,
+        )
+      )),
     next_cursor: expectNonNegativeInteger(record.next_cursor, `${path}.next_cursor`),
   };
 }

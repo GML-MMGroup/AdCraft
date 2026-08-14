@@ -2103,6 +2103,67 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(timeline.items[1]?.entry_type).toBe("script_artifact");
+    expect(timeline.presentation_items).toBeNull();
+  });
+
+  it("accepts the additive user presentation projection without changing raw timeline pagination", () => {
+    const payload = {
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [{
+        entry_id: "entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 7,
+        entry_type: "planning_progress",
+        speaker: null,
+        content: "Planning the next creative action.",
+        metadata: {},
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-13T10:10:00Z",
+      }],
+      presentation_items: [{
+        entry_id: "entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 7,
+        entry_type: "planning_progress",
+        speaker: null,
+        content: "Planning the next creative action.",
+        metadata: {},
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-13T10:10:00Z",
+        presentation_key: "planning:next-action-1",
+        presentation_revision: 2,
+        source_entry_ids: ["entry-0", "entry-1"],
+        message_key: "planning_progress.next_action",
+        message_args: {},
+        response_locale: "zh-CN",
+      }],
+      next_cursor: 7,
+    };
+
+    const raw = normalizeAgentCanvasChatTimelineResponseV2(payload);
+    const timeline = normalizeAgentCanvasChatTimelineV2(payload);
+
+    expect(raw.next_cursor).toBe(7);
+    expect(raw.presentation_items?.[0]).toMatchObject({
+      presentation_key: "planning:next-action-1",
+      presentation_revision: 2,
+      source_entry_ids: ["entry-0", "entry-1"],
+      response_locale: "zh-CN",
+    });
+    expect(timeline.presentationItems?.[0]).toMatchObject({
+      presentation_key: "planning:next-action-1",
+      presentation_revision: 2,
+      item: {
+        item_type: "message",
+        text: "Planning the next creative action.",
+        sequence: 7,
+      },
+    });
   });
 
   it("enforces ready media output and positive revisions", () => {

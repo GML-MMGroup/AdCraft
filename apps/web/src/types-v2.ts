@@ -2284,6 +2284,7 @@ export interface ChatCapabilityActivityV2 extends CapabilityIdentityV2 {
   started_at: string;
   finished_at: string | null;
   message: string | null;
+  presentation_text?: string | null;
   error_code: string | null;
   elapsed_ms: number | null;
   attempt_stage: "initial" | "transport_retry" | "structured_repair" | "fallback" | null;
@@ -2615,6 +2616,16 @@ export interface ChatTimelineListResponseV2 {
   next_after_seq: number;
 }
 
+export interface ChatTimelinePresentationViewItemV2 {
+  presentation_key: string;
+  presentation_revision: number;
+  source_entry_ids: string[];
+  message_key: string | null;
+  message_args: Record<string, unknown>;
+  response_locale: string;
+  item: ChatTimelineItemV2;
+}
+
 export interface AgentCanvasChatViewTimelineV2 {
   workflow_id: string;
   conversation_id: string | null;
@@ -2622,6 +2633,8 @@ export interface AgentCanvasChatViewTimelineV2 {
   continuations: AgentCanvasContinuationV2[];
   current_session_actions: GuidanceSessionActionV2[];
   items: ChatTimelineItemV2[];
+  /** Null means an older backend has not added the presentation projection yet. */
+  presentationItems: ChatTimelinePresentationViewItemV2[] | null;
   next_cursor: number;
 }
 
@@ -3173,6 +3186,15 @@ export interface AgentCanvasChatTimelineEntryV2 {
   created_at: string;
 }
 
+export interface AgentCanvasChatTimelinePresentationItemV2 extends AgentCanvasChatTimelineEntryV2 {
+  presentation_key: string;
+  presentation_revision: number;
+  source_entry_ids: string[];
+  message_key: string | null;
+  message_args: Record<string, unknown>;
+  response_locale: string;
+}
+
 export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
@@ -3180,6 +3202,8 @@ export interface AgentCanvasChatTimelineResponseV2 {
   continuations: AgentCanvasContinuationV2[];
   current_session_actions: GuidanceSessionActionV2[];
   items: AgentCanvasChatTimelineEntryV2[];
+  /** Null means an older backend has not added the presentation projection yet. */
+  presentation_items: AgentCanvasChatTimelinePresentationItemV2[] | null;
   next_cursor: number;
 }
 
