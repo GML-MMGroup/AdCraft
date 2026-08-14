@@ -3,6 +3,7 @@ import { isAgentCanvasVisibleNodeType } from "../model/nodeDefaults.ts";
 
 const NODE_TYPE_ICON_SOURCE = {
   text: "/imgs/text.webp",
+  script: "/imgs/text.webp",
   image: "/imgs/image.webp",
   video: "/imgs/video.webp",
   audio: "/imgs/audio.webp",

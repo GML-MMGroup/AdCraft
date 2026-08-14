@@ -7,6 +7,10 @@ import {
 } from "./nodeGeometry.ts";
 
 describe("agentCanvasNodeSize", () => {
+  it("uses a narrow, tall scrollable canvas card for Script output", () => {
+    expect(agentCanvasNodeSize("script")).toEqual({ width: 248, height: 500 });
+  });
+
   it("fits common image ratios into a clear bounded canvas area without changing their ratio", () => {
     expect(agentCanvasNodeSize("image", { width: 1920, height: 1080 })).toEqual({
       width: 360,

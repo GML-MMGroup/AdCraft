@@ -6,7 +6,7 @@ import { AgentCanvasNodePicker } from "./AgentCanvasNodePicker.tsx";
 afterEach(() => cleanup());
 
 describe("AgentCanvasNodePicker", () => {
-  it("offers the visible authoring types without Script", () => {
+  it("offers every canonical authoring node type including Script", () => {
     const onSelect = vi.fn();
     render(
       <AgentCanvasNodePicker
@@ -15,8 +15,8 @@ describe("AgentCanvasNodePicker", () => {
       />,
     );
 
-    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
-    expect(screen.queryByRole("menuitem", { name: "Add Script node" })).toBeNull();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(6);
+    expect(screen.getByRole("menuitem", { name: "Add Script node" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Add Image node" }));
     expect(onSelect).toHaveBeenCalledWith("image");

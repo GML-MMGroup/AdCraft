@@ -29,6 +29,10 @@
   --agent-node-accent: #7465b5;
 }
 
+.agent-canvas-node--script {
+  --agent-node-accent: #7465b5;
+}
+
 .agent-canvas-node--image {
   --agent-node-accent: #3f9c8e;
 }
@@ -188,10 +192,50 @@
   -webkit-line-clamp: 5;
 }
 
+.agent-canvas-node__content--script {
+  padding: 22px 18px 48px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  scrollbar-width: thin;
+}
+
+.agent-canvas-node__content--script::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-canvas-node__content--script::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.agent-canvas-node__content--script > p {
+  display: block;
+  overflow: visible;
+  font-size: 14px;
+  font-weight: 480;
+  line-height: 1.62;
+  -webkit-line-clamp: unset;
+}
+
 .agent-canvas-node__markdown {
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+.agent-canvas-node__content--script .agent-canvas-node__markdown {
+  height: auto;
+  overflow: visible;
+}
+
+.agent-canvas-node__content--script .agent-canvas-node__markdown :is(p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, pre) {
+  display: block;
+  overflow: visible;
+  font-size: 14px;
+  font-weight: 480;
+  line-height: 1.62;
+  -webkit-line-clamp: unset;
 }
 
 .agent-canvas-node__markdown p,

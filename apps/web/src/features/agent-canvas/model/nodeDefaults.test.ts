@@ -8,9 +8,10 @@ import {
 } from "./nodeDefaults.ts";
 
 describe("Agent Canvas node defaults", () => {
-  it("exposes only the five visible authoring node types", () => {
+  it("exposes all six canonical authoring node types", () => {
     expect(AGENT_CANVAS_VISIBLE_NODE_TYPES).toEqual([
       "text",
+      "script",
       "image",
       "video",
       "audio",
@@ -20,6 +21,7 @@ describe("Agent Canvas node defaults", () => {
 
   it.each([
     ["text", "general_text"],
+    ["script", "script"],
     ["image", "general_image"],
     ["video", "general_video"],
     ["audio", "bgm"],

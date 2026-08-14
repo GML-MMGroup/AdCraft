@@ -15,6 +15,11 @@ export const DEFAULT_AGENT_CANVAS_NODE_SIZE: AgentCanvasNodeSize = {
   height: 184,
 };
 
+export const SCRIPT_AGENT_CANVAS_NODE_SIZE: AgentCanvasNodeSize = {
+  width: 248,
+  height: 500,
+};
+
 export const UNKNOWN_IMAGE_NODE_SIZE: AgentCanvasNodeSize = {
   width: 360,
   height: 360,
@@ -46,6 +51,7 @@ export function agentCanvasNodeSize(
   nodeType: CanvasNodeTypeV2,
   dimensions?: AgentCanvasMediaDimensions | null,
 ): AgentCanvasNodeSize {
+  if (nodeType === "script") return SCRIPT_AGENT_CANVAS_NODE_SIZE;
   if (nodeType !== "image" || !validAgentCanvasMediaDimensions(dimensions)) {
     return DEFAULT_AGENT_CANVAS_NODE_SIZE;
   }
