@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PageHeader } from "../components/Layout.tsx";
+import { AssetContactSheet } from "../features/assets/AssetContactSheet.tsx";
 import { CanonicalAssetViewer } from "../features/assets/CanonicalAssetViewer.tsx";
 import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCanvasAssets.ts";
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
@@ -101,20 +102,15 @@ export function AssetsPage() {
           {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
           {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
           {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
-          <div className="v2-asset-library-grid">
-            {displayedAssets.map((asset) => (
-              <AssetCard
-                key={asset.id}
-                asset={asset}
-                selected={selectedAssetId === asset.id}
-                buttonRef={(button) => {
-                  if (button) assetCardRefsRef.current.set(asset.id, button);
-                  else assetCardRefsRef.current.delete(asset.id);
-                }}
-                onSelect={selectAsset}
-              />
-            ))}
-          </div>
+          <AssetContactSheet
+            assets={displayedAssets}
+            selectedAssetId={selectedAssetId}
+            buttonRef={(assetId, button) => {
+              if (button) assetCardRefsRef.current.set(assetId, button);
+              else assetCardRefsRef.current.delete(assetId);
+            }}
+            onSelect={selectAsset}
+          />
         </div>
       </div>
       {selectedAsset ? (
@@ -127,26 +123,5 @@ export function AssetsPage() {
         />
       ) : null}
     </section>
-  );
-}
-
-function AssetCard({
-  asset,
-  selected,
-  buttonRef,
-  onSelect,
-}: {
-  asset: AgentAssetBrowserItem;
-  selected: boolean;
-  buttonRef: (button: HTMLButtonElement | null) => void;
-  onSelect: (asset: AgentAssetBrowserItem, trigger: HTMLButtonElement) => void;
-}) {
-  return (
-    <button ref={buttonRef} className={`v2-asset-entity-card v2-asset-discover-card ${selected ? "is-selected" : ""}`} type="button" aria-label={`Open asset ${asset.displayName}`} onClick={(event) => onSelect(asset, event.currentTarget)}>
-      {asset.previewUrl
-        ? <img className="v2-asset-media" src={asset.previewUrl} alt={asset.displayName} loading="lazy" decoding="async" />
-        : <span className="v2-asset-media is-empty">{asset.displayName.slice(0, 1).toUpperCase()}</span>}
-      <span className="v2-asset-entity-card-title">{asset.displayName}</span>
-    </button>
   );
 }

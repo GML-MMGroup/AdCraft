@@ -32,6 +32,19 @@ function imageLibraryItem(scope: "my" | "recommended", category: string) {
   };
 }
 
+function imageLibraryItems(scope: "my" | "recommended", category: string, count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    ...imageLibraryItem(scope, category),
+    entity_id: `${scope}-${category}-entity-${index + 1}`,
+    display_name: `${scope} ${category} ${index + 1}`,
+    preview_member: {
+      asset_id: `${scope}-${category}-asset-${index + 1}`,
+      version_id: `${scope}-${category}-version-${index + 1}`,
+      public_url: `/api/v2/assets/${scope}-${category}-asset-${index + 1}/content`,
+    },
+  }));
+}
+
 describe("AssetsPage", () => {
   beforeEach(() => {
     canonicalApi.listAgentCanvasMyAssets.mockReset();
@@ -94,6 +107,21 @@ describe("AssetsPage", () => {
 
     expect(screen.getByText("No assets found.")).toBeTruthy();
     expect(canonicalApi.listAgentCanvasMyAssets).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a lead contact sheet cluster before the patterned browse flow", async () => {
+    canonicalApi.listAgentCanvasMyAssets.mockResolvedValue({
+      items: imageLibraryItems("my", "characters", 10),
+    });
+
+    const { container } = render(<AssetsPage />);
+
+    await screen.findByRole("button", { name: "Open asset my characters 1" });
+    expect(container.querySelectorAll('[data-gallery-placement="feature"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-gallery-placement="support"]')).toHaveLength(4);
+    expect(container.querySelectorAll('[data-gallery-placement="flow"]')).toHaveLength(5);
+    expect(container.querySelector('[data-gallery-size="feature"]')).toBeTruthy();
+    expect(container.querySelector('[data-gallery-size="wide"]')).toBeTruthy();
   });
 
   it("does not retain retired standalone asset-library route dependencies", () => {
