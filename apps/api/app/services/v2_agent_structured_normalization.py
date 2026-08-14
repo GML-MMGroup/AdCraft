@@ -13,6 +13,35 @@ from app.schemas.agent_runtime import StructuredViolation
 DECISION_BUNDLE_CAPABILITY_ALIAS_RULE_ID = (
     "decision_bundle.creative_directive.capability_ids_alias.v1"
 )
+COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID = (
+    "compact_turn_intent_v3.omittable_nulls.v1"
+)
+
+_INTAKE_ELEMENT_NAMES = (
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "world_setting",
+    "script",
+    "storyboard",
+    "video",
+    "audio",
+)
+_INTAKE_CONTROL_NAMES = (
+    "duration_seconds",
+    "aspect_ratio",
+    "output_resolution",
+    "frame_rate",
+    "spoken_language",
+    "audio_mode",
+    "product_count",
+    "prop_count",
+    "character_count",
+    "scene_count",
+    "storyboard_sequence_count",
+    "video_segment_count",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +107,63 @@ def _normalize_decision_bundle_capability_alias(
     )
 
 
+def _normalize_compact_turn_intent_omittable_nulls(
+    value: dict[str, Any],
+) -> AgentStructuredNormalizationResult:
+    candidate = deepcopy(value)
+    normalized_path_count = 0
+
+    normalized_path_count += _remove_null_property(candidate, "explicit_elements")
+    explicit_elements = candidate.get("explicit_elements")
+    if isinstance(explicit_elements, dict):
+        normalized_path_count += sum(
+            _remove_null_property(explicit_elements, element_name)
+            for element_name in _INTAKE_ELEMENT_NAMES
+        )
+
+    requirement_patch = candidate.get("requirement_patch")
+    if isinstance(requirement_patch, dict):
+        normalized_path_count += _remove_null_property(
+            requirement_patch,
+            "controls_to_set",
+        )
+        controls = requirement_patch.get("controls_to_set")
+        if isinstance(controls, dict):
+            normalized_path_count += sum(
+                _remove_null_property(controls, control_name)
+                for control_name in _INTAKE_CONTROL_NAMES
+            )
+
+        normalized_path_count += _remove_null_property(
+            requirement_patch,
+            "directives_to_add",
+        )
+        directives = requirement_patch.get("directives_to_add")
+        if isinstance(directives, list):
+            normalized_path_count += sum(
+                _remove_null_property(directive, "capability_id")
+                for directive in directives
+                if isinstance(directive, dict) and directive.get("scope_kind") == "global"
+            )
+
+    return AgentStructuredNormalizationResult(
+        value=candidate,
+        rule_ids=(
+            (COMPACT_TURN_INTENT_OMITTABLE_NULLS_RULE_ID,)
+            if normalized_path_count
+            else ()
+        ),
+        normalized_path_count=normalized_path_count,
+    )
+
+
+def _remove_null_property(container: dict[str, Any], property_name: str) -> int:
+    if property_name not in container or container[property_name] is not None:
+        return 0
+    del container[property_name]
+    return 1
+
+
 def _creative_directive_effects(
     value: dict[str, Any],
 ) -> tuple[tuple[str, dict[str, Any]], ...]:
@@ -115,7 +201,10 @@ def _creative_directive_effects(
 
 
 _NORMALIZATION_RULES = MappingProxyType(
-    {"DecisionBundleDraftV1": _normalize_decision_bundle_capability_alias}
+    {
+        "CompactTurnIntentDecisionV3": _normalize_compact_turn_intent_omittable_nulls,
+        "DecisionBundleDraftV1": _normalize_decision_bundle_capability_alias,
+    }
 )
 
 AGENT_STRUCTURED_NORMALIZATION_REGISTRY = AgentStructuredNormalizationRegistry()
