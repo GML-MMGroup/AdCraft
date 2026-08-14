@@ -1830,6 +1830,19 @@ export interface StoryboardNodeRecordV2 {
   node_id: string;
 }
 
+export interface StoryboardSegmentMaterializationV2 {
+  sequence_id: string;
+  status: "pending" | "materialized";
+  generation_prompt: string | null;
+}
+
+export interface StoryboardVisualAnchorV2 {
+  node_id: string;
+  asset_id: string;
+  node_revision: number;
+  document_revision: number;
+}
+
 export interface StoryboardProductionPlanContentV2 {
   narrative_outline: string;
   global_parameters: StoryboardPlanGlobalParametersV2;
@@ -1837,6 +1850,8 @@ export interface StoryboardProductionPlanContentV2 {
   rows: StoryboardPlanRowV2[];
   node_records: StoryboardNodeRecordV2[];
   materialized_panel_cursor: number;
+  segment_materializations: StoryboardSegmentMaterializationV2[];
+  visual_anchor: StoryboardVisualAnchorV2 | null;
 }
 
 export interface AgentDocumentLinkedNodeRuntimeV2 {

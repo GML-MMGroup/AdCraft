@@ -119,6 +119,8 @@ import type {
   StoryboardPlanGlobalParametersV2,
   StoryboardPlanRowV2,
   StoryboardProductionPlanContentV2,
+  StoryboardSegmentMaterializationV2,
+  StoryboardVisualAnchorV2,
   VideoParameterNormalizationV2,
   VideoSkillCatalogResponseV2,
   VideoSkillCategoryV2,
@@ -403,6 +405,10 @@ const AGENT_MEDIA_EXECUTION_MODES = new Set<AgentExecutionSettingsV2["media_exec
 const AGENT_WORKING_DOCUMENT_KINDS = new Set<AgentWorkingDocumentKindV2>([
   "anchor_registry",
   "storyboard_production_plan",
+]);
+const STORYBOARD_SEGMENT_MATERIALIZATION_STATUSES = new Set<StoryboardSegmentMaterializationV2["status"]>([
+  "pending",
+  "materialized",
 ]);
 
 function fail(path: string, message: string): never {
@@ -1431,6 +1437,38 @@ function normalizeStoryboardNodeRecordV2(value: unknown, path: string): Storyboa
   };
 }
 
+function normalizeStoryboardSegmentMaterializationV2(
+  value: unknown,
+  path: string,
+): StoryboardSegmentMaterializationV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["sequence_id", "status", "generation_prompt"], path);
+  return {
+    sequence_id: expectNonEmptyString(record.sequence_id, `${path}.sequence_id`),
+    status: record.status === undefined
+      ? "pending"
+      : expectLiteral(record.status, STORYBOARD_SEGMENT_MATERIALIZATION_STATUSES, `${path}.status`),
+    generation_prompt: nullableStringWithDefault(
+      record.generation_prompt,
+      `${path}.generation_prompt`,
+    ),
+  };
+}
+
+function normalizeStoryboardVisualAnchorV2(
+  value: unknown,
+  path: string,
+): StoryboardVisualAnchorV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, ["node_id", "asset_id", "node_revision", "document_revision"], path);
+  return {
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    asset_id: expectNonEmptyString(record.asset_id, `${path}.asset_id`),
+    node_revision: expectPositiveInteger(record.node_revision, `${path}.node_revision`),
+    document_revision: expectPositiveInteger(record.document_revision, `${path}.document_revision`),
+  };
+}
+
 function normalizeStoryboardProductionPlanContentV2(
   value: unknown,
   path: string,
@@ -1443,13 +1481,22 @@ function normalizeStoryboardProductionPlanContentV2(
     "rows",
     "node_records",
     "materialized_panel_cursor",
+    "segment_materializations",
+    "visual_anchor",
   ], path);
   const segments = expectArray(record.segments, `${path}.segments`);
   const rows = expectArray(record.rows, `${path}.rows`);
   const nodeRecords = expectArray(record.node_records ?? [], `${path}.node_records`);
+  const segmentMaterializations = expectArray(
+    record.segment_materializations ?? [],
+    `${path}.segment_materializations`,
+  );
   if (segments.length > 128) fail(`${path}.segments`, "expected at most 128 segments");
   if (rows.length > 1152) fail(`${path}.rows`, "expected at most 1152 rows");
   if (nodeRecords.length > 384) fail(`${path}.node_records`, "expected at most 384 records");
+  if (segmentMaterializations.length > 128) {
+    fail(`${path}.segment_materializations`, "expected at most 128 materializations");
+  }
   return {
     narrative_outline: expectNonEmptyString(record.narrative_outline, `${path}.narrative_outline`),
     global_parameters: normalizeStoryboardPlanGlobalParametersV2(
@@ -1468,6 +1515,15 @@ function normalizeStoryboardProductionPlanContentV2(
     materialized_panel_cursor: record.materialized_panel_cursor === undefined
       ? 0
       : boundedInteger(record.materialized_panel_cursor, `${path}.materialized_panel_cursor`, 0, 1152),
+    segment_materializations: segmentMaterializations.map((item, index) => (
+      normalizeStoryboardSegmentMaterializationV2(
+        item,
+        `${path}.segment_materializations[${index}]`,
+      )
+    )),
+    visual_anchor: record.visual_anchor === undefined || record.visual_anchor === null
+      ? null
+      : normalizeStoryboardVisualAnchorV2(record.visual_anchor, `${path}.visual_anchor`),
   };
 }
 

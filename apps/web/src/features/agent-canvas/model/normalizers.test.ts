@@ -2451,6 +2451,17 @@ describe("Agent Canvas normalizers", () => {
           node_id: "node-grid-1",
         }],
         materialized_panel_cursor: 1,
+        segment_materializations: [{
+          sequence_id: "sequence-1",
+          status: "materialized",
+          generation_prompt: "Generate a warm product reveal with a slow push in.",
+        }],
+        visual_anchor: {
+          node_id: "node-grid-1",
+          asset_id: "asset-grid-1",
+          node_revision: 4,
+          document_revision: 2,
+        },
       },
     });
 
@@ -2458,6 +2469,14 @@ describe("Agent Canvas normalizers", () => {
     expect(storyboardPlan.content).toMatchObject({
       global_parameters: { aspect_ratio: "16:9", segment_count: 1 },
       materialized_panel_cursor: 1,
+      segment_materializations: [{
+        sequence_id: "sequence-1",
+        status: "materialized",
+      }],
+      visual_anchor: {
+        asset_id: "asset-grid-1",
+        document_revision: 2,
+      },
     });
     expect(normalizeAgentWorkingDocumentPageV2({
       items: [anchorRegistry, storyboardPlan],
