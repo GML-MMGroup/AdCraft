@@ -255,29 +255,22 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
   });
 
-  it("does not render a workbench for a retired Script node", () => {
-    const node = makeNode("script");
-    const { container } = render(
-      <AgentCanvasInlineWorkbench
-        workflow={makeWorkflow(node)}
-        node={node}
-        patchNode={vi.fn().mockResolvedValue(undefined)}
-        patchBinding={vi.fn().mockResolvedValue(undefined)}
-        deleteBinding={vi.fn().mockResolvedValue(undefined)}
-        onRun={vi.fn().mockResolvedValue(undefined)}
-        onSaveVariation={vi.fn().mockResolvedValue(undefined)}
-        onDiscardVariation={vi.fn().mockResolvedValue(undefined)}
-        onMaterializeVariation={vi.fn().mockResolvedValue(null)}
-        onSaveImageToLibrary={vi.fn().mockResolvedValue(undefined)}
-        onDelete={vi.fn().mockResolvedValue(undefined)}
-        onOpenEditing={vi.fn()}
-        onOpenAssets={vi.fn()}
-        onUploadReferences={vi.fn()}
-        onClose={vi.fn()}
-      />,
-    );
+  it("saves a Script direction before running the canonical Script node", async () => {
+    const node = { ...makeNode("script"), generation_prompt: null };
+    const props = renderWorkbench(node);
 
-    expect(container.childElementCount).toBe(0);
+    const run = screen.getByRole("button", { name: "Run script node" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Script direction"), {
+      target: { value: "Write a thirty-second fragrance film with three short scenes." },
+    });
+    fireEvent.click(run);
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
+      generation_prompt: "Write a thirty-second fragrance film with three short scenes.",
+    })));
+    expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
   it("saves structured text before running a Text node", async () => {

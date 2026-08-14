@@ -12,6 +12,11 @@ function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
     return nonEmptyString(node.structured_content.content)
       ?? nonEmptyString(node.structured_content.text);
   }
+  if (node.node_type === "script") {
+    return nonEmptyString(node.structured_content.content)
+      ?? nonEmptyString(node.structured_content.script_text)
+      ?? nonEmptyString(node.structured_content.text);
+  }
   if (node.node_type === "image" || node.node_type === "video") {
     const preparation = promptPreparationForNode(node);
     return preparation.status === "ready"
@@ -31,10 +36,14 @@ export function AgentCanvasNodeContent({
   iconLabel,
 }: AgentCanvasNodeContentProps) {
   const copy = agentCanvasNodeDisplayText(node);
+  const contentClassName = [
+    "agent-canvas-node__content",
+    node.node_type === "script" ? "agent-canvas-node__content--script" : "",
+  ].filter(Boolean).join(" ");
   if (copy) {
     if (isLikelyMarkdown(copy)) {
       return (
-        <div className="agent-canvas-node__content">
+        <div className={contentClassName}>
           <div className="agent-canvas-node__markdown">
             {renderMarkdownAwareText(copy)}
           </div>
@@ -43,7 +52,7 @@ export function AgentCanvasNodeContent({
     }
 
     return (
-      <div className="agent-canvas-node__content">
+      <div className={contentClassName}>
         <p>{copy}</p>
       </div>
     );

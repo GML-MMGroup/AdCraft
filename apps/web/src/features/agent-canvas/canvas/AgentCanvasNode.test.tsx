@@ -164,6 +164,35 @@ describe("AgentCanvasNodeCard", () => {
     },
   );
 
+  it("renders backend Script content rather than hiding the canonical Script node", () => {
+    const node = {
+      ...makeNode("script", "ready"),
+      structured_content: {
+        content: "INT. CITY STREET - DAWN\n\nA quiet city begins to wake.",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    const card = screen.getByTestId("agent-canvas-node-script-node");
+    expect(card.dataset.nodeType).toBe("script");
+    expect(screen.getByText(/INT\. CITY STREET - DAWN/)).toBeTruthy();
+    expect(screen.queryByText("Write a cinematic script")).toBeNull();
+    expect(card.querySelector(".agent-canvas-node__content--script")).toBeTruthy();
+    expect(screen.queryByLabelText("script node type")).toBeNull();
+  });
+
+  it("keeps long Script output inside a 500px scrollable card", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const scriptContentRule = css.match(
+      /\.agent-canvas-node__content--script\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(scriptContentRule).toContain("overflow-y: auto");
+    expect(scriptContentRule).toContain("overscroll-behavior: contain");
+  });
+
   it.each([
     [
       "text",
