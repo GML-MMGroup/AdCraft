@@ -130,7 +130,8 @@ describe("AgentCanvasConnectedNodeMenu", () => {
     expect(onSelect).toHaveBeenCalledWith("video", "video_reference");
   });
 
-  it("never offers Script even when the backend policy still contains its compatibility rule", () => {
+  it("offers Script when the backend policy permits a connected Script node", () => {
+    const onSelect = vi.fn();
     render(
       <AgentCanvasConnectedNodeMenu
         anchorNode={{ ...anchor, node_type: "text", creative_role: "general_text" }}
@@ -145,12 +146,13 @@ describe("AgentCanvasConnectedNodeMenu", () => {
             default_role: "text_context",
           }],
         }}
-        onSelect={vi.fn()}
+        onSelect={onSelect}
         onClose={vi.fn()}
       />,
     );
 
-    expect(screen.queryByRole("menuitem", { name: "Create connected Script node" })).toBeNull();
-    expect(screen.getByText("No compatible downstream node types.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create connected Script node" }));
+
+    expect(onSelect).toHaveBeenCalledWith("script", "text_context");
   });
 });
