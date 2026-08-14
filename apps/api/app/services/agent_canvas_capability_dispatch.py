@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import func, insert, select, update
@@ -38,6 +39,48 @@ from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
 from app.schemas.v2_persistence import V2EventInsert
+
+
+@dataclass(frozen=True, slots=True)
+class RetryReferenceAuthorityProjection:
+    """Store-specific authority derived from typed capability references."""
+
+    node_ids: tuple[str, ...]
+    image_asset_ids: tuple[str, ...]
+
+
+def _stable_unique(values: list[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(values))
+
+
+def _project_retry_reference_authority(
+    context_snapshot: CapabilityContextSnapshotV2,
+) -> RetryReferenceAuthorityProjection:
+    planned_ids = context_snapshot.reference_plan.approved_reference_ids
+    if tuple(context_snapshot.approved_reference_ids) != tuple(planned_ids):
+        raise V2PersistenceError(
+            "capability_retry_reference_projection_invalid",
+            "Capability retry reference authority is inconsistent.",
+            stage="capability_retry_snapshot_construction",
+        )
+
+    node_ids: list[str] = []
+    image_asset_ids: list[str] = []
+    for reference in context_snapshot.reference_plan.references:
+        if reference.source_kind == "node":
+            node_ids.append(reference.source_id)
+        elif reference.source_kind == "image_asset":
+            image_asset_ids.append(reference.source_id)
+        else:
+            raise V2PersistenceError(
+                "capability_retry_reference_projection_invalid",
+                "Capability retry reference kind is unsupported.",
+                stage="capability_retry_snapshot_construction",
+            )
+    return RetryReferenceAuthorityProjection(
+        node_ids=_stable_unique(node_ids),
+        image_asset_ids=_stable_unique(image_asset_ids),
+    )
 
 
 class CapabilityDispatchService:
