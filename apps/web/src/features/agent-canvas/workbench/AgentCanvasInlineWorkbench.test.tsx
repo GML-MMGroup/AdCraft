@@ -288,6 +288,27 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(props.onRun).toHaveBeenCalledWith(node);
   });
 
+  it("saves a ready Script node without running it again", async () => {
+    const node = makeNode("script", "ready");
+    const props = renderWorkbench(node);
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A refined ready script." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: {
+          script_text: "Open on dawn.",
+          content: "A refined ready script.",
+        },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
   it("saves structured text before running a Text node", async () => {
     const node = makeNode("text");
     const props = renderWorkbench(node);

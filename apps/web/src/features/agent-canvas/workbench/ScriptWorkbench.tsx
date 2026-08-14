@@ -21,6 +21,8 @@ export function ScriptWorkbench({
   modelsError: string | null;
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
 }) {
+  const canRun = node.status === "draft" || node.status === "failed";
+
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer agent-node-workbench__composer--script">
@@ -54,10 +56,14 @@ export function ScriptWorkbench({
           <button
             type="button"
             className="agent-node-workbench__run"
-            aria-label={node.status === "failed" ? "Retry script node" : "Run script node"}
-            title={node.status === "failed" ? "Retry script" : "Run script"}
+            aria-label={canRun
+              ? node.status === "failed" ? "Retry script node" : "Run script node"
+              : "Save script node"}
+            title={canRun
+              ? node.status === "failed" ? "Retry script" : "Run script"
+              : "Save script"}
             disabled={draft.pending}
-            onClick={() => void draft.run()}
+            onClick={() => void (canRun ? draft.run() : draft.save())}
           >
             <SendIcon />
           </button>
