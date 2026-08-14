@@ -4,6 +4,7 @@ import OpenAI from "openai";
 
 import type {
   AgentRunRequest,
+  AgentStructuredValidationAttemptAuditV1,
   AgentTransportAttemptMetadataV1,
 } from "./generated/agent-runtime.js";
 import {
@@ -128,6 +129,7 @@ export class PiStructuredTransportRouter {
     const primaryRequest = buildPrimaryStructuredCompletionRequest(input);
     const primary = await this.#executeWithRetry(primaryRequest, input);
     let structuredAttempts = 1;
+    const validationAttempts: AgentStructuredValidationAttemptAuditV1[] = [];
     let value = primaryValue(input, primary.response);
     let validation: StructuredValidationResult | undefined;
     if (value !== undefined) {
@@ -137,29 +139,51 @@ export class PiStructuredTransportRouter {
         return resultFor(accepted, input, primary, {
           startedAt,
           structuredAttempts,
+          validationAttempts,
         });
-      }
-      if (validation.result?.repair_allowed === false) {
-        throw terminalValidationFailure(
-          validation.error_code ?? "agent_structured_output_invalid",
-          auditForAttempt(input, primary, startedAt, structuredAttempts),
-          isManualRetryableIntake(input),
-        );
       }
     } else if (policy.structured_transport === "non_streaming_json_object") {
       validation = malformedJsonValidation();
+    } else {
+      validation = missingStructuredResultValidation();
+    }
+    validationAttempts.push(validationAttemptAudit(validation, 1, "initial"));
+    if (validation.result?.repair_allowed === false) {
+      throw terminalValidationFailure(
+        validation.error_code ?? "agent_structured_output_invalid",
+        auditForAttempt(
+          input,
+          primary,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
+        isManualRetryableIntake(input),
+      );
     }
     if (policy.structured_repair_limit < 1 || input.signal.aborted) {
       throw structuredFailure(
         primary.attemptStage ?? "initial",
-        auditForAttempt(input, primary, startedAt, structuredAttempts),
+        auditForAttempt(
+          input,
+          primary,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
         isManualRetryableIntake(input),
       );
     }
     if (primary.retryCount > 0) {
       throw structuredFailure(
         "transport_retry",
-        auditForAttempt(input, primary, startedAt, structuredAttempts),
+        auditForAttempt(
+          input,
+          primary,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
       );
     }
     structuredAttempts = 2;
@@ -170,29 +194,58 @@ export class PiStructuredTransportRouter {
     );
     value = repairContent(repair.response);
     if (value === undefined) {
+      const malformedRepair = malformedJsonValidation(false);
+      validationAttempts.push(
+        validationAttemptAudit(malformedRepair, 2, "structured_repair"),
+      );
       throw structuredFailure(
         "structured_repair",
-        auditForAttempt(input, repair, startedAt, structuredAttempts),
+        auditForAttempt(
+          input,
+          repair,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
         isManualRetryableIntake(input),
       );
     }
     const repaired = await input.submit(value, 2, "call_structured_repair");
     const accepted = acceptedValue(repaired);
     if (accepted === undefined) {
+      validationAttempts.push(
+        validationAttemptAudit(repaired, 2, "structured_repair"),
+      );
       if (repaired.error_code === "agent_contract_validation_failed") {
         throw terminalValidationFailure(
           repaired.error_code,
-          auditForAttempt(input, repair, startedAt, structuredAttempts),
+          auditForAttempt(
+            input,
+            repair,
+            startedAt,
+            structuredAttempts,
+            validationAttempts,
+          ),
           isManualRetryableIntake(input),
         );
       }
       throw structuredFailure(
         "structured_repair",
-        auditForAttempt(input, repair, startedAt, structuredAttempts),
+        auditForAttempt(
+          input,
+          repair,
+          startedAt,
+          structuredAttempts,
+          validationAttempts,
+        ),
         isManualRetryableIntake(input),
       );
     }
-    return resultFor(accepted, input, repair, { startedAt, structuredAttempts });
+    return resultFor(accepted, input, repair, {
+      startedAt,
+      structuredAttempts,
+      validationAttempts,
+    });
   }
 
   async #executeWithRetry(
@@ -398,7 +451,25 @@ function primaryValue(
     : primaryToolArguments(response);
 }
 
-function malformedJsonValidation(): StructuredValidationResult {
+function malformedJsonValidation(repairAllowed = true): StructuredValidationResult {
+  return {
+    status: "failed",
+    error_code: "agent_structured_output_invalid",
+    result: {
+      accepted: false,
+      repair_allowed: repairAllowed,
+      violations: [
+        {
+          path: "$",
+          code: "json_parse_failed",
+          message: "Return exactly one valid JSON object.",
+        },
+      ],
+    },
+  };
+}
+
+function missingStructuredResultValidation(): StructuredValidationResult {
   return {
     status: "failed",
     error_code: "agent_structured_output_invalid",
@@ -408,8 +479,8 @@ function malformedJsonValidation(): StructuredValidationResult {
       violations: [
         {
           path: "$",
-          code: "json_parse_failed",
-          message: "Return exactly one valid JSON object.",
+          code: "structured_result_missing",
+          message: "Return exactly one structured result.",
         },
       ],
     },
@@ -509,7 +580,11 @@ function resultFor(
   value: Record<string, unknown>,
   input: StructuredTransportRunInput,
   attempt: CompletionAttempt,
-  details: { readonly startedAt: string; readonly structuredAttempts: number },
+  details: {
+    readonly startedAt: string;
+    readonly structuredAttempts: number;
+    readonly validationAttempts: ReadonlyArray<AgentStructuredValidationAttemptAuditV1>;
+  },
 ): StructuredTransportResult {
   return {
     value,
@@ -518,6 +593,7 @@ function resultFor(
       attempt,
       details.startedAt,
       details.structuredAttempts,
+      details.validationAttempts,
     ),
   };
 }
@@ -527,6 +603,7 @@ function auditForAttempt(
   attempt: CompletionAttempt,
   startedAt: string,
   structuredAttempts: number,
+  validationAttempts: ReadonlyArray<AgentStructuredValidationAttemptAuditV1> = [],
 ): AgentTransportAttemptMetadataV1 {
   const choice = attempt.response.choices?.[0];
   const usage = attempt.response.usage;
@@ -563,6 +640,39 @@ function auditForAttempt(
     reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens ?? null,
     transport_retry_count: attempt.retryCount,
     structured_attempt_count: structuredAttempts,
+    structured_validation_attempts: validationAttempts.slice(0, 2),
+  };
+}
+
+function validationAttemptAudit(
+  validation: StructuredValidationResult,
+  attempt: 1 | 2,
+  attemptStage: "initial" | "structured_repair",
+): AgentStructuredValidationAttemptAuditV1 {
+  const candidate = validation.result?.violations;
+  const rawViolations = Array.isArray(candidate) ? candidate.slice(0, 128) : [];
+  const paths: string[] = [];
+  const codes: string[] = [];
+  for (const item of rawViolations) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const violation = item as Readonly<Record<string, unknown>>;
+    const path = boundedViolationText(violation.path ?? violation.field_path, 512);
+    const code = boundedViolationText(violation.code, 160);
+    if (path && !paths.includes(path) && paths.length < 32) paths.push(path);
+    if (code && !codes.includes(code) && codes.length < 32) codes.push(code);
+  }
+  if (codes.length === 0) {
+    codes.push(validation.error_code ?? "agent_structured_output_invalid");
+  }
+  return {
+    attempt,
+    attempt_stage: attemptStage,
+    violation_count: Math.max(1, Math.min(128, rawViolations.length)),
+    validation_paths: paths,
+    violation_codes: codes,
+    repair_allowed: validation.result?.repair_allowed === true,
+    truncated: Array.isArray(candidate) &&
+      (candidate.length > 128 || paths.length > 32 || codes.length > 32),
   };
 }
 
@@ -824,7 +934,13 @@ function terminalValidationFailure(
   attemptMetadata?: AgentTransportAttemptMetadataV1,
   retryable = false,
 ) {
-  return new AgentOperationFailure(code, code, retryable, "initial", attemptMetadata);
+  return new AgentOperationFailure(
+    code,
+    code,
+    retryable,
+    attemptMetadata?.attempt_stage ?? "initial",
+    attemptMetadata,
+  );
 }
 
 function isManualRetryableIntake(input: StructuredTransportRunInput): boolean {
