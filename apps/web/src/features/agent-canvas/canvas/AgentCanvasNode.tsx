@@ -195,8 +195,6 @@ export function AgentCanvasNodeCard({
   onOpenVideoPreview,
   onMediaDimensionsResolved,
 }: AgentCanvasNodeCardProps) {
-  if (node.node_type === "script") return null;
-
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
   const blockedByUpstream = runtime?.waiting_reason === "blocked_by_upstream"
@@ -272,8 +270,7 @@ export function AgentCanvasNodeRenderer({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const label = semanticNodeLabel(data.node);
-  const visible = data.node.node_type !== "script";
-  const workbench = visible ? data.renderWorkbench?.(data.node) : null;
+  const workbench = data.renderWorkbench?.(data.node);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
@@ -282,10 +279,8 @@ export function AgentCanvasNodeRenderer({
   const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
 
   useLayoutEffect(() => {
-    if (visible) updateNodeInternals(id);
-  }, [id, nodeSize.height, nodeSize.width, updateNodeInternals, visible]);
-
-  if (!visible) return null;
+    updateNodeInternals(id);
+  }, [id, nodeSize.height, nodeSize.width, updateNodeInternals]);
 
   return (
     <div

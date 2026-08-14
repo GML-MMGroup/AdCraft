@@ -25,7 +25,8 @@
     transform 160ms ease;
 }
 
-.agent-canvas-node--text {
+.agent-canvas-node--text,
+.agent-canvas-node--script {
   --agent-node-accent: #7465b5;
 }
 

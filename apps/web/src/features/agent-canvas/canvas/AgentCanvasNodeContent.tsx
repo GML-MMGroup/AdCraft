@@ -8,6 +8,13 @@ function nonEmptyString(value: unknown): string | null {
 }
 
 function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
+  if (node.node_type === "script") {
+    return nonEmptyString(node.structured_content.content)
+      ?? nonEmptyString(node.structured_content.script_text)
+      ?? nonEmptyString(node.structured_content.text)
+      ?? nonEmptyString(node.generation_prompt)
+      ?? nonEmptyString(node.summary_prompt);
+  }
   if (node.node_type === "text") {
     return nonEmptyString(node.structured_content.content)
       ?? nonEmptyString(node.structured_content.text);

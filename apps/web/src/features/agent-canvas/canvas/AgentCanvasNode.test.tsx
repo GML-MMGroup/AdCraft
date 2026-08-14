@@ -189,6 +189,36 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByLabelText(`${nodeType} node type`)).toBeNull();
   });
 
+  it("renders current backend Script content on the card", () => {
+    const node = {
+      ...makeNode("script"),
+      structured_content: { content: "A quiet coffee break resets the afternoon." },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("Script node, Draft")).toBeTruthy();
+    expect(screen.getByText("A quiet coffee break resets the afternoon.")).toBeTruthy();
+  });
+
+  it("renders legacy script_text content on the card", () => {
+    render(<AgentCanvasNodeCard node={makeNode("script")} />);
+
+    expect(screen.getByText("Open on a quiet city at dawn.")).toBeTruthy();
+  });
+
+  it("renders a Script placeholder when the document is empty", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {},
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
   it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
     const node = {
       ...makeNode("image"),
