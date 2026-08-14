@@ -124,6 +124,39 @@ describe("AssetsPage", () => {
     expect(container.querySelector('[data-gallery-size="wide"]')).toBeTruthy();
   });
 
+  it("uses a fixed scene board for Recommended Assets scenes without cropping their preview", async () => {
+    canonicalApi.listAgentCanvasRecommendedAssets.mockResolvedValue({
+      items: imageLibraryItems("recommended", "scenes", 5).map((item, index) => ({
+        ...item,
+        tags: ["scenes", index % 2 === 0 ? "night" : "interior"],
+      })),
+    });
+
+    const { container } = render(<AssetsPage />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
+
+    const firstCard = await screen.findByRole("button", { name: "Open asset recommended scenes 1" });
+    expect(container.querySelector(".asset-scene-board")).toBeTruthy();
+    expect(container.querySelectorAll("[data-scene-board-card]")).toHaveLength(5);
+    expect(container.querySelector(".asset-contact-sheet")).toBeNull();
+    expect(firstCard.querySelector("img")?.classList.contains("asset-scene-board-media")).toBe(true);
+    expect(screen.getAllByText("night")).toHaveLength(3);
+
+    fireEvent.click(firstCard);
+    const dialog = await screen.findByRole("dialog", { name: "recommended scenes 1" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("/api/v2/assets/recommended-scenes-asset-1/content");
+  });
+
+  it("uses four aligned 3:2 scene frames that preserve the complete image", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+
+    expect(styles).toMatch(/\.asset-scene-board\s*\{[^}]*grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/s);
+    expect(styles).toMatch(/\.asset-scene-board-media-frame\s*\{[^}]*aspect-ratio:\s*3\s*\/\s*2/s);
+    expect(styles).toMatch(/\.asset-scene-board-media\s*\{[^}]*object-fit:\s*contain/s);
+  });
+
   it("does not retain retired standalone asset-library route dependencies", () => {
     const source = readFileSync(resolve(process.cwd(), "src/pages/AssetsPage.tsx"), "utf8");
 

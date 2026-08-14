@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "../components/Layout.tsx";
 import { AssetContactSheet } from "../features/assets/AssetContactSheet.tsx";
 import { CanonicalAssetViewer } from "../features/assets/CanonicalAssetViewer.tsx";
+import { RecommendedSceneBoard } from "../features/assets/RecommendedSceneBoard.tsx";
 import { useAgentCanvasAssets } from "../features/agent-canvas/assets/useAgentCanvasAssets.ts";
 import type { AgentAssetBrowserItem } from "../features/agent-canvas/assets/assetSelection.ts";
 import type { V2AssetLibraryCategory } from "../types-v2.ts";
@@ -29,6 +30,7 @@ export function AssetsPage() {
     () => library.loading ? [] : library.items,
     [library.items, library.loading],
   );
+  const showRecommendedSceneBoard = scope === "recommended" && category === "scenes";
   const selectedAsset = useMemo(
     () => displayedAssets.find((asset) => asset.id === selectedAssetId) ?? null,
     [displayedAssets, selectedAssetId],
@@ -102,15 +104,27 @@ export function AssetsPage() {
           {library.error ? <p className="asset-library-status is-error">{library.error}</p> : null}
           {library.loading ? <p className="asset-library-status">Loading assets...</p> : null}
           {!library.loading && !library.error && !displayedAssets.length ? <p className="asset-library-empty">No assets found.</p> : null}
-          <AssetContactSheet
-            assets={displayedAssets}
-            selectedAssetId={selectedAssetId}
-            buttonRef={(assetId, button) => {
-              if (button) assetCardRefsRef.current.set(assetId, button);
-              else assetCardRefsRef.current.delete(assetId);
-            }}
-            onSelect={selectAsset}
-          />
+          {showRecommendedSceneBoard ? (
+            <RecommendedSceneBoard
+              assets={displayedAssets}
+              selectedAssetId={selectedAssetId}
+              buttonRef={(assetId, button) => {
+                if (button) assetCardRefsRef.current.set(assetId, button);
+                else assetCardRefsRef.current.delete(assetId);
+              }}
+              onSelect={selectAsset}
+            />
+          ) : (
+            <AssetContactSheet
+              assets={displayedAssets}
+              selectedAssetId={selectedAssetId}
+              buttonRef={(assetId, button) => {
+                if (button) assetCardRefsRef.current.set(assetId, button);
+                else assetCardRefsRef.current.delete(assetId);
+              }}
+              onSelect={selectAsset}
+            />
+          )}
         </div>
       </div>
       {selectedAsset ? (
