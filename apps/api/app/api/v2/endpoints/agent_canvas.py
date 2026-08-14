@@ -160,6 +160,7 @@ from app.schemas.agent_canvas_runtime import (
     CanvasRuntimeEventV2,
     CanvasRuntimeSnapshotV2,
 )
+from app.schemas.agent_canvas_post_ready_checkpoint import CanvasPostReadyCheckpointV2
 from app.schemas.agent_canvas_editing import (
     EditingExportAcceptedV2,
     EditingExportCancelResponseV2,
@@ -209,6 +210,9 @@ from app.services.agent_canvas_provider_submission import ProviderSubmissionInte
 from app.persistence.agent_canvas_post_ready_repository import (
     AgentCanvasPostReadyEffectRepository,
 )
+from app.persistence.agent_canvas_post_ready_checkpoint_repository import (
+    AgentCanvasPostReadyCheckpointRepository,
+)
 from app.persistence.agent_canvas_result_commit_repository import (
     AgentCanvasResultCommitRepository,
 )
@@ -217,6 +221,9 @@ from app.services.agent_canvas_execution_result_commit import (
 )
 from app.services.agent_canvas_output_preparation import AgentCanvasOutputPreparationService
 from app.services.agent_canvas_post_ready_effects import AgentCanvasPostReadyEffectWorker
+from app.services.agent_canvas_post_ready_checkpoint import (
+    AgentCanvasPostReadyCheckpointService,
+)
 from app.services.agent_canvas_provider_capabilities import (
     ProviderCapabilityError,
     ProviderCapabilityService,
@@ -338,6 +345,7 @@ class AgentCanvasRuntime:
     provider_capabilities: ProviderCapabilityService
     provider_recovery: ProviderTaskRecoveryService
     post_ready_effects: AgentCanvasPostReadyEffectWorker
+    post_ready_checkpoints: AgentCanvasPostReadyCheckpointService
     editing_nodes: EditingNodeService
     editing_exports: EditingExportService
     editing_export_repository: AgentCanvasEditingExportRepository
@@ -838,6 +846,9 @@ def create_agent_canvas_runtime(
         },
         worker_id=f"agent-canvas-post-ready:{uuid4().hex}",
     )
+    post_ready_checkpoints = AgentCanvasPostReadyCheckpointService(
+        AgentCanvasPostReadyCheckpointRepository(database)
+    )
     auto_run_dispatcher = AgentCanvasAutoRunDispatcher(
         AgentCanvasAutomaticRunRepository(database, event_repository),
         start_or_extend=run_service.start_or_extend,
@@ -1136,6 +1147,7 @@ def create_agent_canvas_runtime(
         provider_capabilities=provider_capabilities,
         provider_recovery=provider_recovery,
         post_ready_effects=post_ready_effects,
+        post_ready_checkpoints=post_ready_checkpoints,
         editing_nodes=editing_nodes,
         editing_exports=editing_exports,
         editing_export_repository=editing_export_repository,
@@ -2488,6 +2500,21 @@ def cancel_canvas_run(
 
 
 @router.get(
+    "/workflows/{workflow_id}/executions/{execution_id}/post-ready-checkpoint",
+    response_model=CanvasPostReadyCheckpointV2,
+)
+def get_post_ready_checkpoint(
+    workflow_id: str,
+    execution_id: str,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+) -> CanvasPostReadyCheckpointV2:
+    try:
+        return runtime.post_ready_checkpoints.get(workflow_id, execution_id)
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+
+
+@router.get(
     "/workflows/{workflow_id}/runtime",
     response_model=CanvasRuntimeSnapshotV2,
 )
@@ -2875,6 +2902,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "agent_skill_file_missing": 503,
         "agent_skill_digest_mismatch": 503,
         "execution_not_found": 404,
+        "execution_workflow_mismatch": 409,
         "execution_already_terminal": 409,
         "execution_cancel_failed": 503,
         "execution_persistence_failed": 503,
