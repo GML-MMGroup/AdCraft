@@ -280,6 +280,30 @@ class AgentCanvasResultCommitRepository:
             )
         return tuple(_effect(row) for row in rows)
 
+    def find_latest_execution_id(self, *, workflow_id: str, node_id: str) -> str | None:
+        """Return the newest successful result execution for one immutable Ready Node."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                return connection.execute(
+                    select(AgentCanvasExecutionResultCommitRow.execution_id)
+                    .where(
+                        AgentCanvasExecutionResultCommitRow.workflow_id == workflow_id,
+                        AgentCanvasExecutionResultCommitRow.node_id == node_id,
+                        AgentCanvasExecutionResultCommitRow.outcome == "succeeded",
+                    )
+                    .order_by(
+                        AgentCanvasExecutionResultCommitRow.committed_at.desc(),
+                        AgentCanvasExecutionResultCommitRow.commit_id.desc(),
+                    )
+                    .limit(1)
+                ).scalar_one_or_none()
+        except SQLAlchemyError as error:
+            raise _error(
+                "post_ready_checkpoint_unavailable",
+                "Post-Ready result lineage is unavailable.",
+            ) from error
+
     @staticmethod
     def _assert_current_lease(connection, command) -> None:
         lease = connection.execute(

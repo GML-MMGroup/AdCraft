@@ -36,6 +36,7 @@ from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_guided_action_lineage import (
     GuidedActionExecutionLeafResolver,
 )
+from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 
 
 _TOPIC_ELEMENTS = {
@@ -164,6 +165,7 @@ class GuidanceAdvanceService:
         decision_bundles: AgentCanvasDecisionBundleRepository,
         retries: ChatTurnRetryService,
         events: EventRepository,
+        post_ready_gate: GuidancePostReadyGate,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -172,6 +174,7 @@ class GuidanceAdvanceService:
         self._decision_bundles = decision_bundles
         self._retries = retries
         self._events = events
+        self._post_ready_gate = post_ready_gate
         self._resolver = GuidanceAdvanceTargetResolver(conversations, continuations)
         self._consistency = GuidanceAuthorityConsistencyValidator()
 
@@ -198,7 +201,7 @@ class GuidanceAdvanceService:
     ) -> GuidanceAdvanceAuthorityPlanV1:
         """Build an immutable read-only plan for one authoritative commit."""
 
-        self._workflows.get_workflow(workflow_id)
+        workflow = self._workflows.get_workflow(workflow_id)
         session = self._conversations.get_guidance_session(workflow_id)
         timeline = self._conversations.list_timeline(workflow_id, limit=1)
         open_proposals = self._conversations.list_open_proposals(workflow_id)
@@ -210,6 +213,7 @@ class GuidanceAdvanceService:
         active_continuations = self._continuations.list_nonterminal_for_workflow(workflow_id)
         requirements = self._requirements.get_current(workflow_id)
         self._consistency.validate(session, requirements)
+        self._post_ready_gate.evaluate(workflow_id, session, workflow)
         target = self._resolver.resolve(session, requirements)
         request_payload = request.model_dump(mode="json")
         request_digest = _digest(request_payload)

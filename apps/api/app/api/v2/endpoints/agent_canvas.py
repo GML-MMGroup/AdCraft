@@ -262,6 +262,7 @@ from app.services.agent_canvas_conversation import (
 )
 from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_guidance_advance import GuidanceAdvanceService
+from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -617,13 +618,12 @@ def create_agent_canvas_runtime(
         ),
     )
     output_preparer = AgentCanvasOutputPreparationService(asset_service)
-    result_committer = AgentCanvasExecutionResultCommitService(
-        AgentCanvasResultCommitRepository(
-            database,
-            asset_repository,
-            event_repository,
-        )
+    result_commit_repository = AgentCanvasResultCommitRepository(
+        database,
+        asset_repository,
+        event_repository,
     )
+    result_committer = AgentCanvasExecutionResultCommitService(result_commit_repository)
     scheduler = DynamicCanvasScheduler(
         workflow_repository,
         runtime_repository,
@@ -1092,6 +1092,10 @@ def create_agent_canvas_runtime(
         decision_bundles=decision_bundles,
         retries=turn_retries,
         events=event_repository,
+        post_ready_gate=GuidancePostReadyGate(
+            result_commits=result_commit_repository,
+            checkpoints=post_ready_checkpoints,
+        ),
     )
     return AgentCanvasRuntime(
         database=database,
@@ -2870,6 +2874,9 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "guidance_action_lineage_invalid": 409,
         "active_continuation_conflict": 409,
         "guidance_state_inconsistent": 409,
+        "guidance_post_ready_pending": 409,
+        "post_ready_progression_failed": 409,
+        "post_ready_checkpoint_unavailable": 409,
         "guidance_session_not_found": 404,
         "guidance_revision_conflict": 409,
         "journey_transition_invalid": 422,
