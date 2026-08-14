@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -39,6 +40,10 @@ from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
 from app.schemas.v2_persistence import V2EventInsert
+
+
+logger = logging.getLogger(__name__)
+_RETRY_REFERENCE_PROJECTION_VERSION = "capability-retry-reference-kind-partition-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,6 +409,21 @@ def _retry_snapshot_json(
             AgentCanvasNodeRow.workflow_id == envelope.workflow_id
         )
     ).all()
+    projection = _project_retry_reference_authority(context_snapshot)
+    node_revisions = {str(node_id): int(revision) for node_id, revision in nodes}
+    if any(node_id not in node_revisions for node_id in projection.node_ids):
+        raise V2PersistenceError(
+            "capability_retry_reference_projection_invalid",
+            "Capability retry references a missing Canvas Node.",
+            stage="capability_retry_snapshot_construction",
+        )
+    logger.info(
+        "capability_retry_reference_projection version=%s node_reference_count=%s "
+        "image_asset_reference_count=%s",
+        _RETRY_REFERENCE_PROJECTION_VERSION,
+        len(projection.node_ids),
+        len(projection.image_asset_ids),
+    )
     skill_run_id = _style_skill_run_id(context_snapshot)
     snapshot = ContinuationTurnRetrySnapshotV1(
         workflow_id=envelope.workflow_id,
@@ -420,8 +440,8 @@ def _retry_snapshot_json(
         envelope_digest=hashlib.sha256(envelope.model_dump_json().encode("utf-8")).hexdigest(),
         requirement_revision_id=envelope.requirement_revision_id,
         requirement_digest=envelope.requirement_digest,
-        node_revisions={str(node_id): int(revision) for node_id, revision in nodes},
-        asset_ids=tuple(context_snapshot.approved_reference_ids),
+        node_revisions=node_revisions,
+        asset_ids=projection.image_asset_ids,
         response_locale=envelope.response_locale,
         policy_identity_digest=_capability_policy_identity(envelope),
         skill_identity_digest=(
