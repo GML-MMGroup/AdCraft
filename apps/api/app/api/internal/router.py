@@ -254,5 +254,10 @@ def execute_agent_tool(
             "normalized_result_id": result.normalized_result_id,
             "value": result.normalized_value,
             "repair_allowed": False,
+            **(
+                {"normalization_audit": result.normalization_audit.model_dump(mode="json")}
+                if result.normalization_audit is not None
+                else {}
+            ),
         },
     )

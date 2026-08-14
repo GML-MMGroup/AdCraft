@@ -492,6 +492,13 @@ class StructuredViolation(_StrictModel):
     actual: Any | None = None
 
 
+class AgentStructuredNormalizationAuditV1(_StrictModel):
+    contract_name: str = Field(min_length=1, max_length=160)
+    rule_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+    normalized_path_count: int = Field(ge=1, le=128)
+    submission_attempt: int = Field(ge=1, le=2)
+
+
 class AgentStructuredValidationResult(_StrictModel):
     protocol_version: Literal["1"] = _PROTOCOL_VERSION
     accepted: bool
@@ -499,6 +506,7 @@ class AgentStructuredValidationResult(_StrictModel):
     normalized_value: dict[str, Any] | None = None
     violations: tuple[StructuredViolation, ...] = Field(default=(), max_length=128)
     repair_allowed: bool = False
+    normalization_audit: AgentStructuredNormalizationAuditV1 | None = None
 
 
 class AgentRuntimeHealth(_StrictModel):

@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.persistence.agent_run_repository import AgentRunRecord, AgentRunRepository
 from app.schemas.agent_runtime import (
+    AgentStructuredNormalizationAuditV1,
     AgentStructuredSubmission,
     AgentStructuredValidationResult,
     StructuredViolation,
@@ -16,6 +17,10 @@ from app.schemas.agent_runtime import (
 from app.services.v2_agent_contract_registry import (
     AgentStructuredContractRegistryError,
     validate_agent_contract,
+)
+from app.services.v2_agent_structured_normalization import (
+    AGENT_STRUCTURED_NORMALIZATION_REGISTRY,
+    AgentStructuredNormalizationResult,
 )
 
 
@@ -38,11 +43,20 @@ class V2AgentStructuredValidationService:
             run,
             submission.value,
         )
+        normalization = AGENT_STRUCTURED_NORMALIZATION_REGISTRY.normalize(
+            run.contract_name or "",
+            submission.value,
+        )
+        if normalization.violations:
+            return _rejected(
+                submission,
+                normalization.violations + raw_semantic_violations,
+            )
 
         try:
             normalized = validate_agent_contract(
                 run.contract_name or "",
-                submission.value,
+                normalization.value,
             )
         except ValidationError as error:
             return _rejected(
@@ -86,6 +100,11 @@ class V2AgentStructuredValidationService:
                 normalized_result_id=submission.submission_id,
                 normalized_value=normalized_value,
                 repair_allowed=False,
+                normalization_audit=_normalization_audit(
+                    run,
+                    submission,
+                    normalization,
+                ),
             )
         semantic_violations = raw_semantic_violations + _semantic_violations(
             run.validation_profile,
@@ -99,6 +118,11 @@ class V2AgentStructuredValidationService:
             normalized_result_id=submission.submission_id,
             normalized_value=normalized_value,
             repair_allowed=False,
+            normalization_audit=_normalization_audit(
+                run,
+                submission,
+                normalization,
+            ),
         )
 
     def _raw_semantic_violations(
@@ -144,6 +168,21 @@ def _identity_violations(
             ),
         )
     return ()
+
+
+def _normalization_audit(
+    run: AgentRunRecord,
+    submission: AgentStructuredSubmission,
+    normalization: AgentStructuredNormalizationResult,
+) -> AgentStructuredNormalizationAuditV1 | None:
+    if not normalization.rule_ids:
+        return None
+    return AgentStructuredNormalizationAuditV1(
+        contract_name=run.contract_name or "",
+        rule_ids=normalization.rule_ids,
+        normalized_path_count=normalization.normalized_path_count,
+        submission_attempt=submission.attempt,
+    )
 
 
 def _semantic_violations(
