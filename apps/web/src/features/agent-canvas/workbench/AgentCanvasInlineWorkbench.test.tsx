@@ -255,41 +255,40 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
   });
 
-  it("edits legacy Script content before running it", async () => {
+  it("saves a Draft Script prompt without materializing content before running it", async () => {
     const node = {
       ...makeNode("script"),
+      generation_prompt: "Write a concise launch script.",
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node);
+
+    expect((screen.getByLabelText("Script prompt") as HTMLTextAreaElement).value)
+      .toBe("Write a concise launch script.");
+
+    fireEvent.change(screen.getByLabelText("Script prompt"), {
+      target: { value: "Write a quiet office story before the first meeting." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalled());
+    const patch = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0]?.[1];
+    expect(patch).toEqual(expect.objectContaining({
+      generation_prompt: "Write a quiet office story before the first meeting.",
+    }));
+    expect(patch).not.toHaveProperty("structured_content");
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("saves a ready Script node without running it again", async () => {
+    const node = {
+      ...makeNode("script", "ready"),
       structured_content: {
         document_kind: "script",
         script_text: "Open on dawn.",
         authoring_provenance: { source_option_id: "option-script-1" },
       },
     } as CanvasNodeV2;
-    const props = renderWorkbench(node);
-
-    expect((screen.getByLabelText("Script content") as HTMLTextAreaElement).value)
-      .toBe("Open on dawn.");
-
-    fireEvent.change(screen.getByLabelText("Script content"), {
-      target: { value: "Open on a quiet office before the first meeting." },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Run script node" }));
-
-    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
-      node.node_id,
-      expect.objectContaining({
-        structured_content: {
-          document_kind: "script",
-          script_text: "Open on dawn.",
-          authoring_provenance: { source_option_id: "option-script-1" },
-          content: "Open on a quiet office before the first meeting.",
-        },
-      }),
-    ));
-    expect(props.onRun).toHaveBeenCalledWith(node);
-  });
-
-  it("saves a ready Script node without running it again", async () => {
-    const node = makeNode("script", "ready");
     const props = renderWorkbench(node);
 
     fireEvent.change(screen.getByLabelText("Script content"), {
@@ -301,11 +300,26 @@ describe("AgentCanvasInlineWorkbench", () => {
       node.node_id,
       expect.objectContaining({
         structured_content: {
+          document_kind: "script",
           script_text: "Open on dawn.",
+          authoring_provenance: { source_option_id: "option-script-1" },
           content: "A refined ready script.",
         },
       }),
     ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("does not allow a working Script node to be edited or saved", () => {
+    const node = makeNode("script", "working");
+    const props = renderWorkbench(node);
+
+    expect(screen.getByLabelText("Script content")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Script node is working" }))
+      .toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Script node is working" }));
+
+    expect(props.patchNode).not.toHaveBeenCalled();
     expect(props.onRun).not.toHaveBeenCalled();
   });
 

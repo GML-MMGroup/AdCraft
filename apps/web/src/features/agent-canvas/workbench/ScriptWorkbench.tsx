@@ -22,16 +22,23 @@ export function ScriptWorkbench({
   modelResolution: CanvasRuntimeModelResolutionV2 | null;
 }) {
   const canRun = node.status === "draft" || node.status === "failed";
+  const isWorking = node.status === "working";
+  const editorDisabled = draft.pending || isWorking;
 
   return (
     <div className="agent-node-workbench__body">
       <label className="agent-node-workbench__composer agent-node-workbench__composer--script">
         <FourLinePromptEditor
-          ariaLabel="Script content"
-          value={draft.textContent}
-          disabled={draft.pending}
-          placeholder="Write or refine the script for the next production step."
-          onChange={(event) => draft.setTextContent(event.currentTarget.value)}
+          ariaLabel={canRun ? "Script prompt" : "Script content"}
+          value={canRun ? draft.prompt : draft.textContent}
+          disabled={editorDisabled}
+          placeholder={canRun
+            ? "Describe the script the Script Writer should create."
+            : "Write or refine the completed script."}
+          onChange={(event) => {
+            if (canRun) draft.setPrompt(event.currentTarget.value);
+            else draft.setTextContent(event.currentTarget.value);
+          }}
         />
       </label>
       <NodeWorkbenchError draft={draft} />
@@ -49,20 +56,24 @@ export function ScriptWorkbench({
               modelRef={draft.modelRef}
               modelSummary={node.model_summary}
               modelResolution={modelResolution}
-              disabled={draft.pending}
+              disabled={editorDisabled}
               onChange={draft.setModelSelection}
             />
           </div>
           <button
             type="button"
             className="agent-node-workbench__run"
-            aria-label={canRun
+            aria-label={isWorking
+              ? "Script node is working"
+              : canRun
               ? node.status === "failed" ? "Retry script node" : "Run script node"
               : "Save script node"}
-            title={canRun
+            title={isWorking
+              ? "Script generation is in progress"
+              : canRun
               ? node.status === "failed" ? "Retry script" : "Run script"
               : "Save script"}
-            disabled={draft.pending}
+            disabled={editorDisabled}
             onClick={() => void (canRun ? draft.run() : draft.save())}
           >
             <SendIcon />

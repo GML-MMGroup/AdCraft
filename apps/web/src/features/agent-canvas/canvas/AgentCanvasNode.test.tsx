@@ -219,6 +219,22 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByLabelText("script node type")).toBeTruthy();
   });
 
+  it("does not resurrect legacy Script text after current content is cleared", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {
+        script_text: "Legacy script that was cleared.",
+        content: "",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.queryByText("Legacy script that was cleared.")).toBeNull();
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
   it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
     const node = {
       ...makeNode("image"),

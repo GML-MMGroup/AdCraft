@@ -125,11 +125,11 @@ Run the command from Step 2. Expected: the Script cases and existing card suite 
 
 **Interfaces:**
 - Consumes: `NodeWorkbenchDraft`, existing provider-model props, `patchNode`, and `onRun`.
-- Produces: `ScriptWorkbench` with `Script content` textarea and existing save/run semantics.
+- Produces: `ScriptWorkbench` with prompt editing for runnable nodes, content editing for Ready nodes, and existing save/run semantics.
 
 - [ ] **Step 1: Write failing Script workbench tests**
 
-Replace the retired-node assertion with tests that render `Script content`, preserve existing structured fields when saving, and call `onRun` after patching edited content.
+Replace the retired-node assertion with tests that render `Script prompt` for Draft/Failed nodes, patch `generation_prompt` without materializing structured content before Run, preserve existing structured fields when saving Ready content, and keep Working nodes read-only.
 
 - [ ] **Step 2: Run tests and verify RED**
 
@@ -143,15 +143,20 @@ Expected: the Script workbench is empty.
 
 - [ ] **Step 3: Restore Script workbench and draft semantics**
 
-Treat Script as editable structured text and a provider-backed node:
+Treat Script as a provider-backed prompt while runnable and editable structured text after completion:
 
 ```ts
-const editsTextContent = node.node_type === "text" || node.node_type === "script";
+const isRunnableScript = node.node_type === "script"
+  && (node.status === "draft" || node.status === "failed");
+const editsTextContent = node.node_type === "text"
+  || (node.node_type === "script" && !isRunnableScript);
+const editsGenerationPrompt = isRunnableScript
+  || ["image", "video", "audio"].includes(node.node_type);
 const usesProvider = !isWorldSetting
   && ["text", "script", "image", "video", "audio"].includes(node.node_type);
 ```
 
-Render `ScriptWorkbench` for Script nodes. Its run button uses `draft.run()` for Draft/Failed and `draft.save()` for Ready, matching existing node lifecycle behavior.
+Render `ScriptWorkbench` for Script nodes. Its run button uses `draft.run()` for Draft/Failed and `draft.save()` for Ready, matching existing node lifecycle behavior. Disable editing and actions while Working.
 
 - [ ] **Step 4: Run tests and verify GREEN**
 
