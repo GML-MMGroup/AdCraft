@@ -300,6 +300,33 @@ class AgentModelExecutionPolicyV1(_StrictModel):
         return self
 
 
+class AgentStructuredValidationAttemptAuditV1(_StrictModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempt: Literal[1, 2]
+    attempt_stage: Literal["initial", "structured_repair"]
+    violation_count: int = Field(ge=1, le=128)
+    validation_paths: tuple[Annotated[str, Field(min_length=1, max_length=512)], ...] = Field(
+        max_length=32
+    )
+    violation_codes: tuple[Annotated[str, Field(min_length=1, max_length=160)], ...] = (
+        Field(min_length=1, max_length=32)
+    )
+    repair_allowed: bool
+    truncated: bool
+
+    @model_validator(mode="after")
+    def validate_ordered_unique_evidence(self) -> "AgentStructuredValidationAttemptAuditV1":
+        if len(self.validation_paths) != len(set(self.validation_paths)):
+            raise ValueError("Validation paths must be ordered and unique.")
+        if len(self.violation_codes) != len(set(self.violation_codes)):
+            raise ValueError("Violation codes must be ordered and unique.")
+        expected_stage = "initial" if self.attempt == 1 else "structured_repair"
+        if self.attempt_stage != expected_stage:
+            raise ValueError("Validation attempt stage must match its attempt number.")
+        return self
+
+
 class AgentTransportAttemptMetadataV1(_StrictModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -345,6 +372,16 @@ class AgentTransportAttemptMetadataV1(_StrictModel):
     reasoning_tokens: int | None = Field(default=None, ge=0)
     transport_retry_count: int = Field(ge=0, le=1)
     structured_attempt_count: int = Field(ge=1, le=2)
+    structured_validation_attempts: tuple[
+        AgentStructuredValidationAttemptAuditV1, ...
+    ] = Field(default=(), max_length=2)
+
+    @model_validator(mode="after")
+    def validate_structured_validation_attempt_order(self) -> "AgentTransportAttemptMetadataV1":
+        attempts = tuple(item.attempt for item in self.structured_validation_attempts)
+        if attempts != tuple(range(1, len(attempts) + 1)):
+            raise ValueError("Structured validation attempts must use ordered identities.")
+        return self
 
 
 class AgentRunRequest(_StrictModel):

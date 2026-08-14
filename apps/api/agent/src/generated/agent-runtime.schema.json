@@ -3063,6 +3063,73 @@
       "title": "AgentStructuredSubmission",
       "type": "object"
     },
+    "AgentStructuredValidationAttemptAuditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "enum": [
+            1,
+            2
+          ],
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "attempt_stage": {
+          "enum": [
+            "initial",
+            "structured_repair"
+          ],
+          "title": "Attempt Stage",
+          "type": "string"
+        },
+        "repair_allowed": {
+          "title": "Repair Allowed",
+          "type": "boolean"
+        },
+        "truncated": {
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "validation_paths": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Validation Paths",
+          "type": "array"
+        },
+        "violation_codes": {
+          "items": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Violation Codes",
+          "type": "array"
+        },
+        "violation_count": {
+          "maximum": 128,
+          "minimum": 1,
+          "title": "Violation Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "attempt",
+        "attempt_stage",
+        "repair_allowed",
+        "truncated",
+        "validation_paths",
+        "violation_codes",
+        "violation_count"
+      ],
+      "title": "AgentStructuredValidationAttemptAuditV1",
+      "type": "object"
+    },
     "AgentStructuredValidationResult": {
       "additionalProperties": false,
       "properties": {
@@ -3702,6 +3769,15 @@
           ],
           "title": "Structured Transport",
           "type": "string"
+        },
+        "structured_validation_attempts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentStructuredValidationAttemptAuditV1"
+          },
+          "maxItems": 2,
+          "title": "Structured Validation Attempts",
+          "type": "array"
         },
         "thinking_budget_tokens": {
           "anyOf": [

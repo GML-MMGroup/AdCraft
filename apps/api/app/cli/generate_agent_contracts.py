@@ -337,6 +337,7 @@ CONTRACT_MODELS = (
     agent_runtime.AgentRunContext,
     agent_runtime.AgentRunPolicy,
     agent_runtime.AgentModelExecutionPolicyV1,
+    agent_runtime.AgentStructuredValidationAttemptAuditV1,
     agent_runtime.AgentTransportAttemptMetadataV1,
     agent_operation_recovery.AgentOperationPolicyV2,
     agent_operation_recovery.AgentOperationFailureV2,
