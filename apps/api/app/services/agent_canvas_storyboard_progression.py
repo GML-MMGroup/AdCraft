@@ -165,7 +165,7 @@ class ProgressiveStoryboardReadyService:
                     aspect_ratio=content.global_parameters.aspect_ratio,
                 )
             )
-        if self._on_storyboard_pipeline_prepared is not None:
+        if created and self._on_storyboard_pipeline_prepared is not None:
             self._on_storyboard_pipeline_prepared(node.workflow_id, plan.document_id)
         return tuple(created)
 
