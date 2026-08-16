@@ -9,10 +9,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from sqlalchemy import func, insert, select, update
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import func, insert, select
 
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
+)
+from app.persistence.agent_canvas_conversation_repository import (
+    _complete_turn_state_in_transaction,
+    _publish_assistant_message_in_transaction,
 )
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
@@ -42,11 +47,26 @@ from app.services.agent_canvas_user_presentation import build_presentation_metad
 from app.schemas.agent_canvas_conversation import ChatTurnV2
 from app.schemas.agent_canvas_guidance import ContinuationTurnRetrySnapshotV1
 from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.language import BCP47Tag
 from app.schemas.v2_persistence import V2EventInsert
 
 
 logger = logging.getLogger(__name__)
 _RETRY_REFERENCE_PROJECTION_VERSION = "capability-retry-reference-kind-partition-v1"
+
+
+class SourceTurnReplyPublicationV1(BaseModel):
+    """Private source-turn reply accepted by atomic capability dispatch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    content: str = Field(min_length=1, max_length=2_000)
+    response_locale: BCP47Tag
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def strip_content(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +138,7 @@ class CapabilityDispatchService:
         session_id: str | None = None,
         expected_session_revision: int | None = None,
         allow_completed_source_replacement: bool = False,
+        source_reply: SourceTurnReplyPublicationV1 | None = None,
     ) -> CapabilityDispatchReceiptV1:
         if command.definition is None or command.command.capability_id is None:
             raise ValueError("Capability dispatch requires an invoke-capability command.")
@@ -134,6 +155,7 @@ class CapabilityDispatchService:
         capability_turn_id = f"turn_{identity[32:]}"
         continuation_id = f"continuation_{identity[:24]}"
         activity_id = f"activity_{identity[8:32]}"
+        source_reply_entry_id = f"msg_{_digest('source_reply', identity)[:32]}"
         now = self._clock().astimezone(timezone.utc)
         projection = context_snapshot.requirement_projection
         interaction_policy = GuidedInteractionPolicyService().decide_candidate_count(
@@ -184,29 +206,57 @@ class CapabilityDispatchService:
                     .mappings()
                     .one()
                 )
-                if str(current["status"]) == "completed":
-                    try:
-                        existing = self._envelopes.get_in_transaction(connection, envelope_id)
-                    except V2PersistenceError as error:
-                        if (
-                            error.code != "operation_envelope_not_found"
-                            or not allow_completed_source_replacement
-                        ):
-                            raise
-                    else:
-                        if not isinstance(existing, CapabilityCommandEnvelopeV2):
-                            raise ValueError(
-                                "Operation envelope type conflicts with capability dispatch."
-                            )
-                        connection.commit()
-                        return CapabilityDispatchReceiptV1(
-                            envelope_id=existing.envelope_id,
-                            continuation_id=continuation_id,
-                            capability_turn_id=existing.capability_turn_id,
-                            capability_id=existing.capability_id,
-                            activity_id=activity_id,
-                            queued_at=existing.created_at,
+                try:
+                    existing = self._envelopes.get_in_transaction(connection, envelope_id)
+                except V2PersistenceError as error:
+                    if error.code != "operation_envelope_not_found":
+                        raise
+                    existing = None
+                if existing is not None:
+                    if not isinstance(existing, CapabilityCommandEnvelopeV2):
+                        raise ValueError(
+                            "Operation envelope type conflicts with capability dispatch."
                         )
+                    _validate_existing_source_reply(
+                        connection,
+                        entry_id=source_reply_entry_id,
+                        source_reply=source_reply,
+                    )
+                    connection.commit()
+                    return CapabilityDispatchReceiptV1(
+                        envelope_id=existing.envelope_id,
+                        continuation_id=continuation_id,
+                        capability_turn_id=existing.capability_turn_id,
+                        capability_id=existing.capability_id,
+                        activity_id=activity_id,
+                        queued_at=existing.created_at,
+                    )
+                if str(current["status"]) == "completed" and not allow_completed_source_replacement:
+                    raise V2PersistenceError(
+                        "operation_envelope_not_found",
+                        "Operation envelope was not found.",
+                        stage="capability_dispatch",
+                    )
+                if str(current["turn_kind"]) == "message" and source_reply is None:
+                    raise V2PersistenceError(
+                        "capability_source_reply_missing",
+                        "Message-source capability dispatch requires a visible reply.",
+                        stage="capability_dispatch",
+                    )
+                if source_reply is not None:
+                    _publish_assistant_message_in_transaction(
+                        connection,
+                        events=self._events,
+                        turn=current,
+                        assistant_message=source_reply.content,
+                        now=timestamp,
+                        entry_id=source_reply_entry_id,
+                        metadata={
+                            "response_locale": source_reply.response_locale,
+                            "presentation_key": f"source-reply:{envelope_id}",
+                            "dispatch_identity": envelope_id,
+                        },
+                    )
                 connection.execute(
                     insert(AgentCanvasChatTurnRow).values(
                         turn_id=capability_turn_id,
@@ -261,11 +311,6 @@ class CapabilityDispatchService:
                         created_at=timestamp,
                         updated_at=timestamp,
                     )
-                )
-                connection.execute(
-                    update(AgentCanvasChatTurnRow)
-                    .where(AgentCanvasChatTurnRow.turn_id == source_turn.turn_id)
-                    .values(status="completed", updated_at=timestamp)
                 )
                 sequence_no = (
                     int(
@@ -334,11 +379,6 @@ class CapabilityDispatchService:
                             "continuation_id": continuation_id,
                         },
                     ),
-                    (
-                        "chat_turn_completed",
-                        source_turn.turn_id,
-                        {"turn_id": source_turn.turn_id},
-                    ),
                 ):
                     self._events.append_in_transaction(
                         connection,
@@ -352,6 +392,13 @@ class CapabilityDispatchService:
                             payload=payload,
                         ),
                     )
+                _complete_turn_state_in_transaction(
+                    connection,
+                    events=self._events,
+                    turn=current,
+                    now=timestamp,
+                    owned_events=True,
+                )
                 connection.commit()
             except BaseException:
                 connection.rollback()
@@ -365,6 +412,36 @@ class CapabilityDispatchService:
             capability_id=capability_id,
             activity_id=activity_id,
             queued_at=now,
+        )
+
+
+def _validate_existing_source_reply(
+    connection,
+    *,
+    entry_id: str,
+    source_reply: SourceTurnReplyPublicationV1 | None,
+) -> None:
+    row = (
+        connection.execute(
+            select(AgentCanvasChatEntryRow).where(AgentCanvasChatEntryRow.entry_id == entry_id)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        return
+    metadata = json.loads(str(row["metadata_json"]))
+    if (
+        source_reply is None
+        or str(row["entry_type"]) != "message"
+        or str(row["speaker"]) != "adcraft_video_agent"
+        or str(row["content"]) != source_reply.content
+        or metadata.get("response_locale") != source_reply.response_locale
+    ):
+        raise V2PersistenceError(
+            "capability_source_reply_conflict",
+            "Capability source reply conflicts with the immutable dispatch receipt.",
+            stage="capability_dispatch_replay",
         )
 
 

@@ -1625,7 +1625,7 @@ class AgentCanvasConversationRepository:
     ) -> ChatTurnAcceptedV2:
         accepted = self._create_turn(
             workflow_id,
-            turn_kind="message",
+            turn_kind="guidance_advance",
             request={
                 "schema_version": "1",
                 "video_skill_run_id": video_skill_run_id,
@@ -5072,35 +5072,86 @@ def _complete_turn_in_transaction(
     assistant_message: str | None,
     now: str,
 ) -> None:
+    if assistant_message:
+        _publish_assistant_message_in_transaction(
+            connection,
+            events=events,
+            turn=turn,
+            assistant_message=assistant_message,
+            now=now,
+        )
+    _complete_turn_state_in_transaction(
+        connection,
+        events=events,
+        turn=turn,
+        now=now,
+    )
+
+
+def _publish_assistant_message_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    turn: RowMapping,
+    assistant_message: str,
+    now: str,
+    entry_id: str | None = None,
+    metadata: Mapping[str, object] | None = None,
+) -> str:
     turn_id = str(turn["turn_id"])
     workflow_id = str(turn["workflow_id"])
     conversation_id = str(turn["conversation_id"])
-    if assistant_message:
-        connection.execute(
-            insert(AgentCanvasChatEntryRow).values(
-                entry_id=f"msg_{uuid4().hex}",
-                conversation_id=conversation_id,
-                workflow_id=workflow_id,
-                sequence_no=_next_chat_sequence(connection, conversation_id),
-                entry_type="message",
-                speaker="adcraft_video_agent",
-                content=assistant_message,
-                metadata_json=_dump({"turn_id": turn_id}),
-                created_at=now,
-            )
+    resolved_entry_id = entry_id or f"msg_{uuid4().hex}"
+    deterministic_publication = entry_id is not None
+    resolved_metadata: dict[str, object] = {"turn_id": turn_id}
+    if metadata:
+        resolved_metadata.update(metadata)
+    connection.execute(
+        insert(AgentCanvasChatEntryRow).values(
+            entry_id=resolved_entry_id,
+            conversation_id=conversation_id,
+            workflow_id=workflow_id,
+            sequence_no=_next_chat_sequence(connection, conversation_id),
+            entry_type="message",
+            speaker="adcraft_video_agent",
+            content=assistant_message,
+            metadata_json=_dump(resolved_metadata),
+            created_at=now,
         )
-        events.append_in_transaction(
-            connection,
-            V2EventInsert(
-                workflow_id=workflow_id,
-                event_type="chat_message_created",
-                created_at=now,
-                payload={
-                    "turn_id": turn_id,
-                    "speaker": "adcraft_video_agent",
-                },
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            conversation_id=(conversation_id if deterministic_publication else None),
+            turn_id=(turn_id if deterministic_publication else None),
+            event_type="chat_message_created",
+            transition_key=(
+                f"conversation:{turn_id}:chat_message_created"
+                if deterministic_publication
+                else None
             ),
-        )
+            created_at=now,
+            payload={
+                "turn_id": turn_id,
+                "speaker": "adcraft_video_agent",
+            },
+        ),
+    )
+    return resolved_entry_id
+
+
+def _complete_turn_state_in_transaction(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    turn: RowMapping,
+    now: str,
+    owned_events: bool = False,
+) -> None:
+    turn_id = str(turn["turn_id"])
+    workflow_id = str(turn["workflow_id"])
+    conversation_id = str(turn["conversation_id"])
     connection.execute(
         update(AgentCanvasChatTurnRow)
         .where(AgentCanvasChatTurnRow.turn_id == turn_id)
@@ -5116,7 +5167,12 @@ def _complete_turn_in_transaction(
         connection,
         V2EventInsert(
             workflow_id=workflow_id,
+            conversation_id=(conversation_id if owned_events else None),
+            turn_id=(turn_id if owned_events else None),
             event_type="chat_turn_completed",
+            transition_key=(
+                f"conversation:{turn_id}:chat_turn_completed" if owned_events else None
+            ),
             created_at=now,
             payload={"turn_id": turn_id},
         ),

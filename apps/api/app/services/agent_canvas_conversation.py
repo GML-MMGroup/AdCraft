@@ -112,7 +112,10 @@ from app.services.agent_canvas_command_compiler import (
 from app.services.agent_canvas_commands import AgentCanvasCommandService
 from app.services.agent_canvas_context import AgentLocalContextAssembler
 from app.services.agent_canvas_connection_policy import AgentCanvasConnectionPolicyService
-from app.services.agent_canvas_capability_dispatch import CapabilityDispatchService
+from app.services.agent_canvas_capability_dispatch import (
+    CapabilityDispatchService,
+    SourceTurnReplyPublicationV1,
+)
 from app.services.agent_canvas_capability_context import (
     build_capability_context_snapshot,
 )
@@ -1523,6 +1526,7 @@ class AgentConversationService:
             intent.mode == "guided_production"
             and not requirement_changed
             and intent.assistant_message is not None
+            and session.journey.stage in {"intake", "clarification"}
         ):
             return self._complete_turn(turn_id, turn.workflow_id, intent.assistant_message)
         if (
@@ -1748,6 +1752,14 @@ class AgentConversationService:
             ),
             session_id=session.session_id,
             expected_session_revision=session.revision,
+            source_reply=(
+                SourceTurnReplyPublicationV1(
+                    content=intent.assistant_message,
+                    response_locale=intent.response_locale,
+                )
+                if intent.assistant_message is not None
+                else None
+            ),
         )
         return self._conversations.get_turn(turn_id)
 
