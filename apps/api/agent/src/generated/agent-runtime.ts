@@ -466,6 +466,18 @@ export type AgentAnchorV2 = { readonly "alias": string; readonly "anchor_type": 
 
 export type AnchorRegistryContentV2 = { readonly "anchors"?: ReadonlyArray<AgentAnchorV2> };
 
+export type AgentAnchorNodeSourceV3 = { readonly "source_kind"?: "node"; readonly "workflow_id": string; readonly "node_id": string; readonly "node_revision": number };
+
+export type AgentAnchorImageAssetVersionSourceV3 = { readonly "source_kind"?: "image_asset_version"; readonly "workflow_id": string; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string };
+
+export type AgentAnchorSkillSnapshotSourceV3 = { readonly "source_kind"?: "skill_snapshot"; readonly "skill_id": string; readonly "skill_version": string; readonly "package_digest": string };
+
+export type AnchorAcceptanceEvidenceV1 = { readonly "evidence_id": string; readonly "actor": "agent" | "system" | "user"; readonly "decision": "accepted" | "activated" | "delegated" | "invalidated" | "retired"; readonly "action_id": string; readonly "requirement_revision_id": string; readonly "requirement_revision_no": number; readonly "node_revision"?: number | null; readonly "asset_version_id"?: string | null; readonly "document_revision": number; readonly "recorded_at": string };
+
+export type AgentAnchorV3 = { readonly "alias": string; readonly "identity_id": string; readonly "semantic_role": "character" | "composition" | "product" | "prop" | "scene" | "style" | "world_setting"; readonly "display_name": string; readonly "summary": string; readonly "lifecycle": "active" | "invalid" | "planned" | "retired"; readonly "source": AgentAnchorNodeSourceV3 | AgentAnchorImageAssetVersionSourceV3 | AgentAnchorSkillSnapshotSourceV3; readonly "acceptance_evidence": ReadonlyArray<AnchorAcceptanceEvidenceV1> };
+
+export type AnchorRegistryContentV3 = { readonly "schema_version": "3"; readonly "anchors"?: ReadonlyArray<AgentAnchorV3> };
+
 export type StoryboardPlanGlobalParametersV2 = { readonly "aspect_ratio": string; readonly "total_duration_seconds": number; readonly "segment_count": number };
 
 export type StoryboardNarrativeSegmentV2 = { readonly "sequence_id": string; readonly "order": number; readonly "start_seconds": number; readonly "end_seconds": number; readonly "narrative_goal": string; readonly "start_state": string; readonly "end_state": string; readonly "continuity_from_previous"?: string | null; readonly "terminal_policy"?: "close" | "continue" | null };
@@ -482,7 +494,13 @@ export type AgentDocumentLinkedNodeRuntimeV2 = { readonly "node_id": string; rea
 
 export type StoryboardProductionPlanContentV2 = { readonly "narrative_outline": string; readonly "global_parameters": StoryboardPlanGlobalParametersV2; readonly "segments": ReadonlyArray<StoryboardNarrativeSegmentV2>; readonly "rows": ReadonlyArray<StoryboardPlanRowV2>; readonly "node_records"?: ReadonlyArray<StoryboardNodeRecordV2>; readonly "materialized_panel_cursor"?: number; readonly "segment_materializations"?: ReadonlyArray<StoryboardSegmentMaterializationV2>; readonly "visual_anchor"?: StoryboardVisualAnchorV2 | null };
 
-export type AgentWorkingDocumentV2 = { readonly "document_id": string; readonly "workflow_id": string; readonly "guidance_session_id": string; readonly "kind": "anchor_registry" | "storyboard_production_plan"; readonly "title": string; readonly "revision": number; readonly "content_digest": string; readonly "content": AnchorRegistryContentV2 | StoryboardProductionPlanContentV2; readonly "created_by_agent_run_id": string; readonly "updated_by_agent_run_id": string; readonly "linked_nodes"?: ReadonlyArray<AgentDocumentLinkedNodeRuntimeV2>; readonly "created_at": string; readonly "updated_at": string };
+export type StoryboardPlannedNodeV3 = { readonly "sequence_id"?: string | null; readonly "node_role": "bgm" | "editing" | "storyboard_grid" | "video_segment"; readonly "node_id": string; readonly "node_revision": number; readonly "materialization_id": string };
+
+export type StoryboardVisualAnchorV3 = { readonly "sequence_id": string; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string; readonly "acceptance_evidence_id": string };
+
+export type StoryboardProductionPlanContentV3 = { readonly "schema_version"?: "3"; readonly "narrative_outline": string; readonly "requirement_revision_id": string; readonly "requirement_revision_no": number; readonly "global_parameters": StoryboardPlanGlobalParametersV2; readonly "segments": ReadonlyArray<StoryboardNarrativeSegmentV2>; readonly "rows": ReadonlyArray<StoryboardPlanRowV2>; readonly "planned_nodes"?: ReadonlyArray<StoryboardPlannedNodeV3>; readonly "visual_anchor"?: StoryboardVisualAnchorV3 | null };
+
+export type AgentWorkingDocumentV2 = { readonly "document_id": string; readonly "workflow_id": string; readonly "guidance_session_id": string; readonly "kind": "anchor_registry" | "storyboard_production_plan"; readonly "title": string; readonly "revision": number; readonly "content_schema_version"?: 2 | 3; readonly "content_digest": string; readonly "content": AnchorRegistryContentV3 | StoryboardProductionPlanContentV3 | AnchorRegistryContentV2 | StoryboardProductionPlanContentV2; readonly "created_by_agent_run_id": string; readonly "updated_by_agent_run_id": string; readonly "linked_nodes"?: ReadonlyArray<AgentDocumentLinkedNodeRuntimeV2>; readonly "created_at": string; readonly "updated_at": string };
 
 export type AgentWorkingDocumentReferenceV2 = { readonly "type"?: "agent_document_reference"; readonly "document_id": string; readonly "document_kind": "anchor_registry" | "storyboard_production_plan"; readonly "revision": number; readonly "content_digest": string; readonly "title": string };
 
@@ -513,6 +531,8 @@ export type AttachAudioNodePatchV2 = { readonly "document_id": string; readonly 
 export type AttachEditingNodePatchV2 = { readonly "document_id": string; readonly "expected_revision": number; readonly "idempotency_key": string; readonly "operation": "attach_editing_node"; readonly "node_id": string };
 
 export type AgentDocumentPatchSubmissionV2 = { readonly "patch": InitializeAnchorRegistryPatchV2 | UpsertAnchorPatchV2 | InitializeStoryboardPlanPatchV2 | ReplaceNarrativeSegmentPatchV2 | ReplaceStoryboardRowsPatchV2 | MaterializeStoryboardSegmentPatchV2 | FreezeStoryboardVisualAnchorPatchV2 | AttachStoryboardNodePatchV2 | AttachVideoNodePatchV2 | AttachAudioNodePatchV2 | AttachEditingNodePatchV2 };
+
+export type AgentDocumentMutationPlanV3 = { readonly "document_id": string; readonly "expected_revision": number; readonly "next_revision": number; readonly "operation": string; readonly "idempotency_key": string; readonly "request_digest": string; readonly "next_content": AnchorRegistryContentV3 | StoryboardProductionPlanContentV3 | AnchorRegistryContentV2 | StoryboardProductionPlanContentV2 };
 
 export type GuidanceSessionActionV2 = { readonly "action_id": string; readonly "logical_key": string; readonly "action": "resume_guidance" | "set_creative_authority" | "stop_guidance"; readonly "state": "applied" | "applying" | "failed" | "pending" | "superseded"; readonly "creating_turn_id": string; readonly "expected_session_revision": number; readonly "label": string; readonly "workflow_id": string; readonly "confirmation_required": boolean; readonly "reason": string; readonly "authority"?: "director" | "user" | null };
 

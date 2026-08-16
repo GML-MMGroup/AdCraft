@@ -15,6 +15,7 @@ from app.schemas.agent_canvas_conversation import (
     ContinuationCommitV2,
 )
 from app.schemas.agent_canvas_draft_seeds import AcceptedProposalCommitmentV1
+from app.schemas.agent_working_documents import AgentDocumentMutationPlanV3
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV1,
     JourneyEvidenceKindV1,
@@ -75,8 +76,44 @@ class NodePromptPreparationIntentV1(_MaterializationCommitModel):
 class MaterializationDocumentWriteV1(_MaterializationCommitModel):
     document_type: str = Field(min_length=1, max_length=80)
     document_id: str = Field(min_length=1, max_length=160)
-    payload: dict[str, JsonValue]
+    payload: dict[str, JsonValue] | None = None
+    mutation_plan: AgentDocumentMutationPlanV3 | None = None
     relation_metadata: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_write_kind(self) -> "MaterializationDocumentWriteV1":
+        if (self.payload is None) == (self.mutation_plan is None):
+            raise ValueError("A document write requires exactly one create or mutation payload.")
+        if self.mutation_plan is not None and self.mutation_plan.document_id != self.document_id:
+            raise ValueError("Document mutation identity does not match its write.")
+        return self
+
+
+class MaterializationDocumentResultV1(_MaterializationCommitModel):
+    document_id: str = Field(min_length=1, max_length=160)
+    operation: str = Field(min_length=1, max_length=160)
+    before_revision: int | None = Field(default=None, ge=1)
+    after_revision: int = Field(ge=1)
+    before_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    after_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class MaterializationAuthoritySnapshotV1(_MaterializationCommitModel):
+    workflow_revision: int = Field(ge=1)
+    guidance_revision: int = Field(ge=1)
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_no: int = Field(ge=1)
+    requirement_digest: str = Field(min_length=1, max_length=160)
+    anchor_registry_revision: int | None = Field(default=None, ge=1)
+    anchor_registry_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
+    storyboard_plan_revision: int | None = Field(default=None, ge=1)
+    storyboard_plan_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
 
 
 class MaterializationPlanV1(_MaterializationCommitModel):
@@ -141,6 +178,9 @@ class MaterializationOutcomeV1(_MaterializationCommitModel):
     node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     binding_ids: tuple[str, ...] = Field(default=(), max_length=128)
     document_ids: tuple[str, ...] = Field(default=(), max_length=32)
+    document_results: tuple[MaterializationDocumentResultV1, ...] = Field(default=(), max_length=32)
+    before_authority: MaterializationAuthoritySnapshotV1
+    after_authority: MaterializationAuthoritySnapshotV1
     prompt_preparation_ids: tuple[str, ...] = Field(default=(), max_length=32)
     receipt_id: str | None = Field(default=None, max_length=160)
     workflow_revision: int = Field(ge=1)

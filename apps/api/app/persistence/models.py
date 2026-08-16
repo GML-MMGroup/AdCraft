@@ -723,6 +723,7 @@ class AgentWorkingDocumentRow(Base):
     document_kind: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    content_schema_version: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     content_digest: Mapped[str] = mapped_column(Text, nullable=False)
     content_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_by_agent_run_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -755,6 +756,9 @@ class AgentWorkingDocumentPatchReceiptRow(Base):
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     operation: Mapped[str] = mapped_column(Text, nullable=False)
     request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    before_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    after_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    result_digest: Mapped[str] = mapped_column(Text, nullable=False)
     result_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 

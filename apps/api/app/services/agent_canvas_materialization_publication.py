@@ -14,6 +14,7 @@ from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
+from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import ProjectAssetSummaryV2
@@ -34,8 +35,15 @@ from app.schemas.agent_canvas_materialization_commit import (
     MaterializationDocumentWriteV1,
 )
 from app.schemas.agent_working_documents import (
+    AgentAnchorNodeSourceV3,
+    AgentAnchorSkillSnapshotSourceV3,
+    AgentAnchorV3,
+    AgentDocumentMutationPlanV3,
     AgentWorkingDocumentV2,
-    StoryboardNodeRecordV2,
+    AnchorAcceptanceEvidenceV1,
+    AnchorRegistryContentV3,
+    StoryboardPlannedNodeV3,
+    StoryboardProductionPlanContentV3,
 )
 from app.services.agent_canvas_conversation import (
     VideoAgentGateway,
@@ -96,6 +104,11 @@ class CapabilityMaterializationPublicationService:
         self._asset_resolver = asset_resolver
         self._storyboard_authoring = storyboard_authoring
         self._storyboard_gateway = storyboard_gateway
+        self._working_documents = AgentWorkingDocumentRepository(
+            workflows.database,
+            conversations.events,
+        )
+        self._requirements = AgentCanvasRequirementRepository(workflows.database)
 
     def publish(
         self,
@@ -140,14 +153,20 @@ class CapabilityMaterializationPublicationService:
             )
 
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = ()
+        authority_documents: tuple[MaterializationDocumentWriteV1, ...] = ()
         if isinstance(normalization, MaterializationNormalizationV1):
-            normalization, storyboard_documents = self._prepare_storyboard(
+            normalization, authority_documents = self._prepare_storyboard(
                 envelope,
                 normalization,
                 materialization_context,
                 session.session_id,
             )
+        preview_bundle = self._plan_compiler.compile_draft_bundle(envelope, normalization)
+        authority_documents += self._prepare_anchor_registry(
+            envelope,
+            session.session_id,
+            preview_bundle.nodes,
+        )
         workflow = self._workflows.get_workflow(envelope.workflow_id)
         plan = self._plan_compiler.compile(
             envelope,
@@ -159,7 +178,7 @@ class CapabilityMaterializationPublicationService:
                 target_node_revision=envelope.target_node_revision,
                 current_journey=session.journey,
             ),
-            storyboard_documents=storyboard_documents,
+            storyboard_documents=authority_documents,
         )
         lease_guard()
         try:
@@ -194,6 +213,205 @@ class CapabilityMaterializationPublicationService:
                 stage="capability_materialization_publication",
             )
         return outcome.node_ids[0]
+
+    def _prepare_anchor_registry(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        session_id: str,
+        nodes: tuple,
+    ) -> tuple[MaterializationDocumentWriteV1, ...]:
+        role_by_capability = {
+            "world_setting": "world_setting",
+            "product_design": "product",
+            "prop_design": "prop",
+            "character_design": "character",
+            "scene_design": "scene",
+        }
+        semantic_role = role_by_capability.get(envelope.capability_id)
+        if semantic_role is None and envelope.style_skill_run_id is None:
+            return ()
+        source_node = (
+            next((node for node in nodes if node.creative_role == semantic_role), None)
+            if semantic_role is not None
+            else None
+        )
+        if semantic_role is not None and source_node is None:
+            raise V2PersistenceError(
+                "agent_anchor_source_invalid",
+                "Accepted identity materialization did not plan its source Node.",
+                stage="capability_materialization_publication",
+            )
+        current = self._working_documents.get_by_kind(
+            envelope.workflow_id,
+            session_id,
+            "anchor_registry",
+        )
+        if current is not None and not isinstance(current.content, AnchorRegistryContentV3):
+            raise V2PersistenceError(
+                "agent_anchor_source_invalid",
+                "The current Anchor Registry is not authoritative V3 content.",
+                stage="capability_materialization_publication",
+            )
+        requirement = self._requirements.get_current(envelope.workflow_id)
+        next_revision = 1 if current is None else current.revision + 1
+        existing_content = (
+            AnchorRegistryContentV3(schema_version="3") if current is None else current.content
+        )
+        anchors = existing_content.anchors
+        affected_aliases: list[str] = []
+        replaced = False
+        if semantic_role is not None and source_node is not None:
+            current_anchor = existing_content.current_anchor(semantic_role)
+            if current_anchor is not None:
+                anchors = tuple(
+                    anchor.model_copy(update={"lifecycle": "retired"})
+                    if anchor.alias == current_anchor.alias
+                    else anchor
+                    for anchor in anchors
+                )
+                replaced = True
+            alias = _next_authoritative_alias(semantic_role, anchors)
+            affected_aliases.append(alias)
+            anchors += (
+                AgentAnchorV3(
+                    alias=alias,
+                    identity_id="identity_"
+                    + _digest(f"{envelope.materialization_id}:{semantic_role}")[:32],
+                    semantic_role=semantic_role,
+                    display_name=envelope.selected_option.title,
+                    summary=envelope.selected_option.public_summary,
+                    lifecycle=("active" if semantic_role == "world_setting" else "planned"),
+                    source=AgentAnchorNodeSourceV3(
+                        workflow_id=envelope.workflow_id,
+                        node_id=source_node.node_id,
+                        node_revision=source_node.revision,
+                    ),
+                    acceptance_evidence=(
+                        _anchor_acceptance(
+                            envelope,
+                            requirement_revision_id=requirement.revision_id,
+                            requirement_revision_no=requirement.revision_no,
+                            document_revision=next_revision,
+                            evidence_scope=semantic_role,
+                            node_revision=source_node.revision,
+                        ),
+                    ),
+                ),
+            )
+        if envelope.style_skill_run_id is not None:
+            snapshot = self._conversations.get_active_creative_direction_snapshot(
+                envelope.workflow_id
+            )
+            if (
+                snapshot.skill_run_id != envelope.style_skill_run_id
+                or snapshot.source_skill_id is None
+                or snapshot.source_skill_version is None
+                or snapshot.source_skill_digest is None
+            ):
+                raise V2PersistenceError(
+                    "style_skill_snapshot_invalid",
+                    "The selected Style Skill snapshot is incomplete or stale.",
+                    stage="capability_materialization_publication",
+                )
+            style_source = AgentAnchorSkillSnapshotSourceV3(
+                skill_id=snapshot.source_skill_id,
+                skill_version=snapshot.source_skill_version,
+                package_digest=_sha256_digest(snapshot.source_skill_digest),
+            )
+            current_style = existing_content.current_anchor("style")
+            if current_style is None or current_style.source != style_source:
+                if current_style is not None:
+                    anchors = tuple(
+                        anchor.model_copy(update={"lifecycle": "retired"})
+                        if anchor.alias == current_style.alias
+                        else anchor
+                        for anchor in anchors
+                    )
+                    replaced = True
+                style_alias = _next_authoritative_alias("style", anchors)
+                affected_aliases.append(style_alias)
+                anchors += (
+                    AgentAnchorV3(
+                        alias=style_alias,
+                        identity_id="identity_"
+                        + _digest(f"{envelope.style_skill_run_id}:style")[:32],
+                        semantic_role="style",
+                        display_name=snapshot.source_skill_id,
+                        summary=f"Approved Style Skill {snapshot.source_skill_id}.",
+                        lifecycle="active",
+                        source=style_source,
+                        acceptance_evidence=(
+                            _anchor_acceptance(
+                                envelope,
+                                requirement_revision_id=requirement.revision_id,
+                                requirement_revision_no=requirement.revision_no,
+                                document_revision=next_revision,
+                                evidence_scope="style",
+                                node_revision=None,
+                            ),
+                        ),
+                    ),
+                )
+        next_content = AnchorRegistryContentV3(schema_version="3", anchors=anchors)
+        document_id = (
+            current.document_id
+            if current is not None
+            else "adoc_" + _digest(f"{envelope.workflow_id}:{session_id}:anchor-registry")[:32]
+        )
+        if current is None:
+            document = AgentWorkingDocumentV2(
+                document_id=document_id,
+                workflow_id=envelope.workflow_id,
+                guidance_session_id=session_id,
+                kind="anchor_registry",
+                title="Anchor Registry",
+                revision=1,
+                content_schema_version=3,
+                content_digest=self._working_documents.digest_content(next_content),
+                content=next_content,
+                created_by_agent_run_id=envelope.materialization_id,
+                updated_by_agent_run_id=envelope.materialization_id,
+                created_at=envelope.created_at,
+                updated_at=envelope.created_at,
+            )
+            return (
+                MaterializationDocumentWriteV1(
+                    document_type="agent_working_document",
+                    document_id=document_id,
+                    payload=document.model_dump(mode="json"),
+                    relation_metadata={"anchor_aliases": affected_aliases},
+                ),
+            )
+        operation = (
+            "replace_anchor"
+            if replaced
+            else (
+                "register_planned_anchor" if semantic_role is not None else "activate_style_anchor"
+            )
+        )
+        request_digest = self._working_documents.digest_mutation(
+            document_id=document_id,
+            expected_revision=current.revision,
+            operation=operation,
+            content=next_content,
+            agent_run_id=envelope.materialization_id,
+        )
+        return (
+            MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=document_id,
+                mutation_plan=AgentDocumentMutationPlanV3(
+                    document_id=document_id,
+                    expected_revision=current.revision,
+                    next_revision=current.revision + 1,
+                    operation=operation,
+                    idempotency_key=f"anchor:{envelope.materialization_id}",
+                    request_digest=request_digest,
+                    next_content=next_content,
+                ),
+                relation_metadata={"anchor_aliases": affected_aliases},
+            ),
+        )
 
     def resume_committed(
         self,
@@ -351,7 +569,17 @@ class CapabilityMaterializationPublicationService:
             context,
             request_identity=f"{envelope.materialization_id}:outline",
         )
-        content = self._storyboard_authoring.build_outline_content(outline, authority_plan)
+        legacy_outline = self._storyboard_authoring.build_outline_content(outline, authority_plan)
+        requirement = self._requirements.get_current(envelope.workflow_id)
+        content = StoryboardProductionPlanContentV3(
+            schema_version="3",
+            narrative_outline=legacy_outline.narrative_outline,
+            requirement_revision_id=requirement.revision_id,
+            requirement_revision_no=requirement.revision_no,
+            global_parameters=legacy_outline.global_parameters,
+            segments=legacy_outline.segments,
+            rows=(),
+        )
         document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
         sequence_id = content.segments[0].sequence_id
         content_digest = AgentWorkingDocumentRepository.digest_content(content)
@@ -368,22 +596,18 @@ class CapabilityMaterializationPublicationService:
             segment_context,
             request_identity=f"{envelope.materialization_id}:{sequence_id}",
         )
-        content = self._storyboard_authoring.materialize_segment_content(
+        node_id = "node_" + _digest(envelope.materialization_id)[:32]
+        content = self._storyboard_authoring.plan_materialized_sequence_v3(
             content,
             sequence_id,
             segment,
-        )
-        node_id = "node_" + _digest(envelope.materialization_id)[:32]
-        content = content.model_copy(
-            update={
-                "node_records": (
-                    StoryboardNodeRecordV2(
-                        sequence_id=sequence_id,
-                        node_role="storyboard_grid",
-                        node_id=node_id,
-                    ),
-                )
-            }
+            planned_node=StoryboardPlannedNodeV3(
+                sequence_id=sequence_id,
+                node_role="storyboard_grid",
+                node_id=node_id,
+                node_revision=1,
+                materialization_id=envelope.materialization_id,
+            ),
         )
         document = AgentWorkingDocumentV2(
             document_id=document_id,
@@ -392,6 +616,7 @@ class CapabilityMaterializationPublicationService:
             kind="storyboard_production_plan",
             title="Storyboard Production Plan",
             revision=1,
+            content_schema_version=3,
             content_digest=AgentWorkingDocumentRepository.digest_content(content),
             content=content,
             created_by_agent_run_id=envelope.materialization_id,
@@ -503,3 +728,61 @@ class CapabilityMaterializationPublicationService:
 
 def _digest(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sha256_digest(value: str) -> str:
+    normalized = value.removeprefix("sha256:")
+    if len(normalized) != 64 or any(
+        character not in "0123456789abcdef" for character in normalized
+    ):
+        raise V2PersistenceError(
+            "style_skill_snapshot_invalid",
+            "The selected Style Skill digest is invalid.",
+            stage="capability_materialization_publication",
+        )
+    return f"sha256:{normalized}"
+
+
+def _anchor_acceptance(
+    envelope: ProposalApplicationEnvelopeV1,
+    *,
+    requirement_revision_id: str,
+    requirement_revision_no: int,
+    document_revision: int,
+    evidence_scope: str,
+    node_revision: int | None,
+) -> AnchorAcceptanceEvidenceV1:
+    return AnchorAcceptanceEvidenceV1(
+        evidence_id="evidence_"
+        + _digest(f"{envelope.materialization_id}:anchor:{evidence_scope}")[:32],
+        actor=envelope.selection_actor,
+        decision=("accepted" if envelope.selection_actor == "user" else "delegated"),
+        action_id=envelope.action_turn_id,
+        requirement_revision_id=requirement_revision_id,
+        requirement_revision_no=requirement_revision_no,
+        node_revision=node_revision,
+        document_revision=document_revision,
+        recorded_at=envelope.created_at,
+    )
+
+
+def _next_authoritative_alias(semantic_role: str, anchors: tuple[AgentAnchorV3, ...]) -> str:
+    prefix = {
+        "world_setting": "WORLD",
+        "product": "PRODUCT",
+        "prop": "PROP",
+        "character": "CHARACTER",
+        "scene": "SCENE",
+        "style": "STYLE",
+        "composition": "COMPOSITION",
+    }[semantic_role]
+    existing = {anchor.alias for anchor in anchors}
+    for index in range(1, 100):
+        candidate = f"{prefix}{index:02d}"
+        if candidate not in existing:
+            return candidate
+    raise V2PersistenceError(
+        "agent_anchor_alias_conflict",
+        "The Anchor Registry alias range is exhausted.",
+        stage="capability_materialization_publication",
+    )

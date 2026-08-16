@@ -22,6 +22,12 @@ from app.schemas.agent_canvas_creative_session import (
     VideoSpecialistDraftV2,
 )
 from app.schemas.agent_working_documents import (
+    AgentAnchorSemanticRoleV3,
+    AgentAnchorSourceV3,
+    AgentAnchorV3,
+    AnchorAcceptanceEvidenceV1,
+    AnchorRegistryContentV3,
+    AgentDocumentMutationPlanV3,
     AgentDocumentPatchV2,
     AgentAnchorV2,
     AgentDocumentPatchResultV2,
@@ -37,9 +43,10 @@ from app.schemas.agent_working_documents import (
     StoryboardPlanGlobalParametersV2,
     StoryboardPlanRowV2,
     StoryboardProductionPlanContentV2,
+    StoryboardProductionPlanContentV3,
+    StoryboardPlannedNodeV3,
     StoryboardSegmentMaterializationV2,
     StoryboardVisualAnchorV2,
-    UpsertAnchorPatchV2,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_working_documents import AgentWorkingDocumentService
@@ -269,6 +276,76 @@ class StoryboardSequenceAuthoringService:
             }
         )
 
+    @staticmethod
+    def plan_materialized_sequence_v3(
+        content: StoryboardProductionPlanContentV3,
+        sequence_id: str,
+        draft: StoryboardSegmentMaterializationDraftV2,
+        *,
+        planned_node: StoryboardPlannedNodeV3,
+    ) -> StoryboardProductionPlanContentV3:
+        """Plan one authoritative nine-row sequence without runtime mirrors."""
+
+        if sequence_id not in {item.sequence_id for item in content.segments}:
+            raise _storyboard_authority_error("Storyboard sequence was not found.")
+        if planned_node.sequence_id != sequence_id or planned_node.node_role != "storyboard_grid":
+            raise _storyboard_authority_error("The planned Grid Node does not match its sequence.")
+        if any(row.sequence_id == sequence_id for row in content.rows):
+            raise _storyboard_authority_error("Storyboard sequence is already materialized.")
+        if any(
+            record.sequence_id == sequence_id and record.node_role == "storyboard_grid"
+            for record in content.planned_nodes
+        ):
+            raise _storyboard_authority_error("Storyboard Grid Node is already planned.")
+        rows_by_sequence = {
+            item.sequence_id: tuple(
+                row for row in content.rows if row.sequence_id == item.sequence_id
+            )
+            for item in content.segments
+        }
+        rows_by_sequence[sequence_id] = tuple(
+            StoryboardPlanRowV2(
+                shot_index=1,
+                sequence_id=sequence_id,
+                panel_index=row.panel_index,
+                content_beat=row.content_beat,
+                anchor_aliases=row.anchor_aliases,
+                camera_description=row.camera_description,
+            )
+            for row in draft.rows
+        )
+        rows: list[StoryboardPlanRowV2] = []
+        for segment in content.segments:
+            for row in rows_by_sequence[segment.sequence_id]:
+                rows.append(row.model_copy(update={"shot_index": len(rows) + 1}))
+        try:
+            return StoryboardProductionPlanContentV3.model_validate(
+                {
+                    **content.model_dump(mode="json"),
+                    "rows": [row.model_dump(mode="json") for row in rows],
+                    "planned_nodes": [
+                        *(item.model_dump(mode="json") for item in content.planned_nodes),
+                        planned_node.model_dump(mode="json"),
+                    ],
+                }
+            )
+        except ValueError as error:
+            raise _storyboard_authority_error(
+                "Storyboard Production Plan invariants are invalid."
+            ) from error
+
+    @staticmethod
+    def derived_materialized_panel_cursor(content: StoryboardProductionPlanContentV3) -> int:
+        """Project the retired cursor from contiguous committed plan records."""
+
+        materialized = {row.sequence_id for row in content.rows}
+        contiguous = 0
+        for segment in content.segments:
+            if segment.sequence_id not in materialized:
+                break
+            contiguous += 1
+        return contiguous * 9
+
     def build_grid_context(
         self,
         workflow_id: str,
@@ -331,7 +408,7 @@ class StoryboardSequenceAuthoringService:
         plan_document_id: str,
         plan_revision: int,
         plan_content_digest: str,
-        content: StoryboardProductionPlanContentV2,
+        content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3,
         sequence_id: str,
         *,
         style_excerpt: str | None = None,
@@ -360,15 +437,7 @@ class StoryboardSequenceAuthoringService:
                 kind="anchor_registry",
                 limit=1,
             )
-            anchors = (
-                tuple(
-                    item
-                    for item in cast(AnchorRegistryContentV2, page.items[0].content).anchors
-                    if item.availability == "available" and item.source_id is not None
-                )
-                if page.items
-                else ()
-            )
+            anchors = _available_anchor_projection(page.items[0].content) if page.items else ()
         return StoryboardSegmentAuthoringContextV2(
             workflow_id=workflow_id,
             plan_document_id=plan_document_id,
@@ -813,8 +882,10 @@ class StoryboardSequenceAuthoringService:
         )
         if not page.items:
             raise _anchor_error("The Anchor Registry was not found.")
-        registry = cast(AnchorRegistryContentV2, page.items[0].content)
-        anchors_by_alias = {anchor.alias: anchor for anchor in registry.anchors}
+        registry = page.items[0].content
+        anchors_by_alias = {
+            anchor.alias: anchor for anchor in _available_anchor_projection(registry)
+        }
         resolved = []
         for alias in aliases:
             anchor = anchors_by_alias.get(alias)
@@ -825,14 +896,16 @@ class StoryboardSequenceAuthoringService:
 
 
 class GuidedAnchorRegistryService:
-    """Lazily register approved foundations without creating runtime inputs."""
+    """Plan authoritative Anchor Registry mutations for an owning transaction."""
 
-    _ROLE_MAPPING = {
-        "world_setting": ("W", "world_setting"),
-        "product": ("P", "subject"),
-        "prop": ("R", "subject"),
-        "character": ("C", "subject"),
-        "scene": ("E", "environment"),
+    _V3_ALIAS_PREFIX = {
+        "world_setting": "WORLD",
+        "product": "PRODUCT",
+        "prop": "PROP",
+        "character": "CHARACTER",
+        "scene": "SCENE",
+        "style": "STYLE",
+        "composition": "COMPOSITION",
     }
 
     def __init__(
@@ -844,60 +917,239 @@ class GuidedAnchorRegistryService:
         self._workflows = workflows
         self._documents = documents
 
-    def sync_approved_nodes(
+    def plan_planned_identity(
         self,
         *,
         workflow_id: str,
-        guidance_session_id: str,
+        document_id: str,
+        expected_revision: int,
         agent_run_id: str,
-    ) -> AgentWorkingDocumentV2:
-        document = self._documents.get_or_create_anchor_registry(
-            workflow_id=workflow_id,
-            guidance_session_id=guidance_session_id,
-            agent_run_id=agent_run_id,
-        )
-        content = cast(AnchorRegistryContentV2, document.content)
-        existing_sources = {
-            anchor.source_id for anchor in content.anchors if anchor.source_id is not None
-        }
-        aliases = {anchor.alias for anchor in content.anchors}
-        for node in self._workflows.get_workflow(workflow_id).nodes:
-            mapping = self._ROLE_MAPPING.get(node.creative_role)
-            if mapping is None or node.status != "ready" or node.node_id in existing_sources:
-                continue
-            prefix, anchor_type = mapping
-            alias = _next_alias(prefix, aliases)
-            document = self._documents.apply_agent_patch(
-                workflow_id,
-                agent_run_id,
-                UpsertAnchorPatchV2(
-                    operation="upsert_anchor",
-                    document_id=document.document_id,
-                    expected_revision=document.revision,
-                    idempotency_key=f"anchor:{node.node_id}:{node.revision}",
-                    anchor=AgentAnchorV2(
+        idempotency_key: str,
+        identity_id: str,
+        semantic_role: AgentAnchorSemanticRoleV3,
+        display_name: str,
+        summary: str,
+        source: AgentAnchorSourceV3,
+        acceptance_evidence: AnchorAcceptanceEvidenceV1,
+    ) -> AgentDocumentMutationPlanV3:
+        content = self._v3_content(workflow_id, document_id)
+        if content.current_anchor(semantic_role) is not None:
+            raise _anchor_authority_error(
+                "agent_anchor_alias_conflict",
+                "The semantic role already has a current accepted identity.",
+            )
+        alias = _next_v3_alias(self._V3_ALIAS_PREFIX[semantic_role], content)
+        next_content = content.model_copy(
+            update={
+                "anchors": content.anchors
+                + (
+                    AgentAnchorV3(
                         alias=alias,
-                        anchor_type=anchor_type,
-                        display_name=node.title,
-                        summary=(
-                            node.summary_prompt
-                            or node.generation_prompt
-                            or f"Approved {node.creative_role} foundation."
-                        ),
-                        source_kind="node",
-                        source_id=node.node_id,
-                        availability="available",
+                        identity_id=identity_id,
+                        semantic_role=semantic_role,
+                        display_name=display_name,
+                        summary=summary,
+                        lifecycle="planned",
+                        source=source,
+                        acceptance_evidence=(acceptance_evidence,),
                     ),
-                ),
-            ).document
-            aliases.add(alias)
-            existing_sources.add(node.node_id)
-        return document
+                )
+            }
+        )
+        return self._plan(
+            workflow_id=workflow_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            operation="register_planned_anchor",
+            content=next_content,
+        )
+
+    def plan_activate_identity(
+        self,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+        agent_run_id: str,
+        idempotency_key: str,
+        alias: str,
+        source: AgentAnchorSourceV3,
+        acceptance_evidence: AnchorAcceptanceEvidenceV1,
+    ) -> AgentDocumentMutationPlanV3:
+        content = self._v3_content(workflow_id, document_id)
+        current = _require_v3_anchor(content, alias)
+        if current.lifecycle != "planned":
+            raise _anchor_authority_error(
+                "agent_anchor_acceptance_stale",
+                "Only a planned anchor can be activated.",
+            )
+        replacement = current.model_copy(
+            update={
+                "lifecycle": "active",
+                "source": source,
+                "acceptance_evidence": current.acceptance_evidence + (acceptance_evidence,),
+            }
+        )
+        return self._plan_replacement(
+            workflow_id=workflow_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            operation="activate_anchor",
+            content=content,
+            replacement=replacement,
+        )
+
+    def plan_replace_identity(
+        self,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+        agent_run_id: str,
+        idempotency_key: str,
+        identity_id: str,
+        semantic_role: AgentAnchorSemanticRoleV3,
+        display_name: str,
+        summary: str,
+        source: AgentAnchorSourceV3,
+        acceptance_evidence: AnchorAcceptanceEvidenceV1,
+    ) -> AgentDocumentMutationPlanV3:
+        content = self._v3_content(workflow_id, document_id)
+        current = content.current_anchor(semantic_role)
+        if current is None:
+            raise _anchor_authority_error(
+                "agent_anchor_acceptance_stale",
+                "The semantic role has no current identity to replace.",
+            )
+        retired = current.model_copy(update={"lifecycle": "retired"})
+        alias = _next_v3_alias(self._V3_ALIAS_PREFIX[semantic_role], content)
+        replacement = AgentAnchorV3(
+            alias=alias,
+            identity_id=identity_id,
+            semantic_role=semantic_role,
+            display_name=display_name,
+            summary=summary,
+            lifecycle="planned",
+            source=source,
+            acceptance_evidence=(acceptance_evidence,),
+        )
+        anchors = tuple(
+            retired if anchor.alias == current.alias else anchor for anchor in content.anchors
+        ) + (replacement,)
+        return self._plan(
+            workflow_id=workflow_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            operation="replace_anchor",
+            content=content.model_copy(update={"anchors": anchors}),
+        )
+
+    def plan_invalidate_identity(
+        self,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+        agent_run_id: str,
+        idempotency_key: str,
+        alias: str,
+        acceptance_evidence: AnchorAcceptanceEvidenceV1,
+    ) -> AgentDocumentMutationPlanV3:
+        content = self._v3_content(workflow_id, document_id)
+        current = _require_v3_anchor(content, alias)
+        replacement = current.model_copy(
+            update={
+                "lifecycle": "invalid",
+                "acceptance_evidence": current.acceptance_evidence + (acceptance_evidence,),
+            }
+        )
+        return self._plan_replacement(
+            workflow_id=workflow_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            operation="invalidate_anchor",
+            content=content,
+            replacement=replacement,
+        )
+
+    def _v3_content(self, workflow_id: str, document_id: str) -> AnchorRegistryContentV3:
+        document = self._documents.get_document(workflow_id, document_id)
+        if document.kind != "anchor_registry" or not isinstance(
+            document.content, AnchorRegistryContentV3
+        ):
+            raise _anchor_authority_error(
+                "agent_anchor_role_invalid",
+                "Authoritative anchor planning requires an Anchor Registry V3 document.",
+            )
+        return document.content
+
+    def _plan_replacement(
+        self,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+        agent_run_id: str,
+        idempotency_key: str,
+        operation: str,
+        content: AnchorRegistryContentV3,
+        replacement: AgentAnchorV3,
+    ) -> AgentDocumentMutationPlanV3:
+        anchors = tuple(
+            replacement if anchor.alias == replacement.alias else anchor
+            for anchor in content.anchors
+        )
+        return self._plan(
+            workflow_id=workflow_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            agent_run_id=agent_run_id,
+            idempotency_key=idempotency_key,
+            operation=operation,
+            content=content.model_copy(update={"anchors": anchors}),
+        )
+
+    def _plan(
+        self,
+        *,
+        workflow_id: str,
+        document_id: str,
+        expected_revision: int,
+        agent_run_id: str,
+        idempotency_key: str,
+        operation: str,
+        content: AnchorRegistryContentV3,
+    ) -> AgentDocumentMutationPlanV3:
+        return self._documents.plan_content_mutation(
+            workflow_id=workflow_id,
+            agent_run_id=agent_run_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            next_content=content,
+        )
 
 
 def _storyboard_error(message: str) -> V2PersistenceError:
     return V2PersistenceError(
         "storyboard_sequence_invalid",
+        message,
+        stage="storyboard_sequence_authoring",
+    )
+
+
+def _storyboard_authority_error(message: str) -> V2PersistenceError:
+    return V2PersistenceError(
+        "agent_storyboard_plan_invalid",
         message,
         stage="storyboard_sequence_authoring",
     )
@@ -911,9 +1163,73 @@ def _anchor_error(message: str) -> V2PersistenceError:
     )
 
 
-def _next_alias(prefix: str, aliases: set[str]) -> str:
+def _next_v3_alias(prefix: str, content: AnchorRegistryContentV3) -> str:
+    aliases = {anchor.alias for anchor in content.anchors}
     for index in range(1, 100):
         candidate = f"{prefix}{index:02d}"
         if candidate not in aliases:
             return candidate
-    raise _anchor_error("The Anchor Registry alias range is exhausted.")
+    raise _anchor_authority_error(
+        "agent_anchor_alias_conflict",
+        "The Anchor Registry alias range is exhausted.",
+    )
+
+
+def _require_v3_anchor(content: AnchorRegistryContentV3, alias: str) -> AgentAnchorV3:
+    anchor = next((item for item in content.anchors if item.alias == alias), None)
+    if anchor is None:
+        raise _anchor_authority_error(
+            "agent_anchor_acceptance_stale",
+            "The Anchor Registry alias was not found.",
+        )
+    return anchor
+
+
+def _anchor_authority_error(code: str, message: str) -> V2PersistenceError:
+    return V2PersistenceError(code, message, stage="agent_anchor_registry")
+
+
+def _available_anchor_projection(
+    content: AnchorRegistryContentV2 | AnchorRegistryContentV3,
+) -> tuple[AgentAnchorV2, ...]:
+    if isinstance(content, AnchorRegistryContentV2):
+        return tuple(
+            item
+            for item in content.anchors
+            if item.availability == "available" and item.source_id is not None
+        )
+    anchor_type_by_role = {
+        "world_setting": "world_setting",
+        "product": "subject",
+        "prop": "subject",
+        "character": "subject",
+        "scene": "environment",
+        "style": "style",
+        "composition": "composition",
+    }
+    projected: list[AgentAnchorV2] = []
+    for anchor in content.anchors:
+        if anchor.lifecycle != "active":
+            continue
+        source = anchor.source
+        if source.source_kind == "node":
+            source_kind = "node"
+            source_id = source.node_id
+        elif source.source_kind == "image_asset_version":
+            source_kind = "image_asset"
+            source_id = source.asset_id
+        else:
+            source_kind = "skill_snapshot"
+            source_id = source.skill_id
+        projected.append(
+            AgentAnchorV2(
+                alias=anchor.alias,
+                anchor_type=anchor_type_by_role[anchor.semantic_role],
+                display_name=anchor.display_name,
+                summary=anchor.summary,
+                source_kind=source_kind,
+                source_id=source_id,
+                availability="available",
+            )
+        )
+    return tuple(projected)

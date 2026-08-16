@@ -27,6 +27,125 @@
       "title": "AgentActionEnvelopeV2",
       "type": "object"
     },
+    "AgentAnchorImageAssetVersionSourceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "source_kind": {
+          "const": "image_asset_version",
+          "default": "image_asset_version",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "asset_version_id",
+        "node_id",
+        "node_revision",
+        "workflow_id"
+      ],
+      "title": "AgentAnchorImageAssetVersionSourceV3",
+      "type": "object"
+    },
+    "AgentAnchorNodeSourceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "source_kind": {
+          "const": "node",
+          "default": "node",
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_revision",
+        "workflow_id"
+      ],
+      "title": "AgentAnchorNodeSourceV3",
+      "type": "object"
+    },
+    "AgentAnchorSkillSnapshotSourceV3": {
+      "additionalProperties": false,
+      "properties": {
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "skill_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Id",
+          "type": "string"
+        },
+        "skill_version": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Skill Version",
+          "type": "string"
+        },
+        "source_kind": {
+          "const": "skill_snapshot",
+          "default": "skill_snapshot",
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package_digest",
+        "skill_id",
+        "skill_version"
+      ],
+      "title": "AgentAnchorSkillSnapshotSourceV3",
+      "type": "object"
+    },
     "AgentAnchorV2": {
       "additionalProperties": false,
       "properties": {
@@ -99,6 +218,100 @@
         "summary"
       ],
       "title": "AgentAnchorV2",
+      "type": "object"
+    },
+    "AgentAnchorV3": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_evidence": {
+          "items": {
+            "$ref": "#/$defs/AnchorAcceptanceEvidenceV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Acceptance Evidence",
+          "type": "array"
+        },
+        "alias": {
+          "pattern": "^[A-Z][A-Z0-9]{1,31}$",
+          "title": "Alias",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "identity_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Identity Id",
+          "type": "string"
+        },
+        "lifecycle": {
+          "enum": [
+            "active",
+            "invalid",
+            "planned",
+            "retired"
+          ],
+          "title": "Lifecycle",
+          "type": "string"
+        },
+        "semantic_role": {
+          "enum": [
+            "character",
+            "composition",
+            "product",
+            "prop",
+            "scene",
+            "style",
+            "world_setting"
+          ],
+          "title": "Semantic Role",
+          "type": "string"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "image_asset_version": "#/$defs/AgentAnchorImageAssetVersionSourceV3",
+              "node": "#/$defs/AgentAnchorNodeSourceV3",
+              "skill_snapshot": "#/$defs/AgentAnchorSkillSnapshotSourceV3"
+            },
+            "propertyName": "source_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AgentAnchorNodeSourceV3"
+            },
+            {
+              "$ref": "#/$defs/AgentAnchorImageAssetVersionSourceV3"
+            },
+            {
+              "$ref": "#/$defs/AgentAnchorSkillSnapshotSourceV3"
+            }
+          ],
+          "title": "Source"
+        },
+        "summary": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "acceptance_evidence",
+        "alias",
+        "display_name",
+        "identity_id",
+        "lifecycle",
+        "semantic_role",
+        "source",
+        "summary"
+      ],
+      "title": "AgentAnchorV3",
       "type": "object"
     },
     "AgentAssetRefV2": {
@@ -1023,6 +1236,72 @@
         "status"
       ],
       "title": "AgentDocumentLinkedNodeRuntimeV2",
+      "type": "object"
+    },
+    "AgentDocumentMutationPlanV3": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "expected_revision": {
+          "minimum": 1,
+          "title": "Expected Revision",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "next_content": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AnchorRegistryContentV3"
+            },
+            {
+              "$ref": "#/$defs/StoryboardProductionPlanContentV3"
+            },
+            {
+              "$ref": "#/$defs/AnchorRegistryContentV2"
+            },
+            {
+              "$ref": "#/$defs/StoryboardProductionPlanContentV2"
+            }
+          ],
+          "title": "Next Content"
+        },
+        "next_revision": {
+          "minimum": 2,
+          "title": "Next Revision",
+          "type": "integer"
+        },
+        "operation": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation",
+          "type": "string"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "expected_revision",
+        "idempotency_key",
+        "next_content",
+        "next_revision",
+        "operation",
+        "request_digest"
+      ],
+      "title": "AgentDocumentMutationPlanV3",
       "type": "object"
     },
     "AgentDocumentPatchSubmissionV2": {
@@ -3891,6 +4170,12 @@
         "content": {
           "anyOf": [
             {
+              "$ref": "#/$defs/AnchorRegistryContentV3"
+            },
+            {
+              "$ref": "#/$defs/StoryboardProductionPlanContentV3"
+            },
+            {
               "$ref": "#/$defs/AnchorRegistryContentV2"
             },
             {
@@ -3903,6 +4188,15 @@
           "pattern": "^sha256:[0-9a-zA-Z_-]+$",
           "title": "Content Digest",
           "type": "string"
+        },
+        "content_schema_version": {
+          "default": 2,
+          "enum": [
+            2,
+            3
+          ],
+          "title": "Content Schema Version",
+          "type": "integer"
         },
         "created_at": {
           "format": "date-time",
@@ -3989,6 +4283,103 @@
       "title": "AgentWorkingDocumentV2",
       "type": "object"
     },
+    "AnchorAcceptanceEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "actor": {
+          "enum": [
+            "agent",
+            "system",
+            "user"
+          ],
+          "title": "Actor",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Version Id"
+        },
+        "decision": {
+          "enum": [
+            "accepted",
+            "activated",
+            "delegated",
+            "invalidated",
+            "retired"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "document_revision": {
+          "minimum": 1,
+          "title": "Document Revision",
+          "type": "integer"
+        },
+        "evidence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Revision"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action_id",
+        "actor",
+        "decision",
+        "document_revision",
+        "evidence_id",
+        "recorded_at",
+        "requirement_revision_id",
+        "requirement_revision_no"
+      ],
+      "title": "AnchorAcceptanceEvidenceV1",
+      "type": "object"
+    },
     "AnchorRegistryContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -4003,6 +4394,30 @@
         }
       },
       "title": "AnchorRegistryContentV2",
+      "type": "object"
+    },
+    "AnchorRegistryContentV3": {
+      "additionalProperties": false,
+      "properties": {
+        "anchors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AgentAnchorV3"
+          },
+          "maxItems": 256,
+          "title": "Anchors",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "3",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version"
+      ],
+      "title": "AnchorRegistryContentV3",
       "type": "object"
     },
     "AskUserNextActionCommandV1": {
@@ -17780,6 +18195,59 @@
       "title": "StoryboardPlanRowV2",
       "type": "object"
     },
+    "StoryboardPlannedNodeV3": {
+      "additionalProperties": false,
+      "properties": {
+        "materialization_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Materialization Id",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "node_role": {
+          "enum": [
+            "bgm",
+            "editing",
+            "storyboard_grid",
+            "video_segment"
+          ],
+          "title": "Node Role",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        }
+      },
+      "required": [
+        "materialization_id",
+        "node_id",
+        "node_revision",
+        "node_role"
+      ],
+      "title": "StoryboardPlannedNodeV3",
+      "type": "object"
+    },
     "StoryboardProductionPlanContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -17852,6 +18320,83 @@
         "segments"
       ],
       "title": "StoryboardProductionPlanContentV2",
+      "type": "object"
+    },
+    "StoryboardProductionPlanContentV3": {
+      "additionalProperties": false,
+      "properties": {
+        "global_parameters": {
+          "$ref": "#/$defs/StoryboardPlanGlobalParametersV2"
+        },
+        "narrative_outline": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Narrative Outline",
+          "type": "string"
+        },
+        "planned_nodes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryboardPlannedNodeV3"
+          },
+          "maxItems": 384,
+          "title": "Planned Nodes",
+          "type": "array"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/StoryboardPlanRowV2"
+          },
+          "maxItems": 1152,
+          "title": "Rows",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "3",
+          "default": "3",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/StoryboardNarrativeSegmentV2"
+          },
+          "maxItems": 128,
+          "title": "Segments",
+          "type": "array"
+        },
+        "visual_anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StoryboardVisualAnchorV3"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "global_parameters",
+        "narrative_outline",
+        "requirement_revision_id",
+        "requirement_revision_no",
+        "rows",
+        "segments"
+      ],
+      "title": "StoryboardProductionPlanContentV3",
       "type": "object"
     },
     "StoryboardProposalOptionV1": {
@@ -18315,6 +18860,56 @@
         "node_revision"
       ],
       "title": "StoryboardVisualAnchorV2",
+      "type": "object"
+    },
+    "StoryboardVisualAnchorV3": {
+      "additionalProperties": false,
+      "properties": {
+        "acceptance_evidence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Acceptance Evidence Id",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "sequence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Sequence Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "acceptance_evidence_id",
+        "asset_id",
+        "asset_version_id",
+        "node_id",
+        "node_revision",
+        "sequence_id"
+      ],
+      "title": "StoryboardVisualAnchorV3",
       "type": "object"
     },
     "StructuredViolation": {

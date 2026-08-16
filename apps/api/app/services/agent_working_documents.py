@@ -19,15 +19,22 @@ from app.persistence.asset_library_repository import V2AssetLibraryRepository
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import AgentCanvasNodeRow, WorkflowRow
 from app.schemas.agent_working_documents import (
+    AgentAnchorImageAssetVersionSourceV3,
+    AgentAnchorNodeSourceV3,
+    AgentAnchorSkillSnapshotSourceV3,
+    AgentAnchorV3,
+    AgentWorkingDocumentContentV2,
     AgentAnchorV2,
     AgentDocumentContextExcerptV2,
     AgentDocumentLinkedNodeRuntimeV2,
+    AgentDocumentMutationPlanV3,
     AgentDocumentPatchResultV2,
     AgentDocumentPatchV2,
     AgentWorkingDocumentV2,
     AgentWorkingDocumentKindV2,
     AgentWorkingDocumentPageV2,
     AnchorRegistryContentV2,
+    AnchorRegistryContentV3,
     AttachAudioNodePatchV2,
     AttachEditingNodePatchV2,
     AttachStoryboardNodePatchV2,
@@ -40,6 +47,7 @@ from app.schemas.agent_working_documents import (
     ReplaceStoryboardRowsPatchV2,
     StoryboardNodeRecordV2,
     StoryboardProductionPlanContentV2,
+    StoryboardProductionPlanContentV3,
     UpsertAnchorPatchV2,
 )
 
@@ -173,6 +181,11 @@ class AgentWorkingDocumentService:
         if document.kind != "storyboard_production_plan":
             return document.model_copy(update={"linked_nodes": ()})
         content = cast(StoryboardProductionPlanContentV2, document.content)
+        records = (
+            content.planned_nodes
+            if isinstance(content, StoryboardProductionPlanContentV3)
+            else content.node_records
+        )
         workflow = self._workflows.get_workflow(document.workflow_id)
         nodes_by_id = {node.node_id: node for node in workflow.nodes}
         linked_nodes = tuple(
@@ -183,7 +196,7 @@ class AgentWorkingDocumentService:
                 status=node.status,
                 revision=node.revision,
             )
-            for record in content.node_records
+            for record in records
             if (node := nodes_by_id.get(record.node_id)) is not None
         )
         return document.model_copy(update={"linked_nodes": linked_nodes})
@@ -194,7 +207,6 @@ class AgentWorkingDocumentService:
         agent_run_id: str,
         patch: AgentDocumentPatchV2,
     ) -> AgentDocumentPatchResultV2:
-        current = self.get_document(workflow_id, patch.document_id)
         request_digest = self._documents.digest_patch(
             patch,
             agent_run_id=agent_run_id,
@@ -209,6 +221,28 @@ class AgentWorkingDocumentService:
                 document=self.project_for_read(replay),
                 replayed=True,
             )
+        mutation = self.plan_agent_patch(workflow_id, agent_run_id, patch)
+        updated = self._documents.apply_patch(
+            document_id=mutation.document_id,
+            expected_revision=mutation.expected_revision,
+            operation=mutation.operation,
+            content=mutation.next_content,
+            agent_run_id=agent_run_id,
+            idempotency_key=mutation.idempotency_key,
+            now=self._clock(),
+            request_digest=mutation.request_digest,
+        )
+        return AgentDocumentPatchResultV2(document=self.project_for_read(updated))
+
+    def plan_agent_patch(
+        self,
+        workflow_id: str,
+        agent_run_id: str,
+        patch: AgentDocumentPatchV2,
+    ) -> AgentDocumentMutationPlanV3:
+        """Validate one document mutation without committing accepted authority."""
+
+        current = self.get_document(workflow_id, patch.document_id)
         if current.revision != patch.expected_revision:
             raise V2PersistenceError(
                 "agent_document_revision_conflict",
@@ -216,18 +250,71 @@ class AgentWorkingDocumentService:
                 stage="agent_working_documents",
                 details={"current_revision": current.revision},
             )
-        next_content = self._apply_patch(current, patch)
-        updated = self._documents.apply_patch(
+        return AgentDocumentMutationPlanV3(
             document_id=current.document_id,
-            expected_revision=patch.expected_revision,
+            expected_revision=current.revision,
+            next_revision=current.revision + 1,
             operation=patch.operation,
+            idempotency_key=patch.idempotency_key,
+            request_digest=self._documents.digest_patch(
+                patch,
+                agent_run_id=agent_run_id,
+            ),
+            next_content=self._apply_patch(current, patch),
+        )
+
+    def plan_content_mutation(
+        self,
+        *,
+        workflow_id: str,
+        agent_run_id: str,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        idempotency_key: str,
+        next_content: AgentWorkingDocumentContentV2,
+    ) -> AgentDocumentMutationPlanV3:
+        """Validate authoritative next content without committing it."""
+
+        current = self.get_document(workflow_id, document_id)
+        if current.revision != expected_revision:
+            raise V2PersistenceError(
+                "agent_document_revision_conflict",
+                "Agent working document changed before this mutation.",
+                stage="agent_working_documents",
+                details={"current_revision": current.revision},
+            )
+        if current.kind == "anchor_registry":
+            if not isinstance(next_content, AnchorRegistryContentV3):
+                raise _error(
+                    "agent_anchor_role_invalid",
+                    "Authoritative Anchor Registry mutations require V3 content.",
+                )
+            for anchor in next_content.anchors:
+                self._validate_v3_anchor_source(workflow_id, anchor)
+        else:
+            if not isinstance(next_content, StoryboardProductionPlanContentV3):
+                raise _error(
+                    "agent_storyboard_plan_invalid",
+                    "Authoritative Storyboard mutations require V3 content.",
+                )
+            self._validate_v3_storyboard_content(workflow_id, next_content)
+        request_digest = self._documents.digest_mutation(
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
             content=next_content,
             agent_run_id=agent_run_id,
-            idempotency_key=patch.idempotency_key,
-            now=self._clock(),
-            request_digest=request_digest,
         )
-        return AgentDocumentPatchResultV2(document=self.project_for_read(updated))
+        return AgentDocumentMutationPlanV3(
+            document_id=document_id,
+            expected_revision=expected_revision,
+            next_revision=expected_revision + 1,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+            next_content=next_content,
+        )
 
     def build_bounded_context(
         self,
@@ -491,6 +578,95 @@ class AgentWorkingDocumentService:
                 "agent_document_anchor_source_invalid",
                 "Anchor source Style Skill Snapshot is not approved.",
             )
+
+    def _validate_v3_anchor_source(self, workflow_id: str, anchor: AgentAnchorV3) -> None:
+        source = anchor.source
+        if isinstance(source, AgentAnchorNodeSourceV3):
+            if source.workflow_id != workflow_id:
+                raise _cross_workflow_error()
+            node = self._workflows.get_node(workflow_id, source.node_id)
+            if node.revision != source.node_revision:
+                raise _error(
+                    "agent_anchor_acceptance_stale",
+                    "Anchor source Node revision is stale.",
+                )
+            expected_role = (
+                "world_setting" if anchor.semantic_role == "world_setting" else anchor.semantic_role
+            )
+            if node.creative_role != expected_role:
+                raise _error(
+                    "agent_anchor_source_invalid",
+                    "Anchor source Node does not match the semantic role.",
+                )
+            return
+        if isinstance(source, AgentAnchorImageAssetVersionSourceV3):
+            if source.workflow_id != workflow_id:
+                raise _cross_workflow_error()
+            node = self._workflows.get_node(workflow_id, source.node_id)
+            if node.revision != source.node_revision:
+                raise _error(
+                    "agent_anchor_acceptance_stale",
+                    "Anchor source Node revision is stale.",
+                )
+            version = self._assets.find_version(version_id=source.asset_version_id)
+            if (
+                version is None
+                or version.asset_id != source.asset_id
+                or version.source_workflow_id != workflow_id
+                or version.source_node_id != source.node_id
+                or version.status != "ready"
+                or not version.mime_type.startswith("image/")
+            ):
+                raise _error(
+                    "agent_anchor_source_invalid",
+                    "Anchor activation requires the exact readable image Asset version.",
+                )
+            return
+        if not isinstance(source, AgentAnchorSkillSnapshotSourceV3):
+            raise _error("agent_anchor_source_invalid", "Anchor source is unsupported.")
+        try:
+            snapshot = self._conversations.get_active_creative_direction_snapshot(workflow_id)
+        except V2PersistenceError as error:
+            raise _error(
+                "agent_anchor_source_invalid",
+                "Anchor source Style Skill snapshot is not active.",
+            ) from error
+        if (
+            snapshot.source_skill_id != source.skill_id
+            or snapshot.source_skill_version != source.skill_version
+            or snapshot.source_skill_digest != source.package_digest
+        ):
+            raise _error(
+                "agent_anchor_source_invalid",
+                "Anchor source Style Skill snapshot does not match the active selection.",
+            )
+
+    def _validate_v3_storyboard_content(
+        self,
+        workflow_id: str,
+        content: StoryboardProductionPlanContentV3,
+    ) -> None:
+        for record in content.planned_nodes:
+            node = self._workflows.get_node(workflow_id, record.node_id)
+            if node.revision != record.node_revision:
+                raise _error(
+                    "agent_storyboard_plan_invalid",
+                    "Storyboard planned Node revision is stale.",
+                )
+        if content.visual_anchor is not None:
+            version = self._assets.find_version(version_id=content.visual_anchor.asset_version_id)
+            if (
+                version is None
+                or version.asset_id != content.visual_anchor.asset_id
+                or version.source_workflow_id != workflow_id
+                or version.source_node_id != content.visual_anchor.node_id
+                or version.status != "ready"
+                or not version.mime_type.startswith("image/")
+            ):
+                raise _error(
+                    "agent_storyboard_plan_invalid",
+                    "Storyboard visual anchor requires the exact readable Grid Asset version.",
+                )
 
     def _validate_storyboard_content(
         self,

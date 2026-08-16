@@ -5626,6 +5626,11 @@ def _insert_materialization_document(
             "materialization_document_invalid",
             "Materialization document type is not supported.",
         )
+    if document_write.payload is None:
+        raise _error(
+            "materialization_document_invalid",
+            "Materialization document create payload is missing.",
+        )
     try:
         document = AgentWorkingDocumentV2.model_validate(document_write.payload)
     except ValueError as error:
@@ -5650,6 +5655,7 @@ def _insert_materialization_document(
             document_kind=document.kind,
             title=document.title,
             revision=document.revision,
+            content_schema_version=document.content_schema_version,
             content_digest=document.content_digest,
             content_json=_dump(document.content.model_dump(mode="json")),
             created_by_agent_run_id=document.created_by_agent_run_id,

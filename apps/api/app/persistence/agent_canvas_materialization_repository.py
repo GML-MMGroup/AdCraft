@@ -42,6 +42,7 @@ from app.persistence.agent_canvas_operation_envelope_repository import (
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -61,6 +62,8 @@ from app.persistence.models import (
     AgentCanvasMaterializationCommitRow,
     AgentCanvasNodeRow,
     AgentCanvasWorkflowRow,
+    AgentWorkingDocumentRow,
+    AssetVersionRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas import CanvasNodeV2
@@ -74,14 +77,26 @@ from app.schemas.agent_canvas_materialization import (
     ProposalPublicationEnvelopeV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
+    MaterializationAuthoritySnapshotV1,
+    MaterializationDocumentResultV1,
     MaterializationOutcomeV1,
     MaterializationPlanV1,
+)
+from app.schemas.agent_working_documents import (
+    AgentAnchorImageAssetVersionSourceV3,
+    AgentAnchorNodeSourceV3,
+    AgentWorkingDocumentV2,
+    AnchorRegistryContentV3,
+    StoryboardProductionPlanContentV3,
 )
 from app.schemas.agent_canvas_guided_checkpoint import (
     GuidedCheckpointOriginV1,
     guided_checkpoint_id,
 )
-from app.schemas.agent_canvas_requirements import RequirementDirectiveV1
+from app.schemas.agent_canvas_requirements import (
+    RequirementDirectiveV1,
+    RequirementLedgerRevisionV1,
+)
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_requirement_directives import (
     canonicalize_requirement_directives,
@@ -118,6 +133,7 @@ class AgentCanvasMaterializationRepository:
         self._conversations = AgentCanvasConversationRepository(database, events)
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
         self._requirements = AgentCanvasRequirementRepository(database)
+        self._working_documents = AgentWorkingDocumentRepository(database, events)
         self._fault_injector = fault_injector
 
     def get_completed_outcome(
@@ -434,15 +450,116 @@ class AgentCanvasMaterializationRepository:
                     if fault_injector is not None:
                         fault_injector("node")
                         fault_injector("binding")
+                    document_results: list[MaterializationDocumentResultV1] = []
+                    document_kinds: dict[str, str] = {}
                     for document_write in materialization_plan.document_writes:
-                        _insert_materialization_document(
+                        mutation = document_write.mutation_plan
+                        if mutation is None:
+                            document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                            document_kinds[document.document_id] = document.kind
+                            _validate_authority_document_sources(
+                                connection,
+                                plan=materialization_plan,
+                                document=document,
+                            )
+                            _insert_materialization_document(
+                                connection,
+                                plan=materialization_plan,
+                                guidance_session_id=proposal.guidance_session_id,
+                                document_write=document_write,
+                            )
+                            document_results.append(
+                                MaterializationDocumentResultV1(
+                                    document_id=document.document_id,
+                                    operation="create_document",
+                                    after_revision=document.revision,
+                                    after_digest=document.content_digest,
+                                )
+                            )
+                            continue
+                        current = (
+                            connection.execute(
+                                select(AgentWorkingDocumentRow).where(
+                                    AgentWorkingDocumentRow.document_id == mutation.document_id
+                                )
+                            )
+                            .mappings()
+                            .one_or_none()
+                        )
+                        if current is None:
+                            raise _error(
+                                "agent_document_not_found",
+                                "Agent working document was not found.",
+                            )
+                        current_document = _materialization_document(current)
+                        document_kinds[current_document.document_id] = current_document.kind
+                        next_document = current_document.model_copy(
+                            update={
+                                "revision": mutation.next_revision,
+                                "content": mutation.next_content,
+                                "content_schema_version": 3,
+                                "content_digest": self._working_documents.digest_content(
+                                    mutation.next_content
+                                ),
+                            }
+                        )
+                        _validate_authority_document_sources(
                             connection,
                             plan=materialization_plan,
-                            guidance_session_id=proposal.guidance_session_id,
-                            document_write=document_write,
+                            document=next_document,
+                        )
+                        updated_document = self._working_documents.apply_content_in_transaction(
+                            connection,
+                            document_id=mutation.document_id,
+                            expected_revision=mutation.expected_revision,
+                            operation=mutation.operation,
+                            content=mutation.next_content,
+                            agent_run_id=materialization_plan.materialization_id,
+                            idempotency_key=mutation.idempotency_key,
+                            now=datetime.fromisoformat(now),
+                            request_digest=mutation.request_digest,
+                        )
+                        document_results.append(
+                            MaterializationDocumentResultV1(
+                                document_id=mutation.document_id,
+                                operation=mutation.operation,
+                                before_revision=int(current["revision"]),
+                                after_revision=updated_document.revision,
+                                before_digest=str(current["content_digest"]),
+                                after_digest=updated_document.content_digest,
+                            )
+                        )
+                        _append_authority_document_events(
+                            connection,
+                            events=self._events,
+                            before=current_document,
+                            after=updated_document,
+                            operation=mutation.operation,
+                            receipt_id=(
+                                receipt.receipt_id if receipt is not None else materialization_id
+                            ),
+                        )
+                    for document_write, document_result in zip(
+                        materialization_plan.document_writes,
+                        document_results,
+                        strict=True,
+                    ):
+                        if document_result.before_revision is not None:
+                            continue
+                        document = AgentWorkingDocumentV2.model_validate(document_write.payload)
+                        _append_authority_document_events(
+                            connection,
+                            events=self._events,
+                            before=None,
+                            after=document,
+                            operation=document_result.operation,
+                            receipt_id=(
+                                receipt.receipt_id if receipt is not None else materialization_id
+                            ),
                         )
                     if fault_injector is not None:
                         fault_injector("document")
+                    requirement_revision = requirement_head
                     if proposal.capability_id != "quick_media":
                         commitment_values = tuple(
                             (
@@ -1058,6 +1175,23 @@ class AgentCanvasMaterializationRepository:
                         document_ids=tuple(
                             item.document_id for item in materialization_plan.document_writes
                         ),
+                        document_results=tuple(document_results),
+                        before_authority=_authority_snapshot(
+                            workflow_revision=expected_workflow_revision,
+                            guidance_revision=expected_session_revision,
+                            requirement=requirement_head,
+                            document_results=document_results,
+                            document_kinds=document_kinds,
+                            before=True,
+                        ),
+                        after_authority=_authority_snapshot(
+                            workflow_revision=expected_workflow_revision + 1,
+                            guidance_revision=next_session_revision,
+                            requirement=requirement_revision,
+                            document_results=document_results,
+                            document_kinds=document_kinds,
+                            before=False,
+                        ),
                         prompt_preparation_ids=tuple(
                             item.operation_id for item in materialization_plan.prompt_preparations
                         ),
@@ -1600,6 +1734,277 @@ def _with_guided_checkpoint_origin(
         updated.append(node.model_copy(update={"metadata": metadata}))
         attached = True
     return tuple(updated)
+
+
+def _materialization_document(row: Mapping[str, object]) -> AgentWorkingDocumentV2:
+    return AgentWorkingDocumentV2.model_validate(
+        {
+            "document_id": row["document_id"],
+            "workflow_id": row["workflow_id"],
+            "guidance_session_id": row["guidance_session_id"],
+            "kind": row["document_kind"],
+            "title": row["title"],
+            "revision": row["revision"],
+            "content_schema_version": row["content_schema_version"],
+            "content_digest": row["content_digest"],
+            "content": json.loads(str(row["content_json"])),
+            "created_by_agent_run_id": row["created_by_agent_run_id"],
+            "updated_by_agent_run_id": row["updated_by_agent_run_id"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+    )
+
+
+def _authority_snapshot(
+    *,
+    workflow_revision: int,
+    guidance_revision: int,
+    requirement: RequirementLedgerRevisionV1,
+    document_results: list[MaterializationDocumentResultV1],
+    document_kinds: dict[str, str],
+    before: bool,
+) -> MaterializationAuthoritySnapshotV1:
+    revisions: dict[str, int | None] = {
+        "anchor_registry": None,
+        "storyboard_production_plan": None,
+    }
+    digests: dict[str, str | None] = {
+        "anchor_registry": None,
+        "storyboard_production_plan": None,
+    }
+    for result in document_results:
+        kind = document_kinds[result.document_id]
+        revisions[kind] = result.before_revision if before else result.after_revision
+        digests[kind] = result.before_digest if before else result.after_digest
+    return MaterializationAuthoritySnapshotV1(
+        workflow_revision=workflow_revision,
+        guidance_revision=guidance_revision,
+        requirement_revision_id=requirement.revision_id,
+        requirement_revision_no=requirement.revision_no,
+        requirement_digest=requirement.digest,
+        anchor_registry_revision=revisions["anchor_registry"],
+        anchor_registry_digest=digests["anchor_registry"],
+        storyboard_plan_revision=revisions["storyboard_production_plan"],
+        storyboard_plan_digest=digests["storyboard_production_plan"],
+    )
+
+
+def _validate_authority_document_sources(
+    connection: Connection,
+    *,
+    plan: MaterializationPlanV1,
+    document: AgentWorkingDocumentV2,
+) -> None:
+    content = document.content
+    if isinstance(content, AnchorRegistryContentV3):
+        planned_node_ids = {node.node_id for node in plan.nodes}
+        for anchor in content.anchors:
+            source = anchor.source
+            if isinstance(source, (AgentAnchorNodeSourceV3, AgentAnchorImageAssetVersionSourceV3)):
+                _require_exact_materialization_node_source(
+                    connection,
+                    workflow_id=plan.workflow_id,
+                    node_id=source.node_id,
+                    node_revision=source.node_revision,
+                    source_workflow_id=source.workflow_id,
+                    allow_newer_revision=source.node_id not in planned_node_ids,
+                )
+                if not any(
+                    evidence.node_revision == source.node_revision
+                    for evidence in anchor.acceptance_evidence
+                ):
+                    raise _error(
+                        "agent_anchor_acceptance_stale",
+                        "Anchor acceptance does not match its source Node revision.",
+                    )
+            if isinstance(source, AgentAnchorImageAssetVersionSourceV3):
+                asset_source = connection.execute(
+                    select(
+                        AssetVersionRow.asset_id,
+                        AssetVersionRow.source_workflow_id,
+                        AssetVersionRow.source_node_id,
+                        AssetVersionRow.status,
+                    ).where(AssetVersionRow.version_id == source.asset_version_id)
+                ).one_or_none()
+                if (
+                    asset_source is None
+                    or str(asset_source.asset_id) != source.asset_id
+                    or str(asset_source.source_workflow_id) != plan.workflow_id
+                    or str(asset_source.source_node_id) != source.node_id
+                    or str(asset_source.status) != "ready"
+                ):
+                    raise _error(
+                        "agent_anchor_source_invalid",
+                        "Anchor Asset version is not an exact readable Workflow source.",
+                    )
+        return
+    if isinstance(content, StoryboardProductionPlanContentV3):
+        for planned_node in content.planned_nodes:
+            _require_exact_materialization_node_source(
+                connection,
+                workflow_id=plan.workflow_id,
+                node_id=planned_node.node_id,
+                node_revision=planned_node.node_revision,
+                source_workflow_id=plan.workflow_id,
+                error_code="agent_storyboard_plan_invalid",
+            )
+        if content.visual_anchor is not None:
+            _require_exact_materialization_node_source(
+                connection,
+                workflow_id=plan.workflow_id,
+                node_id=content.visual_anchor.node_id,
+                node_revision=content.visual_anchor.node_revision,
+                source_workflow_id=plan.workflow_id,
+                error_code="agent_storyboard_plan_invalid",
+            )
+
+
+def _require_exact_materialization_node_source(
+    connection: Connection,
+    *,
+    workflow_id: str,
+    node_id: str,
+    node_revision: int,
+    source_workflow_id: str,
+    error_code: str = "agent_anchor_source_invalid",
+    allow_newer_revision: bool = False,
+) -> None:
+    persisted_revision = connection.execute(
+        select(AgentCanvasNodeRow.revision).where(
+            AgentCanvasNodeRow.workflow_id == workflow_id,
+            AgentCanvasNodeRow.node_id == node_id,
+        )
+    ).scalar_one_or_none()
+    revision_matches = persisted_revision == node_revision or (
+        allow_newer_revision
+        and persisted_revision is not None
+        and persisted_revision > node_revision
+    )
+    if source_workflow_id != workflow_id or not revision_matches:
+        raise _error(
+            error_code,
+            "Working document source does not match an exact Node revision in this Workflow.",
+        )
+
+
+def _append_authority_document_events(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    before: AgentWorkingDocumentV2 | None,
+    after: AgentWorkingDocumentV2,
+    operation: str,
+    receipt_id: str,
+) -> None:
+    affected_aliases = _affected_anchor_aliases(before, after)
+    sequence_ids = _affected_sequence_ids(after)
+    payload = {
+        "session_id": after.guidance_session_id,
+        "document_id": after.document_id,
+        "previous_revision": before.revision if before is not None else None,
+        "next_revision": after.revision,
+        "content_digest": after.content_digest,
+        "mutation_kind": operation,
+        "receipt_id": receipt_id,
+        "affected_aliases": list(affected_aliases),
+        "sequence_ids": list(sequence_ids),
+    }
+    created_at = after.updated_at.isoformat()
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=after.workflow_id,
+            event_type=(
+                "agent_working_document_created"
+                if before is None
+                else "agent_working_document_updated"
+            ),
+            transition_key=f"authority-document:{after.document_id}:{after.revision}",
+            created_at=created_at,
+            payload=payload,
+        ),
+    )
+    if isinstance(after.content, AnchorRegistryContentV3):
+        before_by_alias = (
+            {anchor.alias: anchor for anchor in before.content.anchors}
+            if before is not None and isinstance(before.content, AnchorRegistryContentV3)
+            else {}
+        )
+        for alias in affected_aliases:
+            anchor = next(item for item in after.content.anchors if item.alias == alias)
+            prior = before_by_alias.get(alias)
+            event_type = None
+            if anchor.lifecycle == "planned" and prior is None:
+                event_type = "agent_anchor_planned"
+            elif anchor.lifecycle == "active" and (prior is None or prior.lifecycle != "active"):
+                event_type = "agent_anchor_activated"
+            elif anchor.lifecycle == "retired" and (prior is None or prior.lifecycle != "retired"):
+                event_type = "agent_anchor_retired"
+            if event_type is not None:
+                events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=after.workflow_id,
+                        event_type=event_type,
+                        transition_key=(
+                            f"authority-anchor:{after.document_id}:{after.revision}:{alias}"
+                        ),
+                        created_at=created_at,
+                        payload=payload,
+                    ),
+                )
+    elif isinstance(after.content, StoryboardProductionPlanContentV3):
+        events.append_in_transaction(
+            connection,
+            V2EventInsert(
+                workflow_id=after.workflow_id,
+                event_type="storyboard_plan_revised",
+                transition_key=f"storyboard-plan:{after.document_id}:{after.revision}",
+                created_at=created_at,
+                payload=payload,
+            ),
+        )
+        before_anchor = (
+            before.content.visual_anchor
+            if before is not None and isinstance(before.content, StoryboardProductionPlanContentV3)
+            else None
+        )
+        if after.content.visual_anchor is not None and after.content.visual_anchor != before_anchor:
+            events.append_in_transaction(
+                connection,
+                V2EventInsert(
+                    workflow_id=after.workflow_id,
+                    event_type="storyboard_visual_anchor_frozen",
+                    transition_key=(f"storyboard-anchor:{after.document_id}:{after.revision}"),
+                    created_at=created_at,
+                    payload=payload,
+                ),
+            )
+
+
+def _affected_anchor_aliases(
+    before: AgentWorkingDocumentV2 | None,
+    after: AgentWorkingDocumentV2,
+) -> tuple[str, ...]:
+    if not isinstance(after.content, AnchorRegistryContentV3):
+        return ()
+    before_by_alias = (
+        {anchor.alias: anchor for anchor in before.content.anchors}
+        if before is not None and isinstance(before.content, AnchorRegistryContentV3)
+        else {}
+    )
+    return tuple(
+        anchor.alias
+        for anchor in after.content.anchors
+        if before_by_alias.get(anchor.alias) != anchor
+    )
+
+
+def _affected_sequence_ids(after: AgentWorkingDocumentV2) -> tuple[str, ...]:
+    if not isinstance(after.content, StoryboardProductionPlanContentV3):
+        return ()
+    return tuple(segment.sequence_id for segment in after.content.segments)
 
 
 def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:

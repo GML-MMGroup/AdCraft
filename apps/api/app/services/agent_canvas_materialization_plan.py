@@ -7,6 +7,7 @@ from typing import Any
 
 from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
 from app.schemas.agent_canvas_conversation import AgentActionReceiptV2, ContinuationCommitV2
+from app.schemas.agent_canvas_capability_drafts import CapabilityDraftBundleV1
 from app.schemas.agent_canvas_draft_seeds import AcceptedProposalCommitmentV1
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
@@ -28,6 +29,15 @@ from app.services.agent_canvas_capability_draft_bundle import CapabilityDraftBun
 class CapabilityMaterializationPlanCompiler:
     """Compile one immutable plan without I/O, clocks, or external execution."""
 
+    def compile_draft_bundle(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        normalization: MaterializationNormalizationV1 | CapabilityMaterializationContextV1,
+    ) -> CapabilityDraftBundleV1:
+        """Compile the canonical draft bundle used to prepare authority documents."""
+
+        return CapabilityDraftBundleBuilder().build(envelope, normalization)
+
     def compile(
         self,
         envelope: ProposalApplicationEnvelopeV1,
@@ -36,7 +46,7 @@ class CapabilityMaterializationPlanCompiler:
         snapshot: MaterializationAuthoringSnapshotV1,
         storyboard_documents: tuple[MaterializationDocumentWriteV1, ...] = (),
     ) -> MaterializationPlanV1:
-        bundle = CapabilityDraftBundleBuilder().build(envelope, normalization)
+        bundle = self.compile_draft_bundle(envelope, normalization)
         nodes = bundle.nodes
         bindings = bundle.bindings
         preparations = bundle.prompt_preparations
@@ -220,6 +230,7 @@ def _has_runnable_storyboard_draft(
     prepared_node_ids = {item.node_id for item in preparations}
     has_plan = any(
         item.document_type == "agent_working_document"
+        and item.payload is not None
         and item.payload.get("kind") == "storyboard_production_plan"
         for item in documents
     )

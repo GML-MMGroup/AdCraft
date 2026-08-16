@@ -17,6 +17,9 @@ from app.services.v2_event_import import V2EventImportService
 from app.services.v2_asset_metadata_import import V2AssetMetadataImportService
 from app.services.v2_project_catalog_repair import V2ProjectCatalogRepairService
 from app.services.provider_model_bootstrap import ProviderModelBootstrapService
+from app.services.agent_working_document_authority_upgrade import (
+    AgentWorkingDocumentAuthorityUpgradeService,
+)
 
 _LOCK_TIMEOUT_SECONDS = 5.0
 
@@ -57,6 +60,10 @@ class PersistenceBootstrapService:
                 database,
                 event_repository,
             ).repair_if_required()
+            AgentWorkingDocumentAuthorityUpgradeService(
+                database,
+                event_repository,
+            ).upgrade()
             report = V2EventImportService(
                 self._settings.media_data_dir,
                 event_repository,
