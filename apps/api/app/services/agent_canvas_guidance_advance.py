@@ -12,6 +12,11 @@ from app.persistence.agent_canvas_continuation_repository import (
 from app.persistence.agent_canvas_conversation_repository import (
     AgentCanvasConversationRepository,
 )
+from app.persistence.agent_canvas_guidance_authority_repository import (
+    GuidanceAdvanceAuthoritySnapshotRepository,
+    guidance_advance_stale_error,
+    require_guidance_advance_eligible,
+)
 from app.persistence.agent_canvas_decision_bundle_repository import (
     AgentCanvasDecisionBundleRepository,
 )
@@ -175,6 +180,7 @@ class GuidanceAdvanceService:
         self._retries = retries
         self._events = events
         self._post_ready_gate = post_ready_gate
+        self._authority = GuidanceAdvanceAuthoritySnapshotRepository(requirements)
         self._resolver = GuidanceAdvanceTargetResolver(conversations, continuations)
         self._consistency = GuidanceAuthorityConsistencyValidator()
 
@@ -185,6 +191,14 @@ class GuidanceAdvanceService:
         *,
         idempotency_key: str,
     ) -> ChatTurnAcceptedV2:
+        request_digest = _digest(request.model_dump(mode="json"))
+        replay = self._conversations.replay_guidance_advance(
+            workflow_id=workflow_id,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+        )
+        if replay is not None:
+            return replay
         plan = self.plan(
             workflow_id,
             request,
@@ -201,20 +215,28 @@ class GuidanceAdvanceService:
     ) -> GuidanceAdvanceAuthorityPlanV1:
         """Build an immutable read-only plan for one authoritative commit."""
 
-        workflow = self._workflows.get_workflow(workflow_id)
-        session = self._conversations.get_guidance_session(workflow_id)
-        timeline = self._conversations.list_timeline(workflow_id, limit=1)
-        open_proposals = self._conversations.list_open_proposals(workflow_id)
-        open_bundle = (
-            self._decision_bundles.get_open_for_conversation(timeline.conversation_id)
-            if timeline.conversation_id is not None
-            else None
-        )
-        active_continuations = self._continuations.list_nonterminal_for_workflow(workflow_id)
-        requirements = self._requirements.get_current(workflow_id)
+        with self._conversations.database.engine.connect() as connection:
+            snapshot = self._authority.read_in_transaction(connection, workflow_id)
+        require_guidance_advance_eligible(snapshot)
+        session = snapshot.session
+        requirements = snapshot.requirements
+        if session is None or requirements is None:
+            raise _not_available("Guidance authority is incomplete.")
         self._consistency.validate(session, requirements)
-        self._post_ready_gate.evaluate(workflow_id, session, workflow)
-        target = self._resolver.resolve(session, requirements)
+        if snapshot.precondition != request.precondition:
+            raise guidance_advance_stale_error(
+                request.precondition,
+                snapshot,
+                stage="guidance_advance_service",
+            )
+        target = GuidanceAdvanceTargetV1(
+            source_kind="fresh_next_action",
+            source_id=request.precondition.source_id,
+            journey_stage=request.precondition.journey_stage,
+            journey_stage_revision=request.precondition.journey_stage_revision,
+            requirement_revision_id=request.precondition.requirement_revision_id,
+            guidance_session_revision=request.precondition.session_revision,
+        )
         request_payload = request.model_dump(mode="json")
         request_digest = _digest(request_payload)
         identity = hashlib.sha256(
@@ -227,21 +249,13 @@ class GuidanceAdvanceService:
             request_digest=request_digest,
             session_id=session.session_id,
             session_status=session.status,
-            journey_active_action_digest=_digest(
-                (
-                    session.journey.active_action.model_dump(mode="json")
-                    if session.journey.active_action is not None
-                    else None
-                )
-            ),
+            journey_active_action_digest=snapshot.active_action_digest,
             requirement_revision_id=requirements.revision_id,
             requirement_digest=requirements.digest,
-            conversation_id=timeline.conversation_id,
-            open_proposal_id=(open_proposals[0].proposal_id if open_proposals else None),
-            open_decision_bundle_id=(open_bundle.bundle_id if open_bundle is not None else None),
-            active_continuation_id=(
-                active_continuations[0].continuation_id if active_continuations else None
-            ),
+            conversation_id=snapshot.conversation_id,
+            open_proposal_id=snapshot.open_proposal_id,
+            open_decision_bundle_id=snapshot.open_decision_bundle_id,
+            active_continuation_id=snapshot.active_continuation_id,
             target=target,
             command_turn_id=f"turn_{identity[:32]}",
             executable_turn_id=f"turn_{identity[32:]}",

@@ -25,6 +25,7 @@ from app.schemas.agent_runtime import (
 )
 from app.schemas.agent_canvas_video_skills import VideoSkillPublicDetailV2
 from app.schemas.agent_operation_recovery import AgentOperationFailureV2
+from app.schemas.agent_canvas_guidance import GuidanceAdvancePreconditionV1
 
 
 class _ConversationModel(BaseModel):
@@ -169,6 +170,7 @@ class ChatTimelineListResponseV2(_ConversationModel):
         default=(),
         max_length=2,
     )
+    guidance_advance_precondition: GuidanceAdvancePreconditionV1 | None = None
     items: tuple[ChatTimelineEntryV2, ...] = ()
     presentation_items: tuple[ChatTimelinePresentationItemV2, ...] = ()
     next_cursor: int = Field(ge=0)

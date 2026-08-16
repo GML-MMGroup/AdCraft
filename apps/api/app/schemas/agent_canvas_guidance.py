@@ -7,7 +7,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
-from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_production_journey import (
+    JourneyStageStatusV1,
+    JourneyStageV1,
+)
+from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 
 
 class _GuidanceModel(BaseModel):
@@ -64,11 +69,28 @@ class ContinuationTurnRetrySnapshotV1(_PrivateGuidanceAuthorityModel):
     skill_identity_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
+class GuidanceAdvancePreconditionV1(_PrivateGuidanceAuthorityModel):
+    """Server-issued identity for one coherent Guidance Advance authority state."""
+
+    schema_version: Literal["1"] = "1"
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    session_id: str = Field(min_length=1, max_length=160)
+    session_revision: int = Field(ge=1)
+    session_status: Literal["active", "paused", "completed"]
+    journey_stage: JourneyStageV1
+    journey_stage_status: JourneyStageStatusV1
+    journey_stage_revision: int = Field(ge=1)
+    source_id: str = Field(min_length=1, max_length=160)
+    requirement_revision_id: str = Field(min_length=1, max_length=160)
+    requirement_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    active_action_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    owner_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
 class GuidanceAdvanceRequestV1(_GuidanceModel):
-    expected_workflow_revision: int = Field(ge=1)
-    expected_session_revision: int = Field(ge=1)
-    expected_journey_stage: JourneyStageV1
-    expected_journey_stage_revision: int = Field(ge=1)
+    precondition: GuidanceAdvancePreconditionV1
 
 
 class GuidanceAdvanceTargetV1(_GuidanceModel):
@@ -81,10 +103,28 @@ class GuidanceAdvanceTargetV1(_GuidanceModel):
 
 
 class GuidanceAdvanceRequestSnapshotV1(_PrivateGuidanceAuthorityModel):
-    expected_workflow_revision: int = Field(ge=1)
-    expected_session_revision: int = Field(ge=1)
-    expected_journey_stage: JourneyStageV1
-    expected_journey_stage_revision: int = Field(ge=1)
+    precondition: GuidanceAdvancePreconditionV1
+
+
+class GuidanceAdvanceAuthoritySnapshotV1(_PrivateGuidanceAuthorityModel):
+    """One transactionally coherent view of Guidance command authority."""
+
+    workflow_id: str = Field(min_length=1, max_length=160)
+    workflow_revision: int = Field(ge=1)
+    session: GuidedSessionStateV2 | None = None
+    requirements: RequirementLedgerRevisionV1 | None = None
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    open_proposal_id: str | None = Field(default=None, min_length=1, max_length=160)
+    open_decision_bundle_id: str | None = Field(default=None, min_length=1, max_length=160)
+    active_continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
+    execution_leaf: GuidedActionExecutionLeafV1 | None = None
+    post_ready_owner: dict[str, JsonValue] | None = None
+    source_id: str | None = Field(default=None, min_length=1, max_length=160)
+    active_action_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    owner_state_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    authority_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    eligible: bool
+    precondition: GuidanceAdvancePreconditionV1 | None = None
 
 
 class GuidanceAdvanceAuthorityPlanV1(_PrivateGuidanceAuthorityModel):

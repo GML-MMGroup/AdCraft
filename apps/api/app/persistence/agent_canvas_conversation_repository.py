@@ -20,6 +20,11 @@ from app.persistence.agent_canvas_auto_run_repository import (
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
+from app.persistence.agent_canvas_guidance_authority_repository import (
+    GuidanceAdvanceAuthoritySnapshotRepository,
+    guidance_advance_stale_error,
+    require_guidance_advance_eligible,
+)
 from app.persistence.agent_canvas_operation_envelope_repository import (
     AgentCanvasOperationEnvelopeRepository,
 )
@@ -42,7 +47,6 @@ from app.persistence.models import (
     AgentCanvasConceptProposalRow,
     AgentCanvasConversationRow,
     AgentCanvasCreativeDirectionSnapshotRow,
-    AgentCanvasDecisionBundleRow,
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
@@ -140,6 +144,7 @@ class AgentCanvasConversationRepository:
         self._events = events
         self._automatic_runs = AgentCanvasAutomaticRunRepository(database, events)
         self._requirements = AgentCanvasRequirementRepository(database)
+        self._guidance_authority = GuidanceAdvanceAuthoritySnapshotRepository(self._requirements)
 
     @property
     def database(self) -> V2Database:
@@ -1713,7 +1718,7 @@ class AgentCanvasConversationRepository:
                             status="completed",
                             request_json=request_json,
                             creation_mode_json=None,
-                            guidance_session_revision=plan.request.expected_session_revision,
+                            guidance_session_revision=(plan.request.precondition.session_revision),
                             idempotency_key=plan.idempotency_key,
                             retry_of_turn_id=None,
                             retry_attempt_no=1,
@@ -1761,7 +1766,7 @@ class AgentCanvasConversationRepository:
                                 "source_kind": plan.target.source_kind,
                                 "source_id": plan.target.source_id,
                                 "guidance_session_revision": (
-                                    plan.request.expected_session_revision
+                                    plan.request.precondition.session_revision
                                 ),
                                 "request_digest": plan.request_digest,
                             },
@@ -1786,6 +1791,42 @@ class AgentCanvasConversationRepository:
         except V2PersistenceError:
             raise
         except (IntegrityError, SQLAlchemyError) as error:
+            raise _error(
+                "agent_conversation_unavailable", "Conversation storage failed."
+            ) from error
+
+    def replay_guidance_advance(
+        self,
+        *,
+        workflow_id: str,
+        idempotency_key: str,
+        request_digest: str,
+    ) -> ChatTurnAcceptedV2 | None:
+        """Return an exact committed Guidance command before mutable authority reads."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                existing = (
+                    connection.execute(
+                        select(AgentCanvasChatTurnRow).where(
+                            AgentCanvasChatTurnRow.idempotency_key == idempotency_key
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is None:
+                    return None
+                receipt = _guidance_replay_receipt_for_identity(
+                    connection,
+                    existing=existing,
+                    workflow_id=workflow_id,
+                    request_digest=request_digest,
+                )
+                return _guidance_accepted(connection, receipt)
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
@@ -4391,16 +4432,20 @@ class AgentCanvasConversationRepository:
                     .mappings()
                     .all()
                 )
+                authority = self._guidance_authority.read_in_transaction(
+                    connection,
+                    workflow_id,
+                )
         except SQLAlchemyError as error:
             raise _error(
                 "agent_conversation_unavailable", "Conversation storage failed."
             ) from error
         items = tuple(_timeline_entry(row) for row in rows)
-        guidance_session = self.get_guidance_session_or_none(workflow_id)
         return ChatTimelineListResponseV2(
             workflow_id=workflow_id,
             conversation_id=str(conversation_id),
-            guidance_session=guidance_session,
+            guidance_session=authority.session,
+            guidance_advance_precondition=authority.precondition,
             continuations=tuple(_continuation_delivery(row) for row in continuation_rows),
             current_session_actions=tuple(
                 sorted(
@@ -4601,119 +4646,39 @@ def _validate_guidance_advance_authority(
     requirements: AgentCanvasRequirementRepository,
     continuations: AgentCanvasContinuationOutboxRepository,
 ) -> None:
-    workflow_revision = connection.execute(
-        select(AgentCanvasWorkflowRow.revision).where(
-            AgentCanvasWorkflowRow.workflow_id == plan.workflow_id
-        )
-    ).scalar_one_or_none()
-    if (
-        workflow_revision is None
-        or int(workflow_revision) != plan.request.expected_workflow_revision
-    ):
-        raise _guidance_advance_stale()
-
-    session = (
-        connection.execute(
-            select(AgentCanvasGuidanceSessionRow).where(
-                AgentCanvasGuidanceSessionRow.workflow_id == plan.workflow_id
-            )
-        )
-        .mappings()
-        .one_or_none()
+    del continuations
+    snapshot = GuidanceAdvanceAuthoritySnapshotRepository(requirements).read_in_transaction(
+        connection, plan.workflow_id
     )
-    if session is None:
-        raise _guidance_advance_stale()
-    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
-    current_action = (
-        journey.active_action.model_dump(mode="json") if journey.active_action is not None else None
-    )
+    require_guidance_advance_eligible(snapshot)
+    submitted = plan.request.precondition
+    if snapshot.precondition != submitted:
+        raise guidance_advance_stale_error(
+            submitted,
+            snapshot,
+            stage="guidance_advance_commit",
+        )
     if (
-        str(session["session_id"]) != plan.session_id
-        or int(session["revision"]) != plan.request.expected_session_revision
-        or journey.stage != plan.request.expected_journey_stage
-        or journey.stage_revision != plan.request.expected_journey_stage_revision
-        or _sha256_json(current_action) != plan.journey_active_action_digest
-        or plan.target.journey_stage != journey.stage
-        or plan.target.journey_stage_revision != journey.stage_revision
-        or plan.target.guidance_session_revision != int(session["revision"])
+        plan.session_id != submitted.session_id
+        or plan.session_status != submitted.session_status
+        or plan.journey_active_action_digest != submitted.active_action_digest
+        or plan.requirement_revision_id != submitted.requirement_revision_id
+        or plan.requirement_digest != submitted.requirement_digest
+        or plan.conversation_id != snapshot.conversation_id
+        or plan.open_proposal_id != snapshot.open_proposal_id
+        or plan.open_decision_bundle_id != snapshot.open_decision_bundle_id
+        or plan.active_continuation_id != snapshot.active_continuation_id
+        or plan.target.source_id != submitted.source_id
+        or plan.target.journey_stage != submitted.journey_stage
+        or plan.target.journey_stage_revision != submitted.journey_stage_revision
+        or plan.target.guidance_session_revision != submitted.session_revision
+        or plan.target.requirement_revision_id != submitted.requirement_revision_id
     ):
-        raise _guidance_advance_stale()
-    if (
-        plan.session_status != "active"
-        or str(session["status"]) != "active"
-        or journey.stage == "completed"
-    ):
-        raise _guidance_advance_not_available(
-            "Guidance is not available in the current session state."
+        raise guidance_advance_stale_error(
+            submitted,
+            snapshot,
+            stage="guidance_advance_commit",
         )
-
-    requirement = requirements.get_current_in_transaction(connection, plan.workflow_id)
-    if (
-        requirement.revision_id != plan.requirement_revision_id
-        or requirement.digest != plan.requirement_digest
-        or plan.target.requirement_revision_id != requirement.revision_id
-    ):
-        raise _guidance_advance_stale()
-
-    conversation_id = connection.execute(
-        select(AgentCanvasConversationRow.conversation_id).where(
-            AgentCanvasConversationRow.workflow_id == plan.workflow_id
-        )
-    ).scalar_one_or_none()
-    if (str(conversation_id) if conversation_id is not None else None) != plan.conversation_id:
-        raise _guidance_advance_stale()
-
-    open_proposal_id = connection.execute(
-        select(AgentCanvasConceptProposalRow.proposal_id)
-        .where(
-            AgentCanvasConceptProposalRow.workflow_id == plan.workflow_id,
-            AgentCanvasConceptProposalRow.availability == "open",
-        )
-        .order_by(
-            AgentCanvasConceptProposalRow.created_at.asc(),
-            AgentCanvasConceptProposalRow.proposal_id.asc(),
-        )
-    ).scalar_one_or_none()
-    if (
-        plan.open_proposal_id is not None
-        or session["active_proposal_id"] is not None
-        or open_proposal_id is not None
-    ):
-        raise _guidance_advance_not_available(
-            "An open Proposal currently owns the next user action."
-        )
-
-    open_bundle_id = None
-    if conversation_id is not None:
-        open_bundle_id = connection.execute(
-            select(AgentCanvasDecisionBundleRow.bundle_id).where(
-                AgentCanvasDecisionBundleRow.conversation_id == conversation_id,
-                AgentCanvasDecisionBundleRow.status == "open",
-            )
-        ).scalar_one_or_none()
-    if plan.open_decision_bundle_id is not None or open_bundle_id is not None:
-        raise _guidance_advance_not_available(
-            "An open Decision Bundle currently owns the next user action."
-        )
-
-    active = continuations.get_active_for_workflow_in_transaction(
-        connection,
-        plan.workflow_id,
-    )
-    if plan.active_continuation_id is not None or active is not None:
-        raise _error(
-            "active_continuation_conflict",
-            "Another continuation already owns this workflow.",
-        )
-
-    source_id = (
-        journey.active_action.action_id
-        if journey.active_action is not None
-        else f"stage:{journey.stage}:{journey.stage_revision}"
-    )
-    if source_id != plan.target.source_id:
-        raise _guidance_advance_stale()
-    return None
 
 
 def _guidance_replay_receipt(
@@ -4722,22 +4687,29 @@ def _guidance_replay_receipt(
     existing: RowMapping,
     plan: GuidanceAdvanceAuthorityPlanV1,
 ) -> GuidanceAdvanceCommitReceiptV1:
+    return _guidance_replay_receipt_for_identity(
+        connection,
+        existing=existing,
+        workflow_id=plan.workflow_id,
+        request_digest=plan.request_digest,
+    )
+
+
+def _guidance_replay_receipt_for_identity(
+    connection: Connection,
+    *,
+    existing: RowMapping,
+    workflow_id: str,
+    request_digest: str,
+) -> GuidanceAdvanceCommitReceiptV1:
     persisted = json.loads(str(existing["request_json"]))
-    persisted_request = {
-        key: persisted.get(key)
-        for key in (
-            "expected_workflow_revision",
-            "expected_session_revision",
-            "expected_journey_stage",
-            "expected_journey_stage_revision",
-        )
-    }
+    persisted_request = {"precondition": persisted.get("precondition")}
     persisted_digest = persisted.get("guidance_request_digest") or _sha256_json(persisted_request)
     executable_turn_id = persisted.get("executable_turn_id")
     if (
-        str(existing["workflow_id"]) != plan.workflow_id
+        str(existing["workflow_id"]) != workflow_id
         or str(existing["turn_kind"]) != "guidance_advance"
-        or persisted_digest != plan.request_digest
+        or persisted_digest != request_digest
         or not isinstance(executable_turn_id, str)
     ):
         raise _error("idempotency_conflict", "Idempotency key was reused.")
@@ -4758,12 +4730,12 @@ def _guidance_replay_receipt(
         )
     ).scalar_one_or_none()
     return GuidanceAdvanceCommitReceiptV1(
-        workflow_id=plan.workflow_id,
+        workflow_id=workflow_id,
         command_turn_id=str(existing["turn_id"]),
         executable_turn_id=executable_turn_id,
         continuation_id=(str(continuation_id) if continuation_id is not None else None),
         event_cursor=int(event_cursor),
-        request_digest=plan.request_digest,
+        request_digest=request_digest,
         retry_of_turn_id=(str(child["retry_of_turn_id"]) if child["retry_of_turn_id"] else None),
         retry_attempt_no=int(child["retry_attempt_no"]),
         replayed=True,
@@ -4789,14 +4761,6 @@ def _guidance_accepted(
 
 def _sha256_json(value: object) -> str:
     return hashlib.sha256(_dump(value).encode("utf-8")).hexdigest()
-
-
-def _guidance_advance_stale() -> V2PersistenceError:
-    return V2PersistenceError(
-        "guidance_advance_stale",
-        "Guidance Advance no longer matches current authoring state.",
-        stage="guidance_advance_commit",
-    )
 
 
 def _guidance_advance_not_available(message: str) -> V2PersistenceError:
@@ -5940,6 +5904,15 @@ def _guidance_session(
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
     )
+
+
+def guidance_session_from_row(
+    connection: Connection,
+    row: RowMapping,
+) -> GuidedSessionStateV2:
+    """Build one Guidance session through a caller-owned transaction."""
+
+    return _guidance_session(connection, row)
 
 
 def _derive_historical_manual_awaiting(
