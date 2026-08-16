@@ -2927,6 +2927,9 @@
             },
             {
               "$ref": "#/$defs/StoryboardSegmentAuthoringContextV2"
+            },
+            {
+              "$ref": "#/$defs/RolePromptPreparationContextV2"
             }
           ],
           "title": "Context"
@@ -5307,6 +5310,63 @@
       "title": "BgmProposalResultV1",
       "type": "object"
     },
+    "BgmRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "energy_curve": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Energy Curve",
+          "type": "string"
+        },
+        "instrumentation": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Instrumentation",
+          "type": "string"
+        },
+        "mood": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Mood",
+          "type": "string"
+        },
+        "music_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Music Summary",
+          "type": "string"
+        },
+        "pace": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Pace",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "bgm",
+          "default": "bgm",
+          "title": "Role Variant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "duration_seconds",
+        "energy_curve",
+        "instrumentation",
+        "mood",
+        "music_summary",
+        "pace"
+      ],
+      "title": "BgmRoleBriefV2",
+      "type": "object"
+    },
     "CanvasBindingSourceImageAssetV2": {
       "additionalProperties": false,
       "properties": {
@@ -7649,6 +7709,15 @@
     "CharacterDesignAssetContentV2": {
       "additionalProperties": false,
       "properties": {
+        "asset_kind": {
+          "default": "main",
+          "enum": [
+            "main",
+            "multi_view"
+          ],
+          "title": "Asset Kind",
+          "type": "string"
+        },
         "character_asset_kind": {
           "default": "identity_master",
           "enum": [
@@ -7797,6 +7866,61 @@
       "title": "CharacterExpertAgentContext",
       "type": "object"
     },
+    "CharacterMainRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "accessories": {
+          "default": "",
+          "maxLength": 1024,
+          "title": "Accessories",
+          "type": "string"
+        },
+        "face_and_hair": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Face And Hair",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "rendering_mode": {
+          "const": "detailed_semi_realistic_commercial_illustration",
+          "default": "detailed_semi_realistic_commercial_illustration",
+          "title": "Rendering Mode",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "character_main",
+          "default": "character_main",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "silhouette_and_proportions": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Silhouette And Proportions",
+          "type": "string"
+        },
+        "wardrobe": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Wardrobe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "face_and_hair",
+        "identity",
+        "silhouette_and_proportions",
+        "wardrobe"
+      ],
+      "title": "CharacterMainRoleBriefV2",
+      "type": "object"
+    },
     "CharacterMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -7881,6 +8005,78 @@
         "options"
       ],
       "title": "CharacterProposalResultV1",
+      "type": "object"
+    },
+    "CharacterTurnaroundRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "accessories": {
+          "default": "",
+          "maxLength": 1024,
+          "title": "Accessories",
+          "type": "string"
+        },
+        "face_and_hair": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Face And Hair",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "rendering_mode": {
+          "const": "detailed_semi_realistic_commercial_illustration",
+          "default": "detailed_semi_realistic_commercial_illustration",
+          "title": "Rendering Mode",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "character_turnaround",
+          "default": "character_turnaround",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "silhouette_and_proportions": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Silhouette And Proportions",
+          "type": "string"
+        },
+        "views": {
+          "default": [
+            "front",
+            "side",
+            "back"
+          ],
+          "items": {
+            "enum": [
+              "back",
+              "front",
+              "side"
+            ],
+            "type": "string"
+          },
+          "title": "Views",
+          "type": "array"
+        },
+        "wardrobe": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Wardrobe",
+          "type": "string"
+        }
+      },
+      "required": [
+        "face_and_hair",
+        "identity",
+        "silhouette_and_proportions",
+        "wardrobe"
+      ],
+      "title": "CharacterTurnaroundRoleBriefV2",
       "type": "object"
     },
     "CompactAspectRatioControlV2": {
@@ -8574,6 +8770,125 @@
         "value"
       ],
       "title": "CompactVideoSegmentCountControlV2",
+      "type": "object"
+    },
+    "CompiledNodePromptV2": {
+      "additionalProperties": false,
+      "properties": {
+        "brief_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Brief Digest",
+          "type": "string"
+        },
+        "context_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Context Digest",
+          "type": "string"
+        },
+        "negative_prompt": {
+          "default": "",
+          "maxLength": 16384,
+          "title": "Negative Prompt",
+          "type": "string"
+        },
+        "parameters": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResolvedNodeParameterV2"
+          },
+          "maxItems": 32,
+          "title": "Parameters",
+          "type": "array"
+        },
+        "prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "prompt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "reference_bundle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Reference Bundle Digest",
+          "type": "string"
+        },
+        "reference_purposes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Reference Purposes",
+          "type": "array"
+        },
+        "role_variant": {
+          "enum": [
+            "bgm",
+            "character_main",
+            "character_turnaround",
+            "free_audio",
+            "free_image",
+            "free_text",
+            "free_video",
+            "product_main",
+            "product_multiview",
+            "prop",
+            "scene_board",
+            "script",
+            "storyboard_grid",
+            "video_segment",
+            "world_view"
+          ],
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "structured_content": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Structured Content",
+          "type": "object"
+        },
+        "style_projection_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Style Projection Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "brief_digest",
+        "context_digest",
+        "prompt",
+        "prompt_digest",
+        "recipe_digest",
+        "recipe_id",
+        "recipe_version",
+        "reference_bundle_digest",
+        "role_variant",
+        "style_projection_digest"
+      ],
+      "title": "CompiledNodePromptV2",
       "type": "object"
     },
     "ConversationSummaryAgentContext": {
@@ -9671,6 +9986,15 @@
     "DesignAssetContentV2": {
       "additionalProperties": false,
       "properties": {
+        "asset_kind": {
+          "default": "main",
+          "enum": [
+            "main",
+            "multi_view"
+          ],
+          "title": "Asset Kind",
+          "type": "string"
+        },
         "design_summary": {
           "maxLength": 8192,
           "minLength": 1,
@@ -10855,6 +11179,33 @@
         "value"
       ],
       "title": "FrameRateControlV1",
+      "type": "object"
+    },
+    "FreeMediaRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "prompt": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "role_variant": {
+          "enum": [
+            "free_audio",
+            "free_image",
+            "free_text",
+            "free_video"
+          ],
+          "title": "Role Variant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt",
+        "role_variant"
+      ],
+      "title": "FreeMediaRoleBriefV2",
       "type": "object"
     },
     "FreezeStoryboardVisualAnchorPatchV2": {
@@ -14308,6 +14659,45 @@
           "title": "Attempt No",
           "type": "integer"
         },
+        "attempt_stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attempt Stage"
+        },
+        "binding_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Digest"
+        },
+        "brief_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Digest"
+        },
         "context_snapshot_id": {
           "anyOf": [
             {
@@ -14321,6 +14711,14 @@
           ],
           "default": null,
           "title": "Context Snapshot Id"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "maxProperties": 16,
+          "title": "Document Revisions",
+          "type": "object"
         },
         "error": {
           "anyOf": [
@@ -14347,6 +14745,15 @@
           "default": null,
           "title": "Operation Id"
         },
+        "parameter_origins": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResolvedNodeParameterV2"
+          },
+          "maxItems": 32,
+          "title": "Parameter Origins",
+          "type": "array"
+        },
         "prompt_digest": {
           "anyOf": [
             {
@@ -14360,15 +14767,107 @@
           "default": null,
           "title": "Prompt Digest"
         },
+        "recipe_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe Digest"
+        },
+        "recipe_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe Id"
+        },
+        "recipe_version": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recipe Version"
+        },
+        "requirement_revision_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision Id"
+        },
+        "requirement_revision_no": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Requirement Revision No"
+        },
+        "role_variant": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Role Variant"
+        },
         "status": {
           "enum": [
             "failed",
             "queued",
             "ready",
+            "superseded",
             "working"
           ],
           "title": "Status",
           "type": "string"
+        },
+        "style_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Projection Digest"
         },
         "updated_at": {
           "format": "date-time",
@@ -14382,6 +14881,219 @@
         "updated_at"
       ],
       "title": "NodePromptPreparationV1",
+      "type": "object"
+    },
+    "NodePromptPreparationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_no": {
+          "minimum": 0,
+          "title": "Attempt No",
+          "type": "integer"
+        },
+        "attempt_stage": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attempt Stage"
+        },
+        "binding_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Binding Digest"
+        },
+        "brief_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brief Digest"
+        },
+        "context_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Digest"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "maxProperties": 16,
+          "title": "Document Revisions",
+          "type": "object"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CanvasNodeErrorV2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "model_policy_revision": {
+          "minimum": 1,
+          "title": "Model Policy Revision",
+          "type": "integer"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "parameter_origins": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ResolvedNodeParameterV2"
+          },
+          "maxItems": 32,
+          "title": "Parameter Origins",
+          "type": "array"
+        },
+        "prompt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Digest"
+        },
+        "recipe_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        },
+        "role_variant": {
+          "enum": [
+            "bgm",
+            "character_main",
+            "character_turnaround",
+            "free_audio",
+            "free_image",
+            "free_text",
+            "free_video",
+            "product_main",
+            "product_multiview",
+            "prop",
+            "scene_board",
+            "script",
+            "storyboard_grid",
+            "video_segment",
+            "world_view"
+          ],
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "failed",
+            "queued",
+            "ready",
+            "superseded",
+            "working"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "style_projection_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Projection Digest"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "attempt_no",
+        "model_policy_revision",
+        "node_revision",
+        "operation_id",
+        "recipe_digest",
+        "recipe_id",
+        "recipe_version",
+        "requirement_revision_id",
+        "requirement_revision_no",
+        "role_variant",
+        "status",
+        "updated_at"
+      ],
+      "title": "NodePromptPreparationV2",
       "type": "object"
     },
     "OmittedRequirementDirectiveV1": {
@@ -15038,6 +15750,56 @@
       "title": "ProductExpertAgentContext",
       "type": "object"
     },
+    "ProductMainRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "geometry": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Geometry",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "marks": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Marks",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "palette": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Palette",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "product_main",
+          "default": "product_main",
+          "title": "Role Variant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "geometry",
+        "identity",
+        "marks",
+        "materials",
+        "palette"
+      ],
+      "title": "ProductMainRoleBriefV2",
+      "type": "object"
+    },
     "ProductMaterializationResultV1": {
       "additionalProperties": false,
       "properties": {
@@ -15070,6 +15832,66 @@
         "title"
       ],
       "title": "ProductMaterializationResultV1",
+      "type": "object"
+    },
+    "ProductMultiviewRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "geometry": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Geometry",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "marks": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Marks",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "palette": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Palette",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "product_multiview",
+          "default": "product_multiview",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 5,
+          "title": "Views",
+          "type": "array"
+        }
+      },
+      "required": [
+        "geometry",
+        "identity",
+        "marks",
+        "materials",
+        "palette",
+        "views"
+      ],
+      "title": "ProductMultiviewRoleBriefV2",
       "type": "object"
     },
     "ProductProposalOptionV1": {
@@ -15468,6 +16290,49 @@
         "options"
       ],
       "title": "PropProposalResultV1",
+      "type": "object"
+    },
+    "PropRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "form": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Form",
+          "type": "string"
+        },
+        "identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "palette": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Palette",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "prop",
+          "default": "prop",
+          "title": "Role Variant",
+          "type": "string"
+        }
+      },
+      "required": [
+        "form",
+        "identity",
+        "materials",
+        "palette"
+      ],
+      "title": "PropRoleBriefV2",
       "type": "object"
     },
     "ProposalPublicationEnvelopeV1": {
@@ -17534,6 +18399,519 @@
       "title": "ResolvedImageTargetV2",
       "type": "object"
     },
+    "ResolvedNodeParameterV2": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "bound_text",
+            "explicit_user",
+            "installation_default",
+            "node_parameter",
+            "storyboard_plan",
+            "style_advice"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        },
+        "source_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "name",
+        "source_id",
+        "source_kind",
+        "value"
+      ],
+      "title": "ResolvedNodeParameterV2",
+      "type": "object"
+    },
+    "RoleBindingSnapshotV2": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Id"
+        },
+        "asset_version_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Version Id"
+        },
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "binding_revision": {
+          "minimum": 1,
+          "title": "Binding Revision",
+          "type": "integer"
+        },
+        "display_order": {
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "reference_purpose": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Reference Purpose",
+          "type": "string"
+        },
+        "source_node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Id"
+        },
+        "source_node_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Node Revision"
+        },
+        "source_role": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Role"
+        }
+      },
+      "required": [
+        "binding_id",
+        "binding_revision",
+        "display_order",
+        "reference_purpose"
+      ],
+      "title": "RoleBindingSnapshotV2",
+      "type": "object"
+    },
+    "RoleBoundTextControlV2": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_node_revision": {
+          "minimum": 1,
+          "title": "Source Node Revision",
+          "type": "integer"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "binding_id",
+        "name",
+        "source_node_id",
+        "source_node_revision",
+        "value"
+      ],
+      "title": "RoleBoundTextControlV2",
+      "type": "object"
+    },
+    "RoleCreativeBriefV2": {
+      "description": "Closed wrapper for every role-specific model-authored brief.",
+      "discriminator": {
+        "mapping": {
+          "bgm": "#/$defs/BgmRoleBriefV2",
+          "character_main": "#/$defs/CharacterMainRoleBriefV2",
+          "character_turnaround": "#/$defs/CharacterTurnaroundRoleBriefV2",
+          "free_audio": "#/$defs/FreeMediaRoleBriefV2",
+          "free_image": "#/$defs/FreeMediaRoleBriefV2",
+          "free_text": "#/$defs/FreeMediaRoleBriefV2",
+          "free_video": "#/$defs/FreeMediaRoleBriefV2",
+          "product_main": "#/$defs/ProductMainRoleBriefV2",
+          "product_multiview": "#/$defs/ProductMultiviewRoleBriefV2",
+          "prop": "#/$defs/PropRoleBriefV2",
+          "scene_board": "#/$defs/SceneBoardRoleBriefV2",
+          "script": "#/$defs/ScriptRoleBriefV2",
+          "storyboard_grid": "#/$defs/StoryboardGridRoleBriefV2",
+          "video_segment": "#/$defs/VideoSegmentRoleBriefV2",
+          "world_view": "#/$defs/WorldViewRoleBriefV2"
+        },
+        "propertyName": "role_variant"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/WorldViewRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/ProductMainRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/ProductMultiviewRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/PropRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/CharacterMainRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/CharacterTurnaroundRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/SceneBoardRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/ScriptRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/StoryboardGridRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/VideoSegmentRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/BgmRoleBriefV2"
+        },
+        {
+          "$ref": "#/$defs/FreeMediaRoleBriefV2"
+        }
+      ],
+      "title": "RoleCreativeBriefV2"
+    },
+    "RolePromptPreparationContextV2": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RoleBindingSnapshotV2"
+          },
+          "maxItems": 32,
+          "title": "Bindings",
+          "type": "array"
+        },
+        "bound_text_controls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RoleBoundTextControlV2"
+          },
+          "maxItems": 32,
+          "title": "Bound Text Controls",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "maxProperties": 16,
+          "title": "Document Revisions",
+          "type": "object"
+        },
+        "explicit_controls": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 32,
+          "title": "Explicit Controls",
+          "type": "object"
+        },
+        "installation_parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 32,
+          "title": "Installation Parameters",
+          "type": "object"
+        },
+        "internal_skill_ref": {
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Internal Skill Ref",
+          "type": "string"
+        },
+        "model_policy_revision": {
+          "minimum": 1,
+          "title": "Model Policy Revision",
+          "type": "integer"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 32,
+          "title": "Node Parameters",
+          "type": "object"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "requirement_facts": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 64,
+          "title": "Requirement Facts",
+          "type": "object"
+        },
+        "requirement_revision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Requirement Revision Id",
+          "type": "string"
+        },
+        "requirement_revision_no": {
+          "minimum": 1,
+          "title": "Requirement Revision No",
+          "type": "integer"
+        },
+        "response_locale": {
+          "default": "und",
+          "maxLength": 35,
+          "minLength": 2,
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "role_variant": {
+          "enum": [
+            "bgm",
+            "character_main",
+            "character_turnaround",
+            "free_audio",
+            "free_image",
+            "free_text",
+            "free_video",
+            "product_main",
+            "product_multiview",
+            "prop",
+            "scene_board",
+            "script",
+            "storyboard_grid",
+            "video_segment",
+            "world_view"
+          ],
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "selected_direction": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected Direction"
+        },
+        "storyboard_parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 32,
+          "title": "Storyboard Parameters",
+          "type": "object"
+        },
+        "style_parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "maxProperties": 32,
+          "title": "Style Parameters",
+          "type": "object"
+        },
+        "style_projection": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Style Projection"
+        },
+        "user_prompt": {
+          "anyOf": [
+            {
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "User Prompt"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "world_view_projection": {
+          "anyOf": [
+            {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "World View Projection"
+        }
+      },
+      "required": [
+        "created_at",
+        "internal_skill_ref",
+        "model_policy_revision",
+        "node_id",
+        "node_revision",
+        "requirement_revision_id",
+        "requirement_revision_no",
+        "role_variant",
+        "workflow_id"
+      ],
+      "title": "RolePromptPreparationContextV2",
+      "type": "object"
+    },
+    "RolePromptPreparationRequestV2": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/RolePromptPreparationContextV2"
+        },
+        "operation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "recipe_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recipe Digest",
+          "type": "string"
+        },
+        "recipe_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Recipe Id",
+          "type": "string"
+        },
+        "recipe_version": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Recipe Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "context",
+        "operation_id",
+        "recipe_digest",
+        "recipe_id",
+        "recipe_version"
+      ],
+      "title": "RolePromptPreparationRequestV2",
+      "type": "object"
+    },
     "SceneBoardPanelV2": {
       "additionalProperties": false,
       "properties": {
@@ -17569,6 +18947,66 @@
         "view_or_zone"
       ],
       "title": "SceneBoardPanelV2",
+      "type": "object"
+    },
+    "SceneBoardRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "atmosphere": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Atmosphere",
+          "type": "string"
+        },
+        "environment_identity": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Environment Identity",
+          "type": "string"
+        },
+        "lighting": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Lighting",
+          "type": "string"
+        },
+        "materials": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Materials",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "scene_board",
+          "default": "scene_board",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "spatial_logic": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Spatial Logic",
+          "type": "string"
+        },
+        "views": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Views",
+          "type": "array"
+        }
+      },
+      "required": [
+        "atmosphere",
+        "environment_identity",
+        "lighting",
+        "materials",
+        "spatial_logic",
+        "views"
+      ],
+      "title": "SceneBoardRoleBriefV2",
       "type": "object"
     },
     "SceneCountControlPatchV1": {
@@ -18086,6 +19524,47 @@
         "options"
       ],
       "title": "ScriptProposalResultV1",
+      "type": "object"
+    },
+    "ScriptRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "dialogue": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Dialogue",
+          "type": "string"
+        },
+        "narrative": {
+          "maxLength": 16384,
+          "minLength": 1,
+          "title": "Narrative",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "script",
+          "default": "script",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "timing": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Timing",
+          "type": "string"
+        },
+        "voiceover": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Voiceover",
+          "type": "string"
+        }
+      },
+      "required": [
+        "narrative",
+        "timing"
+      ],
+      "title": "ScriptRoleBriefV2",
       "type": "object"
     },
     "ScriptWriterAgentContext": {
@@ -18920,6 +20399,45 @@
         "style"
       ],
       "title": "StoryboardGridContentV2",
+      "type": "object"
+    },
+    "StoryboardGridRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "beats": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 9,
+          "minItems": 9,
+          "title": "Beats",
+          "type": "array"
+        },
+        "role_variant": {
+          "const": "storyboard_grid",
+          "default": "storyboard_grid",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "sequence_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Sequence Summary",
+          "type": "string"
+        },
+        "visual_language": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Visual Language",
+          "type": "string"
+        }
+      },
+      "required": [
+        "beats",
+        "sequence_summary",
+        "visual_language"
+      ],
+      "title": "StoryboardGridRoleBriefV2",
       "type": "object"
     },
     "StoryboardMaterializationResultV1": {
@@ -22633,6 +24151,73 @@
       "title": "VideoSegmentCountControlV1",
       "type": "object"
     },
+    "VideoSegmentRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "action_effects": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Action Effects",
+          "type": "string"
+        },
+        "ambience": {
+          "default": "",
+          "maxLength": 4096,
+          "title": "Ambience",
+          "type": "string"
+        },
+        "dialogue": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Dialogue",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 15,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "role_variant": {
+          "const": "video_segment",
+          "default": "video_segment",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "segment_summary": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Segment Summary",
+          "type": "string"
+        },
+        "target_style": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Target Style",
+          "type": "string"
+        },
+        "voiceover": {
+          "default": "",
+          "maxLength": 8192,
+          "title": "Voiceover",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "duration_seconds",
+        "segment_summary",
+        "target_style"
+      ],
+      "title": "VideoSegmentRoleBriefV2",
+      "type": "object"
+    },
     "VisualStyleContractV2": {
       "additionalProperties": false,
       "properties": {
@@ -23177,6 +24762,55 @@
       ],
       "title": "WorldSettingResolvedInputV2",
       "type": "object"
+    },
+    "WorldViewRoleBriefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "era_and_place": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Era And Place",
+          "type": "string"
+        },
+        "premise": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Premise",
+          "type": "string"
+        },
+        "role_variant": {
+          "const": "world_view",
+          "default": "world_view",
+          "title": "Role Variant",
+          "type": "string"
+        },
+        "visual_continuity": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Visual Continuity",
+          "type": "array"
+        },
+        "world_rules": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "World Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "era_and_place",
+        "premise",
+        "visual_continuity",
+        "world_rules"
+      ],
+      "title": "WorldViewRoleBriefV2",
+      "type": "object"
     }
   },
   "$id": "https://adcraft.local/contracts/agent-runtime-v1.schema.json",
@@ -23202,7 +24836,8 @@
     "NextActionContextV1",
     "CapabilityInvocationContextV2",
     "CapabilityMaterializationContextV1",
-    "StoryboardSegmentAuthoringContextV2"
+    "StoryboardSegmentAuthoringContextV2",
+    "RolePromptPreparationContextV2"
   ],
   "x-agent-structured-contracts": [
     "SpecialistDraft",
@@ -23215,6 +24850,7 @@
     "TurnIntentDecisionV2",
     "NextActionCommandV1",
     "DecisionBundleDraftV1",
+    "RoleCreativeBriefV2",
     "WorldSettingProposalResultV1",
     "ProductProposalResultV1",
     "PropProposalResultV1",
@@ -23330,6 +24966,17 @@
       "max_skill_context_bytes": 8192,
       "operation": "author_decision_bundle",
       "result_contract_name": "DecisionBundleDraftV1",
+      "style_projection_role": null
+    },
+    {
+      "capability_id": null,
+      "context_contract_name": "RolePromptPreparationContextV2",
+      "display_name": "Role Prompt Author",
+      "internal_skill_id": "video_agent_role_prompt_authoring",
+      "max_handoffs": 0,
+      "max_skill_context_bytes": 8192,
+      "operation": "author_role_brief",
+      "result_contract_name": "RoleCreativeBriefV2",
       "style_projection_role": null
     },
     {

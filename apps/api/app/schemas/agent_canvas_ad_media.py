@@ -50,6 +50,7 @@ class VisualStyleContractV2(_AdMediaModel):
 
 
 class DesignAssetContentV2(_AdMediaModel):
+    asset_kind: Literal["main", "multi_view"] = "main"
     subject_identity: str = Field(min_length=1, max_length=4_096)
     design_summary: str = Field(min_length=1, max_length=8_192)
     style: VisualStyleContractV2
@@ -184,6 +185,7 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     semantic_reference_role: SemanticReferenceRoleV2 | None = None
     storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
+    asset_version_id: str = Field(min_length=1)
     media_type: Literal["image", "video", "audio"]
     display_order: int = Field(ge=0)
     source_identity_facts: dict[str, JsonValue] = Field(default_factory=dict)

@@ -131,6 +131,13 @@ function instructionForOperation(operation: string): string {
       "Return wording and bounded effects only. Never author Bundle, question, option, Node, Binding, persistence, provider, path, credential, revision, or platform identities.",
     ].join(" ");
   }
+  if (operation === "author_role_brief") {
+    return [
+      "Author only the typed creative brief for the current role variant.",
+      "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
+    ].join(" ");
+  }
   if (operation === "plan_storyboard_sequence_outline") {
     return [
       "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",

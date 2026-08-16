@@ -150,6 +150,13 @@ _DEFINITIONS: tuple[VideoAgentOperationDefinitionV1, ...] = (
     ),
     _definition("author_decision_bundle", "NextActionContextV1", "DecisionBundleDraftV1"),
     _definition(
+        "author_role_brief",
+        "RolePromptPreparationContextV2",
+        "RoleCreativeBriefV2",
+        internal_skill_id="video_agent_role_prompt_authoring",
+        display_name="Role Prompt Author",
+    ),
+    _definition(
         "plan_storyboard_sequence_outline",
         "CapabilityMaterializationContextV1",
         "StoryboardSequenceOutlineDraftV2",

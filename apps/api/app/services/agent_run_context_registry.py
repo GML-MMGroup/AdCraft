@@ -14,6 +14,7 @@ from app.schemas.agent_canvas_capabilities import (
     TurnIntentContextV2,
 )
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardSegmentAuthoringContextV2
 from app.schemas.agent_capabilities import VideoAgentOperationDefinitionV1
 from app.schemas.agent_operation_contexts import (
@@ -80,6 +81,7 @@ _EXPLICIT_CONTEXT_MODELS: tuple[type[BaseModel], ...] = (
     CapabilityInvocationContextV2,
     CapabilityMaterializationContextV1,
     StoryboardSegmentAuthoringContextV2,
+    RolePromptPreparationContextV2,
 )
 
 

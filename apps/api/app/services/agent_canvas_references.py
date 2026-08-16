@@ -84,7 +84,12 @@ class AdReferenceBundleResolver:
                     "role_reference_bundle_invalid",
                     "Bound media asset is unavailable.",
                 ) from error
-            if asset is None or asset.status != "ready" or asset.media_url is None:
+            if (
+                asset is None
+                or asset.status != "ready"
+                or asset.version_id is None
+                or asset.media_url is None
+            ):
                 if not binding.required:
                     continue
                 raise _error(
@@ -101,6 +106,7 @@ class AdReferenceBundleResolver:
                 semantic_reference_role=binding.metadata.get("semantic_reference_role"),
                 storyboard_reference_purpose=binding.metadata.get("storyboard_reference_purpose"),
                 asset_id=asset.asset_id,
+                asset_version_id=asset.version_id,
                 media_type=asset.media_type,
                 display_order=binding.display_order,
                 source_identity_facts=source_identity_facts,

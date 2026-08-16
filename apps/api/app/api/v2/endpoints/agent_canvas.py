@@ -3102,7 +3102,7 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "node_already_working": 409,
         "failed_node_retry_required": 409,
         "node_model_incompatible": 409,
-        "node_prompt_not_ready": 409,
+        "node_prompt_preparation_incomplete": 409,
         "prompt_preparation_revision_conflict": 409,
         "prompt_preparation_failed": 503,
         "stage_content_mismatch": 422,

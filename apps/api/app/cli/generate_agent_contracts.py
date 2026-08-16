@@ -19,6 +19,7 @@ from app.schemas import agent_canvas_creative_session
 from app.schemas import agent_canvas_guided_interactions
 from app.schemas import agent_canvas_production_journey
 from app.schemas import agent_canvas_prompt_preparation
+from app.schemas import agent_canvas_role_prompt_preparation
 from app.schemas import agent_canvas_capabilities
 from app.schemas import agent_canvas_materialization
 from app.schemas import agent_canvas_requirements
@@ -57,6 +58,25 @@ CONTRACT_MODELS = (
     agent_canvas_guided_interactions.GuidanceAwaitingV1,
     agent_canvas_guided_interactions.GuidedInteractionSubmissionRecordV1,
     agent_canvas_prompt_preparation.NodePromptPreparationV1,
+    agent_canvas_role_prompt_preparation.RoleBindingSnapshotV2,
+    agent_canvas_role_prompt_preparation.RolePromptPreparationContextV2,
+    agent_canvas_role_prompt_preparation.RolePromptPreparationRequestV2,
+    agent_canvas_role_prompt_preparation.NodePromptPreparationV2,
+    agent_canvas_role_prompt_preparation.RoleCreativeBriefV2,
+    agent_canvas_role_prompt_preparation.WorldViewRoleBriefV2,
+    agent_canvas_role_prompt_preparation.ProductMainRoleBriefV2,
+    agent_canvas_role_prompt_preparation.ProductMultiviewRoleBriefV2,
+    agent_canvas_role_prompt_preparation.PropRoleBriefV2,
+    agent_canvas_role_prompt_preparation.CharacterMainRoleBriefV2,
+    agent_canvas_role_prompt_preparation.CharacterTurnaroundRoleBriefV2,
+    agent_canvas_role_prompt_preparation.SceneBoardRoleBriefV2,
+    agent_canvas_role_prompt_preparation.ScriptRoleBriefV2,
+    agent_canvas_role_prompt_preparation.StoryboardGridRoleBriefV2,
+    agent_canvas_role_prompt_preparation.VideoSegmentRoleBriefV2,
+    agent_canvas_role_prompt_preparation.BgmRoleBriefV2,
+    agent_canvas_role_prompt_preparation.FreeMediaRoleBriefV2,
+    agent_canvas_role_prompt_preparation.ResolvedNodeParameterV2,
+    agent_canvas_role_prompt_preparation.CompiledNodePromptV2,
     agent_canvas_decision_bundles.CreativeDirectiveDecisionEffectV1,
     agent_canvas_decision_bundles.SetDurationSecondsDecisionEffectV1,
     agent_canvas_decision_bundles.SetAspectRatioDecisionEffectV1,

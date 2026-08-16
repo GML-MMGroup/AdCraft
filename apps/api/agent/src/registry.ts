@@ -72,6 +72,12 @@ const metadata = new Map<string, OperationMetadata>([
   ["workflow_conversation", { context_contract_name: "WorkflowConversationAgentContext", result_contract_name: "WorkflowConversationReply" }],
   ["conversation_summary", { context_contract_name: "ConversationSummaryAgentContext", result_contract_name: "ConversationSummaryResult" }],
   ["author_decision_bundle", { context_contract_name: "NextActionContextV1", result_contract_name: "DecisionBundleDraftV1" }],
+  ["author_role_brief", {
+    context_contract_name: "RolePromptPreparationContextV2",
+    result_contract_name: "RoleCreativeBriefV2",
+    required_skill: "video_agent_role_prompt_authoring",
+    display_name: "Role Prompt Author",
+  }],
 ]);
 
 for (const [capabilityId, stem, contract, skill, displayName] of capabilityDefinitions) {

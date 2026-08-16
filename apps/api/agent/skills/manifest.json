@@ -26,6 +26,11 @@
       "skill_id": "video_agent_quick_media"
     },
     {
+      "path": "video_agent_role_prompt_authoring/SKILL.md",
+      "sha256": "fae1049dca84a524b387ba0e70dae9233b12d4b6360f985d31b9fd0bcec99040",
+      "skill_id": "video_agent_role_prompt_authoring"
+    },
+    {
       "path": "video_agent_scene_design/SKILL.md",
       "sha256": "1bffd56cb8c0e2be851a704f2e936aa0af4e42604be669920eee2e3f693dbed2",
       "skill_id": "video_agent_scene_design"

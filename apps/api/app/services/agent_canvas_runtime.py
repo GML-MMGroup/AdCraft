@@ -66,6 +66,7 @@ from app.services.agent_canvas_output_preparation import (
 )
 from app.services.agent_canvas_resolved_inputs import AgentCanvasResolvedInputCompiler
 from app.services.agent_canvas_run_snapshots import AgentCanvasRunIntentSnapshotService
+from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
 from app.services.agent_canvas_world_setting_context import WorldSettingContextResolverV2
 from app.services.agent_canvas_video_parameter_compiler import (
     AgentCanvasVideoParameterCompiler,
@@ -1326,8 +1327,8 @@ def _skip_reason(node: CanvasNodeV2, request: CanvasRunRequestV2) -> str | None:
         return "node_already_working"
     if node.status == "failed" and not request.retry_failed:
         return "failed_node_retry_required"
-    if node.prompt_preparation.status != "ready":
-        return "node_prompt_not_ready"
+    if node.prompt_preparation.status != "ready" or not _prompt_recipe_is_current(node):
+        return "node_prompt_preparation_incomplete"
     return None
 
 
@@ -1337,8 +1338,23 @@ def _skip_message(reason: str) -> str:
         "node_already_ready": "Ready nodes are not rerun in place.",
         "node_already_working": "Working nodes are already executing.",
         "failed_node_retry_required": "Failed nodes require explicit retry.",
-        "node_prompt_not_ready": "Node prompt preparation is not ready.",
+        "node_prompt_preparation_incomplete": "Node prompt preparation is not ready.",
     }[reason]
+
+
+def _prompt_recipe_is_current(node: CanvasNodeV2) -> bool:
+    preparation = node.prompt_preparation
+    if preparation.role_variant is None:
+        return True
+    try:
+        recipe = RolePromptRecipeRegistry().resolve(preparation.role_variant)
+    except V2PersistenceError:
+        return False
+    return (
+        preparation.recipe_id == recipe.recipe_id
+        and preparation.recipe_version == recipe.recipe_version
+        and preparation.recipe_digest == recipe.recipe_digest
+    )
 
 
 def _public_world_setting_input(

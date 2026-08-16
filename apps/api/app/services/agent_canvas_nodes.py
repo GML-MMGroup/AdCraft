@@ -107,12 +107,22 @@ class AgentCanvasNodeService:
     ) -> CanvasNodeV2:
         current = self._repository.get_node(workflow_id, node_id)
         changes = request.model_dump(exclude_unset=True)
+        now = datetime.now(timezone.utc)
         if "parameters" in changes:
             changes["parameter_provenance"] = _manual_parameter_provenance(request.parameters or {})
-        if "generation_prompt" in changes and request.generation_prompt:
+        if (
+            current.status == "draft"
+            and current.prompt_preparation.recipe_id is not None
+            and _changes_prompt_authority(changes)
+        ):
+            changes["prompt_preparation"] = _queued_prompt_preparation(
+                current.prompt_preparation,
+                now,
+            )
+        elif "generation_prompt" in changes and request.generation_prompt:
             changes["prompt_preparation"] = _ready_prompt_preparation(
                 request.generation_prompt,
-                datetime.now(timezone.utc),
+                now,
             )
         status = validate_node_patch(
             status=current.status,
@@ -125,7 +135,7 @@ class AgentCanvasNodeService:
                 **changes,
                 "status": status,
                 "revision": current.revision + 1,
-                "updated_at": datetime.now(timezone.utc),
+                "updated_at": now,
             }
         )
         if self._model_selection is not None:
@@ -192,6 +202,34 @@ def _ready_prompt_preparation(
         prompt_digest=sha256(prompt.encode("utf-8")).hexdigest(),
         error=None,
         updated_at=now,
+    )
+
+
+def _queued_prompt_preparation(
+    current: NodePromptPreparationV1,
+    now: datetime,
+) -> NodePromptPreparationV1:
+    return NodePromptPreparationV1(
+        status="queued",
+        operation_id=None,
+        attempt_no=current.attempt_no,
+        context_snapshot_id=None,
+        prompt_digest=None,
+        error=None,
+        updated_at=now,
+    )
+
+
+def _changes_prompt_authority(changes: dict[str, object]) -> bool:
+    return bool(
+        {
+            "generation_prompt",
+            "structured_content",
+            "parameters",
+            "model_selection_mode",
+            "model_ref",
+        }
+        & changes.keys()
     )
 
 

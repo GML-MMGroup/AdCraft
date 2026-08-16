@@ -18,6 +18,7 @@ from app.schemas.agent_canvas_capabilities import (
     TurnIntentContextV2,
 )
 from app.schemas.agent_canvas_materialization import CapabilityMaterializationContextV1
+from app.schemas.agent_canvas_role_prompt_preparation import RolePromptPreparationContextV2
 from app.schemas.agent_canvas_storyboard_sequences import StoryboardSegmentAuthoringContextV2
 from app.schemas.agent_canvas_world_setting import WorldSettingContextEnvelopeV2
 
@@ -404,6 +405,7 @@ class AgentRunRequest(_StrictModel):
         | CapabilityInvocationContextV2
         | CapabilityMaterializationContextV1
         | StoryboardSegmentAuthoringContextV2
+        | RolePromptPreparationContextV2
     )
     policy: AgentRunPolicy = Field(default_factory=AgentRunPolicy)
     credential_ref: str = Field(default="llm-default", min_length=1, max_length=120)

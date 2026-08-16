@@ -72,6 +72,10 @@ from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
 )
 from app.schemas.agent_canvas_requirements import RequirementPatchV1
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    RoleCreativeBriefV2,
+    RolePromptPreparationContextV2,
+)
 from app.schemas.agent_canvas_creative_session import (
     CreativeElementDecisionV2,
     CreativeGoalV2,
@@ -134,6 +138,7 @@ from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.services.agent_canvas_ad_media import AdMediaDraftValidationService
+from app.services.agent_canvas_role_prompt_authoring import deterministic_role_brief
 from app.services.agent_canvas_video_skills import VideoSkillRegistry
 from app.services.agent_canvas_decision_bundles import DecisionBundleAuthoringService
 from app.services.agent_operation_policy import (
@@ -173,6 +178,13 @@ class VideoAgentGateway(Protocol):
     def author_decision_bundle(
         self, context: NextActionContextV1, *, turn_id: str
     ) -> DecisionBundleDraftV1: ...
+
+    def author_role_brief(
+        self,
+        context: RolePromptPreparationContextV2,
+        *,
+        request_identity: str,
+    ) -> RoleCreativeBriefV2: ...
 
     def plan_storyboard_sequence_outline(
         self,
@@ -270,6 +282,15 @@ class DeterministicVideoAgentGateway:
                 ],
             }
         )
+
+    def author_role_brief(
+        self,
+        context: RolePromptPreparationContextV2,
+        *,
+        request_identity: str,
+    ) -> RoleCreativeBriefV2:
+        del request_identity
+        return deterministic_role_brief(context)
 
     def plan_storyboard_sequence_outline(
         self,
@@ -445,6 +466,26 @@ class PiVideoAgentGateway:
             },
         )
         return DecisionBundleDraftV1.model_validate(value)
+
+    def author_role_brief(
+        self,
+        context: RolePromptPreparationContextV2,
+        *,
+        request_identity: str,
+    ) -> RoleCreativeBriefV2:
+        completed = self._run_structured(
+            operation="author_role_brief",
+            context=context,
+            contract=RoleCreativeBriefV2,
+            identity_fields={
+                "agent_request_identity": request_identity,
+                "workflow_id": context.workflow_id,
+                "node_id": context.node_id,
+                "node_revision": context.node_revision,
+                "role_variant": context.role_variant,
+            },
+        )
+        return RoleCreativeBriefV2.model_validate(completed.value)
 
     def plan_storyboard_sequence_outline(
         self,

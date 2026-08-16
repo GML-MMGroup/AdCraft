@@ -717,6 +717,13 @@ class AgentCanvasWorkflowRepository:
                     )
                     if updated.rowcount != 1:
                         raise _node_not_found_error()
+                    _invalidate_prompt_preparations_for_source(
+                        connection,
+                        events=self._events,
+                        workflow_id=node.workflow_id,
+                        source_node_id=node.node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=node.workflow_id,
@@ -810,9 +817,10 @@ class AgentCanvasWorkflowRepository:
                         )
                         event_type = {
                             "working": "node_prompt_preparation_started",
-                            "ready": "node_prompt_preparation_completed",
+                            "ready": "node_prompt_preparation_ready",
                             "failed": "node_prompt_preparation_failed",
-                            "queued": "draft_node_created",
+                            "queued": "node_prompt_preparation_queued",
+                            "superseded": "node_prompt_preparation_superseded",
                         }[node.prompt_preparation.status]
                         self._events.append_in_transaction(
                             connection,
@@ -827,6 +835,16 @@ class AgentCanvasWorkflowRepository:
                                     "creative_role": node.creative_role,
                                     "prompt_preparation_status": (node.prompt_preparation.status),
                                     "operation_id": node.prompt_preparation.operation_id,
+                                    "recipe_id": node.prompt_preparation.recipe_id,
+                                    "recipe_version": node.prompt_preparation.recipe_version,
+                                    "recipe_digest": node.prompt_preparation.recipe_digest,
+                                    "prompt_digest": node.prompt_preparation.prompt_digest,
+                                    "binding_digest": node.prompt_preparation.binding_digest,
+                                    "error_code": (
+                                        node.prompt_preparation.error.code
+                                        if node.prompt_preparation.error is not None
+                                        else None
+                                    ),
                                 },
                             ),
                         )
@@ -1364,6 +1382,13 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=binding.workflow_id,
@@ -1444,6 +1469,13 @@ class AgentCanvasWorkflowRepository:
                         binding,
                         updated_at=now,
                     )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
+                    )
                     _advance_workflow_revision(
                         connection,
                         workflow_id=workflow_id,
@@ -1511,6 +1543,13 @@ class AgentCanvasWorkflowRepository:
                         target_node_id=binding.target_node_id,
                         prioritized_binding_id=binding.binding_id,
                         requested_order=binding.display_order,
+                    )
+                    _invalidate_target_prompt_preparation(
+                        connection,
+                        events=self._events,
+                        workflow_id=binding.workflow_id,
+                        target_node_id=binding.target_node_id,
+                        updated_at=now,
                     )
                     _advance_workflow_revision(
                         connection,
@@ -2201,6 +2240,116 @@ def _node_values(node: CanvasNodeV2) -> dict[str, object]:
         "created_at": node.created_at.isoformat(),
         "updated_at": node.updated_at.isoformat(),
     }
+
+
+def _invalidate_target_prompt_preparation(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    target_node_id: str,
+    updated_at: str,
+) -> None:
+    row = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == workflow_id,
+                AgentCanvasNodeRow.node_id == target_node_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise _node_not_found_error()
+    node = _node_from_row(row)
+    if (
+        node.status != "draft"
+        or node.prompt_preparation.status == "queued"
+        or node.prompt_preparation.recipe_id is None
+    ):
+        return
+    queued = NodePromptPreparationV1(
+        status="queued",
+        operation_id=None,
+        attempt_no=node.prompt_preparation.attempt_no,
+        context_snapshot_id=None,
+        prompt_digest=None,
+        error=None,
+        updated_at=updated_at,
+    )
+    connection.execute(
+        update(AgentCanvasNodeRow)
+        .where(
+            AgentCanvasNodeRow.workflow_id == workflow_id,
+            AgentCanvasNodeRow.node_id == target_node_id,
+            AgentCanvasNodeRow.revision == node.revision,
+        )
+        .values(
+            prompt_preparation_json=queued.model_dump_json(),
+            revision=node.revision + 1,
+            updated_at=updated_at,
+        )
+    )
+    safe_payload = {
+        "node_revision": node.revision + 1,
+        "creative_role": node.creative_role,
+        "previous_operation_id": node.prompt_preparation.operation_id,
+        "previous_prompt_digest": node.prompt_preparation.prompt_digest,
+    }
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            node_id=target_node_id,
+            event_type="node_prompt_preparation_superseded",
+            created_at=updated_at,
+            payload=safe_payload,
+        ),
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            node_id=target_node_id,
+            event_type="node_prompt_preparation_queued",
+            created_at=updated_at,
+            payload={
+                "node_revision": node.revision + 1,
+                "creative_role": node.creative_role,
+            },
+        ),
+    )
+
+
+def _invalidate_prompt_preparations_for_source(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    source_node_id: str,
+    updated_at: str,
+) -> None:
+    target_node_ids = tuple(
+        connection.scalars(
+            select(AgentCanvasBindingRow.target_node_id)
+            .where(
+                AgentCanvasBindingRow.workflow_id == workflow_id,
+                AgentCanvasBindingRow.source_kind == "node_output",
+                AgentCanvasBindingRow.source_node_id == source_node_id,
+                AgentCanvasBindingRow.enabled.is_(True),
+            )
+            .distinct()
+        )
+    )
+    for target_node_id in target_node_ids:
+        _invalidate_target_prompt_preparation(
+            connection,
+            events=events,
+            workflow_id=workflow_id,
+            target_node_id=target_node_id,
+            updated_at=updated_at,
+        )
 
 
 def _node_from_row(

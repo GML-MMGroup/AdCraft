@@ -85,6 +85,12 @@ class CapabilityDraftBundleBuilder:
         )
         drafts: list[SpecialistDraftV2] = []
         for draft_key, node_type, role, title_suffix, identity in definitions:
+            if (
+                envelope.capability_id == "video_direction"
+                and role == "storyboard_video"
+                and not _has_storyboard_visual_reference(envelope)
+            ):
+                role = "general_video"
             parameters = _stage_parameters(envelope.capability_id, draft_key, context)
             if character_pair_id is not None:
                 parameters["character_pair_id"] = character_pair_id
@@ -140,6 +146,13 @@ class CapabilityDraftBundleBuilder:
                 "video": "general_video",
                 "audio": "general_audio",
             }[node_type]
+        elif envelope.capability_id == "video_direction":
+            node_type = "video"
+            creative_role = (
+                "storyboard_video"
+                if _has_storyboard_visual_reference(envelope)
+                else "general_video"
+            )
         else:
             definition = CapabilityPolicyService().definition(envelope.capability_id)
             if definition.node_type is None or definition.creative_role is None:
@@ -513,6 +526,13 @@ def _reference_intents(
                 }
             )
         )
+        for reference in envelope.reference_plan.references
+    )
+
+
+def _has_storyboard_visual_reference(envelope: ProposalApplicationEnvelopeV1) -> bool:
+    return any(
+        reference.semantic_reference_role == "storyboard_visual_reference"
         for reference in envelope.reference_plan.references
     )
 

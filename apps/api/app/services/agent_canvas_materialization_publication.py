@@ -701,6 +701,17 @@ class CapabilityMaterializationPublicationService:
             references=envelope.reference_plan.references,
         )
         prompt_service = NodePromptPreparationService(self._workflows)
+        if self._storyboard_gateway is not None:
+            prompt_service = NodePromptPreparationService(
+                self._workflows,
+                role_brief_author=lambda role_context, request_identity: (
+                    self._storyboard_gateway.author_role_brief(
+                        role_context,
+                        request_identity=request_identity,
+                    )
+                ),
+                asset_resolver=self._asset_resolver,
+            )
         errors: list[Exception] = []
         operation_by_node = dict(zip(node_ids, operation_ids, strict=True))
         for node_id in node_ids:
