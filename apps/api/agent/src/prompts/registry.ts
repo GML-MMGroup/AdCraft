@@ -146,8 +146,9 @@ function instructionForOperation(operation: string): string {
   }
   if (operation.startsWith("propose_") && operation.endsWith("_options")) {
     return [
-      "Return only concise creative options with title, public_summary, and one to six key_decisions.",
-      "Do not return provider prompts, Draft seeds, detailed storyboard panels, or output for another production stage.",
+      "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",
+      "Render all option display text in the supplied response_locale.",
+      "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
     ].join(" ");
   }
   if (operation.startsWith("revise_") && operation.endsWith("_options")) {

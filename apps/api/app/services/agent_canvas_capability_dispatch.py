@@ -34,6 +34,9 @@ from app.schemas.agent_canvas_capabilities import (
     CapabilityDispatchReceiptV1,
     ValidatedNextActionV1,
 )
+from app.services.agent_canvas_guided_interaction_policy import (
+    GuidedInteractionPolicyService,
+)
 from app.services.agent_canvas_requirement_projection import requirement_projection_digest
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 from app.schemas.agent_canvas_conversation import ChatTurnV2
@@ -133,6 +136,10 @@ class CapabilityDispatchService:
         activity_id = f"activity_{identity[8:32]}"
         now = self._clock().astimezone(timezone.utc)
         projection = context_snapshot.requirement_projection
+        interaction_policy = GuidedInteractionPolicyService().decide_candidate_count(
+            projection,
+            default_candidate_count=command.definition.default_candidate_count,
+        )
         envelope = CapabilityCommandEnvelopeV2(
             envelope_id=envelope_id,
             workflow_id=source_turn.workflow_id,
@@ -157,7 +164,7 @@ class CapabilityDispatchService:
             capability_context=context_snapshot.capability_context,
             style_projection=context_snapshot.style_projection,
             result_contract_name=command.definition.result_contract_name,
-            candidate_count=command.definition.default_candidate_count,
+            candidate_count=interaction_policy.candidate_count,
             reference_allowlist=context_snapshot.approved_reference_ids,
             reference_plan=context_snapshot.reference_plan,
             agent_request_identity=f"capability:{identity}",

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Literal, Mapping, cast
 from uuid import uuid4
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection, RowMapping
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -27,6 +27,10 @@ from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
 from app.persistence.event_repository import EventRepository
+from app.persistence.agent_canvas_guided_interaction_repository import (
+    guidance_awaiting_from_row,
+    guided_interaction_from_row,
+)
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
     AgentCanvasChatEntryRow,
@@ -42,6 +46,8 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
+    AgentCanvasGuidanceAwaitingRow,
+    AgentCanvasGuidedInteractionRow,
     AgentCanvasGuidedActionRow,
     AgentCanvasIdempotencyRow,
     AgentCanvasNodeRow,
@@ -102,6 +108,14 @@ from app.schemas.agent_canvas_guidance import (
     ContinuationTurnRetrySnapshotV1,
     GuidanceAdvanceAuthorityPlanV1,
     GuidanceAdvanceCommitReceiptV1,
+)
+from app.schemas.agent_canvas_guided_checkpoint import GuidedCheckpointOriginV1
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV1,
+    GuidedChoiceOptionV1,
+    GuidedInteractionV1,
+    GuidedQuestionnaireV1,
+    GuidedQuestionV1,
 )
 from app.schemas.agent_canvas_materialization_commit import (
     MaterializationDocumentWriteV1,
@@ -438,6 +452,17 @@ class AgentCanvasConversationRepository:
                             "journey_revision_conflict",
                             "Journey state changed before this transition.",
                         )
+                    _upsert_clarification_authority(
+                        connection,
+                        events=self._events,
+                        workflow_id=workflow_id,
+                        session_id=session_id,
+                        response_locale=str(session_row["response_locale"]),
+                        expected_session_revision=next_revision,
+                        journey=journey,
+                        assistant_message=assistant_message,
+                        now=now,
+                    )
                     evidence = next(
                         (
                             item
@@ -495,6 +520,129 @@ class AgentCanvasConversationRepository:
                 "Conversation storage failed.",
             ) from error
         return self.get_turn(turn_id)
+
+    def close_current_clarification(
+        self,
+        workflow_id: str,
+        *,
+        source_turn_id: str,
+        expected_session_revision: int,
+    ) -> bool:
+        """Close the current typed clarification from exact user Turn evidence."""
+
+        now = _now()
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    session = _require_guidance_session_row_by_workflow(
+                        connection,
+                        workflow_id,
+                    )
+                    _require_guidance_revision(session, expected_session_revision)
+                    interaction_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidedInteractionRow).where(
+                                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                                AgentCanvasGuidedInteractionRow.kind
+                                == "clarification_questionnaire",
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    awaiting_row = (
+                        connection.execute(
+                            select(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+                            )
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if interaction_row is None and awaiting_row is None:
+                        connection.rollback()
+                        return False
+                    if (
+                        interaction_row is None
+                        or awaiting_row is None
+                        or str(awaiting_row["kind"]) != "clarification"
+                        or awaiting_row["interaction_id"] != interaction_row["interaction_id"]
+                    ):
+                        raise _error(
+                            "guidance_resume_evidence_missing",
+                            "Clarification authority is incomplete and cannot be resumed.",
+                        )
+                    interaction_id = str(interaction_row["interaction_id"])
+                    awaiting_id = str(awaiting_row["awaiting_id"])
+                    connection.execute(
+                        update(AgentCanvasGuidedInteractionRow)
+                        .where(
+                            AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                            AgentCanvasGuidedInteractionRow.status == "open",
+                        )
+                        .values(
+                            status="closed",
+                            revision=int(interaction_row["revision"]) + 1,
+                            updated_at=now,
+                        )
+                    )
+                    connection.execute(
+                        delete(AgentCanvasGuidanceAwaitingRow).where(
+                            AgentCanvasGuidanceAwaitingRow.awaiting_id == awaiting_id
+                        )
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            turn_id=source_turn_id,
+                            event_type="guided_interaction_closed",
+                            transition_key=(
+                                f"guided-interaction:{interaction_id}:closed:{source_turn_id}"
+                            ),
+                            action_id=interaction_id,
+                            created_at=now,
+                            payload={
+                                "interaction_id": interaction_id,
+                                "source_turn_id": source_turn_id,
+                                "reason": "clarification_completed",
+                            },
+                        ),
+                    )
+                    self._events.append_in_transaction(
+                        connection,
+                        V2EventInsert(
+                            workflow_id=workflow_id,
+                            turn_id=source_turn_id,
+                            event_type="guidance_awaiting_resumed",
+                            transition_key=f"guidance-awaiting:{awaiting_id}:resumed",
+                            action_id=interaction_id,
+                            created_at=now,
+                            payload={
+                                "awaiting_id": awaiting_id,
+                                "checkpoint_id": str(awaiting_row["checkpoint_id"]),
+                                "kind": "clarification",
+                                "resume_policy": "submit_interaction",
+                                "resume_evidence": "user_turn_requirement_update",
+                                "interaction_id": interaction_id,
+                                "source_turn_id": source_turn_id,
+                            },
+                        ),
+                    )
+                    connection.commit()
+                    return True
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _error(
+                "conversation_persistence_unavailable",
+                "Conversation storage failed.",
+            ) from error
 
     def set_creative_authority(
         self,
@@ -4678,6 +4826,199 @@ def _validate_clarification_target(
     )
 
 
+def _upsert_clarification_authority(
+    connection: Connection,
+    *,
+    events: EventRepository,
+    workflow_id: str,
+    session_id: str,
+    response_locale: str,
+    expected_session_revision: int,
+    journey: GuidedProductionJourneyV1,
+    assistant_message: str,
+    now: str,
+) -> None:
+    checkpoint_id = f"clarification:{journey.stage_revision}"
+    identity = hashlib.sha256(
+        f"{workflow_id}:{session_id}:{checkpoint_id}".encode("utf-8")
+    ).hexdigest()[:32]
+    interaction_id = f"interaction_{identity}"
+    awaiting_id = f"awaiting_{identity}"
+    content = GuidedQuestionnaireV1(
+        questions=(
+            GuidedQuestionV1(
+                question_id=f"question_{identity}",
+                prompt=assistant_message.strip()[:512],
+                options=(
+                    GuidedChoiceOptionV1(
+                        option_id=f"option_{identity}_details",
+                        title="Provide more details",
+                        summary="Use the additional campaign details I provide.",
+                    ),
+                    GuidedChoiceOptionV1(
+                        option_id=f"option_{identity}_continue",
+                        title="Continue with current details",
+                        summary="Continue with the currently confirmed campaign requirements.",
+                    ),
+                ),
+                allow_custom=True,
+                allow_skip=True,
+                required=False,
+            ),
+        )
+    )
+    current_row = (
+        connection.execute(
+            select(AgentCanvasGuidedInteractionRow).where(
+                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+                AgentCanvasGuidedInteractionRow.status == "open",
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    awaiting_row = (
+        connection.execute(
+            select(AgentCanvasGuidanceAwaitingRow).where(
+                AgentCanvasGuidanceAwaitingRow.workflow_id == workflow_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if current_row is not None:
+        if (
+            str(current_row["interaction_id"]) != interaction_id
+            or str(current_row["kind"]) != "clarification_questionnaire"
+            or awaiting_row is None
+            or str(awaiting_row["awaiting_id"]) != awaiting_id
+        ):
+            raise _error(
+                "guided_interaction_conflict",
+                "Another guided interaction owns the current Guidance checkpoint.",
+            )
+        connection.execute(
+            update(AgentCanvasGuidedInteractionRow)
+            .where(AgentCanvasGuidedInteractionRow.interaction_id == interaction_id)
+            .values(
+                response_locale=response_locale,
+                expected_session_revision=expected_session_revision,
+                revision=int(current_row["revision"]) + 1,
+                content_json=content.model_dump_json(),
+                updated_at=now,
+            )
+        )
+        return
+    if awaiting_row is not None:
+        raise _error(
+            "guidance_awaiting_conflict",
+            "Another durable wait owns the current Guidance session.",
+        )
+    interaction = GuidedInteractionV1(
+        interaction_id=interaction_id,
+        workflow_id=workflow_id,
+        session_id=session_id,
+        checkpoint_id=checkpoint_id,
+        kind="clarification_questionnaire",
+        status="open",
+        response_locale=response_locale,
+        expected_session_revision=expected_session_revision,
+        revision=1,
+        title="Clarify campaign requirements",
+        context="Answer the current clarification before guided production continues.",
+        content=content,
+        allowed_actions=("answer", "custom", "skip"),
+        submit_path=(f"/api/v2/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit"),
+        created_at=now,
+        updated_at=now,
+    )
+    awaiting = GuidanceAwaitingV1(
+        awaiting_id=awaiting_id,
+        workflow_id=workflow_id,
+        session_id=session_id,
+        checkpoint_id=checkpoint_id,
+        kind="clarification",
+        requires_user_action=True,
+        resume_policy="submit_interaction",
+        interaction_id=interaction_id,
+        stage=journey.stage,
+        stage_revision=journey.stage_revision,
+        created_at=now,
+    )
+    connection.execute(
+        insert(AgentCanvasGuidedInteractionRow).values(
+            interaction_id=interaction.interaction_id,
+            workflow_id=interaction.workflow_id,
+            session_id=interaction.session_id,
+            checkpoint_id=interaction.checkpoint_id,
+            kind=interaction.kind,
+            status=interaction.status,
+            response_locale=interaction.response_locale,
+            expected_session_revision=interaction.expected_session_revision,
+            revision=interaction.revision,
+            title=interaction.title,
+            context=interaction.context,
+            content_json=interaction.content.model_dump_json(),
+            allowed_actions_json=_dump(list(interaction.allowed_actions)),
+            submit_path=interaction.submit_path,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    connection.execute(
+        insert(AgentCanvasGuidanceAwaitingRow).values(
+            awaiting_id=awaiting.awaiting_id,
+            workflow_id=awaiting.workflow_id,
+            session_id=awaiting.session_id,
+            checkpoint_id=awaiting.checkpoint_id,
+            kind=awaiting.kind,
+            requires_user_action=awaiting.requires_user_action,
+            resume_policy=awaiting.resume_policy,
+            interaction_id=awaiting.interaction_id,
+            node_ids_json="[]",
+            stage=awaiting.stage,
+            stage_revision=awaiting.stage_revision,
+            created_at=now,
+        )
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            event_type="guided_interaction_opened",
+            transition_key=f"guided-interaction:{interaction_id}:opened",
+            action_id=interaction_id,
+            created_at=now,
+            payload={
+                "interaction_id": interaction_id,
+                "session_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "kind": interaction.kind,
+                "interaction_revision": interaction.revision,
+            },
+        ),
+    )
+    events.append_in_transaction(
+        connection,
+        V2EventInsert(
+            workflow_id=workflow_id,
+            event_type="guidance_awaiting_entered",
+            transition_key=f"guidance-awaiting:{awaiting_id}:entered",
+            action_id=interaction_id,
+            created_at=now,
+            payload={
+                "awaiting_id": awaiting_id,
+                "session_id": session_id,
+                "checkpoint_id": checkpoint_id,
+                "kind": awaiting.kind,
+                "resume_policy": awaiting.resume_policy,
+                "interaction_id": interaction_id,
+                "node_ids": [],
+            },
+        ),
+    )
+
+
 def _turn_skill_run_id(turn: RowMapping) -> str | None:
     value = json.loads(str(turn["request_json"])).get("video_skill_run_id")
     return str(value) if isinstance(value, str) else None
@@ -5424,6 +5765,36 @@ def _guidance_session(
         .mappings()
         .all()
     )
+    interaction_row = (
+        connection.execute(
+            select(AgentCanvasGuidedInteractionRow)
+            .where(
+                AgentCanvasGuidedInteractionRow.workflow_id == row["workflow_id"],
+                AgentCanvasGuidedInteractionRow.status == "open",
+            )
+            .order_by(
+                AgentCanvasGuidedInteractionRow.updated_at.desc(),
+                AgentCanvasGuidedInteractionRow.interaction_id.asc(),
+            )
+        )
+        .mappings()
+        .first()
+    )
+    awaiting_row = (
+        connection.execute(
+            select(AgentCanvasGuidanceAwaitingRow).where(
+                AgentCanvasGuidanceAwaitingRow.workflow_id == row["workflow_id"]
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    journey = GuidedProductionJourneyV1.model_validate_json(str(row["journey_state_json"]))
+    awaiting = (
+        guidance_awaiting_from_row(awaiting_row)
+        if awaiting_row is not None
+        else _derive_historical_manual_awaiting(connection, row, journey)
+    )
     return GuidedSessionStateV2(
         session_id=str(row["session_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -5478,9 +5849,70 @@ def _guidance_session(
             else None
         ),
         completion=GuidanceCompletionProjectionV2.model_validate_json(str(row["completion_json"])),
-        journey=GuidedProductionJourneyV1.model_validate_json(str(row["journey_state_json"])),
+        interaction=(
+            guided_interaction_from_row(interaction_row) if interaction_row is not None else None
+        ),
+        awaiting=awaiting,
+        journey=journey,
         revision=int(row["revision"]),
         updated_at=str(row["updated_at"]),
+    )
+
+
+def _derive_historical_manual_awaiting(
+    connection: Connection,
+    session_row: RowMapping,
+    journey: GuidedProductionJourneyV1,
+) -> GuidanceAwaitingV1 | None:
+    if journey.stage_status != "waiting_user":
+        return None
+    node_rows = (
+        connection.execute(
+            select(AgentCanvasNodeRow).where(
+                AgentCanvasNodeRow.workflow_id == session_row["workflow_id"],
+                AgentCanvasNodeRow.status == "draft",
+                AgentCanvasNodeRow.node_type.in_(("image", "video", "audio")),
+            )
+        )
+        .mappings()
+        .all()
+    )
+    matched: list[tuple[RowMapping, GuidedCheckpointOriginV1]] = []
+    for node_row in node_rows:
+        metadata = json.loads(str(node_row["metadata_json"]))
+        raw_origin = metadata.get("guided_checkpoint")
+        if not isinstance(raw_origin, dict):
+            continue
+        origin = GuidedCheckpointOriginV1.model_validate(raw_origin)
+        if (
+            origin.guidance_session_id == session_row["session_id"]
+            and origin.stage_revision == journey.stage_revision
+        ):
+            matched.append((node_row, origin))
+    if not matched:
+        return None
+    checkpoint_ids = {origin.checkpoint_id for _, origin in matched}
+    if len(checkpoint_ids) != 1:
+        raise _error(
+            "guidance_awaiting_conflict",
+            "Historical waiting Nodes disagree on their Guidance checkpoint.",
+        )
+    checkpoint_id = checkpoint_ids.pop()
+    identity = hashlib.sha256(
+        f"{session_row['workflow_id']}:{checkpoint_id}".encode("utf-8")
+    ).hexdigest()[:32]
+    return GuidanceAwaitingV1(
+        awaiting_id=f"derived_awaiting_{identity}",
+        workflow_id=str(session_row["workflow_id"]),
+        session_id=str(session_row["session_id"]),
+        checkpoint_id=checkpoint_id,
+        kind="manual_node_run",
+        requires_user_action=True,
+        resume_policy="node_terminal",
+        node_ids=tuple(sorted(str(node_row["node_id"]) for node_row, _ in matched)),
+        stage=journey.stage,
+        stage_revision=journey.stage_revision,
+        created_at=min(str(node_row["created_at"]) for node_row, _ in matched),
     )
 
 

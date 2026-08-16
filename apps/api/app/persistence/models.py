@@ -1291,6 +1291,143 @@ class AgentCanvasGuidanceTopicRow(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasGuidedInteractionRow(Base):
+    """One durable guided interaction frozen at a Guidance checkpoint."""
+
+    __tablename__ = "agent_canvas_guided_interactions"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('clarification_questionnaire','concept_choice','media_review')",
+            name="ck_agent_canvas_guided_interactions_kind",
+        ),
+        CheckConstraint(
+            "status IN ('open','submitted','closed','superseded')",
+            name="ck_agent_canvas_guided_interactions_status",
+        ),
+        CheckConstraint(
+            "expected_session_revision > 0 AND revision > 0",
+            name="ck_agent_canvas_guided_interactions_revisions",
+        ),
+        Index(
+            "uq_agent_canvas_guided_interactions_open_checkpoint",
+            "workflow_id",
+            "session_id",
+            "checkpoint_id",
+            unique=True,
+            sqlite_where=text("status = 'open'"),
+        ),
+        Index(
+            "ix_agent_canvas_guided_interactions_workflow_updated",
+            "workflow_id",
+            "updated_at",
+            "interaction_id",
+        ),
+    )
+
+    interaction_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), nullable=False
+    )
+    checkpoint_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    response_locale: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_session_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[str] = mapped_column(Text, nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    allowed_actions_json: Mapped[str] = mapped_column(Text, nullable=False)
+    submit_path: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasGuidedInteractionSubmissionRow(Base):
+    """Immutable accepted or rejected submission identity for one interaction."""
+
+    __tablename__ = "agent_canvas_guided_interaction_submissions"
+    __table_args__ = (
+        UniqueConstraint(
+            "interaction_id",
+            "idempotency_key",
+            name="uq_agent_canvas_guided_submission_idempotency",
+        ),
+        Index(
+            "ix_agent_canvas_guided_submissions_workflow_created",
+            "workflow_id",
+            "created_at",
+            "submission_id",
+        ),
+    )
+
+    submission_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    interaction_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guided_interactions.interaction_id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
+    request_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    request_json: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasGuidanceAwaitingRow(Base):
+    """Current typed durable wait for one Guidance session."""
+
+    __tablename__ = "agent_canvas_guidance_awaiting"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('clarification','concept_selection','media_review',"
+            "'manual_node_run','milestone_idle')",
+            name="ck_agent_canvas_guidance_awaiting_kind",
+        ),
+        CheckConstraint(
+            "resume_policy IN ('submit_interaction','node_terminal',"
+            "'next_user_message','explicit_resume')",
+            name="ck_agent_canvas_guidance_awaiting_resume_policy",
+        ),
+        CheckConstraint(
+            "stage_revision > 0",
+            name="ck_agent_canvas_guidance_awaiting_stage_revision",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            name="uq_agent_canvas_guidance_awaiting_workflow",
+        ),
+        UniqueConstraint(
+            "session_id",
+            "checkpoint_id",
+            name="uq_agent_canvas_guidance_awaiting_checkpoint",
+        ),
+    )
+
+    awaiting_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guidance_sessions.session_id"), nullable=False
+    )
+    checkpoint_id: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    requires_user_action: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    resume_policy: Mapped[str] = mapped_column(Text, nullable=False)
+    interaction_id: Mapped[str | None] = mapped_column(
+        ForeignKey("agent_canvas_guided_interactions.interaction_id")
+    )
+    node_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    stage: Mapped[str] = mapped_column(Text, nullable=False)
+    stage_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 # These mappings remain only until the adaptive-recipe callers are removed in the
 # clean-cut checkpoint. Migration 20260804_01 removes their physical tables.
 class AgentCanvasCreativeMemoryRow(Base):

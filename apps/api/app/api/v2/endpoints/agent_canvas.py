@@ -62,6 +62,9 @@ from app.persistence.agent_canvas_capability_proposal_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_guided_interaction_repository import (
+    AgentCanvasGuidedInteractionRepository,
+)
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
 )
@@ -118,8 +121,12 @@ from app.schemas.agent_canvas_conversation import (
     ChatTurnRetryRequestV1,
     ChatTurnV2,
     ConceptProposalV2,
+    DeferTopicActionV2,
+    DelegateChoiceActionV2,
+    ExcludeElementActionV2,
     GuidedActionApplyRequestV2,
     ProposalActionRequestV2,
+    SelectOptionActionV2,
     VideoSkillRunCreateRequestV2,
     VideoSkillRunV2,
 )
@@ -133,6 +140,13 @@ from app.schemas.agent_canvas_decision_bundles import (
     DecisionBundleV1,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidedAcceptedReferenceV1,
+    GuidedConceptChoiceV1,
+    GuidedConceptSubmitV1,
+    GuidedInteractionAcceptedV1,
+    GuidedInteractionSubmitRequestV1,
+)
 from app.schemas.agent_canvas_execution_settings import (
     AgentExecutionSettingsPatchV2,
     AgentExecutionSettingsV2,
@@ -262,7 +276,9 @@ from app.services.agent_canvas_conversation import (
 )
 from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_guidance_advance import GuidanceAdvanceService
+from app.services.agent_canvas_guided_interactions import GuidedInteractionService
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
+from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -330,6 +346,7 @@ class AgentCanvasRuntime:
     conversations: AgentConversationService
     turn_retries: ChatTurnRetryService
     guidance_advances: GuidanceAdvanceService
+    guided_interactions: GuidedInteractionService
     commands: AgentCanvasCommandService
     variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
@@ -422,6 +439,14 @@ def create_agent_canvas_runtime(
     conversation_repository = AgentCanvasConversationRepository(
         database,
         event_repository,
+    )
+    guided_interaction_repository = AgentCanvasGuidedInteractionRepository(
+        database,
+        event_repository,
+    )
+    guidance_awaiting = GuidanceAwaitingService(
+        guided_interaction_repository,
+        conversation_repository,
     )
     working_documents = AgentWorkingDocumentService(
         workflows=workflow_repository,
@@ -596,7 +621,10 @@ def create_agent_canvas_runtime(
         runtime_repository,
         bindings=binding_service,
     )
-    production_journey = GuidedProductionJourneyService(conversation_repository)
+    production_journey = GuidedProductionJourneyService(
+        conversation_repository,
+        awaiting=guidance_awaiting,
+    )
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
@@ -970,7 +998,39 @@ def create_agent_canvas_runtime(
         continuation_outbox=continuation_outbox,
         model_selection=model_selection,
         requirements=requirement_service,
+        production_journey=production_journey,
     )
+
+    def materialize_explicit_direction(proposal_id: str) -> ChatTurnAcceptedV2:
+        proposal = conversation_repository.get_proposal(proposal_id)
+        if len(proposal.options) != 1:
+            raise V2PersistenceError(
+                "guided_interaction_policy_invalid",
+                "Direct materialization requires exactly one capability direction.",
+                stage="capability_execution",
+            )
+        descriptor = next(
+            (item for item in proposal.actions if item.action == "select_option"),
+            None,
+        )
+        if descriptor is None:
+            raise V2PersistenceError(
+                "guided_interaction_policy_invalid",
+                "Direct materialization requires a current select action.",
+                stage="capability_execution",
+            )
+        return conversation_service.act_on_proposal(
+            proposal.workflow_id,
+            proposal.proposal_id,
+            SelectOptionActionV2(
+                action_id=descriptor.action_id,
+                action="select_option",
+                option_id=proposal.options[0].option_id,
+                expected_session_revision=descriptor.expected_session_revision,
+            ),
+            idempotency_key=f"direct-materialization:{proposal.proposal_id}",
+        )
+
     capability_execution = CapabilityExecutionService(
         database=database,
         gateway=video_agent_gateway,
@@ -984,6 +1044,7 @@ def create_agent_canvas_runtime(
             database,
             event_repository,
         ).publish,
+        direct_materializer=materialize_explicit_direction,
     )
     durable_next_action = DurableNextActionExecutionService(
         workflows=workflow_repository,
@@ -1002,6 +1063,11 @@ def create_agent_canvas_runtime(
     materialization_repository = AgentCanvasMaterializationRepository(
         database,
         event_repository,
+    )
+    guided_interactions = GuidedInteractionService(
+        guided_interaction_repository,
+        conversation_repository,
+        materialization_repository,
     )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
@@ -1131,6 +1197,7 @@ def create_agent_canvas_runtime(
         conversations=conversation_service,
         turn_retries=turn_retries,
         guidance_advances=guidance_advances,
+        guided_interactions=guided_interactions,
         commands=command_service,
         variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
@@ -2246,6 +2313,44 @@ def retry_chat_turn(
 
 
 @router.post(
+    "/workflows/{workflow_id}/chat/interactions/{interaction_id}/submit",
+    response_model=GuidedInteractionAcceptedV1,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_guided_interaction(
+    workflow_id: str,
+    interaction_id: str,
+    request: GuidedInteractionSubmitRequestV1,
+    background_tasks: BackgroundTasks,
+    runtime: Annotated[AgentCanvasRuntime, Depends(get_agent_canvas_runtime)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> GuidedInteractionAcceptedV1:
+    if not idempotency_key:
+        raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
+    try:
+        accepted = runtime.guided_interactions.submit_interaction(
+            workflow_id,
+            interaction_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+    except V2PersistenceError as error:
+        raise _persistence_http_error(error) from error
+    if not accepted.replayed:
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.GUIDED_INTERACTION_SUBMIT,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                resource_id=interaction_id,
+                callback=runtime.continuation_worker.run_once,
+            ),
+        )
+    return accepted
+
+
+@router.post(
     "/workflows/{workflow_id}/chat/proposals/{proposal_id}/actions",
     response_model=ChatTurnAcceptedV2,
     status_code=status.HTTP_202_ACCEPTED,
@@ -2261,6 +2366,85 @@ def act_on_chat_proposal(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        interaction = runtime.guided_interactions.get_current(workflow_id)
+        if (
+            interaction is not None
+            and isinstance(interaction.content, GuidedConceptChoiceV1)
+            and interaction.content.proposal_id == proposal_id
+            and isinstance(
+                request,
+                (
+                    SelectOptionActionV2,
+                    DelegateChoiceActionV2,
+                    DeferTopicActionV2,
+                    ExcludeElementActionV2,
+                ),
+            )
+        ):
+            accepted_interaction = runtime.guided_interactions.submit_interaction(
+                workflow_id,
+                interaction.interaction_id,
+                GuidedConceptSubmitV1(
+                    submission_kind="concept_choice",
+                    expected_interaction_revision=interaction.revision,
+                    expected_session_revision=request.expected_session_revision,
+                    action=(
+                        "select"
+                        if isinstance(request, SelectOptionActionV2)
+                        else (
+                            "delegate"
+                            if isinstance(request, DelegateChoiceActionV2)
+                            else ("defer" if isinstance(request, DeferTopicActionV2) else "exclude")
+                        )
+                    ),
+                    option_id=(
+                        request.option_id if isinstance(request, SelectOptionActionV2) else None
+                    ),
+                    accepted_references=(
+                        tuple(
+                            GuidedAcceptedReferenceV1.model_validate(reference.model_dump())
+                            for reference in request.accepted_references
+                        )
+                        if isinstance(request, SelectOptionActionV2)
+                        else ()
+                    ),
+                ),
+                idempotency_key=idempotency_key,
+            )
+            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
+            if proposal.materialization is None and isinstance(
+                request, (SelectOptionActionV2, DelegateChoiceActionV2)
+            ):
+                raise V2PersistenceError(
+                    "guided_interaction_incomplete",
+                    "Guided interaction did not queue Materialization.",
+                    stage="agent_canvas_api",
+                )
+            accepted = ChatTurnAcceptedV2(
+                workflow_id=workflow_id,
+                conversation_id=source_turn.conversation_id,
+                message_id=None,
+                turn_id=(
+                    proposal.materialization.turn_id
+                    if proposal.materialization is not None
+                    else source_turn.turn_id
+                ),
+                events_cursor=accepted_interaction.events_cursor,
+                replayed=accepted_interaction.replayed,
+            )
+            if not accepted.replayed and proposal.materialization is not None:
+                background_tasks.add_task(
+                    runtime.accepted_background.run,
+                    AcceptedBackgroundWork(
+                        operation=AcceptedBackgroundOperation.GUIDED_INTERACTION_SUBMIT,
+                        workflow_id=workflow_id,
+                        resource_type=AcceptedBackgroundResourceType.INTERACTION,
+                        resource_id=interaction.interaction_id,
+                        callback=runtime.continuation_worker.run_once,
+                    ),
+                )
+            return accepted
         accepted = runtime.conversations.act_on_proposal(
             workflow_id,
             proposal_id,

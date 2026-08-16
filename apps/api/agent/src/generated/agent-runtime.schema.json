@@ -11081,6 +11081,125 @@
       "title": "FrozenPlanningFacts",
       "type": "object"
     },
+    "GuidanceAwaitingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "awaiting_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Awaiting Id",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "interaction_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interaction Id"
+        },
+        "kind": {
+          "enum": [
+            "clarification",
+            "concept_selection",
+            "manual_node_run",
+            "media_review",
+            "milestone_idle"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Node Ids",
+          "type": "array"
+        },
+        "requires_user_action": {
+          "title": "Requires User Action",
+          "type": "boolean"
+        },
+        "resume_policy": {
+          "enum": [
+            "explicit_resume",
+            "next_user_message",
+            "node_terminal",
+            "submit_interaction"
+          ],
+          "title": "Resume Policy",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "bgm",
+            "clarification",
+            "completed",
+            "editing_ready",
+            "foundation_design",
+            "intake",
+            "narrative_direction",
+            "storyboard_grids",
+            "storyboard_plan",
+            "style_lock",
+            "video_segments",
+            "world_setting"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "stage_revision": {
+          "minimum": 1,
+          "title": "Stage Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "awaiting_id",
+        "checkpoint_id",
+        "created_at",
+        "kind",
+        "requires_user_action",
+        "resume_policy",
+        "session_id",
+        "stage",
+        "stage_revision",
+        "workflow_id"
+      ],
+      "title": "GuidanceAwaitingV1",
+      "type": "object"
+    },
     "GuidanceCompletionProjectionV2": {
       "additionalProperties": false,
       "properties": {
@@ -11426,6 +11545,723 @@
       "title": "GuidanceTopicStateV2",
       "type": "object"
     },
+    "GuidedAcceptedReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_kind": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Binding Kind",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "display_order": {
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Display Order",
+          "type": "integer"
+        },
+        "input_role": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Input Role",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "semantic_reference_role": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Semantic Reference Role"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "image_asset",
+            "node"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_kind",
+        "display_name",
+        "display_order",
+        "input_role",
+        "media_type",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "GuidedAcceptedReferenceV1",
+      "type": "object"
+    },
+    "GuidedChoiceOptionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "difference_tags": {
+          "default": [],
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Difference Tags",
+          "type": "array"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "recommended": {
+          "default": false,
+          "title": "Recommended",
+          "type": "boolean"
+        },
+        "reference_preview": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidedReferencePreviewV1"
+          },
+          "maxItems": 8,
+          "title": "Reference Preview",
+          "type": "array"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "option_id",
+        "summary",
+        "title"
+      ],
+      "title": "GuidedChoiceOptionV1",
+      "type": "object"
+    },
+    "GuidedConceptChoiceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "const": "concept_choice",
+          "default": "concept_choice",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/GuidedChoiceOptionV1"
+          },
+          "maxItems": 3,
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "proposal_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proposal Id"
+        }
+      },
+      "required": [
+        "options"
+      ],
+      "title": "GuidedConceptChoiceV1",
+      "type": "object"
+    },
+    "GuidedConceptSubmitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_references": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GuidedAcceptedReferenceV1"
+          },
+          "maxItems": 64,
+          "title": "Accepted References",
+          "type": "array"
+        },
+        "action": {
+          "enum": [
+            "custom",
+            "defer",
+            "delegate",
+            "exclude",
+            "revise",
+            "select"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "custom_value": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Value"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "option_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Option Id"
+        },
+        "submission_kind": {
+          "const": "concept_choice",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "submission_kind"
+      ],
+      "title": "GuidedConceptSubmitV1",
+      "type": "object"
+    },
+    "GuidedCustomAnswerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answer_kind": {
+          "const": "custom",
+          "title": "Answer Kind",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer_kind",
+        "question_id",
+        "value"
+      ],
+      "title": "GuidedCustomAnswerV1",
+      "type": "object"
+    },
+    "GuidedInteractionAcceptedV1": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic_run_command_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Automatic Run Command Ids",
+          "type": "array"
+        },
+        "continuation_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Continuation Id"
+        },
+        "created_binding_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Created Binding Ids",
+          "type": "array"
+        },
+        "created_node_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Created Node Ids",
+          "type": "array"
+        },
+        "document_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Document Revisions",
+          "type": "object"
+        },
+        "events_cursor": {
+          "minimum": 0,
+          "title": "Events Cursor",
+          "type": "integer"
+        },
+        "interaction_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Interaction Id",
+          "type": "string"
+        },
+        "receipt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "replayed": {
+          "default": false,
+          "title": "Replayed",
+          "type": "boolean"
+        },
+        "resulting_session_revision": {
+          "minimum": 1,
+          "title": "Resulting Session Revision",
+          "type": "integer"
+        },
+        "submission_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Submission Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "events_cursor",
+        "interaction_id",
+        "receipt_id",
+        "resulting_session_revision",
+        "submission_id",
+        "workflow_id"
+      ],
+      "title": "GuidedInteractionAcceptedV1",
+      "type": "object"
+    },
+    "GuidedInteractionSubmissionRecordV1": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "interaction_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Interaction Id",
+          "type": "string"
+        },
+        "request": {
+          "discriminator": {
+            "mapping": {
+              "concept_choice": "#/$defs/GuidedConceptSubmitV1",
+              "media_review": "#/$defs/GuidedMediaReviewSubmitV1",
+              "questionnaire": "#/$defs/GuidedQuestionnaireSubmitV1"
+            },
+            "propertyName": "submission_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GuidedQuestionnaireSubmitV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedConceptSubmitV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedMediaReviewSubmitV1"
+            }
+          ],
+          "title": "Request"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedInteractionAcceptedV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "submission_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Submission Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "created_at",
+        "idempotency_key",
+        "interaction_id",
+        "request",
+        "submission_id",
+        "workflow_id"
+      ],
+      "title": "GuidedInteractionSubmissionRecordV1",
+      "type": "object"
+    },
+    "GuidedInteractionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "items": {
+            "enum": [
+              "accept",
+              "answer",
+              "custom",
+              "defer",
+              "delegate",
+              "exclude",
+              "replace",
+              "retry",
+              "revise",
+              "select",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "checkpoint_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "content": {
+          "discriminator": {
+            "mapping": {
+              "concept_choice": "#/$defs/GuidedConceptChoiceV1",
+              "media_review": "#/$defs/GuidedMediaReviewV1",
+              "questionnaire": "#/$defs/GuidedQuestionnaireV1"
+            },
+            "propertyName": "content_kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GuidedQuestionnaireV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedConceptChoiceV1"
+            },
+            {
+              "$ref": "#/$defs/GuidedMediaReviewV1"
+            }
+          ],
+          "title": "Content"
+        },
+        "context": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Context",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "interaction_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Interaction Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "clarification_questionnaire",
+            "concept_choice",
+            "media_review"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "response_locale": {
+          "maxLength": 64,
+          "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$",
+          "title": "Response Locale",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "closed",
+            "open",
+            "submitted",
+            "superseded"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "submit_path": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Submit Path",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowed_actions",
+        "checkpoint_id",
+        "content",
+        "context",
+        "created_at",
+        "expected_session_revision",
+        "interaction_id",
+        "kind",
+        "response_locale",
+        "revision",
+        "session_id",
+        "status",
+        "submit_path",
+        "title",
+        "updated_at",
+        "workflow_id"
+      ],
+      "title": "GuidedInteractionV1",
+      "type": "object"
+    },
+    "GuidedMediaReviewSubmitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "accept",
+            "exclude",
+            "replace",
+            "retry"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "instruction": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instruction"
+        },
+        "submission_kind": {
+          "const": "media_review",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "submission_kind"
+      ],
+      "title": "GuidedMediaReviewSubmitV1",
+      "type": "object"
+    },
+    "GuidedMediaReviewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "content_kind": {
+          "const": "media_review",
+          "default": "media_review",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "asset_version_id",
+        "node_id",
+        "node_revision",
+        "summary"
+      ],
+      "title": "GuidedMediaReviewV1",
+      "type": "object"
+    },
     "GuidedProductionJourneyV1": {
       "additionalProperties": false,
       "properties": {
@@ -11530,6 +12366,212 @@
       "title": "GuidedProductionJourneyV1",
       "type": "object"
     },
+    "GuidedQuestionAnswerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answer_kind": {
+          "const": "option",
+          "title": "Answer Kind",
+          "type": "string"
+        },
+        "option_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Option Id",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer_kind",
+        "option_id",
+        "question_id"
+      ],
+      "title": "GuidedQuestionAnswerV1",
+      "type": "object"
+    },
+    "GuidedQuestionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_custom": {
+          "default": false,
+          "title": "Allow Custom",
+          "type": "boolean"
+        },
+        "allow_skip": {
+          "default": false,
+          "title": "Allow Skip",
+          "type": "boolean"
+        },
+        "input_kind": {
+          "const": "single_select",
+          "default": "single_select",
+          "title": "Input Kind",
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/$defs/GuidedChoiceOptionV1"
+          },
+          "maxItems": 4,
+          "minItems": 2,
+          "title": "Options",
+          "type": "array"
+        },
+        "prompt": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Prompt",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "options",
+        "prompt",
+        "question_id"
+      ],
+      "title": "GuidedQuestionV1",
+      "type": "object"
+    },
+    "GuidedQuestionnaireSubmitV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answers": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "custom": "#/$defs/GuidedCustomAnswerV1",
+                "option": "#/$defs/GuidedQuestionAnswerV1",
+                "skip": "#/$defs/GuidedSkipAnswerV1"
+              },
+              "propertyName": "answer_kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/GuidedQuestionAnswerV1"
+              },
+              {
+                "$ref": "#/$defs/GuidedCustomAnswerV1"
+              },
+              {
+                "$ref": "#/$defs/GuidedSkipAnswerV1"
+              }
+            ]
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Answers",
+          "type": "array"
+        },
+        "expected_interaction_revision": {
+          "minimum": 1,
+          "title": "Expected Interaction Revision",
+          "type": "integer"
+        },
+        "expected_session_revision": {
+          "minimum": 1,
+          "title": "Expected Session Revision",
+          "type": "integer"
+        },
+        "submission_kind": {
+          "const": "questionnaire",
+          "title": "Submission Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answers",
+        "expected_interaction_revision",
+        "expected_session_revision",
+        "submission_kind"
+      ],
+      "title": "GuidedQuestionnaireSubmitV1",
+      "type": "object"
+    },
+    "GuidedQuestionnaireV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content_kind": {
+          "const": "questionnaire",
+          "default": "questionnaire",
+          "title": "Content Kind",
+          "type": "string"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/GuidedQuestionV1"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Questions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "questions"
+      ],
+      "title": "GuidedQuestionnaireV1",
+      "type": "object"
+    },
+    "GuidedReferencePreviewV1": {
+      "additionalProperties": false,
+      "properties": {
+        "display_name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "audio",
+            "image",
+            "text",
+            "video"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "source_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_kind": {
+          "enum": [
+            "image_asset",
+            "node"
+          ],
+          "title": "Source Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "display_name",
+        "media_type",
+        "source_id",
+        "source_kind"
+      ],
+      "title": "GuidedReferencePreviewV1",
+      "type": "object"
+    },
     "GuidedSessionStateV2": {
       "additionalProperties": false,
       "properties": {
@@ -11558,6 +12600,17 @@
           ],
           "default": null,
           "title": "Active Style Skill Run Id"
+        },
+        "awaiting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidanceAwaitingV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "completion": {
           "$ref": "#/$defs/GuidanceCompletionProjectionV2"
@@ -11608,6 +12661,17 @@
         },
         "goal": {
           "$ref": "#/$defs/CreativeGoalV2"
+        },
+        "interaction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GuidedInteractionV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "journey": {
           "$ref": "#/$defs/GuidedProductionJourneyV1"
@@ -11683,6 +12747,28 @@
         "workflow_id"
       ],
       "title": "GuidedSessionStateV2",
+      "type": "object"
+    },
+    "GuidedSkipAnswerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "answer_kind": {
+          "const": "skip",
+          "title": "Answer Kind",
+          "type": "string"
+        },
+        "question_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Question Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "answer_kind",
+        "question_id"
+      ],
+      "title": "GuidedSkipAnswerV1",
       "type": "object"
     },
     "GuidedStepCheckpointV2": {
@@ -21991,7 +23077,7 @@
             "$ref": "#/$defs/WorldSettingProposalOptionV1"
           },
           "maxItems": 3,
-          "minItems": 2,
+          "minItems": 1,
           "title": "Options",
           "type": "array"
         }

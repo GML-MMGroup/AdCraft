@@ -16,6 +16,7 @@ from app.schemas import agent_canvas
 from app.schemas import agent_canvas_ad_media
 from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
+from app.schemas import agent_canvas_guided_interactions
 from app.schemas import agent_canvas_production_journey
 from app.schemas import agent_canvas_prompt_preparation
 from app.schemas import agent_canvas_capabilities
@@ -38,6 +39,23 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    agent_canvas_guided_interactions.GuidedReferencePreviewV1,
+    agent_canvas_guided_interactions.GuidedAcceptedReferenceV1,
+    agent_canvas_guided_interactions.GuidedChoiceOptionV1,
+    agent_canvas_guided_interactions.GuidedQuestionV1,
+    agent_canvas_guided_interactions.GuidedQuestionnaireV1,
+    agent_canvas_guided_interactions.GuidedConceptChoiceV1,
+    agent_canvas_guided_interactions.GuidedMediaReviewV1,
+    agent_canvas_guided_interactions.GuidedInteractionV1,
+    agent_canvas_guided_interactions.GuidedQuestionAnswerV1,
+    agent_canvas_guided_interactions.GuidedCustomAnswerV1,
+    agent_canvas_guided_interactions.GuidedSkipAnswerV1,
+    agent_canvas_guided_interactions.GuidedQuestionnaireSubmitV1,
+    agent_canvas_guided_interactions.GuidedConceptSubmitV1,
+    agent_canvas_guided_interactions.GuidedMediaReviewSubmitV1,
+    agent_canvas_guided_interactions.GuidedInteractionAcceptedV1,
+    agent_canvas_guided_interactions.GuidanceAwaitingV1,
+    agent_canvas_guided_interactions.GuidedInteractionSubmissionRecordV1,
     agent_canvas_prompt_preparation.NodePromptPreparationV1,
     agent_canvas_decision_bundles.CreativeDirectiveDecisionEffectV1,
     agent_canvas_decision_bundles.SetDurationSecondsDecisionEffectV1,

@@ -702,7 +702,7 @@ class QuickMediaProposalOptionV1(_OptionBaseV1):
 
 
 class WorldSettingProposalResultV1(_CapabilityModel):
-    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=2, max_length=3)
+    options: tuple[WorldSettingProposalOptionV1, ...] = Field(min_length=1, max_length=3)
 
 
 class ProductProposalResultV1(_CapabilityModel):

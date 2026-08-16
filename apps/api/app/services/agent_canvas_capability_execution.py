@@ -67,12 +67,14 @@ class CapabilityExecutionService:
         context_loader: Callable[[CapabilityCommandEnvelopeV2], Mapping[str, object]],
         current_session_revision: Callable[[CapabilityCommandEnvelopeV2], int | None],
         publisher: Callable[[CapabilityCommandEnvelopeV2, BaseModel], str],
+        direct_materializer: Callable[[str], object] | None = None,
     ) -> None:
         self._envelopes = AgentCanvasOperationEnvelopeRepository(database)
         self._gateway = gateway
         self._context_loader = context_loader
         self._current_session_revision = current_session_revision
         self._publisher = publisher
+        self._direct_materializer = direct_materializer
         self._policy = CapabilityPolicyService()
 
     def execute(
@@ -139,6 +141,9 @@ class CapabilityExecutionService:
                 ) from error
         lease_guard()
         proposal_id = self._publisher(envelope, result)
+        if envelope.candidate_count == 1 and self._direct_materializer is not None:
+            lease_guard()
+            self._direct_materializer(proposal_id)
         return CapabilityExecutionResultV1(
             envelope_id=envelope.envelope_id,
             capability_id=envelope.capability_id,

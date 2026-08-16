@@ -16,6 +16,8 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyContextV1,
     JourneyPolicyResultV1,
 )
+from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV1
+from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
     build_foundation_queue,
@@ -29,9 +31,11 @@ class GuidedProductionJourneyService:
         self,
         conversations: AgentCanvasConversationRepository,
         policy: GuidedProductionJourneyPolicyService | None = None,
+        awaiting: GuidanceAwaitingService | None = None,
     ) -> None:
         self._conversations = conversations
         self._policy = policy or GuidedProductionJourneyPolicyService()
+        self._awaiting = awaiting
 
     def next_action(
         self,
@@ -138,24 +142,6 @@ class GuidedProductionJourneyService:
             evidence,
         )
 
-    def mark_waiting_for_user(
-        self,
-        workflow_id: str,
-        *,
-        expected_session_revision: int,
-        idempotency_key: str,
-    ) -> GuidedSessionStateV2:
-        session = self._conversations.get_guidance_session(workflow_id)
-        journey = session.journey.model_copy(update={"stage_status": "waiting_user"})
-        return self._conversations.replace_guidance_journey(
-            session.session_id,
-            journey=journey,
-            expected_session_revision=expected_session_revision,
-            idempotency_key=idempotency_key,
-            event_type="journey_stage_waiting_user",
-            event_payload={"reason": "user_input_required"},
-        )
-
     def record_storyboard_pipeline_prepared(
         self,
         workflow_id: str,
@@ -167,6 +153,20 @@ class GuidedProductionJourneyService:
         session = self._conversations.get_guidance_session_or_none(workflow_id)
         if session is None:
             return None
+        current_awaiting = session.awaiting
+        if current_awaiting is not None and current_awaiting.kind == "manual_node_run":
+            if self._awaiting is None:
+                raise ValueError("Guidance awaiting authority is required to resume Node work.")
+            self._awaiting.resume(
+                workflow_id,
+                GuidanceAwaitingResumeProofV1(
+                    awaiting_id=current_awaiting.awaiting_id,
+                    expected_session_revision=session.revision,
+                    evidence_kind="node_terminal",
+                    node_ids=current_awaiting.node_ids,
+                ),
+            )
+            session = self._conversations.get_guidance_session(workflow_id)
         evidence_by_stage = {
             "storyboard_grids": "storyboard_grids_prepared",
             "video_segments": "video_segments_prepared",

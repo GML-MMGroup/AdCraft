@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
+from typing import Mapping
 
 from pydantic import BaseModel
 from sqlalchemy import func, insert, select, update
@@ -19,8 +20,10 @@ from app.persistence.models import (
     AgentCanvasConceptProposalRow,
     AgentCanvasContinuationOutboxRow,
     AgentCanvasExpertActivityRow,
+    AgentCanvasGuidanceAwaitingRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
+    AgentCanvasGuidedInteractionRow,
     AgentCanvasRequirementLedgerRow,
 )
 from app.schemas.agent_canvas_capabilities import CapabilityCommandEnvelopeV2
@@ -29,6 +32,13 @@ from app.schemas.agent_canvas_creative_session import (
     ProposedDraftReferenceV2,
     canonical_guidance_topic_kind,
 )
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV1,
+    GuidedChoiceOptionV1,
+    GuidedConceptChoiceV1,
+    GuidedInteractionV1,
+)
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_user_presentation import build_presentation_metadata
 
@@ -254,12 +264,62 @@ class AgentCanvasCapabilityProposalRepository:
                             "key_decisions": list(option.key_decisions),
                         }
                     )
+                interaction, awaiting, journey = _concept_interaction(
+                    envelope=envelope,
+                    proposal_id=proposal_id,
+                    session=session,
+                    session_revision=session_revision,
+                    public_options=public_options,
+                    now=now,
+                )
+                if interaction is not None and awaiting is not None:
+                    connection.execute(
+                        insert(AgentCanvasGuidedInteractionRow).values(
+                            interaction_id=interaction.interaction_id,
+                            workflow_id=interaction.workflow_id,
+                            session_id=interaction.session_id,
+                            checkpoint_id=interaction.checkpoint_id,
+                            kind=interaction.kind,
+                            status=interaction.status,
+                            response_locale=interaction.response_locale,
+                            expected_session_revision=interaction.expected_session_revision,
+                            revision=interaction.revision,
+                            title=interaction.title,
+                            context=interaction.context,
+                            content_json=interaction.content.model_dump_json(),
+                            allowed_actions_json=json.dumps(
+                                list(interaction.allowed_actions),
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            ),
+                            submit_path=interaction.submit_path,
+                            created_at=timestamp,
+                            updated_at=timestamp,
+                        )
+                    )
+                    connection.execute(
+                        insert(AgentCanvasGuidanceAwaitingRow).values(
+                            awaiting_id=awaiting.awaiting_id,
+                            workflow_id=awaiting.workflow_id,
+                            session_id=awaiting.session_id,
+                            checkpoint_id=awaiting.checkpoint_id,
+                            kind=awaiting.kind,
+                            requires_user_action=awaiting.requires_user_action,
+                            resume_policy=awaiting.resume_policy,
+                            interaction_id=awaiting.interaction_id,
+                            node_ids_json="[]",
+                            stage=awaiting.stage,
+                            stage_revision=awaiting.stage_revision,
+                            created_at=timestamp,
+                        )
+                    )
                 connection.execute(
                     update(AgentCanvasGuidanceSessionRow)
                     .where(AgentCanvasGuidanceSessionRow.session_id == session["session_id"])
                     .values(
                         active_proposal_id=proposal_id,
                         current_topic_id=topic_id,
+                        journey_state_json=journey.model_dump_json(),
                         revision=session_revision,
                         updated_at=timestamp,
                     )
@@ -338,7 +398,7 @@ class AgentCanvasCapabilityProposalRepository:
                         created_at=timestamp,
                     )
                 )
-                for event_type, payload in (
+                publication_events: list[tuple[str, dict[str, object]]] = [
                     (
                         "concept_proposal_created",
                         {
@@ -351,21 +411,54 @@ class AgentCanvasCapabilityProposalRepository:
                             "reference_plan_digest": envelope.reference_plan.digest,
                         },
                     ),
-                    (
-                        "expert_activity_completed",
-                        {
-                            "capability_id": envelope.capability_id,
-                            "status": "completed",
-                        },
-                    ),
-                    (
-                        "agent_command_completed",
-                        {
-                            "envelope_id": envelope.envelope_id,
-                            "proposal_id": proposal_id,
-                        },
-                    ),
-                ):
+                ]
+                if interaction is not None:
+                    publication_events.append(
+                        (
+                            "guided_interaction_opened",
+                            {
+                                "interaction_id": interaction.interaction_id,
+                                "session_id": interaction.session_id,
+                                "checkpoint_id": interaction.checkpoint_id,
+                                "kind": interaction.kind,
+                                "interaction_revision": interaction.revision,
+                            },
+                        )
+                    )
+                if awaiting is not None:
+                    publication_events.append(
+                        (
+                            "guidance_awaiting_entered",
+                            {
+                                "awaiting_id": awaiting.awaiting_id,
+                                "session_id": awaiting.session_id,
+                                "checkpoint_id": awaiting.checkpoint_id,
+                                "kind": awaiting.kind,
+                                "resume_policy": awaiting.resume_policy,
+                                "interaction_id": awaiting.interaction_id,
+                                "node_ids": [],
+                            },
+                        )
+                    )
+                publication_events.extend(
+                    [
+                        (
+                            "expert_activity_completed",
+                            {
+                                "capability_id": envelope.capability_id,
+                                "status": "completed",
+                            },
+                        ),
+                        (
+                            "agent_command_completed",
+                            {
+                                "envelope_id": envelope.envelope_id,
+                                "proposal_id": proposal_id,
+                            },
+                        ),
+                    ]
+                )
+                for event_type, payload in publication_events:
                     self._events.append_in_transaction(
                         connection,
                         V2EventInsert(
@@ -385,6 +478,84 @@ class AgentCanvasCapabilityProposalRepository:
                 connection.rollback()
                 raise
         return proposal_id
+
+
+def _concept_interaction(
+    *,
+    envelope: CapabilityCommandEnvelopeV2,
+    proposal_id: str,
+    session: Mapping[str, object],
+    session_revision: int,
+    public_options: list[dict[str, object]],
+    now: datetime,
+) -> tuple[
+    GuidedInteractionV1 | None,
+    GuidanceAwaitingV1 | None,
+    GuidedProductionJourneyV1,
+]:
+    journey = GuidedProductionJourneyV1.model_validate_json(str(session["journey_state_json"]))
+    if len(public_options) not in {2, 3}:
+        return None, None, journey
+
+    checkpoint_id = f"checkpoint_{_digest(str(session['session_id']), journey.stage, str(journey.stage_revision))[:32]}"
+    interaction_id = f"interaction_{_digest(proposal_id, 'interaction')[:32]}"
+    awaiting_id = f"awaiting_{_digest(proposal_id, 'awaiting')[:32]}"
+    content = GuidedConceptChoiceV1(
+        proposal_id=proposal_id,
+        options=tuple(
+            GuidedChoiceOptionV1(
+                option_id=str(option["option_id"]),
+                title=_bounded_text(option["title"], limit=120),
+                summary=_bounded_text(option["public_summary"], limit=512),
+                difference_tags=tuple(
+                    _bounded_text(decision, limit=80)
+                    for decision in list(option["key_decisions"])[:6]
+                ),
+            )
+            for option in public_options
+        ),
+    )
+    interaction = GuidedInteractionV1(
+        interaction_id=interaction_id,
+        workflow_id=envelope.workflow_id,
+        session_id=str(session["session_id"]),
+        checkpoint_id=checkpoint_id,
+        kind="concept_choice",
+        status="open",
+        response_locale=envelope.response_locale,
+        expected_session_revision=session_revision,
+        revision=1,
+        title=_bounded_text(
+            f"Choose {CAPABILITY_DISPLAY_NAMES[envelope.capability_id]}", limit=160
+        ),
+        context=_bounded_text(envelope.objective, limit=1_024),
+        content=content,
+        allowed_actions=("select", "revise", "defer", "exclude", "delegate"),
+        submit_path=(
+            f"/api/v2/workflows/{envelope.workflow_id}/chat/interactions/{interaction_id}/submit"
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+    awaiting = GuidanceAwaitingV1(
+        awaiting_id=awaiting_id,
+        workflow_id=envelope.workflow_id,
+        session_id=str(session["session_id"]),
+        checkpoint_id=checkpoint_id,
+        kind="concept_selection",
+        requires_user_action=True,
+        resume_policy="submit_interaction",
+        interaction_id=interaction_id,
+        stage=journey.stage,
+        stage_revision=journey.stage_revision,
+        created_at=now,
+    )
+    return interaction, awaiting, journey.model_copy(update={"stage_status": "waiting_user"})
+
+
+def _bounded_text(value: object, *, limit: int) -> str:
+    text = str(value).strip()
+    return (text or "Option")[:limit]
 
 
 def _project_references(

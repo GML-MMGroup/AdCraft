@@ -66,6 +66,7 @@ class _ProposalSelectionSubmissionService:
         action: SelectOptionActionV2 | DelegateChoiceActionV2 | ReuseDirectionActionV2,
         *,
         idempotency_key: str,
+        guided_submission: dict[str, object] | None = None,
     ) -> ChatTurnAcceptedV2:
         proposal = self._conversations.get_proposal(proposal_id)
         if proposal.workflow_id != workflow_id:
@@ -84,12 +85,15 @@ class _ProposalSelectionSubmissionService:
             events_cursor=0,
         )
         envelope = self._build_envelope(proposal, action, accepted)
+        action_request: dict[str, object] = {
+            "proposal_id": proposal_id,
+            "action": action.model_dump(mode="json", exclude_none=True),
+        }
+        if guided_submission is not None:
+            action_request["guided_submission"] = guided_submission
         self._materializations.queue(
             envelope,
-            action_request={
-                "proposal_id": proposal_id,
-                "action": action.model_dump(mode="json", exclude_none=True),
-            },
+            action_request=action_request,
             idempotency_key=idempotency_key,
         )
         return accepted.model_copy(

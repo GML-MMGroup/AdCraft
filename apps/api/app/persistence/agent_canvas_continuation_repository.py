@@ -33,6 +33,10 @@ class AgentCanvasContinuationOutboxRepository:
         self._database = database
         self._events = events
 
+    @property
+    def database(self) -> V2Database:
+        return self._database
+
     def enqueue(
         self,
         *,

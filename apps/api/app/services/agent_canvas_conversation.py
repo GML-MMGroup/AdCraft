@@ -1021,6 +1021,7 @@ class AgentConversationService:
         operation_policies: AgentOperationPolicyRegistryV2 | None = None,
         model_selection: ModelSelectionService | None = None,
         requirements: AgentCanvasRequirementService | None = None,
+        production_journey: GuidedProductionJourneyService | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -1080,7 +1081,7 @@ class AgentConversationService:
             EventRepository(workflows.database),
         )
         self._next_actions = NextActionExecutionService(gateway)
-        self._journey = GuidedProductionJourneyService(conversations)
+        self._journey = production_journey or GuidedProductionJourneyService(conversations)
         self._decision_bundles = DecisionBundleAuthoringService(
             AgentCanvasDecisionBundleRepository(
                 workflows.database,
@@ -1488,6 +1489,11 @@ class AgentConversationService:
             and session.journey.stage == "clarification"
             and requirement_changed
         ):
+            self._conversations.close_current_clarification(
+                turn.workflow_id,
+                source_turn_id=turn_id,
+                expected_session_revision=session.revision,
+            )
             session = self._journey.apply_evidence(
                 turn.workflow_id,
                 evidence=JourneyEvidenceV1(
@@ -1547,11 +1553,16 @@ class AgentConversationService:
             )
             if journey_action.action in {"wait_for_user", "prepare_editing"}:
                 if journey_action.action == "wait_for_user":
-                    session = self._journey.mark_waiting_for_user(
-                        turn.workflow_id,
-                        expected_session_revision=session.revision,
-                        idempotency_key=f"waiting-user:{turn_id}",
-                    )
+                    if session.awaiting is None:
+                        raise V2PersistenceError(
+                            "guidance_orphaned_stall",
+                            "Guidance cannot wait without current typed awaiting authority.",
+                            stage="agent_conversation_service",
+                            details={
+                                "journey_stage": session.journey.stage,
+                                "stage_revision": session.journey.stage_revision,
+                            },
+                        )
                 message = (
                     "The production journey is ready for Editing preparation."
                     if journey_action.action == "prepare_editing"

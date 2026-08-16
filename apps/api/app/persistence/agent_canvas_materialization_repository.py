@@ -10,7 +10,8 @@ import hashlib
 from typing import cast
 from uuid import uuid4
 
-from sqlalchemy import func, insert, select, update
+from pydantic import TypeAdapter
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -59,11 +60,15 @@ from app.persistence.models import (
     AgentCanvasExpertActivityRow,
     AgentCanvasGuidanceSessionRow,
     AgentCanvasGuidanceTopicRow,
+    AgentCanvasGuidanceAwaitingRow,
+    AgentCanvasGuidedInteractionRow,
+    AgentCanvasGuidedInteractionSubmissionRow,
     AgentCanvasMaterializationCommitRow,
     AgentCanvasNodeRow,
     AgentCanvasWorkflowRow,
     AgentWorkingDocumentRow,
     AssetVersionRow,
+    WorkflowEventRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
 from app.schemas.agent_canvas import CanvasNodeV2
@@ -92,6 +97,12 @@ from app.schemas.agent_working_documents import (
 from app.schemas.agent_canvas_guided_checkpoint import (
     GuidedCheckpointOriginV1,
     guided_checkpoint_id,
+)
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV1,
+    GuidedConceptSubmitV1,
+    GuidedInteractionAcceptedV1,
+    GuidedInteractionSubmitRequestV1,
 )
 from app.schemas.agent_canvas_requirements import (
     RequirementDirectiveV1,
@@ -400,6 +411,14 @@ class AgentCanvasMaterializationRepository:
                         proposal.guidance_session_id,
                     )
                     _require_guidance_revision(session, expected_session_revision)
+                    guided_submission = _guided_submission_context(
+                        connection,
+                        source_turn_id=source_turn_id,
+                        workflow_id=proposal.workflow_id,
+                        proposal_id=proposal_id,
+                        option_id=option_id,
+                        expected_session_revision=expected_session_revision,
+                    )
                     current_journey = GuidedProductionJourneyV1.model_validate_json(
                         str(session["journey_state_json"])
                     )
@@ -424,6 +443,13 @@ class AgentCanvasMaterializationRepository:
                         ),
                     )
                     node = nodes[0]
+                    next_awaiting = _storyboard_manual_run_awaiting(
+                        nodes,
+                        workflow_id=proposal.workflow_id,
+                        guidance_session_id=str(session["session_id"]),
+                        next_journey=next_journey,
+                        created_at=now,
+                    )
                     if (
                         proposal_action != "reuse_direction"
                         and str(session["active_proposal_id"]) != proposal_id
@@ -775,6 +801,50 @@ class AgentCanvasMaterializationRepository:
                             "guidance_revision_conflict",
                             "Guidance state changed before Proposal materialization.",
                         )
+                    if guided_submission is not None:
+                        interaction_update = connection.execute(
+                            update(AgentCanvasGuidedInteractionRow)
+                            .where(
+                                AgentCanvasGuidedInteractionRow.interaction_id
+                                == guided_submission["interaction_id"],
+                                AgentCanvasGuidedInteractionRow.status == "open",
+                                AgentCanvasGuidedInteractionRow.revision
+                                == guided_submission["interaction_revision"],
+                            )
+                            .values(
+                                status="closed",
+                                revision=guided_submission["interaction_revision"] + 1,
+                                updated_at=now,
+                            )
+                        )
+                        if interaction_update.rowcount != 1:
+                            raise _error(
+                                "guided_interaction_stale",
+                                "Guided interaction changed before Materialization.",
+                            )
+                        connection.execute(
+                            delete(AgentCanvasGuidanceAwaitingRow).where(
+                                AgentCanvasGuidanceAwaitingRow.interaction_id
+                                == guided_submission["interaction_id"]
+                            )
+                        )
+                    if next_awaiting is not None:
+                        connection.execute(
+                            insert(AgentCanvasGuidanceAwaitingRow).values(
+                                awaiting_id=next_awaiting.awaiting_id,
+                                workflow_id=next_awaiting.workflow_id,
+                                session_id=next_awaiting.session_id,
+                                checkpoint_id=next_awaiting.checkpoint_id,
+                                kind=next_awaiting.kind,
+                                requires_user_action=next_awaiting.requires_user_action,
+                                resume_policy=next_awaiting.resume_policy,
+                                interaction_id=next_awaiting.interaction_id,
+                                node_ids_json=_dump(list(next_awaiting.node_ids)),
+                                stage=next_awaiting.stage,
+                                stage_revision=next_awaiting.stage_revision,
+                                created_at=next_awaiting.created_at.isoformat(),
+                            )
+                        )
                     if fault_injector is not None:
                         fault_injector("journey")
                     connection.execute(
@@ -859,16 +929,18 @@ class AgentCanvasMaterializationRepository:
                             AgentCanvasExecutionSettingsRow.workflow_id == node.workflow_id
                         )
                     ).scalar_one_or_none()
+                    automatic_run_command_ids: list[str] = []
                     if execution_mode == "automatic":
                         for bundle_node in nodes:
                             if is_automatic_run_eligible_node_type(bundle_node.node_type):
-                                self._automatic_runs.enqueue_in_transaction(
+                                command = self._automatic_runs.enqueue_in_transaction(
                                     connection,
                                     workflow_id=bundle_node.workflow_id,
                                     source_action_id=source_turn_id,
                                     node_id=bundle_node.node_id,
                                     now=datetime.fromisoformat(now),
                                 )
+                                automatic_run_command_ids.append(command.command_id)
                     event_turn = _require_turn(
                         connection,
                         source_turn_id,
@@ -1053,6 +1125,31 @@ class AgentCanvasMaterializationRepository:
                                 },
                             ),
                         )
+                    if next_awaiting is not None:
+                        self._events.append_in_transaction(
+                            connection,
+                            V2EventInsert(
+                                workflow_id=node.workflow_id,
+                                node_id=node.node_id,
+                                conversation_id=str(event_turn["conversation_id"]),
+                                turn_id=str(event_turn["turn_id"]),
+                                action_id=source_turn_id,
+                                event_type="guidance_awaiting_entered",
+                                transition_key=(
+                                    f"guidance-awaiting:{next_awaiting.awaiting_id}:entered"
+                                ),
+                                created_at=now,
+                                payload={
+                                    "awaiting_id": next_awaiting.awaiting_id,
+                                    "session_id": next_awaiting.session_id,
+                                    "checkpoint_id": next_awaiting.checkpoint_id,
+                                    "kind": next_awaiting.kind,
+                                    "resume_policy": next_awaiting.resume_policy,
+                                    "interaction_id": None,
+                                    "node_ids": list(next_awaiting.node_ids),
+                                },
+                            ),
+                        )
                     connection.execute(
                         update(AgentCanvasChatTurnRow)
                         .where(AgentCanvasChatTurnRow.turn_id == source_turn_id)
@@ -1163,6 +1260,93 @@ class AgentCanvasMaterializationRepository:
                                 created_at=now,
                                 payload={"entry_id": entry_id, **metadata},
                             ),
+                        )
+                    if guided_submission is not None:
+                        for event_type, payload in (
+                            (
+                                "guided_interaction_submitted",
+                                {
+                                    "interaction_id": guided_submission["interaction_id"],
+                                    "submission_id": guided_submission["submission_id"],
+                                    "proposal_id": proposal_id,
+                                    "option_id": option_id,
+                                },
+                            ),
+                            (
+                                "guided_interaction_closed",
+                                {
+                                    "interaction_id": guided_submission["interaction_id"],
+                                    "submission_id": guided_submission["submission_id"],
+                                    "receipt_id": (
+                                        receipt.receipt_id
+                                        if receipt is not None
+                                        else materialization_id
+                                    ),
+                                },
+                            ),
+                            (
+                                "guidance_awaiting_resumed",
+                                {
+                                    "interaction_id": guided_submission["interaction_id"],
+                                    "submission_id": guided_submission["submission_id"],
+                                    "resume_evidence": "materialization_commit",
+                                },
+                            ),
+                        ):
+                            self._events.append_in_transaction(
+                                connection,
+                                V2EventInsert(
+                                    workflow_id=node.workflow_id,
+                                    node_id=node.node_id,
+                                    conversation_id=str(event_turn["conversation_id"]),
+                                    turn_id=source_turn_id,
+                                    action_id=guided_submission["interaction_id"],
+                                    event_type=event_type,
+                                    transition_key=(
+                                        f"guided-submission:{guided_submission['submission_id']}:"
+                                        f"{event_type}"
+                                    ),
+                                    created_at=now,
+                                    payload=payload,
+                                ),
+                            )
+                        events_cursor = int(
+                            connection.execute(
+                                select(func.coalesce(func.max(WorkflowEventRow.seq), 0)).where(
+                                    WorkflowEventRow.workflow_id == node.workflow_id
+                                )
+                            ).scalar_one()
+                        )
+                        accepted_result = GuidedInteractionAcceptedV1(
+                            workflow_id=node.workflow_id,
+                            interaction_id=guided_submission["interaction_id"],
+                            submission_id=guided_submission["submission_id"],
+                            receipt_id=(
+                                receipt.receipt_id if receipt is not None else materialization_id
+                            ),
+                            created_node_ids=tuple(item.node_id for item in nodes),
+                            created_binding_ids=tuple(item.binding_id for item in bindings),
+                            document_revisions={
+                                item.document_id: item.after_revision for item in document_results
+                            },
+                            continuation_id=(
+                                continuation.continuation_id if continuation is not None else None
+                            ),
+                            automatic_run_command_ids=tuple(automatic_run_command_ids),
+                            resulting_session_revision=next_session_revision,
+                            events_cursor=events_cursor,
+                        )
+                        connection.execute(
+                            insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                                submission_id=guided_submission["submission_id"],
+                                workflow_id=node.workflow_id,
+                                interaction_id=guided_submission["interaction_id"],
+                                idempotency_key=guided_submission["idempotency_key"],
+                                request_digest=guided_submission["request_digest"],
+                                request_json=guided_submission["request_json"],
+                                result_json=accepted_result.model_dump_json(),
+                                created_at=now,
+                            )
                         )
                     if fault_injector is not None:
                         fault_injector("event")
@@ -1736,6 +1920,45 @@ def _with_guided_checkpoint_origin(
     return tuple(updated)
 
 
+def _storyboard_manual_run_awaiting(
+    nodes: tuple[CanvasNodeV2, ...],
+    *,
+    workflow_id: str,
+    guidance_session_id: str,
+    next_journey: GuidedProductionJourneyV1,
+    created_at: str,
+) -> GuidanceAwaitingV1 | None:
+    if next_journey.stage != "storyboard_grids" or next_journey.stage_status != "waiting_user":
+        return None
+    node_ids = tuple(
+        node.node_id
+        for node in nodes
+        if node.node_type == "image"
+        and node.creative_role == "storyboard_sequence"
+        and node.status == "draft"
+    )
+    if not node_ids:
+        return None
+    checkpoint_id = guided_checkpoint_id(
+        workflow_id,
+        guidance_session_id,
+        stage_revision=next_journey.stage_revision,
+    )
+    return GuidanceAwaitingV1(
+        awaiting_id=f"awaiting:{checkpoint_id}",
+        workflow_id=workflow_id,
+        session_id=guidance_session_id,
+        checkpoint_id=checkpoint_id,
+        kind="manual_node_run",
+        requires_user_action=True,
+        resume_policy="node_terminal",
+        node_ids=node_ids,
+        stage=next_journey.stage,
+        stage_revision=next_journey.stage_revision,
+        created_at=created_at,
+    )
+
+
 def _materialization_document(row: Mapping[str, object]) -> AgentWorkingDocumentV2:
     return AgentWorkingDocumentV2.model_validate(
         {
@@ -2014,6 +2237,90 @@ def _guidance_response_locale(connection: Connection, workflow_id: str) -> str:
         )
     ).scalar_one_or_none()
     return str(value or "und")
+
+
+def _guided_submission_context(
+    connection: Connection,
+    *,
+    source_turn_id: str,
+    workflow_id: str,
+    proposal_id: str,
+    option_id: str,
+    expected_session_revision: int,
+) -> dict[str, object] | None:
+    turn = _require_turn(connection, source_turn_id)
+    turn_request = json.loads(str(turn["request_json"]))
+    payload = turn_request.get("guided_submission")
+    if payload is None:
+        return None
+    if not isinstance(payload, dict):
+        raise _error(
+            "guided_interaction_incomplete",
+            "Guided interaction submission snapshot is invalid.",
+        )
+    interaction_id = str(payload.get("interaction_id") or "")
+    submission_id = str(payload.get("submission_id") or "")
+    idempotency_key = str(payload.get("idempotency_key") or "")
+    if (
+        not interaction_id
+        or not submission_id
+        or not idempotency_key
+        or idempotency_key != str(turn["idempotency_key"])
+    ):
+        raise _error(
+            "guided_interaction_incomplete",
+            "Guided interaction submission identity is invalid.",
+        )
+    interaction = (
+        connection.execute(
+            select(AgentCanvasGuidedInteractionRow).where(
+                AgentCanvasGuidedInteractionRow.interaction_id == interaction_id,
+                AgentCanvasGuidedInteractionRow.workflow_id == workflow_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if interaction is None:
+        raise _error(
+            "guided_interaction_not_found",
+            "Guided interaction was not found.",
+        )
+    request = TypeAdapter(GuidedInteractionSubmitRequestV1).validate_python(payload.get("request"))
+    content = json.loads(str(interaction["content_json"]))
+    if (
+        str(interaction["status"]) != "open"
+        or int(interaction["revision"]) != request.expected_interaction_revision
+        or int(interaction["expected_session_revision"]) != request.expected_session_revision
+        or request.expected_session_revision != expected_session_revision
+    ):
+        raise _error(
+            "guided_interaction_stale",
+            "Guided interaction changed before Materialization.",
+        )
+    if (
+        not isinstance(request, GuidedConceptSubmitV1)
+        or content.get("proposal_id") != proposal_id
+        or (request.action == "select" and request.option_id != option_id)
+    ):
+        raise _error(
+            "guided_interaction_option_invalid",
+            "Guided interaction selection does not match Materialization.",
+        )
+    request_json = json.dumps(
+        request.model_dump(mode="json", exclude_none=True),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return {
+        "interaction_id": interaction_id,
+        "interaction_revision": int(interaction["revision"]),
+        "submission_id": submission_id,
+        "idempotency_key": idempotency_key,
+        "request_digest": hashlib.sha256(request_json.encode("utf-8")).hexdigest(),
+        "request_json": request_json,
+    }
 
 
 def _projection(row) -> ProposalMaterializationProjectionV2:

@@ -238,8 +238,8 @@ class _ConceptProposalBaseV2(_ConversationModel):
         option_ids = tuple(option.option_id for option in self.options)
         if len(set(option_ids)) != len(option_ids):
             raise ValueError("Concept option IDs must be unique within a proposal.")
-        if self.proposal_kind == "world_setting" and len(self.options) not in {2, 3}:
-            raise ValueError("World Setting proposals require two or three options.")
+        if self.proposal_kind == "world_setting" and len(self.options) not in {1, 2, 3}:
+            raise ValueError("World Setting proposals require one to three options.")
         if (self.target_node_id is None) != (self.target_node_revision is None):
             raise ValueError("Targeted proposals require both target node ID and revision.")
         return self

@@ -2,6 +2,40 @@
 
 export const AGENT_PROTOCOL_VERSION = "1" as const;
 
+export type GuidedReferencePreviewV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "display_name": string; readonly "media_type": "audio" | "image" | "text" | "video" };
+
+export type GuidedAcceptedReferenceV1 = { readonly "source_kind": "image_asset" | "node"; readonly "source_id": string; readonly "binding_kind": string; readonly "input_role": string; readonly "required"?: boolean; readonly "display_order": number; readonly "semantic_reference_role"?: string | null; readonly "display_name": string; readonly "media_type": "audio" | "image" | "text" | "video" };
+
+export type GuidedChoiceOptionV1 = { readonly "option_id": string; readonly "title": string; readonly "summary": string; readonly "difference_tags"?: ReadonlyArray<string>; readonly "recommended"?: boolean; readonly "reference_preview"?: ReadonlyArray<GuidedReferencePreviewV1> };
+
+export type GuidedQuestionV1 = { readonly "question_id": string; readonly "prompt": string; readonly "input_kind"?: "single_select"; readonly "options": ReadonlyArray<GuidedChoiceOptionV1>; readonly "allow_custom"?: boolean; readonly "allow_skip"?: boolean; readonly "required"?: boolean };
+
+export type GuidedQuestionnaireV1 = { readonly "content_kind"?: "questionnaire"; readonly "questions": ReadonlyArray<GuidedQuestionV1> };
+
+export type GuidedConceptChoiceV1 = { readonly "content_kind"?: "concept_choice"; readonly "proposal_id"?: string | null; readonly "options": ReadonlyArray<GuidedChoiceOptionV1> };
+
+export type GuidedMediaReviewV1 = { readonly "content_kind"?: "media_review"; readonly "node_id": string; readonly "node_revision": number; readonly "asset_id": string; readonly "asset_version_id": string; readonly "summary": string };
+
+export type GuidedInteractionV1 = { readonly "interaction_id": string; readonly "workflow_id": string; readonly "session_id": string; readonly "checkpoint_id": string; readonly "kind": "clarification_questionnaire" | "concept_choice" | "media_review"; readonly "status": "closed" | "open" | "submitted" | "superseded"; readonly "response_locale": string; readonly "expected_session_revision": number; readonly "revision": number; readonly "title": string; readonly "context": string; readonly "content": GuidedQuestionnaireV1 | GuidedConceptChoiceV1 | GuidedMediaReviewV1; readonly "allowed_actions": ReadonlyArray<"accept" | "answer" | "custom" | "defer" | "delegate" | "exclude" | "replace" | "retry" | "revise" | "select" | "skip">; readonly "submit_path": string; readonly "created_at": string; readonly "updated_at": string };
+
+export type GuidedQuestionAnswerV1 = { readonly "answer_kind": "option"; readonly "question_id": string; readonly "option_id": string };
+
+export type GuidedCustomAnswerV1 = { readonly "answer_kind": "custom"; readonly "question_id": string; readonly "value": string };
+
+export type GuidedSkipAnswerV1 = { readonly "answer_kind": "skip"; readonly "question_id": string };
+
+export type GuidedQuestionnaireSubmitV1 = { readonly "submission_kind": "questionnaire"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "answers": ReadonlyArray<GuidedQuestionAnswerV1 | GuidedCustomAnswerV1 | GuidedSkipAnswerV1> };
+
+export type GuidedConceptSubmitV1 = { readonly "submission_kind": "concept_choice"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": "custom" | "defer" | "delegate" | "exclude" | "revise" | "select"; readonly "option_id"?: string | null; readonly "custom_value"?: string | null; readonly "accepted_references"?: ReadonlyArray<GuidedAcceptedReferenceV1> };
+
+export type GuidedMediaReviewSubmitV1 = { readonly "submission_kind": "media_review"; readonly "expected_interaction_revision": number; readonly "expected_session_revision": number; readonly "action": "accept" | "exclude" | "replace" | "retry"; readonly "instruction"?: string | null };
+
+export type GuidedInteractionAcceptedV1 = { readonly "workflow_id": string; readonly "interaction_id": string; readonly "submission_id": string; readonly "receipt_id": string; readonly "created_node_ids"?: ReadonlyArray<string>; readonly "created_binding_ids"?: ReadonlyArray<string>; readonly "document_revisions"?: Readonly<Record<string, number>>; readonly "continuation_id"?: string | null; readonly "automatic_run_command_ids"?: ReadonlyArray<string>; readonly "resulting_session_revision": number; readonly "events_cursor": number; readonly "replayed"?: boolean };
+
+export type GuidanceAwaitingV1 = { readonly "awaiting_id": string; readonly "workflow_id": string; readonly "session_id": string; readonly "checkpoint_id": string; readonly "kind": "clarification" | "concept_selection" | "manual_node_run" | "media_review" | "milestone_idle"; readonly "requires_user_action": boolean; readonly "resume_policy": "explicit_resume" | "next_user_message" | "node_terminal" | "submit_interaction"; readonly "interaction_id"?: string | null; readonly "node_ids"?: ReadonlyArray<string>; readonly "stage": "bgm" | "clarification" | "completed" | "editing_ready" | "foundation_design" | "intake" | "narrative_direction" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "video_segments" | "world_setting"; readonly "stage_revision": number; readonly "created_at": string };
+
+export type GuidedInteractionSubmissionRecordV1 = { readonly "submission_id": string; readonly "workflow_id": string; readonly "interaction_id": string; readonly "idempotency_key": string; readonly "request": GuidedQuestionnaireSubmitV1 | GuidedConceptSubmitV1 | GuidedMediaReviewSubmitV1; readonly "result"?: GuidedInteractionAcceptedV1 | null; readonly "created_at": string };
+
 export type NodePromptPreparationV1 = { readonly "status": "failed" | "queued" | "ready" | "working"; readonly "operation_id"?: string | null; readonly "attempt_no": number; readonly "context_snapshot_id"?: string | null; readonly "prompt_digest"?: string | null; readonly "error"?: CanvasNodeErrorV2 | null; readonly "updated_at": string };
 
 export type CreativeDirectiveDecisionEffectV1 = { readonly "effect_type"?: "creative_directive"; readonly "directive": string; readonly "scope_kind"?: "capability" | "global"; readonly "capability_ids"?: ReadonlyArray<"bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting"> };
@@ -172,7 +206,7 @@ export type JourneyPolicyContextV1 = { readonly "journey": GuidedProductionJourn
 
 export type JourneyPolicyResultV1 = { readonly "action": "advance_stage" | "complete" | "invoke_capability" | "materialize_selected_option" | "prepare_editing" | "wait_for_user"; readonly "expected_stage_revision": number; readonly "next_stage"?: "bgm" | "clarification" | "completed" | "editing_ready" | "foundation_design" | "intake" | "narrative_direction" | "storyboard_grids" | "storyboard_plan" | "style_lock" | "video_segments" | "world_setting" | null; readonly "capability_id"?: "bgm_direction" | "character_design" | "product_design" | "prop_design" | "quick_media" | "scene_design" | "script_authoring" | "storyboard_design" | "video_direction" | "world_setting" | null; readonly "foundation_item_id"?: string | null; readonly "requires_model_call"?: boolean };
 
-export type GuidedSessionStateV2 = { readonly "session_id": string; readonly "workflow_id": string; readonly "status": "active" | "completed" | "paused"; readonly "goal": CreativeGoalV2; readonly "creative_authority"?: CreativeAuthorityStateV2 | null; readonly "current_checkpoint"?: GuidedStepCheckpointV2 | null; readonly "narrative_direction"?: string | null; readonly "element_decisions"?: ReadonlyArray<CreativeElementDecisionV2>; readonly "current_topic_id"?: string | null; readonly "topics"?: ReadonlyArray<GuidanceTopicStateV2>; readonly "active_proposal_id"?: string | null; readonly "active_style_skill_run_id"?: string | null; readonly "completion"?: GuidanceCompletionProjectionV2; readonly "journey": GuidedProductionJourneyV1; readonly "revision": number; readonly "updated_at": string; readonly "response_locale"?: string };
+export type GuidedSessionStateV2 = { readonly "session_id": string; readonly "workflow_id": string; readonly "status": "active" | "completed" | "paused"; readonly "goal": CreativeGoalV2; readonly "creative_authority"?: CreativeAuthorityStateV2 | null; readonly "current_checkpoint"?: GuidedStepCheckpointV2 | null; readonly "narrative_direction"?: string | null; readonly "element_decisions"?: ReadonlyArray<CreativeElementDecisionV2>; readonly "current_topic_id"?: string | null; readonly "topics"?: ReadonlyArray<GuidanceTopicStateV2>; readonly "active_proposal_id"?: string | null; readonly "active_style_skill_run_id"?: string | null; readonly "completion"?: GuidanceCompletionProjectionV2; readonly "interaction"?: GuidedInteractionV1 | null; readonly "awaiting"?: GuidanceAwaitingV1 | null; readonly "journey": GuidedProductionJourneyV1; readonly "revision": number; readonly "updated_at": string; readonly "response_locale"?: string };
 
 export type ExplicitElementIntentV2 = { readonly "element_kind": "audio" | "character" | "product" | "prop" | "scene" | "script" | "storyboard" | "video" | "world_setting"; readonly "presence": "exclude" | "include" | "unspecified"; readonly "source_quote": string };
 
