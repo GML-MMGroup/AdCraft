@@ -18,6 +18,7 @@ from app.schemas import agent_canvas_editing
 from app.schemas import agent_canvas_creative_session
 from app.schemas import agent_canvas_guided_interactions
 from app.schemas import agent_canvas_production_journey
+from app.schemas import agent_canvas_production_closure
 from app.schemas import agent_canvas_prompt_preparation
 from app.schemas import agent_canvas_role_prompt_preparation
 from app.schemas import agent_canvas_capabilities
@@ -40,6 +41,15 @@ from app.services.video_agent_operation_registry import VideoAgentOperationRegis
 
 
 CONTRACT_MODELS = (
+    agent_canvas_production_closure.StoryboardFanoutNodePlanV1,
+    agent_canvas_production_closure.StoryboardFanoutBindingPlanV1,
+    agent_canvas_production_closure.StoryboardFanoutPlanV1,
+    agent_canvas_production_closure.GuidedMediaConfirmationV1,
+    agent_canvas_production_closure.GuidedClosureBlockerV1,
+    agent_canvas_production_closure.GuidedClosureInputV1,
+    agent_canvas_production_closure.GuidedClosurePlanV1,
+    agent_canvas_production_closure.GuidedEditingPreparationReceiptV1,
+    agent_canvas_production_closure.GuidedFinalCompletionReceiptV1,
     agent_canvas_guided_interactions.GuidedReferencePreviewV1,
     agent_canvas_guided_interactions.GuidedAcceptedReferenceV1,
     agent_canvas_guided_interactions.GuidedChoiceOptionV1,
@@ -325,6 +335,7 @@ CONTRACT_MODELS = (
     agent_working_documents.StoryboardProductionPlanContentV2,
     agent_working_documents.StoryboardPlannedNodeV3,
     agent_working_documents.StoryboardVisualAnchorV3,
+    agent_working_documents.StoryboardExcludedMediaV3,
     agent_working_documents.StoryboardProductionPlanContentV3,
     agent_working_documents.AgentWorkingDocumentV2,
     agent_working_documents.AgentWorkingDocumentReferenceV2,

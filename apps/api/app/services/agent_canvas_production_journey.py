@@ -94,6 +94,8 @@ class GuidedProductionJourneyPolicyService:
             return self._result(journey, "complete")
         if journey.stage == "foundation_design":
             return self._foundation_action(journey)
+        if journey.stage == "editing_ready" and "editing_prepared" in evidence:
+            return self._result(journey, "wait_for_user")
 
         accepted = _STAGE_EVIDENCE.get(journey.stage, ())
         if any(item in evidence for item in accepted):

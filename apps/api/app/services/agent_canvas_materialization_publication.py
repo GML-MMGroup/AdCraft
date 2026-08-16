@@ -24,6 +24,9 @@ from app.schemas.agent_canvas_ad_media import (
     VisualStyleContractV2,
 )
 from app.schemas.agent_canvas_production_journey import JourneyStageV1
+from app.schemas.agent_canvas_storyboard_sequences import (
+    StoryboardSegmentMaterializationDraftV2,
+)
 from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationContextV1,
     MaterializationNormalizationV1,
@@ -162,6 +165,11 @@ class CapabilityMaterializationPublicationService:
                 session.session_id,
             )
         preview_bundle = self._plan_compiler.compile_draft_bundle(envelope, normalization)
+        authority_documents += self._prepare_bgm_plan(
+            envelope,
+            session.session_id,
+            preview_bundle.nodes,
+        )
         authority_documents += self._prepare_anchor_registry(
             envelope,
             session.session_id,
@@ -213,6 +221,80 @@ class CapabilityMaterializationPublicationService:
                 stage="capability_materialization_publication",
             )
         return outcome.node_ids[0]
+
+    def _prepare_bgm_plan(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        session_id: str,
+        nodes: tuple,
+    ) -> tuple[MaterializationDocumentWriteV1, ...]:
+        if envelope.capability_id != "bgm_direction":
+            return ()
+        current = self._working_documents.get_by_kind(
+            envelope.workflow_id,
+            session_id,
+            "storyboard_production_plan",
+        )
+        if current is None:
+            return ()
+        if not isinstance(current.content, StoryboardProductionPlanContentV3):
+            raise V2PersistenceError(
+                "agent_storyboard_plan_invalid",
+                "BGM planning requires the authoritative V3 Storyboard Plan.",
+                stage="capability_materialization_publication",
+            )
+        bgm_node = next(
+            (node for node in nodes if node.node_type == "audio" and node.creative_role == "bgm"),
+            None,
+        )
+        if bgm_node is None:
+            raise V2PersistenceError(
+                "agent_storyboard_plan_invalid",
+                "BGM materialization did not plan an Audio Node.",
+                stage="capability_materialization_publication",
+            )
+        next_content = current.content.model_copy(
+            update={
+                "planned_nodes": tuple(
+                    item for item in current.content.planned_nodes if item.node_role != "bgm"
+                )
+                + (
+                    StoryboardPlannedNodeV3(
+                        node_role="bgm",
+                        node_id=bgm_node.node_id,
+                        node_revision=bgm_node.revision,
+                        materialization_id=envelope.materialization_id,
+                    ),
+                ),
+                "excluded_media": tuple(
+                    item for item in current.content.excluded_media if item.node_role != "bgm"
+                ),
+            }
+        )
+        operation = "register_planned_bgm"
+        request_digest = self._working_documents.digest_mutation(
+            document_id=current.document_id,
+            expected_revision=current.revision,
+            operation=operation,
+            content=next_content,
+            agent_run_id=envelope.materialization_id,
+        )
+        return (
+            MaterializationDocumentWriteV1(
+                document_type="agent_working_document",
+                document_id=current.document_id,
+                mutation_plan=AgentDocumentMutationPlanV3(
+                    document_id=current.document_id,
+                    expected_revision=current.revision,
+                    next_revision=current.revision + 1,
+                    operation=operation,
+                    idempotency_key=f"storyboard-plan:bgm:{envelope.materialization_id}",
+                    request_digest=request_digest,
+                    next_content=next_content,
+                ),
+                relation_metadata={"node_id": bgm_node.node_id, "node_role": "bgm"},
+            ),
+        )
 
     def _prepare_anchor_registry(
         self,
@@ -581,34 +663,40 @@ class CapabilityMaterializationPublicationService:
             rows=(),
         )
         document_id = "adoc_" + _digest(f"{envelope.materialization_id}:storyboard-plan")[:32]
-        sequence_id = content.segments[0].sequence_id
-        content_digest = AgentWorkingDocumentRepository.digest_content(content)
-        segment_context = self._storyboard_authoring.build_segment_context_from_content(
-            envelope.workflow_id,
-            document_id,
-            1,
-            content_digest,
-            content,
-            sequence_id,
-            style_excerpt=str(context.style_projection)[:8_192],
-        )
-        segment = self._storyboard_gateway.materialize_storyboard_segment(
-            segment_context,
-            request_identity=f"{envelope.materialization_id}:{sequence_id}",
-        )
         node_id = "node_" + _digest(envelope.materialization_id)[:32]
-        content = self._storyboard_authoring.plan_materialized_sequence_v3(
-            content,
-            sequence_id,
-            segment,
-            planned_node=StoryboardPlannedNodeV3(
-                sequence_id=sequence_id,
-                node_role="storyboard_grid",
-                node_id=node_id,
-                node_revision=1,
-                materialization_id=envelope.materialization_id,
-            ),
-        )
+        segment_drafts: dict[str, StoryboardSegmentMaterializationDraftV2] = {}
+        for sequence in content.segments:
+            sequence_id = sequence.sequence_id
+            segment_context = self._storyboard_authoring.build_segment_context_from_content(
+                envelope.workflow_id,
+                document_id,
+                1,
+                AgentWorkingDocumentRepository.digest_content(content),
+                content,
+                sequence_id,
+                style_excerpt=str(context.style_projection)[:8_192],
+            )
+            segment_draft = self._storyboard_gateway.materialize_storyboard_segment(
+                segment_context,
+                request_identity=f"{envelope.materialization_id}:{sequence_id}",
+            )
+            segment_drafts[sequence_id] = segment_draft
+            content = self._storyboard_authoring.plan_materialized_sequence_v3(
+                content,
+                sequence_id,
+                segment_draft,
+                planned_node=(
+                    StoryboardPlannedNodeV3(
+                        sequence_id=sequence_id,
+                        node_role="storyboard_grid",
+                        node_id=node_id,
+                        node_revision=1,
+                        materialization_id=envelope.materialization_id,
+                    )
+                    if sequence.order == 1
+                    else None
+                ),
+            )
         document = AgentWorkingDocumentV2(
             document_id=document_id,
             workflow_id=envelope.workflow_id,
@@ -626,6 +714,8 @@ class CapabilityMaterializationPublicationService:
         )
         original = StoryboardMaterializationResultV1.model_validate(normalization.result)
         sequence = content.segments[0]
+        sequence_id = sequence.sequence_id
+        segment = segment_drafts[sequence_id]
         result = original.model_copy(
             update={
                 "title": f"{original.title} 1",

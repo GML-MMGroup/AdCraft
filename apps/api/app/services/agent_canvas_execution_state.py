@@ -11,7 +11,7 @@ from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime import CanvasExecutionMembershipV2
 
 
-CLOSED_MEMBER_STATES = frozenset({"succeeded", "failed", "cancelled"})
+CLOSED_MEMBER_STATES = frozenset({"succeeded", "failed", "skipped_dependency", "cancelled"})
 CLOSED_EXECUTION_STATES = frozenset({"completed", "partial_completed", "failed", "cancelled"})
 APPROVED_TRANSIENT_ERROR_CODES = frozenset(
     {

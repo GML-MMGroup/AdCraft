@@ -183,6 +183,22 @@ class AgentCanvasPostReadyEffectRepository:
             increment_attempt=True,
         )
 
+    def defer(
+        self,
+        effect: CanvasPostReadyEffectV2,
+        *,
+        now: datetime,
+        retry_at: datetime,
+        error: CanvasNodeErrorV2,
+    ) -> CanvasPostReadyEffectV2:
+        return self._finish(
+            effect,
+            status="queued",
+            now=now,
+            error=error,
+            available_at=retry_at,
+        )
+
     def fail(
         self,
         effect: CanvasPostReadyEffectV2,

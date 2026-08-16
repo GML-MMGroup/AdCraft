@@ -316,6 +316,39 @@ class AgentWorkingDocumentService:
             next_content=next_content,
         )
 
+    def commit_content_mutation(
+        self,
+        *,
+        workflow_id: str,
+        agent_run_id: str,
+        document_id: str,
+        expected_revision: int,
+        operation: str,
+        idempotency_key: str,
+        next_content: AgentWorkingDocumentContentV2,
+    ) -> AgentWorkingDocumentV2:
+        """Commit one validated deterministic V3 document mutation."""
+
+        mutation = self.plan_content_mutation(
+            workflow_id=workflow_id,
+            agent_run_id=agent_run_id,
+            document_id=document_id,
+            expected_revision=expected_revision,
+            operation=operation,
+            idempotency_key=idempotency_key,
+            next_content=next_content,
+        )
+        return self._documents.apply_patch(
+            document_id=mutation.document_id,
+            expected_revision=mutation.expected_revision,
+            operation=mutation.operation,
+            content=mutation.next_content,
+            agent_run_id=agent_run_id,
+            idempotency_key=mutation.idempotency_key,
+            now=self._clock(),
+            request_digest=mutation.request_digest,
+        )
+
     def build_bounded_context(
         self,
         document_id: str,
@@ -648,10 +681,10 @@ class AgentWorkingDocumentService:
     ) -> None:
         for record in content.planned_nodes:
             node = self._workflows.get_node(workflow_id, record.node_id)
-            if node.revision != record.node_revision:
+            if node.revision < record.node_revision:
                 raise _error(
                     "agent_storyboard_plan_invalid",
-                    "Storyboard planned Node revision is stale.",
+                    "Storyboard planned Node revision is ahead of the current Node.",
                 )
         if content.visual_anchor is not None:
             version = self._assets.find_version(version_id=content.visual_anchor.asset_version_id)

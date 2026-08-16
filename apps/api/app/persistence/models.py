@@ -1792,7 +1792,8 @@ class AgentCanvasExecutionMemberRow(Base):
     __tablename__ = "agent_canvas_execution_members"
     __table_args__ = (
         CheckConstraint(
-            "state IN ('queued','waiting','blocked','running','succeeded','failed','cancelled')",
+            "state IN ('queued','waiting','blocked','skipped_dependency','running',"
+            "'succeeded','failed','cancelled')",
             name="ck_agent_canvas_execution_members_state",
         ),
         UniqueConstraint(
@@ -2149,3 +2150,37 @@ class AgentCanvasEditingExportCommitRow(Base):
     version_id: Mapped[str | None] = mapped_column(Text)
     receipt_json: Mapped[str] = mapped_column(Text, nullable=False)
     committed_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class AgentCanvasGuidedProductionReceiptRow(Base):
+    """Immutable typed receipt for guided production authority transitions."""
+
+    __tablename__ = "agent_canvas_guided_production_receipts"
+    __table_args__ = (
+        CheckConstraint(
+            "receipt_type IN ('storyboard_fanout','media_confirmation',"
+            "'editing_preparation','final_completion')",
+            name="ck_agent_canvas_guided_production_receipt_type",
+        ),
+        UniqueConstraint(
+            "receipt_type",
+            "logical_identity",
+            name="uq_agent_canvas_guided_production_receipt_identity",
+        ),
+        Index(
+            "ix_agent_canvas_guided_production_receipts_workflow_type",
+            "workflow_id",
+            "receipt_type",
+            "created_at",
+        ),
+    )
+
+    receipt_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    receipt_type: Mapped[str] = mapped_column(Text, nullable=False)
+    logical_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    payload_digest: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)

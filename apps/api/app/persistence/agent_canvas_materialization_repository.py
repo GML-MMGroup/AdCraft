@@ -2071,6 +2071,7 @@ def _validate_authority_document_sources(
                 node_revision=planned_node.node_revision,
                 source_workflow_id=plan.workflow_id,
                 error_code="agent_storyboard_plan_invalid",
+                allow_newer_revision=True,
             )
         if content.visual_anchor is not None:
             _require_exact_materialization_node_source(

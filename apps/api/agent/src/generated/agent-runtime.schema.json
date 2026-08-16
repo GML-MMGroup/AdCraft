@@ -11594,6 +11594,71 @@
           "title": "Editing Preparation",
           "type": "string"
         },
+        "export_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Export Id"
+        },
+        "export_status": {
+          "default": "not_started",
+          "enum": [
+            "cancelled",
+            "completed",
+            "exporting",
+            "failed",
+            "not_started",
+            "queued"
+          ],
+          "title": "Export Status",
+          "type": "string"
+        },
+        "final_asset_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Asset Id"
+        },
+        "final_completion_receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Final Completion Receipt Id"
+        },
+        "manifest_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest Revision"
+        },
         "matching_asset_ids": {
           "default": [],
           "items": {
@@ -11611,6 +11676,45 @@
           "maxItems": 32,
           "title": "Matching Node Ids",
           "type": "array"
+        },
+        "plan_document_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Document Id"
+        },
+        "plan_revision": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Plan Revision"
+        },
+        "preparation_receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preparation Receipt Id"
         }
       },
       "title": "GuidanceCompletionProjectionV2",
@@ -12033,6 +12137,248 @@
       "title": "GuidedChoiceOptionV1",
       "type": "object"
     },
+    "GuidedClosureBlockerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "default": [],
+          "items": {
+            "enum": [
+              "accept",
+              "exclude",
+              "replace",
+              "retry",
+              "wait"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "error_code": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Error Code",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "failed",
+            "missing",
+            "nonterminal_work",
+            "not_ready",
+            "stale",
+            "unconfirmed",
+            "unreadable"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "media_role": {
+          "enum": [
+            "audio",
+            "image",
+            "video"
+          ],
+          "title": "Media Role",
+          "type": "string"
+        },
+        "node_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Id"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "status": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "error_code",
+        "kind",
+        "media_role",
+        "status"
+      ],
+      "title": "GuidedClosureBlockerV1",
+      "type": "object"
+    },
+    "GuidedClosureInputV1": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Asset Digest",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "confirmation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "media_role": {
+          "enum": [
+            "audio",
+            "image",
+            "video"
+          ],
+          "title": "Media Role",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "order": {
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        }
+      },
+      "required": [
+        "asset_digest",
+        "asset_id",
+        "asset_version_id",
+        "confirmation_id",
+        "media_role",
+        "node_id",
+        "node_revision",
+        "order"
+      ],
+      "title": "GuidedClosureInputV1",
+      "type": "object"
+    },
+    "GuidedClosurePlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "closure_plan_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Closure Plan Id",
+          "type": "string"
+        },
+        "confirmation_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Confirmation Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "guidance_session_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Guidance Session Id",
+          "type": "string"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "no_active_work": {
+          "const": true,
+          "title": "No Active Work",
+          "type": "boolean"
+        },
+        "ordered_inputs": {
+          "items": {
+            "$ref": "#/$defs/GuidedClosureInputV1"
+          },
+          "title": "Ordered Inputs",
+          "type": "array"
+        },
+        "plan_document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Document Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "closure_plan_id",
+        "confirmation_digest",
+        "created_at",
+        "guidance_session_id",
+        "logical_identity",
+        "no_active_work",
+        "ordered_inputs",
+        "plan_document_id",
+        "plan_revision",
+        "workflow_id"
+      ],
+      "title": "GuidedClosurePlanV1",
+      "type": "object"
+    },
     "GuidedConceptChoiceV1": {
       "additionalProperties": false,
       "properties": {
@@ -12176,6 +12522,183 @@
         "value"
       ],
       "title": "GuidedCustomAnswerV1",
+      "type": "object"
+    },
+    "GuidedEditingPreparationReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Binding Ids",
+          "type": "array"
+        },
+        "closure_plan_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Closure Plan Id",
+          "type": "string"
+        },
+        "committed_at": {
+          "format": "date-time",
+          "title": "Committed At",
+          "type": "string"
+        },
+        "confirmation_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Confirmation Digest",
+          "type": "string"
+        },
+        "editing_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Editing Node Id",
+          "type": "string"
+        },
+        "editing_node_revision": {
+          "minimum": 1,
+          "title": "Editing Node Revision",
+          "type": "integer"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "manifest_revision": {
+          "minimum": 1,
+          "title": "Manifest Revision",
+          "type": "integer"
+        },
+        "plan_document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Document Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "receipt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_ids",
+        "closure_plan_id",
+        "committed_at",
+        "confirmation_digest",
+        "editing_node_id",
+        "editing_node_revision",
+        "logical_identity",
+        "manifest_digest",
+        "manifest_revision",
+        "plan_document_id",
+        "plan_revision",
+        "receipt_id",
+        "workflow_id"
+      ],
+      "title": "GuidedEditingPreparationReceiptV1",
+      "type": "object"
+    },
+    "GuidedFinalCompletionReceiptV1": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
+        "completion_revision": {
+          "minimum": 1,
+          "title": "Completion Revision",
+          "type": "integer"
+        },
+        "export_generation": {
+          "minimum": 1,
+          "title": "Export Generation",
+          "type": "integer"
+        },
+        "export_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Export Id",
+          "type": "string"
+        },
+        "final_asset_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Final Asset Digest",
+          "type": "string"
+        },
+        "final_asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Final Asset Id",
+          "type": "string"
+        },
+        "final_asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Final Asset Version Id",
+          "type": "string"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "preparation_receipt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Preparation Receipt Id",
+          "type": "string"
+        },
+        "receipt_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "completed_at",
+        "completion_revision",
+        "export_generation",
+        "export_id",
+        "final_asset_digest",
+        "final_asset_id",
+        "final_asset_version_id",
+        "logical_identity",
+        "preparation_receipt_id",
+        "receipt_id",
+        "workflow_id"
+      ],
+      "title": "GuidedFinalCompletionReceiptV1",
       "type": "object"
     },
     "GuidedInteractionAcceptedV1": {
@@ -12510,6 +13033,134 @@
         "workflow_id"
       ],
       "title": "GuidedInteractionV1",
+      "type": "object"
+    },
+    "GuidedMediaConfirmationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accepted_by": {
+          "enum": [
+            "agent",
+            "user"
+          ],
+          "title": "Accepted By",
+          "type": "string"
+        },
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "asset_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Asset Digest",
+          "type": "string"
+        },
+        "asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Asset Version Id",
+          "type": "string"
+        },
+        "confirmation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Confirmation Id",
+          "type": "string"
+        },
+        "confirmed_at": {
+          "format": "date-time",
+          "title": "Confirmed At",
+          "type": "string"
+        },
+        "decision_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Decision Id",
+          "type": "string"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "media_role": {
+          "enum": [
+            "audio",
+            "image",
+            "video"
+          ],
+          "title": "Media Role",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "plan_document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Document Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "accepted_by",
+        "action_id",
+        "asset_digest",
+        "asset_id",
+        "asset_version_id",
+        "confirmation_id",
+        "confirmed_at",
+        "decision_id",
+        "logical_identity",
+        "media_role",
+        "node_id",
+        "node_revision",
+        "plan_document_id",
+        "plan_revision",
+        "workflow_id"
+      ],
+      "title": "GuidedMediaConfirmationV1",
       "type": "object"
     },
     "GuidedMediaReviewSubmitV1": {
@@ -20358,6 +21009,280 @@
       "title": "SpokenLanguageControlV1",
       "type": "object"
     },
+    "StoryboardExcludedMediaV3": {
+      "additionalProperties": false,
+      "properties": {
+        "action_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Action Id",
+          "type": "string"
+        },
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_revision": {
+          "minimum": 1,
+          "title": "Node Revision",
+          "type": "integer"
+        },
+        "node_role": {
+          "enum": [
+            "bgm",
+            "video_segment"
+          ],
+          "title": "Node Role",
+          "type": "string"
+        },
+        "sequence_id": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence Id"
+        }
+      },
+      "required": [
+        "action_id",
+        "node_id",
+        "node_revision",
+        "node_role"
+      ],
+      "title": "StoryboardExcludedMediaV3",
+      "type": "object"
+    },
+    "StoryboardFanoutBindingPlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Binding Id",
+          "type": "string"
+        },
+        "input_role": {
+          "enum": [
+            "image_reference",
+            "text_context"
+          ],
+          "title": "Input Role",
+          "type": "string"
+        },
+        "order": {
+          "minimum": 0,
+          "title": "Order",
+          "type": "integer"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "source_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "storyboard_reference_purpose": {
+          "anyOf": [
+            {
+              "const": "sequence_visual_anchor",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storyboard Reference Purpose"
+        },
+        "target_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Target Node Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "binding_id",
+        "input_role",
+        "order",
+        "required",
+        "source_node_id",
+        "target_node_id"
+      ],
+      "title": "StoryboardFanoutBindingPlanV1",
+      "type": "object"
+    },
+    "StoryboardFanoutNodePlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Node Id",
+          "type": "string"
+        },
+        "node_role": {
+          "enum": [
+            "storyboard_grid",
+            "video_segment"
+          ],
+          "title": "Node Role",
+          "type": "string"
+        },
+        "order": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Order",
+          "type": "integer"
+        },
+        "sequence_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Sequence Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "node_role",
+        "order",
+        "sequence_id"
+      ],
+      "title": "StoryboardFanoutNodePlanV1",
+      "type": "object"
+    },
+    "StoryboardFanoutPlanV1": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic_run_keys": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Automatic Run Keys",
+          "type": "array"
+        },
+        "bindings": {
+          "items": {
+            "$ref": "#/$defs/StoryboardFanoutBindingPlanV1"
+          },
+          "title": "Bindings",
+          "type": "array"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "fanout_plan_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Fanout Plan Id",
+          "type": "string"
+        },
+        "logical_identity": {
+          "maxLength": 640,
+          "minLength": 1,
+          "title": "Logical Identity",
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/StoryboardFanoutNodePlanV1"
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "plan_document_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Plan Document Id",
+          "type": "string"
+        },
+        "plan_revision": {
+          "minimum": 1,
+          "title": "Plan Revision",
+          "type": "integer"
+        },
+        "prompt_preparation_keys": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Prompt Preparation Keys",
+          "type": "array"
+        },
+        "visual_anchor_asset_digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Visual Anchor Asset Digest",
+          "type": "string"
+        },
+        "visual_anchor_asset_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Visual Anchor Asset Id",
+          "type": "string"
+        },
+        "visual_anchor_asset_version_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Visual Anchor Asset Version Id",
+          "type": "string"
+        },
+        "visual_anchor_confirmation_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Visual Anchor Confirmation Id",
+          "type": "string"
+        },
+        "visual_anchor_node_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Visual Anchor Node Id",
+          "type": "string"
+        },
+        "visual_anchor_node_revision": {
+          "minimum": 1,
+          "title": "Visual Anchor Node Revision",
+          "type": "integer"
+        },
+        "workflow_id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Workflow Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bindings",
+        "created_at",
+        "fanout_plan_id",
+        "logical_identity",
+        "nodes",
+        "plan_document_id",
+        "plan_revision",
+        "visual_anchor_asset_digest",
+        "visual_anchor_asset_id",
+        "visual_anchor_asset_version_id",
+        "visual_anchor_confirmation_id",
+        "visual_anchor_node_id",
+        "visual_anchor_node_revision",
+        "workflow_id"
+      ],
+      "title": "StoryboardFanoutPlanV1",
+      "type": "object"
+    },
     "StoryboardGridContentV2": {
       "additionalProperties": false,
       "properties": {
@@ -20929,6 +21854,15 @@
     "StoryboardProductionPlanContentV3": {
       "additionalProperties": false,
       "properties": {
+        "excluded_media": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/StoryboardExcludedMediaV3"
+          },
+          "maxItems": 129,
+          "title": "Excluded Media",
+          "type": "array"
+        },
         "global_parameters": {
           "$ref": "#/$defs/StoryboardPlanGlobalParametersV2"
         },

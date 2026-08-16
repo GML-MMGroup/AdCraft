@@ -144,8 +144,23 @@ class GuidanceTopicStateV2(_CreativeSessionModel):
 class GuidanceCompletionProjectionV2(_CreativeSessionModel):
     authoring: Literal["not_ready", "ready"] = "not_ready"
     delivery: Literal["not_ready", "ready"] = "not_ready"
+    plan_document_id: str | None = Field(default=None, max_length=160)
+    plan_revision: int | None = Field(default=None, ge=1)
     editing_preparation: Literal["not_ready", "prepared"] = "not_ready"
     editing_node_id: str | None = Field(default=None, max_length=160)
+    preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    manifest_revision: int | None = Field(default=None, ge=1)
+    export_status: Literal[
+        "not_started",
+        "queued",
+        "exporting",
+        "completed",
+        "failed",
+        "cancelled",
+    ] = "not_started"
+    export_id: str | None = Field(default=None, max_length=160)
+    final_completion_receipt_id: str | None = Field(default=None, max_length=160)
+    final_asset_id: str | None = Field(default=None, max_length=160)
     matching_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
 

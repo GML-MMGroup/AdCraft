@@ -214,6 +214,7 @@ class CanvasExecutionMembershipV2(_RuntimeModel):
         "queued",
         "waiting",
         "blocked",
+        "skipped_dependency",
         "running",
         "succeeded",
         "failed",

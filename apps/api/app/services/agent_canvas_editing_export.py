@@ -36,6 +36,7 @@ from app.schemas.agent_canvas_editing_authority import (
     FencedLeaseTokenV2,
     RevisionAssertionV2,
 )
+from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_canvas_assets import AgentCanvasAssetService
 from app.services.agent_canvas_composition_renderer import (
     AgentCanvasCompositionRenderer,
@@ -107,6 +108,7 @@ class EditingExportService:
         lease_ttl: timedelta = timedelta(seconds=60),
         worker_id_factory: Callable[[], str] = lambda: f"editing_worker_{uuid4().hex}",
         commit_service: AgentCanvasEditingExportCommitService | None = None,
+        on_completed: Callable[[str, str, str], object] | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._workflows = workflows
@@ -119,6 +121,7 @@ class EditingExportService:
         self._clock = clock
         self._lease_ttl = lease_ttl
         self._worker_id_factory = worker_id_factory
+        self._on_completed = on_completed
         self._commits = commit_service or AgentCanvasEditingExportCommitService(
             AgentCanvasEditingExportCommitRepository(
                 exports.database,
@@ -213,6 +216,9 @@ class EditingExportService:
     def resume(self, export_id: str) -> None:
         workflow_id, node_id = self._exports.identity(export_id)
         runtime = self._exports.get(export_id)
+        if runtime.status == "completed":
+            self._run_completed_effect(workflow_id, node_id, export_id)
+            return
         if runtime.status not in {"queued", "exporting"}:
             return
         try:
@@ -313,6 +319,7 @@ class EditingExportService:
                 )
             )
             self._cleanup_staging(workflow_id, export_id)
+            self._run_completed_effect(workflow_id, node_id, export_id)
         except Exception as error:
             if self._exports.is_cancel_requested(export_id):
                 try:
@@ -331,6 +338,39 @@ class EditingExportService:
             }:
                 return
             self._finish_failed(workflow_id, node_id, runtime, lease, error)
+
+    def _run_completed_effect(
+        self,
+        workflow_id: str,
+        node_id: str,
+        export_id: str,
+    ) -> None:
+        if self._on_completed is None:
+            return
+        try:
+            self._on_completed(workflow_id, node_id, export_id)
+        except Exception as error:  # noqa: BLE001 - Export remains terminal and recoverable.
+            self._events.append(
+                V2EventInsert(
+                    workflow_id=workflow_id,
+                    execution_id=export_id,
+                    node_id=node_id,
+                    event_type="guided_completion_failed",
+                    transition_key=f"guided-completion:{export_id}:failed",
+                    created_at=self._clock().isoformat(),
+                    payload={
+                        "export_id": export_id,
+                        "error_code": getattr(
+                            error,
+                            "code",
+                            "guided_completion_failed",
+                        ),
+                        "error_message": str(error),
+                        "retryable": True,
+                        "refresh": ["conversation", "runtime", "events"],
+                    },
+                )
+            )
 
     def cancel(
         self,
@@ -386,6 +426,10 @@ class EditingExportService:
         for runtime in self._exports.list_active():
             self.resume(runtime.export_id)
             resumed.append(runtime.export_id)
+        if self._on_completed is not None:
+            for runtime in self._exports.list_completed_all():
+                workflow_id, node_id = self._exports.identity(runtime.export_id)
+                self._run_completed_effect(workflow_id, node_id, runtime.export_id)
         return tuple(resumed)
 
     def _require_current_manifest(

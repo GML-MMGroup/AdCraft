@@ -47,6 +47,9 @@ from app.persistence.agent_canvas_repository import (
 from app.persistence.agent_canvas_editing_repository import (
     AgentCanvasEditingExportRepository,
 )
+from app.persistence.agent_canvas_editing_commit_repository import (
+    AgentCanvasEditingExportCommitRepository,
+)
 from app.persistence.agent_canvas_runtime_repository import (
     AgentCanvasRuntimeRepository,
 )
@@ -64,6 +67,9 @@ from app.persistence.agent_canvas_materialization_repository import (
 )
 from app.persistence.agent_canvas_guided_interaction_repository import (
     AgentCanvasGuidedInteractionRepository,
+)
+from app.persistence.agent_canvas_production_closure_repository import (
+    AgentCanvasProductionClosureRepository,
 )
 from app.persistence.agent_canvas_continuation_repository import (
     AgentCanvasContinuationOutboxRepository,
@@ -203,6 +209,7 @@ from app.services.agent_canvas_composition_renderer import (
 )
 from app.services.agent_canvas_editing import EditingInputResolver, EditingNodeService
 from app.services.agent_canvas_editing_export import EditingExportService
+from app.services.agent_canvas_editing_commit import AgentCanvasEditingExportCommitService
 from app.services.agent_canvas_ad_media import (
     AdMediaDraftValidationService,
     AdMediaRoleRegistry,
@@ -277,6 +284,20 @@ from app.services.agent_canvas_conversation import (
 from app.services.chat_turn_retry import ChatTurnRetryService
 from app.services.agent_canvas_guidance_advance import GuidanceAdvanceService
 from app.services.agent_canvas_guided_interactions import GuidedInteractionService
+from app.services.agent_canvas_guided_media_confirmation import (
+    GuidedMediaConfirmationService,
+)
+from app.services.agent_canvas_guided_media_review import (
+    GuidedMediaPlanActionService,
+    GuidedMediaReviewActionService,
+    GuidedMediaReviewCoordinator,
+)
+from app.services.agent_canvas_guided_final_completion import (
+    GuidedFinalCompletionService,
+)
+from app.services.agent_canvas_guided_production_closure import (
+    GuidedProductionClosureService,
+)
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_continuation_worker import (
@@ -454,32 +475,7 @@ def create_agent_canvas_runtime(
         assets=asset_repository,
         conversations=conversation_repository,
     )
-    guided_editing = GuidedEditingPreparationService(
-        workflows=workflow_repository,
-        documents=working_documents,
-        conversations=conversation_repository,
-        events=event_repository,
-        asset_resolver=asset_service.resolve_asset,
-    )
-
-    def prepare_current_editing(workflow_id: str) -> object:
-        plans = working_documents.list_documents(
-            workflow_id,
-            kind="storyboard_production_plan",
-            limit=2,
-        ).items
-        if len(plans) != 1:
-            raise V2PersistenceError(
-                "editing_preparation_plan_missing",
-                "Editing preparation requires one current Storyboard production plan.",
-                stage="guided_editing_preparation",
-            )
-        plan = plans[0]
-        return guided_editing.prepare(
-            workflow_id,
-            plan.document_id,
-            expected_plan_revision=plan.revision,
-        )
+    production_closure_receipts = AgentCanvasProductionClosureRepository(database)
 
     storyboard_authoring = StoryboardSequenceAuthoringService(
         documents=working_documents,
@@ -537,6 +533,63 @@ def create_agent_canvas_runtime(
     )
     world_setting_context = WorldSettingContextResolverV2(workflow_repository)
     runtime_repository = AgentCanvasRuntimeRepository(database, event_repository)
+
+    def guided_asset_readable(asset) -> bool:
+        try:
+            return asset_service.resolve_asset_path(asset.asset_id).is_file()
+        except (OSError, V2PersistenceError):
+            return False
+
+    def guided_media_work_active(workflow_id: str, node_ids: tuple[str, ...]) -> bool:
+        selected = set(node_ids)
+        active = runtime_repository.get_active_execution(workflow_id)
+        if active is not None and any(
+            member.node_id in selected
+            for member in runtime_repository.list_members(active.execution_id)
+        ):
+            return True
+        return any(
+            task.workflow_id == workflow_id and task.node_id in selected
+            for task in runtime_repository.list_recoverable_tasks()
+        )
+
+    guided_closure = GuidedProductionClosureService(
+        workflows=workflow_repository,
+        documents=working_documents,
+        assets=asset_service.resolve_asset,
+        asset_readable=guided_asset_readable,
+        receipts=production_closure_receipts,
+        has_active_work=guided_media_work_active,
+        events=event_repository,
+    )
+    guided_editing = GuidedEditingPreparationService(
+        workflows=workflow_repository,
+        documents=working_documents,
+        conversations=conversation_repository,
+        events=event_repository,
+        closure=guided_closure,
+        receipts=production_closure_receipts,
+    )
+
+    def prepare_current_editing(workflow_id: str) -> object:
+        plans = working_documents.list_documents(
+            workflow_id,
+            kind="storyboard_production_plan",
+            limit=2,
+        ).items
+        if len(plans) != 1:
+            raise V2PersistenceError(
+                "editing_preparation_plan_missing",
+                "Editing preparation requires one current Storyboard production plan.",
+                stage="guided_editing_preparation",
+            )
+        plan = plans[0]
+        return guided_editing.prepare(
+            workflow_id,
+            plan.document_id,
+            expected_plan_revision=plan.revision,
+        )
+
     editing_export_repository = AgentCanvasEditingExportRepository(database)
     provider_executor = provider_executor_override or V2ProviderExecutor(
         settings=settings,
@@ -629,6 +682,9 @@ def create_agent_canvas_runtime(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
         gateway=video_agent_gateway,
+        receipts=production_closure_receipts,
+        asset_resolver=asset_service.resolve_asset,
+        events=event_repository,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
@@ -819,6 +875,23 @@ def create_agent_canvas_runtime(
         result_committer=result_committer,
     )
     editing_nodes = EditingNodeService(workflow_repository, asset_service.resolve_asset)
+    editing_commit_service = AgentCanvasEditingExportCommitService(
+        AgentCanvasEditingExportCommitRepository(
+            database,
+            asset_repository,
+            event_repository,
+        )
+    )
+    guided_final_completion = GuidedFinalCompletionService(
+        workflows=workflow_repository,
+        exports=editing_export_repository,
+        commits=editing_commit_service,
+        assets=asset_service.resolve_asset,
+        asset_readable=guided_asset_readable,
+        receipts=production_closure_receipts,
+        conversations=conversation_repository,
+        events=event_repository,
+    )
     editing_exports = EditingExportService(
         data_dir=settings.media_data_dir,
         workflows=workflow_repository,
@@ -832,6 +905,8 @@ def create_agent_canvas_runtime(
         exports=editing_export_repository,
         events=event_repository,
         renderer=AgentCanvasCompositionRenderer(settings),
+        commit_service=editing_commit_service,
+        on_completed=guided_final_completion.complete,
     )
 
     run_service = AgentCanvasRunService(
@@ -840,10 +915,27 @@ def create_agent_canvas_runtime(
         event_repository,
         run_snapshots=run_snapshots,
     )
+    guided_media_confirmations = GuidedMediaConfirmationService(
+        workflows=workflow_repository,
+        plans=storyboard_authoring,
+        assets=asset_service.resolve_asset,
+        asset_readable=guided_asset_readable,
+        receipts=production_closure_receipts,
+        events=event_repository,
+        progression=storyboard_progression,
+    )
+    guided_media_reviews = GuidedMediaReviewCoordinator(
+        interactions=guided_interaction_repository,
+        conversations=conversation_repository,
+        plans=storyboard_authoring,
+        assets=asset_service.resolve_asset,
+        confirmations=guided_media_confirmations,
+        events=event_repository,
+    )
 
     def handle_storyboard_progression(effect) -> None:
         node = workflow_repository.get_node(effect.workflow_id, effect.node_id)
-        created_node_ids = storyboard_progression.on_node_ready(node)
+        created_node_ids = guided_media_reviews.on_node_ready(node)
         if not created_node_ids:
             return
         run_service.start_or_extend(
@@ -976,6 +1068,12 @@ def create_agent_canvas_runtime(
             idempotency_key=idempotency_key,
         ),
     )
+    guided_media_plan_actions = GuidedMediaPlanActionService(
+        workflows=workflow_repository,
+        plan_reader=storyboard_authoring,
+        plan_writer=working_documents,
+        variations=variation_service,
+    )
     conversation_service = AgentConversationService(
         workflows=workflow_repository,
         conversations=conversation_repository,
@@ -1068,6 +1166,15 @@ def create_agent_canvas_runtime(
         guided_interaction_repository,
         conversation_repository,
         materialization_repository,
+        media_submit=GuidedMediaReviewActionService(
+            interactions=guided_interaction_repository,
+            conversations=conversation_repository,
+            plans=storyboard_authoring,
+            confirmations=guided_media_confirmations,
+            retry=guided_media_plan_actions.retry,
+            replace=guided_media_plan_actions.replace,
+            exclude=guided_media_plan_actions.exclude,
+        ).submit,
     )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
@@ -2366,6 +2473,29 @@ def act_on_chat_proposal(
     if not idempotency_key:
         raise _http_error("idempotency_key_required", 422, "Idempotency-Key is required.")
     try:
+        replayed_interaction = runtime.guided_interactions.replay_proposal_action(
+            workflow_id,
+            proposal_id,
+            request,
+            idempotency_key=idempotency_key,
+        )
+        if replayed_interaction is not None:
+            proposal = runtime.conversation_repository.get_proposal(proposal_id)
+            source_turn = runtime.conversation_repository.get_turn(proposal.turn_id)
+            if proposal.materialization is None:
+                raise V2PersistenceError(
+                    "guided_interaction_incomplete",
+                    "Guided interaction replay is missing its Materialization.",
+                    stage="agent_canvas_api",
+                )
+            return ChatTurnAcceptedV2(
+                workflow_id=workflow_id,
+                conversation_id=source_turn.conversation_id,
+                message_id=None,
+                turn_id=proposal.materialization.turn_id,
+                events_cursor=replayed_interaction.events_cursor,
+                replayed=True,
+            )
         interaction = runtime.guided_interactions.get_current(workflow_id)
         if (
             interaction is not None
@@ -3108,7 +3238,21 @@ def _persistence_http_error(error: V2PersistenceError) -> HTTPException:
         "stage_content_mismatch": 422,
         "storyboard_sequence_invalid": 422,
         "storyboard_anchor_resolution_failed": 422,
+        "storyboard_fanout_invalid": 422,
+        "storyboard_visual_anchor_stale": 409,
+        "execution_required_dependency_failed": 409,
+        "guided_media_confirmation_required": 409,
+        "guided_media_confirmation_stale": 409,
+        "guided_media_asset_unreadable": 409,
+        "guided_media_replacement_instruction_required": 422,
+        "guided_closure_blocked": 409,
+        "guided_closure_plan_stale": 409,
         "editing_preparation_plan_conflict": 409,
+        "editing_preparation_plan_invalid": 422,
+        "guided_export_not_completed": 409,
+        "guided_export_commit_mismatch": 409,
+        "guided_export_preparation_stale": 409,
+        "guided_final_asset_unreadable": 409,
         "upstream_inputs_not_ready": 409,
         "node_executor_unavailable": 503,
     }.get(error.code, 503)

@@ -10,6 +10,7 @@ from threading import Event, Thread
 from app.persistence.agent_canvas_post_ready_repository import (
     AgentCanvasPostReadyEffectRepository,
 )
+from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime_authority import CanvasPostReadyEffectV2
 
@@ -88,16 +89,31 @@ class AgentCanvasPostReadyEffectWorker:
                 if lease_lost.is_set():
                     raise RuntimeError("Post-Ready effect lease was lost.")
             except Exception as error:  # noqa: BLE001 - effects are isolated.
+                guided_interaction_wait = (
+                    isinstance(error, V2PersistenceError)
+                    and error.code == "guided_interaction_conflict"
+                )
                 detail = CanvasNodeErrorV2(
                     code=(
                         "post_ready_effect_handler_missing"
                         if handler is None
+                        else error.code
+                        if guided_interaction_wait
                         else "post_ready_effect_failed"
                     ),
                     message=str(error)[:1024] or "Post-Ready effect failed.",
                     retryable=handler is not None,
                 )
-                if handler is None or effect.attempt_no + 1 >= self._max_attempts:
+                if guided_interaction_wait:
+                    now = self._clock()
+                    self._repository.defer(
+                        effect,
+                        now=now,
+                        retry_at=now + self._base_backoff,
+                        error=detail,
+                    )
+                    retried += 1
+                elif handler is None or effect.attempt_no + 1 >= self._max_attempts:
                     self._repository.fail(effect, now=self._clock(), error=detail)
                     failed += 1
                 else:

@@ -352,6 +352,20 @@ class StoryboardVisualAnchorV3(_AuthoritativeWorkingDocumentModel):
     acceptance_evidence_id: str = Field(min_length=1, max_length=160)
 
 
+class StoryboardExcludedMediaV3(_AuthoritativeWorkingDocumentModel):
+    sequence_id: str | None = Field(default=None, max_length=160)
+    node_role: Literal["video_segment", "bgm"]
+    node_id: str = Field(min_length=1, max_length=160)
+    node_revision: int = Field(ge=1)
+    action_id: str = Field(min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def validate_sequence_scope(self) -> "StoryboardExcludedMediaV3":
+        if (self.node_role == "video_segment") != (self.sequence_id is not None):
+            raise ValueError("Only excluded Video records require a sequence scope.")
+        return self
+
+
 class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
     schema_version: Literal["3"] = "3"
     narrative_outline: str = Field(min_length=1, max_length=16_384)
@@ -361,6 +375,7 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
     segments: tuple[StoryboardNarrativeSegmentV2, ...] = Field(max_length=128)
     rows: tuple[StoryboardPlanRowV2, ...] = Field(max_length=1_152)
     planned_nodes: tuple[StoryboardPlannedNodeV3, ...] = Field(default=(), max_length=384)
+    excluded_media: tuple[StoryboardExcludedMediaV3, ...] = Field(default=(), max_length=129)
     visual_anchor: StoryboardVisualAnchorV3 | None = None
 
     @model_validator(mode="after")
@@ -407,6 +422,16 @@ class StoryboardProductionPlanContentV3(_AuthoritativeWorkingDocumentModel):
             if key in record_keys:
                 raise ValueError("Planned Node roles must be unique within their scope.")
             record_keys.add(key)
+        excluded_keys: set[tuple[str | None, str]] = set()
+        for exclusion in self.excluded_media:
+            if exclusion.sequence_id is not None and exclusion.sequence_id not in sequence_ids:
+                raise ValueError("Excluded media references an unknown Storyboard sequence.")
+            key = (exclusion.sequence_id, exclusion.node_role)
+            if key in excluded_keys:
+                raise ValueError("Excluded media roles must be unique within their scope.")
+            if key in record_keys:
+                raise ValueError("Planned media cannot also be explicitly excluded.")
+            excluded_keys.add(key)
         if self.visual_anchor is not None:
             first_sequence_id = sequence_ids[0]
             if self.visual_anchor.sequence_id != first_sequence_id:

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 from math import ceil
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
@@ -47,6 +48,7 @@ from app.schemas.agent_working_documents import (
     StoryboardPlannedNodeV3,
     StoryboardSegmentMaterializationV2,
     StoryboardVisualAnchorV2,
+    StoryboardVisualAnchorV3,
 )
 from app.schemas.v2_persistence import V2EventInsert
 from app.services.agent_working_documents import AgentWorkingDocumentService
@@ -282,13 +284,15 @@ class StoryboardSequenceAuthoringService:
         sequence_id: str,
         draft: StoryboardSegmentMaterializationDraftV2,
         *,
-        planned_node: StoryboardPlannedNodeV3,
+        planned_node: StoryboardPlannedNodeV3 | None = None,
     ) -> StoryboardProductionPlanContentV3:
         """Plan one authoritative nine-row sequence without runtime mirrors."""
 
         if sequence_id not in {item.sequence_id for item in content.segments}:
             raise _storyboard_authority_error("Storyboard sequence was not found.")
-        if planned_node.sequence_id != sequence_id or planned_node.node_role != "storyboard_grid":
+        if planned_node is not None and (
+            planned_node.sequence_id != sequence_id or planned_node.node_role != "storyboard_grid"
+        ):
             raise _storyboard_authority_error("The planned Grid Node does not match its sequence.")
         if any(row.sequence_id == sequence_id for row in content.rows):
             raise _storyboard_authority_error("Storyboard sequence is already materialized.")
@@ -325,7 +329,11 @@ class StoryboardSequenceAuthoringService:
                     "rows": [row.model_dump(mode="json") for row in rows],
                     "planned_nodes": [
                         *(item.model_dump(mode="json") for item in content.planned_nodes),
-                        planned_node.model_dump(mode="json"),
+                        *(
+                            (planned_node.model_dump(mode="json"),)
+                            if planned_node is not None
+                            else ()
+                        ),
                     ],
                 }
             )
@@ -634,6 +642,8 @@ class StoryboardSequenceAuthoringService:
         grid_node_id: str,
         agent_run_id: str,
         idempotency_key: str,
+        asset_version_id: str | None = None,
+        acceptance_evidence_id: str | None = None,
     ) -> AgentWorkingDocumentV2:
         if self._workflows is None:
             raise V2PersistenceError(
@@ -654,7 +664,64 @@ class StoryboardSequenceAuthoringService:
                 stage="storyboard_sequence_authoring",
             )
         document = self._documents.get_document(workflow_id, plan_document_id)
-        content = cast(StoryboardProductionPlanContentV2, document.content)
+        content = document.content
+        if isinstance(content, StoryboardProductionPlanContentV3):
+            if content.visual_anchor is not None:
+                if (
+                    content.visual_anchor.node_id == grid_node_id
+                    and content.visual_anchor.asset_id == node.output_asset_id
+                    and content.visual_anchor.asset_version_id == asset_version_id
+                    and content.visual_anchor.acceptance_evidence_id == acceptance_evidence_id
+                ):
+                    return document
+                raise _storyboard_error("Storyboard visual anchor is already frozen.")
+            if not asset_version_id or not acceptance_evidence_id:
+                raise _storyboard_authority_error(
+                    "Storyboard V3 visual anchor requires exact Asset and acceptance evidence."
+                )
+            sequence_id = next(
+                (
+                    record.sequence_id
+                    for record in content.planned_nodes
+                    if record.node_role == "storyboard_grid" and record.node_id == grid_node_id
+                ),
+                None,
+            )
+            if sequence_id is None:
+                raise _storyboard_authority_error(
+                    "Storyboard visual anchor does not belong to the current Plan."
+                )
+            updated = self._documents.commit_content_mutation(
+                workflow_id=workflow_id,
+                agent_run_id=agent_run_id,
+                document_id=document.document_id,
+                expected_revision=document.revision,
+                operation="freeze_storyboard_visual_anchor",
+                idempotency_key=idempotency_key,
+                next_content=content.model_copy(
+                    update={
+                        "visual_anchor": StoryboardVisualAnchorV3(
+                            sequence_id=sequence_id,
+                            node_id=node.node_id,
+                            node_revision=node.revision,
+                            asset_id=node.output_asset_id,
+                            asset_version_id=asset_version_id,
+                            acceptance_evidence_id=acceptance_evidence_id,
+                        )
+                    }
+                ),
+            )
+            self._append_event(
+                workflow_id=workflow_id,
+                document=updated,
+                agent_run_id=agent_run_id,
+                guidance_session_id=updated.guidance_session_id,
+                event_type="storyboard_visual_anchor_frozen",
+                transition_key=f"storyboard_visual_anchor_frozen:{document.document_id}",
+                payload={"node_id": node.node_id, "asset_id": node.output_asset_id},
+            )
+            return updated
+        content = cast(StoryboardProductionPlanContentV2, content)
         if content.visual_anchor is not None:
             if (
                 content.visual_anchor.node_id == grid_node_id
@@ -700,7 +767,18 @@ class StoryboardSequenceAuthoringService:
         idempotency_key: str,
     ) -> AgentWorkingDocumentV2:
         document = self._documents.get_document(workflow_id, plan_document_id)
-        content = cast(StoryboardProductionPlanContentV2, document.content)
+        content = document.content
+        if isinstance(content, StoryboardProductionPlanContentV3):
+            return self._attach_v3_node(
+                document,
+                content,
+                sequence_id=sequence_id,
+                node_id=node_id,
+                node_role="storyboard_grid",
+                agent_run_id=agent_run_id,
+                idempotency_key=idempotency_key,
+            )
+        content = cast(StoryboardProductionPlanContentV2, content)
         existing = next(
             (
                 item
@@ -737,7 +815,18 @@ class StoryboardSequenceAuthoringService:
         idempotency_key: str,
     ) -> AgentWorkingDocumentV2:
         document = self._documents.get_document(workflow_id, plan_document_id)
-        content = cast(StoryboardProductionPlanContentV2, document.content)
+        content = document.content
+        if isinstance(content, StoryboardProductionPlanContentV3):
+            return self._attach_v3_node(
+                document,
+                content,
+                sequence_id=sequence_id,
+                node_id=node_id,
+                node_role="video_segment",
+                agent_run_id=agent_run_id,
+                idempotency_key=idempotency_key,
+            )
+        content = cast(StoryboardProductionPlanContentV2, content)
         existing = next(
             (
                 item
@@ -762,6 +851,62 @@ class StoryboardSequenceAuthoringService:
                 node_id=node_id,
             ),
         ).document
+
+    def _attach_v3_node(
+        self,
+        document: AgentWorkingDocumentV2,
+        content: StoryboardProductionPlanContentV3,
+        *,
+        sequence_id: str,
+        node_id: str,
+        node_role: Literal["storyboard_grid", "video_segment"],
+        agent_run_id: str,
+        idempotency_key: str,
+    ) -> AgentWorkingDocumentV2:
+        existing = next(
+            (
+                item
+                for item in content.planned_nodes
+                if item.sequence_id == sequence_id and item.node_role == node_role
+            ),
+            None,
+        )
+        if existing is not None:
+            if existing.node_id == node_id:
+                return document
+            raise _storyboard_authority_error(
+                f"Storyboard sequence already owns another {node_role} Node."
+            )
+        if self._workflows is None:
+            raise V2PersistenceError(
+                "storyboard_sequence_workflow_repository_required",
+                "Storyboard planned Node attachment requires the workflow repository.",
+                stage="storyboard_sequence_authoring",
+            )
+        node = self._workflows.get_node(document.workflow_id, node_id)
+        planned = StoryboardPlannedNodeV3(
+            sequence_id=sequence_id,
+            node_role=node_role,
+            node_id=node_id,
+            node_revision=node.revision,
+            materialization_id=(
+                "materialization_"
+                + sha256(
+                    f"{document.document_id}:{sequence_id}:{node_role}:{node_id}".encode()
+                ).hexdigest()[:32]
+            ),
+        )
+        return self._documents.commit_content_mutation(
+            workflow_id=document.workflow_id,
+            agent_run_id=agent_run_id,
+            document_id=document.document_id,
+            expected_revision=document.revision,
+            operation=f"attach_{node_role}_node",
+            idempotency_key=idempotency_key,
+            next_content=content.model_copy(
+                update={"planned_nodes": content.planned_nodes + (planned,)}
+            ),
+        )
 
     def _append_event(
         self,

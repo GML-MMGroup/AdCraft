@@ -45,6 +45,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedQuestionAnswerV1,
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
+    GuidedMediaReviewSubmitV1,
     GuidedSkipAnswerV1,
     GuidedInteractionAcceptedV1,
 )
@@ -327,6 +328,45 @@ class AgentCanvasGuidedInteractionRepository:
             if error.code == "guided_interaction_submission_not_found":
                 return None
             raise
+
+    def get_submission_by_idempotency_key(
+        self,
+        workflow_id: str,
+        idempotency_key: str,
+    ) -> GuidedInteractionSubmissionRecordV1 | None:
+        with self._database.engine.connect() as connection:
+            rows = (
+                connection.execute(
+                    select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                        AgentCanvasGuidedInteractionSubmissionRow.workflow_id == workflow_id,
+                        AgentCanvasGuidedInteractionSubmissionRow.idempotency_key
+                        == idempotency_key,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise _error(
+                "idempotency_conflict",
+                "Idempotency key was reused for multiple guided interactions.",
+            )
+        row = rows[0]
+        return GuidedInteractionSubmissionRecordV1(
+            submission_id=str(row["submission_id"]),
+            workflow_id=str(row["workflow_id"]),
+            interaction_id=str(row["interaction_id"]),
+            idempotency_key=str(row["idempotency_key"]),
+            request=TypeAdapter(GuidedInteractionSubmitRequestV1).validate_json(
+                str(row["request_json"])
+            ),
+            result=(
+                json.loads(str(row["result_json"])) if row["result_json"] is not None else None
+            ),
+            created_at=str(row["created_at"]),
+        )
 
     def submit_questionnaire(
         self,
@@ -1005,7 +1045,184 @@ class AgentCanvasGuidedInteractionRepository:
                     ),
                 )
                 connection.commit()
-                return awaiting
+            except BaseException:
+                connection.rollback()
+                raise
+        return awaiting
+
+    def submit_media_review(
+        self,
+        interaction: GuidedInteractionV1,
+        request: GuidedMediaReviewSubmitV1,
+        *,
+        submission_id: str,
+        idempotency_key: str,
+        receipt_id: str,
+        post_action_session_revision: int,
+        created_node_ids: tuple[str, ...] = (),
+        created_binding_ids: tuple[str, ...] = (),
+        automatic_run_command_ids: tuple[str, ...] = (),
+    ) -> GuidedInteractionAcceptedV1:
+        """Close one exact media review after its deterministic action commits."""
+
+        request_json = request.model_dump_json()
+        request_digest = sha256(request_json.encode()).hexdigest()
+        now = datetime.now(timezone.utc).isoformat()
+        with self._database.engine.connect() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                existing = (
+                    connection.execute(
+                        select(AgentCanvasGuidedInteractionSubmissionRow).where(
+                            AgentCanvasGuidedInteractionSubmissionRow.submission_id == submission_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if existing is not None:
+                    if (
+                        str(existing["request_digest"]) != request_digest
+                        or str(existing["idempotency_key"]) != idempotency_key
+                    ):
+                        raise _error(
+                            "guided_interaction_submission_conflict",
+                            "Submission identity was reused with different content.",
+                        )
+                    result_json = cast(str | None, existing["result_json"])
+                    if result_json is None:
+                        raise _error(
+                            "guided_interaction_incomplete",
+                            "Media review submission has no durable result.",
+                        )
+                    connection.rollback()
+                    return GuidedInteractionAcceptedV1.model_validate_json(result_json).model_copy(
+                        update={"replayed": True}
+                    )
+
+                awaiting = _awaiting_for_workflow(connection, interaction.workflow_id)
+                if (
+                    awaiting is None
+                    or awaiting.interaction_id != interaction.interaction_id
+                    or awaiting.kind != "media_review"
+                ):
+                    raise _error(
+                        "guided_interaction_stale",
+                        "Media review is no longer the current Guidance wait.",
+                    )
+                _require_open_interaction(connection, interaction, request)
+                session = _require_session(
+                    connection,
+                    workflow_id=interaction.workflow_id,
+                    session_id=interaction.session_id,
+                    expected_revision=post_action_session_revision,
+                )
+                next_session_revision = post_action_session_revision + 1
+                journey = _journey(session).model_copy(
+                    update={"stage_status": "working", "active_action": None}
+                )
+                _close_interaction_and_awaiting(
+                    connection,
+                    interaction,
+                    awaiting,
+                    updated_at=now,
+                )
+                changed = connection.execute(
+                    update(AgentCanvasGuidanceSessionRow)
+                    .where(
+                        AgentCanvasGuidanceSessionRow.session_id == interaction.session_id,
+                        AgentCanvasGuidanceSessionRow.revision == post_action_session_revision,
+                    )
+                    .values(
+                        journey_state_json=journey.model_dump_json(),
+                        revision=next_session_revision,
+                        updated_at=now,
+                    )
+                )
+                if changed.rowcount != 1:
+                    raise _error(
+                        "guidance_revision_conflict",
+                        "Guidance session changed before media review Submit.",
+                    )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=interaction.workflow_id,
+                        node_id=interaction.content.node_id,
+                        event_type="guided_interaction_submitted",
+                        transition_key=f"guided-submission:{submission_id}:submitted",
+                        action_id=submission_id,
+                        created_at=now,
+                        payload={
+                            "interaction_id": interaction.interaction_id,
+                            "submission_id": submission_id,
+                            "kind": interaction.kind,
+                            "action": request.action,
+                            "receipt_id": receipt_id,
+                        },
+                    ),
+                )
+                self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=interaction.workflow_id,
+                        node_id=interaction.content.node_id,
+                        event_type="guidance_awaiting_resumed",
+                        transition_key=f"guidance-awaiting:{awaiting.awaiting_id}:resumed",
+                        action_id=submission_id,
+                        created_at=now,
+                        payload={
+                            "awaiting_id": awaiting.awaiting_id,
+                            "checkpoint_id": awaiting.checkpoint_id,
+                            "kind": awaiting.kind,
+                            "resume_policy": awaiting.resume_policy,
+                            "resume_evidence": "submit_interaction",
+                            "interaction_id": interaction.interaction_id,
+                        },
+                    ),
+                )
+                final_event = self._events.append_in_transaction(
+                    connection,
+                    V2EventInsert(
+                        workflow_id=interaction.workflow_id,
+                        node_id=interaction.content.node_id,
+                        event_type="guidance_state_updated",
+                        transition_key=f"guided-submission:{submission_id}:state",
+                        action_id=submission_id,
+                        created_at=now,
+                        payload={
+                            "session_id": interaction.session_id,
+                            "session_revision": next_session_revision,
+                            "action": request.action,
+                            "refresh": ["conversation", "workflow", "runtime", "events"],
+                        },
+                    ),
+                )
+                accepted = GuidedInteractionAcceptedV1(
+                    workflow_id=interaction.workflow_id,
+                    interaction_id=interaction.interaction_id,
+                    submission_id=submission_id,
+                    receipt_id=receipt_id,
+                    created_node_ids=created_node_ids,
+                    created_binding_ids=created_binding_ids,
+                    automatic_run_command_ids=automatic_run_command_ids,
+                    resulting_session_revision=next_session_revision,
+                    events_cursor=final_event.seq,
+                )
+                connection.execute(
+                    insert(AgentCanvasGuidedInteractionSubmissionRow).values(
+                        submission_id=submission_id,
+                        workflow_id=interaction.workflow_id,
+                        interaction_id=interaction.interaction_id,
+                        idempotency_key=idempotency_key,
+                        request_digest=request_digest,
+                        request_json=request_json,
+                        result_json=accepted.model_dump_json(),
+                        created_at=now,
+                    )
+                )
+                connection.commit()
+                return accepted
             except BaseException:
                 connection.rollback()
                 raise

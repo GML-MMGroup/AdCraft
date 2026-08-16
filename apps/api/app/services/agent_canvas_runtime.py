@@ -410,22 +410,24 @@ class DynamicCanvasScheduler:
                 self._runtime.update_member(
                     execution_id,
                     member.node_id,
-                    state="blocked" if blocked else "waiting",
+                    state="skipped_dependency" if blocked else "waiting",
                     phase="blocked_by_upstream" if blocked else "waiting_for_input",
                     waiting_for_node_ids=waiting,
                     now=self._clock(),
                     event_type=(
-                        "node_blocked" if required_waiting else "node_waiting_for_preferred_input"
+                        "execution_member_skipped_dependency"
+                        if blocked
+                        else (
+                            "node_blocked"
+                            if required_waiting
+                            else "node_waiting_for_preferred_input"
+                        )
                     ),
                     event_payload={
                         "waiting_for_node_ids": list(waiting),
                         "blocked_by_node_ids": list(blocked),
                         "preferred_upstream_node_ids": list(preferred_waiting),
-                        **(
-                            {"reason_code": ("skipped_due_to_failed_required_input")}
-                            if blocked
-                            else {}
-                        ),
+                        **({"reason_code": "skipped_dependency"} if blocked else {}),
                     },
                 )
                 continue
@@ -1019,8 +1021,7 @@ class DynamicCanvasScheduler:
             context.node.node_type in {"image", "video", "audio"}
             and self._media_ready_publisher is not None
         ):
-            created_node_ids = self._media_ready_publisher(published_node) or ()
-            self._runtime.add_members(execution_id, created_node_ids, now=now)
+            self._media_ready_publisher(published_node)
         self._runtime.complete_lease(lease, now=now)
 
     def _trace_stage(
@@ -1170,7 +1171,13 @@ class DynamicCanvasScheduler:
                 now=now,
             )
         for member in self._runtime.list_members(execution_id):
-            if member.state in {"succeeded", "failed", "blocked", "cancelled"}:
+            if member.state in {
+                "succeeded",
+                "failed",
+                "blocked",
+                "skipped_dependency",
+                "cancelled",
+            }:
                 continue
             cancelled.append(member.node_id)
             self._runtime.update_member(
@@ -1289,7 +1296,8 @@ class CanvasRuntimeSnapshotService:
                 ),
                 blocked_by_node_ids=(
                     members[node.node_id].waiting_for_node_ids
-                    if node.node_id in members and members[node.node_id].state == "blocked"
+                    if node.node_id in members
+                    and members[node.node_id].state in {"blocked", "skipped_dependency"}
                     else ()
                 ),
                 attempt_no=members[node.node_id].attempt_no if node.node_id in members else 0,

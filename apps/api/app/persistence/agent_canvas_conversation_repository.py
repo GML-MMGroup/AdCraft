@@ -860,6 +860,33 @@ class AgentCanvasConversationRepository:
             )
         return self.get_guidance_session(str(row["workflow_id"]))
 
+    def update_guidance_completion(
+        self,
+        session_id: str,
+        *,
+        expected_session_revision: int,
+        completion: GuidanceCompletionProjectionV2,
+    ) -> GuidedSessionStateV2:
+        """Update delivery evidence without completing the Guidance session."""
+
+        now = _now()
+        with self._database.engine.begin() as connection:
+            row = _require_guidance_session_row(connection, session_id)
+            _require_guidance_revision(row, expected_session_revision)
+            connection.execute(
+                update(AgentCanvasGuidanceSessionRow)
+                .where(
+                    AgentCanvasGuidanceSessionRow.session_id == session_id,
+                    AgentCanvasGuidanceSessionRow.revision == expected_session_revision,
+                )
+                .values(
+                    completion_json=completion.model_dump_json(),
+                    revision=expected_session_revision + 1,
+                    updated_at=now,
+                )
+            )
+        return self.get_guidance_session(str(row["workflow_id"]))
+
     def set_guidance_checkpoint(
         self,
         session_id: str,

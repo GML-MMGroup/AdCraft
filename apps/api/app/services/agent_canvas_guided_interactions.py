@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from hashlib import sha256
 
 from app.persistence.agent_canvas_conversation_repository import (
@@ -15,7 +16,10 @@ from app.persistence.agent_canvas_materialization_repository import (
 )
 from app.persistence.errors import V2PersistenceError
 from app.schemas.agent_canvas_conversation import (
+    DeferTopicActionV2,
     DelegateChoiceActionV2,
+    ExcludeElementActionV2,
+    ProposalActionRequestV2,
     SelectOptionActionV2,
 )
 from app.schemas.agent_canvas_creative_session import ProposedDraftReferenceV2
@@ -26,6 +30,8 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
     GuidedInteractionV1,
+    GuidedMediaReviewSubmitV1,
+    GuidedMediaReviewV1,
     GuidedQuestionnaireSubmitV1,
     GuidedQuestionnaireV1,
 )
@@ -42,10 +48,13 @@ class GuidedInteractionService:
         interactions: AgentCanvasGuidedInteractionRepository,
         conversations: AgentCanvasConversationRepository,
         materializations: AgentCanvasMaterializationRepository,
+        *,
+        media_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
         self._materializations = materializations
+        self._media_submit = media_submit
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
@@ -69,6 +78,47 @@ class GuidedInteractionService:
 
     def get_current(self, workflow_id: str) -> GuidedInteractionV1 | None:
         return self._interactions.get_current(workflow_id)
+
+    def replay_proposal_action(
+        self,
+        workflow_id: str,
+        proposal_id: str,
+        action: ProposalActionRequestV2,
+        *,
+        idempotency_key: str,
+    ) -> GuidedInteractionAcceptedV1 | None:
+        submission = self._interactions.get_submission_by_idempotency_key(
+            workflow_id,
+            idempotency_key,
+        )
+        if submission is None:
+            return None
+        interaction = self.get_interaction(workflow_id, submission.interaction_id)
+        if (
+            not isinstance(interaction.content, GuidedConceptChoiceV1)
+            or interaction.content.proposal_id != proposal_id
+            or not isinstance(submission.request, GuidedConceptSubmitV1)
+            or submission.result is None
+        ):
+            raise _error(
+                "idempotency_conflict",
+                "Idempotency key was reused with different content.",
+            )
+        proposal = self._conversations.get_proposal(proposal_id)
+        if (
+            proposal.workflow_id != workflow_id
+            or proposal.guidance_session_revision != submission.request.expected_session_revision
+            or not self._proposal_action_matches_submission(
+                proposal_id,
+                action,
+                submission.request,
+            )
+        ):
+            raise _error(
+                "idempotency_conflict",
+                "Idempotency key was reused with different content.",
+            )
+        return submission.result.model_copy(update={"replayed": True})
 
     def submit_interaction(
         self,
@@ -95,6 +145,21 @@ class GuidedInteractionService:
             return replay.result.model_copy(update={"replayed": True})
         interaction = self.get_interaction(workflow_id, interaction_id)
         self._validate_current(interaction, request)
+        if isinstance(request, GuidedMediaReviewSubmitV1) and isinstance(
+            interaction.content,
+            GuidedMediaReviewV1,
+        ):
+            if self._media_submit is None:
+                raise _error(
+                    "guided_interaction_action_not_allowed",
+                    "Media review actions are unavailable.",
+                )
+            return self._media_submit(
+                interaction,
+                request,
+                submission_id=submission_id,
+                idempotency_key=idempotency_key,
+            )
         if isinstance(request, GuidedQuestionnaireSubmitV1) and isinstance(
             interaction.content, GuidedQuestionnaireV1
         ):
@@ -242,6 +307,40 @@ class GuidedInteractionService:
         raise _error(
             "guided_interaction_action_not_allowed",
             "This action is not available for the current guided interaction.",
+        )
+
+    @staticmethod
+    def _proposal_action_matches_submission(
+        proposal_id: str,
+        action: ProposalActionRequestV2,
+        submission: GuidedConceptSubmitV1,
+    ) -> bool:
+        expected_action = {
+            "select": "select_option",
+            "delegate": "delegate_choice",
+            "defer": "defer_topic",
+            "exclude": "exclude_element",
+        }[submission.action]
+        if (
+            action.action != expected_action
+            or action.action_id
+            != f"{expected_action}:{proposal_id}:{submission.expected_session_revision}"
+            or action.expected_session_revision != submission.expected_session_revision
+        ):
+            return False
+        if isinstance(action, SelectOptionActionV2):
+            return (
+                submission.option_id == action.option_id
+                and tuple(
+                    ProposedDraftReferenceV2.model_validate(reference.model_dump())
+                    for reference in submission.accepted_references
+                )
+                == action.accepted_references
+            )
+        return (
+            isinstance(action, DelegateChoiceActionV2)
+            if submission.action == "delegate"
+            else isinstance(action, (DeferTopicActionV2, ExcludeElementActionV2))
         )
 
 

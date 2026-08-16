@@ -759,6 +759,35 @@ class AgentCanvasEditingExportRepository:
             ) from error
         return tuple(_runtime(row) for row in rows)
 
+    def list_completed_all(self) -> tuple[EditingExportRuntimeV2, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasEditingExportRow)
+                        .where(AgentCanvasEditingExportRow.status == "completed")
+                        .order_by(AgentCanvasEditingExportRow.created_at.asc())
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _error(
+                "editing_export_persistence_failed",
+                "Editing export storage is unavailable.",
+            ) from error
+        return tuple(_runtime(row) for row in rows)
+
+    def lease_generation(self, export_id: str) -> int:
+        row = self._one(
+            select(AgentCanvasEditingExportRow).where(
+                AgentCanvasEditingExportRow.export_id == export_id
+            )
+        )
+        if row is None:
+            raise _error("editing_export_not_found", "Editing export was not found.")
+        return int(row["lease_generation"])
+
     def update(
         self,
         export_id: str,
