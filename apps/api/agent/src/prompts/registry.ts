@@ -180,6 +180,7 @@ function localeInstructionForOperation(operation: string): string {
     return [
       "Treat current_response_locale as prior conversation state, not as a command to render in an unresolved locale.",
       "When current_response_locale is und and the current message clearly establishes a language, return its canonical BCP 47 response_locale and render assistant_message in that language.",
+      "For Simplified Chinese, prefer zh-CN as response_locale.",
       "When the current message does not establish a language change, preserve an existing resolved locale or leave the fresh locale unresolved.",
       "Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English.",
     ].join(" ");
