@@ -59,6 +59,7 @@ CONTRACT_MODELS = (
     agent_canvas_guided_interactions.GuidedInteractionSubmissionRecordV1,
     agent_canvas_prompt_preparation.NodePromptPreparationV1,
     agent_canvas_role_prompt_preparation.RoleBindingSnapshotV2,
+    agent_canvas_role_prompt_preparation.RoleBoundTextControlV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationContextV2,
     agent_canvas_role_prompt_preparation.RolePromptPreparationRequestV2,
     agent_canvas_role_prompt_preparation.NodePromptPreparationV2,

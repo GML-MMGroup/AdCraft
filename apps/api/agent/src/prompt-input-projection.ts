@@ -67,6 +67,12 @@ const definitions = Object.freeze([
     primaryPlusTypedContext,
     topLevelString("original_user_intent"),
   ),
+  definition(
+    "RolePromptPreparationContextV2",
+    "role-prompt-selected-direction-v1",
+    primaryPlusTypedContext,
+    firstTopLevelString("selected_direction", "user_prompt"),
+  ),
   ...["NextActionContextV1", "CapabilityInvocationContextV2"].map(
     (contextContractName) =>
       definition(
@@ -193,6 +199,18 @@ function topLevelString(
   key: string,
 ): PromptInputProjectionDefinition["project"] {
   return (context) => nonEmptyString(context[key]);
+}
+
+function firstTopLevelString(
+  ...keys: ReadonlyArray<string>
+): PromptInputProjectionDefinition["project"] {
+  return (context) => {
+    for (const key of keys) {
+      const value = nonEmptyString(context[key]);
+      if (value !== undefined) return value;
+    }
+    return undefined;
+  };
 }
 
 function nestedString(
