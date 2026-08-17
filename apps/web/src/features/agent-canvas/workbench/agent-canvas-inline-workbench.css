@@ -358,7 +358,7 @@
 .agent-node-workbench__references {
   display: flex;
   min-height: 58px;
-  align-items: center;
+  align-items: flex-start;
   padding: 10px 12px 0;
 }
 
@@ -431,10 +431,12 @@
 
 .agent-node-workbench__reference-list {
   display: flex;
+  width: 100%;
   max-width: 100%;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
-  padding-bottom: 2px;
+  overflow: visible;
+  padding: 2px 2px 4px;
 }
 
 .agent-node-workbench__reference-list > article {
@@ -450,16 +452,10 @@
   background: rgb(255 255 255 / 7%);
 }
 
-.agent-node-workbench__reference-list > article.is-text {
-  width: auto;
-  max-width: 180px;
-  padding: 0 24px 0 10px;
-}
-
 .agent-node-workbench__reference-list > article.is-disabled { opacity: 0.52; }
 
 .agent-node-workbench__reference-list > article > img,
-.agent-node-workbench__reference-list > article > span:not(.agent-node-workbench__reference-text) {
+.agent-node-workbench__reference-icon {
   display: grid;
   width: 100%;
   height: 100%;
@@ -468,16 +464,8 @@
   object-fit: cover;
 }
 
-.agent-node-workbench__reference-text {
-  display: block;
-  max-width: 146px;
-  overflow: hidden;
-  color: rgb(242 243 247 / 82%);
-  font-size: 11px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.agent-node-workbench__reference-icon { color: rgb(232 235 246 / 72%); }
+.agent-node-workbench__reference-icon svg { width: 23px; height: 23px; }
 
 .agent-node-workbench__reference-list > article > button {
   position: absolute;

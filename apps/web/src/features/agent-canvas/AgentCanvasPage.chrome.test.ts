@@ -13,6 +13,17 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("proOptions={{ hideAttribution: true }}");
   });
 
+  it("suppresses the browser menu across the canvas while preserving the pane menu", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('className="agent-canvas-board"');
+    expect(source).toContain('onContextMenu={(event) => event.preventDefault()}');
+    expect(source).toContain("onPaneContextMenu={(event) => {");
+  });
+
   it("extends only the Workflow bottom inset without widening the canvas shell", () => {
     const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
     const canvasCss = readFileSync(
