@@ -719,10 +719,10 @@ describe("AgentCanvasNodeRenderer", () => {
     expect(ringRule).toContain("height: 14px");
     expect(ringRule).toContain("border: 2px solid rgba(148, 151, 160, 0.92)");
     expect(ringRule).toContain("background: transparent");
-    expect(inputRule).toContain("left: 0");
-    expect(inputRule).toContain("--agent-handle-ring-offset: -12px");
-    expect(outputRule).toContain("right: 0");
-    expect(outputRule).toContain("--agent-handle-ring-offset: 12px");
+    expect(inputRule).toContain("left: 14px");
+    expect(inputRule).toContain("--agent-handle-ring-offset: -26px");
+    expect(outputRule).toContain("right: 14px");
+    expect(outputRule).toContain("--agent-handle-ring-offset: 26px");
     expect(ringRule).toContain("translateX(var(--agent-handle-ring-offset, 0px))");
     expect(css).toContain(".agent-canvas-node-shell:has(> .agent-canvas-node:hover)");
     expect(css).toContain("opacity: 1");
