@@ -60,26 +60,34 @@ function AgentCanvasDocumentContent({
         </header>
         {document.content.anchors.length ? (
           <ul className="agent-document-card__anchors">
-            {document.content.anchors.map((anchor) => (
-              <li key={anchor.alias}>
+            {document.content.anchors.map((anchor) => {
+              const isV3Anchor = "lifecycle" in anchor;
+              return <li key={anchor.alias}>
                 <div>
                   <code>{anchor.alias}</code>
-                  <span className={`is-${anchor.availability}`}>{anchor.availability}</span>
+                  <span className={`is-${isV3Anchor ? anchor.lifecycle : anchor.availability}`}>
+                    {isV3Anchor ? anchor.lifecycle : anchor.availability}
+                  </span>
                 </div>
                 <strong>{anchor.display_name}</strong>
-                <small>{nodeRoleLabel(anchor.anchor_type)}</small>
+                <small>{nodeRoleLabel(isV3Anchor ? anchor.semantic_role : anchor.anchor_type)}</small>
                 <p>{anchor.summary}</p>
-                {anchor.source_kind === "node" && anchor.source_id ? (
-                  <button
+                {isV3Anchor && anchor.source.source_kind !== "skill_snapshot" ? (() => {
+                  const source = anchor.source;
+                  return <button
                     type="button"
                     aria-label={`Open ${anchor.display_name} node`}
-                    onClick={() => onFocusNode(anchor.source_id!)}
+                    onClick={() => onFocusNode(source.node_id)}
                   >
+                    Open source
+                  </button>;
+                })() : !isV3Anchor && anchor.source_kind === "node" && anchor.source_id ? (
+                  <button type="button" aria-label={`Open ${anchor.display_name} node`} onClick={() => onFocusNode(anchor.source_id!)}>
                     Open source
                   </button>
                 ) : null}
-              </li>
-            ))}
+              </li>;
+            })}
           </ul>
         ) : (
           <p className="agent-document-card__empty">No anchors recorded yet.</p>
@@ -89,6 +97,9 @@ function AgentCanvasDocumentContent({
   }
 
   const content = document.content;
+  const isV3 = "planned_nodes" in content;
+  const plannedNodes = isV3 ? content.planned_nodes : content.node_records;
+  const panelCount = isV3 ? content.rows.length : content.materialized_panel_cursor;
   return (
     <article className="agent-document-card agent-document-card--storyboard">
       <header>
@@ -102,7 +113,7 @@ function AgentCanvasDocumentContent({
         <span><strong>{seconds(content.global_parameters.total_duration_seconds)}</strong>Duration</span>
         <span><strong>{content.global_parameters.aspect_ratio}</strong>Frame</span>
         <span><strong>{content.global_parameters.segment_count}</strong>Segments</span>
-        <span><strong>{content.materialized_panel_cursor}/{content.rows.length}</strong>Panels ready</span>
+        <span><strong>{panelCount}/{content.rows.length}</strong>Panels ready</span>
       </div>
       <p className="agent-document-card__outline">{content.narrative_outline}</p>
       {content.segments.length ? (
@@ -130,10 +141,34 @@ function AgentCanvasDocumentContent({
           ))}
         </div>
       ) : null}
+      {plannedNodes.length ? (
+        <div className="agent-document-card__linked" aria-label="Planned production nodes">
+          {plannedNodes.map((planned) => (
+            <button
+              type="button"
+              key={`${planned.node_id}:${planned.node_role}`}
+              aria-label={`Open planned ${nodeRoleLabel(planned.node_role)} node`}
+              onClick={() => onFocusNode(planned.node_id)}
+            >
+              <span>{nodeRoleLabel(planned.node_role)}</span>
+              <small>{planned.sequence_id ?? "Global"}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {isV3 && content.visual_anchor ? (
+        <button
+          type="button"
+          className="agent-document-card__anchor"
+          onClick={() => onFocusNode(content.visual_anchor!.node_id)}
+        >
+          Grid 1 visual anchor
+        </button>
+      ) : null}
       {document.linked_nodes.length ? (
         <div className="agent-document-card__linked" aria-label="Linked canvas nodes">
           {document.linked_nodes.map((node) => {
-            const plannedRole = content.node_records.find((record) => record.node_id === node.node_id)?.node_role;
+            const plannedRole = plannedNodes.find((record) => record.node_id === node.node_id)?.node_role;
             const label = nodeRoleLabel(plannedRole ?? node.creative_role);
             return (
               <button

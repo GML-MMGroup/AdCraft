@@ -41,6 +41,7 @@ import { AgentCanvasExecutionModeControl } from "../settings/AgentCanvasExecutio
 import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
 import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
+import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
 import "./agent-canvas-chat.css";
 
 export function AgentCanvasChatPanel({
@@ -218,6 +219,15 @@ export function AgentCanvasChatPanel({
             {chat.state.guidanceSession ? (
               <GuidanceSessionProgress session={chat.state.guidanceSession} />
             ) : null}
+            {chat.state.guidedInteraction ? (
+              <GuidedInteractionCard
+                interaction={chat.state.guidedInteraction}
+                pending={chat.state.actingInteractionId === chat.state.guidedInteraction.interaction_id}
+                onSubmit={(request) => chat.actions.submitGuidedInteraction(chat.state.guidedInteraction!, request)}
+              />
+            ) : chat.state.guidanceAwaiting ? (
+              <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
+            ) : null}
             {chat.state.items.map((item) => {
               if (item.item_type === "message") {
                 return (
@@ -313,10 +323,8 @@ export function AgentCanvasChatPanel({
                 <ProposalCard
                   key={`proposal-${item.proposal.proposal_id}`}
                   card={item}
-                  pending={chat.state.actingProposalId === item.proposal.proposal_id}
-                  onSelect={chat.actions.selectProposal}
-                  onRevise={chat.actions.reviseProposal}
-                  onApplyAction={chat.actions.applyProposalAction}
+                  pending={false}
+                  readOnly
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
@@ -601,6 +609,19 @@ export function ContinuationActivityRow({
   );
 }
 
+export function GuidanceAwaitingRow({
+  awaiting,
+}: {
+  awaiting: NonNullable<GuidedSessionStateV2["awaiting"]>;
+}) {
+  const label = awaiting.kind === "manual_node_run"
+    ? "Waiting for a draft node to be run"
+    : awaiting.kind === "milestone_idle"
+      ? "This production milestone is complete"
+      : "Waiting for your guided choice";
+  return <div className="agent-chat__activity agent-chat__awaiting" role="status"><i aria-hidden="true" /><span>{label}</span></div>;
+}
+
 export function GuidanceSessionProgress({
   session,
 }: {
@@ -737,22 +758,24 @@ export function ProposalCard({
   onRevise,
   onApplyAction,
   issue,
+  readOnly = false,
 }: {
   card: ChatProposalCardV2;
   pending: boolean;
-  onSelect: (
+  onSelect?: (
     proposalId: string,
     action: ProposalActionDescriptorV2,
     optionId: string,
     acceptedReferences: ProposedDraftReferenceV2[],
   ) => Promise<void>;
-  onRevise: (
+  onRevise?: (
     proposalId: string,
     action: ProposalActionDescriptorV2,
     instruction: string,
   ) => Promise<void>;
-  onApplyAction: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
+  onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   issue?: string;
+  readOnly?: boolean;
 }) {
   const proposal = card.proposal;
   const materialization = proposal.materialization;
@@ -777,11 +800,11 @@ export function ProposalCard({
     || action.action === "delegate_choice"
     || action.action === "reuse_direction"
   ));
-  const canSelect = isOpen
+  const canSelect = !readOnly && isOpen
     && Boolean(selectAction?.enabled)
     && !materializationBusy
     && !retryBlocked;
-  const canRevise = Boolean(reviseAction?.enabled)
+  const canRevise = !readOnly && Boolean(reviseAction?.enabled)
     && (isOpen || isSuperseded)
     && !materializationBusy;
   const availableReferences = proposal.proposed_references;
@@ -948,14 +971,14 @@ export function ProposalCard({
           {issue}
         </p>
       ) : null}
-      {(isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
+      {!readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
           {isOpen && selected && selectAction ? (
             <button
               type="button"
               disabled={pending || !canSelect}
               title={selectAction.disabled_reason ?? selectAction.reason}
-              onClick={() => void onSelect(
+              onClick={() => void onSelect?.(
                 proposal.proposal_id,
                 selectAction,
                 selected.option_id,
@@ -981,7 +1004,7 @@ export function ProposalCard({
               key={action.action_id}
               disabled={pending || materializationBusy || !action.enabled}
               title={action.disabled_reason ?? action.reason}
-              onClick={() => void onApplyAction(proposal.proposal_id, action)}
+            onClick={() => void onApplyAction?.(proposal.proposal_id, action)}
             >
               {action.label}
             </button>
@@ -993,7 +1016,7 @@ export function ProposalCard({
           className="agent-chat__revision"
           onSubmit={(event) => {
             event.preventDefault();
-            void onRevise(proposal.proposal_id, reviseAction, revision);
+            void onRevise?.(proposal.proposal_id, reviseAction, revision);
             setRevision("");
             setRevising(false);
           }}

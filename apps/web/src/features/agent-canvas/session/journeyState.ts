@@ -37,11 +37,8 @@ export function mergeGuidedSessionState(
 ): GuidedSessionStateV2 | null {
   if (!current || !candidate) return candidate ?? current;
   if (current.session_id !== candidate.session_id) return candidate;
+  if (candidate.revision < current.revision) return current;
   if (candidate.journey.stage_revision < current.journey.stage_revision) return current;
-  if (
-    candidate.journey.stage_revision === current.journey.stage_revision
-    && candidate.revision < current.revision
-  ) return current;
   return candidate;
 }
 

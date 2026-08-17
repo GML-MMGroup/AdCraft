@@ -224,6 +224,43 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes canonical guided interaction, document authority, and production-closure projections", () => {
+    for (const eventType of [
+      "guided_interaction_opened",
+      "guided_interaction_submitted",
+      "guided_interaction_closed",
+      "guidance_awaiting_entered",
+      "guidance_awaiting_resumed",
+      "guided_media_review_required",
+      "guided_media_confirmed",
+      "guided_closure_blocked",
+      "guided_production_completed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: true,
+        refreshRuntime: true,
+      });
+    }
+    for (const eventType of [
+      "agent_working_document_created",
+      "agent_anchor_activated",
+      "storyboard_plan_revised",
+      "storyboard_visual_anchor_frozen",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType, { payload: { document_id: "doc-v3" } }))).toMatchObject({
+        refreshDocuments: true,
+        refreshDocumentId: "doc-v3",
+        refreshChat: true,
+      });
+    }
+    expect(runtimeEventPolicy(event("execution_member_skipped_dependency"))).toMatchObject({
+      refreshRuntime: true,
+      refreshChat: true,
+      refreshWorkflow: false,
+    });
+  });
+
   it("keeps recovery operations in the live read model without inferring a node failure", () => {
     for (const eventType of [
       "agent_operation_queued",
@@ -273,6 +310,9 @@ describe("runtimeEventPolicy", () => {
       "node_prompt_preparation_started",
       "node_prompt_preparation_completed",
       "node_prompt_preparation_failed",
+      "node_prompt_preparation_queued",
+      "node_prompt_preparation_ready",
+      "node_prompt_preparation_superseded",
       "storyboard_sequence_materialized",
     ]) {
       expect(runtimeEventPolicy(event(eventType))).toMatchObject({

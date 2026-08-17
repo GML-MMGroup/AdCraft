@@ -23,6 +23,8 @@ import type {
   DecisionBundleActionRequestV2,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
+  GuidedInteractionV1,
+  GuidedInteractionSubmitRequestV1,
   ProposalActionDescriptorV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
@@ -141,6 +143,7 @@ export function useAgentCanvasChat({
   const [actingDecisionBundleId, setActingDecisionBundleId] = useState<string | null>(null);
   const [actingCommandPlanId, setActingCommandPlanId] = useState<string | null>(null);
   const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
+  const [actingInteractionId, setActingInteractionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
@@ -448,6 +451,7 @@ export function useAgentCanvasChat({
     setActingDecisionBundleId(null);
     setActingCommandPlanId(null);
     setActingGuidedActionId(null);
+    setActingInteractionId(null);
     pendingActionTurnIdsRef.current.clear();
     pendingCommandPlanIdsRef.current.clear();
     expectedReceiptIdsRef.current.clear();
@@ -821,6 +825,38 @@ export function useAgentCanvasChat({
     }
   }, [actingDecisionBundleId, handleStructuredActionError, refresh, trackAcceptedTurn, workflowId]);
 
+  const submitGuidedInteraction = useCallback(async (
+    interaction: GuidedInteractionV1,
+    request: GuidedInteractionSubmitRequestV1,
+  ) => {
+    if (!workflowId || actingInteractionId || interaction.status !== "open") return false;
+    const workflowGeneration = workflowGenerationRef.current;
+    setActingInteractionId(interaction.interaction_id);
+    setError(null);
+    try {
+      const accepted = await agentCanvasApi.submitAgentCanvasGuidedInteraction(
+        workflowId,
+        interaction.interaction_id,
+        request,
+        createOperationKey(`guided-interaction-${interaction.kind}`),
+      );
+      if (workflowGeneration !== workflowGenerationRef.current) return false;
+      setNotice(accepted.replayed ? "The existing submission is still being processed." : null);
+      await Promise.all([refresh(), onWorkflowRefresh?.()]);
+      return true;
+    } catch (interactionError) {
+      if (workflowGeneration !== workflowGenerationRef.current) return false;
+      if (!handleStructuredActionError(interactionError)) {
+        setError(chatRequestErrorMessage(interactionError, "The guided response could not be submitted."));
+      }
+      return false;
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        setActingInteractionId(null);
+      }
+    }
+  }, [actingInteractionId, handleStructuredActionError, onWorkflowRefresh, refresh, workflowId]);
+
   const retryTurn = useCallback(async (turnId: string, retryable: boolean) => {
     if (
       !workflowId
@@ -900,6 +936,8 @@ export function useAgentCanvasChat({
     state: {
       items,
       guidanceSession,
+      guidedInteraction: guidanceSession?.interaction ?? null,
+      guidanceAwaiting: guidanceSession?.awaiting ?? null,
       currentSessionActions,
       continuations: Object.values(continuationsById),
       turnsById,
@@ -913,6 +951,7 @@ export function useAgentCanvasChat({
       actingDecisionBundleId,
       actingCommandPlanId,
       actingGuidedActionId,
+      actingInteractionId,
       error,
       notice,
       proposalIssues,
@@ -927,6 +966,7 @@ export function useAgentCanvasChat({
       actOnCommandPlan,
       applyGuidedAction,
       actOnDecisionBundle,
+      submitGuidedInteraction,
       retryCapabilityActivity,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turn.retryable),
       clearFailedDraft: () => setFailedDraft(null),

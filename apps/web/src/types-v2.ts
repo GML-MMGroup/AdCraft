@@ -1549,7 +1549,21 @@ export interface CanvasNodeErrorV2 {
   retryable: boolean;
 }
 
-export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed";
+export type NodePromptPreparationStatusV1 = "queued" | "working" | "ready" | "failed" | "superseded";
+
+export interface ResolvedNodeParameterV2 {
+  name: string;
+  value: unknown;
+  source_kind:
+    | "explicit_user"
+    | "bound_text"
+    | "node_parameter"
+    | "storyboard_plan"
+    | "style_advice"
+    | "installation_default";
+  source_id: string;
+  source_revision: number | null;
+}
 
 /**
  * Backend-owned prompt authoring progress for a visible Draft node.
@@ -1561,6 +1575,18 @@ export interface NodePromptPreparationV1 {
   attempt_no: number;
   context_snapshot_id: string | null;
   prompt_digest: string | null;
+  role_variant: string | null;
+  recipe_id: string | null;
+  recipe_version: string | null;
+  recipe_digest: string | null;
+  requirement_revision_id: string | null;
+  requirement_revision_no: number | null;
+  document_revisions: Record<string, number>;
+  binding_digest: string | null;
+  style_projection_digest: string | null;
+  brief_digest: string | null;
+  parameter_origins: ResolvedNodeParameterV2[];
+  attempt_stage: string | null;
   error: CanvasNodeErrorV2 | null;
   updated_at: string;
 }
@@ -1798,6 +1824,66 @@ export interface AnchorRegistryContentV2 {
   anchors: AgentAnchorV2[];
 }
 
+export type AgentAnchorSemanticRoleV3 =
+  | "world_setting"
+  | "product"
+  | "prop"
+  | "character"
+  | "scene"
+  | "style"
+  | "composition";
+
+export type AgentAnchorSourceV3 =
+  | {
+      source_kind: "node";
+      workflow_id: string;
+      node_id: string;
+      node_revision: number;
+    }
+  | {
+      source_kind: "image_asset_version";
+      workflow_id: string;
+      node_id: string;
+      node_revision: number;
+      asset_id: string;
+      asset_version_id: string;
+    }
+  | {
+      source_kind: "skill_snapshot";
+      skill_id: string;
+      skill_version: string;
+      package_digest: string;
+    };
+
+export interface AnchorAcceptanceEvidenceV1 {
+  evidence_id: string;
+  actor: "user" | "agent" | "system";
+  decision: "accepted" | "delegated" | "activated" | "retired" | "invalidated";
+  action_id: string;
+  requirement_revision_id: string;
+  requirement_revision_no: number;
+  node_revision: number | null;
+  asset_version_id: string | null;
+  document_revision: number;
+  recorded_at: string;
+}
+
+export interface AgentAnchorV3 {
+  alias: string;
+  identity_id: string;
+  semantic_role: AgentAnchorSemanticRoleV3;
+  display_name: string;
+  summary: string;
+  lifecycle: "planned" | "active" | "retired" | "invalid";
+  source: AgentAnchorSourceV3;
+  acceptance_evidence: AnchorAcceptanceEvidenceV1[];
+}
+
+export interface AnchorRegistryContentV3 {
+  schema_version: "3";
+  anchors: AgentAnchorV3[];
+}
+
 export interface StoryboardPlanGlobalParametersV2 {
   aspect_ratio: string;
   total_duration_seconds: number;
@@ -1843,6 +1929,31 @@ export interface StoryboardVisualAnchorV2 {
   document_revision: number;
 }
 
+export interface StoryboardPlannedNodeV3 {
+  sequence_id: string | null;
+  node_role: StoryboardNodeRecordV2["node_role"];
+  node_id: string;
+  node_revision: number;
+  materialization_id: string;
+}
+
+export interface StoryboardExcludedMediaV3 {
+  sequence_id: string | null;
+  node_role: "video_segment" | "bgm";
+  node_id: string;
+  node_revision: number;
+  action_id: string;
+}
+
+export interface StoryboardVisualAnchorV3 {
+  sequence_id: string;
+  node_id: string;
+  node_revision: number;
+  asset_id: string;
+  asset_version_id: string;
+  acceptance_evidence_id: string;
+}
+
 export interface StoryboardProductionPlanContentV2 {
   narrative_outline: string;
   global_parameters: StoryboardPlanGlobalParametersV2;
@@ -1852,6 +1963,19 @@ export interface StoryboardProductionPlanContentV2 {
   materialized_panel_cursor: number;
   segment_materializations: StoryboardSegmentMaterializationV2[];
   visual_anchor: StoryboardVisualAnchorV2 | null;
+}
+
+export interface StoryboardProductionPlanContentV3 {
+  schema_version: "3";
+  narrative_outline: string;
+  requirement_revision_id: string;
+  requirement_revision_no: number;
+  global_parameters: StoryboardPlanGlobalParametersV2;
+  segments: StoryboardNarrativeSegmentV2[];
+  rows: StoryboardPlanRowV2[];
+  planned_nodes: StoryboardPlannedNodeV3[];
+  excluded_media: StoryboardExcludedMediaV3[];
+  visual_anchor: StoryboardVisualAnchorV3 | null;
 }
 
 export interface AgentDocumentLinkedNodeRuntimeV2 {
@@ -1868,6 +1992,7 @@ interface AgentWorkingDocumentBaseV2 {
   guidance_session_id: string;
   title: string;
   revision: number;
+  content_schema_version: 2 | 3;
   content_digest: string;
   created_by_agent_run_id: string;
   updated_by_agent_run_id: string;
@@ -1878,12 +2003,12 @@ interface AgentWorkingDocumentBaseV2 {
 
 export interface AgentAnchorRegistryDocumentV2 extends AgentWorkingDocumentBaseV2 {
   kind: "anchor_registry";
-  content: AnchorRegistryContentV2;
+  content: AnchorRegistryContentV2 | AnchorRegistryContentV3;
 }
 
 export interface AgentStoryboardProductionPlanDocumentV2 extends AgentWorkingDocumentBaseV2 {
   kind: "storyboard_production_plan";
-  content: StoryboardProductionPlanContentV2;
+  content: StoryboardProductionPlanContentV2 | StoryboardProductionPlanContentV3;
 }
 
 export type AgentWorkingDocumentV2 =
@@ -3123,6 +3248,147 @@ export interface GuidedProductionJourneyV2 {
   transition_evidence: JourneyTransitionEvidenceV2[];
 }
 
+export type GuidedInteractionKindV1 =
+  | "clarification_questionnaire"
+  | "concept_choice"
+  | "media_review";
+export type GuidedInteractionStatusV1 = "open" | "submitted" | "closed" | "superseded";
+export type GuidedInteractionActionV1 =
+  | "answer"
+  | "select"
+  | "custom"
+  | "skip"
+  | "revise"
+  | "defer"
+  | "exclude"
+  | "delegate"
+  | "accept"
+  | "retry"
+  | "replace";
+
+export interface GuidedReferencePreviewV1 {
+  source_kind: "node" | "image_asset";
+  source_id: string;
+  display_name: string;
+  media_type: "text" | "image" | "video" | "audio";
+}
+
+export interface GuidedChoiceOptionV1 {
+  option_id: string;
+  title: string;
+  summary: string;
+  difference_tags: string[];
+  recommended: boolean;
+  reference_preview: GuidedReferencePreviewV1[];
+}
+
+export interface GuidedQuestionV1 {
+  question_id: string;
+  prompt: string;
+  input_kind: "single_select";
+  options: GuidedChoiceOptionV1[];
+  allow_custom: boolean;
+  allow_skip: boolean;
+  required: boolean;
+}
+
+export interface GuidedAcceptedReferenceV1 extends GuidedReferencePreviewV1 {
+  binding_kind: string;
+  input_role: string;
+  required: boolean;
+  display_order: number;
+  semantic_reference_role: string | null;
+}
+
+export type GuidedInteractionContentV1 =
+  | { content_kind: "questionnaire"; questions: GuidedQuestionV1[] }
+  | { content_kind: "concept_choice"; proposal_id: string | null; options: GuidedChoiceOptionV1[] }
+  | {
+      content_kind: "media_review";
+      node_id: string;
+      node_revision: number;
+      asset_id: string;
+      asset_version_id: string;
+      summary: string;
+    };
+
+export interface GuidedInteractionV1 {
+  interaction_id: string;
+  workflow_id: string;
+  session_id: string;
+  checkpoint_id: string;
+  kind: GuidedInteractionKindV1;
+  status: GuidedInteractionStatusV1;
+  response_locale: string;
+  expected_session_revision: number;
+  revision: number;
+  title: string;
+  context: string;
+  content: GuidedInteractionContentV1;
+  allowed_actions: GuidedInteractionActionV1[];
+  submit_path: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type GuidedInteractionSubmitRequestV1 =
+  | {
+      submission_kind: "questionnaire";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      answers: Array<
+        | { answer_kind: "option"; question_id: string; option_id: string }
+        | { answer_kind: "custom"; question_id: string; value: string }
+        | { answer_kind: "skip"; question_id: string }
+      >;
+    }
+  | {
+      submission_kind: "concept_choice";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: "select" | "custom" | "revise" | "defer" | "exclude" | "delegate";
+      option_id?: string | null;
+      custom_value?: string | null;
+      accepted_references?: GuidedAcceptedReferenceV1[];
+    }
+  | {
+      submission_kind: "media_review";
+      expected_interaction_revision: number;
+      expected_session_revision: number;
+      action: "accept" | "retry" | "replace" | "exclude";
+      instruction?: string | null;
+    };
+
+export interface GuidedInteractionAcceptedV1 {
+  workflow_id: string;
+  interaction_id: string;
+  submission_id: string;
+  receipt_id: string;
+  created_node_ids: string[];
+  created_binding_ids: string[];
+  document_revisions: Record<string, number>;
+  continuation_id: string | null;
+  automatic_run_command_ids: string[];
+  resulting_session_revision: number;
+  events_cursor: number;
+  replayed: boolean;
+}
+
+export interface GuidanceAwaitingV1 {
+  awaiting_id: string;
+  workflow_id: string;
+  session_id: string;
+  checkpoint_id: string;
+  kind: "clarification" | "concept_selection" | "media_review" | "manual_node_run" | "milestone_idle";
+  requires_user_action: boolean;
+  resume_policy: "submit_interaction" | "node_terminal" | "next_user_message" | "explicit_resume";
+  interaction_id: string | null;
+  node_ids: string[];
+  stage: GuidedJourneyStageV2;
+  stage_revision: number;
+  created_at: string;
+}
+
 export interface GuidedSessionStateV2 {
   session_id: string;
   workflow_id: string;
@@ -3140,6 +3406,8 @@ export interface GuidedSessionStateV2 {
   active_style_skill_run_id: string | null;
   completion: GuidanceCompletionProjectionV2;
   journey: GuidedProductionJourneyV2;
+  interaction: GuidedInteractionV1 | null;
+  awaiting: GuidanceAwaitingV1 | null;
   revision: number;
   updated_at: string;
 }

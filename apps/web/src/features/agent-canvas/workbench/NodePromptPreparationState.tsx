@@ -5,6 +5,7 @@ const PREPARATION_LABELS = {
   queued: "Preparing generation prompt",
   working: "Preparing generation prompt",
   failed: "Prompt preparation needs attention",
+  superseded: "Prompt preparation was replaced",
   ready: "",
 } as const;
 
