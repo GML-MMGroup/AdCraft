@@ -4112,8 +4112,16 @@ function normalizeGuidanceCompletionProjectionV2(
   forbidUnknownFields(record, [
     "authoring",
     "delivery",
+    "plan_document_id",
+    "plan_revision",
     "editing_preparation",
     "editing_node_id",
+    "preparation_receipt_id",
+    "manifest_revision",
+    "export_status",
+    "export_id",
+    "final_completion_receipt_id",
+    "final_asset_id",
     "matching_node_ids",
     "matching_asset_ids",
   ], path);
@@ -4128,12 +4136,41 @@ function normalizeGuidanceCompletionProjectionV2(
       new Set<GuidanceCompletionProjectionV2["delivery"]>(["not_ready", "ready"]),
       `${path}.delivery`,
     ),
+    plan_document_id: nullableStringWithDefault(record.plan_document_id, `${path}.plan_document_id`),
+    plan_revision: record.plan_revision === undefined
+      ? null
+      : nullablePositiveInteger(record.plan_revision, `${path}.plan_revision`),
     editing_preparation: expectLiteral(
       record.editing_preparation ?? "not_ready",
       new Set<GuidanceCompletionProjectionV2["editing_preparation"]>(["not_ready", "prepared"]),
       `${path}.editing_preparation`,
     ),
     editing_node_id: nullableStringWithDefault(record.editing_node_id, `${path}.editing_node_id`),
+    preparation_receipt_id: nullableStringWithDefault(
+      record.preparation_receipt_id,
+      `${path}.preparation_receipt_id`,
+    ),
+    manifest_revision: record.manifest_revision === undefined
+      ? null
+      : nullablePositiveInteger(record.manifest_revision, `${path}.manifest_revision`),
+    export_status: expectLiteral(
+      record.export_status ?? "not_started",
+      new Set<GuidanceCompletionProjectionV2["export_status"]>([
+        "not_started",
+        "queued",
+        "exporting",
+        "completed",
+        "failed",
+        "cancelled",
+      ]),
+      `${path}.export_status`,
+    ),
+    export_id: nullableStringWithDefault(record.export_id, `${path}.export_id`),
+    final_completion_receipt_id: nullableStringWithDefault(
+      record.final_completion_receipt_id,
+      `${path}.final_completion_receipt_id`,
+    ),
+    final_asset_id: nullableStringWithDefault(record.final_asset_id, `${path}.final_asset_id`),
     matching_node_ids: optionalStringArray(record.matching_node_ids, `${path}.matching_node_ids`, []),
     matching_asset_ids: optionalStringArray(record.matching_asset_ids, `${path}.matching_asset_ids`, []),
   };
