@@ -22,9 +22,9 @@ describe("AgentCanvasContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Add Image node" })).toBeNull();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Add node" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add Image node" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add Script node" }));
 
-    expect(onCreateNode).toHaveBeenCalledWith("image", { x: 84, y: 132 });
+    expect(onCreateNode).toHaveBeenCalledWith("script", { x: 84, y: 132 });
   });
 
   it("closes when Escape is pressed or the backdrop is clicked", () => {

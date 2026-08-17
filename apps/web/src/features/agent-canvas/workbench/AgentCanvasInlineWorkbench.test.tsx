@@ -255,22 +255,110 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
   });
 
-  it("saves a Script direction before running the canonical Script node", async () => {
-    const node = { ...makeNode("script"), generation_prompt: null };
+  it("saves a Draft Script prompt without materializing content before running it", async () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: "Write a concise launch script.",
+      structured_content: {},
+    } as CanvasNodeV2;
     const props = renderWorkbench(node);
 
-    const run = screen.getByRole("button", { name: "Run script node" }) as HTMLButtonElement;
-    expect(run.disabled).toBe(true);
+    expect((screen.getByLabelText("Script prompt") as HTMLTextAreaElement).value)
+      .toBe("Write a concise launch script.");
 
-    fireEvent.change(screen.getByLabelText("Script direction"), {
-      target: { value: "Write a thirty-second fragrance film with three short scenes." },
+    fireEvent.change(screen.getByLabelText("Script prompt"), {
+      target: { value: "Write a quiet office story before the first meeting." },
     });
-    fireEvent.click(run);
+    fireEvent.click(screen.getByRole("button", { name: "Run script node" }));
 
-    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(node.node_id, expect.objectContaining({
-      generation_prompt: "Write a thirty-second fragrance film with three short scenes.",
-    })));
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalled());
+    const patch = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0]?.[1];
+    expect(patch).toEqual(expect.objectContaining({
+      generation_prompt: "Write a quiet office story before the first meeting.",
+    }));
+    expect(patch).not.toHaveProperty("structured_content");
     expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("saves a ready Script node without running it again", async () => {
+    const node = {
+      ...makeNode("script", "ready"),
+      structured_content: {
+        document_kind: "script",
+        script_text: "Open on dawn.",
+        authoring_provenance: { source_option_id: "option-script-1" },
+      },
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node);
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A refined ready script." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: {
+          document_kind: "script",
+          script_text: "Open on dawn.",
+          authoring_provenance: { source_option_id: "option-script-1" },
+          content: "A refined ready script.",
+        },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Working status to prevent editing a canonically Draft Script", () => {
+    const node = makeNode("script", "draft");
+    const props = renderWorkbench(node, { visibleStatus: "working" });
+
+    expect(screen.getByLabelText("Script content")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Script node is working" }))
+      .toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Script node is working" }));
+
+    expect(props.patchNode).not.toHaveBeenCalled();
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Ready status when saving a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "ready" });
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A recovered Script result." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: { content: "A recovered Script result." },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Failed status when retrying a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "failed" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry script node" }));
+
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: node.node_id,
+        status: "failed",
+      }),
+    ));
   });
 
   it("saves structured text before running a Text node", async () => {

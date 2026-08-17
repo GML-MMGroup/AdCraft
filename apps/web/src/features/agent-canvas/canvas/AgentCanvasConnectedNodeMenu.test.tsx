@@ -152,6 +152,6 @@ describe("AgentCanvasConnectedNodeMenu", () => {
     );
 
     fireEvent.click(screen.getByRole("menuitem", { name: "Create connected Script node" }));
-    expect(onSelect).toHaveBeenCalledWith("script", "text_context");
+      expect(onSelect).toHaveBeenCalledWith("script", "text_context");
   });
 });

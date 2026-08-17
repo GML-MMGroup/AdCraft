@@ -18,7 +18,7 @@ describe("AgentCanvasNodePicker", () => {
     expect(screen.getAllByRole("menuitem")).toHaveLength(6);
     expect(screen.getByRole("menuitem", { name: "Add Script node" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add Image node" }));
-    expect(onSelect).toHaveBeenCalledWith("image");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add Script node" }));
+    expect(onSelect).toHaveBeenCalledWith("script");
   });
 });

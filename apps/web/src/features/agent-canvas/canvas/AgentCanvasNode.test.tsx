@@ -218,6 +218,52 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.queryByLabelText(`${nodeType} node type`)).toBeNull();
   });
 
+  it("renders current backend Script content on the card", () => {
+    const node = {
+      ...makeNode("script"),
+      structured_content: { content: "A quiet coffee break resets the afternoon." },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("Script node, Draft")).toBeTruthy();
+    expect(screen.getByText("A quiet coffee break resets the afternoon.")).toBeTruthy();
+  });
+
+  it("renders legacy script_text content on the card", () => {
+    render(<AgentCanvasNodeCard node={makeNode("script")} />);
+
+    expect(screen.getByText("Open on a quiet city at dawn.")).toBeTruthy();
+  });
+
+  it("renders a Script placeholder when the document is empty", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {},
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
+  it("does not resurrect legacy Script text after current content is cleared", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {
+        script_text: "Legacy script that was cleared.",
+        content: "",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.queryByText("Legacy script that was cleared.")).toBeNull();
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
   it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
     const node = {
       ...makeNode("image"),
@@ -691,6 +737,34 @@ describe("AgentCanvasNodeRenderer", () => {
       expect(screen.getByLabelText(workbenchLabel)).toBeTruthy();
     },
   );
+
+  it("passes the live runtime state to the inline workbench renderer", () => {
+    const node = makeNode("script");
+    const runtime = makeRuntime("working");
+    const renderWorkbench = vi.fn(() => <div>Script controls</div>);
+    const data: AgentCanvasNodeData = { node, runtime, renderWorkbench };
+
+    render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
+  });
 
   it("centers the inline workbench beneath its card", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");

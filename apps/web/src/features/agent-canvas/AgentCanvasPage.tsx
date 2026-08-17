@@ -24,6 +24,7 @@ import type {
   CanvasConnectionPolicyV2,
   CanvasNodeV2,
   CanvasPositionV2,
+  NodeRuntimeV2,
   ProjectAssetSummaryV2,
   SaveAgentCanvasImageToLibraryRequestV2,
 } from "../../types-v2.ts";
@@ -274,12 +275,13 @@ export function AgentCanvasPage() {
     );
   }, []);
 
-  const renderWorkbench = useCallback((node: CanvasNodeV2) => {
+  const renderWorkbench = useCallback((node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => {
     if (!workflow || session.state.selectedNodeId !== node.node_id) return null;
     return (
       <AgentCanvasInlineWorkbench
         workflow={workflow}
         node={node}
+        visibleStatus={runtime?.visible_status ?? node.status}
         patchNode={patchNode}
         patchBinding={patchBinding}
         deleteBinding={deleteBinding}

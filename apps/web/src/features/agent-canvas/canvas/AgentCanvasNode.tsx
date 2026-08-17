@@ -54,7 +54,7 @@ export interface AgentCanvasNodeCallbacks {
   onRetry?: (nodeId: string) => void;
   onExport?: (nodeId: string) => void;
   onOpenVideoPreview?: (nodeId: string, asset: ProjectAssetSummaryV2) => void;
-  renderWorkbench?: (node: CanvasNodeV2) => ReactNode;
+  renderWorkbench?: (node: CanvasNodeV2, runtime: NodeRuntimeV2 | null) => ReactNode;
   onOpenConnectedNodeMenu?: (
     nodeId: string,
     direction: "upstream" | "downstream",
@@ -273,7 +273,7 @@ export function AgentCanvasNodeRenderer({
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
   const label = semanticNodeLabel(data.node);
-  const workbench = data.renderWorkbench?.(data.node);
+  const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
     ? { width: data.asset.width, height: data.asset.height }
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)

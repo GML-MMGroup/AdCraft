@@ -8,13 +8,18 @@ function nonEmptyString(value: unknown): string | null {
 }
 
 function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
+  if (node.node_type === "script") {
+    const content = node.structured_content.content;
+    if (typeof content === "string") return nonEmptyString(content);
+    const legacyScript = node.structured_content.script_text;
+    if (typeof legacyScript === "string") return nonEmptyString(legacyScript);
+    const legacyText = node.structured_content.text;
+    if (typeof legacyText === "string") return nonEmptyString(legacyText);
+    return nonEmptyString(node.generation_prompt)
+      ?? nonEmptyString(node.summary_prompt);
+  }
   if (node.node_type === "text") {
     return nonEmptyString(node.structured_content.content)
-      ?? nonEmptyString(node.structured_content.text);
-  }
-  if (node.node_type === "script") {
-    return nonEmptyString(node.structured_content.content)
-      ?? nonEmptyString(node.structured_content.script_text)
       ?? nonEmptyString(node.structured_content.text);
   }
   if (node.node_type === "image" || node.node_type === "video") {
