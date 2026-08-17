@@ -700,17 +700,30 @@ describe("AgentCanvasNodeCard", () => {
 });
 
 describe("AgentCanvasNodeRenderer", () => {
-  it("leaves connection point geometry to the default React Flow handles", () => {
+  it("renders hover-revealed gray connection rings instead of default React Flow dots", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const handleRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const ringRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle::after\s*\{([\s\S]*?)\n\}/m)?.[1];
     const inputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
     const outputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(handleRule).toContain("z-index: 12");
-    expect(handleRule).not.toMatch(/\b(?:width|height|border|background(?:-color)?|display|place-items):/);
-    expect(inputRule).toBeUndefined();
-    expect(outputRule).toBeUndefined();
+    expect(handleRule).toContain("width: 28px");
+    expect(handleRule).toContain("height: 28px");
+    expect(handleRule).toContain("border: 0");
+    expect(handleRule).toContain("background: transparent");
+    expect(handleRule).toContain("opacity: 0");
+    expect(handleRule).toContain("pointer-events: none");
+    expect(ringRule).toContain("width: 14px");
+    expect(ringRule).toContain("height: 14px");
+    expect(ringRule).toContain("border: 2px solid rgba(148, 151, 160, 0.92)");
+    expect(ringRule).toContain("background: transparent");
+    expect(inputRule).toContain("left: -12px");
+    expect(outputRule).toContain("right: -12px");
+    expect(css).toContain(".agent-canvas-node-shell:has(> .agent-canvas-node:hover)");
+    expect(css).toContain("opacity: 1");
+    expect(css).toContain("pointer-events: auto");
     expect(css).not.toContain(".agent-canvas-node__handle-target");
   });
 

@@ -685,6 +685,56 @@
 
 .react-flow__handle.agent-canvas-node__handle {
   z-index: 12;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.react-flow__handle.agent-canvas-node__handle::after {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid rgba(148, 151, 160, 0.92);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 2px 8px rgba(5, 6, 10, 0.28);
+  content: "";
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.react-flow__handle.agent-canvas-node__handle--input {
+  left: -12px;
+}
+
+.react-flow__handle.agent-canvas-node__handle--output {
+  right: -12px;
+}
+
+.agent-canvas-node-shell:has(> .agent-canvas-node:hover) > .agent-canvas-node__handle,
+.react-flow__handle.agent-canvas-node__handle:hover,
+.react-flow__handle.agent-canvas-node__handle:focus-visible,
+.react-flow__handle.agent-canvas-node__handle:active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.react-flow__handle.agent-canvas-node__handle:hover::after,
+.react-flow__handle.agent-canvas-node__handle:focus-visible::after,
+.react-flow__handle.agent-canvas-node__handle:active::after {
+  border-color: rgba(184, 187, 194, 0.98);
+  transform: scale(1.08);
+}
+
+.react-flow__handle.agent-canvas-node__handle:focus-visible {
+  outline: 2px solid rgba(164, 168, 178, 0.5);
+  outline-offset: 1px;
 }
 
 @keyframes agent-canvas-node-spin {
