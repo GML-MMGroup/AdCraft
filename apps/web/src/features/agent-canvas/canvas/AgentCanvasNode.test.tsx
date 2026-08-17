@@ -200,8 +200,23 @@ describe("AgentCanvasNodeCard", () => {
     expect(card.dataset.nodeType).toBe("script");
     expect(screen.getByText(/INT\. CITY STREET - DAWN/)).toBeTruthy();
     expect(screen.queryByText("Write a cinematic script")).toBeNull();
-    expect(card.querySelector(".agent-canvas-node__content--script")).toBeTruthy();
+    const scriptContent = card.querySelector(".agent-canvas-node__content--script");
+    expect(scriptContent).toBeTruthy();
+    expect(scriptContent?.classList.contains("nowheel")).toBe(true);
     expect(screen.queryByLabelText("script node type")).toBeNull();
+  });
+
+  it("keeps non-Script node content available to canvas wheel gestures", () => {
+    const node = {
+      ...makeNode("text", "ready"),
+      structured_content: { content: "A concise campaign direction." },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    const card = screen.getByTestId("agent-canvas-node-text-node");
+    expect(card.querySelector(".agent-canvas-node__content")?.classList.contains("nowheel"))
+      .toBe(false);
   });
 
   it("keeps long Script output inside a 500px scrollable card", () => {
