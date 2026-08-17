@@ -21,6 +21,8 @@ import type {
   ChatCapabilityActivityV2,
   ChatProposalCardV2,
   CapabilityProposalOptionV2,
+  GuidedInteractionSubmitRequestV1,
+  GuidedInteractionV1,
   GuidanceSessionActionV2,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
@@ -42,6 +44,11 @@ import { useChatTimelineScroll } from "./useChatTimelineScroll.ts";
 import { ProposalMaterializationStatus } from "./ProposalMaterializationStatus.tsx";
 import { DecisionBundleCard } from "./DecisionBundleCard.tsx";
 import { GuidedInteractionCard } from "./GuidedInteractionCard.tsx";
+import {
+  interactionForTimelineProposal,
+  shouldRenderStandaloneInteraction,
+} from "./guidedInteractionPlacement.ts";
+import { TimelineProposalInteractionActions } from "./TimelineProposalInteractionActions.tsx";
 import "./agent-canvas-chat.css";
 
 export function AgentCanvasChatPanel({
@@ -94,6 +101,10 @@ export function AgentCanvasChatPanel({
     )) ?? null,
     [chat.state.continuations],
   );
+  const standaloneGuidedInteraction = chat.state.guidedInteraction
+    && shouldRenderStandaloneInteraction(chat.state.guidedInteraction, chat.state.items)
+    ? chat.state.guidedInteraction
+    : null;
   const timelineContentVersion = useMemo(() => {
     const latestItem = chat.state.items[chat.state.items.length - 1];
     const sessionActions = chat.state.currentSessionActions
@@ -219,13 +230,13 @@ export function AgentCanvasChatPanel({
             {chat.state.guidanceSession ? (
               <GuidanceSessionProgress session={chat.state.guidanceSession} />
             ) : null}
-            {chat.state.guidedInteraction ? (
+            {standaloneGuidedInteraction ? (
               <GuidedInteractionCard
-                interaction={chat.state.guidedInteraction}
-                pending={chat.state.actingInteractionId === chat.state.guidedInteraction.interaction_id}
-                onSubmit={(request) => chat.actions.submitGuidedInteraction(chat.state.guidedInteraction!, request)}
+                interaction={standaloneGuidedInteraction}
+                pending={chat.state.actingInteractionId === standaloneGuidedInteraction.interaction_id}
+                onSubmit={(request) => chat.actions.submitGuidedInteraction(standaloneGuidedInteraction, request)}
               />
-            ) : chat.state.guidanceAwaiting ? (
+            ) : !chat.state.guidedInteraction && chat.state.guidanceAwaiting ? (
               <GuidanceAwaitingRow awaiting={chat.state.guidanceAwaiting} />
             ) : null}
             {chat.state.items.map((item) => {
@@ -319,12 +330,23 @@ export function AgentCanvasChatPanel({
                   />
                 );
               }
+              const interaction = interactionForTimelineProposal(
+                chat.state.guidedInteraction,
+                item,
+              );
               return (
                 <ProposalCard
                   key={`proposal-${item.proposal.proposal_id}`}
                   card={item}
-                  pending={false}
-                  readOnly
+                  pending={Boolean(
+                    interaction
+                    && chat.state.actingInteractionId === interaction.interaction_id
+                  )}
+                  interaction={interaction}
+                  onSubmitInteraction={interaction
+                    ? (request) => chat.actions.submitGuidedInteraction(interaction, request)
+                    : undefined}
+                  readOnly={!interaction}
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
               );
@@ -757,6 +779,8 @@ export function ProposalCard({
   onSelect,
   onRevise,
   onApplyAction,
+  interaction = null,
+  onSubmitInteraction,
   issue,
   readOnly = false,
 }: {
@@ -774,6 +798,8 @@ export function ProposalCard({
     instruction: string,
   ) => Promise<void>;
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
+  interaction?: GuidedInteractionV1 | null;
+  onSubmitInteraction?: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
   issue?: string;
   readOnly?: boolean;
 }) {
@@ -800,11 +826,27 @@ export function ProposalCard({
     || action.action === "delegate_choice"
     || action.action === "reuse_direction"
   ));
-  const canSelect = !readOnly && isOpen
+  const activeInteraction = interaction?.status === "open"
+    && interaction.content.content_kind === "concept_choice"
+    && interaction.content.proposal_id === proposal.proposal_id
+    ? interaction
+    : null;
+  const interactionOptionIds = new Set(
+    activeInteraction?.content.content_kind === "concept_choice"
+      ? activeInteraction.content.options.map((option) => option.option_id)
+      : [],
+  );
+  const canSelect = activeInteraction
+    ? activeInteraction.allowed_actions.includes("select")
+      && !materializationBusy
+      && !retryBlocked
+    : !readOnly && isOpen
     && Boolean(selectAction?.enabled)
     && !materializationBusy
     && !retryBlocked;
-  const canRevise = !readOnly && Boolean(reviseAction?.enabled)
+  const canRevise = activeInteraction
+    ? activeInteraction.allowed_actions.includes("revise") && !materializationBusy
+    : !readOnly && Boolean(reviseAction?.enabled)
     && (isOpen || isSuperseded)
     && !materializationBusy;
   const availableReferences = proposal.proposed_references;
@@ -857,7 +899,9 @@ export function ProposalCard({
             type="button"
             key={option.option_id}
             className={selected?.option_id === option.option_id ? "is-selected" : ""}
-            disabled={!canSelect || pending}
+            disabled={!canSelect || pending || Boolean(
+              activeInteraction && !interactionOptionIds.has(option.option_id)
+            )}
             onClick={() => setSelected(option)}
           >
             <strong>{option.title}</strong>
@@ -870,7 +914,7 @@ export function ProposalCard({
           </button>
         ))}
       </div>
-      {acceptedReferences.length || selectAction ? (
+      {acceptedReferences.length || selectAction || activeInteraction?.allowed_actions.includes("select") ? (
         <section className="agent-chat__proposal-references" aria-label="Accepted references">
           <header>
             <strong>References</strong>
@@ -971,7 +1015,16 @@ export function ProposalCard({
           {issue}
         </p>
       ) : null}
-      {!readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
+      {activeInteraction && onSubmitInteraction ? (
+        <TimelineProposalInteractionActions
+          acceptedReferences={acceptedReferences}
+          interaction={activeInteraction}
+          materializationBusy={materializationBusy}
+          onSubmit={onSubmitInteraction}
+          pending={pending}
+          selectedOptionId={canSelect ? selected?.option_id ?? null : null}
+        />
+      ) : !readOnly && (isOpen || isSuperseded) && (selectAction || reviseAction || directActions.length) ? (
         <div className="agent-chat__proposal-actions">
           {isOpen && selected && selectAction ? (
             <button

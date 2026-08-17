@@ -10,6 +10,7 @@ import type {
   ChatCapabilityActivityV2,
   ChatCommandPlanCardV2,
   ChatProposalCardV2,
+  GuidedInteractionV1,
   GuidedSessionStateV2,
   ProposalActionDescriptorV2,
 } from "../../../types-v2.ts";
@@ -142,6 +143,36 @@ const proposalCard: ChatProposalCardV2 = {
   created_at: "2026-08-04T00:00:00Z",
 };
 
+const proposalInteraction: GuidedInteractionV1 = {
+  interaction_id: "interaction-proposal-1",
+  workflow_id: "workflow-1",
+  session_id: "guidance-1",
+  checkpoint_id: "checkpoint-1",
+  kind: "concept_choice",
+  status: "open",
+  response_locale: "en",
+  expected_session_revision: 7,
+  revision: 3,
+  title: "Choose a character",
+  context: "Choose the direction to use.",
+  content: {
+    content_kind: "concept_choice",
+    proposal_id: "proposal-1",
+    options: [{
+      option_id: "option-1",
+      title: "Hero",
+      summary: "A focused campaign hero",
+      difference_tags: [],
+      recommended: true,
+      reference_preview: [],
+    }],
+  },
+  allowed_actions: ["select", "revise", "defer", "exclude", "delegate"],
+  submit_path: "/api/v2/workflows/workflow-1/chat/interactions/interaction-proposal-1/submit",
+  created_at: "2026-08-17T00:00:00Z",
+  updated_at: "2026-08-17T00:00:00Z",
+};
+
 describe("ProposalCard", () => {
   afterEach(() => cleanup());
 
@@ -169,6 +200,33 @@ describe("ProposalCard", () => {
     expect(screen.getByText("Contemporary wardrobe")).toBeTruthy();
     expect(screen.getByText("Confident posture")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Generate now" })).toBeNull();
+  });
+
+  it("submits the active interaction from the Timeline proposal card", () => {
+    const onSubmitInteraction = vi.fn().mockResolvedValue(true);
+    render(
+      <ProposalCard
+        card={proposalCard}
+        pending={false}
+        interaction={proposalInteraction}
+        onSubmitInteraction={onSubmitInteraction}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Hero").closest("button")!);
+    fireEvent.click(screen.getByRole("button", { name: "Select" }));
+
+    expect(onSubmitInteraction).toHaveBeenCalledWith({
+      submission_kind: "concept_choice",
+      expected_interaction_revision: 3,
+      expected_session_revision: 7,
+      action: "select",
+      option_id: "option-1",
+      custom_value: null,
+      accepted_references: [],
+    });
+    expect(document.querySelectorAll(".agent-chat__proposal")).toHaveLength(1);
+    expect(document.querySelector(".agent-chat__guided-interaction")).toBeNull();
   });
 
   it.each(["queued", "working"] as const)(
