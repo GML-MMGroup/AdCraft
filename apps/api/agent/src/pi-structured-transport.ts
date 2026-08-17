@@ -933,7 +933,7 @@ function structuredFailure(
     "agent_structured_output_invalid",
     retryable,
     stage,
-    attemptMetadata,
+    terminalAttemptMetadata(attemptMetadata, "agent_structured_output_invalid"),
   );
 }
 
@@ -947,8 +947,17 @@ function terminalValidationFailure(
     code,
     retryable,
     attemptMetadata?.attempt_stage ?? "initial",
-    attemptMetadata,
+    terminalAttemptMetadata(attemptMetadata, code),
   );
+}
+
+function terminalAttemptMetadata(
+  attemptMetadata: AgentTransportAttemptMetadataV1 | undefined,
+  code: string,
+): AgentTransportAttemptMetadataV1 | undefined {
+  return attemptMetadata
+    ? { ...attemptMetadata, safe_error_code: code.slice(0, 120) }
+    : undefined;
 }
 
 function isManualRetryableIntake(input: StructuredTransportRunInput): boolean {
