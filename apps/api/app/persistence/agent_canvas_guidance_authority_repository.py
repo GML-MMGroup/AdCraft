@@ -335,6 +335,32 @@ def require_guidance_advance_eligible(
             "Guidance is not available in the current session state.",
             stage="guidance_advance_service",
         )
+    awaiting = session.awaiting
+    if awaiting is not None:
+        if (
+            awaiting.stage != session.journey.stage
+            or awaiting.stage_revision != session.journey.stage_revision
+        ):
+            raise V2PersistenceError(
+                "guidance_orphaned_stall",
+                "Guidance awaiting authority does not match the current Journey stage.",
+                stage="guidance_advance_service",
+                details={
+                    "awaiting_id": awaiting.awaiting_id,
+                    "journey_stage": session.journey.stage,
+                    "stage_revision": session.journey.stage_revision,
+                },
+            )
+        raise V2PersistenceError(
+            "guidance_advance_not_available",
+            "A typed Guidance wait currently owns the next user action.",
+            stage="guidance_advance_service",
+            details={
+                "awaiting_id": awaiting.awaiting_id,
+                "kind": awaiting.kind,
+                "resume_policy": awaiting.resume_policy,
+            },
+        )
     if snapshot.open_proposal_id is not None or session.active_proposal_id is not None:
         raise V2PersistenceError(
             "guidance_advance_not_available",
@@ -375,6 +401,22 @@ def require_guidance_advance_eligible(
             },
         )
     post_ready = _snapshot_post_ready_owner(snapshot)
+    action = session.journey.active_action
+    if (
+        action is not None
+        and post_ready is None
+        and (leaf is None or leaf.leaf_status not in {"queued", "running", "failed"})
+    ):
+        raise V2PersistenceError(
+            "guidance_orphaned_stall",
+            "Guidance progress has no current durable owner.",
+            stage="guidance_advance_service",
+            details={
+                "action_id": action.action_id,
+                "turn_id": action.turn_id,
+                "journey_stage": action.stage,
+            },
+        )
     if post_ready is None:
         return
     details = {
