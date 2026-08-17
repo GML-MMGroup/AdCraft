@@ -139,35 +139,35 @@ describe("AssetsPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
     fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
 
-    const firstScene = await screen.findByRole("tab", { name: "Show hologram scene recommended scenes 1" });
+    await screen.findByRole("button", { name: "Open original scene recommended scenes 1" });
     expect(container.querySelector('[data-testid="recommended-scenes-hologram"]')).toBeTruthy();
-    expect(container.querySelectorAll("[data-hologram-scene-option]")).toHaveLength(5);
+    expect(container.querySelector("[data-hologram-scene-option]")).toBeNull();
+    expect(screen.queryByRole("tablist", { name: "Recommended scene selection" })).toBeNull();
     expect(container.querySelector(".asset-contact-sheet")).toBeNull();
     expect(screen.getByText("recommended scenes 1", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
-    expect(container.querySelectorAll("canvas")).toHaveLength(2);
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
     expect(container.querySelectorAll(".recommended-scenes-hologram__scene")).toHaveLength(1);
-    await waitFor(() => expect(firstScene.getAttribute("aria-pressed")).toBe("true"));
-
-    fireEvent.click(screen.getByRole("tab", { name: "Show hologram scene recommended scenes 2" }));
-    await waitFor(() => {
-      expect(screen.getByText("recommended scenes 2", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
-    });
-    expect(container.querySelector<HTMLImageElement>(".recommended-scenes-hologram__scene")?.src).toContain(
-      "/assets/hologram/scene-002-multi-view.png",
-    );
 
     fireEvent.click(screen.getByRole("button", { name: "Next hologram scene" }));
     await waitFor(() => {
-      expect(screen.getByText("recommended scenes 3", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Previous hologram scene" }));
-    await waitFor(() => {
       expect(screen.getByText("recommended scenes 2", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
     });
+    const transitionScenes = Array.from(container.querySelectorAll<HTMLImageElement>(".recommended-scenes-hologram__scene"));
+    expect(transitionScenes.map((scene) => scene.className)).toEqual([
+      "recommended-scenes-hologram__scene is-outgoing is-forward",
+      "recommended-scenes-hologram__scene is-incoming is-forward",
+    ]);
+    expect(container.querySelector(".recommended-scenes-hologram__scene.is-outgoing.is-forward")).toBeTruthy();
+    expect(container.querySelector(".recommended-scenes-hologram__scene.is-incoming.is-forward")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open original scene recommended scenes 2" }));
-    const dialog = await screen.findByRole("dialog", { name: "recommended scenes 2" });
-    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("/api/v2/assets/recommended-scenes-asset-2/content");
+    fireEvent.click(screen.getByRole("button", { name: "Previous hologram scene" }));
+    await waitFor(() => {
+      expect(screen.getByText("recommended scenes 1", { selector: ".recommended-scenes-hologram__name" })).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open original scene recommended scenes 1" }));
+    const dialog = await screen.findByRole("dialog", { name: "recommended scenes 1" });
+    expect(dialog.querySelector("img")?.getAttribute("src")).toBe("/api/v2/assets/recommended-scenes-asset-1/content");
   });
 
   it("maps each canonical recommended scene ID to its own transparent hologram asset", async () => {
@@ -182,13 +182,15 @@ describe("AssetsPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Recommended Assets" }));
     fireEvent.click(screen.getByRole("tab", { name: "Scenes" }));
 
-    await screen.findByRole("tab", { name: "Show hologram scene First scene" });
+    await screen.findByRole("button", { name: "Open original scene First scene" });
     const projection = () => container.querySelector<HTMLImageElement>(".recommended-scenes-hologram__scene");
     expect(projection()?.getAttribute("src")).toBe("/assets/hologram/scene-001-multi-view.png");
 
-    fireEvent.click(screen.getByRole("tab", { name: "Show hologram scene Second scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next hologram scene" }));
     await waitFor(() => {
-      expect(projection()?.getAttribute("src")).toBe("/assets/hologram/scene-002-multi-view.png");
+      expect(container.querySelector<HTMLImageElement>(".recommended-scenes-hologram__scene.is-incoming")?.getAttribute("src")).toBe(
+        "/assets/hologram/scene-002-multi-view.png",
+      );
     });
   });
 
@@ -201,13 +203,25 @@ describe("AssetsPage", () => {
     expect(sceneSource).toContain("hologramSceneUrlForAsset");
   });
 
-  it("uses the documented 16:10 projection stack and static screen-blended beam", () => {
+  it("uses an unframed projection stack without a light cone or thumbnail selector", () => {
     const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+    const stageSource = readFileSync(resolve(process.cwd(), "src/features/assets/HologramStage.tsx"), "utf8");
+    const gallerySource = readFileSync(resolve(process.cwd(), "src/features/assets/RecommendedSceneHologram.tsx"), "utf8");
 
     expect(styles).toMatch(/\.recommended-scenes-hologram__projection-wrap\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*10/s);
-    expect(styles).toMatch(/\.recommended-scenes-hologram__beam\s*\{[^}]*mix-blend-mode:\s*screen[^}]*opacity:\s*0\.88[^}]*saturate\(1\.08\)/s);
-    expect(styles).toMatch(/\.recommended-scenes-hologram__scene\s*\{[^}]*object-fit:\s*contain[^}]*opacity:\s*0\.9/s);
-    expect(styles).toMatch(/\.recommended-scenes-hologram__glow\s*\{[^}]*radial-gradient[^}]*blur\(20px\)/s);
+    expect(styles).not.toContain(".recommended-scenes-hologram__beam");
+    expect(stageSource).not.toContain("HologramBeamCanvas");
+    expect(gallerySource).not.toContain("recommended-scenes-hologram__selector");
+    expect(styles).toMatch(/\.recommended-scenes-hologram__nav\s*\{[^}]*border:\s*0[^}]*background:\s*transparent/s);
+  });
+
+  it("defines paired directional scene transitions", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+
+    expect(styles).toContain("@keyframes hologram-scene-exit-forward");
+    expect(styles).toContain("@keyframes hologram-scene-enter-forward");
+    expect(styles).toMatch(/hologram-scene-exit-forward[\s\S]*translateX\(-/);
+    expect(styles).toMatch(/hologram-scene-enter-forward[\s\S]*translateX\(/);
   });
 
   it("does not retain retired standalone asset-library route dependencies", () => {

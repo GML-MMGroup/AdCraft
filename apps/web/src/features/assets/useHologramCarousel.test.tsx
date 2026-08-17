@@ -8,7 +8,6 @@ const ITEMS = ["scene-1", "scene-2", "scene-3"];
 function Harness({ reducedMotion = false }: { reducedMotion?: boolean }) {
   const carousel = useHologramCarousel(ITEMS, {
     autoAdvanceMs: 9_000,
-    interactionResumeMs: 3_200,
     preload: vi.fn(),
     reducedMotion,
   });
@@ -16,10 +15,11 @@ function Harness({ reducedMotion = false }: { reducedMotion?: boolean }) {
   return (
     <div>
       <output data-testid="active-scene">{carousel.activeId}</output>
-      <output data-testid="displayed-scene">{carousel.displayedId}</output>
+      <output data-testid="outgoing-scene">{carousel.outgoingId}</output>
+      <output data-testid="transition-direction">{carousel.transitionDirection}</output>
+      <output data-testid="is-transitioning">{String(carousel.isTransitioning)}</output>
       <button type="button" onClick={() => carousel.previous()}>Previous</button>
       <button type="button" onClick={() => carousel.next()}>Next</button>
-      <button type="button" onClick={() => carousel.select("scene-3")}>Select third</button>
       <button type="button" onClick={() => carousel.setPaused("hover", true)}>Pause</button>
       <button type="button" onClick={() => carousel.setPaused("hover", false)}>Resume</button>
     </div>
@@ -39,11 +39,9 @@ describe("useHologramCarousel", () => {
     expect(screen.getByTestId("active-scene").textContent).toBe("scene-3");
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(screen.getByTestId("active-scene").textContent).toBe("scene-1");
-    fireEvent.click(screen.getByRole("button", { name: "Select third" }));
-    expect(screen.getByTestId("active-scene").textContent).toBe("scene-3");
   });
 
-  it("auto advances, pauses during interaction, and resumes after the delay", () => {
+  it("auto advances, pauses while hovered, and resumes immediately after hover", () => {
     vi.useFakeTimers();
     render(<Harness />);
 
@@ -55,30 +53,38 @@ describe("useHologramCarousel", () => {
     expect(screen.getByTestId("active-scene").textContent).toBe("scene-2");
 
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
-    act(() => vi.advanceTimersByTime(3_199));
+    act(() => vi.advanceTimersByTime(8_999));
     expect(screen.getByTestId("active-scene").textContent).toBe("scene-2");
     act(() => vi.advanceTimersByTime(1));
-    act(() => vi.advanceTimersByTime(9_000));
     expect(screen.getByTestId("active-scene").textContent).toBe("scene-3");
   });
 
-  it("does not auto advance when reduced motion is enabled", () => {
+  it("keeps auto advancing without animation when reduced motion is enabled", () => {
     vi.useFakeTimers();
     render(<Harness reducedMotion />);
 
-    act(() => vi.advanceTimersByTime(30_000));
-    expect(screen.getByTestId("active-scene").textContent).toBe("scene-1");
+    act(() => vi.advanceTimersByTime(9_000));
+    expect(screen.getByTestId("active-scene").textContent).toBe("scene-2");
+    expect(screen.getByTestId("outgoing-scene").textContent).toBe("");
+    expect(screen.getByTestId("is-transitioning").textContent).toBe("false");
   });
 
-  it("fades the old scene before swapping the single displayed image", () => {
+  it("exposes paired outgoing and incoming scenes with directional transitions", () => {
     vi.useFakeTimers();
     render(<Harness />);
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    expect(screen.getByTestId("displayed-scene").textContent).toBe("scene-1");
-    act(() => vi.advanceTimersByTime(159));
-    expect(screen.getByTestId("displayed-scene").textContent).toBe("scene-1");
-    act(() => vi.advanceTimersByTime(1));
-    expect(screen.getByTestId("displayed-scene").textContent).toBe("scene-2");
+    expect(screen.getByTestId("active-scene").textContent).toBe("scene-2");
+    expect(screen.getByTestId("outgoing-scene").textContent).toBe("scene-1");
+    expect(screen.getByTestId("transition-direction").textContent).toBe("forward");
+    expect(screen.getByTestId("is-transitioning").textContent).toBe("true");
+
+    act(() => vi.advanceTimersByTime(560));
+    expect(screen.getByTestId("outgoing-scene").textContent).toBe("");
+    expect(screen.getByTestId("is-transitioning").textContent).toBe("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(screen.getByTestId("outgoing-scene").textContent).toBe("scene-2");
+    expect(screen.getByTestId("transition-direction").textContent).toBe("backward");
   });
 });

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface HologramCarouselOptions {
   autoAdvanceMs?: number;
-  interactionResumeMs?: number;
   preload?: (id: string) => void;
   reducedMotion?: boolean;
 }
+
+export type HologramTransitionDirection = "forward" | "backward";
+
+const TRANSITION_DURATION_MS = 560;
 
 function wrapIndex(index: number, length: number) {
   return ((index % length) + length) % length;
@@ -15,41 +18,36 @@ export function useHologramCarousel(
   items: string[],
   {
     autoAdvanceMs = 9_000,
-    interactionResumeMs = 3_200,
     preload,
     reducedMotion = false,
   }: HologramCarouselOptions = {},
 ) {
   const [activeId, setActiveId] = useState<string | null>(items[0] ?? null);
-  const [displayedId, setDisplayedId] = useState<string | null>(items[0] ?? null);
+  const [outgoingId, setOutgoingId] = useState<string | null>(null);
+  const [transitionDirection, setTransitionDirection] = useState<HologramTransitionDirection | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [pauseRevision, setPauseRevision] = useState(0);
   const pausedReasonsRef = useRef(new Set<string>());
-  const resumeTimersRef = useRef(new Map<string, number>());
   const transitionTimerRef = useRef<number | null>(null);
-  const transitionSettleTimerRef = useRef<number | null>(null);
+  const resolvedActiveId = activeId && items.includes(activeId) ? activeId : items[0] ?? null;
 
   useEffect(() => {
     if (!items.length) {
       setActiveId(null);
-      setDisplayedId(null);
+      setOutgoingId(null);
+      setIsTransitioning(false);
       return;
     }
-    if (!activeId || !items.includes(activeId)) {
-      setActiveId(items[0] ?? null);
-      setDisplayedId(items[0] ?? null);
+    if (activeId !== resolvedActiveId) {
+      setActiveId(resolvedActiveId);
+      setOutgoingId(null);
+      setIsTransitioning(false);
       return;
     }
-    if (!displayedId || !items.includes(displayedId)) setDisplayedId(activeId);
-  }, [activeId, displayedId, items]);
+    if (outgoingId && !items.includes(outgoingId)) setOutgoingId(null);
+  }, [activeId, items, outgoingId, resolvedActiveId]);
 
   const setPaused = useCallback((reason: string, paused: boolean) => {
-    const existingTimer = resumeTimersRef.current.get(reason);
-    if (existingTimer !== undefined) {
-      window.clearTimeout(existingTimer);
-      resumeTimersRef.current.delete(reason);
-    }
-
     if (paused) {
       if (!pausedReasonsRef.current.has(reason)) {
         pausedReasonsRef.current.add(reason);
@@ -57,73 +55,54 @@ export function useHologramCarousel(
       }
       return;
     }
+    if (pausedReasonsRef.current.delete(reason)) {
+      setPauseRevision((revision) => revision + 1);
+    }
+  }, []);
 
-    const timer = window.setTimeout(() => {
-      resumeTimersRef.current.delete(reason);
-      if (pausedReasonsRef.current.delete(reason)) {
-        setPauseRevision((revision) => revision + 1);
-      }
-    }, interactionResumeMs);
-    resumeTimersRef.current.set(reason, timer);
-  }, [interactionResumeMs]);
-
-  const selectIndex = useCallback((index: number, userInitiated = true) => {
+  const selectIndex = useCallback((index: number, direction: HologramTransitionDirection) => {
     if (!items.length) return;
     const nextId = items[wrapIndex(index, items.length)];
-    if (!nextId || nextId === activeId) return;
+    if (!nextId || nextId === resolvedActiveId) return;
 
-    if (userInitiated) {
-      pausedReasonsRef.current.add("interaction");
-      setPauseRevision((revision) => revision + 1);
-      const existingTimer = resumeTimersRef.current.get("interaction");
-      if (existingTimer !== undefined) window.clearTimeout(existingTimer);
-      const timer = window.setTimeout(() => {
-        resumeTimersRef.current.delete("interaction");
-        if (pausedReasonsRef.current.delete("interaction")) {
-          setPauseRevision((revision) => revision + 1);
-        }
-      }, interactionResumeMs);
-      resumeTimersRef.current.set("interaction", timer);
+    if (transitionTimerRef.current !== null) {
+      window.clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
     }
 
-    if (reducedMotion) {
-      setDisplayedId(nextId);
+    if (reducedMotion || !resolvedActiveId) {
+      setOutgoingId(null);
+      setTransitionDirection(null);
+      setIsTransitioning(false);
     } else {
+      setOutgoingId(resolvedActiveId);
+      setTransitionDirection(direction);
       setIsTransitioning(true);
-      if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
-      if (transitionSettleTimerRef.current !== null) window.clearTimeout(transitionSettleTimerRef.current);
       transitionTimerRef.current = window.setTimeout(() => {
         transitionTimerRef.current = null;
-        setDisplayedId(nextId);
-        transitionSettleTimerRef.current = window.setTimeout(() => {
-          transitionSettleTimerRef.current = null;
-          setIsTransitioning(false);
-        }, 20);
-      }, 160);
+        setOutgoingId(null);
+        setIsTransitioning(false);
+      }, TRANSITION_DURATION_MS);
     }
     setActiveId(nextId);
-  }, [activeId, interactionResumeMs, items, reducedMotion]);
+  }, [items, reducedMotion, resolvedActiveId]);
 
-  const currentIndex = Math.max(0, items.indexOf(activeId ?? ""));
-  const next = useCallback(() => selectIndex(currentIndex + 1), [currentIndex, selectIndex]);
-  const previous = useCallback(() => selectIndex(currentIndex - 1), [currentIndex, selectIndex]);
-  const select = useCallback((id: string) => {
-    const index = items.indexOf(id);
-    if (index >= 0) selectIndex(index);
-  }, [items, selectIndex]);
+  const currentIndex = Math.max(0, items.indexOf(resolvedActiveId ?? ""));
+  const next = useCallback(() => selectIndex(currentIndex + 1, "forward"), [currentIndex, selectIndex]);
+  const previous = useCallback(() => selectIndex(currentIndex - 1, "backward"), [currentIndex, selectIndex]);
 
   useEffect(() => {
-    if (!preload || items.length < 2 || !activeId) return;
-    const index = items.indexOf(activeId);
-    preload(items[wrapIndex(index - 1, items.length)] ?? activeId);
-    preload(items[wrapIndex(index + 1, items.length)] ?? activeId);
-  }, [activeId, items, preload]);
+    if (!preload || items.length < 2 || !resolvedActiveId) return;
+    const index = items.indexOf(resolvedActiveId);
+    preload(items[wrapIndex(index - 1, items.length)] ?? resolvedActiveId);
+    preload(items[wrapIndex(index + 1, items.length)] ?? resolvedActiveId);
+  }, [items, preload, resolvedActiveId]);
 
   useEffect(() => {
-    if (reducedMotion || items.length < 2 || pausedReasonsRef.current.size > 0) return undefined;
-    const timer = window.setTimeout(() => selectIndex(currentIndex + 1, false), autoAdvanceMs);
+    if (items.length < 2 || pausedReasonsRef.current.size > 0) return undefined;
+    const timer = window.setTimeout(() => selectIndex(currentIndex + 1, "forward"), autoAdvanceMs);
     return () => window.clearTimeout(timer);
-  }, [activeId, autoAdvanceMs, currentIndex, items.length, pauseRevision, reducedMotion, selectIndex]);
+  }, [autoAdvanceMs, currentIndex, items.length, pauseRevision, resolvedActiveId, selectIndex]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -143,19 +122,17 @@ export function useHologramCarousel(
   }, []);
 
   useEffect(() => () => {
-    for (const timer of resumeTimersRef.current.values()) window.clearTimeout(timer);
     if (transitionTimerRef.current !== null) window.clearTimeout(transitionTimerRef.current);
-    if (transitionSettleTimerRef.current !== null) window.clearTimeout(transitionSettleTimerRef.current);
   }, []);
 
   return {
-    activeId,
+    activeId: resolvedActiveId,
     activeIndex: currentIndex,
-    displayedId,
+    outgoingId,
+    transitionDirection,
     isTransitioning,
     next,
     previous,
-    select,
     setPaused,
   };
 }

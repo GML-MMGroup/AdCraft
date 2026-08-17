@@ -2,19 +2,20 @@ import { useRef } from "react";
 
 import { ChevronLeftIcon, ChevronRightIcon } from "../../icons.tsx";
 import type { AgentAssetBrowserItem } from "../agent-canvas/assets/assetSelection.ts";
-import { HologramBeamCanvas } from "./HologramBeamCanvas.tsx";
 import { HologramParticlesCanvas } from "./HologramParticlesCanvas.tsx";
+import type { HologramTransitionDirection } from "./useHologramCarousel.ts";
 
 interface HologramStageProps {
   asset: AgentAssetBrowserItem;
   buttonRef: (assetId: string, button: HTMLButtonElement | null) => void;
   imageUrl: string;
   isTransitioning: boolean;
+  outgoingImageUrl: string | null;
   onNext: () => void;
   onOpen: (asset: AgentAssetBrowserItem, trigger: HTMLButtonElement) => void;
-  onPauseFocus: (paused: boolean) => void;
   onPauseHover: (paused: boolean) => void;
   onPrevious: () => void;
+  transitionDirection: HologramTransitionDirection | null;
 }
 
 const SWIPE_THRESHOLD = 44;
@@ -24,11 +25,12 @@ export function HologramStage({
   buttonRef,
   imageUrl,
   isTransitioning,
+  outgoingImageUrl,
   onNext,
   onOpen,
-  onPauseFocus,
   onPauseHover,
   onPrevious,
+  transitionDirection,
 }: HologramStageProps) {
   const pointerStartXRef = useRef<number | null>(null);
   const suppressOpenRef = useRef(false);
@@ -40,22 +42,16 @@ export function HologramStage({
         type="button"
         aria-label="Previous hologram scene"
         title="Previous hologram scene"
-        onBlur={() => onPauseFocus(false)}
         onClick={onPrevious}
-        onFocus={() => onPauseFocus(true)}
-        onMouseEnter={() => onPauseHover(true)}
-        onMouseLeave={() => onPauseHover(false)}
       >
         <ChevronLeftIcon />
       </button>
       <div className="recommended-scenes-hologram__projection-wrap">
-        <HologramBeamCanvas />
         <button
           ref={(button) => buttonRef(asset.id, button)}
           className="recommended-scenes-hologram__projection"
           type="button"
           aria-label={`Open original scene ${asset.displayName}`}
-          onBlur={() => onPauseFocus(false)}
           onClick={(event) => {
             if (suppressOpenRef.current) {
               suppressOpenRef.current = false;
@@ -63,7 +59,6 @@ export function HologramStage({
             }
             onOpen(asset, event.currentTarget);
           }}
-          onFocus={() => onPauseFocus(true)}
           onKeyDown={(event) => {
             if (event.key === "ArrowLeft") {
               event.preventDefault();
@@ -103,8 +98,18 @@ export function HologramStage({
           }}
         >
           <span className="recommended-scenes-hologram__glow" aria-hidden="true" />
+          {isTransitioning && outgoingImageUrl && transitionDirection ? (
+            <img
+              key={`outgoing-${outgoingImageUrl}`}
+              className={`recommended-scenes-hologram__scene is-outgoing is-${transitionDirection}`}
+              src={outgoingImageUrl}
+              alt=""
+              decoding="async"
+            />
+          ) : null}
           <img
-            className={`recommended-scenes-hologram__scene${isTransitioning ? " is-changing" : ""}`}
+            key={asset.id}
+            className={`recommended-scenes-hologram__scene${isTransitioning && transitionDirection ? ` is-incoming is-${transitionDirection}` : ""}`}
             src={imageUrl}
             alt=""
             decoding="async"
@@ -118,11 +123,7 @@ export function HologramStage({
         type="button"
         aria-label="Next hologram scene"
         title="Next hologram scene"
-        onBlur={() => onPauseFocus(false)}
         onClick={onNext}
-        onFocus={() => onPauseFocus(true)}
-        onMouseEnter={() => onPauseHover(true)}
-        onMouseLeave={() => onPauseHover(false)}
       >
         <ChevronRightIcon />
       </button>
