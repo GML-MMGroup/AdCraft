@@ -167,6 +167,19 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(shellRule).toContain("backdrop-filter: none");
   });
 
+  it("keeps the Script editor on the shared workbench font", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css"),
+      "utf8",
+    );
+    const scriptComposerRule = css.match(
+      /\.agent-node-workbench__composer--script textarea\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(scriptComposerRule).toBeTruthy();
+    expect(scriptComposerRule).not.toContain("font-family");
+  });
+
   it.each<[CanvasNodeTypeV2, string]>([
     ["text", "Text content"],
     ["image", "Generation prompt"],
