@@ -73,6 +73,7 @@ const AUTHORING_EVENTS = new Set([
   "guided_draft_materialized",
   "storyboard_fanout_committed",
   "guided_editing_ready",
+  "post_ready_effect_completed",
 ]);
 
 const CHAT_EVENTS = new Set([
@@ -97,6 +98,7 @@ const CHAT_EVENTS = new Set([
   "continuation_retry_scheduled",
   "continuation_completed",
   "continuation_failed",
+  "continuation_superseded",
   "proposal_created",
   "decision_bundle_ready",
   "proposal_ready",
@@ -126,10 +128,16 @@ const CHAT_EVENTS = new Set([
   "draft_node_created",
   "guided_action_created",
   "guided_action_applied",
+  "guided_action_superseded",
+  "guidance_advance_accepted",
   "command_plan_created",
   "command_plan_committed",
   "command_plan_rejected",
   "action_receipt_created",
+  "post_ready_effect_started",
+  "post_ready_effect_completed",
+  "post_ready_effect_failed",
+  "post_ready_effect_retry_scheduled",
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([
@@ -197,6 +205,7 @@ const DOCUMENT_EVENTS = new Set([
   "agent_anchor_retired",
   "storyboard_plan_revised",
   "storyboard_visual_anchor_frozen",
+  "post_ready_effect_completed",
 ]);
 
 export function runtimeEventPolicy(

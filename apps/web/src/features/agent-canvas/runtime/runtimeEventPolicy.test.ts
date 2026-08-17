@@ -294,6 +294,44 @@ describe("runtimeEventPolicy", () => {
     }
   });
 
+  it("refreshes superseded and accepted guidance state from canonical events", () => {
+    for (const eventType of [
+      "continuation_superseded",
+      "guidance_advance_accepted",
+      "guided_action_superseded",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: false,
+        refreshRuntime: false,
+      });
+    }
+  });
+
+  it("refreshes post-ready progress without downgrading Ready node runtime state", () => {
+    for (const eventType of [
+      "post_ready_effect_started",
+      "post_ready_effect_failed",
+      "post_ready_effect_retry_scheduled",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: false,
+        refreshRuntime: false,
+        refreshDocuments: false,
+        refreshNodeId: null,
+      });
+    }
+
+    expect(runtimeEventPolicy(event("post_ready_effect_completed"))).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshRuntime: false,
+      refreshDocuments: true,
+      refreshNodeId: null,
+    });
+  });
+
   it("refreshes canonical progressive authoring projections from their additive backend events", () => {
     for (const eventType of [
       "decision_bundle_ready",

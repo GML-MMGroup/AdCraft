@@ -1215,6 +1215,34 @@ describe("useAgentCanvasChat", () => {
     expect(api.agentCanvasChatTurn).toHaveBeenCalledWith("workflow-1", "turn-materialization-1");
   });
 
+  it("hydrates the executable turn identified by guidance advance acceptance", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline());
+    const { rerender } = renderHook(({ chatEvents }) => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: chatEvents.length,
+      chatEvents,
+    }), { initialProps: { chatEvents: [] as CanvasRuntimeEventV2[] } });
+    const acceptedEvent: CanvasRuntimeEventV2 = {
+      ...turnEvent("agent_turn_started", "turn-guidance-executable-1", 9),
+      event_type: "guidance_advance_accepted",
+      payload: {
+        command_turn_id: "turn-guidance-command-1",
+        executable_turn_id: "turn-guidance-executable-1",
+      },
+    };
+
+    rerender({ chatEvents: [acceptedEvent] });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasChatTurn).toHaveBeenCalledWith(
+      "workflow-1",
+      "turn-guidance-executable-1",
+    );
+  });
+
   it("revises options with the backend action id and expected session revision", async () => {
     const revise = descriptor("revise_options", "action-revise-1");
     const { result } = renderHook(() => useAgentCanvasChat({

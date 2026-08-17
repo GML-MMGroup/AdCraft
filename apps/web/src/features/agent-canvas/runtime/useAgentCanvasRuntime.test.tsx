@@ -410,6 +410,59 @@ describe("useAgentCanvasRuntime", () => {
     expect(result.current.state.chatEvents).toHaveLength(1);
   });
 
+  it("delivers guidance authority and post-ready events through the live SSE path", async () => {
+    api.agentCanvasEvents.mockReset();
+    api.agentCanvasEvents.mockResolvedValue({
+      workflow_id: "workflow-1",
+      events: [],
+      next_cursor: 42,
+    });
+    const eventSource = new EventSourceStub();
+    api.openAgentCanvasEventStream.mockReturnValue(eventSource);
+    const callbacks = {
+      applyWorkflow: vi.fn(),
+      mergePublishedAsset: vi.fn(),
+      mergeNode: vi.fn(),
+    };
+    const { result } = renderHook(() => useAgentCanvasRuntime(workflow, callbacks));
+
+    await waitFor(() => expect(api.openAgentCanvasEventStream).toHaveBeenCalledOnce());
+    const eventTypes = [
+      "continuation_superseded",
+      "guidance_advance_accepted",
+      "guided_action_superseded",
+      "post_ready_effect_started",
+      "post_ready_effect_completed",
+      "post_ready_effect_failed",
+      "post_ready_effect_retry_scheduled",
+    ];
+    eventTypes.forEach((eventType, index) => {
+      eventSource.emit(eventType, {
+        sequence_no: 43 + index,
+        workflow_id: "workflow-1",
+        event_type: eventType,
+        project_id: "project-1",
+        execution_id: null,
+        node_id: null,
+        asset_id: null,
+        binding_id: null,
+        conversation_id: "conversation-1",
+        turn_id: `turn-${index + 1}`,
+        action_id: null,
+        trace_id: null,
+        span_id: null,
+        transition_key: `${eventType}:${index + 1}`,
+        attempt: 1,
+        created_at: "2026-08-17T10:00:00Z",
+        payload: {},
+      });
+    });
+
+    await waitFor(() => expect(result.current.state.chatRevision).toBe(7));
+    expect(result.current.state.chatEvents.map((item) => item.event_type)).toEqual(eventTypes);
+    await waitFor(() => expect(api.agentCanvasWorkflowWithEtag).toHaveBeenCalled());
+  });
+
   it("persists legacy Draft video parameters before submitting a global Run", async () => {
     api.agentCanvasEvents.mockReset();
     api.agentCanvasEvents.mockResolvedValue({
