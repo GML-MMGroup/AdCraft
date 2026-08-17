@@ -38,8 +38,12 @@ export function RecommendedSceneHologram({ assets, buttonRef, onOpen, viewerOpen
   const carousel = useHologramCarousel(assetIds, { preload, reducedMotion });
   const { setPaused } = carousel;
   const activeAsset = useMemo(
-    () => assets.find((asset) => asset.id === carousel.displayedId) ?? assets[0] ?? null,
-    [assets, carousel.displayedId],
+    () => assets.find((asset) => asset.id === carousel.activeId) ?? assets[0] ?? null,
+    [assets, carousel.activeId],
+  );
+  const outgoingAsset = useMemo(
+    () => assets.find((asset) => asset.id === carousel.outgoingId) ?? null,
+    [assets, carousel.outgoingId],
   );
 
   useEffect(() => {
@@ -55,54 +59,19 @@ export function RecommendedSceneHologram({ assets, buttonRef, onOpen, viewerOpen
         buttonRef={buttonRef}
         imageUrl={hologramUrl(activeAsset)}
         isTransitioning={carousel.isTransitioning}
+        outgoingImageUrl={outgoingAsset ? hologramUrl(outgoingAsset) : null}
         onNext={carousel.next}
         onOpen={onOpen}
-        onPauseFocus={(paused) => setPaused("focus", paused)}
         onPauseHover={(paused) => setPaused("hover", paused)}
         onPrevious={carousel.previous}
+        transitionDirection={carousel.transitionDirection}
       />
       <div className="recommended-scenes-hologram__details">
         <div>
           <p className="recommended-scenes-hologram__eyebrow">Projected scene</p>
           <h2 className="recommended-scenes-hologram__name">{activeAsset.displayName}</h2>
         </div>
-        <p className="recommended-scenes-hologram__hint">Select a scene to project. Open the projection to inspect its original reference grid.</p>
-      </div>
-      <div className="recommended-scenes-hologram__selector" role="tablist" aria-label="Recommended scene selection">
-        {assets.map((asset) => {
-          const selected = asset.id === carousel.activeId;
-          return (
-            <button
-              key={asset.id}
-              className={`recommended-scenes-hologram__option${selected ? " is-active" : ""}`}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              aria-pressed={selected}
-              aria-controls={`recommended-scene-${asset.id}`}
-              aria-label={`Show hologram scene ${asset.displayName}`}
-              data-hologram-scene-option
-              onBlur={() => setPaused("focus", false)}
-              onClick={() => carousel.select(asset.id)}
-              onFocus={() => setPaused("focus", true)}
-              onMouseEnter={() => setPaused("hover", true)}
-              onMouseLeave={() => setPaused("hover", false)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowLeft") {
-                  event.preventDefault();
-                  carousel.previous();
-                }
-                if (event.key === "ArrowRight") {
-                  event.preventDefault();
-                  carousel.next();
-                }
-              }}
-            >
-              {asset.previewUrl ? <img src={asset.previewUrl} alt="" loading="lazy" decoding="async" /> : <span>{asset.displayName.slice(0, 1).toUpperCase()}</span>}
-              <strong>{asset.displayName}</strong>
-            </button>
-          );
-        })}
+        <p className="recommended-scenes-hologram__hint">Open the projection to inspect its original reference grid.</p>
       </div>
     </section>
   );
