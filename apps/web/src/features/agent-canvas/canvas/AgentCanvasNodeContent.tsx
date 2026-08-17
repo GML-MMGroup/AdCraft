@@ -1,3 +1,5 @@
+import { useCallback, useLayoutEffect, useRef } from "react";
+
 import type { CanvasNodeV2 } from "../../../types-v2.ts";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import { AgentCanvasNodeTypeIcon } from "./AgentCanvasNodeTypeIcon.tsx";
@@ -34,13 +36,35 @@ function agentCanvasNodeDisplayText(node: CanvasNodeV2): string | null {
 interface AgentCanvasNodeContentProps {
   node: CanvasNodeV2;
   iconLabel: string;
+  onScriptContentHeightResolved?: (height: number) => void;
 }
 
 export function AgentCanvasNodeContent({
   node,
   iconLabel,
+  onScriptContentHeightResolved,
 }: AgentCanvasNodeContentProps) {
   const copy = agentCanvasNodeDisplayText(node);
+  const scriptCopyRef = useRef<HTMLElement | null>(null);
+  const setScriptCopyRef = useCallback((element: HTMLElement | null) => {
+    scriptCopyRef.current = element;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (node.node_type !== "script" || !onScriptContentHeightResolved) return;
+
+    const copyElement = scriptCopyRef.current;
+    const reportHeight = () => {
+      onScriptContentHeightResolved(copyElement?.scrollHeight ?? 0);
+    };
+    reportHeight();
+
+    if (!copyElement || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reportHeight);
+    observer.observe(copyElement);
+    return () => observer.disconnect();
+  }, [copy, node.node_type, onScriptContentHeightResolved]);
+
   const contentClassName = [
     "agent-canvas-node__content",
     node.node_type === "script" ? "agent-canvas-node__content--script" : "",
@@ -50,7 +74,10 @@ export function AgentCanvasNodeContent({
     if (isLikelyMarkdown(copy)) {
       return (
         <div className={contentClassName}>
-          <div className="agent-canvas-node__markdown">
+          <div
+            ref={node.node_type === "script" ? setScriptCopyRef : undefined}
+            className="agent-canvas-node__markdown"
+          >
             {renderMarkdownAwareText(copy)}
           </div>
         </div>
@@ -59,7 +86,7 @@ export function AgentCanvasNodeContent({
 
     return (
       <div className={contentClassName}>
-        <p>{copy}</p>
+        <p ref={node.node_type === "script" ? setScriptCopyRef : undefined}>{copy}</p>
       </div>
     );
   }

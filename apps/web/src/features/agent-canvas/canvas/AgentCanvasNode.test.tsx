@@ -542,6 +542,40 @@ describe("AgentCanvasNodeCard", () => {
     expect(shell?.style.height).toBe("203px");
   });
 
+  it("grows a Script shell from the Text-node default height to its measured content height", () => {
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(260);
+    const data: AgentCanvasNodeData = {
+      node: makeNode("script", "ready"),
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    expect(shell?.style.width).toBe("248px");
+    expect(shell?.style.height).toBe("330px");
+    expect(updateNodeInternals).toHaveBeenLastCalledWith("script-node");
+
+    scrollHeight.mockRestore();
+  });
+
   it("falls back to the loaded image dimensions when asset metadata is missing", () => {
     const data: AgentCanvasNodeData = {
       node: makeNode("image", "ready"),

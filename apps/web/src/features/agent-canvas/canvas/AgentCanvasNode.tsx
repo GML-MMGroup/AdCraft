@@ -5,7 +5,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 
 import { PlayIcon } from "../../../icons.tsx";
 import type {
@@ -20,6 +20,7 @@ import { AgentCanvasNodeContent } from "./AgentCanvasNodeContent.tsx";
 import { promptPreparationForNode } from "../model/promptPreparation.ts";
 import {
   agentCanvasNodeSize,
+  scriptNodeHeightForContent,
   validAgentCanvasMediaDimensions,
   type AgentCanvasMediaDimensions,
 } from "./nodeGeometry.ts";
@@ -80,6 +81,7 @@ interface AgentCanvasNodeCardProps extends AgentCanvasNodeCallbacks {
   selected?: boolean;
   disabled?: boolean;
   onMediaDimensionsResolved?: (dimensions: { width: number; height: number }) => void;
+  onScriptContentHeightResolved?: (height: number) => void;
 }
 
 function semanticNodeLabel(node: CanvasNodeV2): string {
@@ -168,10 +170,17 @@ function NodeSurface({
   status,
   onOpenVideoPreview,
   onMediaDimensionsResolved,
+  onScriptContentHeightResolved,
   label,
-}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved"> & { status: CanvasNodeStatusV2; label: string }) {
+}: Pick<AgentCanvasNodeCardProps, "node" | "asset" | "onOpenVideoPreview" | "onMediaDimensionsResolved" | "onScriptContentHeightResolved"> & { status: CanvasNodeStatusV2; label: string }) {
   if (node.node_type === "text" || node.node_type === "script") {
-    return <AgentCanvasNodeContent node={node} iconLabel={typeIconLabel(node, label)} />;
+    return (
+      <AgentCanvasNodeContent
+        node={node}
+        iconLabel={typeIconLabel(node, label)}
+        onScriptContentHeightResolved={onScriptContentHeightResolved}
+      />
+    );
   }
   if (node.node_type === "audio") {
     return <AgentCanvasAudioPlayer node={node} status={status} asset={asset} />;
@@ -194,6 +203,7 @@ export function AgentCanvasNodeCard({
   selected = false,
   onOpenVideoPreview,
   onMediaDimensionsResolved,
+  onScriptContentHeightResolved,
 }: AgentCanvasNodeCardProps) {
   const status = runtime?.visible_status ?? node.status;
   const label = semanticNodeLabel(node);
@@ -228,6 +238,7 @@ export function AgentCanvasNodeCard({
           label={label}
           onOpenVideoPreview={onOpenVideoPreview}
           onMediaDimensionsResolved={onMediaDimensionsResolved}
+          onScriptContentHeightResolved={onScriptContentHeightResolved}
         />
         {status === "working" && node.node_type !== "audio" ? (
           <div className="agent-canvas-node__working" aria-label={`${node.node_type} node is working`}>
@@ -272,6 +283,7 @@ export function AgentCanvasNodeRenderer({
   const [intrinsicDimensions, setIntrinsicDimensions] = useState<(
     AgentCanvasMediaDimensions & { assetId: string | null }
   ) | null>(null);
+  const [scriptContentHeight, setScriptContentHeight] = useState(0);
   const label = semanticNodeLabel(data.node);
   const workbench = data.renderWorkbench?.(data.node, data.runtime ?? null);
   const assetDimensions = validAgentCanvasMediaDimensions(data.asset)
@@ -279,7 +291,13 @@ export function AgentCanvasNodeRenderer({
     : intrinsicDimensions?.assetId === (data.asset?.asset_id ?? null)
       ? intrinsicDimensions
       : null;
-  const nodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
+  const baseNodeSize = agentCanvasNodeSize(data.node.node_type, assetDimensions);
+  const nodeSize = data.node.node_type === "script"
+    ? { ...baseNodeSize, height: scriptNodeHeightForContent(scriptContentHeight) }
+    : baseNodeSize;
+  const handleScriptContentHeightResolved = useCallback((height: number) => {
+    setScriptContentHeight((current) => current === height ? current : height);
+  }, []);
 
   useLayoutEffect(() => {
     updateNodeInternals(id);
@@ -313,6 +331,9 @@ export function AgentCanvasNodeRenderer({
               width,
               height,
             })}
+        onScriptContentHeightResolved={data.node.node_type === "script"
+          ? handleScriptContentHeightResolved
+          : undefined}
       />
       {workbench ? (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- The embedded form remains keyboard-accessible; this boundary only prevents node-level double-click focus.
