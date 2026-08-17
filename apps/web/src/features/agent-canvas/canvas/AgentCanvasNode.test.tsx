@@ -109,6 +109,28 @@ afterEach(() => {
 });
 
 describe("AgentCanvasNodeCard", () => {
+  it.each([
+    ["product", "image", "image"],
+    ["storyboard_sequence", "image", "image"],
+    ["world_setting", "text", "text"],
+  ] as const)(
+    "shows the %s node's technical type in the top-left label",
+    (creativeRole, nodeType, expectedLabel) => {
+      const { container } = render(
+        <AgentCanvasNodeCard
+          node={{
+            ...makeNode(nodeType),
+            creative_role: creativeRole,
+          }}
+        />,
+      );
+
+      expect(container.querySelector(".agent-canvas-node__type-label")?.textContent).toBe(
+        expectedLabel,
+      );
+    },
+  );
+
   it("uses a genuinely translucent glass surface for dark audio nodes", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
