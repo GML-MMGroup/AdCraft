@@ -115,6 +115,7 @@ import type {
   GuidedInteractionContentV1,
   GuidedInteractionActionV1,
   GuidanceAwaitingV1,
+  GuidanceAdvancePreconditionV1,
   FoundationJourneyItemV2,
   JourneyActionProjectionV2,
   JourneyTransitionEvidenceV2,
@@ -3219,12 +3220,18 @@ export function normalizeChatTimelineItemV2(value: unknown, path = "chatItem"): 
 
 export function normalizeChatTimelineListResponseV2(value: unknown, path = "chatTimeline"): ChatTimelineListResponseV2 {
   const record = expectRecord(value, path);
-  forbidUnknownFields(record, ["workflow_id", "conversation_id", "items", "next_after_seq"], path);
+  forbidUnknownFields(record, ["workflow_id", "conversation_id", "guidance_advance_precondition", "items", "next_after_seq"], path);
   return {
     workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
     conversation_id: record.conversation_id === null
       ? null
       : expectNonEmptyString(record.conversation_id, `${path}.conversation_id`),
+    guidance_advance_precondition: record.guidance_advance_precondition === undefined || record.guidance_advance_precondition === null
+      ? null
+      : normalizeGuidanceAdvancePreconditionV1(
+        record.guidance_advance_precondition,
+        `${path}.guidance_advance_precondition`,
+      ),
     items: expectArray(record.items, `${path}.items`).map((item, index) => normalizeChatTimelineItemV2(item, `${path}.items[${index}]`)),
     next_after_seq: expectNonNegativeInteger(record.next_after_seq, `${path}.next_after_seq`),
   };
@@ -3277,6 +3284,7 @@ export function normalizeAgentCanvasChatTimelineV2(
     workflow_id: persisted.workflow_id,
     conversation_id: persisted.conversation_id,
     guidanceSession: persisted.guidance_session,
+    guidanceAdvancePrecondition: persisted.guidance_advance_precondition,
     continuations: persisted.continuations,
     current_session_actions: persisted.current_session_actions,
     next_cursor: persisted.next_cursor,
@@ -4236,6 +4244,67 @@ export function normalizeGuidedSessionStateV2(value: unknown, path = "creativeSe
   };
 }
 
+export function normalizeGuidanceAdvancePreconditionV1(
+  value: unknown,
+  path = "guidanceAdvancePrecondition",
+): GuidanceAdvancePreconditionV1 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "schema_version",
+    "workflow_id",
+    "workflow_revision",
+    "session_id",
+    "session_revision",
+    "session_status",
+    "journey_stage",
+    "journey_stage_status",
+    "journey_stage_revision",
+    "source_id",
+    "requirement_revision_id",
+    "requirement_digest",
+    "active_action_digest",
+    "owner_state_digest",
+    "authority_digest",
+  ], path);
+  const digest = (field: "requirement_digest" | "active_action_digest" | "owner_state_digest") => {
+    const value = expectNonEmptyString(record[field], `${path}.${field}`);
+    if (!/^[a-f0-9]{64}$/.test(value)) fail(`${path}.${field}`, "expected a 64 character lowercase hexadecimal digest");
+    return value;
+  };
+  const authorityDigest = expectNonEmptyString(record.authority_digest, `${path}.authority_digest`);
+  if (!/^sha256:[a-f0-9]{64}$/.test(authorityDigest)) {
+    fail(`${path}.authority_digest`, "expected sha256 digest");
+  }
+  return {
+    schema_version: expectLiteral(record.schema_version, new Set(["1"] as const), `${path}.schema_version`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    workflow_revision: expectPositiveInteger(record.workflow_revision, `${path}.workflow_revision`),
+    session_id: expectNonEmptyString(record.session_id, `${path}.session_id`),
+    session_revision: expectPositiveInteger(record.session_revision, `${path}.session_revision`),
+    session_status: expectLiteral(
+      record.session_status,
+      new Set<GuidanceAdvancePreconditionV1["session_status"]>(["active", "paused", "completed"]),
+      `${path}.session_status`,
+    ),
+    journey_stage: expectLiteral(record.journey_stage, GUIDED_JOURNEY_STAGES, `${path}.journey_stage`),
+    journey_stage_status: expectLiteral(
+      record.journey_stage_status,
+      GUIDED_JOURNEY_STAGE_STATUSES,
+      `${path}.journey_stage_status`,
+    ),
+    journey_stage_revision: expectPositiveInteger(
+      record.journey_stage_revision,
+      `${path}.journey_stage_revision`,
+    ),
+    source_id: expectNonEmptyString(record.source_id, `${path}.source_id`),
+    requirement_revision_id: expectNonEmptyString(record.requirement_revision_id, `${path}.requirement_revision_id`),
+    requirement_digest: digest("requirement_digest"),
+    active_action_digest: digest("active_action_digest"),
+    owner_state_digest: digest("owner_state_digest"),
+    authority_digest: authorityDigest,
+  };
+}
+
 function normalizeGuidedInteractionV1(value: unknown, path: string): GuidedInteractionV1 {
   const record = expectRecord(value, path);
   forbidUnknownFields(record, ["interaction_id", "workflow_id", "session_id", "checkpoint_id", "kind", "status", "response_locale", "expected_session_revision", "revision", "title", "context", "content", "allowed_actions", "submit_path", "created_at", "updated_at"], path);
@@ -4665,6 +4734,7 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     "workflow_id",
     "conversation_id",
     "guidance_session",
+    "guidance_advance_precondition",
     "continuations",
     "current_session_actions",
     "items",
@@ -4689,6 +4759,12 @@ export function normalizeAgentCanvasChatTimelineResponseV2(
     guidance_session: record.guidance_session === undefined || record.guidance_session === null
       ? null
       : normalizeGuidedSessionStateV2(record.guidance_session, `${path}.guidance_session`),
+    guidance_advance_precondition: record.guidance_advance_precondition === undefined || record.guidance_advance_precondition === null
+      ? null
+      : normalizeGuidanceAdvancePreconditionV1(
+        record.guidance_advance_precondition,
+        `${path}.guidance_advance_precondition`,
+      ),
     continuations: expectArray(record.continuations ?? [], `${path}.continuations`)
       .map((item, index) => normalizeAgentCanvasContinuationV2(item, `${path}.continuations[${index}]`)),
     current_session_actions: currentSessionActions,

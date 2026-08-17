@@ -8,6 +8,7 @@ import type {
   AgentCanvasGuidedActionApplyRequestV2,
   GuidedInteractionAcceptedV1,
   GuidedInteractionSubmitRequestV1,
+  GuidanceAdvanceRequestV1,
   GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
   AgentCanvasProjectCreateRequestV2,
@@ -814,6 +815,22 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/chat/timeline?${query.toString()}`,
       {},
       normalizeAgentCanvasChatTimelineV2,
+    );
+  },
+
+  advanceAgentCanvasGuidance(
+    workflowId: string,
+    request: GuidanceAdvanceRequestV1,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/guidance/advance`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
     );
   },
 

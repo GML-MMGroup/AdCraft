@@ -22,6 +22,7 @@ import type {
   ChatTimelinePresentationViewItemV2,
   DecisionBundleActionRequestV2,
   GuidanceSessionActionV2,
+  GuidanceAdvancePreconditionV1,
   GuidedSessionStateV2,
   GuidedInteractionV1,
   GuidedInteractionSubmitRequestV1,
@@ -35,6 +36,10 @@ import {
   visibleTimelinePresentationItems,
 } from "./timelinePresentation.ts";
 import { mergeGuidedSessionState } from "../session/journeyState.ts";
+import {
+  guidanceAdvanceIdempotencyKey,
+  mayRebaseGuidanceAdvance,
+} from "./guidanceAdvance.ts";
 
 type SubmitDraft = {
   text: string;
@@ -135,6 +140,7 @@ export function useAgentCanvasChat({
   const [turnsById, setTurnsById] = useState<Record<string, AgentCanvasChatTurnV2>>({});
   const [retryingSourceTurnIds, setRetryingSourceTurnIds] = useState<Record<string, string>>({});
   const [guidanceSession, setGuidanceSession] = useState<GuidedSessionStateV2 | null>(null);
+  const [guidanceAdvancePrecondition, setGuidanceAdvancePrecondition] = useState<GuidanceAdvancePreconditionV1 | null>(null);
   const [currentSessionActions, setCurrentSessionActions] = useState<GuidanceSessionActionV2[]>([]);
   const [continuationsById, setContinuationsById] = useState<Record<string, AgentCanvasContinuationV2>>({});
   const [loading, setLoading] = useState(false);
@@ -144,6 +150,7 @@ export function useAgentCanvasChat({
   const [actingCommandPlanId, setActingCommandPlanId] = useState<string | null>(null);
   const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
   const [actingInteractionId, setActingInteractionId] = useState<string | null>(null);
+  const [advancingGuidance, setAdvancingGuidance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
@@ -156,6 +163,12 @@ export function useAgentCanvasChat({
   const deliveredReceiptIdsRef = useRef(new Set<string>());
   const retryingSourceTurnIdsRef = useRef(new Set<string>());
   const presentationItemsByKeyRef = useRef(new Map<string, ChatTimelinePresentationViewItemV2>());
+  const submittedGuidanceAuthorityDigestsRef = useRef(new Set<string>());
+  const guidanceAdvanceInFlightRef = useRef<string | null>(null);
+  const guidanceAdvanceRebaseRef = useRef<{
+    stalePrecondition: GuidanceAdvancePreconditionV1;
+    replacementAttempted: boolean;
+  } | null>(null);
   const workflowId = workflow?.workflow_id ?? null;
   const workflowRevision = workflow?.revision ?? null;
   const activeVideoSkillRunId = workflow?.active_style_skill?.skill_run_id ?? null;
@@ -264,6 +277,7 @@ export function useAgentCanvasChat({
       let presentationItems = new Map(presentationItemsByKeyRef.current);
       let usingPresentationProjection = false;
       let nextGuidanceSession: GuidedSessionStateV2 | null = null;
+      let nextGuidanceAdvancePrecondition: GuidanceAdvancePreconditionV1 | null = null;
       let nextCurrentSessionActions: GuidanceSessionActionV2[] = [];
       const nextContinuations = new Map<string, AgentCanvasContinuationV2>();
       try {
@@ -275,6 +289,7 @@ export function useAgentCanvasChat({
       for (;;) {
         const timeline = await agentCanvasApi.agentCanvasChatTimeline(workflowId, cursor, 200);
         nextGuidanceSession = mergeGuidedSessionState(nextGuidanceSession, timeline.guidanceSession);
+        nextGuidanceAdvancePrecondition = timeline.guidanceAdvancePrecondition;
         nextCurrentSessionActions = timeline.current_session_actions ?? [];
         (timeline.continuations ?? []).forEach((continuation) => {
           nextContinuations.set(continuation.continuation_id, continuation);
@@ -320,6 +335,7 @@ export function useAgentCanvasChat({
       }
       if (generation !== refreshGenerationRef.current) return;
       setGuidanceSession((current) => mergeGuidedSessionState(current, nextGuidanceSession));
+      setGuidanceAdvancePrecondition(nextGuidanceAdvancePrecondition);
       setCurrentSessionActions(nextCurrentSessionActions);
       setContinuationsById(Object.fromEntries(nextContinuations));
       const items = usingPresentationProjection
@@ -442,6 +458,7 @@ export function useAgentCanvasChat({
     setTurnsById({});
     setRetryingSourceTurnIds({});
     setGuidanceSession(null);
+    setGuidanceAdvancePrecondition(null);
     setCurrentSessionActions([]);
     setContinuationsById({});
     setLoading(false);
@@ -452,12 +469,16 @@ export function useAgentCanvasChat({
     setActingCommandPlanId(null);
     setActingGuidedActionId(null);
     setActingInteractionId(null);
+    setAdvancingGuidance(false);
     pendingActionTurnIdsRef.current.clear();
     pendingCommandPlanIdsRef.current.clear();
     expectedReceiptIdsRef.current.clear();
     deliveredReceiptIdsRef.current.clear();
     retryingSourceTurnIdsRef.current.clear();
     presentationItemsByKeyRef.current.clear();
+    submittedGuidanceAuthorityDigestsRef.current.clear();
+    guidanceAdvanceInFlightRef.current = null;
+    guidanceAdvanceRebaseRef.current = null;
     setError(null);
     setNotice(null);
     setProposalIssues({});
@@ -513,6 +534,74 @@ export function useAgentCanvasChat({
     const timer = window.setTimeout(() => void refresh(), 80);
     return () => window.clearTimeout(timer);
   }, [chatRevision, refresh]);
+
+  const submitGuidanceAdvance = useCallback(async (
+    precondition: GuidanceAdvancePreconditionV1,
+    isReplacement: boolean,
+  ) => {
+    if (!workflowId || guidanceAdvanceInFlightRef.current) return;
+    if (submittedGuidanceAuthorityDigestsRef.current.has(precondition.authority_digest)) return;
+    const workflowGeneration = workflowGenerationRef.current;
+    submittedGuidanceAuthorityDigestsRef.current.add(precondition.authority_digest);
+    guidanceAdvanceInFlightRef.current = precondition.authority_digest;
+    setAdvancingGuidance(true);
+    setError(null);
+    try {
+      const accepted = await agentCanvasApi.advanceAgentCanvasGuidance(
+        workflowId,
+        { precondition },
+        guidanceAdvanceIdempotencyKey(workflowId, precondition.authority_digest),
+      );
+      if (workflowGeneration !== workflowGenerationRef.current) return;
+      guidanceAdvanceRebaseRef.current = null;
+      trackAcceptedTurn(accepted);
+      void refresh();
+    } catch (advanceError) {
+      if (workflowGeneration !== workflowGenerationRef.current) return;
+      if (isV2ApiError(advanceError) && advanceError.code === "guidance_advance_stale") {
+        if (isReplacement) {
+          guidanceAdvanceRebaseRef.current = null;
+          setError(agentCanvasChatErrorMessage(advanceError.code, advanceError.message));
+          return;
+        }
+        guidanceAdvanceRebaseRef.current = {
+          stalePrecondition: precondition,
+          replacementAttempted: false,
+        };
+        setNotice("The guidance state changed. Refreshing the current production step.");
+        await refresh();
+        return;
+      }
+      setError(chatRequestErrorMessage(advanceError, "The guidance step could not be continued."));
+    } finally {
+      if (workflowGeneration === workflowGenerationRef.current) {
+        guidanceAdvanceInFlightRef.current = null;
+        setAdvancingGuidance(false);
+      }
+    }
+  }, [refresh, trackAcceptedTurn, workflowId]);
+
+  useEffect(() => {
+    const rebase = guidanceAdvanceRebaseRef.current;
+    if (!guidanceAdvancePrecondition) {
+      if (rebase) guidanceAdvanceRebaseRef.current = null;
+      return;
+    }
+    if (rebase) {
+      if (rebase.replacementAttempted || !mayRebaseGuidanceAdvance(
+        rebase.stalePrecondition,
+        guidanceAdvancePrecondition,
+      )) {
+        guidanceAdvanceRebaseRef.current = null;
+        setNotice("The guidance state changed. The latest projected state now controls the next step.");
+        return;
+      }
+      rebase.replacementAttempted = true;
+      void submitGuidanceAdvance(guidanceAdvancePrecondition, true);
+      return;
+    }
+    void submitGuidanceAdvance(guidanceAdvancePrecondition, false);
+  }, [guidanceAdvancePrecondition, submitGuidanceAdvance]);
 
   const submit = useCallback(async (draft: SubmitDraft) => {
     if (!workflowId || !draft.text.trim()) return false;
@@ -945,7 +1034,7 @@ export function useAgentCanvasChat({
       retryableFailedTurn,
       loading,
       sending,
-      agentWorking: sending || pendingAgentTurnIds.length > 0,
+      agentWorking: sending || advancingGuidance || pendingAgentTurnIds.length > 0,
       agentWaitingForModel,
       actingProposalId,
       actingDecisionBundleId,

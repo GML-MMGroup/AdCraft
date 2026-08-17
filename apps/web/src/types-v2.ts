@@ -2752,6 +2752,7 @@ export type ChatTimelineItemV2 =
 export interface ChatTimelineListResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
+  guidance_advance_precondition: GuidanceAdvancePreconditionV1 | null;
   items: ChatTimelineItemV2[];
   next_after_seq: number;
 }
@@ -2770,6 +2771,8 @@ export interface AgentCanvasChatViewTimelineV2 {
   workflow_id: string;
   conversation_id: string | null;
   guidanceSession: GuidedSessionStateV2 | null;
+  /** Server-issued authority snapshot for one deterministic Guidance Advance. */
+  guidanceAdvancePrecondition: GuidanceAdvancePreconditionV1 | null;
   continuations: AgentCanvasContinuationV2[];
   current_session_actions: GuidanceSessionActionV2[];
   items: ChatTimelineItemV2[];
@@ -3389,6 +3392,32 @@ export interface GuidanceAwaitingV1 {
   created_at: string;
 }
 
+/**
+ * Opaque, transactionally consistent authority snapshot issued by the Timeline
+ * projection. Clients return it unchanged when advancing deterministic guidance.
+ */
+export interface GuidanceAdvancePreconditionV1 {
+  schema_version: "1";
+  workflow_id: string;
+  workflow_revision: number;
+  session_id: string;
+  session_revision: number;
+  session_status: "active" | "paused" | "completed";
+  journey_stage: GuidedJourneyStageV2;
+  journey_stage_status: GuidedJourneyStageStatusV2;
+  journey_stage_revision: number;
+  source_id: string;
+  requirement_revision_id: string;
+  requirement_digest: string;
+  active_action_digest: string;
+  owner_state_digest: string;
+  authority_digest: string;
+}
+
+export interface GuidanceAdvanceRequestV1 {
+  precondition: GuidanceAdvancePreconditionV1;
+}
+
 export interface GuidedSessionStateV2 {
   session_id: string;
   workflow_id: string;
@@ -3482,6 +3511,7 @@ export interface AgentCanvasChatTimelineResponseV2 {
   workflow_id: string;
   conversation_id: string | null;
   guidance_session: GuidedSessionStateV2 | null;
+  guidance_advance_precondition: GuidanceAdvancePreconditionV1 | null;
   continuations: AgentCanvasContinuationV2[];
   current_session_actions: GuidanceSessionActionV2[];
   items: AgentCanvasChatTimelineEntryV2[];

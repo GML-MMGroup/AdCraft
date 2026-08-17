@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   agentCanvasChatTurn: vi.fn(),
   agentCanvasProposal: vi.fn(),
   agentCanvasDecisionBundle: vi.fn(),
+  advanceAgentCanvasGuidance: vi.fn(),
   submitAgentCanvasChatMessage: vi.fn(),
   retryAgentCanvasChatTurn: vi.fn(),
   actOnAgentCanvasProposal: vi.fn(),
@@ -55,12 +56,42 @@ function emptyTimeline(overrides: Partial<AgentCanvasChatViewTimelineV2> = {}): 
     workflow_id: "workflow-1",
     conversation_id: "conversation-1",
     guidanceSession: null,
+    guidanceAdvancePrecondition: null,
     continuations: [],
     current_session_actions: [],
     items: [],
     presentationItems: null,
     next_cursor: 0,
     ...overrides,
+  };
+}
+
+function guidanceAdvancePrecondition(authorityDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+  return {
+    schema_version: "1",
+    workflow_id: "workflow-1",
+    workflow_revision: 9,
+    session_id: "guidance-1",
+    session_revision: 8,
+    session_status: "active",
+    journey_stage: "foundation_design",
+    journey_stage_status: "working",
+    journey_stage_revision: 4,
+    source_id: "stage:foundation_design:4",
+    requirement_revision_id: "requirement-1",
+    requirement_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    active_action_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    owner_state_digest: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    authority_digest: authorityDigest,
+  };
+}
+
+function timelineWithGuidanceAdvance(
+  authorityDigest?: string,
+): AgentCanvasChatViewTimelineV2 {
+  return {
+    ...emptyTimeline({ guidanceSession: guidedSession() }),
+    guidanceAdvancePrecondition: guidanceAdvancePrecondition(authorityDigest),
   };
 }
 
@@ -179,6 +210,17 @@ describe("useAgentCanvasChat", () => {
       status: "queued",
       events_cursor: 1,
     });
+    api.advanceAgentCanvasGuidance.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: null,
+      turn_id: "turn-guidance-advance",
+      status: "queued",
+      events_cursor: 2,
+      retry_of_turn_id: null,
+      retry_attempt_no: 1,
+      replayed: false,
+    });
   });
 
   afterEach(() => {
@@ -256,6 +298,151 @@ describe("useAgentCanvasChat", () => {
     });
 
     expect(result.current.state.guidanceSession).toBe(direct);
+  });
+
+  it("advances only with the complete authority snapshot supplied by Timeline", async () => {
+    const precondition = guidanceAdvancePrecondition();
+    api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
+
+    renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledWith(
+      "workflow-1",
+      { precondition },
+      expect.stringContaining(precondition.authority_digest),
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("does not synthesize a Guidance Advance when Timeline reports no authority snapshot", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(emptyTimeline({
+      guidanceSession: guidedSession(),
+      guidanceAdvancePrecondition: null,
+    }));
+
+    renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("refreshes one stale snapshot and submits only one changed replacement", async () => {
+    const first = guidanceAdvancePrecondition(
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    const replacement = guidanceAdvancePrecondition(
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    );
+    api.agentCanvasChatTimeline
+      .mockResolvedValueOnce(timelineWithGuidanceAdvance(first.authority_digest))
+      .mockResolvedValue(timelineWithGuidanceAdvance(replacement.authority_digest));
+    api.advanceAgentCanvasGuidance
+      .mockRejectedValueOnce({
+        code: "guidance_advance_stale",
+        message: "The authoritative guidance state changed.",
+        status: 409,
+        details: { refresh_required: true, stale_components: ["workflow"] },
+      })
+      .mockResolvedValueOnce({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-guidance-rebased",
+        status: "queued",
+        events_cursor: 3,
+        retry_of_turn_id: null,
+        retry_attempt_no: 1,
+        replayed: false,
+      });
+
+    renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(2);
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenNthCalledWith(
+      1,
+      "workflow-1",
+      { precondition: first },
+      expect.stringContaining(first.authority_digest),
+    );
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenNthCalledWith(
+      2,
+      "workflow-1",
+      { precondition: replacement },
+      expect.stringContaining(replacement.authority_digest),
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("stops after a second stale snapshot without a third advance request", async () => {
+    const first = guidanceAdvancePrecondition(
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    const replacement = guidanceAdvancePrecondition(
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    );
+    api.agentCanvasChatTimeline
+      .mockResolvedValueOnce(timelineWithGuidanceAdvance(first.authority_digest))
+      .mockResolvedValue(timelineWithGuidanceAdvance(replacement.authority_digest));
+    api.advanceAgentCanvasGuidance
+      .mockRejectedValueOnce({ code: "guidance_advance_stale", message: "stale", status: 409, details: {} })
+      .mockRejectedValueOnce({ code: "guidance_advance_stale", message: "still stale", status: 409, details: {} });
+
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(2);
+    expect(result.current.state.error).toBe("guidance_advance_stale: still stale");
   });
 
   it("uses the latest localized presentation item instead of raw or stale timeline rows", async () => {

@@ -733,6 +733,23 @@ describe("Agent Canvas normalizers", () => {
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
       guidance_session: progressiveGuidanceSessionPayload(),
+      guidance_advance_precondition: {
+        schema_version: "1",
+        workflow_id: "workflow-1",
+        workflow_revision: 9,
+        session_id: "guidance-1",
+        session_revision: 3,
+        session_status: "active",
+        journey_stage: "foundation_design",
+        journey_stage_status: "working",
+        journey_stage_revision: 4,
+        source_id: "stage:foundation_design:4",
+        requirement_revision_id: "requirement-1",
+        requirement_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        active_action_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        owner_state_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        authority_digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      },
       continuations: [{
         continuation_id: "continuation-1",
         workflow_id: "workflow-1",
@@ -780,6 +797,8 @@ describe("Agent Canvas normalizers", () => {
       expected_session_revision: 3,
     });
     expect(timeline.continuations[0]?.delivery_status).toBe("superseded");
+    expect(timeline.guidanceAdvancePrecondition?.authority_digest)
+      .toBe("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
   });
 
   it("normalizes progressive proposal descriptors and application receipts", () => {
