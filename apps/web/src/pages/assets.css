@@ -848,38 +848,46 @@
 
 .recommended-scenes-hologram__stage {
   position: relative;
-  min-height: clamp(330px, 43vw, 610px);
+  min-height: clamp(500px, 49.375vw, 806px);
   overflow: visible;
   isolation: isolate;
   touch-action: pan-y;
 }
 
-.recommended-scenes-hologram__beam,
-.recommended-scenes-hologram__particles,
-.recommended-scenes-hologram__projection {
+.recommended-scenes-hologram__projection-wrap {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 51%;
+  left: 50%;
+  width: min(79vw, 1290px);
+  aspect-ratio: 16 / 10;
+  perspective: 1200px;
+  transform: translate(-50%, -50%);
 }
 
 .recommended-scenes-hologram__beam {
-  z-index: 2;
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   mix-blend-mode: screen;
-  opacity: 0.98;
+  opacity: 0.88;
+  filter: saturate(1.08);
 }
 
 .recommended-scenes-hologram__projection {
-  z-index: 3;
-  display: grid;
-  place-items: center;
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 17%;
   overflow: visible;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: zoom-in;
   padding: 0;
+  transform: none;
+  transform-style: preserve-3d;
 }
 
 .recommended-scenes-hologram__projection:focus-visible {
@@ -888,20 +896,31 @@
 }
 
 .recommended-scenes-hologram__scene {
-  position: relative;
-  z-index: 1;
+  position: absolute;
+  z-index: 2;
+  inset: 0;
   display: block;
-  width: min(92%, 1180px);
-  height: min(80%, 520px);
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  filter: saturate(0.78) brightness(1.04) contrast(1.1) drop-shadow(0 0 10px rgb(112 224 255 / 30%));
-  opacity: 1;
-  transition: opacity 160ms ease;
+  filter: saturate(0.72) brightness(1.03) contrast(1.12) drop-shadow(0 0 11px rgb(112 224 255 / 38%));
+  opacity: 0.9;
+  transition: opacity 240ms ease;
   user-select: none;
 }
 
 .recommended-scenes-hologram__scene.is-changing {
   opacity: 0.2;
+}
+
+.recommended-scenes-hologram__glow {
+  position: absolute;
+  z-index: 0;
+  inset: 13% 8% 8%;
+  background: radial-gradient(ellipse, rgb(90 212 244 / 16%), transparent 64%);
+  filter: blur(20px);
+  opacity: 0.78;
+  pointer-events: none;
 }
 
 .recommended-scenes-hologram__nav {
@@ -946,22 +965,27 @@
 
 .recommended-scenes-hologram__scanlines {
   position: absolute;
-  z-index: 2;
-  inset: 8% 7% 12%;
+  z-index: 4;
+  inset: 5% 7% 8%;
   pointer-events: none;
-  opacity: 0.15;
+  opacity: 0.23;
   background: repeating-linear-gradient(
     to bottom,
     transparent 0 3px,
-    rgb(165 240 255 / 16%) 4px,
+    rgb(165 240 255 / 20%) 4px,
     transparent 5px
   );
   -webkit-mask-image: radial-gradient(ellipse, #000 30%, transparent 78%);
   mask-image: radial-gradient(ellipse, #000 30%, transparent 78%);
+  mix-blend-mode: screen;
 }
 
 .recommended-scenes-hologram__particles {
+  position: absolute;
   z-index: 4;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
   mix-blend-mode: screen;
 }
@@ -1079,7 +1103,7 @@
 }
 
 @media (max-width: 700px) {
-  .recommended-scenes-hologram__stage { min-height: 300px; }
+  .recommended-scenes-hologram__stage { min-height: max(300px, 49.375vw); }
   .recommended-scenes-hologram__details { align-items: start; flex-direction: column; gap: 8px; }
   .recommended-scenes-hologram__hint { max-width: none; text-align: left; }
 }
