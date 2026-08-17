@@ -1,64 +1,66 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import type { AgentAssetBrowserItem } from "../agent-canvas/assets/assetSelection.ts";
-import { HologramBeamCanvas } from "./HologramBeamCanvas.tsx";
-import { HologramParticlesCanvas } from "./HologramParticlesCanvas.tsx";
-
-const DEFAULT_HOLOGRAM_SCENE_URL = "/assets/hologram-scenes/scene-020.webp";
+import { HologramStage } from "./HologramStage.tsx";
+import { hologramSceneUrlForAsset } from "./recommendedSceneHologramCatalog.ts";
+import { useHologramCarousel } from "./useHologramCarousel.ts";
 
 interface RecommendedSceneHologramProps {
   assets: AgentAssetBrowserItem[];
   buttonRef: (assetId: string, button: HTMLButtonElement | null) => void;
   onOpen: (asset: AgentAssetBrowserItem, trigger: HTMLButtonElement) => void;
+  viewerOpen: boolean;
 }
 
-function findActiveAsset(assets: AgentAssetBrowserItem[], activeId: string | null) {
-  return assets.find((asset) => asset.id === activeId) ?? assets[0] ?? null;
-}
-
-function hologramSceneUrl(assetId: string) {
-  const sceneId = assetId.match(/(?:^|:)recommended-v1-scene-(\d{3})$/)?.[1];
-  return sceneId ? `/assets/hologram-scenes/scene-${sceneId}.webp` : DEFAULT_HOLOGRAM_SCENE_URL;
+function hologramUrl(asset: AgentAssetBrowserItem) {
+  return hologramSceneUrlForAsset(asset.identity.entityId ?? asset.id)
+    ?? asset.previewUrl
+    ?? asset.mediaUrl
+    ?? "";
 }
 
 /**
  * An asset browser surface: the selector changes the projected world, while the
  * central projection intentionally remains the sole control that opens the raw grid.
  */
-export function RecommendedSceneHologram({ assets, buttonRef, onOpen }: RecommendedSceneHologramProps) {
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const activeAsset = useMemo(() => findActiveAsset(assets, activeId), [activeId, assets]);
+export function RecommendedSceneHologram({ assets, buttonRef, onOpen, viewerOpen }: RecommendedSceneHologramProps) {
+  const assetIds = useMemo(() => assets.map((asset) => asset.id), [assets]);
+  const preload = useCallback((assetId: string) => {
+    const asset = assets.find((candidate) => candidate.id === assetId);
+    if (!asset) return;
+    const image = new Image();
+    image.src = hologramUrl(asset);
+  }, [assets]);
+  const reducedMotion = useMemo(
+    () => typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+  const carousel = useHologramCarousel(assetIds, { preload, reducedMotion });
+  const { setPaused } = carousel;
+  const activeAsset = useMemo(
+    () => assets.find((asset) => asset.id === carousel.displayedId) ?? assets[0] ?? null,
+    [assets, carousel.displayedId],
+  );
 
   useEffect(() => {
-    if (!activeAsset || activeAsset.id === activeId) return;
-    setActiveId(activeAsset.id);
-  }, [activeAsset, activeId]);
+    setPaused("viewer", viewerOpen);
+  }, [setPaused, viewerOpen]);
 
   if (!activeAsset) return null;
 
-  const currentIndex = assets.findIndex((asset) => asset.id === activeAsset.id);
-  const selectRelativeScene = (offset: number) => {
-    const nextIndex = (currentIndex + offset + assets.length) % assets.length;
-    const nextAsset = assets[nextIndex];
-    if (nextAsset) setActiveId(nextAsset.id);
-  };
-
   return (
     <section className="recommended-scenes-hologram" data-testid="recommended-scenes-hologram" aria-label="Recommended scenes hologram gallery">
-      <div className="recommended-scenes-hologram__stage" id={`recommended-scene-${activeAsset.id}`}>
-        <HologramBeamCanvas />
-        <button
-          ref={(button) => buttonRef(activeAsset.id, button)}
-          className="recommended-scenes-hologram__projection"
-          type="button"
-          aria-label={`Open original scene ${activeAsset.displayName}`}
-          onClick={(event) => onOpen(activeAsset, event.currentTarget)}
-        >
-          <img className="recommended-scenes-hologram__scene" src={hologramSceneUrl(activeAsset.id)} alt="" decoding="async" />
-          <span className="recommended-scenes-hologram__scanlines" aria-hidden="true" />
-        </button>
-        <HologramParticlesCanvas />
-      </div>
+      <HologramStage
+        asset={activeAsset}
+        buttonRef={buttonRef}
+        imageUrl={hologramUrl(activeAsset)}
+        isTransitioning={carousel.isTransitioning}
+        onNext={carousel.next}
+        onOpen={onOpen}
+        onPauseFocus={(paused) => setPaused("focus", paused)}
+        onPauseHover={(paused) => setPaused("hover", paused)}
+        onPrevious={carousel.previous}
+      />
       <div className="recommended-scenes-hologram__details">
         <div>
           <p className="recommended-scenes-hologram__eyebrow">Projected scene</p>
@@ -68,7 +70,7 @@ export function RecommendedSceneHologram({ assets, buttonRef, onOpen }: Recommen
       </div>
       <div className="recommended-scenes-hologram__selector" role="tablist" aria-label="Recommended scene selection">
         {assets.map((asset) => {
-          const selected = asset.id === activeAsset.id;
+          const selected = asset.id === carousel.activeId;
           return (
             <button
               key={asset.id}
@@ -80,15 +82,19 @@ export function RecommendedSceneHologram({ assets, buttonRef, onOpen }: Recommen
               aria-controls={`recommended-scene-${asset.id}`}
               aria-label={`Show hologram scene ${asset.displayName}`}
               data-hologram-scene-option
-              onClick={() => setActiveId(asset.id)}
+              onBlur={() => setPaused("focus", false)}
+              onClick={() => carousel.select(asset.id)}
+              onFocus={() => setPaused("focus", true)}
+              onMouseEnter={() => setPaused("hover", true)}
+              onMouseLeave={() => setPaused("hover", false)}
               onKeyDown={(event) => {
                 if (event.key === "ArrowLeft") {
                   event.preventDefault();
-                  selectRelativeScene(-1);
+                  carousel.previous();
                 }
                 if (event.key === "ArrowRight") {
                   event.preventDefault();
-                  selectRelativeScene(1);
+                  carousel.next();
                 }
               }}
             >

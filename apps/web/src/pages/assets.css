@@ -851,6 +851,7 @@
   min-height: clamp(330px, 43vw, 610px);
   overflow: visible;
   isolation: isolate;
+  touch-action: pan-y;
 }
 
 .recommended-scenes-hologram__beam,
@@ -894,7 +895,53 @@
   height: min(80%, 520px);
   object-fit: contain;
   filter: saturate(0.78) brightness(1.04) contrast(1.1) drop-shadow(0 0 10px rgb(112 224 255 / 30%));
+  opacity: 1;
+  transition: opacity 160ms ease;
   user-select: none;
+}
+
+.recommended-scenes-hologram__scene.is-changing {
+  opacity: 0.2;
+}
+
+.recommended-scenes-hologram__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 6;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(181 237 255 / 20%);
+  border-radius: 50%;
+  background: rgb(11 26 36 / 28%);
+  box-shadow: 0 10px 28px rgb(0 8 18 / 24%);
+  color: rgb(218 248 255 / 88%);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  backdrop-filter: blur(4px) saturate(116%);
+}
+
+.recommended-scenes-hologram__nav.is-previous { left: clamp(4px, 1.2vw, 18px); }
+.recommended-scenes-hologram__nav.is-next { right: clamp(4px, 1.2vw, 18px); }
+
+.recommended-scenes-hologram__nav svg {
+  width: 20px;
+  height: 20px;
+}
+
+.recommended-scenes-hologram__nav:is(:hover, :focus-visible) {
+  border-color: rgb(181 237 255 / 54%);
+  background: rgb(52 121 145 / 30%);
+  box-shadow: 0 0 24px rgb(89 207 241 / 18%), 0 12px 30px rgb(0 8 18 / 28%);
+  outline: 0;
+  transform: translateY(-50%) scale(1.06);
+}
+
+.recommended-scenes-hologram__nav:focus-visible {
+  outline: 2px solid rgb(174 240 255 / 88%);
+  outline-offset: 3px;
 }
 
 .recommended-scenes-hologram__scanlines {
@@ -1035,6 +1082,13 @@
   .recommended-scenes-hologram__stage { min-height: 300px; }
   .recommended-scenes-hologram__details { align-items: start; flex-direction: column; gap: 8px; }
   .recommended-scenes-hologram__hint { max-width: none; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recommended-scenes-hologram__scene,
+  .recommended-scenes-hologram__nav {
+    transition: none;
+  }
 }
 
 .v2-asset-media {

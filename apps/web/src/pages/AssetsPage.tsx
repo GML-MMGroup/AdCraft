@@ -112,6 +112,7 @@ export function AssetsPage() {
                 else assetCardRefsRef.current.delete(assetId);
               }}
               onOpen={selectAsset}
+              viewerOpen={Boolean(selectedAsset)}
             />
           ) : (
             <AssetContactSheet
