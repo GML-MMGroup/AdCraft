@@ -175,6 +175,8 @@ class DurableNextActionExecutionService:
             "complete",
         }:
             lease_guard()
+            if journey_action.action == "wait_for_user":
+                self._journey.require_current_awaiting(envelope.workflow_id)
             if journey_action.action == "prepare_editing":
                 if self._editing_preparer is None:
                     raise V2PersistenceError(
@@ -237,18 +239,29 @@ class DurableNextActionExecutionService:
             )
         )
         lease_guard()
-        command = self._next_action.execute(
-            NextActionContextV1(
-                workflow_id=envelope.workflow_id,
-                conversation_id=envelope.conversation_id,
-                session_revision=session.revision,
-                objective=envelope.objective,
-                policy=policy,
-                shared_summary="",
-                response_locale=session.response_locale,
-            ),
-            turn_id=envelope.next_action_turn_id,
-        )
+        if journey_action is not None and journey_action.action == "invoke_capability":
+            assert journey_action.capability_id is not None
+            command = self._policy.validate_next_action(
+                NextActionCommandV1(
+                    action="invoke_capability",
+                    capability_id=journey_action.capability_id,
+                    objective=envelope.objective,
+                ),
+                policy,
+            )
+        else:
+            command = self._next_action.execute(
+                NextActionContextV1(
+                    workflow_id=envelope.workflow_id,
+                    conversation_id=envelope.conversation_id,
+                    session_revision=session.revision,
+                    objective=envelope.objective,
+                    policy=policy,
+                    shared_summary="",
+                    response_locale=session.response_locale,
+                ),
+                turn_id=envelope.next_action_turn_id,
+            )
         lease_guard()
         if command.command.action == "author_decision_bundle":
             if self._decision_bundles is None:

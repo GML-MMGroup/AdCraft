@@ -17,6 +17,7 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyPolicyResultV1,
 )
 from app.schemas.agent_canvas_guided_interactions import GuidanceAwaitingResumeProofV1
+from app.persistence.errors import V2PersistenceError
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
 from app.services.agent_canvas_production_journey import (
     GuidedProductionJourneyPolicyService,
@@ -87,6 +88,26 @@ class GuidedProductionJourneyService:
             },
         )
         return updated, result
+
+    def require_current_awaiting(self, workflow_id: str) -> None:
+        """Require typed waiting authority for the current Journey revision."""
+
+        session = self._conversations.get_guidance_session(workflow_id)
+        awaiting = session.awaiting
+        if (
+            awaiting is None
+            or awaiting.stage != session.journey.stage
+            or awaiting.stage_revision != session.journey.stage_revision
+        ):
+            raise V2PersistenceError(
+                "guidance_orphaned_stall",
+                "Guidance cannot wait without current typed awaiting authority.",
+                stage="guided_production_journey_service",
+                details={
+                    "journey_stage": session.journey.stage,
+                    "stage_revision": session.journey.stage_revision,
+                },
+            )
 
     def apply_evidence(
         self,
