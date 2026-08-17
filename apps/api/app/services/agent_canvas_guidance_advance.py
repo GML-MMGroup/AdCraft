@@ -24,9 +24,6 @@ from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepositor
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
-from app.persistence.agent_canvas_operation_envelope_repository import (
-    AgentCanvasOperationEnvelopeRepository,
-)
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
 from app.schemas.agent_canvas_conversation import ChatTurnAcceptedV2
@@ -38,9 +35,6 @@ from app.schemas.agent_canvas_guidance import (
 )
 from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 from app.services.chat_turn_retry import ChatTurnRetryService
-from app.services.agent_canvas_guided_action_lineage import (
-    GuidedActionExecutionLeafResolver,
-)
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 
 
@@ -96,67 +90,6 @@ class GuidanceAuthorityConsistencyValidator:
             )
 
 
-class GuidanceAdvanceTargetResolver:
-    """Resolve one current target without consulting timeline order."""
-
-    def __init__(
-        self,
-        conversations: AgentCanvasConversationRepository,
-        continuations: AgentCanvasContinuationOutboxRepository | None = None,
-    ) -> None:
-        self._conversations = conversations
-        self._lineage = (
-            GuidedActionExecutionLeafResolver(
-                conversations,
-                continuations,
-                AgentCanvasOperationEnvelopeRepository(conversations.database),
-            )
-            if continuations is not None
-            else None
-        )
-
-    def resolve(
-        self,
-        session: GuidedSessionStateV2,
-        requirements: RequirementLedgerRevisionV1,
-    ) -> GuidanceAdvanceTargetV1:
-        journey = session.journey
-        source_id = (
-            journey.active_action.action_id
-            if journey.active_action is not None
-            else f"stage:{journey.stage}:{journey.stage_revision}"
-        )
-        leaf = (
-            self._lineage.resolve(requirements.workflow_id, session)
-            if self._lineage is not None and journey.active_action is not None
-            else None
-        )
-        if leaf is not None and (
-            leaf.leaf_status in {"queued", "running"}
-            or leaf.continuation_status in {"queued", "leased", "retry_wait"}
-        ):
-            raise _not_available("Current journey work is already active.")
-        if leaf is not None and leaf.leaf_status == "failed":
-            raise V2PersistenceError(
-                "guidance_advance_blocked_by_failed_turn",
-                "Current guided work must be resolved before continuing.",
-                stage="guidance_advance_service",
-                details={
-                    "turn_id": leaf.leaf_turn_id,
-                    "error_code": leaf.error_code or "agent_operation_failed",
-                    "retryable": leaf.retryable,
-                },
-            )
-        return GuidanceAdvanceTargetV1(
-            source_kind="fresh_next_action",
-            source_id=source_id,
-            journey_stage=journey.stage,
-            journey_stage_revision=journey.stage_revision,
-            requirement_revision_id=requirements.revision_id,
-            guidance_session_revision=session.revision,
-        )
-
-
 class GuidanceAdvanceService:
     """Validate and durably submit one typed guidance control command."""
 
@@ -181,7 +114,6 @@ class GuidanceAdvanceService:
         self._events = events
         self._post_ready_gate = post_ready_gate
         self._authority = GuidanceAdvanceAuthoritySnapshotRepository(requirements)
-        self._resolver = GuidanceAdvanceTargetResolver(conversations, continuations)
         self._consistency = GuidanceAuthorityConsistencyValidator()
 
     def submit(

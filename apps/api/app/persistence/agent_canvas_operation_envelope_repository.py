@@ -21,6 +21,7 @@ from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationEnvelopeV1,
     ProposalPublicationEnvelopeV1,
 )
+from app.schemas.agent_canvas_continuation import ContinuationOperationV2
 
 
 OperationEnvelopeV1: TypeAlias = (
@@ -118,6 +119,30 @@ class AgentCanvasOperationEnvelopeRepository:
             )
         return _ENVELOPE_ADAPTER.validate_json(payload)
 
+    def validate_identity_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        envelope_id: str,
+        workflow_id: str,
+        operation: ContinuationOperationV2,
+        continuation_turn_id: str,
+    ) -> OperationEnvelopeV1:
+        """Validate one immutable envelope through the caller's transaction."""
+
+        envelope = self.get_in_transaction(connection, envelope_id)
+        expected_operation, expected_turn_id = _operation_identity(envelope)
+        if (
+            envelope.workflow_id != workflow_id
+            or expected_operation != operation
+            or expected_turn_id != continuation_turn_id
+        ):
+            raise _error(
+                "operation_envelope_identity_invalid",
+                "Operation envelope does not match its continuation identity.",
+            )
+        return envelope
+
 
 def _canonical_json(envelope: OperationEnvelopeV1) -> str:
     return json.dumps(
@@ -126,6 +151,16 @@ def _canonical_json(envelope: OperationEnvelopeV1) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def _operation_identity(
+    envelope: OperationEnvelopeV1,
+) -> tuple[ContinuationOperationV2, str]:
+    if isinstance(envelope, NextActionEnvelopeV1):
+        return "next_action", envelope.next_action_turn_id
+    if isinstance(envelope, CapabilityCommandEnvelopeV2):
+        return "capability_command", envelope.capability_turn_id
+    return "capability_materialization", envelope.action_turn_id
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

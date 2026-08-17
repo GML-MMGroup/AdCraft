@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.engine import Connection, RowMapping
 
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
+)
+from app.persistence.agent_canvas_operation_envelope_repository import (
+    AgentCanvasOperationEnvelopeRepository,
 )
 from app.persistence.errors import V2PersistenceError
 from app.persistence.models import (
@@ -31,6 +34,7 @@ from app.schemas.agent_canvas_guidance import (
     GuidanceAdvancePreconditionV1,
     GuidedActionExecutionLeafV1,
 )
+from app.schemas.agent_canvas_continuation import ContinuationOperationV2
 from app.schemas.agent_canvas_guided_checkpoint import GuidedCheckpointOriginV1
 
 
@@ -62,6 +66,7 @@ GUIDANCE_ADVANCE_STALE_COMPONENTS = (
 )
 
 _NONTERMINAL_CONTINUATION_STATUSES = {"queued", "leased", "retry_wait"}
+_CONTINUATION_OPERATION_ADAPTER = TypeAdapter(ContinuationOperationV2)
 
 
 class GuidanceAdvanceAuthoritySnapshotRepository:
@@ -69,6 +74,7 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
 
     def __init__(self, requirements: AgentCanvasRequirementRepository) -> None:
         self._requirements = requirements
+        self._envelopes = AgentCanvasOperationEnvelopeRepository(requirements.database)
 
     def read_in_transaction(
         self,
@@ -164,7 +170,13 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
             if str(row["status"]) in _NONTERMINAL_CONTINUATION_STATUSES
         )
         execution_leaf = (
-            _execution_leaf(connection, workflow_id, session, continuation_rows)
+            _execution_leaf(
+                connection,
+                workflow_id,
+                session,
+                continuation_rows,
+                envelopes=self._envelopes,
+            )
             if session is not None
             else None
         )
@@ -477,19 +489,29 @@ def _execution_leaf(
     workflow_id: str,
     session,
     continuation_rows: list[RowMapping],
+    *,
+    envelopes: AgentCanvasOperationEnvelopeRepository,
 ) -> GuidedActionExecutionLeafV1 | None:
     action = session.journey.active_action
     if action is None or not action.turn_id:
         return None
     current = _require_turn(connection, action.turn_id, workflow_id)
-    incoming = next(
-        (
-            row
-            for row in continuation_rows
-            if str(row["continuation_turn_id"]) == str(current["turn_id"])
-        ),
-        None,
-    )
+    incoming_rows = [
+        row
+        for row in continuation_rows
+        if str(row["continuation_turn_id"]) == str(current["turn_id"])
+    ]
+    if len(incoming_rows) > 1:
+        raise _lineage_error("Guided action execution lineage is ambiguous.")
+    incoming = incoming_rows[0] if incoming_rows else None
+    if incoming is not None:
+        _validate_delivery_envelope(
+            connection,
+            workflow_id=workflow_id,
+            turn_id=str(current["turn_id"]),
+            delivery=incoming,
+            envelopes=envelopes,
+        )
     root_turn_id = str(current["turn_id"])
     visited: set[str] = set()
     for _ in range(32):
@@ -524,6 +546,13 @@ def _execution_leaf(
         if len(matching) != 1:
             raise _lineage_error("Typed retry lineage is missing its Continuation.")
         incoming = matching[0]
+        _validate_delivery_envelope(
+            connection,
+            workflow_id=workflow_id,
+            turn_id=child_id,
+            delivery=incoming,
+            envelopes=envelopes,
+        )
     else:
         raise _lineage_error("Guided action execution lineage exceeds its bound.")
     return GuidedActionExecutionLeafV1(
@@ -540,6 +569,35 @@ def _execution_leaf(
         error_code=(str(current["error_code"]) if current["error_code"] else None),
         retryable=bool(current["retryable"]),
     )
+
+
+def _validate_delivery_envelope(
+    connection: Connection,
+    *,
+    workflow_id: str,
+    turn_id: str,
+    delivery: RowMapping,
+    envelopes: AgentCanvasOperationEnvelopeRepository,
+) -> None:
+    try:
+        payload = json.loads(str(delivery["payload_json"]))
+        if (
+            not isinstance(payload, dict)
+            or set(payload) != {"schema_version", "envelope_id"}
+            or payload.get("schema_version") != "1"
+            or not str(payload.get("envelope_id") or "").strip()
+        ):
+            raise ValueError("invalid continuation envelope reference")
+        operation = _CONTINUATION_OPERATION_ADAPTER.validate_python(delivery["operation"])
+        envelopes.validate_identity_in_transaction(
+            connection,
+            envelope_id=str(payload["envelope_id"]),
+            workflow_id=workflow_id,
+            operation=operation,
+            continuation_turn_id=turn_id,
+        )
+    except (TypeError, ValueError, ValidationError, V2PersistenceError) as error:
+        raise _lineage_error("Typed operation envelope is missing or invalid.") from error
 
 
 def _post_ready_owner(

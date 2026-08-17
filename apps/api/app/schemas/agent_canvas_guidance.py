@@ -12,6 +12,10 @@ from app.schemas.agent_canvas_production_journey import (
     JourneyStageV1,
 )
 from app.schemas.agent_canvas_creative_session import GuidedSessionStateV2
+from app.schemas.agent_canvas_continuation import (
+    ContinuationOperationV2,
+    RetryableContinuationOperationV1,
+)
 from app.schemas.agent_canvas_requirements import RequirementLedgerRevisionV1
 
 
@@ -38,7 +42,7 @@ class GuidedActionExecutionLeafV1(_PrivateGuidanceAuthorityModel):
     leaf_status: Literal["queued", "running", "completed", "failed"]
     continuation_id: str | None = Field(default=None, min_length=1, max_length=160)
     continuation_status: str | None = Field(default=None, min_length=1, max_length=64)
-    operation: Literal["next_action", "capability_command"] | None = None
+    operation: ContinuationOperationV2 | None = None
     retry_attempt_no: int = Field(ge=1)
     error_code: str | None = Field(default=None, min_length=1, max_length=160)
     retryable: bool = False
@@ -57,7 +61,7 @@ class ContinuationTurnRetrySnapshotV1(_PrivateGuidanceAuthorityModel):
     journey_stage_revision: int = Field(ge=1)
     logical_action_id: str = Field(min_length=1, max_length=160)
     root_turn_id: str = Field(min_length=1, max_length=160)
-    operation: Literal["next_action", "capability_command"]
+    operation: RetryableContinuationOperationV1
     envelope_id: str = Field(min_length=1, max_length=160)
     envelope_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     requirement_revision_id: str = Field(min_length=1, max_length=160)

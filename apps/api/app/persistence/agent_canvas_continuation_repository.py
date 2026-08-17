@@ -20,6 +20,7 @@ from app.persistence.models import (
     AgentCanvasOperationEnvelopeRow,
 )
 from app.schemas.agent_canvas_capabilities import CapabilityIdV1
+from app.schemas.agent_canvas_continuation import CONTINUATION_OPERATIONS_V2
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -97,11 +98,7 @@ class AgentCanvasContinuationOutboxRepository:
     ) -> ContinuationDeliveryV2:
         if max_attempts < 1:
             raise _error("continuation_attempts_invalid", "Maximum attempts must be positive.")
-        if operation not in {
-            "next_action",
-            "capability_command",
-            "capability_materialization",
-        } or set(payload) != {
+        if operation not in CONTINUATION_OPERATIONS_V2 or set(payload) != {
             "schema_version",
             "envelope_id",
         }:

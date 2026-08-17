@@ -12,6 +12,7 @@ from app.schemas.agent_canvas_capability_identity import (
     CapabilityIdV1,
 )
 from app.schemas.agent_canvas_commands import AgentPlacementHintV2
+from app.schemas.agent_canvas_continuation import ContinuationOperationV2
 from app.schemas.agent_canvas_creative_session import (
     CreationModeDecisionV2,
     CreativeAuthorityV2,
@@ -62,11 +63,7 @@ class ContinuationDeliveryV2(_ConversationModel):
     conversation_id: str
     source_turn_id: str
     continuation_turn_id: str
-    operation: Literal[
-        "next_action",
-        "capability_command",
-        "capability_materialization",
-    ]
+    operation: ContinuationOperationV2
     envelope_id: str = Field(exclude=True)
     payload_digest: str
     status: Literal[
