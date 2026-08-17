@@ -50,6 +50,24 @@ describe("theme styles", () => {
     expect(source("styles/base.css")).toContain("color-scheme: dark");
   });
 
+  test("uses the approved semantic palette across the fixed dark theme", () => {
+    const theme = declarationBlock(source("styles/theme.css"), ":root");
+    const base = declarationBlock(source("styles/base.css"), ":root");
+    const typographyLab = declarationBlock(
+      source("pages/home-typography-lab.css"),
+      ".home-typography-lab--dark",
+    );
+
+    expect(theme).toContain("--success: #9CD38E");
+    expect(theme).toContain("--warning: #E1A750");
+    expect(theme).toContain("--error: #CA6F6F");
+    for (const block of [base, typographyLab]) {
+      expect(block).toContain("--butter: #E1A750");
+      expect(block).toContain("--rose: #CA6F6F");
+    }
+    expect(typographyLab).toContain("--error: #CA6F6F");
+  });
+
   test("provides fixed dark coverage for every primary product surface", () => {
     for (const path of [
       "pages/home.css",

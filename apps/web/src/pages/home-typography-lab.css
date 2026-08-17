@@ -555,13 +555,13 @@
   --brand-hover: #af9af6;
   --brand-subtle: #241e39;
   --focus-ring: #b6a4ff;
-  --error: #eb788c;
+  --error: #CA6F6F;
   --media-overlay: rgba(8, 9, 13, 0.72);
   --mist-blue: var(--page-bg);
   --mauve: var(--brand);
-  --butter: #e4bc62;
+  --butter: #E1A750;
   --iris: var(--brand);
-  --rose: #eb788c;
+  --rose: #CA6F6F;
   --ink: var(--text-primary);
   --muted: var(--text-secondary);
   --surface: var(--surface-card);
