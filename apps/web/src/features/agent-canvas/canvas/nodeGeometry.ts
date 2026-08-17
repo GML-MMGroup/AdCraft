@@ -15,9 +15,12 @@ export const DEFAULT_AGENT_CANVAS_NODE_SIZE: AgentCanvasNodeSize = {
   height: 184,
 };
 
+export const SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT = 500;
+export const SCRIPT_AGENT_CANVAS_CONTENT_VERTICAL_INSET = 70;
+
 export const SCRIPT_AGENT_CANVAS_NODE_SIZE: AgentCanvasNodeSize = {
   width: 248,
-  height: 500,
+  height: DEFAULT_AGENT_CANVAS_NODE_SIZE.height,
 };
 
 export const UNKNOWN_IMAGE_NODE_SIZE: AgentCanvasNodeSize = {
@@ -71,10 +74,29 @@ export function agentCanvasNodeSize(
   };
 }
 
+export function scriptNodeHeightForContent(contentHeight: number): number {
+  const safeContentHeight = Number.isFinite(contentHeight)
+    ? Math.max(0, contentHeight)
+    : 0;
+  return Math.min(
+    SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT,
+    Math.max(
+      DEFAULT_AGENT_CANVAS_NODE_SIZE.height,
+      Math.ceil(safeContentHeight + SCRIPT_AGENT_CANVAS_CONTENT_VERTICAL_INSET),
+    ),
+  );
+}
+
 export function agentCanvasNodePlacementSize(
   nodeType: CanvasNodeTypeV2,
   dimensions?: AgentCanvasMediaDimensions | null,
 ): AgentCanvasNodeSize {
+  if (nodeType === "script") {
+    return {
+      width: SCRIPT_AGENT_CANVAS_NODE_SIZE.width,
+      height: SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT,
+    };
+  }
   if (nodeType === "image" && !validAgentCanvasMediaDimensions(dimensions)) {
     return UNKNOWN_IMAGE_NODE_SIZE;
   }

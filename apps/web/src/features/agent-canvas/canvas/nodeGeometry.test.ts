@@ -1,14 +1,33 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_AGENT_CANVAS_NODE_SIZE,
+  SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT,
   UNKNOWN_IMAGE_NODE_SIZE,
   agentCanvasNodePlacementSize,
   agentCanvasNodeSize,
+  scriptNodeHeightForContent,
 } from "./nodeGeometry.ts";
 
 describe("agentCanvasNodeSize", () => {
-  it("uses a narrow, tall scrollable canvas card for Script output", () => {
-    expect(agentCanvasNodeSize("script")).toEqual({ width: 248, height: 500 });
+  it("starts Script cards at the same height as a newly created Text card", () => {
+    expect(agentCanvasNodeSize("script")).toEqual({
+      width: 248,
+      height: DEFAULT_AGENT_CANVAS_NODE_SIZE.height,
+    });
+  });
+
+  it("grows Script cards with content and caps them at the scrollable maximum", () => {
+    expect(scriptNodeHeightForContent(40)).toBe(DEFAULT_AGENT_CANVAS_NODE_SIZE.height);
+    expect(scriptNodeHeightForContent(260)).toBe(330);
+    expect(scriptNodeHeightForContent(900)).toBe(SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT);
+  });
+
+  it("reserves the maximum Script footprint when placing nearby nodes", () => {
+    expect(agentCanvasNodePlacementSize("script")).toEqual({
+      width: 248,
+      height: SCRIPT_AGENT_CANVAS_NODE_MAX_HEIGHT,
+    });
   });
 
   it("fits common image ratios into a clear bounded canvas area without changing their ratio", () => {
