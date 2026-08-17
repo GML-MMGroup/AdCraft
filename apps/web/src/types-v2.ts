@@ -1899,6 +1899,7 @@ export interface StoryboardNarrativeSegmentV2 {
   start_state: string;
   end_state: string;
   continuity_from_previous: string | null;
+  terminal_policy: "continue" | "close" | null;
 }
 
 export interface StoryboardPlanRowV2 {
@@ -3582,7 +3583,8 @@ export interface AgentCanvasChatTurnV2 {
     | "command_action"
     | "guided_action"
     | "capability"
-    | "next_action";
+    | "next_action"
+    | "guidance_advance";
   request: Record<string, unknown>;
   error_code: string | null;
   error_message: string | null;

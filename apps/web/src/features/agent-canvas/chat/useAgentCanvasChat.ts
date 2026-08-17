@@ -573,6 +573,7 @@ export function useAgentCanvasChat({
         || event.event_type.startsWith("proposal_materialization_")
         || event.event_type.startsWith("agent_operation_")
         || event.event_type === "chat_turn_retry_accepted"
+        || event.event_type === "guidance_advance_accepted"
         || event.event_type === "journey_stage_recovered"
       ) {
         const turnId = event.turn_id

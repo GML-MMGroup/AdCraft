@@ -2603,6 +2603,7 @@ describe("Agent Canvas normalizers", () => {
           start_state: "Closed frame.",
           end_state: "Product hero frame.",
           continuity_from_previous: null,
+          terminal_policy: "close",
         }],
         rows: [{
           shot_index: 1,
@@ -2635,6 +2636,7 @@ describe("Agent Canvas normalizers", () => {
     expect(anchorRegistry.content).toMatchObject({ anchors: [{ alias: "HERO" }] });
     expect(storyboardPlan.content).toMatchObject({
       global_parameters: { aspect_ratio: "16:9", segment_count: 1 },
+      segments: [{ terminal_policy: "close" }],
       materialized_panel_cursor: 1,
       segment_materializations: [{
         sequence_id: "sequence-1",
@@ -2649,6 +2651,31 @@ describe("Agent Canvas normalizers", () => {
       items: [anchorRegistry, storyboardPlan],
       next_cursor: "cursor-2",
     })).toMatchObject({ next_cursor: "cursor-2" });
+  });
+
+  it("accepts guidance advance command turns returned by the canonical backend", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-guidance-command-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "guidance_advance",
+      request: { source_id: "stage:foundation_design:4" },
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: 8,
+      continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 1,
+      retryable: false,
+      operation_stage: null,
+      operation_failure: null,
+      created_at: "2026-08-17T10:00:00Z",
+      updated_at: "2026-08-17T10:00:01Z",
+    });
+
+    expect(turn.turn_kind).toBe("guidance_advance");
   });
 
   it("restores Agent Document references from the persisted chat timeline", () => {

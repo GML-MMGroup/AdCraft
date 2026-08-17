@@ -15,6 +15,10 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
     "The current production step is still in progress.",
   journey_evidence_invalid:
     "The production state could not be verified. Refresh and try again.",
+  requirement_ledger_not_found:
+    "This older project is missing its Requirement Ledger. Its conversation cannot be restored until the project data is repaired.",
+  requirement_persistence_failed:
+    "This project's Requirement Ledger does not match its saved snapshot. Backend data repair is required before the conversation can be restored.",
 };
 
 export function agentCanvasChatErrorMessage(

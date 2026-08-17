@@ -1489,6 +1489,7 @@ function normalizeStoryboardNarrativeSegmentV2(
     "start_state",
     "end_state",
     "continuity_from_previous",
+    "terminal_policy",
   ], path);
   const startSeconds = boundedNumber(record.start_seconds, `${path}.start_seconds`, 0, 3600);
   const endSeconds = boundedNumber(record.end_seconds, `${path}.end_seconds`, 0, 3600, true);
@@ -1505,6 +1506,13 @@ function normalizeStoryboardNarrativeSegmentV2(
       record.continuity_from_previous,
       `${path}.continuity_from_previous`,
     ),
+    terminal_policy: record.terminal_policy === undefined || record.terminal_policy === null
+      ? null
+      : expectLiteral(
+        record.terminal_policy,
+        new Set<NonNullable<StoryboardNarrativeSegmentV2["terminal_policy"]>>(["continue", "close"]),
+        `${path}.terminal_policy`,
+      ),
   };
 }
 
@@ -4998,6 +5006,7 @@ export function normalizeAgentCanvasChatTurnV2(
     && turnKind !== "guided_action"
     && turnKind !== "capability"
     && turnKind !== "next_action"
+    && turnKind !== "guidance_advance"
   ) {
     fail(`${path}.turn_kind`, "invalid chat turn kind");
   }

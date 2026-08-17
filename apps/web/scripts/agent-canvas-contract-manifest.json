@@ -1,0 +1,54 @@
+{
+  "schemas": {
+    "StoryboardNarrativeSegmentV2": {
+      "properties": [
+        "sequence_id",
+        "order",
+        "start_seconds",
+        "end_seconds",
+        "narrative_goal",
+        "start_state",
+        "end_state",
+        "continuity_from_previous",
+        "terminal_policy"
+      ],
+      "enums": {
+        "terminal_policy": ["continue", "close"]
+      }
+    },
+    "ChatTurnV2": {
+      "properties": [
+        "turn_id",
+        "workflow_id",
+        "conversation_id",
+        "status",
+        "turn_kind",
+        "request",
+        "creation_mode",
+        "guidance_session_revision",
+        "continuation",
+        "retry_of_turn_id",
+        "retry_attempt_no",
+        "retryable",
+        "operation_stage",
+        "operation_failure",
+        "error_code",
+        "error_message",
+        "created_at",
+        "updated_at"
+      ],
+      "enums": {
+        "status": ["queued", "running", "completed", "failed"],
+        "turn_kind": [
+          "message",
+          "proposal_action",
+          "command_action",
+          "guided_action",
+          "capability",
+          "next_action",
+          "guidance_advance"
+        ]
+      }
+    }
+  }
+}
