@@ -41,6 +41,11 @@ import type {
   CanvasConnectionRoleRuleV2,
   CanvasCreativeRoleV2,
   CanvasExecutionStatusV2,
+  CanvasPostReadyCheckpointStatusV2,
+  CanvasPostReadyCheckpointV2,
+  CanvasPostReadyEffectStatusV2,
+  CanvasPostReadyEffectSummaryV2,
+  CanvasPostReadyEffectTypeV2,
   CanvasMutationResponseV2,
   CanvasLayoutPatchResponseV2,
   CanvasNodeErrorV2,
@@ -218,6 +223,22 @@ const CANVAS_EXECUTION_STATUSES = new Set<CanvasExecutionStatusV2>([
   "partial_completed",
   "failed",
   "cancelled",
+]);
+const CANVAS_POST_READY_CHECKPOINT_STATUSES = new Set<CanvasPostReadyCheckpointStatusV2>([
+  "pending",
+  "completed",
+  "failed",
+]);
+const CANVAS_POST_READY_EFFECT_TYPES = new Set<CanvasPostReadyEffectTypeV2>([
+  "persist_script_document",
+  "persist_text_document",
+  "advance_storyboard_progression",
+]);
+const CANVAS_POST_READY_EFFECT_STATUSES = new Set<CanvasPostReadyEffectStatusV2>([
+  "queued",
+  "running",
+  "completed",
+  "failed",
 ]);
 const NODE_RUNTIME_PHASES = new Set<NodeRuntimePhaseV2>([
   "waiting_for_input",
@@ -2213,6 +2234,80 @@ export function normalizeCanvasRuntimeSnapshotV2(value: unknown, path = "runtime
     ready_node_ids: expectStringArray(record.ready_node_ids, `${path}.ready_node_ids`),
     failed_node_ids: expectStringArray(record.failed_node_ids, `${path}.failed_node_ids`),
     events_cursor: expectNonNegativeInteger(record.events_cursor, `${path}.events_cursor`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+function normalizeCanvasPostReadyEffectSummaryV2(
+  value: unknown,
+  path: string,
+): CanvasPostReadyEffectSummaryV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "effect_id",
+    "effect_type",
+    "node_id",
+    "status",
+    "attempt_no",
+    "error",
+    "updated_at",
+  ], path);
+  return {
+    effect_id: expectNonEmptyString(record.effect_id, `${path}.effect_id`),
+    effect_type: expectLiteral(record.effect_type, CANVAS_POST_READY_EFFECT_TYPES, `${path}.effect_type`),
+    node_id: expectNonEmptyString(record.node_id, `${path}.node_id`),
+    status: expectLiteral(record.status, CANVAS_POST_READY_EFFECT_STATUSES, `${path}.status`),
+    attempt_no: expectNonNegativeInteger(record.attempt_no, `${path}.attempt_no`),
+    error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
+    updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
+  };
+}
+
+export function normalizeCanvasPostReadyCheckpointV2(
+  value: unknown,
+  path = "postReadyCheckpoint",
+): CanvasPostReadyCheckpointV2 {
+  const record = expectRecord(value, path);
+  forbidUnknownFields(record, [
+    "checkpoint_id",
+    "workflow_id",
+    "execution_id",
+    "execution_status",
+    "status",
+    "counts",
+    "effects",
+    "error",
+    "updated_at",
+  ], path);
+  const counts = expectRecord(record.counts, `${path}.counts`);
+  forbidUnknownFields(counts, ["total", "queued", "running", "completed", "failed"], `${path}.counts`);
+  const normalizedCounts = {
+    total: expectNonNegativeInteger(counts.total, `${path}.counts.total`),
+    queued: expectNonNegativeInteger(counts.queued, `${path}.counts.queued`),
+    running: expectNonNegativeInteger(counts.running, `${path}.counts.running`),
+    completed: expectNonNegativeInteger(counts.completed, `${path}.counts.completed`),
+    failed: expectNonNegativeInteger(counts.failed, `${path}.counts.failed`),
+  };
+  if (
+    normalizedCounts.queued
+    + normalizedCounts.running
+    + normalizedCounts.completed
+    + normalizedCounts.failed
+    !== normalizedCounts.total
+  ) {
+    fail(`${path}.counts`, "effect counts must sum to total");
+  }
+  return {
+    checkpoint_id: expectNonEmptyString(record.checkpoint_id, `${path}.checkpoint_id`),
+    workflow_id: expectNonEmptyString(record.workflow_id, `${path}.workflow_id`),
+    execution_id: expectNonEmptyString(record.execution_id, `${path}.execution_id`),
+    execution_status: expectLiteral(record.execution_status, CANVAS_EXECUTION_STATUSES, `${path}.execution_status`),
+    status: expectLiteral(record.status, CANVAS_POST_READY_CHECKPOINT_STATUSES, `${path}.status`),
+    counts: normalizedCounts,
+    effects: expectArray(record.effects, `${path}.effects`).map((effect, index) => (
+      normalizeCanvasPostReadyEffectSummaryV2(effect, `${path}.effects[${index}]`)
+    )),
+    error: record.error === null ? null : normalizeCanvasNodeErrorV2(record.error, `${path}.error`),
     updated_at: expectIsoDateTimeString(record.updated_at, `${path}.updated_at`),
   };
 }

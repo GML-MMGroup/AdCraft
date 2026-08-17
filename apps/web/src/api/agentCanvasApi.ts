@@ -38,6 +38,7 @@ export const agentCanvasApi = {
   actOnAgentCanvasDecisionBundle: v2Api.actOnAgentCanvasDecisionBundle,
   agentCanvasChatTimeline: v2Api.agentCanvasChatTimeline,
   advanceAgentCanvasGuidance: v2Api.advanceAgentCanvasGuidance,
+  agentCanvasPostReadyCheckpoint: v2Api.agentCanvasPostReadyCheckpoint,
   listAgentCanvasDocuments: v2Api.listAgentCanvasDocuments,
   agentCanvasDocument: v2Api.agentCanvasDocument,
   submitAgentCanvasGuidedInteraction: v2Api.submitAgentCanvasGuidedInteraction,

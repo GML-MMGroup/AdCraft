@@ -14,6 +14,7 @@ import {
   normalizeCanvasBindingV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasPostReadyCheckpointV2,
   normalizeCanvasRuntimeEventV2,
   normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
@@ -1263,6 +1264,42 @@ describe("Agent Canvas normalizers", () => {
     expect(event).toMatchObject({
       transition_key: "node-run:node-video-1:inputs-resolved:1",
       attempt: 1,
+    });
+  });
+
+  it("normalizes a post-ready checkpoint without accepting unknown fields", () => {
+    const checkpoint = normalizeCanvasPostReadyCheckpointV2({
+      checkpoint_id: "checkpoint-1",
+      workflow_id: "workflow-1",
+      execution_id: "execution-1",
+      execution_status: "waiting",
+      status: "pending",
+      counts: {
+        total: 2,
+        queued: 1,
+        running: 1,
+        completed: 0,
+        failed: 0,
+      },
+      effects: [{
+        effect_id: "effect-1",
+        effect_type: "advance_storyboard_progression",
+        node_id: "node-script-1",
+        status: "running",
+        attempt_no: 1,
+        error: null,
+        updated_at: "2026-08-17T10:00:00Z",
+      }],
+      error: null,
+      updated_at: "2026-08-17T10:00:00Z",
+    });
+
+    expect(checkpoint).toMatchObject({
+      checkpoint_id: "checkpoint-1",
+      status: "pending",
+      execution_status: "waiting",
+      counts: { total: 2, running: 1 },
+      effects: [{ effect_type: "advance_storyboard_progression", status: "running" }],
     });
   });
 

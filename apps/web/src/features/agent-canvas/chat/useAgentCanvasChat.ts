@@ -15,6 +15,7 @@ import type {
   AgentCanvasChatTurnV2,
   AgentCanvasContinuationV2,
   AgentActionReceiptV2,
+  CanvasPostReadyCheckpointV2,
   CanvasRuntimeEventV2,
   ChatCapabilityActivityV2,
   ChatMessageV2,
@@ -48,6 +49,19 @@ type SubmitDraft = {
   idempotencyKey?: string;
 };
 
+type PendingPostReadyBarrier = {
+  checkpointId: string | null;
+  executionId: string;
+  precondition: GuidanceAdvancePreconditionV1;
+  idempotencyKey: string;
+  retryAfterMs: number;
+};
+
+type GuidanceAdvanceAttemptOptions = {
+  idempotencyKey?: string;
+  allowAuthorityReplay?: boolean;
+};
+
 const PROPOSAL_ACTION_ERROR_CODES = new Set([
   "proposal_reference_unavailable",
   "proposal_snapshot_unavailable",
@@ -68,6 +82,36 @@ function chatRequestErrorMessage(error: unknown, fallback: string): string {
     return agentCanvasChatErrorMessage(error.code, error.message);
   }
   return error instanceof Error ? error.message : fallback;
+}
+
+function postReadyRetryAfterMs(details: Record<string, unknown>): number {
+  const seconds = details.retry_after_seconds;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return 1_000;
+  return Math.max(250, Math.min(5_000, Math.round(seconds * 1_000)));
+}
+
+function pendingPostReadyBarrier(
+  error: { details: Record<string, unknown> },
+  precondition: GuidanceAdvancePreconditionV1,
+  idempotencyKey: string,
+): PendingPostReadyBarrier | null {
+  const executionId = error.details.execution_id;
+  if (typeof executionId !== "string" || !executionId.trim()) return null;
+  const checkpointId = error.details.checkpoint_id;
+  return {
+    checkpointId: typeof checkpointId === "string" && checkpointId.trim() ? checkpointId : null,
+    executionId,
+    precondition,
+    idempotencyKey,
+    retryAfterMs: postReadyRetryAfterMs(error.details),
+  };
+}
+
+function postReadyFailureMessage(checkpoint: CanvasPostReadyCheckpointV2): string {
+  const failure = checkpoint.error ?? checkpoint.effects.find((effect) => effect.error)?.error;
+  return failure
+    ? agentCanvasChatErrorMessage(failure.code, failure.message)
+    : "post_ready_progression_failed: The current production step could not be prepared.";
 }
 
 function handleProposalActionError(
@@ -151,6 +195,9 @@ export function useAgentCanvasChat({
   const [actingGuidedActionId, setActingGuidedActionId] = useState<string | null>(null);
   const [actingInteractionId, setActingInteractionId] = useState<string | null>(null);
   const [advancingGuidance, setAdvancingGuidance] = useState(false);
+  const [postReadyBarrier, setPostReadyBarrier] = useState<PendingPostReadyBarrier | null>(null);
+  const [postReadyCheckpoint, setPostReadyCheckpoint] = useState<CanvasPostReadyCheckpointV2 | null>(null);
+  const [postReadyPollRevision, setPostReadyPollRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [proposalIssues, setProposalIssues] = useState<Record<string, string>>({});
@@ -165,6 +212,7 @@ export function useAgentCanvasChat({
   const presentationItemsByKeyRef = useRef(new Map<string, ChatTimelinePresentationViewItemV2>());
   const submittedGuidanceAuthorityDigestsRef = useRef(new Set<string>());
   const guidanceAdvanceInFlightRef = useRef<string | null>(null);
+  const postReadyBarrierRef = useRef<PendingPostReadyBarrier | null>(null);
   const guidanceAdvanceRebaseRef = useRef<{
     stalePrecondition: GuidanceAdvancePreconditionV1;
     replacementAttempted: boolean;
@@ -470,6 +518,9 @@ export function useAgentCanvasChat({
     setActingGuidedActionId(null);
     setActingInteractionId(null);
     setAdvancingGuidance(false);
+    setPostReadyBarrier(null);
+    setPostReadyCheckpoint(null);
+    setPostReadyPollRevision(0);
     pendingActionTurnIdsRef.current.clear();
     pendingCommandPlanIdsRef.current.clear();
     expectedReceiptIdsRef.current.clear();
@@ -478,6 +529,7 @@ export function useAgentCanvasChat({
     presentationItemsByKeyRef.current.clear();
     submittedGuidanceAuthorityDigestsRef.current.clear();
     guidanceAdvanceInFlightRef.current = null;
+    postReadyBarrierRef.current = null;
     guidanceAdvanceRebaseRef.current = null;
     setError(null);
     setNotice(null);
@@ -538,10 +590,16 @@ export function useAgentCanvasChat({
   const submitGuidanceAdvance = useCallback(async (
     precondition: GuidanceAdvancePreconditionV1,
     isReplacement: boolean,
+    options: GuidanceAdvanceAttemptOptions = {},
   ) => {
     if (!workflowId || guidanceAdvanceInFlightRef.current) return;
-    if (submittedGuidanceAuthorityDigestsRef.current.has(precondition.authority_digest)) return;
+    if (
+      submittedGuidanceAuthorityDigestsRef.current.has(precondition.authority_digest)
+      && !options.allowAuthorityReplay
+    ) return;
     const workflowGeneration = workflowGenerationRef.current;
+    const idempotencyKey = options.idempotencyKey
+      ?? guidanceAdvanceIdempotencyKey(workflowId, precondition.authority_digest);
     submittedGuidanceAuthorityDigestsRef.current.add(precondition.authority_digest);
     guidanceAdvanceInFlightRef.current = precondition.authority_digest;
     setAdvancingGuidance(true);
@@ -550,7 +608,7 @@ export function useAgentCanvasChat({
       const accepted = await agentCanvasApi.advanceAgentCanvasGuidance(
         workflowId,
         { precondition },
-        guidanceAdvanceIdempotencyKey(workflowId, precondition.authority_digest),
+        idempotencyKey,
       );
       if (workflowGeneration !== workflowGenerationRef.current) return;
       guidanceAdvanceRebaseRef.current = null;
@@ -558,6 +616,23 @@ export function useAgentCanvasChat({
       void refresh();
     } catch (advanceError) {
       if (workflowGeneration !== workflowGenerationRef.current) return;
+      if (isV2ApiError(advanceError) && advanceError.code === "guidance_post_ready_pending") {
+        const barrier = pendingPostReadyBarrier(advanceError, precondition, idempotencyKey);
+        if (!barrier) {
+          setError(agentCanvasChatErrorMessage(
+            "post_ready_checkpoint_unavailable",
+            advanceError.message,
+          ));
+          void refresh();
+          void onWorkflowRefresh?.();
+          return;
+        }
+        postReadyBarrierRef.current = barrier;
+        setPostReadyCheckpoint(null);
+        setPostReadyBarrier(barrier);
+        setNotice("Preparing the current production step before continuing.");
+        return;
+      }
       if (isV2ApiError(advanceError) && advanceError.code === "guidance_advance_stale") {
         if (isReplacement) {
           guidanceAdvanceRebaseRef.current = null;
@@ -579,7 +654,94 @@ export function useAgentCanvasChat({
         setAdvancingGuidance(false);
       }
     }
-  }, [refresh, trackAcceptedTurn, workflowId]);
+  }, [onWorkflowRefresh, refresh, trackAcceptedTurn, workflowId]);
+
+  useEffect(() => {
+    if (!workflowId || !postReadyBarrier) return;
+    let disposed = false;
+    let timer: number | null = null;
+    const isCurrentBarrier = () => postReadyBarrierRef.current === postReadyBarrier;
+    const clearBarrier = () => {
+      if (!isCurrentBarrier()) return;
+      postReadyBarrierRef.current = null;
+      setPostReadyBarrier(null);
+    };
+    const scheduleNextPoll = () => {
+      timer = window.setTimeout(() => {
+        if (!disposed && isCurrentBarrier()) {
+          setPostReadyPollRevision((revision) => revision + 1);
+        }
+      }, postReadyBarrier.retryAfterMs);
+    };
+    const poll = async () => {
+      try {
+        const checkpoint = await agentCanvasApi.agentCanvasPostReadyCheckpoint(
+          workflowId,
+          postReadyBarrier.executionId,
+        );
+        if (disposed || !isCurrentBarrier()) return;
+        if (
+          checkpoint.workflow_id !== workflowId
+          || checkpoint.execution_id !== postReadyBarrier.executionId
+        ) {
+          clearBarrier();
+          setError("post_ready_checkpoint_unavailable: The production checkpoint no longer matches this workflow.");
+          void refresh();
+          void onWorkflowRefresh?.();
+          return;
+        }
+        setPostReadyCheckpoint(checkpoint);
+        if (checkpoint.status === "pending") {
+          scheduleNextPoll();
+          return;
+        }
+        clearBarrier();
+        if (checkpoint.status === "failed") {
+          setError(postReadyFailureMessage(checkpoint));
+          return;
+        }
+        setNotice("Production work is ready. Continuing the guided step.");
+        void submitGuidanceAdvance(postReadyBarrier.precondition, false, {
+          idempotencyKey: postReadyBarrier.idempotencyKey,
+          allowAuthorityReplay: true,
+        });
+      } catch (checkpointError) {
+        if (disposed || !isCurrentBarrier()) return;
+        if (isV2ApiError(checkpointError) && checkpointError.code === "post_ready_checkpoint_unavailable") {
+          clearBarrier();
+          setError(chatRequestErrorMessage(
+            checkpointError,
+            "The production checkpoint could not be loaded.",
+          ));
+          void refresh();
+          void onWorkflowRefresh?.();
+          return;
+        }
+        if (isV2ApiError(checkpointError)) {
+          clearBarrier();
+          setError(chatRequestErrorMessage(
+            checkpointError,
+            "The production checkpoint could not be loaded.",
+          ));
+          return;
+        }
+        setNotice("Waiting for the current production step to settle.");
+        scheduleNextPoll();
+      }
+    };
+    void poll();
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    onWorkflowRefresh,
+    postReadyBarrier,
+    postReadyPollRevision,
+    refresh,
+    submitGuidanceAdvance,
+    workflowId,
+  ]);
 
   useEffect(() => {
     const rebase = guidanceAdvanceRebaseRef.current;
@@ -1034,7 +1196,8 @@ export function useAgentCanvasChat({
       retryableFailedTurn,
       loading,
       sending,
-      agentWorking: sending || advancingGuidance || pendingAgentTurnIds.length > 0,
+      agentWorking: sending || advancingGuidance || Boolean(postReadyBarrier) || pendingAgentTurnIds.length > 0,
+      postReadyCheckpoint,
       agentWaitingForModel,
       actingProposalId,
       actingDecisionBundleId,
