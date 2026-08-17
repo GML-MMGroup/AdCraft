@@ -22,6 +22,7 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain('className="agent-canvas-board"');
     expect(source).toContain('onContextMenu={(event) => event.preventDefault()}');
     expect(source).toContain("onPaneContextMenu={(event) => {");
+    expect(source).toContain("onRelocate={openCanvasContextMenu}");
   });
 
   it("extends only the Workflow bottom inset without widening the canvas shell", () => {

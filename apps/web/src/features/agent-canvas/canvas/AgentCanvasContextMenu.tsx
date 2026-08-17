@@ -10,6 +10,7 @@ interface AgentCanvasContextMenuProps {
   canvasPosition: CanvasPositionV2;
   onCreateNode: (nodeType: AgentCanvasVisibleNodeTypeV2, position: CanvasPositionV2) => void;
   onClose: () => void;
+  onRelocate?: (menuPosition: CanvasPositionV2) => void;
 }
 
 const MENU_WIDTH = 212;
@@ -29,6 +30,7 @@ export function AgentCanvasContextMenu({
   canvasPosition,
   onCreateNode,
   onClose,
+  onRelocate,
 }: AgentCanvasContextMenuProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const menuHeight = pickerOpen ? NODE_PICKER_MENU_HEIGHT : ACTION_MENU_HEIGHT;
@@ -52,6 +54,11 @@ export function AgentCanvasContextMenu({
         className="agent-canvas-context-menu__backdrop"
         aria-label="Close canvas menu"
         onClick={onClose}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setPickerOpen(false);
+          onRelocate?.({ x: event.clientX, y: event.clientY });
+        }}
       />
       <div
         className="agent-canvas-context-menu"
