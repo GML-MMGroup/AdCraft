@@ -3169,8 +3169,16 @@ export interface GuidanceTopicStateV2 extends CapabilityIdentityV2 {
 export interface GuidanceCompletionProjectionV2 {
   authoring: "not_ready" | "ready";
   delivery: "not_ready" | "ready";
+  plan_document_id: string | null;
+  plan_revision: number | null;
   editing_preparation: "not_ready" | "prepared";
   editing_node_id: string | null;
+  preparation_receipt_id: string | null;
+  manifest_revision: number | null;
+  export_status: "not_started" | "queued" | "exporting" | "completed" | "failed" | "cancelled";
+  export_id: string | null;
+  final_completion_receipt_id: string | null;
+  final_asset_id: string | null;
   matching_node_ids: string[];
   matching_asset_ids: string[];
 }

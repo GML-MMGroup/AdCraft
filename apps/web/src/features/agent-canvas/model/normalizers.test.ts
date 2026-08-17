@@ -729,6 +729,45 @@ describe("Agent Canvas normalizers", () => {
     expect(session.awaiting?.kind).toBe("concept_selection");
   });
 
+  it("normalizes the complete guidance completion projection", () => {
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      completion: {
+        authoring: "ready",
+        delivery: "ready",
+        plan_document_id: "document-plan-1",
+        plan_revision: 3,
+        editing_preparation: "prepared",
+        editing_node_id: "node-editing-1",
+        preparation_receipt_id: "receipt-preparation-1",
+        manifest_revision: 2,
+        export_status: "completed",
+        export_id: "export-1",
+        final_completion_receipt_id: "receipt-completion-1",
+        final_asset_id: "asset-final-1",
+        matching_node_ids: ["node-video-1", "node-editing-1"],
+        matching_asset_ids: ["asset-video-1", "asset-final-1"],
+      },
+    });
+
+    expect(session.completion).toEqual({
+      authoring: "ready",
+      delivery: "ready",
+      plan_document_id: "document-plan-1",
+      plan_revision: 3,
+      editing_preparation: "prepared",
+      editing_node_id: "node-editing-1",
+      preparation_receipt_id: "receipt-preparation-1",
+      manifest_revision: 2,
+      export_status: "completed",
+      export_id: "export-1",
+      final_completion_receipt_id: "receipt-completion-1",
+      final_asset_id: "asset-final-1",
+      matching_node_ids: ["node-video-1", "node-editing-1"],
+      matching_asset_ids: ["asset-video-1", "asset-final-1"],
+    });
+  });
+
   it("normalizes the canonical progressive guidance timeline", () => {
     const timeline = normalizeAgentCanvasChatTimelineV2({
       workflow_id: "workflow-1",
