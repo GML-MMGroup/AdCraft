@@ -706,15 +706,18 @@
   background: transparent;
   box-shadow: 0 2px 8px rgba(5, 6, 10, 0.28);
   content: "";
+  transform: translateX(var(--agent-handle-ring-offset, 0px));
   transition: border-color 150ms ease, transform 150ms ease;
 }
 
 .react-flow__handle.agent-canvas-node__handle--input {
-  left: -12px;
+  --agent-handle-ring-offset: -12px;
+  left: 0;
 }
 
 .react-flow__handle.agent-canvas-node__handle--output {
-  right: -12px;
+  --agent-handle-ring-offset: 12px;
+  right: 0;
 }
 
 .agent-canvas-node-shell:has(> .agent-canvas-node:hover) > .agent-canvas-node__handle,
@@ -729,12 +732,17 @@
 .react-flow__handle.agent-canvas-node__handle:focus-visible::after,
 .react-flow__handle.agent-canvas-node__handle:active::after {
   border-color: rgba(184, 187, 194, 0.98);
-  transform: scale(1.08);
+  transform: translateX(var(--agent-handle-ring-offset, 0px)) scale(1.08);
 }
 
 .react-flow__handle.agent-canvas-node__handle:focus-visible {
-  outline: 2px solid rgba(164, 168, 178, 0.5);
-  outline-offset: 1px;
+  outline: none;
+}
+
+.react-flow__handle.agent-canvas-node__handle:focus-visible::after {
+  box-shadow:
+    0 0 0 2px rgba(164, 168, 178, 0.5),
+    0 2px 8px rgba(5, 6, 10, 0.28);
 }
 
 @keyframes agent-canvas-node-spin {
