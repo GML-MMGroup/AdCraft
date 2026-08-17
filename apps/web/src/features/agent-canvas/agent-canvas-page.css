@@ -197,7 +197,7 @@
 }
 
 .agent-canvas-context-menu__backdrop {
-  position: fixed;
+  position: absolute;
   z-index: 31;
   inset: 0;
   width: 100%;

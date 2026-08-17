@@ -582,6 +582,14 @@ export function AgentCanvasPage() {
     }
   }, [workflow]);
 
+  const openCanvasContextMenu = useCallback((menuPosition: CanvasPositionV2) => {
+    const canvasPosition = flowRef.current?.screenToFlowPosition(menuPosition) ?? { x: 120, y: 120 };
+    setSelectedNodeId(null);
+    setAddMenuOpen(false);
+    setConnectedNodeMenu(null);
+    setContextMenu({ menuPosition, canvasPosition });
+  }, [setSelectedNodeId]);
+
   if (!session.state.workspaceHydrated) {
     return <div className="agent-canvas-state">Opening project...</div>;
   }
@@ -672,12 +680,7 @@ export function AgentCanvasPage() {
           onEdgesDelete={deleteEdges}
           onPaneContextMenu={(event) => {
             event.preventDefault();
-            const menuPosition = { x: event.clientX, y: event.clientY };
-            const canvasPosition = flowRef.current?.screenToFlowPosition(menuPosition) ?? { x: 120, y: 120 };
-            setSelectedNodeId(null);
-            setAddMenuOpen(false);
-            setConnectedNodeMenu(null);
-            setContextMenu({ menuPosition, canvasPosition });
+            openCanvasContextMenu({ x: event.clientX, y: event.clientY });
           }}
           onPaneClick={() => {
             setSelectedNodeId(null);
@@ -838,6 +841,7 @@ export function AgentCanvasPage() {
             canvasPosition={contextMenu.canvasPosition}
             onCreateNode={(nodeType, position) => void createNode(nodeType, position)}
             onClose={() => setContextMenu(null)}
+            onRelocate={openCanvasContextMenu}
           />
         ) : null}
 
