@@ -201,6 +201,15 @@ describe("AssetsPage", () => {
     expect(sceneSource).toContain("hologramSceneUrlForAsset");
   });
 
+  it("uses the documented 16:10 projection stack and static screen-blended beam", () => {
+    const styles = readFileSync(resolve(process.cwd(), "src/pages/assets.css"), "utf8");
+
+    expect(styles).toMatch(/\.recommended-scenes-hologram__projection-wrap\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*10/s);
+    expect(styles).toMatch(/\.recommended-scenes-hologram__beam\s*\{[^}]*mix-blend-mode:\s*screen[^}]*opacity:\s*0\.88[^}]*saturate\(1\.08\)/s);
+    expect(styles).toMatch(/\.recommended-scenes-hologram__scene\s*\{[^}]*object-fit:\s*contain[^}]*opacity:\s*0\.9/s);
+    expect(styles).toMatch(/\.recommended-scenes-hologram__glow\s*\{[^}]*radial-gradient[^}]*blur\(20px\)/s);
+  });
+
   it("does not retain retired standalone asset-library route dependencies", () => {
     const source = readFileSync(resolve(process.cwd(), "src/pages/AssetsPage.tsx"), "utf8");
 
