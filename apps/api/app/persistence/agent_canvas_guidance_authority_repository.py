@@ -325,6 +325,8 @@ def stale_guidance_components(
 
 def require_guidance_advance_eligible(
     snapshot: GuidanceAdvanceAuthoritySnapshotV1,
+    *,
+    check_orphaned_action: bool = True,
 ) -> None:
     """Preserve precise owner errors before applying stale-precondition CAS."""
 
@@ -403,7 +405,8 @@ def require_guidance_advance_eligible(
     post_ready = _snapshot_post_ready_owner(snapshot)
     action = session.journey.active_action
     if (
-        action is not None
+        check_orphaned_action
+        and action is not None
         and post_ready is None
         and (leaf is None or leaf.leaf_status not in {"queued", "running", "failed"})
     ):

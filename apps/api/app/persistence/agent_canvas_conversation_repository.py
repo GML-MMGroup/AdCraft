@@ -4650,6 +4650,7 @@ def _validate_guidance_advance_authority(
     snapshot = GuidanceAdvanceAuthoritySnapshotRepository(requirements).read_in_transaction(
         connection, plan.workflow_id
     )
+    require_guidance_advance_eligible(snapshot, check_orphaned_action=False)
     submitted = plan.request.precondition
     if snapshot.precondition != submitted:
         raise guidance_advance_stale_error(
