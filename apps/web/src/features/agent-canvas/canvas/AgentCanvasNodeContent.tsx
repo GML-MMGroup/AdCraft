@@ -44,6 +44,7 @@ export function AgentCanvasNodeContent({
   const contentClassName = [
     "agent-canvas-node__content",
     node.node_type === "script" ? "agent-canvas-node__content--script" : "",
+    node.node_type === "script" ? "nowheel" : "",
   ].filter(Boolean).join(" ");
   if (copy) {
     if (isLikelyMarkdown(copy)) {
