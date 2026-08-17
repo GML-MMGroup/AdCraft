@@ -36,6 +36,7 @@ import type {
   CanvasLayoutPatchRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasMutationResponseV2,
+  CanvasPostReadyCheckpointV2,
   CanvasNodeCreateRequestV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
@@ -186,6 +187,7 @@ import {
   normalizeCanvasConnectionPolicyV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasPostReadyCheckpointV2,
   normalizeCanvasVariationDraftResponseV2,
   normalizeCanvasVariationMaterializeResponseV2,
   normalizeCanvasRunAcceptedV2,
@@ -831,6 +833,17 @@ export const v2Api = {
         body: JSON.stringify(request),
       },
       normalizeChatTurnAcceptedV2,
+    );
+  },
+
+  agentCanvasPostReadyCheckpoint(
+    workflowId: string,
+    executionId: string,
+  ): Promise<CanvasPostReadyCheckpointV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/executions/${encodeURIComponent(executionId)}/post-ready-checkpoint`,
+      {},
+      normalizeCanvasPostReadyCheckpointV2,
     );
   },
 

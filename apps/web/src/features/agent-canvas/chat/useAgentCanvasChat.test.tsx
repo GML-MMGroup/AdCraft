@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   agentCanvasProposal: vi.fn(),
   agentCanvasDecisionBundle: vi.fn(),
   advanceAgentCanvasGuidance: vi.fn(),
+  agentCanvasPostReadyCheckpoint: vi.fn(),
   submitAgentCanvasChatMessage: vi.fn(),
   retryAgentCanvasChatTurn: vi.fn(),
   actOnAgentCanvasProposal: vi.fn(),
@@ -92,6 +93,28 @@ function timelineWithGuidanceAdvance(
   return {
     ...emptyTimeline({ guidanceSession: guidedSession() }),
     guidanceAdvancePrecondition: guidanceAdvancePrecondition(authorityDigest),
+  };
+}
+
+function postReadyCheckpoint(status: "pending" | "completed" | "failed") {
+  return {
+    checkpoint_id: "checkpoint-1",
+    workflow_id: "workflow-1",
+    execution_id: "execution-1",
+    execution_status: status === "completed" ? "completed" : "waiting",
+    status,
+    counts: {
+      total: 1,
+      queued: 0,
+      running: status === "pending" ? 1 : 0,
+      completed: status === "completed" ? 1 : 0,
+      failed: status === "failed" ? 1 : 0,
+    },
+    effects: [],
+    error: status === "failed"
+      ? { code: "post_ready_progression_failed", message: "Script persistence failed.", retryable: false }
+      : null,
+    updated_at: "2026-08-17T10:00:00Z",
   };
 }
 
@@ -347,6 +370,104 @@ describe("useAgentCanvasChat", () => {
     expect(api.advanceAgentCanvasGuidance).not.toHaveBeenCalled();
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
     expect(api.retryAgentCanvasChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("waits for post-ready completion then retries the exact same guidance command once", async () => {
+    const precondition = guidanceAdvancePrecondition();
+    api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
+    api.advanceAgentCanvasGuidance
+      .mockRejectedValueOnce({
+        code: "guidance_post_ready_pending",
+        message: "Document persistence is still running.",
+        status: 409,
+        details: {
+          checkpoint_id: "checkpoint-1",
+          execution_id: "execution-1",
+          retry_after_seconds: 1,
+        },
+      })
+      .mockResolvedValueOnce({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-guidance-accepted",
+        status: "queued",
+        events_cursor: 3,
+        retry_of_turn_id: null,
+        retry_attempt_no: 1,
+        replayed: false,
+      });
+    api.agentCanvasPostReadyCheckpoint
+      .mockResolvedValueOnce(postReadyCheckpoint("pending"))
+      .mockResolvedValueOnce(postReadyCheckpoint("completed"));
+
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+    expect(api.agentCanvasPostReadyCheckpoint).toHaveBeenCalledWith("workflow-1", "execution-1");
+    expect(result.current.state.agentWorking).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.agentCanvasPostReadyCheckpoint).toHaveBeenCalledTimes(2);
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(2);
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenNthCalledWith(
+      1,
+      "workflow-1",
+      { precondition },
+      expect.any(String),
+    );
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenNthCalledWith(
+      2,
+      "workflow-1",
+      { precondition },
+      api.advanceAgentCanvasGuidance.mock.calls[0]?.[2],
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+  });
+
+  it("keeps the guidance checkpoint visible and does not retry when post-ready work fails", async () => {
+    api.agentCanvasChatTimeline.mockResolvedValue(timelineWithGuidanceAdvance());
+    api.advanceAgentCanvasGuidance.mockRejectedValueOnce({
+      code: "guidance_post_ready_pending",
+      message: "Document persistence is still running.",
+      status: 409,
+      details: { checkpoint_id: "checkpoint-1", execution_id: "execution-1", retry_after_seconds: 1 },
+    });
+    api.agentCanvasPostReadyCheckpoint.mockResolvedValueOnce(postReadyCheckpoint("failed"));
+
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(80);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(api.advanceAgentCanvasGuidance).toHaveBeenCalledTimes(1);
+    expect(result.current.state.error).toBe("post_ready_progression_failed: Script persistence failed.");
+    expect(result.current.state.agentWorking).toBe(false);
   });
 
   it("refreshes one stale snapshot and submits only one changed replacement", async () => {

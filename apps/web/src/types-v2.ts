@@ -2068,6 +2068,49 @@ export interface StorageAccessDescriptorV2 {
 
 export type CanvasExecutionStatusV2 = "queued" | "running" | "waiting" | "completed" | "partial_completed" | "failed" | "cancelled";
 
+export type CanvasPostReadyCheckpointStatusV2 = "pending" | "completed" | "failed";
+
+export type CanvasPostReadyEffectTypeV2 =
+  | "persist_script_document"
+  | "persist_text_document"
+  | "advance_storyboard_progression";
+
+export type CanvasPostReadyEffectStatusV2 = "queued" | "running" | "completed" | "failed";
+
+export interface CanvasPostReadyEffectCountsV2 {
+  total: number;
+  queued: number;
+  running: number;
+  completed: number;
+  failed: number;
+}
+
+export interface CanvasPostReadyEffectSummaryV2 {
+  effect_id: string;
+  effect_type: CanvasPostReadyEffectTypeV2;
+  node_id: string;
+  status: CanvasPostReadyEffectStatusV2;
+  attempt_no: number;
+  error: CanvasNodeErrorV2 | null;
+  updated_at: string;
+}
+
+/**
+ * Backend-owned post-ready work which must settle before an otherwise valid
+ * guidance transition can be accepted.
+ */
+export interface CanvasPostReadyCheckpointV2 {
+  checkpoint_id: string;
+  workflow_id: string;
+  execution_id: string;
+  execution_status: CanvasExecutionStatusV2;
+  status: CanvasPostReadyCheckpointStatusV2;
+  counts: CanvasPostReadyEffectCountsV2;
+  effects: CanvasPostReadyEffectSummaryV2[];
+  error: CanvasNodeErrorV2 | null;
+  updated_at: string;
+}
+
 export type NodeRuntimePhaseV2 =
   | "waiting_for_input"
   | "blocked_by_upstream"
