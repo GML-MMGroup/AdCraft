@@ -711,13 +711,13 @@
 }
 
 .react-flow__handle.agent-canvas-node__handle--input {
-  --agent-handle-ring-offset: -12px;
-  left: 0;
+  --agent-handle-ring-offset: -26px;
+  left: 14px;
 }
 
 .react-flow__handle.agent-canvas-node__handle--output {
-  --agent-handle-ring-offset: 12px;
-  right: 0;
+  --agent-handle-ring-offset: 26px;
+  right: 14px;
 }
 
 .agent-canvas-node-shell:has(> .agent-canvas-node:hover) > .agent-canvas-node__handle,
