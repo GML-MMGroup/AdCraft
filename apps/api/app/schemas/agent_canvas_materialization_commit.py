@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from typing import Annotated, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import CanvasBindingV2, CanvasNodeV2
 from app.schemas.agent_canvas_conversation import (
@@ -41,14 +41,23 @@ class StageMaterializedJourneyEventV1(_MaterializationCommitModel):
     evidence_kind: JourneyEvidenceKindV1
     source_id: str = Field(min_length=1, max_length=160)
     foundation_item_id: str | None = Field(default=None, max_length=160)
-    runnable_storyboard_draft: bool = False
+    storyboard_draft_preparation_queued: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "storyboard_draft_preparation_queued",
+            "runnable_storyboard_draft",
+        ),
+    )
     recorded_at: datetime
 
     @model_validator(mode="after")
     def validate_storyboard_checkpoint(self) -> "StageMaterializedJourneyEventV1":
-        if self.runnable_storyboard_draft and self.evidence_kind != "storyboard_plan_accepted":
+        if (
+            self.storyboard_draft_preparation_queued
+            and self.evidence_kind != "storyboard_plan_accepted"
+        ):
             raise ValueError(
-                "Runnable Storyboard Draft evidence requires storyboard plan acceptance."
+                "Storyboard Draft preparation evidence requires storyboard plan acceptance."
             )
         return self
 

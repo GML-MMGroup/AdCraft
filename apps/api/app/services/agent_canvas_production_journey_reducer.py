@@ -56,12 +56,12 @@ class GuidedProductionJourneyReducer:
         if isinstance(event, StageMaterializedJourneyEventV1) and (
             event.evidence_kind == "storyboard_plan_accepted"
         ):
-            if not event.runnable_storyboard_draft:
+            if not event.storyboard_draft_preparation_queued:
                 raise _error(
                     "journey_evidence_invalid",
-                    "Storyboard plan evidence requires a runnable Storyboard Grid Draft.",
+                    "Storyboard plan evidence requires queued Storyboard Grid Draft preparation.",
                 )
-            return updated.model_copy(update={"stage_status": "waiting_user"})
+            return updated.model_copy(update={"stage_status": "working"})
         return updated
 
     @staticmethod

@@ -71,7 +71,6 @@ from app.persistence.models import (
     WorkflowEventRow,
 )
 from app.schemas.agent_canvas_capability_identity import CapabilityIdV1
-from app.schemas.agent_canvas import CanvasNodeV2
 from app.schemas.agent_canvas_conversation import ProposalMaterializationProjectionV2
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV1,
@@ -94,12 +93,7 @@ from app.schemas.agent_working_documents import (
     AnchorRegistryContentV3,
     StoryboardProductionPlanContentV3,
 )
-from app.schemas.agent_canvas_guided_checkpoint import (
-    GuidedCheckpointOriginV1,
-    guided_checkpoint_id,
-)
 from app.schemas.agent_canvas_guided_interactions import (
-    GuidanceAwaitingV1,
     GuidedConceptSubmitV1,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
@@ -430,26 +424,8 @@ class AgentCanvasMaterializationRepository:
                             for item in json.loads(str(session["element_decisions_json"]))
                         ),
                     )
-                    nodes = _with_guided_checkpoint_origin(
-                        nodes,
-                        workflow_id=proposal.workflow_id,
-                        guidance_session_id=str(session["session_id"]),
-                        next_journey=next_journey,
-                        runnable_storyboard_draft=(
-                            materialization_plan.journey_event is not None
-                            and materialization_plan.journey_event.event_type
-                            == "stage_materialized"
-                            and materialization_plan.journey_event.runnable_storyboard_draft
-                        ),
-                    )
                     node = nodes[0]
-                    next_awaiting = _storyboard_manual_run_awaiting(
-                        nodes,
-                        workflow_id=proposal.workflow_id,
-                        guidance_session_id=str(session["session_id"]),
-                        next_journey=next_journey,
-                        created_at=now,
-                    )
+                    next_awaiting = None
                     if (
                         proposal_action != "reuse_direction"
                         and str(session["active_proposal_id"]) != proposal_id
@@ -930,7 +906,12 @@ class AgentCanvasMaterializationRepository:
                         )
                     ).scalar_one_or_none()
                     automatic_run_command_ids: list[str] = []
-                    if execution_mode == "automatic":
+                    storyboard_preparation_pending = (
+                        materialization_plan.journey_event is not None
+                        and materialization_plan.journey_event.event_type == "stage_materialized"
+                        and materialization_plan.journey_event.storyboard_draft_preparation_queued
+                    )
+                    if execution_mode == "automatic" and not storyboard_preparation_pending:
                         for bundle_node in nodes:
                             if is_automatic_run_eligible_node_type(bundle_node.node_type):
                                 command = self._automatic_runs.enqueue_in_transaction(
@@ -1075,14 +1056,9 @@ class AgentCanvasMaterializationRepository:
                                 turn_id=str(event_turn["turn_id"]),
                                 action_id=source_turn_id,
                                 event_type=(
-                                    "journey_stage_waiting_user"
-                                    if next_journey.stage == "storyboard_grids"
-                                    and next_journey.stage_status == "waiting_user"
-                                    else (
-                                        "journey_stage_changed"
-                                        if next_journey.stage != current_journey.stage
-                                        else "journey_stage_started"
-                                    )
+                                    "journey_stage_changed"
+                                    if next_journey.stage != current_journey.stage
+                                    else "journey_stage_started"
                                 ),
                                 created_at=now,
                                 payload={
@@ -1109,12 +1085,7 @@ class AgentCanvasMaterializationRepository:
                                     "source_materialization_id": (
                                         materialization_plan.materialization_id
                                     ),
-                                    "reason": (
-                                        "runnable_storyboard_draft"
-                                        if next_journey.stage == "storyboard_grids"
-                                        and next_journey.stage_status == "waiting_user"
-                                        else None
-                                    ),
+                                    "reason": None,
                                     "foundation_item_id": (
                                         materialization_plan.journey_event.foundation_item_id
                                         if materialization_plan.journey_event is not None
@@ -1875,88 +1846,6 @@ class AgentCanvasMaterializationRepository:
 
     def events_cursor(self, workflow_id: str) -> int:
         return self._events.max_seq(workflow_id)
-
-
-def _with_guided_checkpoint_origin(
-    nodes: tuple[CanvasNodeV2, ...],
-    *,
-    workflow_id: str,
-    guidance_session_id: str,
-    next_journey: GuidedProductionJourneyV1,
-    runnable_storyboard_draft: bool,
-) -> tuple[CanvasNodeV2, ...]:
-    if (
-        not runnable_storyboard_draft
-        or next_journey.stage != "storyboard_grids"
-        or next_journey.stage_status != "waiting_user"
-    ):
-        return nodes
-    origin = GuidedCheckpointOriginV1(
-        checkpoint_id=guided_checkpoint_id(
-            workflow_id,
-            guidance_session_id,
-            stage_revision=next_journey.stage_revision,
-        ),
-        guidance_session_id=guidance_session_id,
-        stage_revision=next_journey.stage_revision,
-    )
-    updated: list[CanvasNodeV2] = []
-    attached = False
-    for node in nodes:
-        if attached or node.creative_role != "storyboard_sequence":
-            updated.append(node)
-            continue
-        metadata = dict(node.metadata)
-        existing_value = metadata.get("guided_checkpoint")
-        existing = (
-            GuidedCheckpointOriginV1.model_validate(existing_value)
-            if isinstance(existing_value, dict)
-            else None
-        )
-        if existing is None or existing.stage_revision < origin.stage_revision:
-            metadata["guided_checkpoint"] = origin.model_dump(mode="json")
-        updated.append(node.model_copy(update={"metadata": metadata}))
-        attached = True
-    return tuple(updated)
-
-
-def _storyboard_manual_run_awaiting(
-    nodes: tuple[CanvasNodeV2, ...],
-    *,
-    workflow_id: str,
-    guidance_session_id: str,
-    next_journey: GuidedProductionJourneyV1,
-    created_at: str,
-) -> GuidanceAwaitingV1 | None:
-    if next_journey.stage != "storyboard_grids" or next_journey.stage_status != "waiting_user":
-        return None
-    node_ids = tuple(
-        node.node_id
-        for node in nodes
-        if node.node_type == "image"
-        and node.creative_role == "storyboard_sequence"
-        and node.status == "draft"
-    )
-    if not node_ids:
-        return None
-    checkpoint_id = guided_checkpoint_id(
-        workflow_id,
-        guidance_session_id,
-        stage_revision=next_journey.stage_revision,
-    )
-    return GuidanceAwaitingV1(
-        awaiting_id=f"awaiting:{checkpoint_id}",
-        workflow_id=workflow_id,
-        session_id=guidance_session_id,
-        checkpoint_id=checkpoint_id,
-        kind="manual_node_run",
-        requires_user_action=True,
-        resume_policy="node_terminal",
-        node_ids=node_ids,
-        stage=next_journey.stage,
-        stage_revision=next_journey.stage_revision,
-        created_at=created_at,
-    )
 
 
 def _materialization_document(row: Mapping[str, object]) -> AgentWorkingDocumentV2:

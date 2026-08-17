@@ -13,6 +13,12 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.agent_canvas_materialization_repository import (
     AgentCanvasMaterializationRepository,
 )
+from app.persistence.agent_canvas_execution_settings_repository import (
+    AgentCanvasExecutionSettingsRepository,
+)
+from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository import (
+    StoryboardPromptReadyPromotionRepository,
+)
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_requirement_repository import AgentCanvasRequirementRepository
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
@@ -79,6 +85,9 @@ from app.services.agent_canvas_capability_draft_bundle import (
     stage_draft_title,
 )
 from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
+from app.services.agent_canvas_storyboard_prompt_ready_promotion import (
+    StoryboardPromptReadyPromotionService,
+)
 from app.services.agent_canvas_stage_authoring_context import (
     stage_authoring_context_from_materialization,
 )
@@ -96,6 +105,7 @@ class CapabilityMaterializationPublicationService:
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         storyboard_authoring: StoryboardSequenceAuthoringService | None = None,
         storyboard_gateway: VideoAgentGateway | None = None,
+        storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -112,6 +122,21 @@ class CapabilityMaterializationPublicationService:
             conversations.events,
         )
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
+        self._storyboard_promotion = storyboard_promotion or (
+            StoryboardPromptReadyPromotionService(
+                workflows,
+                conversations,
+                StoryboardPromptReadyPromotionRepository(
+                    workflows.database,
+                    conversations.events,
+                ),
+                self._working_documents,
+                AgentCanvasExecutionSettingsRepository(
+                    workflows.database,
+                    conversations.events,
+                ),
+            )
+        )
 
     def publish(
         self,
@@ -213,6 +238,12 @@ class CapabilityMaterializationPublicationService:
             node_ids=outcome.node_ids,
             operation_ids=outcome.prompt_preparation_ids,
             lease_guard=lease_guard,
+        )
+        lease_guard()
+        self._storyboard_promotion.promote(
+            outcome,
+            action_turn_id=envelope.action_turn_id,
+            session_id=session.session_id,
         )
         if not outcome.node_ids:
             raise V2PersistenceError(
@@ -527,26 +558,31 @@ class CapabilityMaterializationPublicationService:
             ).prompt_preparation.status
             != "ready"
         )
-        if not pending_preparations:
-            return outcome.node_ids[0]
-        context = materialization_context_from_state(
-            envelope,
-            conversations=self._conversations,
-            workflows=self._workflows,
-            asset_resolver=self._asset_resolver,
-            validate_references=False,
-        )
         session = self._conversations.get_guidance_session(envelope.workflow_id)
-        self._prepare_prompts(
-            envelope,
-            context,
+        if pending_preparations:
+            context = materialization_context_from_state(
+                envelope,
+                conversations=self._conversations,
+                workflows=self._workflows,
+                asset_resolver=self._asset_resolver,
+                validate_references=False,
+            )
+            self._prepare_prompts(
+                envelope,
+                context,
+                session_id=session.session_id,
+                session_revision=outcome.session_revision,
+                stage=outcome.journey_stage,
+                foundation_item_id=None,
+                node_ids=tuple(item[0] for item in pending_preparations),
+                operation_ids=tuple(item[1] for item in pending_preparations),
+                lease_guard=lease_guard,
+            )
+        lease_guard()
+        self._storyboard_promotion.promote(
+            outcome,
+            action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
-            session_revision=outcome.session_revision,
-            stage=outcome.journey_stage,
-            foundation_item_id=None,
-            node_ids=tuple(item[0] for item in pending_preparations),
-            operation_ids=tuple(item[1] for item in pending_preparations),
-            lease_guard=lease_guard,
         )
         return outcome.node_ids[0]
 

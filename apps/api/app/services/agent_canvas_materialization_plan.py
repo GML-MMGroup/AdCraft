@@ -50,7 +50,7 @@ class CapabilityMaterializationPlanCompiler:
         nodes = bundle.nodes
         bindings = bundle.bindings
         preparations = bundle.prompt_preparations
-        runnable_storyboard_draft = _has_runnable_storyboard_draft(
+        storyboard_draft_preparation_queued = _has_storyboard_draft_preparation_evidence(
             envelope,
             nodes=nodes,
             preparations=preparations,
@@ -59,10 +59,10 @@ class CapabilityMaterializationPlanCompiler:
         if (
             envelope.capability_id == "storyboard_design"
             and snapshot.current_journey.stage == "storyboard_plan"
-            and not runnable_storyboard_draft
+            and not storyboard_draft_preparation_queued
         ):
             raise ValueError(
-                "Storyboard plan materialization requires a runnable Storyboard Grid Draft."
+                "Storyboard plan materialization requires Storyboard Grid Draft preparation evidence."
             )
 
         continuation = _continuation(envelope, snapshot)
@@ -96,7 +96,7 @@ class CapabilityMaterializationPlanCompiler:
             "journey_event": _journey_event(
                 envelope,
                 snapshot,
-                runnable_storyboard_draft=runnable_storyboard_draft,
+                storyboard_draft_preparation_queued=storyboard_draft_preparation_queued,
             ),
             "payload_digest": "0" * 64,
         }
@@ -171,7 +171,7 @@ def _journey_event(
     envelope: ProposalApplicationEnvelopeV1,
     snapshot: MaterializationAuthoringSnapshotV1,
     *,
-    runnable_storyboard_draft: bool,
+    storyboard_draft_preparation_queued: bool,
 ) -> StageMaterializedJourneyEventV1 | TargetedActionCompletedJourneyEventV1 | None:
     journey = snapshot.current_journey
     if journey.suspended_action is not None:
@@ -205,13 +205,13 @@ def _journey_event(
             "evidence_kind": evidence_kind,
             "source_id": envelope.materialization_id,
             "foundation_item_id": foundation_item_id,
-            "runnable_storyboard_draft": runnable_storyboard_draft,
+            "storyboard_draft_preparation_queued": storyboard_draft_preparation_queued,
             "recorded_at": envelope.created_at,
         }
     )
 
 
-def _has_runnable_storyboard_draft(
+def _has_storyboard_draft_preparation_evidence(
     envelope: ProposalApplicationEnvelopeV1,
     *,
     nodes: tuple[CanvasNodeV2, ...],
