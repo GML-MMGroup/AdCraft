@@ -10,6 +10,7 @@ from app.schemas.agent_canvas_materialization import (
     CapabilityMaterializationExecutionResultV1,
     ProposalPublicationEnvelopeV1,
 )
+from app.services.pi_agent_runtime_client import PiAgentRuntimeError
 
 
 class ProposalPublicationRunner:
@@ -39,7 +40,7 @@ class ProposalPublicationRunner:
         lease_guard()
         try:
             node_id = self._publisher(envelope, context, lease_guard)
-        except V2PersistenceError:
+        except (PiAgentRuntimeError, V2PersistenceError):
             raise
         except Exception as error:  # noqa: BLE001 - transaction boundary normalization.
             raise _error(
