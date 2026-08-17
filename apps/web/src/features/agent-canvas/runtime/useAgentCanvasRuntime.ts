@@ -253,7 +253,7 @@ export function useAgentCanvasRuntime(
     if (policy.refreshDocuments) {
       setDocumentEvents((current) => [...current, event].slice(-50));
     }
-    if (event.event_type === "editing_prepared") {
+    if (event.event_type === "editing_prepared" || event.event_type === "guided_editing_ready") {
       const nodeId = event.node_id
         ?? (typeof event.payload?.editing_node_id === "string" ? event.payload.editing_node_id : null);
       if (nodeId) {

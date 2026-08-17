@@ -6,6 +6,8 @@ import type {
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasGuidedActionApplyRequestV2,
+  GuidedInteractionAcceptedV1,
+  GuidedInteractionSubmitRequestV1,
   GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
   AgentCanvasProjectCreateRequestV2,
@@ -167,6 +169,7 @@ import {
   normalizeDecisionBundleActionAcceptedV2,
   normalizeDecisionBundleV2,
   normalizeGuidedSessionStateV2,
+  normalizeGuidedInteractionAcceptedV1,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
@@ -842,6 +845,23 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}/agent-documents/${encodeURIComponent(documentId)}`,
       {},
       normalizeAgentWorkingDocumentV2,
+    );
+  },
+
+  submitAgentCanvasGuidedInteraction(
+    workflowId: string,
+    interactionId: string,
+    request: GuidedInteractionSubmitRequestV1,
+    idempotencyKey: string,
+  ): Promise<GuidedInteractionAcceptedV1> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/interactions/${encodeURIComponent(interactionId)}/submit`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeGuidedInteractionAcceptedV1,
     );
   },
 

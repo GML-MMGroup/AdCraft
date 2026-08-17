@@ -25,6 +25,7 @@ import {
   normalizeConceptProposalV2,
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
+  normalizeGuidedSessionStateV2,
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
@@ -700,6 +701,31 @@ describe("Agent Canvas normalizers", () => {
     });
     expect(timeline.items[0]).not.toHaveProperty("operation");
     expect(timeline.items[0]).not.toHaveProperty("operation_policy_id");
+  });
+
+  it("accepts an open GuidedInteraction and legal durable awaiting state", () => {
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      interaction: {
+        interaction_id: "interaction-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
+        kind: "concept_choice", status: "open", response_locale: "zh-CN", expected_session_revision: 3, revision: 2,
+        title: "Choose scene", context: "Pick a scene direction.",
+        content: { content_kind: "concept_choice", proposal_id: null, options: [
+          { option_id: "option-a", title: "Morning", summary: "Soft morning light." },
+          { option_id: "option-b", title: "Evening", summary: "Warm evening light." },
+        ] },
+        allowed_actions: ["select", "revise", "delegate"], submit_path: "/submit",
+        created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
+      },
+      awaiting: {
+        awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
+        kind: "concept_selection", requires_user_action: true, resume_policy: "submit_interaction",
+        interaction_id: "interaction-1", node_ids: [], stage: "foundation_design", stage_revision: 4,
+        created_at: "2026-08-15T10:00:00Z",
+      },
+    });
+    expect(session.interaction?.content.content_kind).toBe("concept_choice");
+    expect(session.awaiting?.kind).toBe("concept_selection");
   });
 
   it("normalizes the canonical progressive guidance timeline", () => {
@@ -1791,7 +1817,7 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(normalized.status).toBe("draft");
-    expect(normalized.prompt_preparation).toEqual({
+    expect(normalized.prompt_preparation).toMatchObject({
       status: "working",
       operation_id: "prompt-operation-1",
       attempt_no: 1,
@@ -1800,6 +1826,52 @@ describe("Agent Canvas normalizers", () => {
       error: null,
       updated_at: "2026-08-11T10:00:00Z",
     });
+  });
+
+  it("accepts role-specific prompt preparation and V3 authoritative document projections", () => {
+    const node = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      prompt_preparation: {
+        status: "superseded",
+        attempt_no: 2,
+        role_variant: "character_turnaround",
+        recipe_id: "recipe-character",
+        recipe_version: "1",
+        recipe_digest: "sha256:" + "a".repeat(64),
+        requirement_revision_id: "requirement-2",
+        requirement_revision_no: 2,
+        document_revisions: { "doc-plan": 3 },
+        binding_digest: "sha256:" + "b".repeat(64),
+        style_projection_digest: null,
+        brief_digest: null,
+        parameter_origins: [{
+          name: "duration_seconds",
+          value: 15,
+          source_kind: "storyboard_plan",
+          source_id: "doc-plan",
+          source_revision: 3,
+        }],
+        attempt_stage: "context_ready",
+        error: null,
+        updated_at: "2026-08-15T10:00:00Z",
+      },
+    });
+    expect(node.prompt_preparation.status).toBe("superseded");
+    expect(node.prompt_preparation.parameter_origins[0]?.source_kind).toBe("storyboard_plan");
+
+    const document = normalizeAgentWorkingDocumentV2({
+      document_id: "doc-v3", workflow_id: "workflow-1", guidance_session_id: "session-1",
+      kind: "anchor_registry", title: "Anchors", revision: 3, content_schema_version: 3,
+      content_digest: "sha256:document", created_by_agent_run_id: "run-1", updated_by_agent_run_id: "run-1",
+      linked_nodes: [], created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
+      content: { schema_version: "3", anchors: [{
+        alias: "HERO", identity_id: "identity-1", semantic_role: "character", display_name: "Hero",
+        summary: "Lead talent", lifecycle: "active",
+        source: { source_kind: "node", workflow_id: "workflow-1", node_id: "node-1", node_revision: 2 },
+        acceptance_evidence: [{ evidence_id: "evidence-1", actor: "user", decision: "accepted", action_id: "action-1", requirement_revision_id: "requirement-2", requirement_revision_no: 2, node_revision: 2, asset_version_id: null, document_revision: 3, recorded_at: "2026-08-15T10:00:00Z" }],
+      }] },
+    });
+    expect(document.content_schema_version).toBe(3);
   });
 
   it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {

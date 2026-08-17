@@ -39,6 +39,7 @@ const RUNTIME_EVENTS = new Set([
   "provider_inputs_resolved",
   "node_output_published",
   "runtime_snapshot_updated",
+  "execution_member_skipped_dependency",
 ]);
 
 const AUTHORING_EVENTS = new Set([
@@ -61,11 +62,17 @@ const AUTHORING_EVENTS = new Set([
   "node_prompt_preparation_started",
   "node_prompt_preparation_completed",
   "node_prompt_preparation_failed",
+  "node_prompt_preparation_queued",
+  "node_prompt_preparation_ready",
+  "node_prompt_preparation_superseded",
   "storyboard_sequence_materialized",
   "guided_action_applied",
   "command_plan_committed",
   "action_receipt_created",
   "proposal_materialization_completed",
+  "guided_draft_materialized",
+  "storyboard_fanout_committed",
+  "guided_editing_ready",
 ]);
 
 const CHAT_EVENTS = new Set([
@@ -98,6 +105,18 @@ const CHAT_EVENTS = new Set([
   "proposal_materialization_started",
   "proposal_materialization_completed",
   "proposal_materialization_failed",
+  "guided_interaction_opened",
+  "guided_interaction_submitted",
+  "guided_interaction_closed",
+  "guided_interaction_superseded",
+  "guided_continuation_queued",
+  "guidance_awaiting_entered",
+  "guidance_awaiting_resumed",
+  "guidance_orphan_recovered",
+  "guided_media_review_required",
+  "guided_media_confirmed",
+  "guided_closure_blocked",
+  "guided_production_completed",
   "guidance_state_updated",
   "journey_stage_started",
   "journey_stage_changed",
@@ -123,6 +142,9 @@ const NODE_DETAIL_EVENTS = new Set([
   "node_prompt_preparation_started",
   "node_prompt_preparation_completed",
   "node_prompt_preparation_failed",
+  "node_prompt_preparation_queued",
+  "node_prompt_preparation_ready",
+  "node_prompt_preparation_superseded",
   "storyboard_sequence_materialized",
 ]);
 
@@ -135,6 +157,19 @@ const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
   "agent_auto_run_requested",
   "agent_auto_run_submitted",
   "agent_auto_run_failed",
+  "guided_interaction_opened",
+  "guided_interaction_submitted",
+  "guided_interaction_closed",
+  "guided_interaction_superseded",
+  "guided_continuation_queued",
+  "guidance_awaiting_entered",
+  "guidance_awaiting_resumed",
+  "guidance_orphan_recovered",
+  "guided_media_review_required",
+  "guided_media_confirmed",
+  "guided_closure_blocked",
+  "guided_editing_ready",
+  "guided_production_completed",
 ]);
 
 const GUIDED_CHAT_EVENTS = new Set([
@@ -145,6 +180,9 @@ const GUIDED_CHAT_EVENTS = new Set([
   "guided_binding_materialized",
   "storyboard_sequence_planned",
   "editing_prepared",
+  "guided_editing_ready",
+  "storyboard_fanout_committed",
+  "execution_member_skipped_dependency",
 ]);
 
 const DOCUMENT_EVENTS = new Set([
@@ -152,6 +190,13 @@ const DOCUMENT_EVENTS = new Set([
   "agent_document_updated",
   "agent_document_revision_created",
   "anchor_registered",
+  "agent_working_document_created",
+  "agent_working_document_updated",
+  "agent_anchor_planned",
+  "agent_anchor_activated",
+  "agent_anchor_retired",
+  "storyboard_plan_revised",
+  "storyboard_visual_anchor_frozen",
 ]);
 
 export function runtimeEventPolicy(
@@ -159,7 +204,7 @@ export function runtimeEventPolicy(
 ): AgentCanvasRuntimeRefreshPolicy {
   const type = event.event_type;
   const editing = type.startsWith("editing_export_");
-  const editingPrepared = type === "editing_prepared";
+  const editingPrepared = type === "editing_prepared" || type === "guided_editing_ready";
   const projectAssetPublished = type === "project_asset_published";
   const publishesOutput = type === "node_output_published";
   const guidedCanonicalRefresh = GUIDED_CANONICAL_REFRESH_EVENTS.has(type);

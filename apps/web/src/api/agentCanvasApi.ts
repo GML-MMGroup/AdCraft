@@ -39,6 +39,7 @@ export const agentCanvasApi = {
   agentCanvasChatTimeline: v2Api.agentCanvasChatTimeline,
   listAgentCanvasDocuments: v2Api.listAgentCanvasDocuments,
   agentCanvasDocument: v2Api.agentCanvasDocument,
+  submitAgentCanvasGuidedInteraction: v2Api.submitAgentCanvasGuidedInteraction,
   submitAgentCanvasChatMessage: v2Api.submitAgentCanvasChatMessage,
   retryAgentCanvasChatTurn: v2Api.retryAgentCanvasChatTurn,
   agentCanvasChatTurn: v2Api.agentCanvasChatTurn,
