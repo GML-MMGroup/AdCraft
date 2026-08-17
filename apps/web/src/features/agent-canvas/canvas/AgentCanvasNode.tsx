@@ -218,6 +218,9 @@ export function AgentCanvasNodeCard({
       aria-label={`${label} node, ${NODE_STATUS_LABELS[status]}`}
     >
       <div className="agent-canvas-node__surface">
+        <span className="agent-canvas-node__type-label">
+          {label.toLowerCase()}
+        </span>
         <NodeSurface
           node={node}
           asset={asset}
