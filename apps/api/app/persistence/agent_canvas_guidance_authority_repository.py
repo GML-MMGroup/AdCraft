@@ -185,6 +185,11 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
         )
         owner_state: dict[str, JsonValue] = {
             "conversation_id": str(conversation_id) if conversation_id is not None else None,
+            "awaiting": (
+                session.awaiting.model_dump(mode="json")
+                if session is not None and session.awaiting is not None
+                else None
+            ),
             "session_active_proposal_id": (
                 session.active_proposal_id if session is not None else None
             ),
@@ -220,17 +225,6 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
                 else None
             )
         )
-        eligible = bool(
-            session is not None
-            and session.status == "active"
-            and session.journey.stage != "completed"
-            and not proposal_ids
-            and session.active_proposal_id is None
-            and not bundle_ids
-            and not active_continuations
-            and not _leaf_blocks_advance(execution_leaf)
-            and post_ready_owner is None
-        )
         authority_payload: dict[str, JsonValue] = {
             "schema_version": "1",
             "workflow_id": workflow_id,
@@ -251,15 +245,7 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
             "owner_state": owner_state,
         }
         authority_digest = f"sha256:{canonical_guidance_digest(authority_payload)}"
-        precondition = (
-            GuidanceAdvancePreconditionV1(
-                **{key: value for key, value in authority_payload.items() if key != "owner_state"},
-                authority_digest=authority_digest,
-            )
-            if eligible
-            else None
-        )
-        return GuidanceAdvanceAuthoritySnapshotV1(
+        snapshot = GuidanceAdvanceAuthoritySnapshotV1(
             workflow_id=workflow_id,
             workflow_revision=int(workflow["revision"]),
             session=session,
@@ -276,9 +262,19 @@ class GuidanceAdvanceAuthoritySnapshotRepository:
             active_action_digest=active_action_digest,
             owner_state_digest=owner_state_digest,
             authority_digest=authority_digest,
-            eligible=eligible,
-            precondition=precondition,
+            eligible=False,
+            precondition=None,
         )
+        eligible = _guidance_advance_blocker(snapshot) is None
+        precondition = (
+            GuidanceAdvancePreconditionV1(
+                **{key: value for key, value in authority_payload.items() if key != "owner_state"},
+                authority_digest=authority_digest,
+            )
+            if eligible
+            else None
+        )
+        return snapshot.model_copy(update={"eligible": eligible, "precondition": precondition})
 
 
 def canonical_guidance_json(value: object) -> str:
@@ -293,7 +289,7 @@ def stale_guidance_components(
     submitted: GuidanceAdvancePreconditionV1,
     current: GuidanceAdvanceAuthoritySnapshotV1,
 ) -> tuple[str, ...]:
-    current_precondition = current.precondition
+    current_precondition = current.precondition or _comparison_precondition(current)
     if current_precondition is None:
         return ("owner_state",)
     stale: set[str] = set()
@@ -335,6 +331,33 @@ def stale_guidance_components(
     return tuple(sorted(stale))
 
 
+def _comparison_precondition(
+    snapshot: GuidanceAdvanceAuthoritySnapshotV1,
+) -> GuidanceAdvancePreconditionV1 | None:
+    """Project comparable authority fields even when a blocker hides admission."""
+
+    session = snapshot.session
+    requirements = snapshot.requirements
+    if session is None or requirements is None or snapshot.source_id is None:
+        return None
+    return GuidanceAdvancePreconditionV1(
+        workflow_id=snapshot.workflow_id,
+        workflow_revision=snapshot.workflow_revision,
+        session_id=session.session_id,
+        session_revision=session.revision,
+        session_status=session.status,
+        journey_stage=session.journey.stage,
+        journey_stage_status=session.journey.stage_status,
+        journey_stage_revision=session.journey.stage_revision,
+        source_id=snapshot.source_id,
+        requirement_revision_id=requirements.revision_id,
+        requirement_digest=requirements.digest,
+        active_action_digest=snapshot.active_action_digest,
+        owner_state_digest=snapshot.owner_state_digest,
+        authority_digest=snapshot.authority_digest,
+    )
+
+
 def require_guidance_advance_eligible(
     snapshot: GuidanceAdvanceAuthoritySnapshotV1,
     *,
@@ -342,9 +365,24 @@ def require_guidance_advance_eligible(
 ) -> None:
     """Preserve precise owner errors before applying stale-precondition CAS."""
 
+    blocker = _guidance_advance_blocker(
+        snapshot,
+        check_orphaned_action=check_orphaned_action,
+    )
+    if blocker is not None:
+        raise blocker
+
+
+def _guidance_advance_blocker(
+    snapshot: GuidanceAdvanceAuthoritySnapshotV1,
+    *,
+    check_orphaned_action: bool = True,
+) -> V2PersistenceError | None:
+    """Classify current Guidance ownership without reading or mutating state."""
+
     session = snapshot.session
     if session is None or session.status != "active" or session.journey.stage == "completed":
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_not_available",
             "Guidance is not available in the current session state.",
             stage="guidance_advance_service",
@@ -355,7 +393,7 @@ def require_guidance_advance_eligible(
             awaiting.stage != session.journey.stage
             or awaiting.stage_revision != session.journey.stage_revision
         ):
-            raise V2PersistenceError(
+            return V2PersistenceError(
                 "guidance_orphaned_stall",
                 "Guidance awaiting authority does not match the current Journey stage.",
                 stage="guidance_advance_service",
@@ -365,7 +403,7 @@ def require_guidance_advance_eligible(
                     "stage_revision": session.journey.stage_revision,
                 },
             )
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_not_available",
             "A typed Guidance wait currently owns the next user action.",
             stage="guidance_advance_service",
@@ -376,19 +414,19 @@ def require_guidance_advance_eligible(
             },
         )
     if snapshot.open_proposal_id is not None or session.active_proposal_id is not None:
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_not_available",
             "An open Proposal currently owns the next user action.",
             stage="guidance_advance_service",
         )
     if snapshot.open_decision_bundle_id is not None:
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_not_available",
             "An open Decision Bundle currently owns the next user action.",
             stage="guidance_advance_service",
         )
     if snapshot.active_continuation_id is not None:
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "active_continuation_conflict",
             "Another continuation already owns this workflow.",
             stage="guidance_advance_service",
@@ -398,13 +436,13 @@ def require_guidance_advance_eligible(
         leaf.leaf_status in {"queued", "running"}
         or leaf.continuation_status in _NONTERMINAL_CONTINUATION_STATUSES
     ):
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_not_available",
             "Current journey work is already active.",
             stage="guidance_advance_service",
         )
     if leaf is not None and leaf.leaf_status == "failed":
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_advance_blocked_by_failed_turn",
             "Current guided work must be resolved before continuing.",
             stage="guidance_advance_service",
@@ -422,7 +460,7 @@ def require_guidance_advance_eligible(
         and post_ready is None
         and (leaf is None or leaf.leaf_status not in {"queued", "running", "failed"})
     ):
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_orphaned_stall",
             "Guidance progress has no current durable owner.",
             stage="guidance_advance_service",
@@ -433,7 +471,7 @@ def require_guidance_advance_eligible(
             },
         )
     if post_ready is None:
-        return
+        return None
     details = {
         "checkpoint_id": post_ready.get("checkpoint_id"),
         "execution_id": post_ready.get("execution_id"),
@@ -443,14 +481,14 @@ def require_guidance_advance_eligible(
         "retryable": post_ready.get("status") == "pending",
     }
     if post_ready.get("status") == "pending":
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "guidance_post_ready_pending",
             "Guided post-Ready progression is still pending.",
             stage="guidance_authority_snapshot",
             details={**details, "retry_after_seconds": 1},
         )
     if post_ready.get("status") == "failed":
-        raise V2PersistenceError(
+        return V2PersistenceError(
             "post_ready_progression_failed",
             "Guided post-Ready progression failed.",
             stage="guidance_authority_snapshot",
@@ -459,7 +497,7 @@ def require_guidance_advance_eligible(
                 "error_code": post_ready.get("error_code") or "post_ready_effect_failed",
             },
         )
-    raise V2PersistenceError(
+    return V2PersistenceError(
         "post_ready_checkpoint_unavailable",
         "Guided post-Ready checkpoint lineage is unavailable.",
         stage="guidance_authority_snapshot",
@@ -725,16 +763,6 @@ def _require_turn(connection: Connection, turn_id: str, workflow_id: str) -> Row
     if row is None or str(row["workflow_id"]) != workflow_id:
         raise _lineage_error("Guided action execution lineage crosses a Workflow.")
     return row
-
-
-def _leaf_blocks_advance(leaf: GuidedActionExecutionLeafV1 | None) -> bool:
-    return bool(
-        leaf is not None
-        and (
-            leaf.leaf_status in {"queued", "running", "failed"}
-            or leaf.continuation_status in _NONTERMINAL_CONTINUATION_STATUSES
-        )
-    )
 
 
 def _lineage_error(message: str) -> V2PersistenceError:
