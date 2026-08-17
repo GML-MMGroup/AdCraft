@@ -610,6 +610,7 @@ export function AgentCanvasPage() {
       <div
         ref={pointerSpotlight.hostRef}
         className="agent-canvas-board"
+        onContextMenu={(event) => event.preventDefault()}
         onPointerMove={pointerSpotlight.onPointerMove}
         onPointerLeave={pointerSpotlight.onPointerLeave}
         onPointerCancel={pointerSpotlight.onPointerCancel}

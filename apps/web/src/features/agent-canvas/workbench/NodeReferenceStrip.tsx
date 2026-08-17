@@ -1,4 +1,4 @@
-import { CloseIcon } from "../../../icons.tsx";
+import { CloseIcon, DocumentIcon } from "../../../icons.tsx";
 import type {
   AgentCanvasWorkflowV2,
   CanvasNodeV2,
@@ -21,7 +21,6 @@ function sourcePresentation(
     return {
       name: asset?.display_name ?? source.source_asset_id,
       previewUrl: referencePreview(asset),
-      text: asset?.display_name ?? source.source_asset_id,
     };
   }
   const sourceNode = workflow.nodes.find((item) => item.node_id === source.source_node_id);
@@ -31,7 +30,6 @@ function sourcePresentation(
   return {
     name: sourceNode?.title ?? source.source_node_id,
     previewUrl: referencePreview(asset),
-    text: sourceNode?.title ?? source.source_node_id,
   };
 }
 
@@ -65,10 +63,15 @@ export function NodeReferenceStrip({
               key={binding.binding_id}
               className={`${source.previewUrl ? "is-media" : "is-text"}${!binding.enabled ? " is-disabled" : ""}`}
               title={label}
+              aria-label={source.previewUrl ? undefined : `${label} text reference`}
             >
               {source.previewUrl ? (
                 <img src={source.previewUrl} alt={`${label} reference`} loading="lazy" decoding="async" />
-              ) : <span className="agent-node-workbench__reference-text">{source.text || `Reference ${index + 1}`}</span>}
+              ) : (
+                <span className="agent-node-workbench__reference-icon">
+                  <DocumentIcon />
+                </span>
+              )}
               <button
                 type="button"
                 aria-label={`Remove ${label} reference`}

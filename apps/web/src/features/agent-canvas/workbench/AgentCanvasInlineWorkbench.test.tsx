@@ -565,11 +565,32 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByRole("button", { name: "Upload image reference" })).toBeNull();
   });
 
-  it("renders upstream text as a labelled reference chip", () => {
+  it("renders upstream text as a generic document SVG without exposing its content", () => {
     const node = makeNode("image");
     renderWorkbench(node, { workflow: makeTextReferenceWorkflow(node) });
 
-    expect(screen.getByText("World Setting")).toBeTruthy();
+    const reference = screen.getByLabelText("World Setting text reference");
+    expect(reference.querySelector("svg")).toBeTruthy();
+    expect(reference.textContent).toBe("");
+    expect(document.body.textContent).not.toContain("A calm morning in a riverside park.");
+  });
+
+  it("wraps upstream references without a constrained scrolling strip", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css"),
+      "utf8",
+    );
+    const referencesRule = css.match(
+      /\.agent-node-workbench__references\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const listRule = css.match(
+      /\.agent-node-workbench__reference-list\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(referencesRule).toContain("align-items: flex-start");
+    expect(listRule).toContain("flex-wrap: wrap");
+    expect(listRule).toContain("overflow: visible");
+    expect(listRule).not.toContain("overflow-x: auto");
   });
 
   it("keeps the Text node model control in the composer footer", () => {
