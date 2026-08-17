@@ -219,7 +219,7 @@ export function AgentCanvasNodeCard({
     >
       <div className="agent-canvas-node__surface">
         <span className="agent-canvas-node__type-label">
-          {label.toLowerCase()}
+          {NODE_TYPE_LABELS[node.node_type].toLowerCase()}
         </span>
         <NodeSurface
           node={node}
