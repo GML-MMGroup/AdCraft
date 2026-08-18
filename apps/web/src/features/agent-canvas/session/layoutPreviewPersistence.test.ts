@@ -7,6 +7,7 @@ import type {
   CanvasLayoutPositionV2,
 } from "../../../types-v2.ts";
 import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
+import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
 
 function workflow(workflowId: string, layoutRevision: number): AgentCanvasWorkflowV2 {
   return {
@@ -32,6 +33,42 @@ function positions(prefix: "target" | "original"): CanvasLayoutPositionV2[] {
 }
 
 describe("persistAgentCanvasLayoutPreview", () => {
+  it("does not interleave drag writes with a 205-node preview transaction", async () => {
+    const events: string[] = [];
+    const target = positions("target");
+    const queue = new AgentCanvasLayoutQueue(async (batch) => {
+      events.push(`drag:${batch.map(({ node_id }) => node_id).join(",")}`);
+    });
+    const patchLayout = vi.fn(async (workflowId: string, request: CanvasLayoutPatchRequestV2) => {
+      events.push(`preview:${request.positions.length}`);
+      return {
+        workflow_id: workflowId,
+        revision: 4,
+        layout_revision: request.expected_layout_revision + 1,
+        positions: request.positions,
+      };
+    });
+
+    const priorDrag = queue.enqueue([{ node_id: "prior-drag", x: 10, y: 10 }]);
+    const preview = queue.runExclusive(() => persistAgentCanvasLayoutPreview({
+      workflow: workflow("workflow-a", 10),
+      targetPositions: target,
+      originalPositions: positions("original"),
+      patchLayout,
+      loadWorkflow: vi.fn(),
+    }));
+    const laterDrag = queue.enqueue([{ node_id: "later-drag", x: 20, y: 20 }]);
+
+    await Promise.all([priorDrag, preview, laterDrag]);
+
+    expect(events).toEqual([
+      "drag:prior-drag",
+      "preview:200",
+      "preview:5",
+      "drag:later-drag",
+    ]);
+  });
+
   it("compensates all original positions before exposing a later target-batch failure", async () => {
     const target = positions("target");
     const original = positions("original");
