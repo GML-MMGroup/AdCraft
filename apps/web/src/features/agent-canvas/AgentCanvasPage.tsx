@@ -196,7 +196,8 @@ export function AgentCanvasPage() {
     keep: persistLayoutPreview,
     overlay: overlayLayoutPreview,
   } = layoutPreview;
-  const undoLayoutPreview = useCallback(() => cancelLayoutPreview(), [cancelLayoutPreview]);
+  const undoLayoutPreview = useCallback(() => cancelLayoutPreview("explicit"), [cancelLayoutPreview]);
+  const dismissLayoutPreview = useCallback(() => cancelLayoutPreview("implicit"), [cancelLayoutPreview]);
   const keepLayoutPreview = useCallback(() => {
     void persistLayoutPreview();
   }, [persistLayoutPreview]);
@@ -642,6 +643,7 @@ export function AgentCanvasPage() {
     setSurfaceError(null);
     beginLayoutPreview({
       workflowId: workflow.workflow_id,
+      workflow,
       nodes: flowNodes,
       targetPositions: result.positions,
       viewport,
@@ -866,6 +868,7 @@ export function AgentCanvasPage() {
                 status={layoutPreview.status === "idle" ? "previewing" : layoutPreview.status}
                 error={layoutPreview.error}
                 onUndo={undoLayoutPreview}
+                onDismiss={dismissLayoutPreview}
                 onKeep={() => void keepLayoutPreview()}
                 dismissExemptRef={pointerSpotlight.hostRef}
               />

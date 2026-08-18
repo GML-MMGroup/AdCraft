@@ -2,6 +2,7 @@ import type { Viewport } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
+  AgentCanvasWorkflowV2,
   CanvasLayoutPositionV2,
   CanvasPositionV2,
 } from "../../../types-v2.ts";
@@ -14,6 +15,7 @@ export type AgentCanvasLayoutPreviewStatus =
 
 export interface AgentCanvasLayoutPreviewStart<TNode> {
   workflowId: string;
+  workflow: AgentCanvasWorkflowV2;
   nodes: readonly TNode[];
   targetPositions: CanvasLayoutPositionV2[];
   viewport: Viewport;
@@ -22,12 +24,14 @@ export interface AgentCanvasLayoutPreviewStart<TNode> {
 type PreviewSnapshot = {
   transactionId: number;
   workflowId: string;
+  workflow: AgentCanvasWorkflowV2;
   originalPositions: CanvasLayoutPositionV2[];
   targetPositions: CanvasLayoutPositionV2[];
   originalViewport: Viewport;
 };
 
 export type AgentCanvasLayoutPreviewResolution = "undo" | "keep";
+export type AgentCanvasLayoutPreviewDismissal = "explicit" | "implicit";
 
 function previewErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -61,6 +65,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
 }: {
   workflowId: string;
   persistPositions: (
+    workflow: AgentCanvasWorkflowV2,
     targetPositions: CanvasLayoutPositionV2[],
     originalPositions: CanvasLayoutPositionV2[],
   ) => Promise<void>;
@@ -76,7 +81,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   active: boolean;
   positions: CanvasLayoutPositionV2[];
   begin: (preview: AgentCanvasLayoutPreviewStart<TNode>) => void;
-  cancel: () => void;
+  cancel: (dismissal?: AgentCanvasLayoutPreviewDismissal) => void;
   keep: () => Promise<boolean>;
   overlay: (nodes: readonly TNode[]) => TNode[];
 } {
@@ -136,10 +141,15 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   const positions = useMemo(() => active ? snapshot?.targetPositions ?? [] : [], [active, snapshot]);
 
   const begin = useCallback((preview: AgentCanvasLayoutPreviewStart<TNode>) => {
-    if (snapshotRef.current || preview.workflowId !== workflowId) return;
+    if (
+      snapshotRef.current
+      || preview.workflowId !== workflowId
+      || preview.workflow.workflow_id !== preview.workflowId
+    ) return;
     const nextSnapshot = {
       transactionId: nextTransactionIdRef.current + 1,
       workflowId: preview.workflowId,
+      workflow: preview.workflow,
       originalPositions: preview.nodes.map((node) => ({
         node_id: node.id,
         x: node.position.x,
@@ -156,7 +166,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     setError(null);
   }, [workflowId]);
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback((dismissal: AgentCanvasLayoutPreviewDismissal = "explicit") => {
     const currentSnapshot = snapshotRef.current;
     if (!currentSnapshot) return;
     snapshotRef.current = null;
@@ -167,7 +177,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     setSnapshot(null);
     setStatus("idle");
     setError(null);
-    onUserResolutionRef.current?.("undo");
+    if (dismissal === "explicit") onUserResolutionRef.current?.("undo");
   }, [restoreSnapshot]);
 
   const keep = useCallback(async () => {
@@ -184,6 +194,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     setError(null);
     try {
       await persistPositions(
+        currentSnapshot.workflow,
         currentSnapshot.targetPositions,
         currentSnapshot.originalPositions,
       );

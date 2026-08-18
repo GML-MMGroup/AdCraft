@@ -4,6 +4,7 @@ export interface AgentCanvasLayoutConfirmationProps {
   status: "previewing" | "saving" | "save_error";
   error: string | null;
   onUndo: () => void;
+  onDismiss: () => void;
   onKeep: () => void;
   dismissExemptRef?: RefObject<HTMLElement | null>;
 }
@@ -12,6 +13,7 @@ export function AgentCanvasLayoutConfirmation({
   status,
   error,
   onUndo,
+  onDismiss,
   onKeep,
   dismissExemptRef,
 }: AgentCanvasLayoutConfirmationProps) {
@@ -35,7 +37,7 @@ export function AgentCanvasLayoutConfirmation({
         && !dialog.contains(event.target)
         && !exempt?.contains(event.target)
       ) {
-        onUndo();
+        onDismiss();
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -51,7 +53,7 @@ export function AgentCanvasLayoutConfirmation({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [dismissExemptRef, onUndo, saving]);
+  }, [dismissExemptRef, onDismiss, onUndo, saving]);
 
   return (
     <div

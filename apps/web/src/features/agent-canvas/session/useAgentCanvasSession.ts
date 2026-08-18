@@ -222,13 +222,29 @@ export function useAgentCanvasSession() {
   ), [updateNodePositions]);
 
   const persistLayoutPreviewPositions = useCallback((
+    workflow: AgentCanvasWorkflowV2,
     targetPositions: CanvasLayoutPositionV2[],
     originalPositions: CanvasLayoutPositionV2[],
   ) => persistAgentCanvasLayoutPreview({
+    workflow,
     targetPositions,
     originalPositions,
-    persistPositions: updateNodePositions,
-  }), [updateNodePositions]);
+    loadWorkflow: async (workflowId) => (
+      await agentCanvasApi.agentCanvasWorkflowWithEtag(workflowId)
+    ).value,
+    patchLayout: (workflowId, request) => (
+      agentCanvasApi.patchAgentCanvasLayout(workflowId, request)
+    ),
+    applyWorkflow: (next) => {
+      setAgentCanvasWorkflow((current) => {
+        if (!current || current.workflow_id !== next.workflow_id) return current;
+        const merged = mergeAgentCanvasWorkflow(current, next);
+        workflowRef.current = merged;
+        return merged;
+      });
+    },
+    applyLayout: (response) => applyLayout(response, response.positions),
+  }).then(() => setAuthoringError(null)), [applyLayout, setAgentCanvasWorkflow]);
 
   const rollbackNodePositions = useCallback((
     workflowId: string,
