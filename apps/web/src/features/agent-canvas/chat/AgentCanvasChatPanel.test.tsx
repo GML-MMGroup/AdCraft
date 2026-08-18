@@ -266,6 +266,7 @@ describe("ProposalCard", () => {
   );
 
   it("preserves the selected option and references after a retryable failure", () => {
+    const onRetryMaterialization = vi.fn().mockResolvedValue(true);
     const proposedReference = {
       source_kind: "image_asset" as const,
       source_id: "asset-hero-1",
@@ -289,6 +290,7 @@ describe("ProposalCard", () => {
         onSelect={vi.fn()}
         onRevise={vi.fn()}
         onApplyAction={vi.fn()}
+        onRetryMaterialization={onRetryMaterialization}
       />,
     );
 
@@ -324,13 +326,17 @@ describe("ProposalCard", () => {
         onSelect={vi.fn()}
         onRevise={vi.fn()}
         onApplyAction={vi.fn()}
+        onRetryMaterialization={onRetryMaterialization}
       />,
     );
 
     expect(screen.getByText("The selected direction could not be prepared.")).toBeTruthy();
     expect(screen.getByText("Hero reference")).toBeTruthy();
     expect((screen.getByRole("checkbox", { name: "Required" }) as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Revise options" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry draft creation" }));
+    expect(onRetryMaterialization).toHaveBeenCalledWith("turn-materialization-1");
   });
 
   it("does not offer a failed materialization retry when the backend marks it non-retryable", () => {
@@ -364,6 +370,7 @@ describe("ProposalCard", () => {
     );
 
     expect(screen.getByText("A required reference is no longer available.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry draft creation" })).toBeNull();
     expect((screen.getByRole("button", { name: "Use this direction" }) as HTMLButtonElement).disabled).toBe(true);
   });
 

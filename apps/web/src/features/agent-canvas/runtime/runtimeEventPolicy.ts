@@ -74,6 +74,12 @@ const AUTHORING_EVENTS = new Set([
   "storyboard_fanout_committed",
   "guided_editing_ready",
   "post_ready_effect_completed",
+  "guided_media_resume_completed",
+  "guided_media_resume_failed",
+  "storyboard_sequence_outline_planned",
+  "storyboard_segment_materialized",
+  "guided_editing_updated",
+  "guided_completion_failed",
 ]);
 
 const CHAT_EVENTS = new Set([
@@ -138,6 +144,13 @@ const CHAT_EVENTS = new Set([
   "post_ready_effect_completed",
   "post_ready_effect_failed",
   "post_ready_effect_retry_scheduled",
+  "guided_media_resume_queued",
+  "guided_media_resume_completed",
+  "guided_media_resume_failed",
+  "storyboard_sequence_outline_planned",
+  "storyboard_segment_materialized",
+  "guided_editing_updated",
+  "guided_completion_failed",
 ]);
 
 const NODE_DETAIL_EVENTS = new Set([
@@ -178,6 +191,12 @@ const GUIDED_CANONICAL_REFRESH_EVENTS = new Set([
   "guided_closure_blocked",
   "guided_editing_ready",
   "guided_production_completed",
+  "guided_media_resume_completed",
+  "guided_media_resume_failed",
+  "storyboard_sequence_outline_planned",
+  "storyboard_segment_materialized",
+  "guided_editing_updated",
+  "guided_completion_failed",
 ]);
 
 const GUIDED_CHAT_EVENTS = new Set([
@@ -191,6 +210,13 @@ const GUIDED_CHAT_EVENTS = new Set([
   "guided_editing_ready",
   "storyboard_fanout_committed",
   "execution_member_skipped_dependency",
+  "guided_media_resume_queued",
+  "guided_media_resume_completed",
+  "guided_media_resume_failed",
+  "storyboard_sequence_outline_planned",
+  "storyboard_segment_materialized",
+  "guided_editing_updated",
+  "guided_completion_failed",
 ]);
 
 const DOCUMENT_EVENTS = new Set([
@@ -206,6 +232,8 @@ const DOCUMENT_EVENTS = new Set([
   "storyboard_plan_revised",
   "storyboard_visual_anchor_frozen",
   "post_ready_effect_completed",
+  "storyboard_sequence_outline_planned",
+  "storyboard_segment_materialized",
 ]);
 
 export function runtimeEventPolicy(
@@ -218,8 +246,12 @@ export function runtimeEventPolicy(
   const publishesOutput = type === "node_output_published";
   const guidedCanonicalRefresh = GUIDED_CANONICAL_REFRESH_EVENTS.has(type);
   const documentEvent = DOCUMENT_EVENTS.has(type);
-  const documentId = documentEvent && typeof event.payload?.document_id === "string"
-    ? event.payload.document_id
+  const documentId = documentEvent
+    ? typeof event.payload?.document_id === "string"
+      ? event.payload.document_id
+      : typeof event.payload?.plan_document_id === "string"
+        ? event.payload.plan_document_id
+        : null
     : null;
 
   return {

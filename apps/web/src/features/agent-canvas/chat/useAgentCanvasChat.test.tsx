@@ -1410,6 +1410,53 @@ describe("useAgentCanvasChat", () => {
     expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
   });
 
+  it("retries a failed Proposal materialization through its authoritative child Turn", async () => {
+    api.retryAgentCanvasChatTurn.mockResolvedValue({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      turn_id: "turn-materialization-retry-1",
+      status: "queued",
+      events_cursor: 9,
+      retry_of_turn_id: "turn-materialization-1",
+      retry_attempt_no: 2,
+      replayed: false,
+    });
+    const { result } = renderHook(() => useAgentCanvasChat({
+      workflow: workflow(),
+      chatRevision: 0,
+      chatEvents: [],
+    }));
+
+    await act(async () => {
+      await result.current.actions.retryProposalMaterialization({
+        materialization_id: "materialization-1",
+        option_id: "option-1",
+        turn_id: "turn-materialization-1",
+        status: "failed",
+        attempt_no: 1,
+        retryable: true,
+        error: {
+          code: "capability_materialization_failed",
+          message: "Draft creation failed.",
+        },
+        created_at: "2026-08-18T00:00:00Z",
+        updated_at: "2026-08-18T00:00:01Z",
+      });
+    });
+
+    expect(api.retryAgentCanvasChatTurn).toHaveBeenCalledWith(
+      "workflow-1",
+      "turn-materialization-1",
+      {
+        expected_session_revision: 0,
+        expected_workflow_revision: 1,
+      },
+      expect.stringContaining("chat-turn-retry-turn-materialization-1"),
+    );
+    expect(api.submitAgentCanvasChatMessage).not.toHaveBeenCalled();
+    expect(api.actOnAgentCanvasProposal).not.toHaveBeenCalled();
+  });
+
   it("refreshes the canonical workflow and session after a stale turn retry", async () => {
     api.retryAgentCanvasChatTurn.mockRejectedValue({
       code: "chat_turn_retry_stale",

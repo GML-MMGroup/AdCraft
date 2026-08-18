@@ -28,6 +28,7 @@ import type {
   GuidedInteractionV1,
   GuidedInteractionSubmitRequestV1,
   ProposalActionDescriptorV2,
+  ProposalMaterializationProjectionV2,
   ProposedDraftReferenceV2,
 } from "../../../types-v2.ts";
 import { projectChatEvents } from "./projectChatEvents.ts";
@@ -1161,6 +1162,13 @@ export function useAgentCanvasChat({
     return retryTurn(activity.turn_id, activity.retryable);
   }, [retryTurn]);
 
+  const retryProposalMaterialization = useCallback((
+    materialization: ProposalMaterializationProjectionV2,
+  ) => {
+    if (materialization.status !== "failed") return Promise.resolve(false);
+    return retryTurn(materialization.turn_id, materialization.retryable);
+  }, [retryTurn]);
+
   const projectedItems = useMemo(() => projectChatEvents(chatEvents), [chatEvents]);
   const items = useMemo(
     () => mergeTimelineItems(persistedItems, projectedItems, optimisticItems),
@@ -1221,6 +1229,7 @@ export function useAgentCanvasChat({
       actOnDecisionBundle,
       submitGuidedInteraction,
       retryCapabilityActivity,
+      retryProposalMaterialization,
       retryTurn: (turn: AgentCanvasChatTurnV2) => retryTurn(turn.turn_id, turn.retryable),
       clearFailedDraft: () => setFailedDraft(null),
       clearNotice: () => setNotice(null),

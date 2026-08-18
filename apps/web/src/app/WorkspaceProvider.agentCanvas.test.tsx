@@ -20,7 +20,10 @@ const { legacyApi, v2Api } = vi.hoisted(() => ({
 }));
 
 vi.mock("../api/client", () => ({ api: legacyApi }));
-vi.mock("../api/v2Client", () => ({ v2Api }));
+vi.mock("../api/v2Client", () => ({
+  v2Api,
+  isV2ApiError: (value: unknown) => Boolean(value && typeof value === "object" && "status" in value),
+}));
 
 import { useApp } from "../AppContextValue.ts";
 import { v2AuthoringConflictStore } from "../api/v2AuthoringConflictStore.ts";
@@ -44,13 +47,21 @@ function Probe() {
     activeProjectId,
     startNewProject,
     workspaceHydrated,
+    workspaceRestoreError,
+    projectCatalogError,
+    refreshProjects,
+    savedProjects,
   } = useApp();
   return (
     <div>
       <span>{workspaceHydrated ? "hydrated" : "loading"}</span>
       <span>{activeProjectId ?? "no-project"}</span>
       <span>{agentCanvasWorkflow?.workflow_id ?? "no-workflow"}</span>
+      <span>{`projects:${savedProjects.length}`}</span>
+      <span>{projectCatalogError ?? "catalog-ok"}</span>
+      <span>{workspaceRestoreError ?? "restore-ok"}</span>
       <button type="button" onClick={() => void startNewProject()}>Create</button>
+      <button type="button" onClick={() => void refreshProjects()}>Refresh projects</button>
     </div>
   );
 }
@@ -134,6 +145,58 @@ describe("WorkspaceProvider Agent Canvas authority", () => {
     await screen.findByText("workflow-1");
     expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
     expect(v2Api.createAgentCanvasProject).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/Existing projects are still shown/)).toBeTruthy();
+  });
+
+  it("retains the last successful project catalog when a later refresh fails", async () => {
+    v2Api.listProjects.mockImplementation(async (status: string) => ({
+      items: status === "active" ? [{
+        project_id: "project-catalog-1",
+        workflow_id: "workflow-catalog-1",
+        name: "Catalog project",
+        description: "",
+        status: "active",
+        is_favorite: false,
+        cover_asset_id: null,
+        project_version: 1,
+        created_at: "2026-08-18T00:00:00Z",
+        updated_at: "2026-08-18T00:00:00Z",
+      }] : [],
+      next_cursor: null,
+    }));
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+    await screen.findByText("projects:1");
+
+    v2Api.listProjects.mockRejectedValue(new Error("Project list unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh projects" }));
+
+    await screen.findByText(/Existing projects are still shown/);
+    expect(screen.getByText("projects:1")).toBeTruthy();
+  });
+
+  it("preserves the active project preference on a transient restore failure", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    v2Api.projectWithEtag.mockRejectedValue(new Error("Database temporarily unavailable"));
+
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+
+    await screen.findByText(/project selection was preserved/);
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBe("project-1");
+    expect(screen.getByText("project-1")).toBeTruthy();
+  });
+
+  it("clears only a backend-confirmed missing active project identity", async () => {
+    window.localStorage.setItem(WORKSPACE_ACTIVE_PROJECT_KEY, "project-1");
+    v2Api.projectWithEtag.mockRejectedValue({
+      status: 404,
+      code: "project_not_found",
+      message: "Project not found",
+    });
+
+    render(<WorkspaceProvider><Probe /></WorkspaceProvider>);
+
+    await screen.findByText("no-project");
+    expect(window.localStorage.getItem(WORKSPACE_ACTIVE_PROJECT_KEY)).toBeNull();
   });
 
   it("preserves the local workflow until the user resolves a revision conflict", async () => {

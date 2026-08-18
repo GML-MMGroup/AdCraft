@@ -852,6 +852,31 @@
   line-height: 1.4;
 }
 
+.agent-chat__proposal-error-code {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.72;
+}
+
+.agent-chat__proposal-materialization button {
+  justify-self: start;
+  min-height: 26px;
+  margin-top: 3px;
+  padding: 4px 9px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.agent-chat__proposal-materialization button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 @keyframes agent-chat-materialization-spin {
   to { transform: rotate(360deg); }
 }

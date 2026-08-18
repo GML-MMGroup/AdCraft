@@ -346,6 +346,13 @@ export function AgentCanvasChatPanel({
                   onSubmitInteraction={interaction
                     ? (request) => chat.actions.submitGuidedInteraction(interaction, request)
                     : undefined}
+                  onRetryMaterialization={item.proposal.materialization
+                    ? () => chat.actions.retryProposalMaterialization(item.proposal.materialization!)
+                    : undefined}
+                  retryingMaterialization={Boolean(
+                    item.proposal.materialization
+                    && chat.state.retryingSourceTurnIds[item.proposal.materialization.turn_id]
+                  )}
                   readOnly={!interaction}
                   issue={chat.state.proposalIssues[item.proposal.proposal_id]}
                 />
@@ -781,6 +788,8 @@ export function ProposalCard({
   onApplyAction,
   interaction = null,
   onSubmitInteraction,
+  onRetryMaterialization,
+  retryingMaterialization = false,
   issue,
   readOnly = false,
 }: {
@@ -800,6 +809,8 @@ export function ProposalCard({
   onApplyAction?: (proposalId: string, action: ProposalActionDescriptorV2) => Promise<void>;
   interaction?: GuidedInteractionV1 | null;
   onSubmitInteraction?: (request: GuidedInteractionSubmitRequestV1) => Promise<boolean>;
+  onRetryMaterialization?: (turnId: string) => Promise<boolean>;
+  retryingMaterialization?: boolean;
   issue?: string;
   readOnly?: boolean;
 }) {
@@ -815,7 +826,7 @@ export function ProposalCard({
   const isOpen = proposal.availability === "open";
   const isSuperseded = proposal.availability === "superseded";
   const materializationBusy = materialization?.status === "queued" || materialization?.status === "working";
-  const retryBlocked = materialization?.status === "failed" && !materialization.retryable;
+  const materializationLocked = materializationBusy || materialization?.status === "failed";
   const selectAction = proposal.actions.find((action) => action.action === "select_option") ?? null;
   const reviseAction = proposal.actions.find((action) => (
     action.action === "revise_options" || action.action === "revise_direction"
@@ -838,17 +849,15 @@ export function ProposalCard({
   );
   const canSelect = activeInteraction
     ? activeInteraction.allowed_actions.includes("select")
-      && !materializationBusy
-      && !retryBlocked
+      && !materializationLocked
     : !readOnly && isOpen
     && Boolean(selectAction?.enabled)
-    && !materializationBusy
-    && !retryBlocked;
+    && !materializationLocked;
   const canRevise = activeInteraction
-    ? activeInteraction.allowed_actions.includes("revise") && !materializationBusy
+    ? activeInteraction.allowed_actions.includes("revise") && !materializationLocked
     : !readOnly && Boolean(reviseAction?.enabled)
     && (isOpen || isSuperseded)
-    && !materializationBusy;
+    && !materializationLocked;
   const availableReferences = proposal.proposed_references;
   const [acceptedReferences, setAcceptedReferences] = useState<ProposedDraftReferenceV2[]>(
     proposal.proposed_references,
@@ -1008,7 +1017,11 @@ export function ProposalCard({
         </p>
       ) : null}
       {materialization ? (
-        <ProposalMaterializationStatus materialization={materialization} />
+        <ProposalMaterializationStatus
+          materialization={materialization}
+          retrying={retryingMaterialization}
+          onRetry={materialization.retryable ? onRetryMaterialization : undefined}
+        />
       ) : null}
       {issue ? (
         <p className="agent-chat__proposal-issue" role="status">
@@ -1019,7 +1032,7 @@ export function ProposalCard({
         <TimelineProposalInteractionActions
           acceptedReferences={acceptedReferences}
           interaction={activeInteraction}
-          materializationBusy={materializationBusy}
+          materializationBusy={materializationLocked}
           onSubmit={onSubmitInteraction}
           pending={pending}
           selectedOptionId={canSelect ? selected?.option_id ?? null : null}
@@ -1055,7 +1068,7 @@ export function ProposalCard({
             <button
               type="button"
               key={action.action_id}
-              disabled={pending || materializationBusy || !action.enabled}
+              disabled={pending || materializationLocked || !action.enabled}
               title={action.disabled_reason ?? action.reason}
             onClick={() => void onApplyAction?.(proposal.proposal_id, action)}
             >

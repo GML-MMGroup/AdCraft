@@ -2645,8 +2645,8 @@ export function normalizeConceptProposalV2(
     normalizeCapabilityProposalOptionV2(item, `${path}.options[${index}]`)
   ));
   if (options.length < 1 || options.length > 4) fail(`${path}.options`, "expected between 1 and 4 options");
-  if (record.proposal_kind === "world_setting" && (options.length < 2 || options.length > 3)) {
-    fail(`${path}.options`, "World Setting proposals require between 2 and 3 options");
+  if (record.proposal_kind === "world_setting" && options.length > 3) {
+    fail(`${path}.options`, "World Setting proposals allow between 1 and 3 options");
   }
   return {
     proposal_id: expectNonEmptyString(record.proposal_id, `${path}.proposal_id`),
