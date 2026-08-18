@@ -289,9 +289,9 @@
   justify-content: center;
   gap: 5px;
   padding: 0 9px;
-  color: #eae6ff;
-  background: rgb(151 124 238 / 18%);
-  border: 1px solid rgb(176 151 255 / 20%);
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--brand) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent);
   border-radius: 7px;
   font-size: 10px;
   font-weight: 650;
@@ -423,8 +423,8 @@
   padding: 0 4px;
   place-items: center;
   border-radius: 999px;
-  background: rgb(162 138 250 / 16%);
-  color: #cfc4ff;
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+  color: var(--brand-hover);
   font-size: 10px;
 }
 
@@ -520,7 +520,7 @@
 .agent-node-workbench__editing-summary > svg {
   width: 22px;
   height: 22px;
-  color: #a990f3;
+  color: var(--brand);
 }
 
 .agent-node-workbench__editing-summary > div { display: grid; gap: 2px; }

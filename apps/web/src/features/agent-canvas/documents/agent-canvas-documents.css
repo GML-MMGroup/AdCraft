@@ -16,8 +16,8 @@
 }
 
 .agent-document-browser > button.is-active {
-  border-color: color-mix(in srgb, var(--accent, #9e8bef) 55%, transparent);
-  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .agent-document-browser__panel {
@@ -85,8 +85,8 @@
 }
 
 .agent-document-browser__filters button.is-selected {
-  border-color: color-mix(in srgb, var(--accent, #9e8bef) 48%, transparent);
-  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--text-primary, #fff);
 }
 
@@ -135,8 +135,8 @@
   width: 30px;
   height: 30px;
   border-radius: 7px;
-  background: color-mix(in srgb, var(--accent, #9e8bef) 18%, transparent);
-  color: var(--accent, #b3a4f5);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
 }
 
 .agent-document-card > header > div {
@@ -278,7 +278,7 @@
 }
 
 .agent-document-card__anchors code {
-  color: #c9bcff;
+  color: var(--brand-hover);
 }
 
 .agent-document-card__error {

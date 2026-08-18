@@ -157,12 +157,12 @@
   border-radius: 50%;
   background: rgb(250 250 253 / 94%);
   box-shadow: 0 8px 22px rgb(31 27 48 / 20%);
-  color: #6f5aae;
+  color: var(--brand);
 }
 
 .agent-chat__jump-to-latest:hover {
   background: #fff;
-  color: #59458f;
+  color: var(--brand-hover);
 }
 
 .agent-chat__jump-to-latest svg {
@@ -174,12 +174,12 @@
   border-color: rgb(255 255 255 / 14%);
   background: rgb(35 33 45 / 96%);
   box-shadow: 0 8px 22px rgb(0 0 0 / 36%);
-  color: #c0b2f5;
+  color: var(--brand);
 }
 
 :root .agent-chat__jump-to-latest:hover {
   background: rgb(47 44 60 / 98%);
-  color: #ddd5ff;
+  color: var(--brand-hover);
 }
 
 .agent-chat__empty {
@@ -357,8 +357,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #9581d7;
-  box-shadow: 0 0 0 4px rgb(149 129 215 / 12%);
+  background: var(--brand);
+  box-shadow: 0 0 0 4px rgb(157 175 230 / 12%);
 }
 
 .agent-chat__activity.is-working i,
@@ -391,8 +391,8 @@
 .agent-chat__working-spinner {
   width: 13px;
   height: 13px;
-  border: 2px solid rgb(149 129 215 / 24%);
-  border-top-color: #9581d7;
+  border: 2px solid rgb(157 175 230 / 24%);
+  border-top-color: var(--brand);
   border-radius: 50%;
   animation: agent-chat-working-spin 760ms linear infinite;
 }
@@ -471,8 +471,8 @@
 
 .agent-chat__recipe li.is-working i,
 .agent-chat__recipe li.is-current i {
-  background: #8a70d2;
-  box-shadow: 0 0 0 4px rgb(138 112 210 / 14%);
+  background: var(--brand);
+  box-shadow: 0 0 0 4px rgb(157 175 230 / 14%);
 }
 
 .agent-chat__recipe li.is-selected i {
@@ -529,7 +529,7 @@
 }
 
 .agent-chat__artifact b {
-  color: #725db4;
+  color: var(--brand-hover);
   font-size: 11px;
 }
 
@@ -614,7 +614,7 @@
   width: 13px;
   height: 13px;
   margin: 1px 0 0;
-  accent-color: #7664b7;
+  accent-color: var(--brand);
 }
 
 .agent-chat__decision-questions label span {
@@ -658,8 +658,8 @@
 }
 
 .agent-chat__decision-questions button.is-selected {
-  border-color: #8d76d4;
-  color: #67529d;
+  border-color: var(--brand);
+  color: var(--brand-hover);
 }
 
 .agent-chat__decision-actions {
@@ -669,8 +669,8 @@
 }
 
 .agent-chat__decision-actions button:first-child {
-  border-color: rgb(112 92 180 / 46%);
-  color: #65509b;
+  border-color: color-mix(in srgb, var(--brand) 46%, transparent);
+  color: var(--brand-hover);
 }
 
 .agent-chat__decision-actions button:disabled {
@@ -782,8 +782,8 @@
 }
 
 .agent-chat__options button.is-selected {
-  border-color: #8d76d4;
-  box-shadow: inset 0 0 0 1px rgb(141 118 212 / 24%);
+  border-color: var(--brand);
+  box-shadow: inset 0 0 0 1px rgb(157 175 230 / 24%);
 }
 
 .agent-chat__options strong {
@@ -828,7 +828,7 @@
 
 .agent-chat__proposal-materialization.is-queued > span,
 .agent-chat__proposal-materialization.is-working > span {
-  border-color: #806dc2;
+  border-color: var(--brand);
   border-top-color: transparent;
   animation: agent-chat-materialization-spin 900ms linear infinite;
 }
@@ -924,7 +924,7 @@
 .agent-chat__proposal-references input {
   width: 12px;
   height: 12px;
-  accent-color: #7664b7;
+  accent-color: var(--brand);
 }
 
 .agent-chat__proposal-references button {
@@ -1051,7 +1051,7 @@
 .agent-chat__revision button {
   border: 0;
   border-radius: 6px;
-  background: #8873c9;
+  background: var(--brand);
   color: white;
 }
 
@@ -1184,12 +1184,12 @@
 }
 
 .agent-chat__composer-actions button.is-active {
-  background: rgb(124 102 200 / 13%);
-  color: #715cb1;
+  background: color-mix(in srgb, var(--brand) 13%, transparent);
+  color: var(--brand-hover);
 }
 
 .agent-chat__composer-actions .agent-chat__send {
-  background: #7e68c2;
+  background: var(--brand);
   color: white;
 }
 
@@ -1345,8 +1345,8 @@
 }
 
 .agent-chat__style-categories button[aria-selected="true"] {
-  background: rgb(124 102 200 / 14%);
-  color: #6d56b2;
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand-hover);
 }
 
 .agent-chat__style-search {
@@ -1459,7 +1459,7 @@
 
 .agent-chat__style-option-state {
   align-self: start;
-  color: #6d56b2;
+  color: var(--brand-hover);
   font-size: 8px;
   font-weight: 650;
 }
@@ -1478,8 +1478,8 @@
   padding: 3px 6px;
   border: 0;
   border-radius: 5px;
-  background: rgb(124 102 200 / 12%);
-  color: #6f5aae;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand);
   font-size: 10px;
 }
 

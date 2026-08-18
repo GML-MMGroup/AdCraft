@@ -153,10 +153,10 @@ describe("HomePage hero title", () => {
       /:root \.home-product-hero__create\s*\{[^}]*border-color:\s*rgba\(255, 255, 255, 0\.075\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*0 8px 22px rgba\(0, 13, 24, 0\.12\);[^}]*-webkit-backdrop-filter:\s*none;[^}]*backdrop-filter:\s*none;[^}]*will-change:\s*auto;[^}]*color:\s*rgba\(255, 255, 255, 0\.96\);/s,
     );
     expect(styles).toMatch(
-      /:root \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
+      /:root \.home-product-hero__create:(?:hover|active)[^{]*\{[^}]*background:\s*color-mix\(in srgb, var\(--brand\) 30%, transparent\);[^}]*border-color:\s*color-mix\(in srgb, var\(--brand\) 72%, white\);/s,
     );
     expect(styles).toMatch(
-      /:root \.home-product-hero__create:active\s*\{[^}]*background:\s*rgba\(157, 175, 230, 0\.3\);[^}]*border-color:\s*rgba\(207, 217, 255, 0\.52\);/s,
+      /:root \.home-product-hero__create:active\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--brand\) 30%, transparent\);[^}]*border-color:\s*color-mix\(in srgb, var\(--brand\) 72%, white\);/s,
     );
   });
 });

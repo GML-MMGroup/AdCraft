@@ -193,10 +193,10 @@
   gap: 8px;
   margin-top: 48px;
   padding: 0 18px 0 15px;
-  border: 1px solid rgba(239, 233, 255, 0.74);
+  border: 1px solid color-mix(in srgb, var(--brand) 46%, white);
   border-radius: 8px;
-  background: rgba(128, 107, 196, 0.3);
-  box-shadow: 0 12px 28px rgba(82, 65, 147, 0.18), inset 0 1px rgba(255, 255, 255, 0.44);
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--brand) 18%, transparent), inset 0 1px rgba(255, 255, 255, 0.44);
   backdrop-filter: blur(18px) saturate(1.12);
   color: #fff;
   transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
@@ -211,14 +211,14 @@
 }
 
 .home-product-hero__create:hover {
-  border-color: rgba(249, 246, 255, 0.92);
-  background: rgba(139, 114, 224, 0.42);
-  box-shadow: 0 16px 34px rgba(70, 53, 137, 0.28), 0 0 30px rgba(139, 114, 224, 0.42), inset 0 1px rgba(255, 255, 255, 0.58);
+  border-color: color-mix(in srgb, var(--brand) 72%, white);
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--brand) 28%, transparent), 0 0 30px color-mix(in srgb, var(--brand) 34%, transparent), inset 0 1px rgba(255, 255, 255, 0.58);
   transform: translateY(-3px) scale(1.025);
 }
 
 .home-product-hero__create:focus-visible {
-  outline: 3px solid rgba(139, 114, 224, 0.42);
+  outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
 
@@ -463,6 +463,9 @@
 }
 
 .discover-orbit {
+  --discover-selection-glow: rgba(171, 143, 247, 0.22);
+  --discover-selection-shadow: rgba(49, 35, 92, 0.32);
+  --discover-focus-ring: rgba(190, 167, 252, 0.88);
   --discover-track-gap: clamp(56px, 4.6vw, 76px);
   --discover-card-height: clamp(232px, 23.43vw, 329px);
   --discover-card-glow-space: 72px;
@@ -479,7 +482,7 @@
 }
 
 .discover-orbit:focus-visible {
-  outline: 2px solid rgba(141, 112, 227, 0.62);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 8px;
 }
 
@@ -583,12 +586,12 @@
 .discover-orbit__card:is(:hover, :focus-visible, .is-selected) {
   z-index: 220;
   border-color: rgba(243, 237, 255, 0.8);
-  box-shadow: 0 28px 58px rgba(49, 35, 92, 0.32), 0 0 26px rgba(171, 143, 247, 0.22), inset 0 1px rgba(255, 255, 255, 0.42);
+  box-shadow: 0 28px 58px var(--discover-selection-shadow), 0 0 26px var(--discover-selection-glow), inset 0 1px rgba(255, 255, 255, 0.42);
   filter: blur(0) brightness(1.08) saturate(1.12);
 }
 
 .discover-orbit__card:focus-visible {
-  outline: 2px solid rgba(190, 167, 252, 0.88);
+  outline: 2px solid var(--discover-focus-ring);
   outline-offset: 6px;
 }
 
@@ -757,18 +760,18 @@
 }
 
 :root .home-product-hero__create:hover {
-  background: rgba(157, 175, 230, 0.3);
-  border-color: rgba(207, 217, 255, 0.52);
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  border-color: color-mix(in srgb, var(--brand) 72%, white);
   box-shadow: 0 11px 26px rgba(0, 13, 24, 0.17);
 }
 
 :root .home-product-hero__create:active {
-  background: rgba(157, 175, 230, 0.3);
-  border-color: rgba(207, 217, 255, 0.52);
+  background: color-mix(in srgb, var(--brand) 30%, transparent);
+  border-color: color-mix(in srgb, var(--brand) 72%, white);
 }
 
 :root .home-product-hero__create:focus-visible {
-  outline-color: rgba(255, 255, 255, 0.24);
+  outline-color: var(--focus-ring);
 }
 
 :root .home-product-film::after {

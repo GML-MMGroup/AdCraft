@@ -15,6 +15,9 @@
   --brand-hover: #B2C0ED;
   --brand-subtle: #20283F;
   --focus-ring: #CAD4F5;
+  --accent: var(--brand);
+  --accent-strong: var(--brand-hover);
+  --accent-soft: var(--brand-subtle);
   --success: #9CD38E;
   --success-subtle: color-mix(in srgb, #9CD38E 16%, transparent);
   --warning: #E1A750;

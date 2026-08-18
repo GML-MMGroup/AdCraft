@@ -143,7 +143,7 @@
 }
 
 .project-card:has(.project-card-open:focus-visible) {
-  box-shadow: 0 0 0 3px rgba(108, 93, 171, 0.22), 0 24px 60px rgba(32, 34, 53, 0.18), var(--shadow-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent), 0 24px 60px rgba(32, 34, 53, 0.18), var(--shadow-soft);
 }
 
 .project-card-open {
@@ -297,7 +297,7 @@
 
 .project-rename-btn:hover,
 .project-rename-btn:focus-visible {
-  color: #6754a6;
+  color: var(--brand-hover);
 }
 
 .project-favorite-btn.is-favorite {
@@ -360,7 +360,7 @@
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  border: 1px solid rgba(108, 93, 171, 0.22);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: 8px;
   outline: 0;
   background: rgba(255, 255, 255, 0.68);
@@ -372,9 +372,9 @@
 }
 
 .project-rename-form input:focus {
-  border-color: rgba(108, 93, 171, 0.56);
+  border-color: color-mix(in srgb, var(--brand) 56%, transparent);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 0 0 3px rgba(108, 93, 171, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
 }
 
 .project-rename-form input:read-only {

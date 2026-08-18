@@ -50,14 +50,14 @@
 
 .agent-canvas-connected-menu__option > button:hover,
 .agent-canvas-connected-menu__option > button:focus-visible {
-  background: rgba(117, 101, 181, 0.13);
+  background: color-mix(in srgb, var(--brand) 13%, transparent);
   outline: none;
 }
 
 .agent-canvas-connected-menu__option > button > svg {
   width: 18px;
   height: 18px;
-  color: #7565b5;
+  color: var(--brand);
 }
 
 .agent-canvas-connected-menu__option > button > span {
@@ -70,7 +70,7 @@
   height: 28px;
   margin: 0 8px 5px 45px;
   padding: 0 6px;
-  border: 1px solid rgba(117, 101, 181, 0.22);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: 5px;
   background: transparent;
   color: inherit;

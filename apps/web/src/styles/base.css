@@ -345,7 +345,7 @@ a {
 .send-btn {
   min-width: 112px;
   padding: 0 18px;
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.74));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.74));
   color: white;
   font-weight: 600;
 }
@@ -507,7 +507,7 @@ a {
   display: grid;
   width: 40px;
   place-items: center;
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.92), rgba(167, 149, 191, 0.72));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.92), rgba(178, 192, 237, 0.72));
   color: #fff;
   font-weight: 700;
 }
@@ -555,7 +555,7 @@ a {
 }
 
 .filter-btn.is-active {
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.76));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.76));
   color: white;
 }
 
@@ -598,7 +598,7 @@ a {
 }
 
 .rail-item.is-active {
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.78));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.78));
   color: white;
 }
 

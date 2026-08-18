@@ -74,7 +74,7 @@
 
 .agent-editing-panel__icon-button:hover,
 .agent-editing-track__order button:hover:not(:disabled) {
-  border-color: #8c79c9;
+  border-color: var(--brand);
   transform: translateY(-1px);
 }
 
@@ -226,7 +226,7 @@
 }
 
 .agent-editing-panel__export {
-  background: linear-gradient(125deg, #6853ad, #8771cc);
+  background: var(--brand);
 }
 
 .agent-editing-panel__cancel-export {
@@ -255,7 +255,7 @@
   padding: 8px 10px;
   background: color-mix(in srgb, var(--surface, #fff) 72%, transparent);
   border: 1px solid color-mix(in srgb, var(--border-color, #c8cad6) 65%, transparent);
-  border-left: 3px solid #7b68bb;
+  border-left: 3px solid var(--brand);
   border-radius: 6px;
 }
 
@@ -294,7 +294,7 @@
 .agent-editing-track__settings input[type="range"] {
   width: 100%;
   min-width: 0;
-  accent-color: #7662b8;
+  accent-color: var(--brand);
 }
 
 .agent-editing-track__settings .agent-editing-track__toggle {
@@ -305,7 +305,7 @@
 }
 
 .agent-editing-track__toggle input {
-  accent-color: #7662b8;
+  accent-color: var(--brand);
 }
 
 .agent-editing-track--failed {
@@ -407,7 +407,7 @@
 .agent-editing-track__volume input {
   min-width: 0;
   flex: 1;
-  accent-color: #7662b8;
+  accent-color: var(--brand);
 }
 
 .agent-editing-panel__empty-track,

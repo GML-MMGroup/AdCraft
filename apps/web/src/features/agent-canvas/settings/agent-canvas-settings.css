@@ -26,8 +26,8 @@
 }
 
 .agent-execution-mode__control > button[aria-checked="true"] {
-  background: color-mix(in srgb, var(--accent, #a894f5) 24%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #a894f5) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .agent-execution-mode__control > button i {
