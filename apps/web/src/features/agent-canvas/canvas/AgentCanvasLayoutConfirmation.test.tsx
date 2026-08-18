@@ -112,6 +112,8 @@ describe("AgentCanvasLayoutConfirmation", () => {
   it("disables actions and ignores dismissal while saving", () => {
     const onUndo = vi.fn();
     const onKeep = vi.fn();
+    const competingWindowHandler = vi.fn();
+    window.addEventListener("keydown", competingWindowHandler);
     render(
       <AgentCanvasLayoutConfirmation
         status="saving"
@@ -123,11 +125,19 @@ describe("AgentCanvasLayoutConfirmation", () => {
 
     expect((screen.getByRole("button", { name: "撤销" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "保留" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.keyDown(document, { key: "Escape" });
+    const escapeEvent = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(escapeEvent);
     fireEvent.pointerDown(document.body);
 
     expect(onUndo).not.toHaveBeenCalled();
     expect(onKeep).not.toHaveBeenCalled();
+    expect(escapeEvent.defaultPrevented).toBe(true);
+    expect(competingWindowHandler).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", competingWindowHandler);
   });
 
   it("keeps the save error visible with both actions enabled", () => {

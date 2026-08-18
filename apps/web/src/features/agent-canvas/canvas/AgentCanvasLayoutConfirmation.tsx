@@ -39,11 +39,10 @@ export function AgentCanvasLayoutConfirmation({
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!saving && event.key === "Escape") {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        onUndo();
-      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!saving) onUndo();
     };
 
     document.addEventListener("pointerdown", onPointerDown);
