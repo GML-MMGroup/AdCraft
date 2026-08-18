@@ -9,6 +9,7 @@ import {
   findAvailableCanvasPosition,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
+  reconcileSelectableCanvasEdges,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvasGraphModel.ts";
@@ -209,12 +210,38 @@ describe("canvasGraphModel", () => {
   });
 
   it("renders only backend bindings as edges", () => {
-    expect(toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes)).toEqual([expect.objectContaining({
+    const edges = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+
+    expect(edges).toEqual([expect.objectContaining({
       id: "binding-1",
       source: "image-1",
       target: "video-1",
       type: "default",
     })]);
+    expect(edges[0]?.style).toBeUndefined();
+    expect(edges[0]?.markerEnd).toMatchObject({
+      color: "rgba(229, 231, 238, 0.72)",
+    });
+  });
+
+  it("preserves selected bindings while reconciling canonical backend edges", () => {
+    const canonical = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+    const selected = canonical.map((edge) => ({ ...edge, selected: true }));
+
+    expect(reconcileSelectableCanvasEdges(canonical, selected)).toEqual([
+      expect.objectContaining({ id: "binding-1", selected: true }),
+    ]);
+  });
+
+  it("drops selection state for bindings that no longer exist", () => {
+    const staleSelectedEdge = {
+      id: "deleted-binding",
+      source: "image-1",
+      target: "video-1",
+      selected: true,
+    };
+
+    expect(reconcileSelectableCanvasEdges([], [staleSelectedEdge])).toEqual([]);
   });
 
   it("does not render disabled or asset-backed bindings as inferred edges", () => {

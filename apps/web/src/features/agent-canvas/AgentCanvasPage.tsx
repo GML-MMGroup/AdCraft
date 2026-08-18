@@ -6,6 +6,7 @@ import {
   type NodeChange,
   type ReactFlowInstance,
   type Viewport,
+  useEdgesState,
   useNodesState,
 } from "@xyflow/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
@@ -51,6 +52,7 @@ import {
 } from "./canvas/draggingNodeState.ts";
 import {
   findAvailableCanvasPosition,
+  reconcileSelectableCanvasEdges,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvas/canvasGraphModel.ts";
@@ -154,6 +156,7 @@ export function AgentCanvasPage() {
     runNode,
   } = live.actions;
   const [nodes, setNodes, onNodesChange] = useNodesState<AgentCanvasFlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [chatCollapsed, setChatCollapsed] = useState(false);
@@ -330,7 +333,7 @@ export function AgentCanvasPage() {
       : [],
     [live.state.runtime, nodeCallbacks, workflow],
   );
-  const edges = useMemo(
+  const canonicalEdges = useMemo(
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
     [workflow],
   );
@@ -344,6 +347,17 @@ export function AgentCanvasPage() {
       );
     });
   }, [canonicalNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges((current) => reconcileSelectableCanvasEdges(canonicalEdges, current));
+  }, [canonicalEdges, setEdges]);
+
+  const clearEdgeSelection = useCallback(() => {
+    setEdges((current) => {
+      if (!current.some((edge) => edge.selected)) return current;
+      return current.map((edge) => edge.selected ? { ...edge, selected: false } : edge);
+    });
+  }, [setEdges]);
 
   useEffect(() => {
     if (
@@ -394,8 +408,9 @@ export function AgentCanvasPage() {
 
   const recoverDeletedCanvasState = useCallback(async () => {
     setNodes(canonicalNodes);
+    setEdges((current) => reconcileSelectableCanvasEdges(canonicalEdges, current));
     await refreshWorkflow();
-  }, [canonicalNodes, refreshWorkflow, setNodes]);
+  }, [canonicalEdges, canonicalNodes, refreshWorkflow, setEdges, setNodes]);
 
   const deleteEdges = useCallback((deleted: Edge[]) => {
     void deleteCanvasEntities(
@@ -584,11 +599,12 @@ export function AgentCanvasPage() {
 
   const openCanvasContextMenu = useCallback((menuPosition: CanvasPositionV2) => {
     const canvasPosition = flowRef.current?.screenToFlowPosition(menuPosition) ?? { x: 120, y: 120 };
+    clearEdgeSelection();
     setSelectedNodeId(null);
     setAddMenuOpen(false);
     setConnectedNodeMenu(null);
     setContextMenu({ menuPosition, canvasPosition });
-  }, [setSelectedNodeId]);
+  }, [clearEdgeSelection, setSelectedNodeId]);
 
   if (!session.state.workspaceHydrated) {
     return <div className="agent-canvas-state">Opening project...</div>;
@@ -642,14 +658,17 @@ export function AgentCanvasPage() {
           zoomOnDoubleClick={false}
           selectionOnDrag
           onInit={initializeFlow}
+          onEdgesChange={onEdgesChange}
           onNodesChange={handleNodeChanges}
           onNodeClick={(_event, node) => {
+            clearEdgeSelection();
             setSelectedNodeId(node.id);
             scheduleExitForNodeSelection(node.id);
           }}
           onNodeDoubleClick={(event, node) => {
             event.preventDefault();
             event.stopPropagation();
+            clearEdgeSelection();
             setSelectedNodeId(node.id);
             focusCanvasNode(node.id);
           }}
@@ -683,6 +702,7 @@ export function AgentCanvasPage() {
             openCanvasContextMenu({ x: event.clientX, y: event.clientY });
           }}
           onPaneClick={() => {
+            clearEdgeSelection();
             setSelectedNodeId(null);
             setAddMenuOpen(false);
             setConnectedNodeMenu(null);

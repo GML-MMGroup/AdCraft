@@ -47,6 +47,29 @@
   cursor: grabbing;
 }
 
+.agent-canvas-board .react-flow__edge-path {
+  stroke: rgb(229 231 238 / 58%);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 48%));
+  transition:
+    stroke 140ms ease,
+    stroke-width 140ms ease,
+    opacity 140ms ease;
+}
+
+.agent-canvas-board .react-flow__edge:hover .react-flow__edge-path {
+  stroke: rgb(247 248 251 / 78%);
+}
+
+.agent-canvas-board .react-flow__edge.selected .react-flow__edge-path {
+  stroke: rgb(255 255 255 / 96%);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 62%));
+}
+
 .agent-canvas-pointer-background {
   pointer-events: none;
   opacity: 0;

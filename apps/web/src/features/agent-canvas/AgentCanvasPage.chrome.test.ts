@@ -36,4 +36,34 @@ describe("AgentCanvasPage chrome", () => {
     expect(baseCss).toContain("margin: 16px auto 0");
     expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height) - 16px)");
   });
+
+  it("keeps backend edges selectable and renders the selected edge as a static monochrome dash", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(source).toContain("useEdgesState<Edge>([])");
+    expect(source).toContain("onEdgesChange={onEdgesChange}");
+    expect(source).toContain("deleteKeyCode={[\"Backspace\", \"Delete\"]}");
+    expect(source).toContain("onEdgesDelete={deleteEdges}");
+    expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
+    expect(canvasCss).toContain("stroke-dasharray: 8 6");
+    expect(canvasCss).not.toContain("animation: agent-canvas-edge");
+  });
+
+  it("restores canonical bindings immediately when a delete mutation fails", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toMatch(
+      /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(canonicalNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(canonicalEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
+    );
+  });
 });
