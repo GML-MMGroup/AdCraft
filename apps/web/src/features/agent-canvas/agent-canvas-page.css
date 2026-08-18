@@ -186,6 +186,78 @@
   position: relative;
 }
 
+.agent-canvas-layout-confirmation {
+  position: absolute;
+  z-index: 21;
+  top: 44px;
+  left: 50%;
+  display: grid;
+  box-sizing: border-box;
+  width: 220px;
+  gap: 10px;
+  padding: 12px;
+  color: #f3f4f8;
+  background: rgb(24 26 34 / 96%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 32%);
+  transform: translateX(-50%);
+}
+
+.agent-canvas-layout-confirmation > p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-canvas-layout-confirmation > p:focus-visible {
+  outline: 2px solid rgb(156 211 142 / 86%);
+  outline-offset: 3px;
+}
+
+.agent-canvas-layout-confirmation__error {
+  color: #f0b8b8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-canvas-layout-confirmation__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-canvas-layout-confirmation__actions button {
+  min-height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  background: transparent;
+  border: 1px solid currentcolor;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.agent-canvas-layout-confirmation__actions button:first-child {
+  color: #ca6f6f;
+}
+
+.agent-canvas-layout-confirmation__actions button:last-child {
+  color: #9cd38e;
+}
+
+.agent-canvas-layout-confirmation__actions button:hover:not(:disabled),
+.agent-canvas-layout-confirmation__actions button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: 0;
+}
+
+.agent-canvas-layout-confirmation__actions button:disabled {
+  cursor: wait;
+  opacity: 0.48;
+}
+
 .agent-canvas-node-picker {
   display: grid;
   width: 164px;
