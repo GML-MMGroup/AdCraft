@@ -63,7 +63,8 @@
   stroke: rgb(247 248 251 / 78%);
 }
 
-.agent-canvas-board .react-flow__edge.selected .react-flow__edge-path {
+.agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
+.agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
   stroke: rgb(255 255 255 / 96%);
   stroke-width: 2;
   stroke-dasharray: 8 6;
@@ -907,7 +908,8 @@
     transition: none;
   }
 
-  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path {
+  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
+  .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
     animation: none;
   }
 }

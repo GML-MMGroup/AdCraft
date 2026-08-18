@@ -51,7 +51,10 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onEdgesChange={onEdgesChange}");
     expect(source).toContain("deleteKeyCode={[\"Backspace\", \"Delete\"]}");
     expect(source).toContain("onEdgesDelete={deleteEdges}");
+    expect(source).toContain("highlightNodeRelatedCanvasEdges(");
+    expect(source).toContain("session.state.selectedNodeId");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
+    expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path");
     expect(canvasCss).toContain("stroke-dasharray: 8 6");
     expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
     expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");
@@ -67,7 +70,7 @@ describe("AgentCanvasPage chrome", () => {
     );
 
     expect(source).toMatch(
-      /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(canonicalNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(canonicalEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
+      /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(canonicalNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(presentedEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
     );
   });
 });

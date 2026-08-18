@@ -263,3 +263,25 @@ export function reconcileSelectableCanvasEdges(
     selected: selectedEdgeIds.has(edge.id),
   }));
 }
+
+export function highlightNodeRelatedCanvasEdges(
+  edges: Edge[],
+  selectedNodeId: string | null,
+): Edge[] {
+  return edges.map((edge) => {
+    const { className: currentClassName, ...edgeWithoutClassName } = edge;
+    const classNames = (currentClassName ?? "")
+      .split(/\s+/)
+      .filter((className) => className && className !== "is-node-related");
+    if (
+      selectedNodeId
+      && (edge.source === selectedNodeId || edge.target === selectedNodeId)
+    ) {
+      classNames.push("is-node-related");
+    }
+    return {
+      ...edgeWithoutClassName,
+      ...(classNames.length ? { className: classNames.join(" ") } : {}),
+    };
+  });
+}
