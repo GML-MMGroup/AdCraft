@@ -72,7 +72,7 @@ describe("AgentCanvasPage chrome", () => {
     );
 
     expect(source).toMatch(
-      /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(canonicalNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(presentedEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
+      /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(presentedNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(presentedEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
     );
   });
 
@@ -92,6 +92,8 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("<LayoutIcon />");
     expect(source).toContain('aria-label="Organize canvas"');
     expect(source).toContain("updateNodePositions");
+    expect(source).toContain("rollbackPositions: rollbackNodePositions");
+    expect(source).not.toContain("layoutKeepSucceededRef");
   });
 
   it("animates node transforms only during layout preview and respects reduced motion", () => {

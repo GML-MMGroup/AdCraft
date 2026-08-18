@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, type RefObject } from "react";
 
 export interface AgentCanvasLayoutConfirmationProps {
   status: "previewing" | "saving" | "save_error";
   error: string | null;
   onUndo: () => void;
   onKeep: () => void;
+  dismissExemptRef?: RefObject<HTMLElement | null>;
 }
 
 export function AgentCanvasLayoutConfirmation({
@@ -12,6 +13,7 @@ export function AgentCanvasLayoutConfirmation({
   error,
   onUndo,
   onKeep,
+  dismissExemptRef,
 }: AgentCanvasLayoutConfirmationProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLParagraphElement>(null);
@@ -25,12 +27,23 @@ export function AgentCanvasLayoutConfirmation({
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const dialog = dialogRef.current;
-      if (!saving && dialog && event.target instanceof Node && !dialog.contains(event.target)) {
+      const exempt = dismissExemptRef?.current;
+      if (
+        !saving
+        && dialog
+        && event.target instanceof Node
+        && !dialog.contains(event.target)
+        && !exempt?.contains(event.target)
+      ) {
         onUndo();
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!saving && event.key === "Escape") onUndo();
+      if (!saving && event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        onUndo();
+      }
     };
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -39,7 +52,7 @@ export function AgentCanvasLayoutConfirmation({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [onUndo, saving]);
+  }, [dismissExemptRef, onUndo, saving]);
 
   return (
     <div

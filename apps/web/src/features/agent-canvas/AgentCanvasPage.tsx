@@ -54,6 +54,7 @@ import {
 } from "./canvas/canvasAutoLayout.ts";
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
+import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
 import {
   reconcileDragAwareNodes,
   setDraggedNodeIds,
@@ -145,6 +146,7 @@ export function AgentCanvasPage() {
     placeActionReceiptNodes,
     saveVariationDraft,
     setSelectedNodeId,
+    rollbackNodePositions,
     updateNodePositions,
   } = session.actions;
   const runtimeCallbacks = useMemo(() => ({
@@ -187,21 +189,20 @@ export function AgentCanvasPage() {
     point: { x: number; y: number };
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
+  const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
-  const layoutKeepSucceededRef = useRef(false);
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
-  const restoreLayoutViewport = useCallback((viewport: Viewport) => (
-    flowRef.current?.setViewport(viewport)
-  ), []);
-  const persistLayoutPositions = useCallback(async (positions: CanvasLayoutPositionV2[]) => {
-    await updateNodePositions(positions);
-    layoutKeepSucceededRef.current = true;
-  }, [updateNodePositions]);
+  activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
+  const restoreLayoutViewport = useCallback((viewport: Viewport, previewWorkflowId: string) => {
+    if (activeWorkflowIdRef.current !== previewWorkflowId) return;
+    return flowRef.current?.setViewport(viewport);
+  }, []);
   const layoutPreview = useAgentCanvasLayoutPreview({
     workflowId: workflow?.workflow_id ?? "no-workflow",
-    persistPositions: persistLayoutPositions,
+    persistPositions: updateNodePositions,
     restoreViewport: restoreLayoutViewport,
+    rollbackPositions: rollbackNodePositions,
   });
   const {
     active: layoutPreviewActive,
@@ -218,9 +219,7 @@ export function AgentCanvasPage() {
     scheduleLayoutButtonFocus();
   }, [cancelLayoutPreview, scheduleLayoutButtonFocus]);
   const keepLayoutPreview = useCallback(async () => {
-    layoutKeepSucceededRef.current = false;
-    await persistLayoutPreview();
-    if (layoutKeepSucceededRef.current) scheduleLayoutButtonFocus();
+    if (await persistLayoutPreview()) scheduleLayoutButtonFocus();
   }, [persistLayoutPreview, scheduleLayoutButtonFocus]);
   const {
     focusedNodeId,
@@ -458,10 +457,10 @@ export function AgentCanvasPage() {
   }, [connectionPolicy, createBinding, workflow]);
 
   const recoverDeletedCanvasState = useCallback(async () => {
-    setNodes(canonicalNodes);
+    setNodes(presentedNodes);
     setEdges((current) => reconcileSelectableCanvasEdges(presentedEdges, current));
     await refreshWorkflow();
-  }, [canonicalNodes, presentedEdges, refreshWorkflow, setEdges, setNodes]);
+  }, [presentedEdges, presentedNodes, refreshWorkflow, setEdges, setNodes]);
 
   const deleteEdges = useCallback((deleted: Edge[]) => {
     void deleteCanvasEntities(
@@ -804,7 +803,9 @@ export function AgentCanvasPage() {
             setContextMenu(null);
           }}
           onMoveEnd={(_event, viewport) => {
-            if (!focusedNodeId) writeViewport(workflow.workflow_id, viewport);
+            if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {
+              writeViewport(workflow.workflow_id, viewport);
+            }
           }}
           fitView={false}
           colorMode="system"
@@ -850,6 +851,7 @@ export function AgentCanvasPage() {
                 error={layoutPreview.error}
                 onUndo={undoLayoutPreview}
                 onKeep={() => void keepLayoutPreview()}
+                dismissExemptRef={pointerSpotlight.hostRef}
               />
             ) : null}
           </div>

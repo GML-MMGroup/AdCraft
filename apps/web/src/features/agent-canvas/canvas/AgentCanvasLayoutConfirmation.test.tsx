@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AgentCanvasLayoutConfirmation } from "./AgentCanvasLayoutConfirmation.tsx";
@@ -37,8 +38,10 @@ describe("AgentCanvasLayoutConfirmation", () => {
     expect(document.activeElement).toBe(screen.getByText("是否保留此次排布"));
   });
 
-  it("uses Escape to undo", () => {
+  it("uses Escape exclusively for layout Undo", () => {
     const onUndo = vi.fn();
+    const competingWindowHandler = vi.fn();
+    window.addEventListener("keydown", competingWindowHandler);
     render(
       <AgentCanvasLayoutConfirmation
         status="previewing"
@@ -48,9 +51,17 @@ describe("AgentCanvasLayoutConfirmation", () => {
       />,
     );
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(event);
 
     expect(onUndo).toHaveBeenCalledOnce();
+    expect(event.defaultPrevented).toBe(true);
+    expect(competingWindowHandler).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", competingWindowHandler);
   });
 
   it("undoes on an outside pointerdown but not a pointerdown inside the dialog", () => {
@@ -68,6 +79,33 @@ describe("AgentCanvasLayoutConfirmation", () => {
     expect(onUndo).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(document.body);
+    expect(onUndo).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the preview open for pointer gestures anywhere inside the canvas board", () => {
+    const onUndo = vi.fn();
+    const boardRef = createRef<HTMLDivElement>();
+    render(
+      <div>
+        <div ref={boardRef} data-testid="canvas-board">
+          <button type="button">Canvas control</button>
+          <AgentCanvasLayoutConfirmation
+            status="previewing"
+            error={null}
+            onUndo={onUndo}
+            onKeep={vi.fn()}
+            dismissExemptRef={boardRef}
+          />
+        </div>
+        <button type="button">Outside canvas</button>
+      </div>,
+    );
+
+    fireEvent.pointerDown(screen.getByTestId("canvas-board"));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Canvas control" }));
+    expect(onUndo).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Outside canvas" }));
     expect(onUndo).toHaveBeenCalledOnce();
   });
 

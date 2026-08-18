@@ -220,6 +220,21 @@ export function useAgentCanvasSession() {
     updateNodePositions([{ node_id: nodeId, ...position }])
   ), [updateNodePositions]);
 
+  const rollbackNodePositions = useCallback((
+    workflowId: string,
+    positions: CanvasLayoutPositionV2[],
+  ) => {
+    const pending = pendingLayoutPositionsRef.current.get(workflowId);
+    positions.forEach((position) => pending?.delete(position.node_id));
+    if (pending && !pending.size) pendingLayoutPositionsRef.current.delete(workflowId);
+    setAgentCanvasWorkflow((current) => {
+      if (!current || current.workflow_id !== workflowId) return current;
+      const next = overlayAgentCanvasPositions(current, positions);
+      workflowRef.current = next;
+      return next;
+    });
+  }, [setAgentCanvasWorkflow]);
+
   const createNode = useCallback(async (request: CanvasNodeCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
     return queueRef.current!.enqueue(createOperationKey("create-node"), async () => {
@@ -476,6 +491,7 @@ export function useAgentCanvasSession() {
       patchNode,
       updateNodePosition,
       updateNodePositions,
+      rollbackNodePositions,
       createNode,
       createConnectedNode,
       saveVariationDraft,

@@ -25,6 +25,7 @@ type PreviewSnapshot = {
   originalPositions: CanvasLayoutPositionV2[];
   targetPositions: CanvasLayoutPositionV2[];
   originalViewport: Viewport;
+  persistenceStarted: boolean;
 };
 
 function previewErrorMessage(error: unknown): string {
@@ -54,10 +55,15 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   workflowId,
   persistPositions,
   restoreViewport,
+  rollbackPositions,
 }: {
   workflowId: string;
   persistPositions: (positions: CanvasLayoutPositionV2[]) => Promise<void>;
-  restoreViewport: (viewport: Viewport) => Promise<unknown> | unknown;
+  restoreViewport: (viewport: Viewport, workflowId: string) => Promise<unknown> | unknown;
+  rollbackPositions?: (
+    workflowId: string,
+    positions: CanvasLayoutPositionV2[],
+  ) => Promise<unknown> | unknown;
 }): {
   status: AgentCanvasLayoutPreviewStatus;
   error: string | null;
@@ -65,7 +71,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   positions: CanvasLayoutPositionV2[];
   begin: (preview: AgentCanvasLayoutPreviewStart<TNode>) => void;
   cancel: () => void;
-  keep: () => Promise<void>;
+  keep: () => Promise<boolean>;
   overlay: (nodes: readonly TNode[]) => TNode[];
 } {
   const [snapshot, setSnapshot] = useState<PreviewSnapshot | null>(null);
@@ -76,25 +82,49 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   const nextTransactionIdRef = useRef(0);
   const savingTransactionIdRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
+  const restoreViewportRef = useRef(restoreViewport);
+  const rollbackPositionsRef = useRef(rollbackPositions);
 
   workflowIdRef.current = workflowId;
+  restoreViewportRef.current = restoreViewport;
+  rollbackPositionsRef.current = rollbackPositions;
+
+  const restoreSnapshot = useCallback((currentSnapshot: PreviewSnapshot) => {
+    if (currentSnapshot.persistenceStarted) {
+      void Promise.resolve(rollbackPositionsRef.current?.(
+        currentSnapshot.workflowId,
+        currentSnapshot.originalPositions,
+      )).catch(() => undefined);
+    }
+    void Promise.resolve(restoreViewportRef.current(
+      currentSnapshot.originalViewport,
+      currentSnapshot.workflowId,
+    )).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      const currentSnapshot = snapshotRef.current;
+      if (currentSnapshot) {
+        snapshotRef.current = null;
+        savingTransactionIdRef.current = null;
+        restoreSnapshot(currentSnapshot);
+      }
     };
-  }, []);
+  }, [restoreSnapshot]);
 
   useEffect(() => {
     if (!snapshot || snapshot.workflowId === workflowId) return;
     if (snapshotRef.current?.transactionId !== snapshot.transactionId) return;
+    restoreSnapshot(snapshot);
     snapshotRef.current = null;
     savingTransactionIdRef.current = null;
     setSnapshot(null);
     setStatus("idle");
     setError(null);
-  }, [snapshot, workflowId]);
+  }, [restoreSnapshot, snapshot, workflowId]);
 
   const active = snapshot?.workflowId === workflowId;
   const positions = useMemo(() => active ? snapshot?.targetPositions ?? [] : [], [active, snapshot]);
@@ -111,6 +141,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
       })),
       targetPositions: preview.targetPositions.map((position) => ({ ...position })),
       originalViewport: { ...preview.viewport },
+      persistenceStarted: false,
     };
     nextTransactionIdRef.current = nextSnapshot.transactionId;
     snapshotRef.current = nextSnapshot;
@@ -127,11 +158,11 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     if (savingTransactionIdRef.current === currentSnapshot.transactionId) {
       savingTransactionIdRef.current = null;
     }
+    restoreSnapshot(currentSnapshot);
     setSnapshot(null);
     setStatus("idle");
     setError(null);
-    void Promise.resolve(restoreViewport(currentSnapshot.originalViewport)).catch(() => undefined);
-  }, [restoreViewport]);
+  }, [restoreSnapshot]);
 
   const keep = useCallback(async () => {
     const currentSnapshot = snapshotRef.current;
@@ -139,9 +170,10 @@ export function useAgentCanvasLayoutPreview<TNode extends {
       !currentSnapshot
       || currentSnapshot.workflowId !== workflowId
       || savingTransactionIdRef.current !== null
-    ) return;
+    ) return false;
 
     const transactionId = currentSnapshot.transactionId;
+    currentSnapshot.persistenceStarted = true;
     savingTransactionIdRef.current = transactionId;
     setStatus("saving");
     setError(null);
@@ -151,20 +183,22 @@ export function useAgentCanvasLayoutPreview<TNode extends {
         !mountedRef.current
         || workflowIdRef.current !== currentSnapshot.workflowId
         || snapshotRef.current?.transactionId !== transactionId
-      ) return;
+      ) return false;
       snapshotRef.current = null;
       savingTransactionIdRef.current = null;
       setSnapshot(null);
       setStatus("idle");
+      return true;
     } catch (saveError) {
       if (
         !mountedRef.current
         || workflowIdRef.current !== currentSnapshot.workflowId
         || snapshotRef.current?.transactionId !== transactionId
-      ) return;
+      ) return false;
       savingTransactionIdRef.current = null;
       setStatus("save_error");
       setError(previewErrorMessage(saveError));
+      return false;
     }
   }, [persistPositions, workflowId]);
 
