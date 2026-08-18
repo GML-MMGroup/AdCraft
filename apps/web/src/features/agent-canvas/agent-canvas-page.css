@@ -68,6 +68,13 @@
   stroke-width: 2;
   stroke-dasharray: 8 6;
   filter: drop-shadow(0 2px 4px rgb(0 0 0 / 62%));
+  animation: agent-canvas-selected-edge-flow 760ms linear infinite;
+}
+
+@keyframes agent-canvas-selected-edge-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
 }
 
 .agent-canvas-pointer-background {
@@ -898,5 +905,9 @@
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-pointer-background {
     transition: none;
+  }
+
+  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path {
+    animation: none;
   }
 }
