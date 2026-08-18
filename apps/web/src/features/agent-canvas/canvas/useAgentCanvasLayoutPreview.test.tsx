@@ -17,6 +17,17 @@ const preview = {
   viewport: originalViewport,
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 describe("overlayAgentCanvasLayoutPreview", () => {
   it("overlays preview coordinates without changing node content or selection", () => {
     const current = [{ id: "a", position: { x: 1, y: 2 }, selected: true, data: { value: 1 } }];
@@ -126,5 +137,89 @@ describe("useAgentCanvasLayoutPreview", () => {
     expect(result.current.status).toBe("idle");
     expect(result.current.active).toBe(false);
     expect(result.current.positions).toEqual([]);
+  });
+
+  it("ignores a successful save after cancellation and a replacement preview", async () => {
+    const save = createDeferred<void>();
+    const persistPositions = vi.fn(() => save.promise);
+    const replacementPositions = [{ node_id: "a", x: 70, y: 80 }];
+    const { result } = renderHook(() => useAgentCanvasLayoutPreview({
+      workflowId: "wf-1",
+      persistPositions,
+      restoreViewport: vi.fn(),
+    }));
+
+    act(() => result.current.begin(preview));
+    let keep!: Promise<void>;
+    act(() => {
+      keep = result.current.keep();
+    });
+    act(() => result.current.cancel());
+    act(() => result.current.begin({ ...preview, targetPositions: replacementPositions }));
+
+    await act(async () => {
+      save.resolve();
+      await keep;
+    });
+
+    expect(result.current.status).toBe("previewing");
+    expect(result.current.error).toBeNull();
+    expect(result.current.positions).toEqual(replacementPositions);
+  });
+
+  it("ignores a rejected save after switching away and back to a new preview", async () => {
+    const save = createDeferred<void>();
+    const persistPositions = vi.fn(() => save.promise);
+    const replacementPositions = [{ node_id: "a", x: 70, y: 80 }];
+    const { result, rerender } = renderHook(({ workflowId }) => useAgentCanvasLayoutPreview({
+      workflowId,
+      persistPositions,
+      restoreViewport: vi.fn(),
+    }), { initialProps: { workflowId: "wf-1" } });
+
+    act(() => result.current.begin(preview));
+    let keep!: Promise<void>;
+    act(() => {
+      keep = result.current.keep();
+    });
+    rerender({ workflowId: "wf-2" });
+    rerender({ workflowId: "wf-1" });
+    act(() => result.current.begin({ ...preview, targetPositions: replacementPositions }));
+
+    await act(async () => {
+      save.reject(new Error("Layout service unavailable"));
+      await keep;
+    });
+
+    expect(result.current.status).toBe("previewing");
+    expect(result.current.error).toBeNull();
+    expect(result.current.positions).toEqual(replacementPositions);
+  });
+
+  it("does not update unmounted state or retry persistence when an in-flight save completes", async () => {
+    const save = createDeferred<void>();
+    const persistPositions = vi.fn(() => save.promise);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { result, unmount } = renderHook(() => useAgentCanvasLayoutPreview({
+      workflowId: "wf-1",
+      persistPositions,
+      restoreViewport: vi.fn(),
+    }));
+
+    act(() => result.current.begin(preview));
+    let keep!: Promise<void>;
+    act(() => {
+      keep = result.current.keep();
+    });
+    unmount();
+
+    await act(async () => {
+      save.resolve();
+      await keep;
+    });
+
+    expect(persistPositions).toHaveBeenCalledOnce();
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

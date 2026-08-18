@@ -20,6 +20,7 @@ export interface AgentCanvasLayoutPreviewStart<TNode> {
 }
 
 type PreviewSnapshot = {
+  transactionId: number;
   workflowId: string;
   originalPositions: CanvasLayoutPositionV2[];
   targetPositions: CanvasLayoutPositionV2[];
@@ -71,11 +72,25 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   const [status, setStatus] = useState<AgentCanvasLayoutPreviewStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const workflowIdRef = useRef(workflowId);
+  const snapshotRef = useRef<PreviewSnapshot | null>(null);
+  const nextTransactionIdRef = useRef(0);
+  const savingTransactionIdRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
 
   workflowIdRef.current = workflowId;
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!snapshot || snapshot.workflowId === workflowId) return;
+    if (snapshotRef.current?.transactionId !== snapshot.transactionId) return;
+    snapshotRef.current = null;
+    savingTransactionIdRef.current = null;
     setSnapshot(null);
     setStatus("idle");
     setError(null);
@@ -85,8 +100,9 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   const positions = useMemo(() => active ? snapshot?.targetPositions ?? [] : [], [active, snapshot]);
 
   const begin = useCallback((preview: AgentCanvasLayoutPreviewStart<TNode>) => {
-    if (snapshot || preview.workflowId !== workflowId) return;
-    setSnapshot({
+    if (snapshotRef.current || preview.workflowId !== workflowId) return;
+    const nextSnapshot = {
+      transactionId: nextTransactionIdRef.current + 1,
       workflowId: preview.workflowId,
       originalPositions: preview.nodes.map((node) => ({
         node_id: node.id,
@@ -95,34 +111,62 @@ export function useAgentCanvasLayoutPreview<TNode extends {
       })),
       targetPositions: preview.targetPositions.map((position) => ({ ...position })),
       originalViewport: { ...preview.viewport },
-    });
+    };
+    nextTransactionIdRef.current = nextSnapshot.transactionId;
+    snapshotRef.current = nextSnapshot;
+    savingTransactionIdRef.current = null;
+    setSnapshot(nextSnapshot);
     setStatus("previewing");
     setError(null);
-  }, [snapshot, workflowId]);
+  }, [workflowId]);
 
   const cancel = useCallback(() => {
-    if (!snapshot) return;
+    const currentSnapshot = snapshotRef.current;
+    if (!currentSnapshot) return;
+    snapshotRef.current = null;
+    if (savingTransactionIdRef.current === currentSnapshot.transactionId) {
+      savingTransactionIdRef.current = null;
+    }
     setSnapshot(null);
     setStatus("idle");
     setError(null);
-    void Promise.resolve(restoreViewport(snapshot.originalViewport)).catch(() => undefined);
-  }, [restoreViewport, snapshot]);
+    void Promise.resolve(restoreViewport(currentSnapshot.originalViewport)).catch(() => undefined);
+  }, [restoreViewport]);
 
   const keep = useCallback(async () => {
-    if (!snapshot || snapshot.workflowId !== workflowId || status === "saving") return;
+    const currentSnapshot = snapshotRef.current;
+    if (
+      !currentSnapshot
+      || currentSnapshot.workflowId !== workflowId
+      || savingTransactionIdRef.current !== null
+    ) return;
+
+    const transactionId = currentSnapshot.transactionId;
+    savingTransactionIdRef.current = transactionId;
     setStatus("saving");
     setError(null);
     try {
-      await persistPositions(snapshot.targetPositions);
-      if (workflowIdRef.current !== snapshot.workflowId) return;
+      await persistPositions(currentSnapshot.targetPositions);
+      if (
+        !mountedRef.current
+        || workflowIdRef.current !== currentSnapshot.workflowId
+        || snapshotRef.current?.transactionId !== transactionId
+      ) return;
+      snapshotRef.current = null;
+      savingTransactionIdRef.current = null;
       setSnapshot(null);
       setStatus("idle");
     } catch (saveError) {
-      if (workflowIdRef.current !== snapshot.workflowId) return;
+      if (
+        !mountedRef.current
+        || workflowIdRef.current !== currentSnapshot.workflowId
+        || snapshotRef.current?.transactionId !== transactionId
+      ) return;
+      savingTransactionIdRef.current = null;
       setStatus("save_error");
       setError(previewErrorMessage(saveError));
     }
-  }, [persistPositions, snapshot, status, workflowId]);
+  }, [persistPositions, workflowId]);
 
   const overlay = useCallback((nodes: readonly TNode[]) => (
     overlayAgentCanvasLayoutPreview(nodes, positions)
