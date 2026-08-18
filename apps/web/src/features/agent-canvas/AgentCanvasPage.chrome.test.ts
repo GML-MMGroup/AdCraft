@@ -37,7 +37,7 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height) - 16px)");
   });
 
-  it("keeps backend edges selectable and renders the selected edge as a static monochrome dash", () => {
+  it("keeps backend edges selectable and animates only the selected monochrome dash", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
       "utf8",
@@ -53,7 +53,11 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onEdgesDelete={deleteEdges}");
     expect(canvasCss).toContain(".agent-canvas-board .react-flow__edge.selected .react-flow__edge-path");
     expect(canvasCss).toContain("stroke-dasharray: 8 6");
-    expect(canvasCss).not.toContain("animation: agent-canvas-edge");
+    expect(canvasCss).toContain("animation: agent-canvas-selected-edge-flow 760ms linear infinite");
+    expect(canvasCss).toContain("@keyframes agent-canvas-selected-edge-flow");
+    expect(canvasCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board \.react-flow__edge\.selected \.react-flow__edge-path[\s\S]*?animation: none;/,
+    );
   });
 
   it("restores canonical bindings immediately when a delete mutation fails", () => {
