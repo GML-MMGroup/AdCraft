@@ -5,7 +5,11 @@ import type {
   CanvasLayoutPositionV2,
   CanvasPositionV2,
 } from "../../../types-v2.ts";
-import type { AgentCanvasNodeSize } from "./nodeGeometry.ts";
+import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
+import {
+  agentCanvasNodePlacementSize,
+  type AgentCanvasNodeSize,
+} from "./nodeGeometry.ts";
 
 const COMPONENT_GAP = 160;
 const ISOLATED_SECTION_GAP = 220;
@@ -45,6 +49,28 @@ interface ComponentLayout {
   positions: Map<string, CanvasPositionV2>;
   width: number;
   height: number;
+}
+
+export function agentCanvasLayoutNodeFromFlowNode(
+  node: AgentCanvasFlowNode,
+): AgentCanvasLayoutNode {
+  const measuredWidth = node.measured?.width;
+  const measuredHeight = node.measured?.height;
+  const fallback = agentCanvasNodePlacementSize(
+    node.data.node.node_type,
+    node.data.asset ? {
+      width: node.data.asset.width,
+      height: node.data.asset.height,
+    } : null,
+  );
+  return {
+    id: node.id,
+    position: node.position,
+    size: {
+      width: measuredWidth && measuredWidth > 0 ? measuredWidth : fallback.width,
+      height: measuredHeight && measuredHeight > 0 ? measuredHeight : fallback.height,
+    },
+  };
 }
 
 export function enabledNodeLayoutEdges(

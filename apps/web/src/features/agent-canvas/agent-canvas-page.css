@@ -39,6 +39,10 @@
   height: 100%;
 }
 
+.agent-canvas-board.is-layout-previewing .react-flow__node {
+  transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
+}
+
 .agent-canvas-board .react-flow__pane {
   cursor: grab;
 }
@@ -147,7 +151,8 @@
 }
 
 .agent-canvas-toolbar > button,
-.agent-canvas-toolbar__add > button {
+.agent-canvas-toolbar__add > button,
+.agent-canvas-toolbar__layout > button {
   display: grid;
   width: 34px;
   height: 34px;
@@ -162,6 +167,7 @@
 
 .agent-canvas-toolbar > button:hover:not(:disabled),
 .agent-canvas-toolbar__add > button:hover,
+.agent-canvas-toolbar__layout > button:hover:not(:disabled),
 .agent-canvas-toolbar button.is-active {
   color: #6755aa;
   background: rgb(113 94 177 / 12%);
@@ -172,7 +178,8 @@
   background: #6e5ab0 !important;
 }
 
-.agent-canvas-toolbar > button:disabled {
+.agent-canvas-toolbar > button:disabled,
+.agent-canvas-toolbar__layout > button:disabled {
   cursor: wait;
   opacity: 0.45;
 }
@@ -182,7 +189,8 @@
   height: 17px;
 }
 
-.agent-canvas-toolbar__add {
+.agent-canvas-toolbar__add,
+.agent-canvas-toolbar__layout {
   position: relative;
 }
 
@@ -977,6 +985,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-pointer-background {
+    transition: none;
+  }
+
+  .agent-canvas-board.is-layout-previewing .react-flow__node {
     transition: none;
   }
 

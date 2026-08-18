@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { CanvasBindingV2, CanvasLayoutPositionV2, CanvasPositionV2 } from "../../../types-v2.ts";
+import type { AgentCanvasFlowNode } from "./AgentCanvasNode.tsx";
 import type { AgentCanvasNodeSize } from "./nodeGeometry.ts";
+import { agentCanvasNodePlacementSize } from "./nodeGeometry.ts";
 import {
+  agentCanvasLayoutNodeFromFlowNode,
   computeAgentCanvasAutoLayout,
   enabledNodeLayoutEdges,
   type AgentCanvasLayoutEdge,
@@ -11,6 +14,25 @@ import {
 } from "./canvasAutoLayout.ts";
 
 const DEFAULT_SIZE: AgentCanvasNodeSize = { width: 272, height: 184 };
+
+function flowNode({
+  nodeType,
+  measured,
+}: {
+  nodeType: AgentCanvasFlowNode["data"]["node"]["node_type"];
+  measured?: AgentCanvasFlowNode["measured"];
+}): AgentCanvasFlowNode {
+  return {
+    id: "flow-node",
+    type: "agentCanvas",
+    position: { x: 32, y: 48 },
+    measured,
+    data: {
+      node: { node_type: nodeType } as AgentCanvasFlowNode["data"]["node"],
+      asset: null,
+    },
+  } as AgentCanvasFlowNode;
+}
 
 function node(
   id: string,
@@ -100,6 +122,26 @@ function assertCompleteIntegerBounds(
     expect(position.y + size.height).toBeLessThanOrEqual(result.bounds.y + result.bounds.height);
   });
 }
+
+describe("agentCanvasLayoutNodeFromFlowNode", () => {
+  it("prefers current React Flow measurements over placement fallbacks", () => {
+    const result = agentCanvasLayoutNodeFromFlowNode(flowNode({
+      nodeType: "script",
+      measured: { width: 418, height: 512 },
+    }));
+
+    expect(result).toEqual({
+      id: "flow-node",
+      position: { x: 32, y: 48 },
+      size: { width: 418, height: 512 },
+    });
+  });
+
+  it("uses the safe Script placement size before React Flow measures the node", () => {
+    expect(agentCanvasLayoutNodeFromFlowNode(flowNode({ nodeType: "script" })).size)
+      .toEqual(agentCanvasNodePlacementSize("script"));
+  });
+});
 
 describe("enabledNodeLayoutEdges", () => {
   it("uses only enabled persisted node-output bindings", () => {

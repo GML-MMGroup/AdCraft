@@ -19,7 +19,9 @@ describe("AgentCanvasPage chrome", () => {
       "utf8",
     );
 
-    expect(source).toContain('className="agent-canvas-board"');
+    expect(source).toContain(
+      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}`}',
+    );
     expect(source).toContain('onContextMenu={(event) => event.preventDefault()}');
     expect(source).toContain("onPaneContextMenu={(event) => {");
     expect(source).toContain("onRelocate={openCanvasContextMenu}");
@@ -71,6 +73,37 @@ describe("AgentCanvasPage chrome", () => {
 
     expect(source).toMatch(
       /const recoverDeletedCanvasState = useCallback\(async \(\) => \{[\s\S]*?setNodes\(canonicalNodes\);[\s\S]*?setEdges\(\(current\) => reconcileSelectableCanvasEdges\(presentedEdges, current\)\);[\s\S]*?await refreshWorkflow\(\);/,
+    );
+  });
+
+  it("integrates one-click layout as a reversible node preview", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("computeAgentCanvasAutoLayout(");
+    expect(source).toContain("useAgentCanvasLayoutPreview(");
+    expect(source).toContain("<AgentCanvasLayoutConfirmation");
+    expect(source).toContain("nodesDraggable={!layoutPreview.active}");
+    expect(source).toContain(
+      'className={`agent-canvas-board${layoutPreview.active ? " is-layout-previewing" : ""}`}',
+    );
+    expect(source).toContain("<LayoutIcon />");
+    expect(source).toContain('aria-label="Organize canvas"');
+    expect(source).toContain("updateNodePositions");
+  });
+
+  it("animates node transforms only during layout preview and respects reduced motion", () => {
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toContain(".agent-canvas-board.is-layout-previewing .react-flow__node");
+    expect(canvasCss).toContain("transition: transform 360ms cubic-bezier(.22, .72, .24, 1);");
+    expect(canvasCss).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.agent-canvas-board\.is-layout-previewing \.react-flow__node[\s\S]*?transition: none;/,
     );
   });
 });
