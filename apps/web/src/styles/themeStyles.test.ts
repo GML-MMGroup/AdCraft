@@ -45,12 +45,12 @@ describe("theme styles", () => {
     }
 
     expect(dark).toContain("#08090D");
-    expect(dark).toContain("#9E8BEA");
+    expect(dark).toContain("#9DAFE6");
     expect(styles).not.toContain("data-theme");
     expect(source("styles/base.css")).toContain("color-scheme: dark");
   });
 
-  test("uses the approved semantic palette across the fixed dark theme", () => {
+  test("uses the approved blue brand palette and preserves semantic colors", () => {
     const theme = declarationBlock(source("styles/theme.css"), ":root");
     const base = declarationBlock(source("styles/base.css"), ":root");
     const typographyLab = declarationBlock(
@@ -58,9 +58,19 @@ describe("theme styles", () => {
       ".home-typography-lab--dark",
     );
 
+    expect(theme).toContain("--brand: #9DAFE6");
+    expect(theme).toContain("--brand-hover: #B2C0ED");
+    expect(theme).toContain("--brand-subtle: #20283F");
+    expect(theme).toContain("--focus-ring: #CAD4F5");
+    expect(theme).toContain("--mauve: var(--brand)");
+    expect(theme).toContain("--iris: var(--brand)");
+    expect(base).toContain("--mauve: #9DAFE6");
+    expect(base).toContain("--iris: #9DAFE6");
+    expect(typographyLab).toContain("--brand: #9DAFE6");
     expect(theme).toContain("--success: #9CD38E");
     expect(theme).toContain("--warning: #E1A750");
     expect(theme).toContain("--error: #CA6F6F");
+    expect(theme).toContain("--info: #7F9FE8");
     for (const block of [base, typographyLab]) {
       expect(block).toContain("--butter: #E1A750");
       expect(block).toContain("--rose: #CA6F6F");

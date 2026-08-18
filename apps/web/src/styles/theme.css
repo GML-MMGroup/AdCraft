@@ -11,10 +11,10 @@
   --text-inverse: #17151F;
   --border-default: #222733;
   --border-strong: #333A49;
-  --brand: #9E8BEA;
-  --brand-hover: #AF9AF6;
-  --brand-subtle: #241E39;
-  --focus-ring: #B6A4FF;
+  --brand: #9DAFE6;
+  --brand-hover: #B2C0ED;
+  --brand-subtle: #20283F;
+  --focus-ring: #CAD4F5;
   --success: #9CD38E;
   --success-subtle: color-mix(in srgb, #9CD38E 16%, transparent);
   --warning: #E1A750;
@@ -27,7 +27,7 @@
   --media-overlay: rgba(8, 9, 13, 0.72);
   --surface-contrast: #0A0C11;
   --mist-blue: var(--page-bg);
-  --mauve: #9E8BEA;
+  --mauve: var(--brand);
   --butter: #E1A750;
   --iris: var(--brand);
   --rose: #CA6F6F;
