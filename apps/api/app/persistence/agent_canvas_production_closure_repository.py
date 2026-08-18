@@ -63,6 +63,24 @@ class AgentCanvasProductionClosureRepository:
     def get_fanout(self, fanout_plan_id: str) -> StoryboardFanoutPlanV1:
         return self._get("storyboard_fanout", fanout_plan_id, StoryboardFanoutPlanV1)
 
+    def find_fanout_for_confirmation(
+        self,
+        confirmation_id: str,
+    ) -> StoryboardFanoutPlanV1 | None:
+        confirmation = self.get_confirmation(confirmation_id)
+        return next(
+            (
+                cast(StoryboardFanoutPlanV1, item)
+                for item in reversed(self._list("storyboard_fanout", confirmation.workflow_id))
+                if item.visual_anchor_confirmation_id == confirmation_id
+                or (
+                    item.plan_document_id == confirmation.plan_document_id
+                    and any(node.node_id == confirmation.node_id for node in item.nodes)
+                )
+            ),
+            None,
+        )
+
     def save_preparation(
         self, receipt: GuidedEditingPreparationReceiptV1
     ) -> GuidedEditingPreparationReceiptV1:

@@ -388,6 +388,16 @@ class AgentWorkingDocumentService:
             )
             if segment is None:
                 raise _sequence_error("Storyboard context sequence was not found.")
+            record_key = (
+                "planned_nodes"
+                if isinstance(content, StoryboardProductionPlanContentV3)
+                else "node_records"
+            )
+            records = (
+                content.planned_nodes
+                if isinstance(content, StoryboardProductionPlanContentV3)
+                else content.node_records
+            )
             excerpt = {
                 "global_parameters": content.global_parameters.model_dump(mode="json"),
                 "segments": [segment.model_dump(mode="json")],
@@ -396,9 +406,9 @@ class AgentWorkingDocumentService:
                     for row in content.rows
                     if row.sequence_id == sequence_id
                 ],
-                "node_records": [
+                record_key: [
                     record.model_dump(mode="json")
-                    for record in content.node_records
+                    for record in records
                     if record.sequence_id in (None, sequence_id)
                 ],
             }

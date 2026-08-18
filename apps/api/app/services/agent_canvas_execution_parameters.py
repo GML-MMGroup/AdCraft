@@ -379,9 +379,9 @@ def _downgraded_resolution(requested: str, supported: tuple[str, ...]) -> str:
         "2160p": 2160,
         "4k": 2160,
     }
-    requested_rank = ranks.get(requested.casefold())
+    requested_rank = _resolution_rank(requested, ranks)
     supported_ranked = sorted(
-        ((ranks.get(item.casefold()), item) for item in supported),
+        ((_resolution_rank(item, ranks), item) for item in supported),
         key=lambda pair: pair[0] or -1,
     )
     if requested_rank is None or any(rank is None for rank, _ in supported_ranked):
@@ -398,6 +398,20 @@ def _downgraded_resolution(requested: str, supported: tuple[str, ...]) -> str:
             "Requested resolution is below every supported resolution.",
         )
     return candidates[-1]
+
+
+def _resolution_rank(value: str, ranks: dict[str, int]) -> int | None:
+    normalized = value.casefold()
+    named_rank = ranks.get(normalized)
+    if named_rank is not None:
+        return named_rank
+    dimensions = normalized.split("x")
+    if len(dimensions) != 2 or any(not item.isdigit() for item in dimensions):
+        return None
+    width, height = (int(item) for item in dimensions)
+    if width <= 0 or height <= 0:
+        return None
+    return min(width, height)
 
 
 def _error(

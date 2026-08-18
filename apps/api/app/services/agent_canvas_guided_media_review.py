@@ -56,16 +56,30 @@ class GuidedMediaReviewCoordinator:
         plans,
         assets,
         confirmations: GuidedMediaConfirmationService,
+        receipts=None,
         events=None,
+        resume_media_confirmation: Callable[[str], None] | None = None,
+        node_resolver: Callable[[str, str], object] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
         self._plans = plans
         self._assets = assets
         self._confirmations = confirmations
+        self._receipts = receipts
         self._events = events
+        self._resume_media_confirmation = resume_media_confirmation
+        self._node_resolver = node_resolver
 
     def on_node_ready(self, node) -> tuple[str, ...]:
+        return self._on_node_ready(node, reconcile_current=True)
+
+    def _on_node_ready(
+        self,
+        node,
+        *,
+        reconcile_current: bool,
+    ) -> tuple[str, ...]:
         session = self._conversations.get_guidance_session_or_none(node.workflow_id)
         if session is None or node.output_asset_id is None:
             return ()
@@ -103,14 +117,28 @@ class GuidedMediaReviewCoordinator:
                 action_id=f"delegated-media-review:{review_id}",
                 decision_id="accept",
             )
-            return result.created_node_ids
+            if self._resume_media_confirmation is not None:
+                self._resume_media_confirmation(result.confirmation.confirmation_id)
+            created_node_ids = result.created_node_ids
+            if reconcile_current:
+                created_node_ids = tuple(
+                    dict.fromkeys(
+                        (
+                            *created_node_ids,
+                            *self.reconcile_current_plan(node.workflow_id),
+                        )
+                    )
+                )
+            return created_node_ids
 
         current_awaiting = getattr(session, "awaiting", None)
         if (
             current_awaiting is not None
             and current_awaiting.kind == "manual_node_run"
-            and current_awaiting.node_ids == (node.node_id,)
+            and node.node_id in current_awaiting.node_ids
         ):
+            if not self._manual_wait_is_ready(node.workflow_id, current_awaiting.node_ids):
+                return ()
             self._interactions.resume_awaiting(
                 node.workflow_id,
                 GuidanceAwaitingResumeProofV1(
@@ -192,6 +220,61 @@ class GuidedMediaReviewCoordinator:
             )
         return ()
 
+    def reconcile_current_plan(self, workflow_id: str) -> tuple[str, ...]:
+        """Publish the next exact review missing from the current Plan revision."""
+
+        if self._receipts is None or self._node_resolver is None:
+            return ()
+        session = self._conversations.get_guidance_session_or_none(workflow_id)
+        if session is None or getattr(session, "awaiting", None) is not None:
+            return ()
+        confirmations = self._receipts.list_confirmations(workflow_id)
+        created_node_ids: list[str] = []
+        for plan in self._plans.list_plans(workflow_id).items:
+            records = tuple(
+                getattr(plan.content, "planned_nodes", None)
+                or getattr(plan.content, "node_records", ())
+            )
+            for record in records:
+                if record.node_role not in {"video_segment", "bgm"}:
+                    continue
+                node = self._node_resolver(workflow_id, record.node_id)
+                if node.status != "ready" or node.output_asset_id is None:
+                    continue
+                asset = self._assets(node.output_asset_id)
+                if _has_current_confirmation(
+                    confirmations,
+                    plan=plan,
+                    record=record,
+                    node=node,
+                    asset=asset,
+                ):
+                    continue
+                created_node_ids.extend(self._on_node_ready(node, reconcile_current=False))
+                if not (
+                    session.creative_authority is not None
+                    and session.creative_authority.authority == "director"
+                ):
+                    return tuple(dict.fromkeys(created_node_ids))
+                session = self._conversations.get_guidance_session_or_none(workflow_id)
+                if session is None or getattr(session, "awaiting", None) is not None:
+                    return tuple(dict.fromkeys(created_node_ids))
+        return tuple(dict.fromkeys(created_node_ids))
+
+    def _manual_wait_is_ready(
+        self,
+        workflow_id: str,
+        node_ids: tuple[str, ...],
+    ) -> bool:
+        if node_ids == ():
+            return False
+        if self._node_resolver is None:
+            return len(node_ids) == 1
+        return all(
+            getattr(self._node_resolver(workflow_id, node_id), "status", None) == "ready"
+            for node_id in node_ids
+        )
+
 
 class GuidedMediaReviewActionService:
     """Execute one declared media-review action without semantic reinterpretation."""
@@ -206,6 +289,7 @@ class GuidedMediaReviewActionService:
         retry: MediaAction,
         replace: MediaAction,
         exclude: MediaAction,
+        resume_media_confirmation: Callable[[str], None] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -216,6 +300,7 @@ class GuidedMediaReviewActionService:
             "replace": replace,
             "exclude": exclude,
         }
+        self._resume_media_confirmation = resume_media_confirmation
 
     def submit(
         self,
@@ -237,7 +322,7 @@ class GuidedMediaReviewActionService:
         else:
             outcome = self._actions[request.action](interaction, request, idempotency_key)
         session = self._conversations.get_guidance_session(interaction.workflow_id)
-        return self._interactions.submit_media_review(
+        accepted = self._interactions.submit_media_review(
             interaction,
             request,
             submission_id=submission_id,
@@ -248,6 +333,9 @@ class GuidedMediaReviewActionService:
             created_binding_ids=outcome.created_binding_ids,
             automatic_run_command_ids=outcome.automatic_run_command_ids,
         )
+        if request.action == "accept" and self._resume_media_confirmation is not None:
+            self._resume_media_confirmation(outcome.receipt_id)
+        return accepted
 
     def _accept(
         self,
@@ -524,6 +612,22 @@ def _find_plan_record(plans, workflow_id: str, node_id: str):
         if record is not None:
             return plan, record
     return None, None
+
+
+def _has_current_confirmation(confirmations, *, plan, record, node, asset) -> bool:
+    media_role = "audio" if record.node_role == "bgm" else "video"
+    return any(
+        confirmation.plan_document_id == plan.document_id
+        and confirmation.plan_revision == plan.revision
+        and confirmation.media_role == media_role
+        and confirmation.sequence_id == record.sequence_id
+        and confirmation.node_id == node.node_id
+        and confirmation.node_revision == node.revision
+        and confirmation.asset_id == asset.asset_id
+        and confirmation.asset_version_id == asset.version_id
+        and confirmation.asset_digest == asset.checksum
+        for confirmation in confirmations
+    )
 
 
 def _error(code: str, message: str) -> V2PersistenceError:

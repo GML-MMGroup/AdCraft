@@ -270,6 +270,9 @@ from app.services.agent_canvas_storyboard_sequences import (
 from app.services.agent_canvas_storyboard_progression import (
     ProgressiveStoryboardReadyService,
 )
+from app.services.agent_canvas_storyboard_fanout_activation import (
+    StoryboardFanoutActivationService,
+)
 from app.services.agent_canvas_command_compiler import AgentCommandPlanCompiler
 from app.services.agent_canvas_command_replan import AgentCommandReplanService
 from app.services.agent_canvas_commands import AgentCanvasCommandService
@@ -300,6 +303,7 @@ from app.services.agent_canvas_guided_production_closure import (
 )
 from app.services.agent_canvas_guidance_post_ready import GuidancePostReadyGate
 from app.services.agent_canvas_guidance_awaiting import GuidanceAwaitingService
+from app.services.agent_canvas_prompt_preparation import NodePromptPreparationService
 from app.services.agent_canvas_continuation_worker import (
     AgentCanvasContinuationWorker,
 )
@@ -678,6 +682,17 @@ def create_agent_canvas_runtime(
         conversation_repository,
         awaiting=guidance_awaiting,
     )
+
+    def resolve_storyboard_video_resolution(workflow_id: str) -> str | None:
+        return next(
+            (
+                str(control.value)
+                for control in requirement_service.get_current(workflow_id).hard_controls
+                if control.control == "output_resolution"
+            ),
+            None,
+        )
+
     storyboard_progression = ProgressiveStoryboardReadyService(
         workflows=workflow_repository,
         authoring=storyboard_authoring,
@@ -685,19 +700,12 @@ def create_agent_canvas_runtime(
         receipts=production_closure_receipts,
         asset_resolver=asset_service.resolve_asset,
         events=event_repository,
+        video_resolution_resolver=resolve_storyboard_video_resolution,
         binding_capability_validator=lambda target, input_types, reference_count: (
             provider_capabilities.validate_binding(
                 target,
                 required_input_types=input_types,
                 reference_count=reference_count,
-            )
-        ),
-        on_storyboard_pipeline_prepared=(
-            lambda workflow_id, plan_document_id: (
-                production_journey.record_storyboard_pipeline_prepared(
-                    workflow_id,
-                    source_id=plan_document_id,
-                )
             )
         ),
     )
@@ -915,6 +923,31 @@ def create_agent_canvas_runtime(
         event_repository,
         run_snapshots=run_snapshots,
     )
+    automatic_run_repository = AgentCanvasAutomaticRunRepository(
+        database,
+        event_repository,
+    )
+    fanout_activation = StoryboardFanoutActivationService(
+        workflows=workflow_repository,
+        conversations=conversation_repository,
+        requirements=requirement_service,
+        documents=working_documents,
+        receipts=production_closure_receipts,
+        prompt_preparation=NodePromptPreparationService(
+            workflow_repository,
+            role_brief_author=lambda role_context, request_identity: (
+                video_agent_gateway.author_role_brief(
+                    role_context,
+                    request_identity=request_identity,
+                )
+            ),
+            asset_resolver=asset_service.resolve_asset,
+        ),
+        progression=production_journey,
+        execution_settings=execution_settings.get_or_create,
+        awaiting=guidance_awaiting,
+        automatic_runs=automatic_run_repository,
+    )
     guided_media_confirmations = GuidedMediaConfirmationService(
         workflows=workflow_repository,
         plans=storyboard_authoring,
@@ -930,23 +963,21 @@ def create_agent_canvas_runtime(
         plans=storyboard_authoring,
         assets=asset_service.resolve_asset,
         confirmations=guided_media_confirmations,
+        receipts=production_closure_receipts,
         events=event_repository,
+        resume_media_confirmation=fanout_activation.resume_confirmation,
+        node_resolver=workflow_repository.get_node,
     )
+
+    def resume_media_confirmation(confirmation_id: str):
+        result = fanout_activation.resume_confirmation(confirmation_id)
+        confirmation = production_closure_receipts.get_confirmation(confirmation_id)
+        guided_media_reviews.reconcile_current_plan(confirmation.workflow_id)
+        return result
 
     def handle_storyboard_progression(effect) -> None:
         node = workflow_repository.get_node(effect.workflow_id, effect.node_id)
-        created_node_ids = guided_media_reviews.on_node_ready(node)
-        if not created_node_ids:
-            return
-        run_service.start_or_extend(
-            effect.workflow_id,
-            CanvasRunRequestV2(
-                scope="selected_nodes",
-                node_ids=created_node_ids,
-                source_action="agent_command",
-            ),
-            idempotency_key=f"post-ready:{effect.effect_id}:progression",
-        )
+        guided_media_reviews.on_node_ready(node)
 
     post_ready_effects = AgentCanvasPostReadyEffectWorker(
         AgentCanvasPostReadyEffectRepository(database, event_repository),
@@ -970,7 +1001,7 @@ def create_agent_canvas_runtime(
         AgentCanvasPostReadyCheckpointRepository(database)
     )
     auto_run_dispatcher = AgentCanvasAutoRunDispatcher(
-        AgentCanvasAutomaticRunRepository(database, event_repository),
+        automatic_run_repository,
         start_or_extend=run_service.start_or_extend,
         resume_execution=scheduler.resume,
         worker_id=f"agent-canvas-auto-run:{uuid4().hex}",
@@ -1174,7 +1205,9 @@ def create_agent_canvas_runtime(
             retry=guided_media_plan_actions.retry,
             replace=guided_media_plan_actions.replace,
             exclude=guided_media_plan_actions.exclude,
+            resume_media_confirmation=resume_media_confirmation,
         ).submit,
+        media_resume=resume_media_confirmation,
     )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
@@ -1182,6 +1215,7 @@ def create_agent_canvas_runtime(
         asset_resolver=asset_service.resolve_asset,
         storyboard_authoring=storyboard_authoring,
         storyboard_gateway=video_agent_gateway,
+        prompt_ready_activation=fanout_activation.activate_prompt_ready_nodes,
         commit_service=AgentCanvasMaterializationCommitService(
             materialization_repository,
             GuidedProductionJourneyReducer(),

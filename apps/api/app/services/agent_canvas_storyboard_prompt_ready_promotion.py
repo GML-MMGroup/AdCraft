@@ -14,6 +14,7 @@ from app.persistence.agent_canvas_storyboard_prompt_ready_promotion_repository i
 )
 from app.persistence.agent_working_document_repository import AgentWorkingDocumentRepository
 from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas import AgentCanvasWorkflowV2, CanvasBindingSourceNodeV2
 from app.schemas.agent_canvas_materialization_commit import MaterializationOutcomeV1
 from app.schemas.agent_canvas_storyboard_prompt_ready_promotion import (
     StoryboardPromptPreparationPairV1,
@@ -99,6 +100,12 @@ class StoryboardPromptReadyPromotionService:
             )
         pairs.sort(key=lambda item: (item.node_id, item.operation_id))
         setting = self._settings.get(outcome.workflow_id)
+        execution_mode = setting.media_execution_mode if setting is not None else "manual"
+        execution_preparations = self._execution_preparations(
+            workflow,
+            tuple(pairs),
+            execution_mode=execution_mode,
+        )
         result, document = production_plans[0]
         assert document is not None
         command = StoryboardPromptReadyPromotionCommandV1(
@@ -110,11 +117,57 @@ class StoryboardPromptReadyPromotionService:
             expected_session_revision=(self._session_revision(outcome.workflow_id, session_id)),
             expected_stage_revision=self._stage_revision(outcome.workflow_id, session_id),
             preparations=tuple(pairs),
+            execution_preparations=execution_preparations,
             production_plan_document_id=document.document_id,
             production_plan_revision=result.after_revision,
-            execution_mode=(setting.media_execution_mode if setting is not None else "manual"),
+            execution_mode=execution_mode,
         )
         return self._repository.promote(command)
+
+    @staticmethod
+    def _execution_preparations(
+        workflow: AgentCanvasWorkflowV2,
+        storyboard_preparations: tuple[StoryboardPromptPreparationPairV1, ...],
+        *,
+        execution_mode: str,
+    ) -> tuple[StoryboardPromptPreparationPairV1, ...]:
+        if execution_mode == "automatic":
+            return storyboard_preparations
+        nodes = {node.node_id: node for node in workflow.nodes}
+        required_sources: dict[str, list[str]] = {}
+        for binding in workflow.bindings:
+            if (
+                binding.enabled
+                and binding.required
+                and isinstance(binding.source, CanvasBindingSourceNodeV2)
+            ):
+                required_sources.setdefault(binding.target_node_id, []).append(
+                    binding.source.node_id
+                )
+        selected = {item.node_id: item for item in storyboard_preparations}
+        pending = list(selected)
+        while pending:
+            target_node_id = pending.pop()
+            for source_node_id in sorted(required_sources.get(target_node_id, ())):
+                if source_node_id in selected:
+                    continue
+                source = nodes.get(source_node_id)
+                if source is None:
+                    raise _invalid("required_source_node")
+                if source.status == "ready":
+                    continue
+                if source.status != "draft":
+                    raise _invalid("required_source_status")
+                preparation = source.prompt_preparation
+                if preparation.status != "ready" or not preparation.operation_id:
+                    raise _invalid("required_source_prompt_ready")
+                selected[source_node_id] = StoryboardPromptPreparationPairV1(
+                    node_id=source_node_id,
+                    operation_id=preparation.operation_id,
+                    expected_node_revision=source.revision,
+                )
+                pending.append(source_node_id)
+        return tuple(sorted(selected.values(), key=lambda item: (item.node_id, item.operation_id)))
 
     def _session_revision(self, workflow_id: str, session_id: str) -> int:
         session = self._session(workflow_id, session_id)

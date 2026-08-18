@@ -50,11 +50,13 @@ class GuidedInteractionService:
         materializations: AgentCanvasMaterializationRepository,
         *,
         media_submit: Callable[..., GuidedInteractionAcceptedV1] | None = None,
+        media_resume: Callable[[str], None] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
         self._materializations = materializations
         self._media_submit = media_submit
+        self._media_resume = media_resume
         self._proposal_submissions = ProposalPublicationSubmissionService(
             conversations,
             materializations,
@@ -142,6 +144,8 @@ class GuidedInteractionService:
                     "guided_interaction_submission_conflict",
                     "Submission identity was reused with different content.",
                 )
+            if isinstance(request, GuidedMediaReviewSubmitV1) and self._media_resume is not None:
+                self._media_resume(replay.result.receipt_id)
             return replay.result.model_copy(update={"replayed": True})
         interaction = self.get_interaction(workflow_id, interaction_id)
         self._validate_current(interaction, request)

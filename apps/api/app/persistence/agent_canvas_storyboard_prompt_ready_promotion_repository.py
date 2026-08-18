@@ -125,6 +125,7 @@ class StoryboardPromptReadyPromotionRepository:
                     self._validate_materialization_outcome(materialization, command)
                     self._validate_production_plan(connection, command)
                     node_rows = self._validate_nodes(connection, command)
+                    self._validate_execution_nodes(connection, command)
                     self._validate_execution_mode(connection, command)
 
                     origin = GuidedCheckpointOriginV1(
@@ -191,7 +192,7 @@ class StoryboardPromptReadyPromotionRepository:
                                 resume_policy="node_terminal",
                                 interaction_id=None,
                                 node_ids_json=_dump(
-                                    [item.node_id for item in command.preparations]
+                                    [item.node_id for item in command.execution_preparations]
                                 ),
                                 stage="storyboard_grids",
                                 stage_revision=command.expected_stage_revision,
@@ -276,7 +277,9 @@ class StoryboardPromptReadyPromotionRepository:
                                     "kind": "manual_node_run",
                                     "resume_policy": "node_terminal",
                                     "interaction_id": None,
-                                    "node_ids": [item.node_id for item in command.preparations],
+                                    "node_ids": [
+                                        item.node_id for item in command.execution_preparations
+                                    ],
                                 },
                             ),
                         )
@@ -416,47 +419,14 @@ class StoryboardPromptReadyPromotionRepository:
                 or str(row["status"]) != "draft"
             ):
                 raise _invalid("node_role")
-            preparation = NodePromptPreparationV1.model_validate_json(
-                str(row["prompt_preparation_json"])
+            _preparation, metadata = (
+                StoryboardPromptReadyPromotionRepository._validate_prompt_ready_row(
+                    row,
+                    pair,
+                )
             )
-            prompt = str(row["generation_prompt"] or "").strip()
-            if (
-                preparation.status != "ready"
-                or preparation.operation_id != pair.operation_id
-                or not prompt
-                or preparation.prompt_digest != sha256(prompt.encode("utf-8")).hexdigest()
-            ):
-                raise _invalid("prompt_ready")
-            required = (
-                preparation.context_snapshot_id,
-                preparation.role_variant,
-                preparation.recipe_id,
-                preparation.recipe_version,
-                preparation.recipe_digest,
-                preparation.requirement_revision_id,
-                preparation.requirement_revision_no,
-                preparation.binding_digest,
-                preparation.style_projection_digest,
-                preparation.brief_digest,
-            )
-            if any(value is None or value == "" for value in required):
-                raise _invalid("prompt_provenance")
-            if preparation.attempt_stage != "completed":
-                raise _invalid("prompt_attempt_stage")
-            metadata = json.loads(str(row["metadata_json"]))
             if metadata.get("source_agent_document_id") != command.production_plan_document_id:
                 raise _invalid("node_plan_lineage")
-            expected_metadata = {
-                "prompt_context_digest": preparation.context_snapshot_id,
-                "prompt_digest": preparation.prompt_digest,
-                "prompt_recipe_id": preparation.recipe_id,
-                "prompt_recipe_version": preparation.recipe_version,
-                "prompt_recipe_digest": preparation.recipe_digest,
-                "prompt_reference_bundle_digest": preparation.binding_digest,
-                "prompt_style_projection_digest": preparation.style_projection_digest,
-            }
-            if any(metadata.get(key) != value for key, value in expected_metadata.items()):
-                raise _invalid("prompt_provenance")
             connection.execute(
                 select(AgentCanvasBindingRow.binding_id).where(
                     AgentCanvasBindingRow.workflow_id == command.workflow_id,
@@ -466,6 +436,73 @@ class StoryboardPromptReadyPromotionRepository:
             ).all()
             rows.append(row)
         return tuple(rows)
+
+    @staticmethod
+    def _validate_execution_nodes(connection, command) -> None:
+        for pair in command.execution_preparations:
+            row = (
+                connection.execute(
+                    select(AgentCanvasNodeRow).where(
+                        AgentCanvasNodeRow.workflow_id == command.workflow_id,
+                        AgentCanvasNodeRow.node_id == pair.node_id,
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None or int(row["revision"]) != pair.expected_node_revision:
+                raise _stale("execution_node_revision")
+            if str(row["node_type"]) not in {"text", "script", "image", "video", "audio"}:
+                raise _invalid("execution_node_type")
+            if str(row["status"]) != "draft":
+                raise _invalid("execution_node_status")
+            StoryboardPromptReadyPromotionRepository._validate_prompt_ready_row(row, pair)
+
+    @staticmethod
+    def _validate_prompt_ready_row(
+        row: Mapping[str, object],
+        pair,
+    ) -> tuple[NodePromptPreparationV1, dict[str, object]]:
+        preparation = NodePromptPreparationV1.model_validate_json(
+            str(row["prompt_preparation_json"])
+        )
+        prompt = str(row["generation_prompt"] or "").strip()
+        if (
+            preparation.status != "ready"
+            or preparation.operation_id != pair.operation_id
+            or not prompt
+            or preparation.prompt_digest != sha256(prompt.encode("utf-8")).hexdigest()
+        ):
+            raise _invalid("prompt_ready")
+        required = (
+            preparation.context_snapshot_id,
+            preparation.role_variant,
+            preparation.recipe_id,
+            preparation.recipe_version,
+            preparation.recipe_digest,
+            preparation.requirement_revision_id,
+            preparation.requirement_revision_no,
+            preparation.binding_digest,
+            preparation.style_projection_digest,
+            preparation.brief_digest,
+        )
+        if any(value is None or value == "" for value in required):
+            raise _invalid("prompt_provenance")
+        if preparation.attempt_stage != "completed":
+            raise _invalid("prompt_attempt_stage")
+        metadata = json.loads(str(row["metadata_json"]))
+        expected_metadata = {
+            "prompt_context_digest": preparation.context_snapshot_id,
+            "prompt_digest": preparation.prompt_digest,
+            "prompt_recipe_id": preparation.recipe_id,
+            "prompt_recipe_version": preparation.recipe_version,
+            "prompt_recipe_digest": preparation.recipe_digest,
+            "prompt_reference_bundle_digest": preparation.binding_digest,
+            "prompt_style_projection_digest": preparation.style_projection_digest,
+        }
+        if any(metadata.get(key) != value for key, value in expected_metadata.items()):
+            raise _invalid("prompt_provenance")
+        return preparation, metadata
 
     @staticmethod
     def _validate_execution_mode(connection, command) -> None:
@@ -523,6 +560,10 @@ class StoryboardPromptReadyPromotionRepository:
             )
             if awaiting is None:
                 raise _invalid("replay_awaiting")
+            if tuple(json.loads(str(awaiting["node_ids_json"]))) != tuple(
+                item.node_id for item in command.execution_preparations
+            ):
+                raise _invalid("replay_awaiting_nodes")
             awaiting_id = str(awaiting["awaiting_id"])
         else:
             if journey.stage_status != "working":

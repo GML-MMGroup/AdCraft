@@ -846,22 +846,26 @@ class AgentCanvasConversationRepository:
         *,
         expected_session_revision: int,
         completion: GuidanceCompletionProjectionV2,
+        journey: GuidedProductionJourneyV1 | None = None,
     ) -> GuidedSessionStateV2:
         now = _now()
         with self._database.engine.begin() as connection:
             row = _require_guidance_session_row(connection, session_id)
             _require_guidance_revision(row, expected_session_revision)
+            values: dict[str, object] = {
+                "status": "completed",
+                "completion_json": completion.model_dump_json(),
+                "current_topic_id": None,
+                "active_proposal_id": None,
+                "revision": expected_session_revision + 1,
+                "updated_at": now,
+            }
+            if journey is not None:
+                values["journey_state_json"] = journey.model_dump_json()
             connection.execute(
                 update(AgentCanvasGuidanceSessionRow)
                 .where(AgentCanvasGuidanceSessionRow.session_id == session_id)
-                .values(
-                    status="completed",
-                    completion_json=completion.model_dump_json(),
-                    current_topic_id=None,
-                    active_proposal_id=None,
-                    revision=expected_session_revision + 1,
-                    updated_at=now,
-                )
+                .values(**values)
             )
         return self.get_guidance_session(str(row["workflow_id"]))
 

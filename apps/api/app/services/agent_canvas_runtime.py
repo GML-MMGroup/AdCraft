@@ -124,6 +124,7 @@ class AgentCanvasRunService:
             if request.scope == "all_drafts"
             else tuple(self._require_node(nodes, node_id) for node_id in request.node_ids)
         )
+        requested_node_ids = {node.node_id for node in requested}
         accepted: list[str] = []
         skipped: list[CanvasRunSkippedNodeV2] = []
         for node in requested:
@@ -134,6 +135,11 @@ class AgentCanvasRunService:
                         workflow,
                         node.node_id,
                         nodes,
+                    )
+                    unready_bindings = tuple(
+                        binding
+                        for binding in unready_bindings
+                        if binding.source.source_node_id not in requested_node_ids
                     )
                     missing_node_ids = tuple(
                         binding.source.source_node_id for binding in unready_bindings
@@ -1412,7 +1418,10 @@ def _frozen_unready_sources(
         for binding in snapshot.binding_snapshots
         if binding.required is required
         and binding.source_kind == "node_output"
-        and ((source := nodes.get(binding.source_id)) is None or source.status != "ready")
+        and not _node_output_source_is_ready(
+            source=nodes.get(binding.source_id),
+            input_role=binding.input_role,
+        )
     )
 
 
@@ -1427,9 +1436,29 @@ def _unready_required_bindings(workflow, target_node_id, nodes):
         ):
             continue
         source = nodes.get(binding.source.source_node_id)
-        if source is None or source.status != "ready":
+        if not _node_output_source_is_ready(
+            source=source,
+            input_role=binding.input_role,
+        ):
             waiting.append(binding)
     return tuple(waiting)
+
+
+def _node_output_source_is_ready(
+    *,
+    source: CanvasNodeV2 | None,
+    input_role: str,
+) -> bool:
+    if source is None:
+        return False
+    if source.status == "ready":
+        return True
+    return (
+        input_role == "text_context"
+        and source.node_type in {"text", "script"}
+        and source.status == "draft"
+        and bool(source.structured_content)
+    )
 
 
 def _fingerprint(request: CanvasRunRequestV2) -> str:

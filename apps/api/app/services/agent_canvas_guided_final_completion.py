@@ -178,6 +178,15 @@ class GuidedFinalCompletionService:
             session.session_id,
             expected_session_revision=session.revision,
             completion=completion,
+            journey=session.journey.model_copy(
+                update={
+                    "stage": "completed",
+                    "stage_status": "completed",
+                    "stage_revision": session.journey.stage_revision + 1,
+                    "active_action": None,
+                    "suspended_action": None,
+                }
+            ),
         )
         self._events.append(
             V2EventInsert(

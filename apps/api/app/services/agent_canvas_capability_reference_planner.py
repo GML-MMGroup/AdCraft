@@ -67,6 +67,7 @@ _AUTO_ROLE_PRIORITY: dict[CapabilityIdV1, dict[str, int]] = {
         "prop": 200,
         "character": 300,
         "scene": 400,
+        "script": 500,
         "world_setting": 900,
     },
     "video_direction": {
@@ -77,6 +78,13 @@ _AUTO_ROLE_PRIORITY: dict[CapabilityIdV1, dict[str, int]] = {
         "prop": 400,
     },
     "bgm_direction": {"script": 100},
+}
+
+_REQUIRED_REFERENCE_ROLES: dict[CapabilityIdV1, frozenset[str]] = {
+    "storyboard_design": frozenset(
+        {"world_setting", "product", "prop", "character", "scene", "script"}
+    ),
+    "video_direction": frozenset({"storyboard_sequence"}),
 }
 
 
@@ -340,7 +348,7 @@ class CapabilityReferencePlanner:
 
     @staticmethod
     def _required_reference(capability_id: CapabilityIdV1, creative_role: str) -> bool:
-        return capability_id == "video_direction" and creative_role == "storyboard_sequence"
+        return creative_role in _REQUIRED_REFERENCE_ROLES.get(capability_id, frozenset())
 
     def _bounded(
         self,

@@ -47,6 +47,7 @@ from app.services.agent_canvas_world_setting import WorldSettingBindingPolicy
 
 BindingCapabilityValidator = Callable[[object, frozenset[str], int], object]
 StoryboardPipelinePreparedCallback = Callable[[str, str], object]
+VideoResolutionResolver = Callable[[str], str | None]
 
 
 class ProgressiveStoryboardReadyService:
@@ -62,6 +63,7 @@ class ProgressiveStoryboardReadyService:
         asset_resolver: Callable[[str], ProjectAssetSummaryV2] | None = None,
         events: EventRepository | None = None,
         binding_capability_validator: BindingCapabilityValidator | None = None,
+        video_resolution_resolver: VideoResolutionResolver | None = None,
         on_storyboard_pipeline_prepared: StoryboardPipelinePreparedCallback | None = None,
     ) -> None:
         self._workflows = workflows
@@ -71,6 +73,7 @@ class ProgressiveStoryboardReadyService:
         self._asset_resolver = asset_resolver
         self._events = events
         self._binding_capability_validator = binding_capability_validator
+        self._video_resolution_resolver = video_resolution_resolver
         self._on_storyboard_pipeline_prepared = on_storyboard_pipeline_prepared
 
     def on_node_ready(
@@ -180,6 +183,7 @@ class ProgressiveStoryboardReadyService:
                 )
             )
         first_sequence = content.segments[0]
+        video_resolution = self._resolve_video_resolution(node.workflow_id)
         created.extend(
             self._ensure_video(
                 plan.document_id,
@@ -187,6 +191,7 @@ class ProgressiveStoryboardReadyService:
                 node,
                 duration_seconds=first_sequence.end_seconds - first_sequence.start_seconds,
                 aspect_ratio=content.global_parameters.aspect_ratio,
+                resolution=video_resolution,
             )
         )
         for sequence in content.segments[1:]:
@@ -234,6 +239,7 @@ class ProgressiveStoryboardReadyService:
                     existing,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
                     aspect_ratio=content.global_parameters.aspect_ratio,
+                    resolution=video_resolution,
                 )
             )
         if created and self._on_storyboard_pipeline_prepared is not None:
@@ -319,6 +325,7 @@ class ProgressiveStoryboardReadyService:
         branch_scope = f"{plan_document_id}:{grid_one.node_id}"
         created: list[str] = []
         first_sequence = content.segments[0]
+        video_resolution = self._resolve_video_resolution(grid_one.workflow_id)
         created.extend(
             self._ensure_video(
                 plan_document_id,
@@ -326,6 +333,7 @@ class ProgressiveStoryboardReadyService:
                 grid_one,
                 duration_seconds=(first_sequence.end_seconds - first_sequence.start_seconds),
                 aspect_ratio=content.global_parameters.aspect_ratio,
+                resolution=video_resolution,
                 node_identity_scope=branch_scope,
                 attach_to_plan=False,
             )
@@ -366,11 +374,18 @@ class ProgressiveStoryboardReadyService:
                     grid,
                     duration_seconds=sequence.end_seconds - sequence.start_seconds,
                     aspect_ratio=content.global_parameters.aspect_ratio,
+                    resolution=video_resolution,
                     node_identity_scope=branch_scope,
                     attach_to_plan=False,
                 )
             )
         return tuple(created)
+
+    def _resolve_video_resolution(self, workflow_id: str) -> str | None:
+        if self._video_resolution_resolver is None:
+            return None
+        resolution = self._video_resolution_resolver(workflow_id)
+        return resolution.strip() if resolution and resolution.strip() else None
 
     def _validate_grid_capacity(
         self,
@@ -404,6 +419,7 @@ class ProgressiveStoryboardReadyService:
         *,
         duration_seconds: float,
         aspect_ratio: str,
+        resolution: str | None,
         node_identity_scope: str | None = None,
         attach_to_plan: bool = True,
     ) -> tuple[str, ...]:
@@ -443,6 +459,11 @@ class ProgressiveStoryboardReadyService:
             parameters={
                 "duration_seconds": duration_seconds,
                 "aspect_ratio": aspect_ratio,
+                **({"resolution": resolution} if resolution is not None else {}),
+            },
+            metadata={
+                "source_agent_document_id": plan_document_id,
+                "source_sequence_id": sequence_id,
             },
             position=CanvasPositionV2(x=grid.position.x + 360, y=grid.position.y),
             revision=1,
@@ -751,6 +772,8 @@ def _grid_node(
                 for row in segment.rows
             ),
         ).model_dump(mode="json"),
+        parameters={},
+        metadata={"source_sequence_id": sequence.sequence_id},
         position=CanvasPositionV2(x=source.position.x, y=source.position.y + (order - 1) * 280),
         revision=1,
         created_at=now,

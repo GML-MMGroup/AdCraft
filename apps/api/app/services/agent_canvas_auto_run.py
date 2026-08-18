@@ -97,7 +97,12 @@ class AgentCanvasAutoRunDispatcher:
                 self._base_backoff * (2**command.attempt_count),
                 self._maximum_backoff,
             )
-            updated = self._commands.record_failure(
+            persist_failure = (
+                self._commands.defer
+                if error.code == "upstream_inputs_not_ready"
+                else self._commands.record_failure
+            )
+            updated = persist_failure(
                 command.command_id,
                 worker_id=self._worker_id,
                 lease_generation=claim.lease_generation,
@@ -127,6 +132,7 @@ def _dispatch_error(exception: Exception) -> CanvasNodeErrorV2:
         retryable = code.endswith(("_unavailable", "_busy", "_timeout")) or code in {
             "runtime_persistence_unavailable",
             "event_store_unavailable",
+            "upstream_inputs_not_ready",
         }
     else:
         code = "agent_auto_run_submission_failed"

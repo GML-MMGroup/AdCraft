@@ -106,6 +106,7 @@ class CapabilityMaterializationPublicationService:
         storyboard_authoring: StoryboardSequenceAuthoringService | None = None,
         storyboard_gateway: VideoAgentGateway | None = None,
         storyboard_promotion: StoryboardPromptReadyPromotionService | None = None,
+        prompt_ready_activation: Callable[..., object] | None = None,
     ) -> None:
         self._workflows = workflows
         self._conversations = conversations
@@ -122,6 +123,7 @@ class CapabilityMaterializationPublicationService:
             conversations.events,
         )
         self._requirements = AgentCanvasRequirementRepository(workflows.database)
+        self._prompt_ready_activation = prompt_ready_activation
         self._storyboard_promotion = storyboard_promotion or (
             StoryboardPromptReadyPromotionService(
                 workflows,
@@ -245,6 +247,7 @@ class CapabilityMaterializationPublicationService:
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        self._activate_prompt_ready_media(envelope, outcome)
         if not outcome.node_ids:
             raise V2PersistenceError(
                 "materialization_outcome_invalid",
@@ -584,7 +587,21 @@ class CapabilityMaterializationPublicationService:
             action_turn_id=envelope.action_turn_id,
             session_id=session.session_id,
         )
+        self._activate_prompt_ready_media(envelope, outcome)
         return outcome.node_ids[0]
+
+    def _activate_prompt_ready_media(
+        self,
+        envelope: ProposalApplicationEnvelopeV1,
+        outcome,
+    ) -> None:
+        if envelope.capability_id != "bgm_direction" or self._prompt_ready_activation is None:
+            return
+        self._prompt_ready_activation(
+            outcome.workflow_id,
+            outcome.node_ids,
+            source_id=outcome.materialization_id,
+        )
 
     @staticmethod
     def _storyboard_normalization(
