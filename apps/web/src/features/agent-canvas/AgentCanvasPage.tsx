@@ -52,6 +52,7 @@ import {
 } from "./canvas/draggingNodeState.ts";
 import {
   findAvailableCanvasPosition,
+  highlightNodeRelatedCanvasEdges,
   reconcileSelectableCanvasEdges,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
@@ -337,6 +338,10 @@ export function AgentCanvasPage() {
     () => workflow ? toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes) : [],
     [workflow],
   );
+  const presentedEdges = useMemo(
+    () => highlightNodeRelatedCanvasEdges(canonicalEdges, session.state.selectedNodeId),
+    [canonicalEdges, session.state.selectedNodeId],
+  );
 
   useEffect(() => {
     setNodes((current) => {
@@ -349,8 +354,8 @@ export function AgentCanvasPage() {
   }, [canonicalNodes, setNodes]);
 
   useEffect(() => {
-    setEdges((current) => reconcileSelectableCanvasEdges(canonicalEdges, current));
-  }, [canonicalEdges, setEdges]);
+    setEdges((current) => reconcileSelectableCanvasEdges(presentedEdges, current));
+  }, [presentedEdges, setEdges]);
 
   const clearEdgeSelection = useCallback(() => {
     setEdges((current) => {
@@ -408,9 +413,9 @@ export function AgentCanvasPage() {
 
   const recoverDeletedCanvasState = useCallback(async () => {
     setNodes(canonicalNodes);
-    setEdges((current) => reconcileSelectableCanvasEdges(canonicalEdges, current));
+    setEdges((current) => reconcileSelectableCanvasEdges(presentedEdges, current));
     await refreshWorkflow();
-  }, [canonicalEdges, canonicalNodes, refreshWorkflow, setEdges, setNodes]);
+  }, [canonicalNodes, presentedEdges, refreshWorkflow, setEdges, setNodes]);
 
   const deleteEdges = useCallback((deleted: Edge[]) => {
     void deleteCanvasEntities(

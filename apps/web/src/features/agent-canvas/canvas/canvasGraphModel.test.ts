@@ -7,6 +7,7 @@ import type {
 } from "../../../types-v2.ts";
 import {
   findAvailableCanvasPosition,
+  highlightNodeRelatedCanvasEdges,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
   reconcileSelectableCanvasEdges,
@@ -242,6 +243,29 @@ describe("canvasGraphModel", () => {
     };
 
     expect(reconcileSelectableCanvasEdges([], [staleSelectedEdge])).toEqual([]);
+  });
+
+  it("visually highlights only edges directly related to the selected node", () => {
+    const baseEdges = [
+      { id: "incoming", source: "image-1", target: "video-1" },
+      { id: "outgoing", source: "video-1", target: "editing-1" },
+      { id: "unrelated", source: "audio-1", target: "editing-1" },
+    ];
+
+    expect(highlightNodeRelatedCanvasEdges(baseEdges, "video-1")).toEqual([
+      expect.objectContaining({ id: "incoming", className: "is-node-related" }),
+      expect.objectContaining({ id: "outgoing", className: "is-node-related" }),
+      expect.not.objectContaining({ className: "is-node-related" }),
+    ]);
+  });
+
+  it("does not select related edges or retain their highlight after node deselection", () => {
+    const related = highlightNodeRelatedCanvasEdges([
+      { id: "binding-1", source: "image-1", target: "video-1" },
+    ], "video-1");
+
+    expect(related[0]?.selected).not.toBe(true);
+    expect(highlightNodeRelatedCanvasEdges(related, null)[0]).not.toHaveProperty("className");
   });
 
   it("does not render disabled or asset-backed bindings as inferred edges", () => {
