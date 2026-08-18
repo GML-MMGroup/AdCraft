@@ -21,6 +21,7 @@ import type {
 import { incrementalPlacementForNodes } from "../canvas/canvasGraphModel.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
+import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
 import {
   mergeAgentCanvasLayout,
@@ -219,6 +220,30 @@ export function useAgentCanvasSession() {
   const updateNodePosition = useCallback((nodeId: string, position: CanvasPositionV2) => (
     updateNodePositions([{ node_id: nodeId, ...position }])
   ), [updateNodePositions]);
+
+  const persistLayoutPreviewPositions = useCallback((
+    targetPositions: CanvasLayoutPositionV2[],
+    originalPositions: CanvasLayoutPositionV2[],
+  ) => persistAgentCanvasLayoutPreview({
+    targetPositions,
+    originalPositions,
+    persistPositions: updateNodePositions,
+  }), [updateNodePositions]);
+
+  const rollbackNodePositions = useCallback((
+    workflowId: string,
+    positions: CanvasLayoutPositionV2[],
+  ) => {
+    const pending = pendingLayoutPositionsRef.current.get(workflowId);
+    positions.forEach((position) => pending?.delete(position.node_id));
+    if (pending && !pending.size) pendingLayoutPositionsRef.current.delete(workflowId);
+    setAgentCanvasWorkflow((current) => {
+      if (!current || current.workflow_id !== workflowId) return current;
+      const next = overlayAgentCanvasPositions(current, positions);
+      workflowRef.current = next;
+      return next;
+    });
+  }, [setAgentCanvasWorkflow]);
 
   const createNode = useCallback(async (request: CanvasNodeCreateRequestV2) => {
     if (!agentCanvasWorkflow) throw new Error("No active Agent Canvas workflow.");
@@ -476,6 +501,8 @@ export function useAgentCanvasSession() {
       patchNode,
       updateNodePosition,
       updateNodePositions,
+      persistLayoutPreviewPositions,
+      rollbackNodePositions,
       createNode,
       createConnectedNode,
       saveVariationDraft,
