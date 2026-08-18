@@ -40,6 +40,21 @@ describe("AgentCanvasPage chrome", () => {
     expect(canvasCss).not.toContain("var(--topbar-height) - 16px");
   });
 
+  it("tracks responsive content padding without horizontal overflow or a mobile gap", () => {
+    const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /@media \(max-width: 900px\)[\s\S]*?\.agent-canvas-page,[\s\S]*?\.agent-canvas-state[\s\S]*?margin: 0 -18px -48px -80px;/,
+    );
+    expect(baseCss).toMatch(
+      /@media \(max-width: 620px\)[\s\S]*?:root \{[\s\S]*?--topbar-height: 64px;/,
+    );
+  });
+
   it("keeps backend edges selectable and animates only the selected monochrome dash", () => {
     const source = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/AgentCanvasPage.tsx"),

@@ -32,7 +32,7 @@
 .agent-node-workbench__reference-actions button:hover:not(:disabled),
 .agent-node-workbench__asset-actions button:hover:not(:disabled) {
   color: #fff;
-  background: rgb(157 130 255 / 20%);
+  background: color-mix(in srgb, var(--brand) 20%, transparent);
   transform: translateY(-1px);
 }
 
@@ -101,8 +101,8 @@
 }
 
 .agent-node-workbench :is(input, textarea, select):focus {
-  border-color: rgb(161 137 251 / 72%);
-  box-shadow: 0 0 0 3px rgb(140 113 232 / 12%);
+  border-color: color-mix(in srgb, var(--brand) 72%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
 }
 
 .agent-node-workbench input,
@@ -236,7 +236,7 @@
 }
 
 .agent-node-workbench__model-menu button:hover:not(:disabled),
-.agent-node-workbench__model-menu button[aria-selected="true"] { background: rgb(157 130 255 / 16%); }
+.agent-node-workbench__model-menu button[aria-selected="true"] { background: color-mix(in srgb, var(--brand) 16%, transparent); }
 .agent-node-workbench__model-menu button:disabled { cursor: not-allowed; opacity: 0.5; }
 .agent-node-workbench__model-menu strong { font-size: 11px; font-weight: 650; }
 .agent-node-workbench__model-menu small,

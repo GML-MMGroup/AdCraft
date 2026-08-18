@@ -76,7 +76,7 @@
   gap: 7px;
   min-height: 34px;
   padding: 0 13px;
-  color: #fff;
+  color: var(--text-inverse);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -86,7 +86,7 @@
 }
 
 .agent-asset-browser__upload:hover {
-  box-shadow: 0 8px 22px rgb(118 103 184 / 28%);
+  box-shadow: 0 8px 22px rgb(157 175 230 / 28%);
   transform: translateY(-1px);
 }
 
@@ -309,7 +309,7 @@
 }
 
 .agent-asset-card__select input:focus-visible + span {
-  box-shadow: 0 0 0 3px rgb(118 103 184 / 28%);
+  box-shadow: 0 0 0 3px rgb(157 175 230 / 28%);
 }
 
 .agent-asset-card__meta {
@@ -431,7 +431,7 @@
   gap: 7px;
   min-height: 34px;
   padding: 0 13px;
-  color: #fff !important;
+  color: var(--text-inverse) !important;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;

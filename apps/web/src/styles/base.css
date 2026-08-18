@@ -654,8 +654,8 @@ a {
 .route-loading-spinner {
   width: 34px;
   height: 34px;
-  border: 3px solid rgba(87, 71, 151, 0.18);
-  border-top-color: rgba(87, 71, 151, 0.88);
+  border: 3px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  border-top-color: var(--brand);
   border-radius: 999px;
   animation: route-loading-spin 760ms linear infinite;
 }
@@ -718,12 +718,16 @@ a {
 }
 
 @media (max-width: 620px) {
+  :root {
+    --topbar-height: 64px;
+  }
+
   .floating-rail {
     left: 18px;
   }
 
   .topbar {
-    height: 64px;
+    height: var(--topbar-height);
     padding: 0 12px 0 72px;
   }
 

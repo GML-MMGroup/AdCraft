@@ -174,7 +174,7 @@
 }
 
 .agent-canvas-toolbar__run {
-  color: #fff !important;
+  color: var(--text-inverse) !important;
   background: var(--brand) !important;
 }
 
@@ -299,7 +299,7 @@
 }
 
 .agent-canvas-node-picker button:hover {
-  background: rgb(111 91 176 / 10%);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
 .agent-canvas-node-picker span {
@@ -577,7 +577,7 @@
   display: grid;
   gap: 8px;
   padding: 9px;
-  border: 1px solid rgb(120 112 153 / 18%);
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
   border-radius: 7px;
   background: rgb(255 255 255 / 34%);
 }
@@ -697,7 +697,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #fff;
+  color: var(--text-inverse);
   background: var(--brand);
   border: 0;
   border-radius: 6px;
@@ -766,7 +766,7 @@
 }
 
 .agent-canvas-inspector > footer .agent-canvas-inspector__save {
-  color: #fff;
+  color: var(--text-inverse);
   background: var(--brand);
   border-color: var(--brand);
 }
@@ -791,7 +791,7 @@
   bottom: 70px;
   color: #4f4870;
   background: rgb(247 245 255 / 94%);
-  border-color: rgb(111 92 177 / 24%);
+  border-color: color-mix(in srgb, var(--brand) 24%, transparent);
 }
 
 .agent-canvas-overlay {
@@ -940,8 +940,8 @@
 
 :root .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(198 181 255 / 92%))
-    drop-shadow(0 0 5px rgb(130 96 236 / 58%));
+    drop-shadow(0 0 1.5px rgb(202 212 245 / 92%))
+    drop-shadow(0 0 5px rgb(157 175 230 / 58%));
 }
 
 :root :is(
@@ -980,6 +980,13 @@
 @media (max-width: 1180px) {
   .agent-canvas-page {
     grid-template-columns: minmax(0, 1fr) 330px;
+  }
+}
+
+@media (max-width: 900px) {
+  .agent-canvas-page,
+  .agent-canvas-state {
+    margin: 0 -18px -48px -80px;
   }
 }
 

@@ -45,6 +45,24 @@ describe("blue brand interactions", () => {
       /#(?:59458f|5e4fa5|65509b|67529d|6754a6|6755aa|6853ad|6d56b2|6e5ab0|6f5aae|6f62aa|705cb1|715cb1|725db4|7565b5|7662b8|7664b7|7667b8|7a6ac4|7b68bb|7e68c2|806dc2|8771cc|8873c9|8a70d2|8c79c9|8d76d4|9581d7|9e8bef|a894f5|a990f3|b3a4f5|c0b2f5|c9bcff|cfc4ff|ddd5ff|eae6ff)/i,
     );
     expect(interactionStyles).not.toMatch(/rgba\((?:108, 93, 171|109, 113, 214),/);
+    expect(interactionStyles).not.toContain("rgb(124 102 200 /");
+    expect(interactionStyles).not.toContain("rgb(111 96 168 /");
+  });
+
+  it("uses dark inverse text on light-blue primary actions", () => {
+    const canvas = source("features/agent-canvas/agent-canvas-page.css");
+    const chat = source("features/agent-canvas/chat/agent-canvas-chat.css");
+    const assets = source("features/agent-canvas/assets/AgentAssetBrowser.css");
+    const editing = source("features/agent-canvas/editing/agent-canvas-editing.css");
+
+    expect(canvas).toMatch(/\.agent-canvas-toolbar__run \{[^}]*color: var\(--text-inverse\) !important;/s);
+    expect(canvas).toMatch(/\.agent-canvas-inspector__primary \{[^}]*color: var\(--text-inverse\);/s);
+    expect(canvas).toMatch(/\.agent-canvas-inspector__save \{[^}]*color: var\(--text-inverse\);/s);
+    expect(chat).toMatch(/\.agent-chat__revision button \{[^}]*color: var\(--text-inverse\);/s);
+    expect(chat).toMatch(/\.agent-chat__send \{[^}]*color: var\(--text-inverse\);/s);
+    expect(assets).toMatch(/\.agent-asset-browser__upload \{[^}]*color: var\(--text-inverse\);/s);
+    expect(assets).toMatch(/\.agent-asset-browser__add \{[^}]*color: var\(--text-inverse\) !important;/s);
+    expect(editing).toMatch(/\.agent-editing-panel__export \{[^}]*color: var\(--text-inverse\);[^}]*background: var\(--brand\);/s);
   });
 
   it("keeps node-type and semantic color declarations unchanged", () => {

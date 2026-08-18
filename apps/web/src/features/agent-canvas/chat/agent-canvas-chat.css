@@ -153,7 +153,7 @@
   height: 32px;
   place-items: center;
   transform: translateX(-50%);
-  border: 1px solid rgb(111 96 168 / 24%);
+  border: 1px solid rgb(157 175 230 / 24%);
   border-radius: 50%;
   background: rgb(250 250 253 / 94%);
   box-shadow: 0 8px 22px rgb(31 27 48 / 20%);
@@ -333,7 +333,7 @@
 
 .agent-chat__activity-actions button {
   padding: 3px 7px;
-  border: 1px solid rgb(111 96 168 / 22%);
+  border: 1px solid rgb(157 175 230 / 22%);
   border-radius: 6px;
   background: rgb(126 102 205 / 9%);
   color: inherit;
@@ -413,7 +413,7 @@
   gap: 9px;
   align-items: center;
   padding: 10px;
-  border: 1px solid rgb(111 96 168 / 18%);
+  border: 1px solid rgb(157 175 230 / 18%);
   border-radius: 7px;
   background: rgb(255 255 255 / 45%);
   color: inherit;
@@ -424,9 +424,9 @@
   display: grid;
   gap: 7px;
   padding: 10px;
-  border: 1px solid rgb(111 96 168 / 18%);
+  border: 1px solid rgb(157 175 230 / 18%);
   border-radius: 7px;
-  background: rgb(111 96 168 / 5%);
+  background: rgb(157 175 230 / 5%);
 }
 
 .agent-chat__recipe > header {
@@ -501,7 +501,7 @@
   gap: 5px 9px;
   margin-top: 8px;
   padding-top: 7px;
-  border-top: 1px solid rgb(111 96 168 / 12%);
+  border-top: 1px solid rgb(157 175 230 / 12%);
   color: #737487;
   font-size: 9px;
   text-transform: capitalize;
@@ -535,7 +535,7 @@
 
 .agent-chat__proposal {
   padding: 11px;
-  border: 1px solid rgb(111 96 168 / 18%);
+  border: 1px solid rgb(157 175 230 / 18%);
   border-radius: 7px;
   background: rgb(255 255 255 / 46%);
 }
@@ -543,7 +543,7 @@
 .agent-chat__command,
 .agent-chat__receipt {
   padding: 11px;
-  border: 1px solid rgb(111 96 168 / 20%);
+  border: 1px solid rgb(157 175 230 / 20%);
   border-radius: 7px;
   background: rgb(255 255 255 / 46%);
 }
@@ -552,7 +552,7 @@
   display: grid;
   gap: 10px;
   padding: 11px;
-  border: 1px solid rgb(111 96 168 / 20%);
+  border: 1px solid rgb(157 175 230 / 20%);
   border-radius: 7px;
   background: rgb(255 255 255 / 46%);
 }
@@ -604,9 +604,9 @@
   gap: 7px;
   align-items: flex-start;
   padding: 6px 7px;
-  border: 1px solid rgb(111 96 168 / 13%);
+  border: 1px solid rgb(157 175 230 / 13%);
   border-radius: 5px;
-  background: rgb(111 96 168 / 5%);
+  background: rgb(157 175 230 / 5%);
 }
 
 .agent-chat__decision-questions input[type="radio"],
@@ -638,7 +638,7 @@
   min-width: 0;
   min-height: 28px;
   padding: 0 8px;
-  border: 1px solid rgb(111 96 168 / 16%);
+  border: 1px solid rgb(157 175 230 / 16%);
   border-radius: 5px;
   background: transparent;
   color: inherit;
@@ -650,7 +650,7 @@
 .agent-chat__decision-actions button {
   min-height: 28px;
   padding: 0 9px;
-  border: 1px solid rgb(111 96 168 / 20%);
+  border: 1px solid rgb(157 175 230 / 20%);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -813,7 +813,7 @@
   margin-top: 9px;
   padding: 8px;
   border-radius: 6px;
-  background: rgb(111 96 168 / 7%);
+  background: rgb(157 175 230 / 7%);
   color: #656176;
 }
 
@@ -868,7 +868,7 @@
   gap: 5px;
   margin-top: 9px;
   padding-top: 8px;
-  border-top: 1px solid rgb(111 96 168 / 14%);
+  border-top: 1px solid rgb(157 175 230 / 14%);
 }
 
 .agent-chat__proposal-references > header {
@@ -887,7 +887,7 @@
   align-items: center;
   padding: 5px;
   border-radius: 5px;
-  background: rgb(111 96 168 / 6%);
+  background: rgb(157 175 230 / 6%);
 }
 
 .agent-chat__proposal-references > div > span {
@@ -939,7 +939,7 @@
 }
 
 .agent-chat__proposal-references button:hover:not(:disabled) {
-  background: rgb(111 96 168 / 12%);
+  background: rgb(157 175 230 / 12%);
 }
 
 .agent-chat__proposal-references button:disabled {
@@ -955,7 +955,7 @@
   min-width: 0;
   height: 29px;
   padding: 0 7px;
-  border: 1px solid rgb(111 96 168 / 16%);
+  border: 1px solid rgb(157 175 230 / 16%);
   border-radius: 5px;
   background: transparent;
   color: inherit;
@@ -988,7 +988,7 @@
   align-items: center;
   gap: 4px;
   padding: 0 9px;
-  border: 1px solid rgb(111 96 168 / 20%);
+  border: 1px solid rgb(157 175 230 / 20%);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -1011,7 +1011,7 @@
   align-items: center;
   gap: 6px;
   padding: 0 10px;
-  border: 1px solid rgb(111 96 168 / 24%);
+  border: 1px solid rgb(157 175 230 / 24%);
   border-radius: 6px;
   background: rgb(255 255 255 / 38%);
   color: inherit;
@@ -1019,8 +1019,8 @@
 }
 
 .agent-chat__guided-actions button:hover:not(:disabled) {
-  border-color: rgb(111 96 168 / 48%);
-  background: rgb(111 96 168 / 10%);
+  border-color: rgb(157 175 230 / 48%);
+  background: rgb(157 175 230 / 10%);
 }
 
 .agent-chat__guided-actions button:disabled {
@@ -1041,7 +1041,7 @@
 
 .agent-chat__revision input {
   min-width: 0;
-  border: 1px solid rgb(111 96 168 / 22%);
+  border: 1px solid rgb(157 175 230 / 22%);
   border-radius: 6px;
   background: transparent;
   color: inherit;
@@ -1052,7 +1052,7 @@
   border: 0;
   border-radius: 6px;
   background: var(--brand);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .agent-chat__revision svg {
@@ -1190,7 +1190,7 @@
 
 .agent-chat__composer-actions .agent-chat__send {
   background: var(--brand);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .agent-chat__composer-actions button:disabled {
@@ -1241,10 +1241,10 @@
   max-height: min(440px, 68vh);
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgb(111 96 168 / 22%);
+  border: 1px solid rgb(157 175 230 / 22%);
   border-radius: 8px;
   background: rgb(250 250 253 / 94%);
-  box-shadow: 0 22px 56px rgb(39 30 64 / 24%);
+  box-shadow: 0 22px 56px rgb(0 0 0 / 24%);
   backdrop-filter: blur(22px) saturate(135%);
 }
 
@@ -1267,7 +1267,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 12px 9px;
-  border-bottom: 1px solid rgb(111 96 168 / 12%);
+  border-bottom: 1px solid rgb(157 175 230 / 12%);
 }
 
 .agent-chat__style-menu-header div {
@@ -1292,7 +1292,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: rgb(124 102 200 / 8%);
+  background: rgb(157 175 230 / 8%);
 }
 
 .agent-chat__style-status,
@@ -1353,7 +1353,7 @@
   min-height: 30px;
   margin: 0 10px 7px;
   padding: 0 9px;
-  border: 1px solid rgb(111 96 168 / 16%);
+  border: 1px solid rgb(157 175 230 / 16%);
   border-radius: 6px;
   outline: none;
   background: rgb(255 255 255 / 58%);
@@ -1367,7 +1367,7 @@
 }
 
 .agent-chat__style-search:focus-visible {
-  border-color: rgb(124 102 200 / 52%);
+  border-color: rgb(157 175 230 / 52%);
 }
 
 .agent-chat__style-list {
@@ -1387,19 +1387,19 @@
   align-items: center;
   padding: 8px;
   border: 1px solid transparent;
-  background: rgb(124 102 200 / 5%);
+  background: rgb(157 175 230 / 5%);
   color: inherit;
   text-align: left;
 }
 
 .agent-chat__style-menu .agent-chat__style-option:hover {
-  border-color: rgb(124 102 200 / 22%);
-  background: rgb(124 102 200 / 9%);
+  border-color: rgb(157 175 230 / 22%);
+  background: rgb(157 175 230 / 9%);
 }
 
 .agent-chat__style-menu .agent-chat__style-option.is-selected {
-  border-color: rgb(124 102 200 / 38%);
-  background: rgb(124 102 200 / 13%);
+  border-color: rgb(157 175 230 / 38%);
+  background: rgb(157 175 230 / 13%);
 }
 
 .agent-chat__style-option img,
@@ -1446,8 +1446,8 @@
 .agent-chat__style-tags i {
   padding: 2px 4px;
   border-radius: 4px;
-  background: rgb(124 102 200 / 9%);
-  color: #736297;
+  background: rgb(157 175 230 / 9%);
+  color: var(--brand-hover);
   font-size: 8px;
   font-style: normal;
 }
@@ -1496,10 +1496,10 @@
   max-height: 300px;
   grid-template-columns: 1fr 1fr;
   overflow: auto;
-  border: 1px solid rgb(111 96 168 / 20%);
+  border: 1px solid rgb(157 175 230 / 20%);
   border-radius: 8px;
   background: rgb(250 250 253 / 97%);
-  box-shadow: 0 18px 45px rgb(39 30 64 / 18%);
+  box-shadow: 0 18px 45px rgb(0 0 0 / 18%);
 }
 
 :root .agent-chat__mention-menu {
@@ -1512,7 +1512,7 @@
 }
 
 .agent-chat__mention-menu section + section {
-  border-left: 1px solid rgb(111 96 168 / 12%);
+  border-left: 1px solid rgb(157 175 230 / 12%);
 }
 
 .agent-chat__mention-menu h4 {
@@ -1538,7 +1538,7 @@
 
 .agent-chat__mention-menu button:hover,
 .agent-chat__mention-menu button.is-selected {
-  background: rgb(124 102 200 / 11%);
+  background: rgb(157 175 230 / 11%);
 }
 
 .agent-chat__mention-menu svg {
