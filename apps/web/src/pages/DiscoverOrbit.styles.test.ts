@@ -20,4 +20,22 @@ describe("Discover orbit vertical clearance", () => {
     expect(interactiveOrbit).toContain("mask-image:");
     expect(track).not.toContain("mask-image:");
   });
+
+  it("keeps the Discover interaction glow locally purple", () => {
+    const orbit = declarationBlock("\\.discover-orbit");
+    const orbitFocus = declarationBlock("\\.discover-orbit:focus-visible");
+    const selected = declarationBlock(
+      "\\.discover-orbit__card:is\\(:hover, :focus-visible, \\.is-selected\\)",
+    );
+    const focused = declarationBlock("\\.discover-orbit__card:focus-visible");
+
+    expect(orbit).toContain("--discover-selection-glow: rgba(171, 143, 247, 0.22)");
+    expect(orbit).toContain("--discover-selection-shadow: rgba(49, 35, 92, 0.32)");
+    expect(orbit).toContain("--discover-focus-ring: rgba(190, 167, 252, 0.88)");
+    expect(orbitFocus).toContain("var(--focus-ring)");
+    expect(selected).toContain("var(--discover-selection-glow)");
+    expect(selected).toContain("var(--discover-selection-shadow)");
+    expect(selected).not.toContain("var(--brand)");
+    expect(focused).toContain("var(--discover-focus-ring)");
+  });
 });

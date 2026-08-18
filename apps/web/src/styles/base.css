@@ -38,9 +38,9 @@
   --topbar-height: 70px;
   --rail-width: 56px;
   --mist-blue: #08090D;
-  --mauve: #9E8BEA;
+  --mauve: #9DAFE6;
   --butter: #E1A750;
-  --iris: #9E8BEA;
+  --iris: #9DAFE6;
   --rose: #CA6F6F;
   --ink: #F1F2F6;
   --muted: #9399A9;
@@ -137,21 +137,22 @@ a {
 
 .app-shell {
   position: relative;
-  width: calc(100vw - 32px);
-  min-height: calc(100vh - 32px);
-  margin: 16px auto;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: var(--radius-shell);
-  background: rgba(247, 249, 253, 0.08);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px) saturate(1.04);
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .app-shell--workflow {
-  min-height: calc(100vh - 16px);
-  min-height: calc(100dvh - 16px);
-  margin: 16px auto 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
 }
 
 .topbar {
@@ -344,7 +345,7 @@ a {
 .send-btn {
   min-width: 112px;
   padding: 0 18px;
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.74));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.74));
   color: white;
   font-weight: 600;
 }
@@ -506,7 +507,7 @@ a {
   display: grid;
   width: 40px;
   place-items: center;
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.92), rgba(167, 149, 191, 0.72));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.92), rgba(178, 192, 237, 0.72));
   color: #fff;
   font-weight: 700;
 }
@@ -554,7 +555,7 @@ a {
 }
 
 .filter-btn.is-active {
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.76));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.76));
   color: white;
 }
 
@@ -597,7 +598,7 @@ a {
 }
 
 .rail-item.is-active {
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.78));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.78));
   color: white;
 }
 
@@ -653,8 +654,8 @@ a {
 .route-loading-spinner {
   width: 34px;
   height: 34px;
-  border: 3px solid rgba(87, 71, 151, 0.18);
-  border-top-color: rgba(87, 71, 151, 0.88);
+  border: 3px solid color-mix(in srgb, var(--brand) 18%, transparent);
+  border-top-color: var(--brand);
   border-radius: 999px;
   animation: route-loading-spin 760ms linear infinite;
 }
@@ -717,10 +718,8 @@ a {
 }
 
 @media (max-width: 620px) {
-  .app-shell {
-    width: calc(100vw - 20px);
-    margin: 10px auto;
-    border-radius: 24px;
+  :root {
+    --topbar-height: 64px;
   }
 
   .floating-rail {
@@ -728,7 +727,7 @@ a {
   }
 
   .topbar {
-    height: 64px;
+    height: var(--topbar-height);
     padding: 0 12px 0 72px;
   }
 

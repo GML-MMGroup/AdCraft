@@ -45,12 +45,12 @@ describe("theme styles", () => {
     }
 
     expect(dark).toContain("#08090D");
-    expect(dark).toContain("#9E8BEA");
+    expect(dark).toContain("#9DAFE6");
     expect(styles).not.toContain("data-theme");
     expect(source("styles/base.css")).toContain("color-scheme: dark");
   });
 
-  test("uses the approved semantic palette across the fixed dark theme", () => {
+  test("uses the approved blue brand palette and preserves semantic colors", () => {
     const theme = declarationBlock(source("styles/theme.css"), ":root");
     const base = declarationBlock(source("styles/base.css"), ":root");
     const typographyLab = declarationBlock(
@@ -58,9 +58,19 @@ describe("theme styles", () => {
       ".home-typography-lab--dark",
     );
 
+    expect(theme).toContain("--brand: #9DAFE6");
+    expect(theme).toContain("--brand-hover: #B2C0ED");
+    expect(theme).toContain("--brand-subtle: #20283F");
+    expect(theme).toContain("--focus-ring: #CAD4F5");
+    expect(theme).toContain("--mauve: var(--brand)");
+    expect(theme).toContain("--iris: var(--brand)");
+    expect(base).toContain("--mauve: #9DAFE6");
+    expect(base).toContain("--iris: #9DAFE6");
+    expect(typographyLab).toContain("--brand: #9DAFE6");
     expect(theme).toContain("--success: #9CD38E");
     expect(theme).toContain("--warning: #E1A750");
     expect(theme).toContain("--error: #CA6F6F");
+    expect(theme).toContain("--info: #7F9FE8");
     for (const block of [base, typographyLab]) {
       expect(block).toContain("--butter: #E1A750");
       expect(block).toContain("--rose: #CA6F6F");
@@ -147,16 +157,21 @@ describe("theme styles", () => {
     expect(source("components/Layout.tsx")).not.toContain('import "../styles/theme.css"');
   });
 
-  test("scopes the static cosmic artwork to shared non-Workflow shells", () => {
+  test("keeps cosmic artwork fixed behind every application shell", () => {
     const themeStyles = source("styles/theme.css");
-    const darkCosmicShell = declarationBlock(
+    const shell = declarationBlock(themeStyles, ":root .app-shell");
+    const cosmicShell = declarationBlock(
       themeStyles,
       ":root .app-shell--cosmic",
     );
 
-    expect(darkCosmicShell).toContain(
-      'url("/assets/home-dark-black-hole.webp") 50% 60% / cover fixed no-repeat',
+    expect(themeStyles).toMatch(
+      /:root body\s*\{[\s\S]*?url\("\/assets\/home-dark-black-hole\.webp"\) 50% 60% \/ cover fixed no-repeat,[\s\S]*?\n\}/,
     );
+    expect(shell).toContain("background: transparent");
+    expect(cosmicShell).toContain("background: transparent");
+    expect(cosmicShell).not.toContain("border-color");
+    expect(cosmicShell).toContain("box-shadow: none");
     expect(source("styles/base.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home-typography-lab.css")).toContain(

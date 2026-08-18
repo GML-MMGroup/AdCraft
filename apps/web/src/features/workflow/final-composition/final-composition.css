@@ -124,7 +124,7 @@
   padding: 8px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.48);
-  box-shadow: inset 0 0 0 1px rgba(108, 93, 171, 0.11);
+  box-shadow: inset 0 0 0 1px rgba(157, 175, 230, 0.11);
 }
 
 .final-composition-track-heading {
@@ -223,7 +223,7 @@
 .final-composition-audio-field select {
   width: 100%;
   min-width: 0;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
   color: rgba(32, 34, 53, 0.82);
@@ -456,7 +456,7 @@
 .v2-composition-preview-play svg { width: 20px; height: 20px; margin-left: 2px; }
 .v2-composition-subtitle { position: absolute; bottom: 9%; z-index: 10; max-width: 82%; color: #fff; font-size: clamp(12px, 2vw, 24px); font-weight: 700; line-height: 1.25; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); }
 .v2-composition-transport { padding-top: 8px; }
-.v2-composition-transport input { min-width: 0; flex: 1; accent-color: #7a6ac4; }
+.v2-composition-transport input { min-width: 0; flex: 1; accent-color: var(--brand); }
 .v2-composition-transport span { flex: 0 0 auto; color: rgba(71, 75, 99, 0.75); font-size: 10px; font-variant-numeric: tabular-nums; }
 
 .v2-composition-timeline { overflow: auto; padding: 8px; }

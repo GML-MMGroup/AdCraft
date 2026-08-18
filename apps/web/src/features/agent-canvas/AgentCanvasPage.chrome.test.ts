@@ -27,16 +27,32 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onRelocate={openCanvasContextMenu}");
   });
 
-  it("extends only the Workflow bottom inset without widening the canvas shell", () => {
+  it("fills the Workflow viewport below the topbar without a shell inset", () => {
     const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
       "utf8",
     );
 
-    expect(baseCss).toContain("min-height: calc(100dvh - 16px)");
-    expect(baseCss).toContain("margin: 16px auto 0");
-    expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height) - 16px)");
+    expect(baseCss).toContain("min-height: 100dvh");
+    expect(baseCss).toContain("margin: 0");
+    expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height))");
+    expect(canvasCss).not.toContain("var(--topbar-height) - 16px");
+  });
+
+  it("tracks responsive content padding without horizontal overflow or a mobile gap", () => {
+    const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
+    const canvasCss = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
+      "utf8",
+    );
+
+    expect(canvasCss).toMatch(
+      /@media \(max-width: 900px\)[\s\S]*?\.agent-canvas-page,[\s\S]*?\.agent-canvas-state[\s\S]*?margin: 0 -18px -48px -80px;/,
+    );
+    expect(baseCss).toMatch(
+      /@media \(max-width: 620px\)[\s\S]*?:root \{[\s\S]*?--topbar-height: 64px;/,
+    );
   });
 
   it("keeps backend edges selectable and animates only the selected monochrome dash", () => {

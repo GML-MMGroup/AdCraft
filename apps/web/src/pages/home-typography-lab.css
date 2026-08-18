@@ -13,7 +13,7 @@
   overflow: hidden;
   background:
     linear-gradient(115deg, rgba(254, 233, 161, 0.2), transparent 32%),
-    linear-gradient(245deg, rgba(167, 149, 191, 0.24), transparent 38%),
+    linear-gradient(245deg, rgba(178, 192, 237, 0.24), transparent 38%),
     linear-gradient(rgba(203, 212, 229, 0.38), rgba(203, 212, 229, 0.5)),
     url("/assets/bg.jpg") center / cover fixed no-repeat,
     #cbd4e5;
@@ -165,7 +165,7 @@
 }
 
 .home-typography-lab__preview.is-guide-visible [data-home-typography-region] {
-  outline: 1px dashed rgba(108, 93, 171, 0.56);
+  outline: 1px dashed rgba(157, 175, 230, 0.56);
   outline-offset: 3px;
 }
 
@@ -339,11 +339,11 @@
 
 .home-typography-lab__font-option:hover,
 .home-typography-lab__font-option:focus-visible {
-  background: rgba(108, 93, 171, 0.08);
+  background: rgba(157, 175, 230, 0.08);
 }
 
 .home-typography-lab__font-option.is-selected {
-  background: rgba(108, 93, 171, 0.18);
+  background: rgba(157, 175, 230, 0.18);
 }
 
 .home-typography-lab__control-group select:focus-visible,
@@ -352,7 +352,7 @@
 .home-typography-lab__actions button:focus-visible,
 .home-typography-lab__export:focus-visible,
 .home-typography-lab__collapse:focus-visible {
-  outline: 2px solid rgba(108, 93, 171, 0.7);
+  outline: 2px solid rgba(157, 175, 230, 0.7);
   outline-offset: 2px;
 }
 
@@ -453,8 +453,8 @@
 }
 
 .home-typography-lab__actions button:hover {
-  border-color: rgba(108, 93, 171, 0.46);
-  background: rgba(108, 93, 171, 0.08);
+  border-color: rgba(157, 175, 230, 0.46);
+  background: rgba(157, 175, 230, 0.08);
 }
 
 .home-typography-lab__recipe {
@@ -551,10 +551,10 @@
   --text-inverse: #17151f;
   --border-default: #222733;
   --border-strong: #333a49;
-  --brand: #9e8bea;
-  --brand-hover: #af9af6;
-  --brand-subtle: #241e39;
-  --focus-ring: #b6a4ff;
+  --brand: #9DAFE6;
+  --brand-hover: #B2C0ED;
+  --brand-subtle: #20283F;
+  --focus-ring: #CAD4F5;
   --error: #CA6F6F;
   --media-overlay: rgba(8, 9, 13, 0.72);
   --mist-blue: var(--page-bg);
