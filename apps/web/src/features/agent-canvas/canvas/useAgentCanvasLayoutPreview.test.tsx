@@ -2,7 +2,7 @@ import type { Viewport } from "@xyflow/react";
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { CanvasLayoutPositionV2 } from "../../../types-v2.ts";
+import type { AgentCanvasWorkflowV2, CanvasLayoutPositionV2 } from "../../../types-v2.ts";
 import {
   overlayAgentCanvasLayoutPreview,
   useAgentCanvasLayoutPreview,
@@ -10,8 +10,21 @@ import {
 
 const originalViewport: Viewport = { x: -140, y: 80, zoom: 0.72 };
 const targetPositions: CanvasLayoutPositionV2[] = [{ node_id: "a", x: 50, y: 60 }];
+const previewWorkflow: AgentCanvasWorkflowV2 = {
+  workflow_id: "wf-1",
+  project_id: "project-1",
+  workflow_schema_version: 2,
+  canvas_model: "agent_canvas_v1",
+  revision: 1,
+  layout_revision: 3,
+  nodes: [],
+  bindings: [],
+  assets: [],
+  active_style_skill: null,
+};
 const preview = {
   workflowId: "wf-1",
+  workflow: previewWorkflow,
   nodes: [{ id: "a", position: { x: 1, y: 2 }, selected: true, data: { value: 1 } }],
   targetPositions,
   viewport: originalViewport,
@@ -44,6 +57,22 @@ describe("overlayAgentCanvasLayoutPreview", () => {
 });
 
 describe("useAgentCanvasLayoutPreview", () => {
+  it("rejects a preview whose captured workflow does not match its workflow ID", () => {
+    const { result } = renderHook(() => useAgentCanvasLayoutPreview({
+      workflowId: "wf-1",
+      persistPositions: vi.fn(),
+      restoreViewport: vi.fn(),
+    }));
+
+    act(() => result.current.begin({
+      ...preview,
+      workflow: { ...previewWorkflow, workflow_id: "wf-2" },
+    }));
+
+    expect(result.current.active).toBe(false);
+    expect(result.current.status).toBe("idle");
+  });
+
   it("previews without persisting and keeps only after confirmation", async () => {
     const persistPositions = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => useAgentCanvasLayoutPreview({
@@ -65,7 +94,7 @@ describe("useAgentCanvasLayoutPreview", () => {
 
     expect(kept).toBe(true);
     expect(persistPositions).toHaveBeenCalledOnce();
-    expect(persistPositions).toHaveBeenCalledWith(targetPositions, [{
+    expect(persistPositions).toHaveBeenCalledWith(previewWorkflow, targetPositions, [{
       node_id: "a",
       x: 1,
       y: 2,
@@ -86,7 +115,7 @@ describe("useAgentCanvasLayoutPreview", () => {
     }));
 
     act(() => result.current.begin(preview));
-    act(() => result.current.cancel());
+    act(() => result.current.cancel("explicit"));
 
     expect(restoreViewport).toHaveBeenCalledOnce();
     expect(restoreViewport).toHaveBeenCalledWith(originalViewport, "wf-1");
@@ -131,7 +160,7 @@ describe("useAgentCanvasLayoutPreview", () => {
 
     act(() => result.current.begin(preview));
     await act(() => result.current.keep());
-    act(() => result.current.cancel());
+    act(() => result.current.cancel("explicit"));
 
     expect(rollbackPositions).toHaveBeenCalledOnce();
     expect(rollbackPositions).toHaveBeenCalledWith("wf-1", [{
@@ -161,7 +190,7 @@ describe("useAgentCanvasLayoutPreview", () => {
     }];
     expect(result.current.overlay(refreshedCanonical)[0]?.position).toEqual({ x: 50, y: 60 });
 
-    act(() => result.current.cancel());
+    act(() => result.current.cancel("explicit"));
 
     expect(rollbackPositions).toHaveBeenCalledWith("wf-1", [{
       node_id: "a",
@@ -229,7 +258,9 @@ describe("useAgentCanvasLayoutPreview", () => {
     }));
 
     act(() => result.current.begin(preview));
-    act(() => result.current.cancel());
+    act(() => result.current.cancel("implicit"));
+    act(() => result.current.begin(preview));
+    act(() => result.current.cancel("explicit"));
     act(() => result.current.begin(preview));
     await act(() => result.current.keep());
 
@@ -267,7 +298,7 @@ describe("useAgentCanvasLayoutPreview", () => {
     act(() => {
       keep = result.current.keep();
     });
-    act(() => result.current.cancel());
+    act(() => result.current.cancel("explicit"));
     act(() => result.current.begin({ ...preview, targetPositions: replacementPositions }));
 
     let kept = true;

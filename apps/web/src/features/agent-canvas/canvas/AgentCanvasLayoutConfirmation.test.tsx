@@ -15,6 +15,7 @@ describe("AgentCanvasLayoutConfirmation", () => {
         status="previewing"
         error={null}
         onUndo={onUndo}
+        onDismiss={vi.fn()}
         onKeep={onKeep}
       />,
     );
@@ -25,12 +26,32 @@ describe("AgentCanvasLayoutConfirmation", () => {
     expect(onUndo).not.toHaveBeenCalled();
   });
 
+  it("dispatches the Undo button as an explicit resolution", () => {
+    const onUndo = vi.fn();
+    const onDismiss = vi.fn();
+    render(
+      <AgentCanvasLayoutConfirmation
+        status="previewing"
+        error={null}
+        onUndo={onUndo}
+        onDismiss={onDismiss}
+        onKeep={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+
+    expect(onUndo).toHaveBeenCalledOnce();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it("focuses its heading on mount", () => {
     render(
       <AgentCanvasLayoutConfirmation
         status="previewing"
         error={null}
         onUndo={vi.fn()}
+        onDismiss={vi.fn()}
         onKeep={vi.fn()}
       />,
     );
@@ -47,6 +68,7 @@ describe("AgentCanvasLayoutConfirmation", () => {
         status="previewing"
         error={null}
         onUndo={onUndo}
+        onDismiss={vi.fn()}
         onKeep={vi.fn()}
       />,
     );
@@ -64,13 +86,15 @@ describe("AgentCanvasLayoutConfirmation", () => {
     window.removeEventListener("keydown", competingWindowHandler);
   });
 
-  it("undoes on an outside pointerdown but not a pointerdown inside the dialog", () => {
+  it("dismisses implicitly on outside pointerdown without dispatching explicit Undo", () => {
     const onUndo = vi.fn();
+    const onDismiss = vi.fn();
     render(
       <AgentCanvasLayoutConfirmation
         status="previewing"
         error={null}
         onUndo={onUndo}
+        onDismiss={onDismiss}
         onKeep={vi.fn()}
       />,
     );
@@ -79,11 +103,36 @@ describe("AgentCanvasLayoutConfirmation", () => {
     expect(onUndo).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(document.body);
-    expect(onUndo).toHaveBeenCalledOnce();
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(onUndo).not.toHaveBeenCalled();
+  });
+
+  it("preserves an outside navigation target's focus during implicit dismissal", () => {
+    const onDismiss = vi.fn();
+    render(
+      <div>
+        <AgentCanvasLayoutConfirmation
+          status="previewing"
+          error={null}
+          onUndo={vi.fn()}
+          onDismiss={onDismiss}
+          onKeep={vi.fn()}
+        />
+        <button type="button">Open another project</button>
+      </div>,
+    );
+    const navigation = screen.getByRole("button", { name: "Open another project" });
+    navigation.focus();
+
+    fireEvent.pointerDown(navigation);
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(navigation);
   });
 
   it("keeps the preview open for pointer gestures anywhere inside the canvas board", () => {
     const onUndo = vi.fn();
+    const onDismiss = vi.fn();
     const boardRef = createRef<HTMLDivElement>();
     render(
       <div>
@@ -93,6 +142,7 @@ describe("AgentCanvasLayoutConfirmation", () => {
             status="previewing"
             error={null}
             onUndo={onUndo}
+            onDismiss={onDismiss}
             onKeep={vi.fn()}
             dismissExemptRef={boardRef}
           />
@@ -103,10 +153,11 @@ describe("AgentCanvasLayoutConfirmation", () => {
 
     fireEvent.pointerDown(screen.getByTestId("canvas-board"));
     fireEvent.pointerDown(screen.getByRole("button", { name: "Canvas control" }));
-    expect(onUndo).not.toHaveBeenCalled();
+    expect(onDismiss).not.toHaveBeenCalled();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Outside canvas" }));
-    expect(onUndo).toHaveBeenCalledOnce();
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(onUndo).not.toHaveBeenCalled();
   });
 
   it("disables actions and ignores dismissal while saving", () => {
@@ -119,6 +170,7 @@ describe("AgentCanvasLayoutConfirmation", () => {
         status="saving"
         error={null}
         onUndo={onUndo}
+        onDismiss={vi.fn()}
         onKeep={onKeep}
       />,
     );
@@ -146,6 +198,7 @@ describe("AgentCanvasLayoutConfirmation", () => {
         status="save_error"
         error="Unable to save the canvas layout."
         onUndo={vi.fn()}
+        onDismiss={vi.fn()}
         onKeep={vi.fn()}
       />,
     );
