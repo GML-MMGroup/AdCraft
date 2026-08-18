@@ -28,6 +28,8 @@
 - Modify: `apps/web/src/styles/theme.css:72-98,245-248`
 - Modify: `apps/web/src/styles/themeStyles.test.ts:145-177`
 - Modify: `apps/web/src/quality/routeStyles.test.ts:1-110`
+- Modify: `apps/web/src/features/agent-canvas/agent-canvas-page.css:1-20`
+- Modify: `apps/web/src/features/agent-canvas/AgentCanvasPage.chrome.test.ts:27-42`
 
 **Interfaces:**
 - Consumes: Existing `.app-shell`, `.app-shell--workflow`, `.app-shell--cosmic`, `.topbar`, and route classes emitted by `Layout.tsx`.
@@ -54,6 +56,15 @@ it("keeps the shared shell full-bleed without a visible frame", () => {
   expect(workflowShell).toContain("min-height: 100dvh");
   expect(workflowShell).toContain("margin: 0");
 });
+```
+
+Update the Agent Canvas chrome assertion so it requires the canvas to consume the entire height below the topbar:
+
+```ts
+expect(baseCss).toContain("min-height: 100dvh");
+expect(baseCss).toContain("margin: 0");
+expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height))");
+expect(canvasCss).not.toContain("var(--topbar-height) - 16px");
 ```
 
 Replace the old shell-owned cosmic-artwork assertion in `themeStyles.test.ts` with:
@@ -146,13 +157,20 @@ Make both theme shell blocks explicitly transparent:
 
 Change the narrow-screen background-position override to target `:root body` instead of `.app-shell--cosmic`.
 
+Remove the retired shell inset from the Agent Canvas height while retaining its negative margins that cancel `.main-view` content padding:
+
+```css
+height: calc(100vh - var(--topbar-height));
+height: calc(100dvh - var(--topbar-height));
+```
+
 - [ ] **Step 4: Run the shell tests and verify they pass**
 
 Run:
 
 ```bash
 cd apps/web
-npm test -- src/quality/routeStyles.test.ts src/styles/themeStyles.test.ts src/app/routeProviders.test.tsx
+npm test -- src/quality/routeStyles.test.ts src/styles/themeStyles.test.ts src/app/routeProviders.test.tsx src/features/agent-canvas/AgentCanvasPage.chrome.test.ts
 ```
 
 Expected: PASS. Route class assignment remains unchanged, while the shell style assertions confirm a full-bleed surface.
@@ -160,7 +178,7 @@ Expected: PASS. Route class assignment remains unchanged, while the shell style 
 - [ ] **Step 5: Commit the full-bleed shell**
 
 ```bash
-git add apps/web/src/styles/base.css apps/web/src/styles/theme.css apps/web/src/styles/themeStyles.test.ts apps/web/src/quality/routeStyles.test.ts
+git add apps/web/src/styles/base.css apps/web/src/styles/theme.css apps/web/src/styles/themeStyles.test.ts apps/web/src/quality/routeStyles.test.ts apps/web/src/features/agent-canvas/agent-canvas-page.css apps/web/src/features/agent-canvas/AgentCanvasPage.chrome.test.ts
 git commit -m "style(web): remove rounded application frame"
 ```
 
