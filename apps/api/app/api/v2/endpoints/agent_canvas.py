@@ -68,6 +68,9 @@ from app.persistence.agent_canvas_materialization_repository import (
 from app.persistence.agent_canvas_guided_interaction_repository import (
     AgentCanvasGuidedInteractionRepository,
 )
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    AgentCanvasGuidedMediaResumeRepository,
+)
 from app.persistence.agent_canvas_production_closure_repository import (
     AgentCanvasProductionClosureRepository,
 )
@@ -152,6 +155,7 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedConceptSubmitV1,
     GuidedInteractionAcceptedV1,
     GuidedInteractionSubmitRequestV1,
+    GuidedMediaReviewSubmitV1,
 )
 from app.schemas.agent_canvas_execution_settings import (
     AgentExecutionSettingsPatchV2,
@@ -295,6 +299,9 @@ from app.services.agent_canvas_guided_media_review import (
     GuidedMediaReviewActionService,
     GuidedMediaReviewCoordinator,
 )
+from app.services.agent_canvas_guided_media_resume import (
+    GuidedMediaConfirmationResumeWorker,
+)
 from app.services.agent_canvas_guided_final_completion import (
     GuidedFinalCompletionService,
 )
@@ -372,6 +379,8 @@ class AgentCanvasRuntime:
     turn_retries: ChatTurnRetryService
     guidance_advances: GuidanceAdvanceService
     guided_interactions: GuidedInteractionService
+    guided_media_resume_deliveries: AgentCanvasGuidedMediaResumeRepository
+    guided_media_resume_worker: GuidedMediaConfirmationResumeWorker
     commands: AgentCanvasCommandService
     variations: AgentCanvasVariationService
     layout: AgentCanvasLayoutService
@@ -466,6 +475,10 @@ def create_agent_canvas_runtime(
         event_repository,
     )
     guided_interaction_repository = AgentCanvasGuidedInteractionRepository(
+        database,
+        event_repository,
+    )
+    guided_media_resume_deliveries = AgentCanvasGuidedMediaResumeRepository(
         database,
         event_repository,
     )
@@ -973,6 +986,7 @@ def create_agent_canvas_runtime(
         result = fanout_activation.resume_confirmation(confirmation_id)
         confirmation = production_closure_receipts.get_confirmation(confirmation_id)
         guided_media_reviews.reconcile_current_plan(confirmation.workflow_id)
+        continuation_worker.run_once()
         return result
 
     def handle_storyboard_progression(effect) -> None:
@@ -1205,9 +1219,7 @@ def create_agent_canvas_runtime(
             retry=guided_media_plan_actions.retry,
             replace=guided_media_plan_actions.replace,
             exclude=guided_media_plan_actions.exclude,
-            resume_media_confirmation=resume_media_confirmation,
         ).submit,
-        media_resume=resume_media_confirmation,
     )
     materialization_publisher = CapabilityMaterializationPublicationService(
         workflows=workflow_repository,
@@ -1286,6 +1298,11 @@ def create_agent_canvas_runtime(
         worker_id=f"agent-canvas-continuation:{uuid4().hex}",
         fail_turn=fail_continuation_turn,
     )
+    guided_media_resume_worker = GuidedMediaConfirmationResumeWorker(
+        guided_media_resume_deliveries,
+        resume_confirmation=resume_media_confirmation,
+        worker_id=f"agent-canvas-guided-media-resume:{uuid4().hex}",
+    )
     turn_retries = ChatTurnRetryService(
         workflow_repository,
         conversation_repository,
@@ -1339,6 +1356,8 @@ def create_agent_canvas_runtime(
         turn_retries=turn_retries,
         guidance_advances=guidance_advances,
         guided_interactions=guided_interactions,
+        guided_media_resume_deliveries=guided_media_resume_deliveries,
+        guided_media_resume_worker=guided_media_resume_worker,
         commands=command_service,
         variations=variation_service,
         layout=AgentCanvasLayoutService(workflow_repository),
@@ -2477,7 +2496,26 @@ def submit_guided_interaction(
         )
     except V2PersistenceError as error:
         raise _persistence_http_error(error) from error
-    if not accepted.replayed:
+    if isinstance(request, GuidedMediaReviewSubmitV1) and request.action == "accept":
+        delivery = runtime.guided_media_resume_deliveries.get_for_submission(accepted.submission_id)
+        if delivery is None:
+            raise _http_error(
+                "guided_media_resume_delivery_unavailable",
+                503,
+                "Guided media resume delivery is unavailable.",
+            )
+        background_tasks.add_task(
+            runtime.accepted_background.run,
+            AcceptedBackgroundWork(
+                operation=AcceptedBackgroundOperation.GUIDED_MEDIA_CONFIRMATION_RESUME,
+                workflow_id=workflow_id,
+                resource_type=AcceptedBackgroundResourceType.DELIVERY,
+                resource_id=delivery.delivery_id,
+                callback=runtime.guided_media_resume_worker.run_one,
+                args=(delivery.delivery_id,),
+            ),
+        )
+    elif not accepted.replayed:
         background_tasks.add_task(
             runtime.accepted_background.run,
             AcceptedBackgroundWork(

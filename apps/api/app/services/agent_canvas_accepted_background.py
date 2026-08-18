@@ -25,6 +25,7 @@ class AcceptedBackgroundOperation(str, Enum):
     COMMAND_PLAN_TURN_PROCESS = "command_plan_turn_process"
     GUIDED_ACTION_TURN_PROCESS = "guided_action_turn_process"
     GUIDED_INTERACTION_SUBMIT = "guided_interaction_submit"
+    GUIDED_MEDIA_CONFIRMATION_RESUME = "guided_media_confirmation_resume"
     CANVAS_RUN_RESUME = "canvas_run_resume"
 
 
@@ -33,6 +34,7 @@ class AcceptedBackgroundResourceType(str, Enum):
     EXECUTION = "execution"
     EDITING_EXPORT = "editing_export"
     INTERACTION = "interaction"
+    DELIVERY = "delivery"
 
 
 @dataclass(frozen=True)

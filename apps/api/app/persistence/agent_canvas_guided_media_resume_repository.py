@@ -52,8 +52,7 @@ class AgentCanvasGuidedMediaResumeRepository:
             connection.execute(
                 select(AgentCanvasGuidedMediaResumeDeliveryRow).where(
                     or_(
-                        AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id
-                        == delivery.delivery_id,
+                        AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id == delivery.delivery_id,
                         AgentCanvasGuidedMediaResumeDeliveryRow.submission_id
                         == delivery.submission_id,
                     )
@@ -76,9 +75,7 @@ class AgentCanvasGuidedMediaResumeRepository:
                 )
             return persisted
         connection.execute(
-            insert(AgentCanvasGuidedMediaResumeDeliveryRow).values(
-                **_row_values(delivery)
-            )
+            insert(AgentCanvasGuidedMediaResumeDeliveryRow).values(**_row_values(delivery))
         )
         self._append_event(
             connection,
@@ -229,9 +226,7 @@ class AgentCanvasGuidedMediaResumeRepository:
             < AgentCanvasGuidedMediaResumeDeliveryRow.max_attempts,
         ]
         if delivery_id is not None:
-            conditions.append(
-                AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id == delivery_id
-            )
+            conditions.append(AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id == delivery_id)
         try:
             with self._database.engine.connect() as connection:
                 connection.exec_driver_sql("BEGIN IMMEDIATE")
@@ -522,8 +517,7 @@ def _lease_filter(
         AgentCanvasGuidedMediaResumeDeliveryRow.delivery_id == delivery.delivery_id,
         AgentCanvasGuidedMediaResumeDeliveryRow.status == "running",
         AgentCanvasGuidedMediaResumeDeliveryRow.lease_owner_id == delivery.lease_owner_id,
-        AgentCanvasGuidedMediaResumeDeliveryRow.lease_generation
-        == delivery.lease_generation,
+        AgentCanvasGuidedMediaResumeDeliveryRow.lease_generation == delivery.lease_generation,
         AgentCanvasGuidedMediaResumeDeliveryRow.lease_expires_at > now.isoformat(),
     )
 

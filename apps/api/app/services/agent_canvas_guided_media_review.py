@@ -8,6 +8,9 @@ from datetime import datetime, timezone
 from hashlib import sha256
 
 from app.persistence.errors import V2PersistenceError
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    queued_guided_media_resume_delivery,
+)
 from app.schemas.agent_canvas_guided_interactions import (
     GuidanceAwaitingResumeProofV1,
     GuidedInteractionAcceptedV1,
@@ -289,7 +292,6 @@ class GuidedMediaReviewActionService:
         retry: MediaAction,
         replace: MediaAction,
         exclude: MediaAction,
-        resume_media_confirmation: Callable[[str], None] | None = None,
     ) -> None:
         self._interactions = interactions
         self._conversations = conversations
@@ -300,7 +302,6 @@ class GuidedMediaReviewActionService:
             "replace": replace,
             "exclude": exclude,
         }
-        self._resume_media_confirmation = resume_media_confirmation
 
     def submit(
         self,
@@ -332,9 +333,17 @@ class GuidedMediaReviewActionService:
             created_node_ids=outcome.created_node_ids,
             created_binding_ids=outcome.created_binding_ids,
             automatic_run_command_ids=outcome.automatic_run_command_ids,
+            resume_delivery=(
+                queued_guided_media_resume_delivery(
+                    workflow_id=interaction.workflow_id,
+                    submission_id=submission_id,
+                    confirmation_id=outcome.receipt_id,
+                    now=datetime.now(timezone.utc),
+                )
+                if request.action == "accept"
+                else None
+            ),
         )
-        if request.action == "accept" and self._resume_media_confirmation is not None:
-            self._resume_media_confirmation(outcome.receipt_id)
         return accepted
 
     def _accept(

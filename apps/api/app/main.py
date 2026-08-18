@@ -120,13 +120,23 @@ def _lifespan(
                     **recovery_kwargs,
                 )
             )
+            guided_media_resume_poll_stop = asyncio.Event()
+            guided_media_resume_poll_task = asyncio.create_task(
+                _poll_agent_canvas_guided_media_resumes(
+                    settings,
+                    guided_media_resume_poll_stop,
+                    **recovery_kwargs,
+                )
+            )
             try:
                 yield
             finally:
                 provider_poll_stop.set()
                 continuation_poll_stop.set()
+                guided_media_resume_poll_stop.set()
                 await provider_poll_task
                 await continuation_poll_task
+                await guided_media_resume_poll_task
         finally:
             coordinator.shutdown()
 
@@ -208,6 +218,45 @@ def _recover_agent_canvas_continuations(
     try:
         runtime.continuation_worker.run_once()
         runtime.auto_run_dispatcher.run_once()
+    finally:
+        runtime.database.dispose()
+
+
+async def _poll_agent_canvas_guided_media_resumes(
+    settings: Settings,
+    stop: asyncio.Event,
+    *,
+    runtime_factory: AgentCanvasRuntimeFactory | None = None,
+) -> None:
+    """Recover durable media-confirmation resumes without delaying startup."""
+
+    interval = max(1, settings.v2_provider_task_poll_interval_seconds)
+    while not stop.is_set():
+        try:
+            if runtime_factory is None:
+                await asyncio.to_thread(_recover_agent_canvas_guided_media_resumes, settings)
+            else:
+                await asyncio.to_thread(
+                    _recover_agent_canvas_guided_media_resumes,
+                    settings,
+                    runtime_factory=runtime_factory,
+                )
+        except Exception:  # noqa: BLE001 - later poll cycles must remain available.
+            logger.exception("Agent Canvas guided media resume polling cycle failed.")
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            continue
+
+
+def _recover_agent_canvas_guided_media_resumes(
+    settings: Settings,
+    *,
+    runtime_factory: AgentCanvasRuntimeFactory | None = None,
+) -> None:
+    runtime = (runtime_factory or create_agent_canvas_runtime)(settings)
+    try:
+        runtime.guided_media_resume_worker.run_once()
     finally:
         runtime.database.dispose()
 
