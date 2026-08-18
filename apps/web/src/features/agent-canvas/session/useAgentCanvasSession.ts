@@ -21,6 +21,7 @@ import type {
 import { incrementalPlacementForNodes } from "../canvas/canvasGraphModel.ts";
 import { AgentCanvasAuthoringQueue } from "./authoringQueue.ts";
 import { persistAgentCanvasLayout } from "./layoutPersistence.ts";
+import { persistAgentCanvasLayoutPreview } from "./layoutPreviewPersistence.ts";
 import { AgentCanvasLayoutQueue } from "./layoutQueue.ts";
 import {
   mergeAgentCanvasLayout,
@@ -219,6 +220,15 @@ export function useAgentCanvasSession() {
   const updateNodePosition = useCallback((nodeId: string, position: CanvasPositionV2) => (
     updateNodePositions([{ node_id: nodeId, ...position }])
   ), [updateNodePositions]);
+
+  const persistLayoutPreviewPositions = useCallback((
+    targetPositions: CanvasLayoutPositionV2[],
+    originalPositions: CanvasLayoutPositionV2[],
+  ) => persistAgentCanvasLayoutPreview({
+    targetPositions,
+    originalPositions,
+    persistPositions: updateNodePositions,
+  }), [updateNodePositions]);
 
   const rollbackNodePositions = useCallback((
     workflowId: string,
@@ -491,6 +501,7 @@ export function useAgentCanvasSession() {
       patchNode,
       updateNodePosition,
       updateNodePositions,
+      persistLayoutPreviewPositions,
       rollbackNodePositions,
       createNode,
       createConnectedNode,

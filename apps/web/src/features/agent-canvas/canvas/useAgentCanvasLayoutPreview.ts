@@ -25,8 +25,9 @@ type PreviewSnapshot = {
   originalPositions: CanvasLayoutPositionV2[];
   targetPositions: CanvasLayoutPositionV2[];
   originalViewport: Viewport;
-  persistenceStarted: boolean;
 };
+
+export type AgentCanvasLayoutPreviewResolution = "undo" | "keep";
 
 function previewErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim()
@@ -56,14 +57,19 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   persistPositions,
   restoreViewport,
   rollbackPositions,
+  onUserResolution,
 }: {
   workflowId: string;
-  persistPositions: (positions: CanvasLayoutPositionV2[]) => Promise<void>;
+  persistPositions: (
+    targetPositions: CanvasLayoutPositionV2[],
+    originalPositions: CanvasLayoutPositionV2[],
+  ) => Promise<void>;
   restoreViewport: (viewport: Viewport, workflowId: string) => Promise<unknown> | unknown;
   rollbackPositions?: (
     workflowId: string,
     positions: CanvasLayoutPositionV2[],
   ) => Promise<unknown> | unknown;
+  onUserResolution?: (resolution: AgentCanvasLayoutPreviewResolution) => void;
 }): {
   status: AgentCanvasLayoutPreviewStatus;
   error: string | null;
@@ -84,18 +90,18 @@ export function useAgentCanvasLayoutPreview<TNode extends {
   const mountedRef = useRef(true);
   const restoreViewportRef = useRef(restoreViewport);
   const rollbackPositionsRef = useRef(rollbackPositions);
+  const onUserResolutionRef = useRef(onUserResolution);
 
   workflowIdRef.current = workflowId;
   restoreViewportRef.current = restoreViewport;
   rollbackPositionsRef.current = rollbackPositions;
+  onUserResolutionRef.current = onUserResolution;
 
   const restoreSnapshot = useCallback((currentSnapshot: PreviewSnapshot) => {
-    if (currentSnapshot.persistenceStarted) {
-      void Promise.resolve(rollbackPositionsRef.current?.(
-        currentSnapshot.workflowId,
-        currentSnapshot.originalPositions,
-      )).catch(() => undefined);
-    }
+    void Promise.resolve(rollbackPositionsRef.current?.(
+      currentSnapshot.workflowId,
+      currentSnapshot.originalPositions,
+    )).catch(() => undefined);
     void Promise.resolve(restoreViewportRef.current(
       currentSnapshot.originalViewport,
       currentSnapshot.workflowId,
@@ -141,7 +147,6 @@ export function useAgentCanvasLayoutPreview<TNode extends {
       })),
       targetPositions: preview.targetPositions.map((position) => ({ ...position })),
       originalViewport: { ...preview.viewport },
-      persistenceStarted: false,
     };
     nextTransactionIdRef.current = nextSnapshot.transactionId;
     snapshotRef.current = nextSnapshot;
@@ -162,6 +167,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     setSnapshot(null);
     setStatus("idle");
     setError(null);
+    onUserResolutionRef.current?.("undo");
   }, [restoreSnapshot]);
 
   const keep = useCallback(async () => {
@@ -173,12 +179,14 @@ export function useAgentCanvasLayoutPreview<TNode extends {
     ) return false;
 
     const transactionId = currentSnapshot.transactionId;
-    currentSnapshot.persistenceStarted = true;
     savingTransactionIdRef.current = transactionId;
     setStatus("saving");
     setError(null);
     try {
-      await persistPositions(currentSnapshot.targetPositions);
+      await persistPositions(
+        currentSnapshot.targetPositions,
+        currentSnapshot.originalPositions,
+      );
       if (
         !mountedRef.current
         || workflowIdRef.current !== currentSnapshot.workflowId
@@ -188,6 +196,7 @@ export function useAgentCanvasLayoutPreview<TNode extends {
       savingTransactionIdRef.current = null;
       setSnapshot(null);
       setStatus("idle");
+      onUserResolutionRef.current?.("keep");
       return true;
     } catch (saveError) {
       if (

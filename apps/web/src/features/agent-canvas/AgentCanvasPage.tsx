@@ -22,6 +22,7 @@ import {
   PlusIcon,
 } from "../../icons.tsx";
 import type {
+  AgentCanvasWorkflowV2,
   CanvasBindingInputRoleV2,
   CanvasConnectionPolicyV2,
   CanvasLayoutPositionV2,
@@ -55,6 +56,10 @@ import {
 import { canvasAuthoringErrorMessage } from "./canvas/canvasErrorMessage.ts";
 import { useCanvasPointerSpotlight } from "./canvas/canvasPointerSpotlight.ts";
 import { shouldPersistAgentCanvasViewport } from "./canvas/canvasViewportPersistence.ts";
+import {
+  installAgentCanvasWorkflowViewport,
+  writeAgentCanvasViewport,
+} from "./canvas/agentCanvasViewport.ts";
 import {
   reconcileDragAwareNodes,
   setDraggedNodeIds,
@@ -97,34 +102,6 @@ import "./agent-canvas-page.css";
 
 const nodeTypes = { agentCanvas: AgentCanvasNodeRenderer };
 
-function viewportStorageKey(workflowId: string): string {
-  return `adcraft:agent-canvas:viewport:${workflowId}`;
-}
-
-function readViewport(workflowId: string): Viewport | null {
-  try {
-    const value = window.localStorage.getItem(viewportStorageKey(workflowId));
-    if (!value) return null;
-    const parsed = JSON.parse(value) as Partial<Viewport>;
-    if (
-      typeof parsed.x !== "number"
-      || typeof parsed.y !== "number"
-      || typeof parsed.zoom !== "number"
-    ) return null;
-    return { x: parsed.x, y: parsed.y, zoom: parsed.zoom };
-  } catch {
-    return null;
-  }
-}
-
-function writeViewport(workflowId: string, viewport: Viewport): void {
-  try {
-    window.localStorage.setItem(viewportStorageKey(workflowId), JSON.stringify(viewport));
-  } catch {
-    // Viewport persistence is disposable and must never block the canvas.
-  }
-}
-
 export function AgentCanvasPage() {
   const session = useAgentCanvasSession();
   const pointerSpotlight = useCanvasPointerSpotlight<HTMLDivElement>();
@@ -143,6 +120,7 @@ export function AgentCanvasPage() {
     mergePublishedAsset,
     patchNode,
     patchBinding,
+    persistLayoutPreviewPositions,
     placeActionReceiptNodes,
     saveVariationDraft,
     setSelectedNodeId,
@@ -190,19 +168,26 @@ export function AgentCanvasPage() {
   } | null>(null);
   const flowRef = useRef<ReactFlowInstance<AgentCanvasFlowNode, Edge> | null>(null);
   const activeWorkflowIdRef = useRef(workflow?.workflow_id ?? "no-workflow");
+  const installedViewportWorkflowIdRef = useRef<string | null>(null);
+  const viewportInstallFrameRef = useRef<number | null>(null);
   const layoutButtonRef = useRef<HTMLButtonElement>(null);
   const activeDraggedNodeIdsRef = useRef(new Set<string>());
   const referenceUploadInputRef = useRef<HTMLInputElement>(null);
   activeWorkflowIdRef.current = workflow?.workflow_id ?? "no-workflow";
+  const scheduleLayoutButtonFocus = useCallback(() => {
+    window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
+  }, []);
   const restoreLayoutViewport = useCallback((viewport: Viewport, previewWorkflowId: string) => {
     if (activeWorkflowIdRef.current !== previewWorkflowId) return;
     return flowRef.current?.setViewport(viewport);
   }, []);
   const layoutPreview = useAgentCanvasLayoutPreview({
     workflowId: workflow?.workflow_id ?? "no-workflow",
-    persistPositions: updateNodePositions,
+    persistPositions: persistLayoutPreviewPositions,
     restoreViewport: restoreLayoutViewport,
     rollbackPositions: rollbackNodePositions,
+    // The hook invokes this only for explicit Undo/Keep, so project navigation keeps its focus target.
+    onUserResolution: scheduleLayoutButtonFocus,
   });
   const {
     active: layoutPreviewActive,
@@ -211,16 +196,10 @@ export function AgentCanvasPage() {
     keep: persistLayoutPreview,
     overlay: overlayLayoutPreview,
   } = layoutPreview;
-  const scheduleLayoutButtonFocus = useCallback(() => {
-    window.requestAnimationFrame(() => layoutButtonRef.current?.focus());
-  }, []);
-  const undoLayoutPreview = useCallback(() => {
-    cancelLayoutPreview();
-    scheduleLayoutButtonFocus();
-  }, [cancelLayoutPreview, scheduleLayoutButtonFocus]);
-  const keepLayoutPreview = useCallback(async () => {
-    if (await persistLayoutPreview()) scheduleLayoutButtonFocus();
-  }, [persistLayoutPreview, scheduleLayoutButtonFocus]);
+  const undoLayoutPreview = useCallback(() => cancelLayoutPreview(), [cancelLayoutPreview]);
+  const keepLayoutPreview = useCallback(() => {
+    void persistLayoutPreview();
+  }, [persistLayoutPreview]);
   const {
     focusedNodeId,
     focusNode: focusCanvasNode,
@@ -679,16 +658,53 @@ export function AgentCanvasPage() {
     });
   }, [beginLayoutPreview, layoutPreviewActive, pointerSpotlight.hostRef, workflow]);
 
+  const scheduleWorkflowViewportInstall = useCallback((
+    instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>,
+    nextWorkflow: AgentCanvasWorkflowV2,
+  ) => {
+    if (installedViewportWorkflowIdRef.current === nextWorkflow.workflow_id) return;
+    if (viewportInstallFrameRef.current !== null) {
+      window.cancelAnimationFrame(viewportInstallFrameRef.current);
+    }
+    installedViewportWorkflowIdRef.current = nextWorkflow.workflow_id;
+    const workflowId = nextWorkflow.workflow_id;
+    const nodeIds = nextWorkflow.nodes.map((node) => node.node_id);
+    viewportInstallFrameRef.current = window.requestAnimationFrame(() => {
+      viewportInstallFrameRef.current = null;
+      if (activeWorkflowIdRef.current !== workflowId) return;
+      const reducedMotion = typeof window.matchMedia === "function"
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      void installAgentCanvasWorkflowViewport({
+        instance: {
+          setViewport: (viewport, options) => instance.setViewport(viewport, options),
+          fitView: (options) => instance.fitView(options),
+        },
+        workflowId,
+        nodeIds,
+        reducedMotion,
+      }).catch(() => undefined);
+    });
+  }, []);
+
   const initializeFlow = useCallback((instance: ReactFlowInstance<AgentCanvasFlowNode, Edge>) => {
     flowRef.current = instance;
-    if (!workflow) return;
-    const saved = readViewport(workflow.workflow_id);
-    if (saved) {
-      void instance.setViewport(saved, { duration: 0 });
-    } else if (workflow.nodes.length) {
-      window.setTimeout(() => void instance.fitView({ padding: 0.22, maxZoom: 1, duration: 350 }), 0);
+    if (workflow) scheduleWorkflowViewportInstall(instance, workflow);
+  }, [scheduleWorkflowViewportInstall, workflow]);
+
+  useEffect(() => {
+    if (!workflow) {
+      installedViewportWorkflowIdRef.current = null;
+      return;
     }
-  }, [workflow]);
+    const instance = flowRef.current;
+    if (instance) scheduleWorkflowViewportInstall(instance, workflow);
+  }, [scheduleWorkflowViewportInstall, workflow]);
+
+  useEffect(() => () => {
+    if (viewportInstallFrameRef.current !== null) {
+      window.cancelAnimationFrame(viewportInstallFrameRef.current);
+    }
+  }, []);
 
   const openCanvasContextMenu = useCallback((menuPosition: CanvasPositionV2) => {
     const canvasPosition = flowRef.current?.screenToFlowPosition(menuPosition) ?? { x: 120, y: 120 };
@@ -804,7 +820,7 @@ export function AgentCanvasPage() {
           }}
           onMoveEnd={(_event, viewport) => {
             if (shouldPersistAgentCanvasViewport({ focusedNodeId, layoutPreviewActive })) {
-              writeViewport(workflow.workflow_id, viewport);
+              writeAgentCanvasViewport(workflow.workflow_id, viewport);
             }
           }}
           fitView={false}

@@ -65,7 +65,11 @@ describe("useAgentCanvasLayoutPreview", () => {
 
     expect(kept).toBe(true);
     expect(persistPositions).toHaveBeenCalledOnce();
-    expect(persistPositions).toHaveBeenCalledWith(targetPositions);
+    expect(persistPositions).toHaveBeenCalledWith(targetPositions, [{
+      node_id: "a",
+      x: 1,
+      y: 2,
+    }]);
     expect(result.current.status).toBe("idle");
     expect(result.current.active).toBe(false);
   });
@@ -86,7 +90,12 @@ describe("useAgentCanvasLayoutPreview", () => {
 
     expect(restoreViewport).toHaveBeenCalledOnce();
     expect(restoreViewport).toHaveBeenCalledWith(originalViewport, "wf-1");
-    expect(rollbackPositions).not.toHaveBeenCalled();
+    expect(rollbackPositions).toHaveBeenCalledOnce();
+    expect(rollbackPositions).toHaveBeenCalledWith("wf-1", [{
+      node_id: "a",
+      x: 1,
+      y: 2,
+    }]);
     expect(persistPositions).not.toHaveBeenCalled();
     expect(result.current.status).toBe("idle");
     expect(result.current.positions).toEqual([]);
@@ -134,6 +143,33 @@ describe("useAgentCanvasLayoutPreview", () => {
     expect(restoreViewport).toHaveBeenCalledWith(originalViewport, "wf-1");
   });
 
+  it("restores the captured positions when canonical positions refresh during preview", () => {
+    const rollbackPositions = vi.fn();
+    const { result } = renderHook(() => useAgentCanvasLayoutPreview({
+      workflowId: "wf-1",
+      persistPositions: vi.fn(),
+      restoreViewport: vi.fn(),
+      rollbackPositions,
+    }));
+
+    act(() => result.current.begin(preview));
+    const refreshedCanonical = [{
+      id: "a",
+      position: { x: 900, y: 700 },
+      selected: true,
+      data: { value: 2 },
+    }];
+    expect(result.current.overlay(refreshedCanonical)[0]?.position).toEqual({ x: 50, y: 60 });
+
+    act(() => result.current.cancel());
+
+    expect(rollbackPositions).toHaveBeenCalledWith("wf-1", [{
+      node_id: "a",
+      x: 1,
+      y: 2,
+    }]);
+  });
+
   it("clears a save error after a retry succeeds", async () => {
     const persistPositions = vi.fn()
       .mockRejectedValueOnce(new Error("Layout service unavailable"))
@@ -157,10 +193,14 @@ describe("useAgentCanvasLayoutPreview", () => {
   it("restores the preview viewport when the workflow ID changes without persisting", () => {
     const persistPositions = vi.fn();
     const restoreViewport = vi.fn();
+    const rollbackPositions = vi.fn();
+    const onUserResolution = vi.fn();
     const { result, rerender } = renderHook(({ workflowId }) => useAgentCanvasLayoutPreview({
       workflowId,
       persistPositions,
       restoreViewport,
+      rollbackPositions,
+      onUserResolution,
     }), { initialProps: { workflowId: "wf-1" } });
 
     act(() => result.current.begin(preview));
@@ -171,6 +211,29 @@ describe("useAgentCanvasLayoutPreview", () => {
     expect(result.current.active).toBe(false);
     expect(result.current.positions).toEqual([]);
     expect(restoreViewport).toHaveBeenCalledWith(originalViewport, "wf-1");
+    expect(rollbackPositions).toHaveBeenCalledWith("wf-1", [{
+      node_id: "a",
+      x: 1,
+      y: 2,
+    }]);
+    expect(onUserResolution).not.toHaveBeenCalled();
+  });
+
+  it("reports only explicit Undo and successful Keep as user resolutions", async () => {
+    const onUserResolution = vi.fn();
+    const { result } = renderHook(() => useAgentCanvasLayoutPreview({
+      workflowId: "wf-1",
+      persistPositions: vi.fn().mockResolvedValue(undefined),
+      restoreViewport: vi.fn(),
+      onUserResolution,
+    }));
+
+    act(() => result.current.begin(preview));
+    act(() => result.current.cancel());
+    act(() => result.current.begin(preview));
+    await act(() => result.current.keep());
+
+    expect(onUserResolution.mock.calls).toEqual([["undo"], ["keep"]]);
   });
 
   it("restores the preview viewport during unmount without persisting", () => {
