@@ -240,12 +240,26 @@ export function toAgentCanvasFlowEdges(
         sourceHandle: "output",
         targetHandle: "input",
         type: "default",
-        markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
-        data: { binding },
-        style: {
-          stroke: "rgba(109, 94, 170, 0.72)",
-          strokeWidth: 1.6,
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 14,
+          height: 14,
+          color: "rgba(229, 231, 238, 0.72)",
         },
+        data: { binding },
       }]
     : []);
+}
+
+export function reconcileSelectableCanvasEdges(
+  canonicalEdges: Edge[],
+  currentEdges: Edge[],
+): Edge[] {
+  const selectedEdgeIds = new Set(
+    currentEdges.filter((edge) => edge.selected).map((edge) => edge.id),
+  );
+  return canonicalEdges.map((edge) => ({
+    ...edge,
+    selected: selectedEdgeIds.has(edge.id),
+  }));
 }
