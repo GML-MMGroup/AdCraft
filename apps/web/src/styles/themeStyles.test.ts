@@ -147,16 +147,21 @@ describe("theme styles", () => {
     expect(source("components/Layout.tsx")).not.toContain('import "../styles/theme.css"');
   });
 
-  test("scopes the static cosmic artwork to shared non-Workflow shells", () => {
+  test("keeps cosmic artwork fixed behind every application shell", () => {
     const themeStyles = source("styles/theme.css");
-    const darkCosmicShell = declarationBlock(
+    const shell = declarationBlock(themeStyles, ":root .app-shell");
+    const cosmicShell = declarationBlock(
       themeStyles,
       ":root .app-shell--cosmic",
     );
 
-    expect(darkCosmicShell).toContain(
-      'url("/assets/home-dark-black-hole.webp") 50% 60% / cover fixed no-repeat',
+    expect(themeStyles).toMatch(
+      /:root body\s*\{[\s\S]*?url\("\/assets\/home-dark-black-hole\.webp"\) 50% 60% \/ cover fixed no-repeat,[\s\S]*?\n\}/,
     );
+    expect(shell).toContain("background: transparent");
+    expect(cosmicShell).toContain("background: transparent");
+    expect(cosmicShell).not.toContain("border-color");
+    expect(cosmicShell).toContain("box-shadow: none");
     expect(source("styles/base.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home.css")).not.toContain("home-dark-black-hole.webp");
     expect(source("pages/home-typography-lab.css")).toContain(

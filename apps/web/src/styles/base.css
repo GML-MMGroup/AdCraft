@@ -137,21 +137,22 @@ a {
 
 .app-shell {
   position: relative;
-  width: calc(100vw - 32px);
-  min-height: calc(100vh - 32px);
-  margin: 16px auto;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: var(--radius-shell);
-  background: rgba(247, 249, 253, 0.08);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(10px) saturate(1.04);
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .app-shell--workflow {
-  min-height: calc(100vh - 16px);
-  min-height: calc(100dvh - 16px);
-  margin: 16px auto 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
 }
 
 .topbar {
@@ -717,12 +718,6 @@ a {
 }
 
 @media (max-width: 620px) {
-  .app-shell {
-    width: calc(100vw - 20px);
-    margin: 10px auto;
-    border-radius: 24px;
-  }
-
   .floating-rail {
     left: 18px;
   }

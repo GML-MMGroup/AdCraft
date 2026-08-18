@@ -27,16 +27,17 @@ describe("AgentCanvasPage chrome", () => {
     expect(source).toContain("onRelocate={openCanvasContextMenu}");
   });
 
-  it("extends only the Workflow bottom inset without widening the canvas shell", () => {
+  it("fills the Workflow viewport below the topbar without a shell inset", () => {
     const baseCss = readFileSync(resolve(process.cwd(), "src/styles/base.css"), "utf8");
     const canvasCss = readFileSync(
       resolve(process.cwd(), "src/features/agent-canvas/agent-canvas-page.css"),
       "utf8",
     );
 
-    expect(baseCss).toContain("min-height: calc(100dvh - 16px)");
-    expect(baseCss).toContain("margin: 16px auto 0");
-    expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height) - 16px)");
+    expect(baseCss).toContain("min-height: 100dvh");
+    expect(baseCss).toContain("margin: 0");
+    expect(canvasCss).toContain("height: calc(100dvh - var(--topbar-height))");
+    expect(canvasCss).not.toContain("var(--topbar-height) - 16px");
   });
 
   it("keeps backend edges selectable and animates only the selected monochrome dash", () => {
