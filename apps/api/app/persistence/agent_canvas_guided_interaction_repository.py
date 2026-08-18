@@ -17,6 +17,9 @@ from app.persistence.event_repository import EventRepository
 from app.persistence.agent_canvas_requirement_repository import (
     AgentCanvasRequirementRepository,
 )
+from app.persistence.agent_canvas_guided_media_resume_repository import (
+    AgentCanvasGuidedMediaResumeRepository,
+)
 from app.persistence.models import (
     AgentCanvasActionReceiptRow,
     AgentCanvasConceptProposalRow,
@@ -49,6 +52,9 @@ from app.schemas.agent_canvas_guided_interactions import (
     GuidedSkipAnswerV1,
     GuidedInteractionAcceptedV1,
 )
+from app.schemas.agent_canvas_guided_media_resume import (
+    GuidedMediaConfirmationResumeDeliveryV1,
+)
 from app.schemas.agent_canvas_production_journey import (
     GuidedProductionJourneyV1,
     JourneyElementDecisionV1,
@@ -77,6 +83,10 @@ class AgentCanvasGuidedInteractionRepository:
     def __init__(self, database: V2Database, events: EventRepository) -> None:
         self._database = database
         self._events = events
+        self._media_resume_deliveries = AgentCanvasGuidedMediaResumeRepository(
+            database,
+            events,
+        )
 
     @property
     def database(self) -> V2Database:
@@ -367,6 +377,14 @@ class AgentCanvasGuidedInteractionRepository:
             ),
             created_at=str(row["created_at"]),
         )
+
+    def ensure_media_resume_delivery(
+        self,
+        submission_id: str,
+    ) -> GuidedMediaConfirmationResumeDeliveryV1 | None:
+        """Lazily publish one exact accepted media resume delivery on replay."""
+
+        return self._media_resume_deliveries.ensure_for_submission(submission_id)
 
     def submit_questionnaire(
         self,
@@ -1062,6 +1080,7 @@ class AgentCanvasGuidedInteractionRepository:
         created_node_ids: tuple[str, ...] = (),
         created_binding_ids: tuple[str, ...] = (),
         automatic_run_command_ids: tuple[str, ...] = (),
+        resume_delivery: GuidedMediaConfirmationResumeDeliveryV1 | None = None,
     ) -> GuidedInteractionAcceptedV1:
         """Close one exact media review after its deterministic action commits."""
 
@@ -1095,7 +1114,14 @@ class AgentCanvasGuidedInteractionRepository:
                             "guided_interaction_incomplete",
                             "Media review submission has no durable result.",
                         )
-                    connection.rollback()
+                    if request.action == "accept" and resume_delivery is not None:
+                        self._media_resume_deliveries.enqueue_in_transaction(
+                            connection,
+                            resume_delivery,
+                        )
+                        connection.commit()
+                    else:
+                        connection.rollback()
                     return GuidedInteractionAcceptedV1.model_validate_json(result_json).model_copy(
                         update={"replayed": True}
                     )
@@ -1221,6 +1247,16 @@ class AgentCanvasGuidedInteractionRepository:
                         created_at=now,
                     )
                 )
+                if request.action == "accept":
+                    if resume_delivery is None:
+                        raise _error(
+                            "guided_media_resume_delivery_unavailable",
+                            "Accepted media review requires durable resume delivery.",
+                        )
+                    self._media_resume_deliveries.enqueue_in_transaction(
+                        connection,
+                        resume_delivery,
+                    )
                 connection.commit()
                 return accepted
             except BaseException:
