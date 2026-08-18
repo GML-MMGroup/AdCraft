@@ -1378,6 +1378,68 @@ class AgentCanvasGuidedInteractionSubmissionRow(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class AgentCanvasGuidedMediaResumeDeliveryRow(Base):
+    """Private fenced delivery for accepted media-confirmation resume work."""
+
+    __tablename__ = "agent_canvas_guided_media_resume_deliveries"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('queued','running','completed','failed')",
+            name="ck_agent_canvas_guided_media_resume_status",
+        ),
+        CheckConstraint(
+            "attempt_no >= 0 AND max_attempts = 2 AND lease_generation >= 0",
+            name="ck_agent_canvas_guided_media_resume_attempts",
+        ),
+        CheckConstraint(
+            "(status = 'queued' AND lease_owner_id IS NULL AND lease_expires_at IS NULL "
+            "AND error_json IS NULL AND terminal_at IS NULL) OR "
+            "(status = 'running' AND lease_owner_id IS NOT NULL "
+            "AND lease_expires_at IS NOT NULL AND error_json IS NULL "
+            "AND terminal_at IS NULL) OR "
+            "(status = 'completed' AND lease_owner_id IS NULL "
+            "AND lease_expires_at IS NULL AND error_json IS NULL "
+            "AND terminal_at IS NOT NULL) OR "
+            "(status = 'failed' AND lease_owner_id IS NULL "
+            "AND lease_expires_at IS NULL AND error_json IS NOT NULL "
+            "AND terminal_at IS NOT NULL)",
+            name="ck_agent_canvas_guided_media_resume_state",
+        ),
+        UniqueConstraint(
+            "submission_id",
+            name="uq_agent_canvas_guided_media_resume_submission",
+        ),
+        Index(
+            "ix_agent_canvas_guided_media_resume_due",
+            "status",
+            "available_at",
+            "lease_expires_at",
+            "created_at",
+        ),
+    )
+
+    delivery_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    workflow_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_workflows.workflow_id"), nullable=False
+    )
+    submission_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_canvas_guided_interaction_submissions.submission_id"),
+        nullable=False,
+    )
+    confirmation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    attempt_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    available_at: Mapped[str] = mapped_column(Text, nullable=False)
+    lease_owner_id: Mapped[str | None] = mapped_column(Text)
+    lease_generation: Mapped[int] = mapped_column(Integer, nullable=False)
+    lease_expires_at: Mapped[str | None] = mapped_column(Text)
+    error_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False)
+    terminal_at: Mapped[str | None] = mapped_column(Text)
+
+
 class AgentCanvasGuidanceAwaitingRow(Base):
     """Current typed durable wait for one Guidance session."""
 
