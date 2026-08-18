@@ -49,6 +49,13 @@ describe("Agent Canvas SSE subscriptions", () => {
       "post_ready_effect_completed",
       "post_ready_effect_failed",
       "post_ready_effect_retry_scheduled",
+      "guided_media_resume_queued",
+      "guided_media_resume_completed",
+      "guided_media_resume_failed",
+      "storyboard_sequence_outline_planned",
+      "storyboard_segment_materialized",
+      "guided_editing_updated",
+      "guided_completion_failed",
     ]));
     expect(AGENT_CANVAS_SSE_EVENT_TYPES).not.toEqual(expect.arrayContaining([
       "asset_published",

@@ -374,6 +374,43 @@ describe("Agent Canvas normalizers", () => {
     expect(turn.turn_kind).toBe("capability");
   });
 
+  it("accepts a single authoritative world-setting option", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-world-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-world-1",
+      video_skill_run_id: null,
+      topic_id: "topic-world",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "world_setting",
+      capability_id: "world_setting",
+      capability_display_name: "World Designer",
+      options: [{
+        option_id: "option-world-1",
+        title: "Rain-lit city",
+        public_summary: "A single backend-approved world direction.",
+        key_decisions: ["Night exterior", "Wet reflective streets"],
+      }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      materialization: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 1,
+      actions: [],
+      created_at: "2026-08-18T00:00:00Z",
+      updated_at: "2026-08-18T00:00:00Z",
+    });
+
+    expect(proposal.options).toHaveLength(1);
+  });
+
   it("accepts retry lineage and safe operation recovery state for chat turns", () => {
     const turn = normalizeAgentCanvasChatTurnV2({
       turn_id: "turn-retry-2",

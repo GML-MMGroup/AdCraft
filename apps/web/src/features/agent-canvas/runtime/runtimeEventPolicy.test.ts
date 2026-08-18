@@ -332,6 +332,35 @@ describe("runtimeEventPolicy", () => {
     });
   });
 
+  it("refreshes canonical projections for resumed media and production closure events", () => {
+    expect(runtimeEventPolicy(event("guided_media_resume_queued"))).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: false,
+      refreshRuntime: false,
+    });
+    for (const eventType of [
+      "guided_media_resume_completed",
+      "guided_media_resume_failed",
+      "storyboard_segment_materialized",
+      "guided_editing_updated",
+      "guided_completion_failed",
+    ]) {
+      expect(runtimeEventPolicy(event(eventType))).toMatchObject({
+        refreshChat: true,
+        refreshWorkflow: true,
+        refreshRuntime: true,
+      });
+    }
+    expect(runtimeEventPolicy(event("storyboard_sequence_outline_planned", {
+      payload: { plan_document_id: "doc-storyboard-1", plan_revision: 3 },
+    }))).toMatchObject({
+      refreshChat: true,
+      refreshWorkflow: true,
+      refreshDocuments: true,
+      refreshDocumentId: "doc-storyboard-1",
+    });
+  });
+
   it("refreshes canonical progressive authoring projections from their additive backend events", () => {
     for (const eventType of [
       "decision_bundle_ready",

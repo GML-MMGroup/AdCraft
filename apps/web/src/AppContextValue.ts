@@ -29,6 +29,8 @@ export interface AppContextValue {
   activeProjectId: string | null;
   workspaceHydrated: boolean;
   workspaceRestoreError: string | null;
+  projectCatalogRefreshing: boolean;
+  projectCatalogError: string | null;
   busy: boolean;
   setMessages: Dispatch<SetStateAction<FrontDeskMessage[]>>;
   setPromptLibraryEntities: Dispatch<SetStateAction<AssetLibraryEntitySummary[]>>;
@@ -45,6 +47,7 @@ export interface AppContextValue {
   refreshAssets: () => Promise<void>;
   refreshNodeCatalog: () => Promise<void>;
   refreshWorkflowNodes: (workflowId?: string) => Promise<void>;
+  refreshProjects: () => Promise<boolean>;
   uploadAsset: (file: File, options?: AssetUploadOptions) => Promise<UploadedAsset>;
 }
 

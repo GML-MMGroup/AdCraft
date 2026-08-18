@@ -51,6 +51,19 @@
   gap: 10px;
 }
 
+.project-catalog-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 20px;
+  padding: 10px 12px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(202, 111, 111, 0.12);
+  border: 1px solid rgba(202, 111, 111, 0.34);
+  border-radius: 6px;
+}
+
 .toolbar-new-project {
   background: linear-gradient(135deg, rgba(84, 121, 255, 0.95), rgba(32, 166, 123, 0.9));
   color: #fff;
