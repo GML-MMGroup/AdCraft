@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 
 import {
-  DocumentIcon,
   EditIcon,
   ImageIcon,
   MuteIcon,
@@ -13,7 +12,11 @@ import type {
   CanvasNodeTypeV2,
   CanvasNodeV2,
 } from "../../../types-v2.ts";
-import { AGENT_CANVAS_NODE_LABELS } from "../model/nodeDefaults.ts";
+import {
+  AGENT_CANVAS_NODE_LABELS,
+  isAgentCanvasVisibleNodeType,
+  type AgentCanvasVisibleNodeTypeV2,
+} from "../model/nodeDefaults.ts";
 import {
   compatibleConnectedNodeTypes,
   connectionRuleForPair,
@@ -22,7 +25,6 @@ import "./AgentCanvasConnectedNodeMenu.css";
 
 function nodeIcon(type: CanvasNodeTypeV2): ReactNode {
   if (type === "text") return <EditIcon />;
-  if (type === "script") return <DocumentIcon />;
   if (type === "image") return <ImageIcon />;
   if (type === "video") return <VideoIcon />;
   if (type === "audio") return <MuteIcon />;
@@ -34,7 +36,7 @@ interface AgentCanvasConnectedNodeMenuProps {
   direction: "upstream" | "downstream";
   point: { x: number; y: number };
   policy: CanvasConnectionPolicyV2;
-  onSelect: (nodeType: CanvasNodeTypeV2, inputRole: CanvasBindingInputRoleV2) => void;
+  onSelect: (nodeType: AgentCanvasVisibleNodeTypeV2, inputRole: CanvasBindingInputRoleV2) => void;
   onClose: () => void;
 }
 
@@ -53,7 +55,7 @@ export function AgentCanvasConnectedNodeMenu({
     policy,
     anchorNode.node_type,
     direction,
-  );
+  ).filter(isAgentCanvasVisibleNodeType);
 
   return (
     <>

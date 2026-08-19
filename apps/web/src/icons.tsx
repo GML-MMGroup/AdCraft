@@ -35,23 +35,6 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
-export function SunIcon(props: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M12 2.8v2.5M12 18.7v2.5M2.8 12h2.5M18.7 12h2.5M5.5 5.5l1.8 1.8m9.4 9.4 1.8 1.8m0-13-1.8 1.8m-9.4 9.4-1.8 1.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-export function MoonIcon(props: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
-      <path d="M19.2 15.3A7.8 7.8 0 0 1 8.7 4.8 7.8 7.8 0 1 0 19.2 15.3Z" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
 export function ChevronDownIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>

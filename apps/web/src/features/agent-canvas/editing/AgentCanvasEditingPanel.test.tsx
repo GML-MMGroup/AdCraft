@@ -58,6 +58,70 @@ function asset(
 }
 
 describe("AgentCanvasEditingPanel", () => {
+  it("shows nodes omitted by the backend composition plan without adding controls", () => {
+    const omittedVideo = {
+      ...node("video-omitted", "video", null),
+      title: "Missing product close-up",
+      status: "draft" as const,
+    };
+    const editing = {
+      ...node("editing-1", "editing", null),
+      structured_content: {
+        manifest: {
+          video_entries: [],
+          bgm: null,
+          output: {
+            resolution: null,
+            aspect_ratio: null,
+            fps: null,
+            video_codec: "h264",
+            audio_codec: "aac",
+            container: "mp4",
+          },
+          manifest_revision: 1,
+        },
+        dirty: false,
+        preview: {
+          clips: [],
+          bgm_binding_id: null,
+          bgm_node_id: null,
+          bgm_asset_id: null,
+          estimated_duration_seconds: 0,
+          warnings: [],
+        },
+        last_successful_export: null,
+        active_export: null,
+      },
+    } satisfies CanvasNodeV2;
+    const workflow: AgentCanvasWorkflowV2 = {
+      workflow_id: "workflow-1",
+      project_id: "project-1",
+      workflow_schema_version: 2,
+      canvas_model: "agent_canvas_v1",
+      revision: 3,
+      layout_revision: 1,
+      nodes: [omittedVideo, editing],
+      bindings: [],
+      assets: [],
+    };
+
+    render(
+      <AgentCanvasEditingPanel
+        workflow={workflow}
+        node={editing}
+        omittedNodeIds={[omittedVideo.node_id, "video-not-materialized"]}
+        patchNode={vi.fn().mockResolvedValue(undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Omitted planned inputs" })).toBeTruthy();
+    expect(screen.getByText("Missing product close-up")).toBeTruthy();
+    expect(screen.getByText("video-not-materialized")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /missing product close-up/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Export" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("renders the final per-track and BGM authoring controls", async () => {
     const video = node("video-1", "video", "asset-video");
     const audio = node("audio-1", "audio", "asset-audio");

@@ -51,6 +51,19 @@
   gap: 10px;
 }
 
+.project-catalog-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 12px 0 20px;
+  padding: 10px 12px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(202, 111, 111, 0.12);
+  border: 1px solid rgba(202, 111, 111, 0.34);
+  border-radius: 6px;
+}
+
 .toolbar-new-project {
   background: linear-gradient(135deg, rgba(84, 121, 255, 0.95), rgba(32, 166, 123, 0.9));
   color: #fff;
@@ -143,7 +156,7 @@
 }
 
 .project-card:has(.project-card-open:focus-visible) {
-  box-shadow: 0 0 0 3px rgba(108, 93, 171, 0.22), 0 24px 60px rgba(32, 34, 53, 0.18), var(--shadow-soft);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 22%, transparent), 0 24px 60px rgba(32, 34, 53, 0.18), var(--shadow-soft);
 }
 
 .project-card-open {
@@ -297,7 +310,7 @@
 
 .project-rename-btn:hover,
 .project-rename-btn:focus-visible {
-  color: #6754a6;
+  color: var(--brand-hover);
 }
 
 .project-favorite-btn.is-favorite {
@@ -360,7 +373,7 @@
   width: 100%;
   min-height: 48px;
   padding: 0 14px;
-  border: 1px solid rgba(108, 93, 171, 0.22);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
   border-radius: 8px;
   outline: 0;
   background: rgba(255, 255, 255, 0.68);
@@ -372,9 +385,9 @@
 }
 
 .project-rename-form input:focus {
-  border-color: rgba(108, 93, 171, 0.56);
+  border-color: color-mix(in srgb, var(--brand) 56%, transparent);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 0 0 3px rgba(108, 93, 171, 0.12);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 12%, transparent);
 }
 
 .project-rename-form input:read-only {
@@ -601,77 +614,77 @@
   }
 }
 
-html[data-theme="dark"] :is(.page-toolbar, .empty-state, .deleted-panel, .asset-toolbar) {
+:root :is(.page-toolbar, .empty-state, .deleted-panel, .asset-toolbar) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] :is(.project-card, .create-card, .trash-card) {
+:root :is(.project-card, .create-card, .trash-card) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .toolbar-new-project {
+:root .toolbar-new-project {
   background: var(--brand);
   color: var(--text-inverse);
 }
 
-html[data-theme="dark"] .search-box {
+:root .search-box {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .create-card {
+:root .create-card {
   color: var(--brand);
 }
 
-html[data-theme="dark"] .create-plus {
+:root .create-plus {
   background: var(--brand-subtle);
   color: var(--brand);
 }
 
-html[data-theme="dark"] .project-card {
+:root .project-card {
   background: var(--surface-contrast);
 }
 
-html[data-theme="dark"] .project-card::after {
+:root .project-card::after {
   background: linear-gradient(180deg, rgba(8, 9, 13, 0.02), rgba(8, 9, 13, 0.76));
 }
 
-html[data-theme="dark"] :is(.project-action-trigger, .project-menu-btn) {
+:root :is(.project-action-trigger, .project-menu-btn) {
   border-color: var(--border-default);
   background: rgba(19, 22, 29, 0.88);
   color: var(--text-primary);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] :is(.project-action-trigger:hover, .project-action-trigger:focus-visible, .project-menu-btn:hover, .project-menu-btn:focus-visible, .project-action-menu:is(:hover, .is-open) .project-action-trigger) {
+:root :is(.project-action-trigger:hover, .project-action-trigger:focus-visible, .project-menu-btn:hover, .project-menu-btn:focus-visible, .project-action-menu:is(:hover, .is-open) .project-action-trigger) {
   background: var(--surface-raised);
 }
 
-html[data-theme="dark"] :is(.project-card h3, .trash-card h3) {
+:root :is(.project-card h3, .trash-card h3) {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.project-card p, .trash-card p) {
+:root :is(.project-card p, .trash-card p) {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .project-card .card-body {
+:root .project-card .card-body {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.project-rename-dialog, .project-delete-dialog, .trash-restore-dialog) {
+:root :is(.project-rename-dialog, .project-delete-dialog, .trash-restore-dialog) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);
 }
 
-html[data-theme="dark"] :is(.project-rename-dialog input, .project-delete-dialog input) {
+:root :is(.project-rename-dialog input, .project-delete-dialog input) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);

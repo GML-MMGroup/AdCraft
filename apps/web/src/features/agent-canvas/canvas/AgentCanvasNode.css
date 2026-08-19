@@ -8,16 +8,17 @@
 .agent-canvas-node {
   --agent-node-accent: #8b7fc8;
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: visible;
-  border: 1px solid color-mix(in srgb, var(--agent-node-accent) 42%, rgba(255, 255, 255, 0.7));
+  border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 8px;
-  background: rgba(244, 244, 249, 0.94);
+  background: transparent;
   box-shadow:
-    0 12px 28px rgba(27, 29, 47, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.68);
-  color: #22263b;
+    0 18px 40px rgba(9, 10, 16, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: rgba(255, 255, 255, 0.92);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -47,42 +48,34 @@
   border-color: rgba(207, 91, 100, 0.86);
 }
 
-.agent-canvas-node--selected {
-  border-color: color-mix(in srgb, var(--agent-node-accent) 84%, white);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--agent-node-accent) 22%, transparent),
-    0 16px 34px rgba(27, 29, 47, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.74);
-  transform: translateY(-1px);
-}
-
-.agent-canvas-node__type-marker {
-  position: absolute;
-  z-index: 8;
-  top: 0;
-  left: 0;
-  display: block;
-  width: 40px;
-  height: 40px;
-  border: 0;
-  background: transparent;
-  pointer-events: none;
-  transform: translateY(-100%);
-}
-
-.agent-canvas-node__type-marker img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 .agent-canvas-node__surface {
   position: absolute;
   inset: 0;
   overflow: hidden;
   border-radius: 7px;
-  background: #dfe1e8;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.agent-canvas-node__type-label {
+  position: absolute;
+  top: 4px;
+  left: 8px;
+  z-index: 6;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(14, 16, 24, 0.68);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .agent-canvas-node__media {
@@ -94,6 +87,65 @@
 .agent-canvas-node__media--cover {
   object-fit: cover;
   object-position: center;
+}
+
+.agent-canvas-node__media--contain {
+  background: rgba(9, 10, 16, 0.32);
+  object-fit: contain;
+  object-position: center;
+}
+
+.agent-canvas-node__video-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.agent-canvas-node__video-stage > video {
+  pointer-events: none;
+}
+
+.agent-canvas-node__video-play {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 50%;
+  background: rgba(18, 20, 29, 0.62);
+  box-shadow:
+    0 10px 24px rgba(5, 6, 12, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  color: #fff;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+}
+
+.agent-canvas-node__video-play svg {
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+}
+
+.agent-canvas-node__video-play:hover {
+  background: rgba(75, 91, 145, 0.78);
+  box-shadow:
+    0 12px 28px rgba(5, 6, 12, 0.34),
+    0 0 0 5px rgba(255, 255, 255, 0.1);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.agent-canvas-node__video-play:focus-visible {
+  outline: 3px solid rgba(215, 208, 244, 0.9);
+  outline-offset: 3px;
 }
 
 .agent-canvas-node-workbench-anchor {
@@ -111,65 +163,158 @@
   width: 100%;
   height: 100%;
   place-items: center;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.62), rgba(219, 222, 233, 0.76)),
-    repeating-linear-gradient(135deg, transparent 0 12px, rgba(96, 100, 128, 0.05) 12px 13px);
-  color: color-mix(in srgb, var(--agent-node-accent) 78%, #4a4e64);
+  background: transparent;
 }
 
-.agent-canvas-node__media-placeholder svg {
-  width: 38px;
-  height: 38px;
-  opacity: 0.72;
+.agent-canvas-node__center-icon {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  pointer-events: none;
 }
 
-.agent-canvas-node__copy {
+.agent-canvas-node__center-icon img {
+  display: block;
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.28));
+  opacity: 0.9;
+}
+
+.agent-canvas-node__content {
+  display: flex;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 28px 24px 36px;
-  background:
-    linear-gradient(160deg, rgba(255, 255, 255, 0.94), rgba(229, 228, 239, 0.92)),
-    radial-gradient(circle at 84% 16%, rgba(116, 101, 181, 0.13), transparent 40%);
+  align-items: flex-start;
+  padding: 26px 24px 42px;
+  overflow: hidden;
 }
 
-.agent-canvas-node__copy p {
+.agent-canvas-node__content p {
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: #292c40;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 17px;
-  font-weight: 550;
-  line-height: 1.45;
+  font-weight: 520;
+  line-height: 1.48;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 5;
 }
 
-.agent-canvas-node__copy--script p {
-  font-family: "Bodoni Moda", "Instrument Serif", Georgia, serif;
-  font-size: 18px;
-  font-weight: 400;
-  line-height: 1.42;
+.agent-canvas-node__content--script {
+  padding: 22px 18px 48px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  scrollbar-width: thin;
 }
 
-.agent-canvas-node__script-rule {
+.agent-canvas-node__content--script::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-canvas-node__content--script::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.agent-canvas-node__content--script > p {
   display: block;
-  width: 42px;
-  height: 2px;
-  margin-bottom: 16px;
-  background: var(--agent-node-accent);
-  opacity: 0.72;
+  overflow: visible;
+  font-size: 14px;
+  font-weight: 480;
+  line-height: 1.62;
+  -webkit-line-clamp: unset;
+}
+
+.agent-canvas-node__markdown {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.agent-canvas-node__content--script .agent-canvas-node__markdown {
+  height: auto;
+  overflow: visible;
+}
+
+.agent-canvas-node__content--script .agent-canvas-node__markdown :is(p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, pre) {
+  display: block;
+  overflow: visible;
+  font-size: 14px;
+  font-weight: 480;
+  line-height: 1.62;
+  -webkit-line-clamp: unset;
+}
+
+.agent-canvas-node__markdown p,
+.agent-canvas-node__markdown ul,
+.agent-canvas-node__markdown ol,
+.agent-canvas-node__markdown h1,
+.agent-canvas-node__markdown h2,
+.agent-canvas-node__markdown h3,
+.agent-canvas-node__markdown h4,
+.agent-canvas-node__markdown h5,
+.agent-canvas-node__markdown h6,
+.agent-canvas-node__markdown blockquote,
+.agent-canvas-node__markdown pre {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 17px;
+  font-weight: 520;
+  line-height: 1.48;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.agent-canvas-node__markdown p:last-child,
+.agent-canvas-node__markdown ul:last-child,
+.agent-canvas-node__markdown ol:last-child,
+.agent-canvas-node__markdown pre:last-child,
+.agent-canvas-node__markdown blockquote:last-child {
+  margin-bottom: 0;
+}
+
+.agent-canvas-node__markdown ul,
+.agent-canvas-node__markdown ol {
+  padding-left: 18px;
+}
+
+.agent-canvas-node__markdown code {
+  border-radius: 4px;
+  padding: 2px 4px;
+  background: rgb(255 255 255 / 10%);
+  font-size: 14px;
+}
+
+.agent-canvas-node__markdown pre {
+  display: block;
+  overflow-x: auto;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgb(15 15 29 / 30%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+}
+
+.agent-canvas-node__markdown blockquote {
+  border-left: 2px solid rgb(255 255 255 / 35%);
+  padding-left: 10px;
 }
 
 .agent-canvas-node--audio {
   --agent-node-accent: #b9acd8;
 
-  border-color: rgba(255, 255, 255, 0.34);
-  background: rgba(36, 37, 45, 0.68);
-  box-shadow:
-    0 18px 40px rgba(9, 10, 16, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
 .agent-canvas-node--audio .agent-canvas-node__surface {
@@ -459,6 +604,25 @@
   box-shadow: 0 0 0 4px rgba(230, 201, 135, 0.15);
 }
 
+.agent-canvas-node__fallback-warning {
+  position: absolute;
+  z-index: 6;
+  right: 11px;
+  bottom: 10px;
+  max-width: calc(100% - 105px);
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid rgba(230, 201, 135, 0.34);
+  border-radius: 999px;
+  background: rgba(39, 34, 24, 0.76);
+  color: #f0d99f;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
 .agent-canvas-node__working {
   position: absolute;
   z-index: 4;
@@ -521,6 +685,64 @@
 
 .react-flow__handle.agent-canvas-node__handle {
   z-index: 12;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.react-flow__handle.agent-canvas-node__handle::after {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid rgba(148, 151, 160, 0.92);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 2px 8px rgba(5, 6, 10, 0.28);
+  content: "";
+  transform: translateX(var(--agent-handle-ring-offset, 0px));
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.react-flow__handle.agent-canvas-node__handle--input {
+  --agent-handle-ring-offset: -26px;
+  left: 14px;
+}
+
+.react-flow__handle.agent-canvas-node__handle--output {
+  --agent-handle-ring-offset: 26px;
+  right: 14px;
+}
+
+.agent-canvas-node-shell:has(> .agent-canvas-node:hover) > .agent-canvas-node__handle,
+.react-flow__handle.agent-canvas-node__handle:hover,
+.react-flow__handle.agent-canvas-node__handle:focus-visible,
+.react-flow__handle.agent-canvas-node__handle:active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.react-flow__handle.agent-canvas-node__handle:hover::after,
+.react-flow__handle.agent-canvas-node__handle:focus-visible::after,
+.react-flow__handle.agent-canvas-node__handle:active::after {
+  border-color: rgba(184, 187, 194, 0.98);
+  transform: translateX(var(--agent-handle-ring-offset, 0px)) scale(1.08);
+}
+
+.react-flow__handle.agent-canvas-node__handle:focus-visible {
+  outline: none;
+}
+
+.react-flow__handle.agent-canvas-node__handle:focus-visible::after {
+  box-shadow:
+    0 0 0 2px rgba(164, 168, 178, 0.5),
+    0 2px 8px rgba(5, 6, 10, 0.28);
 }
 
 @keyframes agent-canvas-node-spin {
@@ -536,6 +758,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-node,
+  .agent-canvas-node__video-play,
   .agent-canvas-node__action,
   .agent-canvas-audio-player__waveform i,
   .agent-canvas-node__working-orbit,
@@ -554,15 +777,7 @@
   }
 }
 
-:root[data-theme="dark"] .agent-canvas-node {
-  border-color: color-mix(in srgb, var(--agent-node-accent) 50%, rgba(228, 230, 241, 0.32));
-  background: rgba(26, 28, 39, 0.96);
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.34),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-:root[data-theme="dark"] .agent-canvas-node--audio {
+:root .agent-canvas-node {
   border-color: rgba(255, 255, 255, 0.4);
   background: transparent;
   box-shadow:
@@ -573,7 +788,18 @@
   -webkit-backdrop-filter: none;
 }
 
-:root[data-theme="dark"] .agent-canvas-audio-player {
+:root .agent-canvas-node--audio {
+  border-color: rgba(255, 255, 255, 0.4);
+  background: transparent;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root .agent-canvas-audio-player {
   isolation: auto;
   background: rgba(255, 255, 255, 0.06);
   box-shadow:
@@ -584,25 +810,11 @@
   -webkit-backdrop-filter: none;
 }
 
-:root[data-theme="dark"] .agent-canvas-audio-player::before {
+:root .agent-canvas-audio-player::before {
   border-color: rgba(255, 255, 255, 0.3);
   background: transparent;
 }
 
-:root[data-theme="dark"] .agent-canvas-node--audio.agent-canvas-node--selected {
-  border-color: rgba(226, 218, 245, 0.74);
-  box-shadow:
-    0 0 0 3px rgba(185, 172, 216, 0.2),
-    0 20px 50px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
-}
-
-:root[data-theme="dark"] .agent-canvas-node__copy {
-  background:
-    linear-gradient(155deg, rgba(34, 36, 49, 0.98), rgba(24, 26, 36, 0.98)),
-    radial-gradient(circle at 84% 16%, rgba(116, 101, 181, 0.2), transparent 40%);
-}
-
-:root[data-theme="dark"] .agent-canvas-node__copy p {
-  color: #eef0f8;
+:root .agent-canvas-node__media--contain {
+  background: rgba(9, 10, 16, 0.38);
 }

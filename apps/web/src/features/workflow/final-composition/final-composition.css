@@ -124,7 +124,7 @@
   padding: 8px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.48);
-  box-shadow: inset 0 0 0 1px rgba(108, 93, 171, 0.11);
+  box-shadow: inset 0 0 0 1px rgba(157, 175, 230, 0.11);
 }
 
 .final-composition-track-heading {
@@ -223,7 +223,7 @@
 .final-composition-audio-field select {
   width: 100%;
   min-width: 0;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.72);
   color: rgba(32, 34, 53, 0.82);
@@ -456,7 +456,7 @@
 .v2-composition-preview-play svg { width: 20px; height: 20px; margin-left: 2px; }
 .v2-composition-subtitle { position: absolute; bottom: 9%; z-index: 10; max-width: 82%; color: #fff; font-size: clamp(12px, 2vw, 24px); font-weight: 700; line-height: 1.25; text-align: center; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95); }
 .v2-composition-transport { padding-top: 8px; }
-.v2-composition-transport input { min-width: 0; flex: 1; accent-color: #7a6ac4; }
+.v2-composition-transport input { min-width: 0; flex: 1; accent-color: var(--brand); }
 .v2-composition-transport span { flex: 0 0 auto; color: rgba(71, 75, 99, 0.75); font-size: 10px; font-variant-numeric: tabular-nums; }
 
 .v2-composition-timeline { overflow: auto; padding: 8px; }
@@ -1307,80 +1307,80 @@ body:has(.v2-final-composition-panel) .floating-rail {
   }
 }
 
-html[data-theme="dark"] :is(.final-composition-timeline-panel, .v2-composition-shell, .v2-simple-composition, .v2-final-composition-card) {
+:root :is(.final-composition-timeline-panel, .v2-composition-shell, .v2-simple-composition, .v2-final-composition-card) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.final-composition-track, .final-composition-clip, .final-composition-source-item, .v2-composition-panel, .v2-composition-source, .v2-composition-track, .v2-simple-composition-sequence li) {
+:root :is(.final-composition-track, .final-composition-clip, .final-composition-source-item, .v2-composition-panel, .v2-composition-source, .v2-composition-track, .v2-simple-composition-sequence li) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.final-composition-timeline-heading strong, .final-composition-clip-title strong, .final-composition-source-item strong, .final-composition-track-heading span, .v2-composition-heading strong, .v2-simple-composition-sequence strong) {
+:root :is(.final-composition-timeline-heading strong, .final-composition-clip-title strong, .final-composition-source-item strong, .final-composition-track-heading span, .v2-composition-heading strong, .v2-simple-composition-sequence strong) {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.final-composition-timeline-heading em, .final-composition-track-heading em, .final-composition-clip-title em, .final-composition-source-item em, .final-composition-toggle, .final-composition-number-grid span, .final-composition-subtitle-field span, .final-composition-audio-field span, .v2-composition-heading span, .v2-simple-composition-sequence span) {
+:root :is(.final-composition-timeline-heading em, .final-composition-track-heading em, .final-composition-clip-title em, .final-composition-source-item em, .final-composition-toggle, .final-composition-number-grid span, .final-composition-subtitle-field span, .final-composition-audio-field span, .v2-composition-heading span, .v2-simple-composition-sequence span) {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] :is(.final-composition-timeline-meta span, .v2-composition-feedback, .v2-composition-source-thumb, .v2-composition-icon-button) {
+:root :is(.final-composition-timeline-meta span, .v2-composition-feedback, .v2-composition-source-thumb, .v2-composition-icon-button) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .final-composition-timeline-meta b {
+:root .final-composition-timeline-meta b {
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] .final-composition-timeline-error,
-html[data-theme="dark"] .v2-composition-feedback.is-error {
+:root .final-composition-timeline-error,
+:root .v2-composition-feedback.is-error {
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.final-composition-timeline-warning, .final-composition-clip-warning) {
+:root :is(.final-composition-timeline-warning, .final-composition-clip-warning) {
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] :is(.final-composition-number-grid input, .final-composition-subtitle-field textarea, .final-composition-audio-field select, .v2-composition-field input, .v2-composition-field select, .v2-composition-field textarea) {
+:root :is(.final-composition-number-grid input, .final-composition-subtitle-field textarea, .final-composition-audio-field select, .v2-composition-field input, .v2-composition-field select, .v2-composition-field textarea) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.v2-composition-icon-button:hover:not(:disabled), .v2-composition-source:hover) {
+:root :is(.v2-composition-icon-button:hover:not(:disabled), .v2-composition-source:hover) {
   border-color: var(--brand);
   background: var(--brand-subtle);
 }
 
-html[data-theme="dark"] :is(.v2-composition-modal, .v2-composition-dialog, .v2-simple-composition-export-dialog) {
+:root :is(.v2-composition-modal, .v2-composition-dialog, .v2-simple-composition-export-dialog) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);
 }
 
-html[data-theme="dark"] :is(.v2-composition-backdrop, .v2-simple-composition-backdrop) {
+:root :is(.v2-composition-backdrop, .v2-simple-composition-backdrop) {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] :is(.v2-simple-composition-sequence, .v2-simple-composition-controls, .v2-final-composition-card-message) {
+:root :is(.v2-simple-composition-sequence, .v2-simple-composition-controls, .v2-final-composition-card-message) {
   background: var(--surface-card);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] :is(.v2-final-composition-card-message.status-failed, .v2-final-composition-card-message.status-cancelled) {
+:root :is(.v2-final-composition-card-message.status-failed, .v2-final-composition-card-message.status-cancelled) {
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.v2-final-composition-card-message.status-blocked, .v2-final-composition-card-message.status-skipped) {
+:root :is(.v2-final-composition-card-message.status-blocked, .v2-final-composition-card-message.status-skipped) {
   color: var(--warning);
 }

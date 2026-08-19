@@ -389,11 +389,13 @@ describe("Agent Canvas client", () => {
         proposal_revision: 1,
         source_proposal_id: null,
         proposal_kind: "character",
-        specialist_name: "character_designer",
+        capability_id: "character_design",
+        capability_display_name: "Character Designer",
         options: [{
           option_id: "option-1",
           title: "Quiet confidence",
-          summary_prompt: "A restrained editorial lead.",
+          public_summary: "A restrained editorial lead.",
+          key_decisions: ["Understated wardrobe", "Confident posture"],
         }],
         proposed_references: [],
         target_node_id: null,
@@ -402,7 +404,18 @@ describe("Agent Canvas client", () => {
         availability: "open",
         application_count: 0,
         latest_application: null,
-        available_actions: ["select", "revise", "archive"],
+        materialization: null,
+        guidance_session_id: "guidance-1",
+        guidance_session_revision: 3,
+        actions: [{
+          action_id: "proposal-1:1:select_option",
+          action: "select_option",
+          label: "Select",
+          proposal_id: "proposal-1",
+          expected_session_revision: 3,
+          confirmation_required: false,
+          reason: "Create one editable Draft.",
+        }],
         created_at: "2026-07-30T08:00:00Z",
         updated_at: "2026-07-30T08:00:00Z",
       });
@@ -414,6 +427,44 @@ describe("Agent Canvas client", () => {
 
     expect(policy.input_roles[0]?.default_role).toBe("image_reference");
     expect(proposal.options[0]?.title).toBe("Quiet confidence");
+  });
+
+  it("accepts a 202 Proposal action response as a queued turn", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:7"');
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        action: "select_option",
+        option_id: "option-1",
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-materialization-1",
+        status: "queued",
+        events_cursor: 42,
+      }, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const accepted = await v2Api.actOnAgentCanvasProposal(
+      "workflow-1",
+      "proposal-1",
+      {
+        action_id: "action-select-1",
+        expected_session_revision: 7,
+        action: "select_option",
+        option_id: "option-1",
+        accepted_references: [],
+      },
+      "proposal-action-key",
+    );
+
+    expect(accepted).toMatchObject({
+      turn_id: "turn-materialization-1",
+      status: "queued",
+    });
   });
 
   it("creates connected nodes and patches bindings with real workflow preconditions", async () => {
@@ -534,6 +585,42 @@ describe("Agent Canvas client", () => {
     expect(accepted.turn_id).toBe("turn-guided-1");
   });
 
+  it("sends creative-authority guided actions as structured fields", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toContain("/chat/guided-actions/action-authority/apply");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        confirmed: true,
+        action: "set_creative_authority",
+        authority: "director",
+        expected_session_revision: 8,
+      });
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        message_id: null,
+        turn_id: "turn-authority-1",
+        status: "queued",
+        events_cursor: 23,
+      }, { status: 202 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:8"');
+
+    const accepted = await v2Api.applyAgentCanvasGuidedAction(
+      "workflow-1",
+      "action-authority",
+      {
+        confirmed: true,
+        action: "set_creative_authority",
+        authority: "director",
+        expected_session_revision: 8,
+      },
+      "guided-authority-key",
+    );
+
+    expect(accepted.turn_id).toBe("turn-authority-1");
+  });
+
   it("persists layout batches against layout_revision without semantic If-Match", async () => {
     v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:12"');
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -608,6 +695,138 @@ describe("Agent Canvas client", () => {
 
     expect(run.status).toBe("cancelled");
     expect(editing.status).toBe("cancelled");
+  });
+});
+
+describe("Agent Canvas Video Style catalog client", () => {
+  it("lists catalog entries with backend filters and reads public Skill details", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://frontend.test");
+      expect(init?.method).toBeUndefined();
+      if (url.pathname.endsWith("/video-skills/platform-default")) {
+        return jsonResponse({
+          skill_id: "platform-default",
+          version: "1.0.0",
+          title: "Platform Default",
+          summary: "Balanced commercial video direction.",
+          category: "commercial-craft",
+          tags: ["commercial"],
+          supported_use_cases: ["general advertising"],
+          preview: { kind: "none", summary: null, media_url: null },
+          display_order: 10,
+        });
+      }
+      expect(url.pathname).toBe("/api/v2/video-skills");
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        category: "commercial-craft",
+        cursor: "Mg",
+        limit: "40",
+      });
+      return jsonResponse({
+        catalog_version: "1",
+        categories: [{
+          category_id: "commercial-craft",
+          title: "Commercial Craft",
+          display_order: 10,
+        }],
+        items: [],
+        next_cursor: null,
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const catalog = await v2Api.listVideoSkills({
+      category: "commercial-craft",
+      cursor: "Mg",
+      limit: 40,
+    });
+    const detail = await v2Api.getVideoSkill("platform-default");
+
+    expect(catalog.catalog_version).toBe("1");
+    expect(catalog.categories[0]?.title).toBe("Commercial Craft");
+    expect(detail.title).toBe("Platform Default");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Agent Canvas settings and working document client", () => {
+  it("uses the Agent Settings revision ETag without leaking the Workflow ETag", async () => {
+    v2EtagStore.set("workflow", "workflow-1", '"workflow:workflow-1:revision:12"');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "PATCH") {
+        expect(new Headers(init.headers).get("If-Match")).toBe('"3"');
+        expect(JSON.parse(String(init.body))).toEqual({ media_execution_mode: "automatic" });
+        return jsonResponse({
+          workflow_id: "workflow-1",
+          media_execution_mode: "automatic",
+          revision: 4,
+          created_at: "2026-08-06T08:00:00Z",
+          updated_at: "2026-08-06T08:02:00Z",
+        }, { etag: '"4"' });
+      }
+      expect(url).toContain("/agent-settings");
+      expect(new Headers(init?.headers).get("If-Match")).toBeNull();
+      return jsonResponse({
+        workflow_id: "workflow-1",
+        media_execution_mode: "manual",
+        revision: 3,
+        created_at: "2026-08-06T08:00:00Z",
+        updated_at: "2026-08-06T08:01:00Z",
+      }, { etag: '"3"' });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const current = await v2Api.agentCanvasExecutionSettings("workflow-1");
+    const updated = await v2Api.patchAgentCanvasExecutionSettings(
+      "workflow-1",
+      { media_execution_mode: "automatic" },
+      current.value.revision,
+    );
+
+    expect(current.etag).toBe('"3"');
+    expect(updated.value.media_execution_mode).toBe("automatic");
+    expect(v2EtagStore.getWorkflow("workflow-1")).toBe('"workflow:workflow-1:revision:12"');
+  });
+
+  it("lists and reads Agent Documents with filtering and pagination", async () => {
+    const document = {
+      document_id: "doc-anchor-1",
+      workflow_id: "workflow-1",
+      guidance_session_id: "session-1",
+      kind: "anchor_registry",
+      title: "Campaign anchors",
+      revision: 1,
+      content_digest: "sha256:anchors",
+      content: { anchors: [] },
+      created_by_agent_run_id: "run-1",
+      updated_by_agent_run_id: "run-1",
+      linked_nodes: [],
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:00:00Z",
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://frontend.test");
+      if (url.pathname.endsWith("/doc-anchor-1")) return jsonResponse(document);
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        kind: "anchor_registry",
+        cursor: "cursor-1",
+        limit: "10",
+      });
+      return jsonResponse({ items: [document], next_cursor: "cursor-2" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await v2Api.listAgentCanvasDocuments("workflow-1", {
+      kind: "anchor_registry",
+      cursor: "cursor-1",
+      limit: 10,
+    });
+    const detail = await v2Api.agentCanvasDocument("workflow-1", "doc-anchor-1");
+
+    expect(page.next_cursor).toBe("cursor-2");
+    expect(detail.document_id).toBe("doc-anchor-1");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

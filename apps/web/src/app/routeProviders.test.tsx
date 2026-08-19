@@ -140,7 +140,9 @@ describe("route providers", () => {
     expect(api.workflowNodes).not.toHaveBeenCalled();
   });
 
-  test("switches the application theme from the shared shell", async () => {
+  test("uses a dark-only shell without a theme switcher", async () => {
+    window.localStorage.setItem("adcraft-theme", "light");
+
     render(
       <AppProvider>
         <App />
@@ -148,11 +150,12 @@ describe("route providers", () => {
     );
 
     await screen.findByText("API ready");
-    fireEvent.click(screen.getByRole("button", { name: "Switch to dark theme" }));
 
-    expect(document.documentElement.dataset.theme).toBe("dark");
-    expect(window.localStorage.getItem("adcraft-theme")).toBe("dark");
-    expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /switch to .* theme/i })).toBeNull();
+    expect(document.documentElement.dataset.theme).not.toBe("light");
+    expect(readFileSync(join(webRoot, "index.html"), "utf8")).toContain('<meta name="color-scheme" content="dark" />');
+    expect(readFileSync(join(webRoot, "index.html"), "utf8")).not.toContain("data-theme");
+    expect(readFileSync(join(webRoot, "index.html"), "utf8")).not.toContain("adcraft-theme");
   });
 
   test("marks non-Workflow application shells for shared cosmic artwork", async () => {
@@ -186,6 +189,10 @@ describe("route providers", () => {
         workflow.container.querySelector(".app-shell--cosmic"),
         `${path} should retain the Workflow canvas shell`,
       ).toBeNull();
+      expect(
+        workflow.container.querySelector(".app-shell--workflow"),
+        `${path} should use the full-height Workflow canvas shell`,
+      ).toBeTruthy();
     }
   });
 

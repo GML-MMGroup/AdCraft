@@ -129,4 +129,29 @@ describe("AgentCanvasConnectedNodeMenu", () => {
 
     expect(onSelect).toHaveBeenCalledWith("video", "video_reference");
   });
+
+  it("offers Script when the backend policy declares it compatible", () => {
+    const onSelect = vi.fn();
+    render(
+      <AgentCanvasConnectedNodeMenu
+        anchorNode={{ ...anchor, node_type: "text", creative_role: "general_text" }}
+        direction="downstream"
+        point={{ x: 120, y: 160 }}
+        policy={{
+          ...policy,
+          input_roles: [{
+            source_node_type: "text",
+            target_node_type: "script",
+            roles: ["text_context"],
+            default_role: "text_context",
+          }],
+        }}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Create connected Script node" }));
+      expect(onSelect).toHaveBeenCalledWith("script", "text_context");
+  });
 });

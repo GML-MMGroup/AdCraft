@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveBackendOrigin } from "../config/devServer.ts";
 
 const nginxConfig = readFileSync(resolve(process.cwd(), "../../deploy/nginx.conf"), "utf8");
 const viteConfig = readFileSync(resolve(process.cwd(), "vite.config.ts"), "utf8");
+const devWebScript = readFileSync(resolve(process.cwd(), "../../scripts/dev-web.sh"), "utf8");
 
 function regexLocation() {
   const match = nginxConfig.match(/location ~\* ("[^"\n]+"|\S+) \{([\s\S]*?)\n {4}\}/);
@@ -27,6 +29,14 @@ function apiProxyMatcher() {
 }
 
 describe("static cache policy", () => {
+  it("defaults local frontend development to the canonical API port", () => {
+    expect(resolveBackendOrigin(undefined)).toBe("http://127.0.0.1:8000");
+    expect(resolveBackendOrigin("   ")).toBe("http://127.0.0.1:8000");
+    expect(resolveBackendOrigin(" http://127.0.0.1:9000 ")).toBe("http://127.0.0.1:9000");
+    expect(viteConfig).not.toContain("127.0.0.1:8888");
+    expect(devWebScript).toContain('BACKEND_ORIGIN="${BACKEND_ORIGIN:-http://127.0.0.1:8000}"');
+  });
+
   it("quotes regex locations containing repetition braces for nginx grammar", () => {
     const { directiveToken } = regexLocation();
 

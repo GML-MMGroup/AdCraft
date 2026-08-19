@@ -1,18 +1,19 @@
 .agent-canvas-page {
   --agent-canvas-base-dot-color: rgb(81 85 108 / 24%);
-  --agent-canvas-pointer-dot-color: rgb(104 77 202 / 94%);
+  --agent-canvas-pointer-dot-color: var(--brand);
 
   position: relative;
   display: grid;
   width: auto;
-  height: calc(100vh - 102px);
+  height: calc(100vh - var(--topbar-height));
+  height: calc(100dvh - var(--topbar-height));
   min-height: 620px;
   margin: 0 -40px -64px -94px;
   overflow: hidden;
   grid-template-columns: minmax(0, 1fr) 372px;
   color: var(--text-primary, #202236);
   background:
-    radial-gradient(circle at 18% 14%, rgb(149 129 190 / 18%), transparent 34%),
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
     linear-gradient(145deg, rgb(229 231 241 / 84%), rgb(213 219 232 / 72%));
 }
 
@@ -24,10 +25,22 @@
   border-right: 1px solid rgb(255 255 255 / 42%);
 }
 
+.agent-canvas-page.is-chat-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agent-canvas-page.is-chat-collapsed .agent-canvas-board {
+  border-right: 0;
+}
+
 .agent-canvas-board .react-flow,
 .agent-canvas-board .react-flow__renderer {
   width: 100%;
   height: 100%;
+}
+
+.agent-canvas-board.is-layout-previewing .react-flow__node {
+  transition: transform 360ms cubic-bezier(.22, .72, .24, 1);
 }
 
 .agent-canvas-board .react-flow__pane {
@@ -36,6 +49,37 @@
 
 .agent-canvas-board .react-flow__pane.dragging {
   cursor: grabbing;
+}
+
+.agent-canvas-board .react-flow__edge-path {
+  stroke: rgb(229 231 238 / 58%);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 48%));
+  transition:
+    stroke 140ms ease,
+    stroke-width 140ms ease,
+    opacity 140ms ease;
+}
+
+.agent-canvas-board .react-flow__edge:hover .react-flow__edge-path {
+  stroke: rgb(247 248 251 / 78%);
+}
+
+.agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
+.agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
+  stroke: rgb(255 255 255 / 96%);
+  stroke-width: 2;
+  stroke-dasharray: 8 6;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 62%));
+  animation: agent-canvas-selected-edge-flow 760ms linear infinite;
+}
+
+@keyframes agent-canvas-selected-edge-flow {
+  to {
+    stroke-dashoffset: -14;
+  }
 }
 
 .agent-canvas-pointer-background {
@@ -68,8 +112,8 @@
 
 .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(121 91 226 / 88%))
-    drop-shadow(0 0 4px rgb(121 91 226 / 44%));
+    drop-shadow(0 0 1.5px rgb(157 175 230 / 88%))
+    drop-shadow(0 0 4px rgb(157 175 230 / 44%));
 }
 
 .agent-canvas-board .react-flow__controls {
@@ -85,17 +129,6 @@
   color: #4d5066;
   background: rgb(249 250 253 / 88%);
   border-bottom-color: rgb(121 122 145 / 14%);
-}
-
-.agent-canvas-board .react-flow__minimap {
-  right: 18px;
-  bottom: 18px;
-  overflow: hidden;
-  background: rgb(245 246 250 / 76%);
-  border: 1px solid rgb(255 255 255 / 64%);
-  border-radius: 7px;
-  box-shadow: 0 12px 28px rgb(39 39 62 / 14%);
-  backdrop-filter: blur(14px);
 }
 
 .agent-canvas-toolbar {
@@ -118,7 +151,8 @@
 }
 
 .agent-canvas-toolbar > button,
-.agent-canvas-toolbar__add > button {
+.agent-canvas-toolbar__add > button,
+.agent-canvas-toolbar__layout > button {
   display: grid;
   width: 34px;
   height: 34px;
@@ -133,17 +167,19 @@
 
 .agent-canvas-toolbar > button:hover:not(:disabled),
 .agent-canvas-toolbar__add > button:hover,
+.agent-canvas-toolbar__layout > button:hover:not(:disabled),
 .agent-canvas-toolbar button.is-active {
-  color: #6755aa;
-  background: rgb(113 94 177 / 12%);
+  color: var(--brand-hover);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
 }
 
 .agent-canvas-toolbar__run {
-  color: #fff !important;
-  background: #6e5ab0 !important;
+  color: var(--text-inverse) !important;
+  background: var(--brand) !important;
 }
 
-.agent-canvas-toolbar > button:disabled {
+.agent-canvas-toolbar > button:disabled,
+.agent-canvas-toolbar__layout > button:disabled {
   cursor: wait;
   opacity: 0.45;
 }
@@ -153,8 +189,81 @@
   height: 17px;
 }
 
-.agent-canvas-toolbar__add {
+.agent-canvas-toolbar__add,
+.agent-canvas-toolbar__layout {
   position: relative;
+}
+
+.agent-canvas-layout-confirmation {
+  position: absolute;
+  z-index: 21;
+  top: 44px;
+  left: 50%;
+  display: grid;
+  box-sizing: border-box;
+  width: 220px;
+  gap: 10px;
+  padding: 12px;
+  color: #f3f4f8;
+  background: rgb(24 26 34 / 96%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgb(0 0 0 / 32%);
+  transform: translateX(-50%);
+}
+
+.agent-canvas-layout-confirmation > p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.agent-canvas-layout-confirmation > p:focus-visible {
+  outline: 2px solid rgb(156 211 142 / 86%);
+  outline-offset: 3px;
+}
+
+.agent-canvas-layout-confirmation__error {
+  color: #f0b8b8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-canvas-layout-confirmation__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.agent-canvas-layout-confirmation__actions button {
+  min-height: 32px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  background: transparent;
+  border: 1px solid currentcolor;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.agent-canvas-layout-confirmation__actions button:first-child {
+  color: #ca6f6f;
+}
+
+.agent-canvas-layout-confirmation__actions button:last-child {
+  color: #9cd38e;
+}
+
+.agent-canvas-layout-confirmation__actions button:hover:not(:disabled),
+.agent-canvas-layout-confirmation__actions button:focus-visible {
+  background: rgb(255 255 255 / 8%);
+  outline: 0;
+}
+
+.agent-canvas-layout-confirmation__actions button:disabled {
+  cursor: wait;
+  opacity: 0.48;
 }
 
 .agent-canvas-node-picker {
@@ -190,7 +299,7 @@
 }
 
 .agent-canvas-node-picker button:hover {
-  background: rgb(111 91 176 / 10%);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
 }
 
 .agent-canvas-node-picker span {
@@ -199,7 +308,7 @@
 }
 
 .agent-canvas-context-menu__backdrop {
-  position: fixed;
+  position: absolute;
   z-index: 31;
   inset: 0;
   width: 100%;
@@ -246,8 +355,8 @@
 
 .agent-canvas-context-menu__action:hover,
 .agent-canvas-context-menu__action:focus-visible {
-  color: #56439c;
-  background: rgb(119 97 198 / 14%);
+  color: var(--brand-hover);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
   outline: 0;
 }
 
@@ -459,8 +568,8 @@
   height: 21px;
   place-items: center;
   border-radius: 50%;
-  background: rgb(117 101 181 / 12%);
-  color: #6f62aa;
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+  color: var(--brand-hover);
   font-size: 10px;
 }
 
@@ -468,7 +577,7 @@
   display: grid;
   gap: 8px;
   padding: 9px;
-  border: 1px solid rgb(120 112 153 / 18%);
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, transparent);
   border-radius: 7px;
   background: rgb(255 255 255 / 34%);
 }
@@ -492,7 +601,7 @@
   height: 34px;
   place-items: center;
   border-radius: 5px;
-  background: rgb(117 101 181 / 12%);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
   object-fit: contain;
 }
 
@@ -530,7 +639,7 @@
   place-items: center;
   border: 0;
   border-radius: 5px;
-  background: rgb(117 101 181 / 10%);
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
   color: #5d6176;
 }
 
@@ -562,7 +671,7 @@
 .agent-canvas-inspector__input-flags input {
   width: 14px;
   height: 14px;
-  accent-color: #7565b5;
+  accent-color: var(--brand);
 }
 
 .agent-canvas-inspector__input-flags span {
@@ -588,8 +697,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  color: #fff;
-  background: #705cb1;
+  color: var(--text-inverse);
+  background: var(--brand);
   border: 0;
   border-radius: 6px;
   font-size: 12px;
@@ -657,9 +766,9 @@
 }
 
 .agent-canvas-inspector > footer .agent-canvas-inspector__save {
-  color: #fff;
-  background: #705cb1;
-  border-color: #705cb1;
+  color: var(--text-inverse);
+  background: var(--brand);
+  border-color: var(--brand);
 }
 
 .agent-canvas-notice {
@@ -676,6 +785,13 @@
   border-radius: 6px;
   box-shadow: 0 10px 26px rgb(47 36 43 / 14%);
   transform: translateX(-50%);
+}
+
+.agent-canvas-notice--info {
+  bottom: 70px;
+  color: #4f4870;
+  background: rgb(247 245 255 / 94%);
+  border-color: color-mix(in srgb, var(--brand) 24%, transparent);
 }
 
 .agent-canvas-overlay {
@@ -808,27 +924,27 @@
   font-size: 18px;
 }
 
-html[data-theme="dark"] .agent-canvas-page {
+:root .agent-canvas-page {
   --agent-canvas-base-dot-color: rgb(142 146 164 / 20%);
-  --agent-canvas-pointer-dot-color: rgb(201 187 255 / 100%);
+  --agent-canvas-pointer-dot-color: var(--brand);
 
   color: #ecedf5;
   background:
-    radial-gradient(circle at 18% 14%, rgb(115 90 174 / 18%), transparent 34%),
+    radial-gradient(circle at 18% 14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 34%),
     linear-gradient(145deg, #161820, #101219);
 }
 
-html[data-theme="dark"] .agent-canvas-board {
+:root .agent-canvas-board {
   border-right-color: rgb(255 255 255 / 10%);
 }
 
-html[data-theme="dark"] .agent-canvas-pointer-dot {
+:root .agent-canvas-pointer-dot {
   filter:
-    drop-shadow(0 0 1.5px rgb(198 181 255 / 92%))
-    drop-shadow(0 0 5px rgb(130 96 236 / 58%));
+    drop-shadow(0 0 1.5px rgb(202 212 245 / 92%))
+    drop-shadow(0 0 5px rgb(157 175 230 / 58%));
 }
 
-html[data-theme="dark"] :is(
+:root :is(
   .agent-canvas-toolbar,
   .agent-canvas-add-menu,
   .agent-canvas-context-menu,
@@ -840,23 +956,22 @@ html[data-theme="dark"] :is(
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] :is(
+:root :is(
   .agent-canvas-add-menu,
   .agent-canvas-context-menu
 ) .agent-canvas-node-picker button,
-html[data-theme="dark"] .agent-canvas-context-menu__action,
-html[data-theme="dark"] .agent-canvas-inspector {
+:root .agent-canvas-context-menu__action,
+:root .agent-canvas-inspector {
   color: #e4e5ee;
 }
 
-html[data-theme="dark"] .agent-canvas-inspector__body :is(input, textarea) {
+:root .agent-canvas-inspector__body :is(input, textarea) {
   color: #eef0f6;
   background: rgb(8 10 15 / 56%);
   border-color: rgb(255 255 255 / 12%);
 }
 
-html[data-theme="dark"] .agent-canvas-board .react-flow__controls button,
-html[data-theme="dark"] .agent-canvas-board .react-flow__minimap {
+:root .agent-canvas-board .react-flow__controls button {
   color: #d7d9e4;
   background: rgb(28 31 40 / 88%);
   border-color: rgb(255 255 255 / 10%);
@@ -868,8 +983,24 @@ html[data-theme="dark"] .agent-canvas-board .react-flow__minimap {
   }
 }
 
+@media (max-width: 900px) {
+  .agent-canvas-page,
+  .agent-canvas-state {
+    margin: 0 -18px -48px -80px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-canvas-pointer-background {
     transition: none;
+  }
+
+  .agent-canvas-board.is-layout-previewing .react-flow__node {
+    transition: none;
+  }
+
+  .agent-canvas-board .react-flow__edge.selected .react-flow__edge-path,
+  .agent-canvas-board .react-flow__edge.is-node-related .react-flow__edge-path {
+    animation: none;
   }
 }

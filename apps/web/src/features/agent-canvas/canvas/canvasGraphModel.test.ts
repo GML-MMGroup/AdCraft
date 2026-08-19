@@ -7,8 +7,10 @@ import type {
 } from "../../../types-v2.ts";
 import {
   findAvailableCanvasPosition,
+  highlightNodeRelatedCanvasEdges,
   inputRoleForSourceNode,
   incrementalPlacementForNodes,
+  reconcileSelectableCanvasEdges,
   toAgentCanvasFlowEdges,
   toAgentCanvasFlowNodes,
 } from "./canvasGraphModel.ts";
@@ -145,6 +147,7 @@ describe("canvasGraphModel", () => {
       id: "image-1",
       type: "agentCanvas",
       position: { x: 40, y: 60 },
+      style: { width: 310, height: 310 },
       data: {
         node: { node_id: "image-1" },
         asset: { asset_id: "asset-1" },
@@ -153,13 +156,116 @@ describe("canvasGraphModel", () => {
     });
   });
 
+  it("keeps canonical node dimensions and data independent from viewport focus", () => {
+    const focusedWorkflow = {
+      ...workflow,
+      assets: [{ ...workflow.assets[0]!, width: 1920, height: 1080 }],
+    };
+
+    const nodes = toAgentCanvasFlowNodes(focusedWorkflow, null, {});
+    const imageNode = nodes.find((item) => item.id === "image-1");
+
+    expect(imageNode?.style).toEqual({ width: 360, height: 203 });
+    expect(imageNode?.data).not.toHaveProperty("focused");
+  });
+
+  it("renders Script nodes and their persisted text-context bindings", () => {
+    const script = node("script-1", "script");
+    const workflowWithScript: AgentCanvasWorkflowV2 = {
+      ...workflow,
+      nodes: [workflow.nodes[0]!, script, workflow.nodes[1]!],
+      bindings: [
+        workflow.bindings[0]!,
+        {
+          ...workflow.bindings[0]!,
+          binding_id: "binding-to-script",
+          target_node_id: script.node_id,
+        },
+        {
+          ...workflow.bindings[0]!,
+          binding_id: "binding-from-script",
+          source: { kind: "node_output", source_node_id: script.node_id },
+        },
+      ],
+    };
+
+    expect(toAgentCanvasFlowNodes(workflowWithScript, null, {}).map((item) => item.id))
+      .toEqual(["image-1", "script-1", "video-1"]);
+    expect(toAgentCanvasFlowEdges(workflowWithScript.bindings, workflowWithScript.nodes))
+      .toEqual([
+        expect.objectContaining({ id: "binding-1" }),
+        expect.objectContaining({ id: "binding-to-script" }),
+        expect.objectContaining({ id: "binding-from-script" }),
+      ]);
+  });
+
+  it("leaves React Flow dimensions measurable when image metadata is unavailable", () => {
+    const withoutDimensions = {
+      ...workflow,
+      assets: [{ ...workflow.assets[0]!, width: null, height: null }],
+    };
+
+    const nodes = toAgentCanvasFlowNodes(withoutDimensions, null, {});
+
+    expect(nodes.find((item) => item.id === "image-1")?.style).toBeUndefined();
+  });
+
   it("renders only backend bindings as edges", () => {
-    expect(toAgentCanvasFlowEdges(workflow.bindings)).toEqual([expect.objectContaining({
+    const edges = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+
+    expect(edges).toEqual([expect.objectContaining({
       id: "binding-1",
       source: "image-1",
       target: "video-1",
       type: "default",
     })]);
+    expect(edges[0]?.style).toBeUndefined();
+    expect(edges[0]?.markerEnd).toMatchObject({
+      color: "rgba(229, 231, 238, 0.72)",
+    });
+  });
+
+  it("preserves selected bindings while reconciling canonical backend edges", () => {
+    const canonical = toAgentCanvasFlowEdges(workflow.bindings, workflow.nodes);
+    const selected = canonical.map((edge) => ({ ...edge, selected: true }));
+
+    expect(reconcileSelectableCanvasEdges(canonical, selected)).toEqual([
+      expect.objectContaining({ id: "binding-1", selected: true }),
+    ]);
+  });
+
+  it("drops selection state for bindings that no longer exist", () => {
+    const staleSelectedEdge = {
+      id: "deleted-binding",
+      source: "image-1",
+      target: "video-1",
+      selected: true,
+    };
+
+    expect(reconcileSelectableCanvasEdges([], [staleSelectedEdge])).toEqual([]);
+  });
+
+  it("visually highlights only edges directly related to the selected node", () => {
+    const baseEdges = [
+      { id: "incoming", source: "image-1", target: "video-1" },
+      { id: "outgoing", source: "video-1", target: "editing-1" },
+      { id: "unrelated", source: "audio-1", target: "editing-1" },
+    ];
+
+    expect(highlightNodeRelatedCanvasEdges(baseEdges, "video-1")).toEqual([
+      expect.objectContaining({ id: "incoming", className: "is-node-related" }),
+      expect.objectContaining({ id: "outgoing", className: "is-node-related" }),
+      expect.not.objectContaining({ className: "is-node-related" }),
+    ]);
+  });
+
+  it("does not select related edges or retain their highlight after node deselection", () => {
+    const related = highlightNodeRelatedCanvasEdges([
+      { id: "binding-1", source: "image-1", target: "video-1" },
+    ], "video-1");
+
+    expect(related[0]?.selected).not.toBe(true);
+    expect(highlightNodeRelatedCanvasEdges(related, null)[0]).not.toHaveProperty("className");
   });
 
   it("does not render disabled or asset-backed bindings as inferred edges", () => {
@@ -170,7 +276,30 @@ describe("canvasGraphModel", () => {
         binding_id: "asset-binding",
         source: { kind: "image_asset", source_asset_id: "asset-1" },
       },
-    ])).toEqual([]);
+    ], workflow.nodes)).toEqual([]);
+  });
+
+  it("renders a persisted World Setting binding and removes it when disabled", () => {
+    const binding = {
+      ...workflow.bindings[0]!,
+      binding_id: "binding-world-setting",
+      source: { kind: "node_output" as const, source_node_id: "node-world-setting" },
+      target_node_id: "video-1",
+      input_role: "text_context" as const,
+      metadata: { context_kind: "world_setting" },
+    };
+
+    const nodes = [
+      { ...node("node-world-setting", "text"), creative_role: "world_setting" as const },
+      workflow.nodes[1]!,
+    ];
+
+    expect(toAgentCanvasFlowEdges([binding], nodes)).toEqual([expect.objectContaining({
+      id: "binding-world-setting",
+      source: "node-world-setting",
+      target: "video-1",
+    })]);
+    expect(toAgentCanvasFlowEdges([{ ...binding, enabled: false }], nodes)).toEqual([]);
   });
 
   it("selects explicit input roles from canonical source node media types", () => {
@@ -194,6 +323,57 @@ describe("canvasGraphModel", () => {
     });
   });
 
+  it("reserves the tall Script card footprint when placing a new node", () => {
+    const script = { ...node("script", "script"), position: { x: 100, y: 100 } };
+
+    expect(findAvailableCanvasPosition(
+      [script],
+      { x: 100, y: 100 },
+      { candidateNodeType: "image" },
+    )).toEqual({ x: 416, y: 100 });
+  });
+
+  it("uses adaptive image rectangles when placing a node beside generated media", () => {
+    const landscape = { ...node("landscape", "image"), position: { x: 100, y: 100 } };
+    const landscapeAsset = {
+      ...workflow.assets[0]!,
+      asset_id: "landscape-asset",
+      width: 1920,
+      height: 1080,
+    };
+    landscape.output_asset_id = landscapeAsset.asset_id;
+
+    expect(findAvailableCanvasPosition(
+      [landscape],
+      { x: 100, y: 100 },
+      {
+        assets: [landscapeAsset],
+        candidateNodeType: "image",
+        candidateDimensions: { width: 1080, height: 1920 },
+      },
+    )).toEqual({
+      x: -171,
+      y: 100,
+    });
+  });
+
+  it("reserves enough layout space for an image whose intrinsic dimensions have not loaded", () => {
+    const unresolvedImage = {
+      ...node("unresolved", "image"),
+      output_asset_id: null,
+      position: { x: 100, y: 100 },
+    };
+
+    expect(findAvailableCanvasPosition(
+      [unresolvedImage],
+      { x: 440, y: 100 },
+      { candidateNodeType: "video" },
+    )).toEqual({
+      x: 528,
+      y: 100,
+    });
+  });
+
   it("places only newly created nodes from backend placement hints", () => {
     const source = { ...node("source", "image"), position: { x: 100, y: 100 } };
     const unrelated = { ...node("unrelated", "video"), position: { x: 460, y: 100 } };
@@ -211,7 +391,7 @@ describe("canvasGraphModel", () => {
     );
 
     expect(positions).toEqual([
-      { node_id: "sibling", x: 780, y: 100 },
+      { node_id: "sibling", x: 800, y: 100 },
     ]);
     expect(source.position).toEqual({ x: 100, y: 100 });
     expect(unrelated.position).toEqual({ x: 460, y: 100 });

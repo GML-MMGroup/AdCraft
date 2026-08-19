@@ -3,17 +3,24 @@ import { useEffect } from "react";
 import { EditingWorkbench } from "./EditingWorkbench.tsx";
 import { MediaPromptWorkbench } from "./MediaPromptWorkbench.tsx";
 import { NodeReferenceStrip } from "./NodeReferenceStrip.tsx";
+import { NodePromptPreparationState } from "./NodePromptPreparationState.tsx";
 import { NodeWorkbenchShell } from "./NodeWorkbenchShell.tsx";
 import { ScriptWorkbench } from "./ScriptWorkbench.tsx";
 import { TextWorkbench } from "./TextWorkbench.tsx";
 import { useNodeWorkbenchDraft } from "./useNodeWorkbenchDraft.ts";
 import type { AgentCanvasInlineWorkbenchProps } from "./workbenchTypes.ts";
+import { isNodePromptReady } from "../model/promptPreparation.ts";
 import "./agent-canvas-inline-workbench.css";
 
 export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
+  return <VisibleAgentCanvasInlineWorkbench {...props} />;
+}
+
+function VisibleAgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProps) {
   const {
     workflow,
     node,
+    visibleStatus,
     deleteBinding,
     providerModels = [],
     providerModelsLoading = false,
@@ -43,12 +50,15 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       perform={draft.perform}
     />
   );
+  const promptPreparing = ["image", "video", "audio"].includes(node.node_type)
+    && !isNodePromptReady(node);
 
   return (
     <NodeWorkbenchShell
       nodeType={node.node_type}
     >
       {references}
+      {promptPreparing ? <NodePromptPreparationState node={node} /> : null}
       {node.node_type === "text" ? (
         <TextWorkbench
           node={node}
@@ -62,6 +72,7 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
       {node.node_type === "script" ? (
         <ScriptWorkbench
           node={node}
+          status={visibleStatus ?? node.status}
           draft={draft}
           models={providerModels}
           modelsLoading={providerModelsLoading}
@@ -69,7 +80,7 @@ export function AgentCanvasInlineWorkbench(props: AgentCanvasInlineWorkbenchProp
           modelResolution={modelResolution}
         />
       ) : null}
-      {["image", "video", "audio"].includes(node.node_type) ? (
+      {["image", "video", "audio"].includes(node.node_type) && !promptPreparing ? (
         <MediaPromptWorkbench
           node={node}
           draft={draft}

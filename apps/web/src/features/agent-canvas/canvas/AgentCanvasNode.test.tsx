@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -16,6 +16,16 @@ import {
   AgentCanvasNodeRenderer,
   type AgentCanvasNodeData,
 } from "./AgentCanvasNode.tsx";
+
+const updateNodeInternals = vi.hoisted(() => vi.fn());
+
+vi.mock("@xyflow/react", async () => {
+  const actual = await vi.importActual<typeof import("@xyflow/react")>("@xyflow/react");
+  return {
+    ...actual,
+    useUpdateNodeInternals: () => updateNodeInternals,
+  };
+});
 
 function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draft"): CanvasNodeV2 {
   return {
@@ -33,6 +43,7 @@ function makeNode(nodeType: CanvasNodeTypeV2, status: CanvasNodeStatusV2 = "draf
       : {},
     model_id: null,
     parameters: {},
+    metadata: {},
     prompt_context_snapshot_id: null,
     output_asset_id: ["image", "video", "audio", "editing"].includes(nodeType)
       ? `${nodeType}-asset`
@@ -92,25 +103,46 @@ function makeRuntime(status: CanvasNodeStatusV2): NodeRuntimeV2 {
   };
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  updateNodeInternals.mockClear();
+});
 
 describe("AgentCanvasNodeCard", () => {
+  it.each([
+    ["product", "image", "image"],
+    ["storyboard_sequence", "image", "image"],
+    ["world_setting", "text", "text"],
+  ] as const)(
+    "shows the %s node's technical type in the top-left label",
+    (creativeRole, nodeType, expectedLabel) => {
+      const { container } = render(
+        <AgentCanvasNodeCard
+          node={{
+            ...makeNode(nodeType),
+            creative_role: creativeRole,
+          }}
+        />,
+      );
+
+      expect(container.querySelector(".agent-canvas-node__type-label")?.textContent).toBe(
+        expectedLabel,
+      );
+    },
+  );
+
   it("uses a genuinely translucent glass surface for dark audio nodes", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const shellRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-node--audio\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const playerRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-audio-player\s*\{([\s\S]*?)\n\}/,
     )?.[1];
     const glassEdgeRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
+      /:root \.agent-canvas-audio-player::before\s*\{([\s\S]*?)\n\}/,
     )?.[1];
-    const selectedRule = css.match(
-      /:root\[data-theme="dark"\] \.agent-canvas-node--audio\.agent-canvas-node--selected\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
-
     expect(shellRule).toContain("background: transparent");
     expect(shellRule).toContain("backdrop-filter: none");
     expect(playerRule).toContain("isolation: auto");
@@ -119,45 +151,203 @@ describe("AgentCanvasNodeCard", () => {
     expect(playerRule).not.toContain("gradient");
     expect(glassEdgeRule).toContain("background: transparent");
     expect(glassEdgeRule).not.toContain("gradient");
-    expect(selectedRule).toContain("0 0 0 3px rgba(185, 172, 216, 0.2)");
   });
 
-  it("anchors a visible unframed type icon on the card's top-left border", () => {
+  it("does not add a border, glow, or transform when a node is selected", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
-    const markerRule = css.match(/\.agent-canvas-node__type-marker\s*\{([\s\S]*?)\n\}/)?.[1];
 
-    expect(markerRule).toBeDefined();
-    expect(markerRule).toContain("background: transparent");
-    expect(markerRule).toContain("border: 0");
-    expect(markerRule).toContain("top: 0");
-    expect(markerRule).toContain("left: 0");
-    expect(markerRule).toContain("width: 40px");
-    expect(markerRule).toContain("height: 40px");
-    expect(markerRule).toContain("transform: translateY(-100%)");
-    expect(markerRule).not.toContain("border-radius");
-    expect(markerRule).not.toContain("box-shadow");
+    expect(css).not.toMatch(/\.agent-canvas-node--selected\s*\{/);
   });
 
-  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "editing"])(
-    "renders a lightweight %s card with a border-aligned type marker and no title",
+  it("uses one transparent glass shell for every visible node type", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const shellRule = css.match(/^\.agent-canvas-node\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const surfaceRule = css.match(/^\.agent-canvas-node__surface\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(shellRule).toContain("background: transparent");
+    expect(surfaceRule).toContain("background: rgba(255, 255, 255, 0.06)");
+    expect(css).not.toContain(".agent-canvas-node__type-marker");
+  });
+
+  it.each<CanvasNodeTypeV2>(["text", "image", "video", "editing"])(
+    "renders a lightweight %s card with a centered type icon when no output exists",
     (nodeType) => {
       const node = makeNode(nodeType);
-      const asset = nodeType === "image" || nodeType === "video"
-        ? makeAsset(nodeType)
-        : nodeType === "editing"
-          ? makeAsset("video")
-          : null;
 
-      render(<AgentCanvasNodeCard node={node} asset={asset} />);
+      render(<AgentCanvasNodeCard node={node} />);
 
       const card = screen.getByTestId(`agent-canvas-node-${node.node_id}`);
       expect(card.dataset.nodeType).toBe(nodeType);
-      expect(screen.getByLabelText(`${nodeType} node`).classList.contains("agent-canvas-node__type-marker")).toBe(true);
+      expect(screen.getByLabelText(`${nodeType} node type`).classList.contains("agent-canvas-node__center-icon")).toBe(true);
       expect(screen.queryByText(node.title)).toBeNull();
       expect(screen.getByText("Draft")).toBeTruthy();
     },
   );
+
+  it("renders backend Script content rather than hiding the canonical Script node", () => {
+    const node = {
+      ...makeNode("script", "ready"),
+      structured_content: {
+        content: "INT. CITY STREET - DAWN\n\nA quiet city begins to wake.",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    const card = screen.getByTestId("agent-canvas-node-script-node");
+    expect(card.dataset.nodeType).toBe("script");
+    expect(screen.getByText(/INT\. CITY STREET - DAWN/)).toBeTruthy();
+    expect(screen.queryByText("Write a cinematic script")).toBeNull();
+    const scriptContent = card.querySelector(".agent-canvas-node__content--script");
+    expect(scriptContent).toBeTruthy();
+    expect(scriptContent?.classList.contains("nowheel")).toBe(true);
+    expect(screen.queryByLabelText("script node type")).toBeNull();
+  });
+
+  it("keeps non-Script node content available to canvas wheel gestures", () => {
+    const node = {
+      ...makeNode("text", "ready"),
+      structured_content: { content: "A concise campaign direction." },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    const card = screen.getByTestId("agent-canvas-node-text-node");
+    expect(card.querySelector(".agent-canvas-node__content")?.classList.contains("nowheel"))
+      .toBe(false);
+  });
+
+  it("keeps long Script output inside a 500px scrollable card", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
+    const css = readFileSync(cssPath, "utf8");
+    const scriptContentRule = css.match(
+      /\.agent-canvas-node__content--script\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(scriptContentRule).toContain("overflow-y: auto");
+    expect(scriptContentRule).toContain("overscroll-behavior: contain");
+  });
+
+  it.each([
+    [
+      "text",
+      { structured_content: { content: "A concise campaign direction." } },
+      "A concise campaign direction.",
+    ],
+    [
+      "image",
+      { generation_prompt: "A complete product image prompt." },
+      "A complete product image prompt.",
+    ],
+    [
+      "video",
+      { generation_prompt: "A smooth cinematic camera move." },
+      "A smooth cinematic camera move.",
+    ],
+  ] as const)("replaces the centered %s icon with saved node content", (nodeType, overrides, copy) => {
+    const node = { ...makeNode(nodeType), ...overrides } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByLabelText(`${nodeType} node type`)).toBeNull();
+  });
+
+  it("renders current backend Script content on the card", () => {
+    const node = {
+      ...makeNode("script"),
+      structured_content: { content: "A quiet coffee break resets the afternoon." },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("Script node, Draft")).toBeTruthy();
+    expect(screen.getByText("A quiet coffee break resets the afternoon.")).toBeTruthy();
+  });
+
+  it("renders legacy script_text content on the card", () => {
+    render(<AgentCanvasNodeCard node={makeNode("script")} />);
+
+    expect(screen.getByText("Open on a quiet city at dawn.")).toBeTruthy();
+  });
+
+  it("renders a Script placeholder when the document is empty", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {},
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
+  it("does not resurrect legacy Script text after current content is cleared", () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: null,
+      structured_content: {
+        script_text: "Legacy script that was cleared.",
+        content: "",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.queryByText("Legacy script that was cleared.")).toBeNull();
+    expect(screen.getByLabelText("script node type")).toBeTruthy();
+  });
+
+  it("shows the guided Draft summary during prompt preparation without changing its four-state node status", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "queued",
+        operation_id: "prompt-operation-1",
+        attempt_no: 0,
+        context_snapshot_id: null,
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.queryByText("Preparing")).toBeNull();
+  });
+
+  it("keeps a prompt preparation failure distinct from a media generation failure", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 2,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: true,
+        },
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.queryByTitle("Node prompt preparation failed.")).toBeNull();
+  });
 
   it("uses the glass player title instead of audio artwork or a status pill", () => {
     const node = makeNode("audio");
@@ -165,13 +355,46 @@ describe("AgentCanvasNodeCard", () => {
 
     expect(screen.getByText("No audio yet")).toBeTruthy();
     expect(screen.queryByText("Draft")).toBeNull();
-    expect(screen.queryByLabelText("audio node")).toBeNull();
+    expect(screen.queryByLabelText("audio node type")).toBeNull();
   });
 
   it("never offers Run for a text node", () => {
     render(<AgentCanvasNodeCard node={makeNode("text")} onRun={vi.fn()} />);
 
     expect(screen.queryByRole("button", { name: /Run text node/i })).toBeNull();
+  });
+
+  it("labels and displays a World Setting as a Ready text document", () => {
+    const node: CanvasNodeV2 = {
+      ...makeNode("text", "ready"),
+      creative_role: "world_setting",
+      title: "World Setting",
+      summary_prompt: null,
+      structured_content: {
+        document_kind: "world_setting",
+        contract_version: "world-setting-v2",
+        content: "A timeless mountain city governed by seasonal light and handmade technology.",
+        core: {
+          premise: "Seasonal light shapes daily life.",
+          era_and_place: "A timeless mountain city.",
+          world_rules: ["Technology is handmade."],
+          visual_continuity: ["Natural stone and seasonal light recur."],
+        },
+        authoring_provenance: {
+          source_proposal_id: "proposal-world-1",
+          source_option_id: "option-world-1",
+          materialization_run_id: "materialization-1",
+          style_skill_run_id: null,
+          creative_direction_snapshot_id: null,
+        },
+      },
+    };
+
+    render(<AgentCanvasNodeCard node={node} />);
+
+    expect(screen.getByLabelText("World Setting node, Ready")).toBeTruthy();
+    expect(screen.queryByLabelText("World Setting node type")).toBeNull();
+    expect(screen.getByText(/timeless mountain city/)).toBeTruthy();
   });
 
   it("keeps a blocked Draft visible as waiting for upstream output", () => {
@@ -189,7 +412,22 @@ describe("AgentCanvasNodeCard", () => {
     expect(screen.getByText("Waiting for upstream")).toBeTruthy();
   });
 
-  it.each<CanvasNodeTypeV2>(["script", "image", "video", "editing"])(
+  it("keeps a deterministic fallback node as a normal Draft and shows a bounded warning", () => {
+    render(<AgentCanvasNodeCard node={{
+      ...makeNode("image"),
+      metadata: {
+        materialization_mode: "deterministic_fallback",
+        warning_code: "specialist_materialization_fallback",
+        operation_policy_id: "agent.materialization.v1",
+      },
+    }} />);
+
+    expect(screen.getByText("Draft")).toBeTruthy();
+    expect(screen.getByText("Created with a simplified fallback")).toBeTruthy();
+    expect(screen.queryByText("Failed")).toBeNull();
+  });
+
+  it.each<CanvasNodeTypeV2>(["image", "video", "editing"])(
     "keeps %s actions in the inline composer instead of the card corner",
     (nodeType) => {
       const status = nodeType === "editing" ? "ready" : "draft";
@@ -223,7 +461,8 @@ describe("AgentCanvasNodeCard", () => {
     const node = { ...makeNode("image", "ready"), creative_role: "storyboard_sequence" as const };
     render(<AgentCanvasNodeCard node={node} asset={makeAsset("image")} />);
 
-    expect(screen.getByLabelText("Storyboard Sequence image node")).toBeTruthy();
+    expect(screen.getByLabelText("Storyboard Sequence node, Ready")).toBeTruthy();
+    expect(screen.queryByLabelText("Storyboard Sequence image node type")).toBeNull();
     expect(screen.getAllByRole("img", { name: "image output" })).toHaveLength(1);
   });
 
@@ -241,7 +480,7 @@ describe("AgentCanvasNodeCard", () => {
   });
 
   it("uses the runtime status, shows a restrained working treatment, and hides duplicate runs", () => {
-    const node = makeNode("script", "draft");
+    const node = makeNode("image", "draft");
     render(
       <AgentCanvasNodeCard
         node={node}
@@ -251,17 +490,18 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByText("Working")).toBeTruthy();
-    expect(screen.getByLabelText("script node is working").classList.contains("agent-canvas-node__working")).toBe(true);
-    expect(screen.queryByRole("button", { name: "Run script node" })).toBeNull();
+    expect(screen.getByLabelText("image node is working").classList.contains("agent-canvas-node__working")).toBe(true);
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
   });
 
-  it("renders image and video outputs with the same full-bleed media surface", () => {
+  it("contains complete image outputs while keeping video frames full-bleed", () => {
     const imageView = render(
       <AgentCanvasNodeCard node={makeNode("image", "ready")} asset={makeAsset("image")} />,
     );
     const image = screen.getByRole("img", { name: "image output" });
     expect(image.classList.contains("agent-canvas-node__media")).toBe(true);
-    expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+    expect(image.classList.contains("agent-canvas-node__media--contain")).toBe(true);
+    expect(image.classList.contains("agent-canvas-node__media--cover")).toBe(false);
 
     imageView.unmount();
     render(<AgentCanvasNodeCard node={makeNode("video", "ready")} asset={makeAsset("video")} />);
@@ -270,6 +510,177 @@ describe("AgentCanvasNodeCard", () => {
     expect(video.getAttribute("src")).toBe("/media/video-output");
     expect(video.classList.contains("agent-canvas-node__media")).toBe(true);
     expect(video.classList.contains("agent-canvas-node__media--cover")).toBe(true);
+  });
+
+  it("sizes an image node shell from the generated asset dimensions", () => {
+    const data: AgentCanvasNodeData = {
+      node: makeNode("image", "ready"),
+      asset: { ...makeAsset("image"), width: 1920, height: 1080 },
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    expect(shell?.style.width).toBe("360px");
+    expect(shell?.style.height).toBe("203px");
+  });
+
+  it("grows a Script shell from the Text-node default height to its measured content height", () => {
+    const scrollHeight = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(260);
+    const data: AgentCanvasNodeData = {
+      node: makeNode("script", "ready"),
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    expect(shell?.style.width).toBe("248px");
+    expect(shell?.style.height).toBe("330px");
+    expect(updateNodeInternals).toHaveBeenLastCalledWith("script-node");
+
+    scrollHeight.mockRestore();
+  });
+
+  it("falls back to the loaded image dimensions when asset metadata is missing", () => {
+    const data: AgentCanvasNodeData = {
+      node: makeNode("image", "ready"),
+      asset: { ...makeAsset("image"), width: null, height: null },
+    };
+
+    const { container } = render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={data.node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected={false}
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    const shell = container.querySelector<HTMLElement>(".agent-canvas-node-shell");
+    const image = screen.getByRole("img", { name: "image output" });
+    expect(shell?.style.width).toBe("272px");
+    expect(shell?.style.height).toBe("184px");
+
+    Object.defineProperty(image, "naturalWidth", { configurable: true, value: 1080 });
+    Object.defineProperty(image, "naturalHeight", { configurable: true, value: 1920 });
+    fireEvent.load(image);
+
+    expect(shell?.style.width).toBe("203px");
+    expect(shell?.style.height).toBe("360px");
+    expect(updateNodeInternals).toHaveBeenLastCalledWith("image-node");
+  });
+
+  it("opens a generated video from its play control without bubbling to the node click surface", () => {
+    const asset = makeAsset("video");
+    const onOpenVideoPreview = vi.fn();
+    const onNodeClick = vi.fn();
+    const onNodePointerDown = vi.fn();
+    const onNodeDoubleClick = vi.fn();
+
+    render(
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Test harness observes React click bubbling from the child control.
+      <div onClick={onNodeClick} onPointerDown={onNodePointerDown} onDoubleClick={onNodeDoubleClick}>
+        <AgentCanvasNodeCard
+          node={makeNode("video", "ready")}
+          asset={asset}
+          onOpenVideoPreview={onOpenVideoPreview}
+        />
+      </div>,
+    );
+
+    const playButton = screen.getByRole("button", { name: "Play video output" });
+    fireEvent.pointerDown(playButton);
+    fireEvent.click(playButton);
+    fireEvent.doubleClick(playButton);
+
+    expect(onOpenVideoPreview).toHaveBeenCalledWith("video-node", asset);
+    expect(onNodeClick).not.toHaveBeenCalled();
+    expect(onNodePointerDown).not.toHaveBeenCalled();
+    expect(onNodeDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it("keeps the rest of the video surface available to the existing node selection flow", () => {
+    const onNodeClick = vi.fn();
+
+    render(
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Test harness represents React Flow's node click listener.
+      <div onClick={onNodeClick}>
+        <AgentCanvasNodeCard
+          node={makeNode("video", "ready")}
+          asset={makeAsset("video")}
+          onOpenVideoPreview={vi.fn()}
+        />
+      </div>,
+    );
+
+    fireEvent.click(screen.getByLabelText("video output"));
+
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show a playback control for an image or a video without generated media", () => {
+    const imageView = render(
+      <AgentCanvasNodeCard
+        node={makeNode("image", "ready")}
+        asset={makeAsset("image")}
+        onOpenVideoPreview={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Play image output" })).toBeNull();
+
+    imageView.unmount();
+    render(
+      <AgentCanvasNodeCard
+        node={{ ...makeNode("video", "ready"), output_asset_id: null }}
+        onOpenVideoPreview={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Play video output" })).toBeNull();
   });
 
   it("keeps the generated image in the node instead of opening a separate media preview", () => {
@@ -283,26 +694,43 @@ describe("AgentCanvasNodeCard", () => {
     );
 
     expect(screen.getByRole("img", { name: "image output" }).getAttribute("src")).toBe(asset.media_url);
+    expect(screen.queryByLabelText("image node type")).toBeNull();
     expect(screen.queryByRole("button", { name: /open .* preview/i })).toBeNull();
   });
 });
 
 describe("AgentCanvasNodeRenderer", () => {
-  it("leaves connection point geometry to the default React Flow handles", () => {
+  it("renders hover-revealed gray connection rings instead of default React Flow dots", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
     const css = readFileSync(cssPath, "utf8");
     const handleRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle\s*\{([\s\S]*?)\n\}/m)?.[1];
+    const ringRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle::after\s*\{([\s\S]*?)\n\}/m)?.[1];
     const inputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--input\s*\{([\s\S]*?)\n\}/m)?.[1];
     const outputRule = css.match(/^\.react-flow__handle\.agent-canvas-node__handle--output\s*\{([\s\S]*?)\n\}/m)?.[1];
 
     expect(handleRule).toContain("z-index: 12");
-    expect(handleRule).not.toMatch(/\b(?:width|height|border|background(?:-color)?|display|place-items):/);
-    expect(inputRule).toBeUndefined();
-    expect(outputRule).toBeUndefined();
+    expect(handleRule).toContain("width: 28px");
+    expect(handleRule).toContain("height: 28px");
+    expect(handleRule).toContain("border: 0");
+    expect(handleRule).toContain("background: transparent");
+    expect(handleRule).toContain("opacity: 0");
+    expect(handleRule).toContain("pointer-events: none");
+    expect(ringRule).toContain("width: 14px");
+    expect(ringRule).toContain("height: 14px");
+    expect(ringRule).toContain("border: 2px solid rgba(148, 151, 160, 0.92)");
+    expect(ringRule).toContain("background: transparent");
+    expect(inputRule).toContain("left: 14px");
+    expect(inputRule).toContain("--agent-handle-ring-offset: -26px");
+    expect(outputRule).toContain("right: 14px");
+    expect(outputRule).toContain("--agent-handle-ring-offset: 26px");
+    expect(ringRule).toContain("translateX(var(--agent-handle-ring-offset, 0px))");
+    expect(css).toContain(".agent-canvas-node-shell:has(> .agent-canvas-node:hover)");
+    expect(css).toContain("opacity: 1");
+    expect(css).toContain("pointer-events: auto");
     expect(css).not.toContain(".agent-canvas-node__handle-target");
   });
 
-  it.each<CanvasNodeTypeV2>(["text", "script", "image", "video", "audio", "editing"])(
+  it.each<CanvasNodeTypeV2>(["text", "image", "video", "audio", "editing"])(
     "renders %s node with only the default connection handles",
     (nodeType) => {
       const data: AgentCanvasNodeData = { node: makeNode(nodeType) };
@@ -396,6 +824,34 @@ describe("AgentCanvasNodeRenderer", () => {
       expect(screen.getByLabelText(workbenchLabel)).toBeTruthy();
     },
   );
+
+  it("passes the live runtime state to the inline workbench renderer", () => {
+    const node = makeNode("script");
+    const runtime = makeRuntime("working");
+    const renderWorkbench = vi.fn(() => <div>Script controls</div>);
+    const data: AgentCanvasNodeData = { node, runtime, renderWorkbench };
+
+    render(
+      <ReactFlowProvider>
+        <AgentCanvasNodeRenderer
+          id={node.node_id}
+          data={data}
+          type="agentCanvas"
+          selected
+          dragging={false}
+          draggable
+          selectable
+          deletable
+          isConnectable
+          zIndex={0}
+          positionAbsoluteX={0}
+          positionAbsoluteY={0}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(renderWorkbench).toHaveBeenCalledWith(node, runtime);
+  });
 
   it("centers the inline workbench beneath its card", () => {
     const cssPath = resolve(process.cwd(), "src/features/agent-canvas/canvas/AgentCanvasNode.css");
