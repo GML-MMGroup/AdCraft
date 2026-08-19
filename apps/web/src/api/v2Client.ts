@@ -1,16 +1,31 @@
 import type {
   AgentCanvasChatMessageRequestV2,
+  AgentCanvasChatTurnRetryRequestV2,
   AgentCanvasChatViewTimelineV2,
   AgentCanvasCommandPlanActionRequestV2,
   AgentCanvasChatTurnV2,
   AgentCanvasImageLibraryListResponseV2,
   AgentCanvasGuidedActionApplyRequestV2,
+  GuidedInteractionAcceptedV1,
+  GuidedInteractionSubmitRequestV1,
+  GuidanceAdvanceRequestV1,
+  GuidedSessionStateV2,
   AgentCanvasProjectCreateResponseV2,
   AgentCanvasProjectCreateRequestV2,
   AgentCanvasProposalActionRequestV2,
+  DecisionBundleActionAcceptedV2,
+  DecisionBundleActionRequestV2,
+  DecisionBundleV2,
   AgentCanvasVideoSkillRunCreateRequestV2,
   AgentCanvasVideoSkillRunV2,
+  VideoSkillCatalogResponseV2,
+  VideoSkillPublicDetailV2,
   AgentCanvasWorkflowV2,
+  AgentExecutionSettingsPatchV2,
+  AgentExecutionSettingsV2,
+  AgentWorkingDocumentKindV2,
+  AgentWorkingDocumentPageV2,
+  AgentWorkingDocumentV2,
   AssetOwnerResponseV2,
   CanvasBindingCreateRequestV2,
   CanvasBindingMutationResponseV2,
@@ -21,6 +36,7 @@ import type {
   CanvasLayoutPatchRequestV2,
   CanvasLayoutPatchResponseV2,
   CanvasMutationResponseV2,
+  CanvasPostReadyCheckpointV2,
   CanvasNodeCreateRequestV2,
   CanvasNodePatchRequestV2,
   CanvasNodeV2,
@@ -152,16 +168,26 @@ import {
 import {
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasChatTimelineV2,
+  normalizeDecisionBundleActionAcceptedV2,
+  normalizeDecisionBundleV2,
+  normalizeGuidedSessionStateV2,
+  normalizeGuidedInteractionAcceptedV1,
   normalizeAgentCanvasImageLibraryListResponseV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasVideoSkillRunV2,
+  normalizeVideoSkillCatalogResponseV2,
+  normalizeVideoSkillPublicDetailV2,
   normalizeAgentCanvasWorkflowV2,
+  normalizeAgentExecutionSettingsV2,
+  normalizeAgentWorkingDocumentPageV2,
+  normalizeAgentWorkingDocumentV2,
   normalizeCanvasMutationResponseV2,
   normalizeCanvasBindingMutationResponseV2,
   normalizeCanvasConnectedNodeCreateResponseV2,
   normalizeCanvasConnectionPolicyV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasPostReadyCheckpointV2,
   normalizeCanvasVariationDraftResponseV2,
   normalizeCanvasVariationMaterializeResponseV2,
   normalizeCanvasRunAcceptedV2,
@@ -349,6 +375,7 @@ export function v2AuthoringPreconditionTarget(path: string, method: string): V2P
   const suffix = workflow[2] ?? "";
   if (
     suffix === "/layout"
+    || suffix === "/agent-settings"
     || suffix === "/run"
     || suffix === "/runs"
     || suffix === "/chat-target"
@@ -485,6 +512,36 @@ export const v2Api = {
       `/workflows/${encodeURIComponent(workflowId)}`,
       {},
       normalizeAgentCanvasWorkflowV2,
+    );
+  },
+
+  agentCanvasExecutionSettings(
+    workflowId: string,
+  ): Promise<V2EtaggedResponse<AgentExecutionSettingsV2>> {
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-settings`,
+      {},
+      normalizeAgentExecutionSettingsV2,
+      { captureAuthoringEtag: false },
+    );
+  },
+
+  patchAgentCanvasExecutionSettings(
+    workflowId: string,
+    request: AgentExecutionSettingsPatchV2,
+    expectedRevision: number,
+  ): Promise<V2EtaggedResponse<AgentExecutionSettingsV2>> {
+    const headers = new Headers();
+    headers.set("If-Match", `"${expectedRevision}"`);
+    return requestV2WithEtag(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-settings`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(request),
+      },
+      normalizeAgentExecutionSettingsV2,
+      { captureAuthoringEtag: false },
     );
   },
 
@@ -711,6 +768,42 @@ export const v2Api = {
     return requestV2(`/assets/${encodeURIComponent(assetId)}`, { method: "DELETE" });
   },
 
+  agentCanvasCreativeSession(workflowId: string): Promise<GuidedSessionStateV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/creative-session`,
+      {},
+      normalizeGuidedSessionStateV2,
+    );
+  },
+
+  agentCanvasDecisionBundle(
+    workflowId: string,
+    bundleId: string,
+  ): Promise<DecisionBundleV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/decision-bundles/${encodeURIComponent(bundleId)}`,
+      {},
+      normalizeDecisionBundleV2,
+    );
+  },
+
+  actOnAgentCanvasDecisionBundle(
+    workflowId: string,
+    bundleId: string,
+    request: DecisionBundleActionRequestV2,
+    idempotencyKey: string,
+  ): Promise<DecisionBundleActionAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/decision-bundles/${encodeURIComponent(bundleId)}/answers`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeDecisionBundleActionAcceptedV2,
+    );
+  },
+
   agentCanvasChatTimeline(
     workflowId: string,
     afterSeq = 0,
@@ -727,6 +820,81 @@ export const v2Api = {
     );
   },
 
+  advanceAgentCanvasGuidance(
+    workflowId: string,
+    request: GuidanceAdvanceRequestV1,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/guidance/advance`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+    );
+  },
+
+  agentCanvasPostReadyCheckpoint(
+    workflowId: string,
+    executionId: string,
+  ): Promise<CanvasPostReadyCheckpointV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/executions/${encodeURIComponent(executionId)}/post-ready-checkpoint`,
+      {},
+      normalizeCanvasPostReadyCheckpointV2,
+    );
+  },
+
+  listAgentCanvasDocuments(
+    workflowId: string,
+    filters: {
+      kind?: AgentWorkingDocumentKindV2;
+      cursor?: string;
+      limit?: number;
+    } = {},
+  ): Promise<AgentWorkingDocumentPageV2> {
+    const query = new URLSearchParams();
+    if (filters.kind) query.set("kind", filters.kind);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-documents${suffix}`,
+      {},
+      normalizeAgentWorkingDocumentPageV2,
+    );
+  },
+
+  agentCanvasDocument(
+    workflowId: string,
+    documentId: string,
+  ): Promise<AgentWorkingDocumentV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/agent-documents/${encodeURIComponent(documentId)}`,
+      {},
+      normalizeAgentWorkingDocumentV2,
+    );
+  },
+
+  submitAgentCanvasGuidedInteraction(
+    workflowId: string,
+    interactionId: string,
+    request: GuidedInteractionSubmitRequestV1,
+    idempotencyKey: string,
+  ): Promise<GuidedInteractionAcceptedV1> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/interactions/${encodeURIComponent(interactionId)}/submit`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeGuidedInteractionAcceptedV1,
+    );
+  },
+
   submitAgentCanvasChatMessage(
     workflowId: string,
     request: AgentCanvasChatMessageRequestV2,
@@ -734,6 +902,23 @@ export const v2Api = {
   ): Promise<ChatTurnAcceptedV2> {
     return requestV2(
       `/workflows/${encodeURIComponent(workflowId)}/chat/messages`,
+      {
+        method: "POST",
+        headers: idempotencyHeaders(idempotencyKey),
+        body: JSON.stringify(request),
+      },
+      normalizeChatTurnAcceptedV2,
+    );
+  },
+
+  retryAgentCanvasChatTurn(
+    workflowId: string,
+    turnId: string,
+    request: AgentCanvasChatTurnRetryRequestV2,
+    idempotencyKey: string,
+  ): Promise<ChatTurnAcceptedV2> {
+    return requestV2(
+      `/workflows/${encodeURIComponent(workflowId)}/chat/turns/${encodeURIComponent(turnId)}/retry`,
       {
         method: "POST",
         headers: idempotencyHeaders(idempotencyKey),
@@ -832,6 +1017,31 @@ export const v2Api = {
         },
       },
     ).then((response) => response.value);
+  },
+
+  listVideoSkills(filters: {
+    category?: string;
+    cursor?: string;
+    limit?: number;
+  } = {}): Promise<VideoSkillCatalogResponseV2> {
+    const query = new URLSearchParams();
+    if (filters.category) query.set("category", filters.category);
+    if (filters.cursor) query.set("cursor", filters.cursor);
+    if (filters.limit !== undefined) query.set("limit", String(filters.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return requestV2(
+      `/video-skills${suffix}`,
+      {},
+      normalizeVideoSkillCatalogResponseV2,
+    );
+  },
+
+  getVideoSkill(skillId: string): Promise<VideoSkillPublicDetailV2> {
+    return requestV2(
+      `/video-skills/${encodeURIComponent(skillId)}`,
+      {},
+      normalizeVideoSkillPublicDetailV2,
+    );
   },
 
   createAgentCanvasVideoSkillRun(

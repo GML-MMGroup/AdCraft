@@ -11,6 +11,7 @@
     "start": "tsx src/main.ts",
     "build": "tsc",
     "generate:capabilities": "tsx scripts/generate-agent-capabilities.ts",
+    "generate:skills": "tsx scripts/generate-skill-manifest.ts",
     "generate:manifest": "npm run generate:capabilities && tsx scripts/generate-runtime-manifest.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -21,7 +22,8 @@
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
     "@earendil-works/pi-coding-agent": "0.81.1",
-    "ajv": "^8.17.1"
+    "ajv": "^8.17.1",
+    "openai": "6.26.0"
   },
   "devDependencies": {
     "@types/node": "22.15.30",

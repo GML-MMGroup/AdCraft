@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing selling-point hierarchy through silhouette and use context through surfaces and detail. Make functional features readable, and use benefit reveal only where it strengthens the requested selling point.

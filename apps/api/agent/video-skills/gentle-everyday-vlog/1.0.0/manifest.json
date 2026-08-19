@@ -1,0 +1,36 @@
+{
+  "skill_id": "gentle-everyday-vlog",
+  "version": "1.0.0",
+  "display_name": "Gentle Everyday Vlog",
+  "description": "An advertising treatment built around intimate handheld observation, soft routine, natural gestures, and warm ambient detail.",
+  "category": "lifestyle-documentary",
+  "tags": [
+    "lifestyle",
+    "documentary",
+    "observational"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Gentle Everyday Vlog creative treatment."
+  },
+  "display_order": 520,
+  "files": {
+    "SKILL.md": "c66f4c143bcf1f91a43db44d07b3c5632b92cb29b122b83af74a773e3b7e883c",
+    "references/script.md": "23ce23c93ab3930f39e05d1eb42e8d47650c58e1d734ebf9de5b0808e4e507ba",
+    "references/scene.md": "79b42fb76d0a9d26ea3e25177c28a826bd3eb1346854d93c332bc478a53f3844",
+    "references/storyboard.md": "67a9caa1cbb2e32b62173c0a5856ef3a73146ae19d7cc83695d11b4d2f9b7ab1",
+    "references/video.md": "913d3733518ff83edf14707aae4af6846d4e473bf97ebecdaec8ee5be4c9aeed",
+    "references/bgm.md": "4f56dbf4b6400241923281262b6c050aa64ea1e509c88750831e4c904e54e04e"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

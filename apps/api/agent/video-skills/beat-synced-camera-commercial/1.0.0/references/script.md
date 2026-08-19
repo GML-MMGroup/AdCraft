@@ -1,0 +1,1 @@
+Build the narrative premise around rhythmic camera accents, then use movement-to-cut coordination to shape escalation and visual impact beats to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

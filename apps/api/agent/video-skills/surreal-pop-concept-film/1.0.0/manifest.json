@@ -1,0 +1,36 @@
+{
+  "skill_id": "surreal-pop-concept-film",
+  "version": "1.0.0",
+  "display_name": "Surreal Pop Concept Film",
+  "description": "An advertising treatment built around impossible scale, pop color, visual metaphor, and bold object transformation.",
+  "category": "experimental-graphic",
+  "tags": [
+    "experimental",
+    "graphic",
+    "compositing"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Surreal Pop Concept Film creative treatment."
+  },
+  "display_order": 420,
+  "files": {
+    "SKILL.md": "861c2a492375e8e00a90927367ee27429f124cf50ef1517ab745255e6772b111",
+    "references/prop.md": "537fb117ceaeea9a4391b73db4d5896d741f48be3cde1f554077364eed7612ed",
+    "references/scene.md": "86dc1be4be5ea6b067682a1bdc981b632b537be0cfa52fb10bef0c7629f953c3",
+    "references/storyboard.md": "220dfbf77e506811ce7670ded8da53af8d8b51f40944072fceedf5b588023e93",
+    "references/video.md": "495ca3dd0458252b1a91a36b55e88ef493e635e131a3c881deb48c0d2ef749e4",
+    "references/quick_media.md": "52e4b6388d4f1e17da35fc16641b861392a2667c7a9c4c6287cefdaa3b0bec90"
+  },
+  "role_guidance": {
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
+  }
+}

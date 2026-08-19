@@ -3,11 +3,43 @@
 from __future__ import annotations
 
 from datetime import datetime
+import ssl
 
 from app.persistence.agent_canvas_repository import AgentCanvasWorkflowRepository
 from app.persistence.agent_canvas_runtime_repository import AgentCanvasRuntimeRepository
 from app.schemas.agent_canvas import CanvasNodeErrorV2
 from app.schemas.agent_canvas_runtime import CanvasExecutionMembershipV2
+
+
+CLOSED_MEMBER_STATES = frozenset({"succeeded", "failed", "skipped_dependency", "cancelled"})
+CLOSED_EXECUTION_STATES = frozenset({"completed", "partial_completed", "failed", "cancelled"})
+APPROVED_TRANSIENT_ERROR_CODES = frozenset(
+    {
+        "provider_poll_temporary_failure",
+        "provider_result_download_failed",
+        "provider_result_download_timeout",
+        "provider_service_unavailable",
+        "provider_transport_interrupted",
+    }
+)
+
+
+def safe_execution_error(error: Exception, *, default_code: str) -> CanvasNodeErrorV2:
+    """Classify only approved transient failures as retryable."""
+
+    transport_interrupted = isinstance(error, (ConnectionError, ssl.SSLError))
+    code = (
+        "provider_transport_interrupted"
+        if transport_interrupted
+        else str(getattr(error, "code", default_code))
+    )
+    details = getattr(error, "details", {})
+    explicitly_retryable = transport_interrupted or bool(details.get("retryable", False))
+    return CanvasNodeErrorV2(
+        code=code,
+        message=(str(error) or "Execution failed.")[:1024],
+        retryable=explicitly_retryable and code in APPROVED_TRANSIENT_ERROR_CODES,
+    )
 
 
 class AgentCanvasExecutionStateMachine:

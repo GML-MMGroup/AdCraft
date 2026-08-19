@@ -1,6 +1,5 @@
 import { Agent, type AgentEvent, type AgentTool } from "@earendil-works/pi-agent-core";
 import {
-  createAssistantMessageEventStream,
   Type,
   type AssistantMessageEventStream,
   type Context,
@@ -21,25 +20,35 @@ import {
   type AgentCredentialSnapshot,
 } from "./python-internal-client.js";
 import {
-  structuredRepairPrompt,
-  structuredSubmissionPrompt,
-} from "./prompts/agents.js";
+  AgentOperationFailure,
+  runWithOneTransportRetry,
+} from "./operation-recovery.js";
+import { PiStructuredTransportRouter } from "./pi-structured-transport.js";
+import { getPromptDescriptor } from "./prompts/registry.js";
 import {
-  getPromptDescriptor,
-  isPlanningOperation,
-} from "./prompts/registry.js";
-import {
-  getAgentDefinition,
-  getOperationDescriptor,
   toolsForOperation,
   type AgentToolName,
 } from "./registry.js";
-import { loadRequiredSkills, type LoadedSkill } from "./skills.js";
+import type { LoadedSkill } from "./skills.js";
+import {
+  contractSchemaForRequest,
+  prepareStructuredModelInput,
+  promptInputForRequest,
+  validateCredentialExecutionPolicy,
+} from "./structured-model-input.js";
+
+export {
+  promptInputForRequest,
+  validateCredentialExecutionPolicy,
+} from "./structured-model-input.js";
 
 const structuredValueSchema = Type.Record(Type.String(), Type.Unknown());
 
 export class PiModelAdapter implements AgentModelAdapter {
-  constructor(private readonly python: PythonInternalClient) {}
+  constructor(
+    private readonly python: PythonInternalClient,
+    private readonly structuredTransport = new PiStructuredTransportRouter(),
+  ) {}
 
   async run(
     request: AgentRunRequest,
@@ -48,95 +57,116 @@ export class PiModelAdapter implements AgentModelAdapter {
     budget?: RunBudget,
   ): Promise<Record<string, unknown>> {
     budget?.consumeTurn();
-    const definition = getAgentDefinition(request.agent_name);
-    if (!definition.operations.includes(request.operation)) {
-      throw new Error("agent_operation_not_allowed");
-    }
-    const promptDescriptor = isPlanningOperation(request.operation)
-      ? getPromptDescriptor(
-          request.agent_name,
-          request.operation,
-          request.contract_name ?? "",
-        )
-      : undefined;
-    if (!request.model_ref) throw new Error("agent_protocol_mismatch");
-    const credential = await this.python.credential(
-      request.credential_ref ?? "llm-default",
-      request.run_id,
-      request.agent_name,
-      request.operation,
-      request.model_policy_id,
-      request.model_ref,
-    );
-    const operationDescriptor = getOperationDescriptor(
-      request.agent_name,
-      request.operation,
-    );
-    const skills = await loadRequiredSkills(operationDescriptor);
-    const skillContext = skills
-      .map(
-        (skill) =>
-          `Skill: ${skill.skill_id}\nDigest: ${skill.sha256}\n\n${skill.content}`,
+    const prepared = await prepareStructuredModelInput(request, this.python);
+    const {
+      credential,
+      loadedSkills: skills,
+      schema,
+      systemPrompt,
+      userPrompt,
+    } = prepared;
+    let acceptedResult: Record<string, unknown> | undefined;
+    let attempts = 0;
+    let modelSubmissions = 0;
+    const maximumModelSubmissions = credential.execution_policy.max_model_submissions;
+    const maximumStructuredAttempts = 1 + credential.execution_policy.structured_repair_limit;
+    const submitStructured = async (
+      params: Readonly<Record<string, unknown>>,
+      attempt: number,
+      toolCallId: string,
+    ) => {
+      budget?.consumeToolCall();
+      attempts = Math.max(attempts, attempt);
+      if (attempt > maximumStructuredAttempts) {
+        throw new Error("agent_structured_output_invalid");
+      }
+      const result = await this.python.executeTool({
+        protocol_version: "1",
+        run_id: request.run_id,
+        tool_call_id: toolCallId,
+        idempotency_key: `${request.run_id}:structured:${attempt}`,
+        tool_name: "submit_structured_result",
+        arguments: {
+          protocol_version: "1",
+          run_id: request.run_id,
+          submission_id: `${request.run_id}:submission:${attempt}`,
+          contract_name: request.contract_name ?? "SpecialistDraft",
+          value: params,
+          attempt,
+        },
+      });
+      await emit(
+        event(request, 0, "tool_result", {
+          tool_call_id: toolCallId,
+          status: result.status,
+          error_code: result.error_code,
+        }),
+      );
+      return result;
+    };
+    if (
+      isNonStreamingStructuredTransport(
+        credential.execution_policy.structured_transport,
       )
-      .join("\n\n---\n\n");
+    ) {
+      const result = await this.structuredTransport.run({
+        credential,
+        request,
+        systemPrompt,
+        userPrompt,
+        schema,
+        signal,
+        submit: submitStructured,
+      });
+      return {
+        ...result.value,
+        agent_runtime_audit: {
+          ...agentRuntimeAuditForRequest(request, credential, skills, attempts),
+          ...result.audit,
+        },
+      };
+    }
+    if (
+      credential.execution_policy.structured_transport !== "streamed_tool_call" ||
+      !credential.execution_policy.supports_streamed_tool_calls
+    ) {
+      throw new Error("agent_model_capability_mismatch");
+    }
+    const thinkingFormat = thinkingFormatForCredential(credential);
     const model: Model<"openai-completions"> = {
       id: credential.model_id,
       name: credential.model_id,
       api: "openai-completions",
       provider: credential.provider,
       baseUrl: credential.base_url,
-      reasoning: true,
+      reasoning: credential.execution_policy.thinking_format !== "none",
       input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: 128_000,
-      maxTokens: 8_192,
+      maxTokens: credential.execution_policy.max_output_tokens,
       compat: {
         supportsDeveloperRole: false,
         supportsReasoningEffort: false,
         supportsUsageInStreaming: true,
         supportsStrictMode: true,
         maxTokensField: "max_tokens",
-        thinkingFormat: "zai",
+        ...(thinkingFormat ? { thinkingFormat } : {}),
       },
     };
-    let acceptedResult: Record<string, unknown> | undefined;
-    let attempts = 0;
     const structuredTool: AgentTool<typeof structuredValueSchema> = {
       name: "submit_structured_result",
       label: "Submit structured result",
       description: "Submit the final validated result for this operation.",
       parameters: structuredToolParameters(request),
       execute: async (toolCallId, params) => {
-        budget?.consumeToolCall();
         attempts += 1;
-        if (attempts > 2) throw new Error("agent_structured_output_invalid");
-        const result = await this.python.executeTool({
-          protocol_version: "1",
-          run_id: request.run_id,
-          tool_call_id: toolCallId,
-          idempotency_key: `${request.run_id}:structured:${attempts}`,
-          tool_name: "submit_structured_result",
-          arguments: {
-            protocol_version: "1",
-            run_id: request.run_id,
-            submission_id: `${request.run_id}:submission:${attempts}`,
-            contract_name: request.contract_name ?? "SpecialistDraft",
-            value: params,
-            attempt: attempts,
-          },
-        });
-        await emit(
-          event(request, 0, "tool_result", {
-            tool_call_id: toolCallId,
-            status: result.status,
-            error_code: result.error_code,
-          }),
-        );
+        const result = await submitStructured(params, attempts, toolCallId);
         if (result.status === "completed") {
           acceptedResult = acceptedStructuredValue(result.result);
         } else if (
-          attempts >= 2 &&
-          result.error_code === "agent_structured_output_invalid"
+          result.error_code === "agent_structured_output_invalid" &&
+          (attempts >= maximumStructuredAttempts ||
+            result.result?.repair_allowed !== true)
         ) {
           throw new Error("agent_structured_output_invalid");
         }
@@ -149,54 +179,60 @@ export class PiModelAdapter implements AgentModelAdapter {
     };
     const tools: Array<AgentTool<typeof structuredValueSchema>> = [structuredTool];
     const toolChoice = toolChoiceForRequest(request);
-    const agent = new Agent({
-      initialState: {
-        systemPrompt: [
-          promptDescriptor?.system_prompt ?? definition.system_prompt,
-          skillContext ? `Trusted skill context:\n\n${skillContext}` : "",
-          structuredSubmissionPrompt,
-          structuredRepairPrompt,
-          `Required contract: ${request.contract_name ?? "SpecialistDraft"}.`,
-          `JSON Schema: ${JSON.stringify(contractSchema(request))}`,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        model,
-        tools,
-      },
-      streamFn: (selectedModel, context, options) => {
-        const streamOptions = {
-          ...options,
-          apiKey: credential.api_key,
-          ...(toolChoice ? { toolChoice } : {}),
-        };
-        return modelStreamForCredential(
-          selectedModel as Model<"openai-completions">,
-          context,
-          streamOptions,
-          credential,
-        );
-      },
-    });
-    const eventProjection = new AgentEventProjection(() => agent.abort());
-    const unsubscribe = agent.subscribe((agentEvent) => {
-      eventProjection.add(projectOutputDelta(request, agentEvent, emit));
-    });
-    const abort = () => agent.abort();
-    signal.addEventListener("abort", abort, { once: true });
-    try {
-      let promptError: unknown;
+    const runAttempt = async (): Promise<void> => {
+      const agent = new Agent({
+        initialState: {
+          systemPrompt,
+          model,
+          tools,
+        },
+        streamFn: (selectedModel, context, options) => {
+          modelSubmissions += 1;
+          if (modelSubmissions > maximumModelSubmissions) {
+            throw new AgentOperationFailure(
+              "agent_structured_output_invalid",
+              "Agent operation exhausted its model submission budget.",
+              false,
+              "structured_repair",
+            );
+          }
+          const streamOptions = {
+            ...options,
+            apiKey: credential.api_key,
+            ...(toolChoice ? { toolChoice } : {}),
+          };
+          return modelStreamForCredential(
+            selectedModel as Model<"openai-completions">,
+            context,
+            streamOptions,
+            credential,
+          );
+        },
+      });
+      const eventProjection = new AgentEventProjection(() => agent.abort());
+      const unsubscribe = agent.subscribe((agentEvent) => {
+        eventProjection.add(projectOutputDelta(request, agentEvent, emit));
+      });
+      const abort = () => agent.abort();
+      signal.addEventListener("abort", abort, { once: true });
       try {
-        await agent.prompt(promptInputForRequest(request));
-      } catch (error) {
-        promptError = error;
+        let promptError: unknown;
+        try {
+          await agent.prompt(userPrompt);
+        } catch (error) {
+          promptError = error;
+        }
+        await eventProjection.settle();
+        if (promptError) throw promptError;
+      } finally {
+        signal.removeEventListener("abort", abort);
+        unsubscribe();
       }
-      await eventProjection.settle();
-      if (promptError) throw promptError;
-    } finally {
-      signal.removeEventListener("abort", abort);
-      unsubscribe();
-    }
+    };
+    await runWithOneTransportRetry(runAttempt, {
+      deadlineEpochMs: Date.parse(request.deadline_at),
+      canRetry: () => modelSubmissions < maximumModelSubmissions,
+    });
     if (!acceptedResult) throw new Error("agent_structured_output_invalid");
     return {
       ...acceptedResult,
@@ -211,33 +247,42 @@ export class PiModelAdapter implements AgentModelAdapter {
 
 }
 
+export function isNonStreamingStructuredTransport(
+  transport: AgentCredentialSnapshot["execution_policy"]["structured_transport"],
+): boolean {
+  return (
+    transport === "non_streaming_tool_call" ||
+    transport === "non_streaming_json_object"
+  );
+}
+
+export function thinkingFormatForCredential(
+  credential: AgentCredentialSnapshot,
+): "qwen" | "zai" | undefined {
+  const format = credential.execution_policy.thinking_format;
+  return format === "none" ? undefined : format;
+}
+
 export function modelStreamForCredential(
   model: Model<"openai-completions">,
   context: Context,
   options: SimpleStreamOptions,
   credential: AgentCredentialSnapshot,
-  sourceFactory: () => AssistantMessageEventStream = () =>
-    streamSimple(model, context, options),
+  sourceFactory?: () => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-  const source = sourceFactory();
-  if (credential.supports_streamed_tool_calls) return source;
-
-  const buffered = createAssistantMessageEventStream();
-  void (async () => {
-    const events = [];
-    for await (const candidate of source) events.push(candidate);
-    for (const candidate of events) buffered.push(candidate);
-  })();
-  return buffered;
+  if (
+    credential.execution_policy.structured_transport !== "streamed_tool_call" ||
+    !credential.execution_policy.supports_streamed_tool_calls
+  ) {
+    throw new Error("agent_model_capability_mismatch");
+  }
+  return sourceFactory?.() ?? streamSimple(model, context, options);
 }
 
 export function toolsForRequest(
   request: AgentRunRequest,
 ): ReadonlyArray<AgentToolName> {
-  if (request.audit_metadata?.tool_mode === "structured_only") {
-    return ["submit_structured_result"];
-  }
-  return toolsForOperation(request.agent_name, request.operation);
+  return toolsForOperation(request.operation);
 }
 
 export function toolChoiceForRequest(
@@ -248,12 +293,10 @@ export function toolChoiceForRequest(
       readonly function: { readonly name: "submit_structured_result" };
     }
   | undefined {
-  return request.audit_metadata?.tool_mode === "structured_only"
-    ? {
-        type: "function",
-        function: { name: "submit_structured_result" },
-      }
-    : undefined;
+  return {
+    type: "function",
+    function: { name: "submit_structured_result" },
+  };
 }
 
 export class AgentEventProjection {
@@ -284,9 +327,7 @@ export class AgentEventProjection {
 export function promptAuditForRequest(
   request: AgentRunRequest,
 ): Readonly<Record<string, string>> {
-  if (!isPlanningOperation(request.operation)) return {};
   const descriptor = getPromptDescriptor(
-    request.agent_name,
     request.operation,
     request.contract_name ?? "",
   );
@@ -334,50 +375,13 @@ export function acceptedStructuredValue(
 export function structuredToolParameters(
   request: AgentRunRequest,
 ): typeof structuredValueSchema {
-  const schema = contractSchema(request);
+  const schema = contractSchemaForRequest(request);
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     return structuredValueSchema;
   }
   return Type.Unsafe<Record<string, unknown>>(
     schema,
   ) as unknown as typeof structuredValueSchema;
-}
-
-function contractSchema(request: AgentRunRequest): Readonly<Record<string, unknown>> {
-  if (
-    request.contract_schema &&
-    typeof request.contract_schema === "object" &&
-    !Array.isArray(request.contract_schema)
-  ) {
-    return request.contract_schema;
-  }
-  return "contract_schema" in request.context &&
-    request.context.contract_schema &&
-    typeof request.context.contract_schema === "object" &&
-    !Array.isArray(request.context.contract_schema)
-    ? request.context.contract_schema
-    : {};
-}
-
-export function promptInputForRequest(request: AgentRunRequest): string {
-  const primaryInput =
-    "user_input" in request.context
-      ? request.context.user_input
-      : "user_instruction" in request.context
-        ? request.context.user_instruction
-        : "original_user_intent" in request.context
-          ? request.context.original_user_intent
-          : undefined;
-  if (!primaryInput) throw new Error("agent_context_input_missing");
-  if (!("context_kind" in request.context)) return primaryInput;
-
-  const typedContext = Object.fromEntries(
-    Object.entries(request.context).filter(([key]) => key !== "contract_schema"),
-  );
-  return [
-    `User request:\n${primaryInput}`,
-    `Validated typed operation context:\n${JSON.stringify(typedContext)}`,
-  ].join("\n\n");
 }
 
 async function projectOutputDelta(

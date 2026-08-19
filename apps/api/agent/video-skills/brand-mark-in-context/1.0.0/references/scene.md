@@ -1,0 +1,1 @@
+Construct spaces that express brand-shape echoes through layout and environmental integration through light, color, and material. Use reveal and recognition hierarchy to direct attention toward the advertised subject while preserving the stated location and product context.

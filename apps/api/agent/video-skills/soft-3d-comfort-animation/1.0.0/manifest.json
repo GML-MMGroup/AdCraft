@@ -1,0 +1,36 @@
+{
+  "skill_id": "soft-3d-comfort-animation",
+  "version": "1.0.0",
+  "display_name": "Soft 3D Comfort Animation",
+  "description": "An advertising treatment built around rounded proportions, tactile soft materials, warm light, and gentle emotional action.",
+  "category": "animation-illustration",
+  "tags": [
+    "animation",
+    "illustration",
+    "motion"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Soft 3D Comfort Animation creative treatment."
+  },
+  "display_order": 320,
+  "files": {
+    "SKILL.md": "877313910f67eb020bbbccf12f9538ef7f64266b64e41216d198a8a2e0d16f71",
+    "references/character.md": "fec30d7a6efdda9eee6d5d6f974c0d5a35aee79a7c0626629235c7108b87cae3",
+    "references/scene.md": "30f84e02f5a409b995f9aab9b1513a66990400d1182509156c93f62ffbfc2b97",
+    "references/storyboard.md": "19d4c075d40f0e4cb6686aef65ac9f1cab26ea6b10ff23adb4b310d55fbdcd9d",
+    "references/video.md": "7e9abfb84e2ef30202d540121c22f68dd4a099a83ab9ed91672195657252a0c9",
+    "references/quick_media.md": "66205b2af2d4b726fa6103a2800af62f946c82c91658db6c63b297de115603a5"
+  },
+  "role_guidance": {
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
+  }
+}

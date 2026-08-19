@@ -1,0 +1,378 @@
+"""Deterministic compiler for typed Agent Canvas role briefs."""
+
+from __future__ import annotations
+
+from hashlib import sha256
+import json
+
+from app.persistence.errors import V2PersistenceError
+from app.schemas.agent_canvas_ad_media import (
+    BgmContentV2,
+    CharacterDesignAssetContentV2,
+    DesignAssetContentV2,
+    SceneBoardPanelV2,
+    SceneDesignBoardContentV2,
+    StoryboardGridContentV2,
+    StoryboardPanelV2,
+    VideoSegmentContentV2,
+    VisualStyleContractV2,
+)
+from app.schemas.agent_canvas_role_prompt_preparation import (
+    BgmRoleBriefV2,
+    CharacterMainRoleBriefV2,
+    CharacterTurnaroundRoleBriefV2,
+    CompiledNodePromptV2,
+    FreeMediaRoleBriefV2,
+    ProductMainRoleBriefV2,
+    ProductMultiviewRoleBriefV2,
+    PropRoleBriefV2,
+    ResolvedNodeParameterV2,
+    RoleCreativeBriefV2,
+    RoleCreativeBriefMemberV2,
+    RolePromptPreparationContextV2,
+    SceneBoardRoleBriefV2,
+    ScriptRoleBriefV2,
+    StoryboardGridRoleBriefV2,
+    VideoSegmentRoleBriefV2,
+    WorldViewRoleBriefV2,
+)
+from app.services.agent_canvas_role_prompt_recipes import RolePromptRecipeRegistry
+from app.schemas.agent_canvas_world_setting import (
+    WorldSettingAuthoringProvenanceV2,
+    WorldSettingCoreV2,
+    WorldSettingDocumentV2,
+)
+
+
+class AgentCanvasRolePromptCompiler:
+    """Compile stable provider-neutral prompts from one strict role brief."""
+
+    def __init__(self, registry: RolePromptRecipeRegistry | None = None) -> None:
+        self._registry = registry or RolePromptRecipeRegistry()
+
+    def compile(
+        self,
+        brief: RoleCreativeBriefV2 | RoleCreativeBriefMemberV2,
+        context: RolePromptPreparationContextV2,
+        *,
+        parameters: tuple[ResolvedNodeParameterV2, ...] = (),
+    ) -> CompiledNodePromptV2:
+        concrete_brief = brief.root if isinstance(brief, RoleCreativeBriefV2) else brief
+        if concrete_brief.role_variant != context.role_variant:
+            raise _error("node_prompt_brief_invalid", "Role brief variant does not match context.")
+        recipe = self._registry.resolve(context.role_variant)
+        self._validate_required_references(recipe.reference_purposes, context)
+        prompt, negative = _render(concrete_brief)
+        if context.style_projection:
+            prompt = f"{prompt} Visual style: {context.style_projection.strip()}"
+        if context.world_view_projection and "world_view" in recipe.allowed_context_selectors:
+            prompt = f"{prompt} Applicable world rules: {context.world_view_projection.strip()}"
+        structured = _structured_content(concrete_brief, context)
+        context_payload = context.model_dump(mode="json")
+        brief_payload = concrete_brief.model_dump(mode="json")
+        references = tuple(item.reference_purpose for item in context.bindings)
+        context_digest = _digest(context_payload)
+        reference_digest = _digest([item.model_dump(mode="json") for item in context.bindings])
+        style_digest = _digest(context.style_projection or "")
+        brief_digest = _digest(brief_payload)
+        prompt_digest = _digest({"prompt": prompt, "negative_prompt": negative})
+        return CompiledNodePromptV2(
+            role_variant=context.role_variant,
+            recipe_id=recipe.recipe_id,
+            recipe_version=recipe.recipe_version,
+            recipe_digest=recipe.recipe_digest,
+            context_digest=context_digest,
+            reference_bundle_digest=reference_digest,
+            style_projection_digest=style_digest,
+            brief_digest=brief_digest,
+            prompt_digest=prompt_digest,
+            prompt=prompt,
+            negative_prompt=negative,
+            structured_content=structured,
+            parameters=parameters,
+            reference_purposes=references,
+        )
+
+    @staticmethod
+    def _validate_required_references(
+        required: tuple[str, ...],
+        context: RolePromptPreparationContextV2,
+    ) -> None:
+        available = {item.reference_purpose for item in context.bindings}
+        for purpose in required:
+            if purpose == "identity_reference":
+                continue
+            if purpose not in available:
+                raise _error(
+                    "node_prompt_required_reference_missing",
+                    "A required exact role reference is missing.",
+                )
+
+
+def _render(brief: RoleCreativeBriefMemberV2) -> tuple[str, str]:
+    if isinstance(brief, WorldViewRoleBriefV2):
+        return (
+            f"World premise: {brief.premise} Era and place: {brief.era_and_place}. "
+            f"World rules: {'; '.join(brief.world_rules)}. Visual continuity: "
+            f"{'; '.join(brief.visual_continuity)}.",
+            "No complete script, shot list, provider syntax, or hidden topology.",
+        )
+    if isinstance(brief, ProductMultiviewRoleBriefV2):
+        return (
+            f"Use the exact bound Product Main as identity authority. Preserve {brief.identity}; "
+            f"geometry: {brief.geometry}; materials: {brief.materials}; marks: {brief.marks}; "
+            f"palette: {brief.palette}. Render {', '.join(brief.views)} on a clean neutral "
+            "studio background.",
+            "No people, hands, active use, application scene, unrelated prop, labels, captions, "
+            "storyboard layout, or Product Main prompt reuse.",
+        )
+    if isinstance(brief, ProductMainRoleBriefV2):
+        return (
+            f"Create one isolated product identity on a clean neutral studio background. "
+            f"Identity: {brief.identity}. Geometry: {brief.geometry}. Materials: "
+            f"{brief.materials}. Brand marks: {brief.marks}. Palette: {brief.palette}.",
+            "No people, hands, active use, application scene, narrative environment, accessory "
+            "clutter, unrelated props, labels, captions, or storyboard layout.",
+        )
+    if isinstance(brief, PropRoleBriefV2):
+        return (
+            f"Create one isolated prop on a clean neutral studio background. Identity: "
+            f"{brief.identity}. Form: {brief.form}. Materials: {brief.materials}. Palette: "
+            f"{brief.palette}.",
+            "No people, products, active scene, unrelated objects, text, labels, or board layout.",
+        )
+    if isinstance(brief, CharacterTurnaroundRoleBriefV2):
+        return (
+            "Use the exact bound Character Main as identity authority. Create the same detailed "
+            "semi-realistic commercial illustration in front, side, and back full-body views. "
+            f"Identity: {brief.identity}. Face and hair: {brief.face_and_hair}. Proportions: "
+            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
+            f"{brief.accessories}.",
+            "No photorealistic human, identity drift, labels, captions, text, product, scene, "
+            "second person, or alternate wardrobe.",
+        )
+    if isinstance(brief, CharacterMainRoleBriefV2):
+        return (
+            "Create one full-body detailed semi-realistic commercial illustration on a clean "
+            f"neutral background. Identity: {brief.identity}. Face and hair: "
+            f"{brief.face_and_hair}. Silhouette and proportions: "
+            f"{brief.silhouette_and_proportions}. Wardrobe: {brief.wardrobe}. Accessories: "
+            f"{brief.accessories}.",
+            "No photograph, photorealistic human, product, active scene, second person, text, "
+            "labels, captions, or board layout.",
+        )
+    if isinstance(brief, SceneBoardRoleBriefV2):
+        return (
+            "Create one text-free 3x3 environment board of the same coherent environment. "
+            f"Identity: {brief.environment_identity}. Spatial logic: {brief.spatial_logic}. "
+            f"Lighting: {brief.lighting}. Materials: {brief.materials}. Atmosphere: "
+            f"{brief.atmosphere}. Views: {'; '.join(brief.views)}.",
+            "No active character, product, prop interaction, narrative action, plot progression, "
+            "captions, labels, panel numbers, or unrelated environment.",
+        )
+    if isinstance(brief, ScriptRoleBriefV2):
+        return (
+            f"Editable narrative: {brief.narrative}. Timing: {brief.timing}. Dialogue: "
+            f"{brief.dialogue}. Voiceover: {brief.voiceover}.",
+            "No provider rendering syntax or final shot-grid layout.",
+        )
+    if isinstance(brief, StoryboardGridRoleBriefV2):
+        return (
+            "Create one complete text-free 3x3 Storyboard Sequence with exactly nine ordered "
+            f"visual beats. Sequence: {brief.sequence_summary}. Beats: "
+            f"{'; '.join(brief.beats)}. Visual language: {brief.visual_language}.",
+            "No captions, labels, panel numbers, speech bubbles, provider prompt reuse, or beats "
+            "from another Sequence.",
+        )
+    if isinstance(brief, VideoSegmentRoleBriefV2):
+        return (
+            f"Create one {brief.duration_seconds:g}-second video segment. "
+            f"{brief.segment_summary} Action: {brief.action}. Dialogue: {brief.dialogue}. "
+            f"Voiceover: {brief.voiceover}. Ambience: {brief.ambience}. Synchronized action "
+            f"effects: {brief.action_effects}. Target output style: {brief.target_style}.",
+            "No background music, identity drift, unrelated action, or visible text.",
+        )
+    if isinstance(brief, BgmRoleBriefV2):
+        return (
+            f"Create pure instrumental advertising music for {brief.duration_seconds:g} seconds. "
+            f"{brief.music_summary} Pace: {brief.pace}. Energy curve: {brief.energy_curve}. "
+            f"Instrumentation: {brief.instrumentation}. Mood: {brief.mood}.",
+            "No vocals, lyrics, speech, dialogue, voiceover, ambience, or action effects.",
+        )
+    if isinstance(brief, FreeMediaRoleBriefV2):
+        return brief.prompt, "No undeclared identities, references, or hidden context."
+    raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
+
+
+def _structured_content(
+    brief: RoleCreativeBriefMemberV2,
+    context: RolePromptPreparationContextV2,
+) -> dict[str, object]:
+    style = VisualStyleContractV2(
+        style_prompt=(
+            context.style_projection or "Detailed semi-realistic advertising illustration"
+        ),
+        source="video_skill" if context.style_projection else "platform_default",
+    )
+    if isinstance(brief, WorldViewRoleBriefV2):
+        content = (
+            f"{brief.premise}\n\nEra and place: {brief.era_and_place}\n"
+            f"World rules: {'; '.join(brief.world_rules)}\n"
+            f"Visual continuity: {'; '.join(brief.visual_continuity)}"
+        )
+        return WorldSettingDocumentV2(
+            content=content,
+            core=WorldSettingCoreV2(
+                premise=brief.premise,
+                era_and_place=brief.era_and_place,
+                world_rules=brief.world_rules,
+                visual_continuity=brief.visual_continuity,
+            ),
+            authoring_provenance=WorldSettingAuthoringProvenanceV2(
+                source_proposal_id=context.requirement_revision_id,
+                source_option_id=context.node_id,
+                materialization_run_id=(f"role-prompt:{context.node_id}:{context.node_revision}"),
+            ),
+        ).model_dump(mode="json")
+    if isinstance(brief, ProductMultiviewRoleBriefV2):
+        return DesignAssetContentV2(
+            asset_kind="multi_view",
+            subject_identity=brief.identity,
+            design_summary="; ".join((brief.geometry, brief.materials, brief.marks, brief.palette)),
+            style=style,
+            explicit_inclusions=brief.views,
+            negative_constraints=("application scene", "main prompt reuse", "text"),
+        ).model_dump(mode="json")
+    if isinstance(brief, ProductMainRoleBriefV2):
+        return DesignAssetContentV2(
+            asset_kind="main",
+            subject_identity=brief.identity,
+            design_summary="; ".join((brief.geometry, brief.materials, brief.marks, brief.palette)),
+            style=style,
+            negative_constraints=("people", "application scene", "text"),
+        ).model_dump(mode="json")
+    if isinstance(brief, PropRoleBriefV2):
+        return DesignAssetContentV2(
+            subject_identity=brief.identity,
+            design_summary="; ".join((brief.form, brief.materials, brief.palette)),
+            style=style,
+            negative_constraints=("people", "products", "active scene", "text"),
+        ).model_dump(mode="json")
+    if isinstance(brief, CharacterTurnaroundRoleBriefV2):
+        return CharacterDesignAssetContentV2(
+            subject_identity=brief.identity,
+            design_summary="; ".join(
+                (
+                    brief.face_and_hair,
+                    brief.silhouette_and_proportions,
+                    brief.wardrobe,
+                    brief.accessories,
+                )
+            ),
+            style=style,
+            explicit_inclusions=brief.views,
+            negative_constraints=("photorealistic human", "text", "identity drift"),
+            character_asset_kind="turnaround",
+        ).model_dump(mode="json")
+    if isinstance(brief, CharacterMainRoleBriefV2):
+        return CharacterDesignAssetContentV2(
+            subject_identity=brief.identity,
+            design_summary="; ".join(
+                (
+                    brief.face_and_hair,
+                    brief.silhouette_and_proportions,
+                    brief.wardrobe,
+                    brief.accessories,
+                )
+            ),
+            style=style,
+            negative_constraints=("photorealistic human", "text", "identity drift"),
+            character_asset_kind="identity_master",
+        ).model_dump(mode="json")
+    if isinstance(brief, SceneBoardRoleBriefV2):
+        panels = tuple(
+            SceneBoardPanelV2(
+                panel_index=index,
+                view_or_zone=view,
+                spatial_description=f"{brief.spatial_logic} View: {view}.",
+                lighting_material_detail=f"{brief.lighting} {brief.materials}",
+            )
+            for index, view in enumerate(brief.views, start=1)
+        )
+        return SceneDesignBoardContentV2(
+            scene_identity=brief.environment_identity,
+            environment_summary=f"{brief.spatial_logic} {brief.atmosphere}",
+            layout="Nine distinct views of one coherent environment.",
+            lighting=brief.lighting,
+            materials=brief.materials,
+            time_of_day="Use the accepted scene time of day.",
+            style=style,
+            panels=panels,
+        ).model_dump(mode="json")
+    if isinstance(brief, ScriptRoleBriefV2):
+        return {
+            "content": (
+                f"{brief.narrative}\n\nTiming: {brief.timing}\n"
+                f"Dialogue: {brief.dialogue}\nVoiceover: {brief.voiceover}"
+            )
+        }
+    if isinstance(brief, StoryboardGridRoleBriefV2):
+        panels = tuple(
+            StoryboardPanelV2(
+                panel_index=index,
+                beat=beat,
+                composition=f"Composition for ordered beat {index}.",
+                camera=f"Camera setup for ordered beat {index}.",
+                subject_action=beat,
+                continuity_from_previous=(
+                    "Opening state." if index == 1 else f"Continue from beat {index - 1}."
+                ),
+            )
+            for index, beat in enumerate(brief.beats, start=1)
+        )
+        return StoryboardGridContentV2(
+            sequence_summary=brief.sequence_summary,
+            narrative_goal=brief.sequence_summary,
+            style=style,
+            panels=panels,
+        ).model_dump(mode="json")
+    if isinstance(brief, VideoSegmentRoleBriefV2):
+        return VideoSegmentContentV2(
+            segment_summary=brief.segment_summary,
+            duration_seconds=brief.duration_seconds,
+            storyboard_content=brief.action,
+            dialogue=brief.dialogue,
+            voice_style=brief.voiceover,
+            environment_sound=brief.ambience,
+            action_effects=brief.action_effects,
+            negative_constraints="No background music or identity drift.",
+        ).model_dump(mode="json")
+    if isinstance(brief, BgmRoleBriefV2):
+        return BgmContentV2(
+            music_summary=brief.music_summary,
+            duration_seconds=brief.duration_seconds,
+            pace=brief.pace,
+            energy_curve=brief.energy_curve,
+            instrumentation=brief.instrumentation,
+            mood=brief.mood,
+        ).model_dump(mode="json")
+    if isinstance(brief, FreeMediaRoleBriefV2):
+        content: dict[str, object] = {"prompt": brief.prompt}
+        if brief.role_variant == "free_video":
+            content["background_music"] = False
+        return content
+    raise _error("node_prompt_brief_invalid", "Role brief is unsupported.")
+
+
+def _digest(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _error(code: str, message: str) -> V2PersistenceError:
+    return V2PersistenceError(code, message, stage="agent_canvas_role_prompt_compiler")

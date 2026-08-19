@@ -4,7 +4,9 @@ import { ChevronDownIcon, ChevronRightIcon, DownloadIcon } from "../icons";
 import {
   DEFAULT_REGION_SETTINGS,
   FONT_CATALOG,
+  HANDWRITTEN_FONT_COLLECTIONS,
   TYPOGRAPHY_REGION_DEFINITIONS,
+  getFontsForRegion,
   resetAllRegionSettings,
   resetRegionSettings,
   type FontCatalogEntry,
@@ -57,12 +59,20 @@ function previewStyle(settings: Record<TypographyRegionId, TypographyRegionSetti
   }, {});
 }
 
-function fontGroups() {
-  return (Object.keys(fontSourceLabels) as Array<FontCatalogEntry["source"]>).map((source) => ({
-    source,
+function fontGroups(regionId: TypographyRegionId) {
+  const fonts = getFontsForRegion(regionId);
+  const sourceGroups = (Object.keys(fontSourceLabels) as Array<FontCatalogEntry["source"]>).map((source) => ({
+    id: source,
     label: fontSourceLabels[source],
-    fonts: FONT_CATALOG.filter((font) => font.source === source),
+    fonts: fonts.filter((font) => !font.collection && font.source === source),
   }));
+  const handwrittenGroups = HANDWRITTEN_FONT_COLLECTIONS.map((collection) => ({
+    id: collection.id,
+    label: collection.label,
+    fonts: fonts.filter((font) => font.collection === collection.id),
+  }));
+
+  return [...sourceGroups, ...handwrittenGroups].filter((group) => group.fonts.length > 0);
 }
 
 export function HomeTypographyLabPage() {
@@ -81,7 +91,8 @@ export function HomeTypographyLabPage() {
 
   const selectedSettings = settings[selectedRegionId];
   const selectedFont = findFont(selectedSettings.fontId);
-  const groups = useMemo(fontGroups, []);
+  const availableFonts = useMemo(() => getFontsForRegion(selectedRegionId), [selectedRegionId]);
+  const groups = useMemo(() => fontGroups(selectedRegionId), [selectedRegionId]);
   const canTransform = ["navigation", "heroAction", "cardMeta"].includes(selectedRegionId);
 
   useEffect(() => {
@@ -153,9 +164,9 @@ export function HomeTypographyLabPage() {
   }
 
   function moveFontFocus(currentFontId: string, direction: -1 | 1) {
-    const currentIndex = FONT_CATALOG.findIndex((font) => font.id === currentFontId);
-    const nextIndex = (currentIndex + direction + FONT_CATALOG.length) % FONT_CATALOG.length;
-    focusFontOption(FONT_CATALOG[nextIndex].id);
+    const currentIndex = availableFonts.findIndex((font) => font.id === currentFontId);
+    const nextIndex = (currentIndex + direction + availableFonts.length) % availableFonts.length;
+    focusFontOption(availableFonts[nextIndex].id);
   }
 
   function resetSelectedRegion() {
@@ -270,8 +281,8 @@ export function HomeTypographyLabPage() {
                     }
                   }}
                 >
-                  {groups.map(({ source, label, fonts }) => (
-                    <div className="home-typography-lab__font-group" key={source} role="group" aria-label={label}>
+                  {groups.map(({ id, label, fonts }) => (
+                    <div className="home-typography-lab__font-group" key={id} role="group" aria-label={label}>
                       <span>{label}</span>
                       {fonts.map((font) => {
                         const isSelected = font.id === selectedFont.id;
@@ -298,11 +309,11 @@ export function HomeTypographyLabPage() {
                               }
                               if (event.key === "Home") {
                                 event.preventDefault();
-                                focusFontOption(FONT_CATALOG[0].id);
+                                focusFontOption(availableFonts[0].id);
                               }
                               if (event.key === "End") {
                                 event.preventDefault();
-                                focusFontOption(FONT_CATALOG.at(-1)?.id ?? font.id);
+                                focusFontOption(availableFonts.at(-1)?.id ?? font.id);
                               }
                             }}
                           >

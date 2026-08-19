@@ -13,6 +13,7 @@ from app.persistence.agent_canvas_conversation_repository import (
 from app.persistence.errors import V2PersistenceError
 from app.persistence.project_repository import ProjectRepository
 from app.schemas.agent_canvas import (
+    ActiveStyleSkillSummaryV2,
     AgentCanvasWorkflowV2,
     ProjectCreateRequestV2,
     ProjectCreateResponseV2,
@@ -26,8 +27,8 @@ from app.schemas.workflow_v2_projects import (
     ProjectV2Summary,
 )
 from app.services.agent_canvas_assets import AgentCanvasAssetService
-from app.services.agent_canvas_creative_direction import CreativeDirectionService
-from app.services.agent_canvas_video_skills import VideoSkillRegistry
+from app.schemas.agent_canvas_conversation import VideoSkillRunCreateRequestV2
+from app.services.agent_canvas_style_activation import StyleSkillActivationService
 
 
 class AgentCanvasProjectService:
@@ -39,13 +40,13 @@ class AgentCanvasProjectService:
         workflows: AgentCanvasWorkflowRepository,
         assets: AgentCanvasAssetService,
         conversations: AgentCanvasConversationRepository,
-        video_skills: VideoSkillRegistry,
+        style_activation: StyleSkillActivationService,
     ) -> None:
         self._projects = projects
         self._workflows = workflows
         self._assets = assets
         self._conversations = conversations
-        self._video_skills = video_skills
+        self._style_activation = style_activation
 
     def create(
         self,
@@ -62,7 +63,6 @@ class AgentCanvasProjectService:
         ).hexdigest()
         identity = hashlib.sha256(idempotency_key.encode()).hexdigest()[:16]
         now = datetime.now(timezone.utc).isoformat()
-        initial_skill = self._video_skills.load("platform-default", "1")
         workflow = self._workflows.create_empty(
             project=ProjectCreate(
                 project_id=f"proj_{identity}",
@@ -75,15 +75,18 @@ class AgentCanvasProjectService:
             idempotency_key=idempotency_key,
             request_fingerprint=fingerprint,
         )
-        skill_run = self._conversations.get_active_style_skill_run(workflow.workflow_id)
-        CreativeDirectionService().ensure_snapshot(
-            self._conversations,
-            skill_run,
-            initial_skill,
+        skill_run = self._style_activation.activate(
+            workflow.workflow_id,
+            VideoSkillRunCreateRequestV2(
+                skill_id="platform-default",
+                skill_version="1.0.0",
+            ),
+            idempotency_key=f"create-project:{idempotency_key}",
         )
+        active_workflow = self.get_workflow(workflow.workflow_id)
         return ProjectCreateResponseV2.model_validate(
             {
-                **workflow.model_dump(),
+                **active_workflow.model_dump(),
                 "active_style_skill_run_id": skill_run.skill_run_id,
                 "guidance_session_id": None,
             }
@@ -154,6 +157,26 @@ class AgentCanvasProjectService:
 
     def get_workflow(self, workflow_id: str) -> AgentCanvasWorkflowV2:
         workflow = self._workflows.get_workflow(workflow_id)
+        skill_run = self._conversations.get_active_style_skill_run(workflow_id)
+        if (
+            skill_run.active_creative_direction_snapshot_id is None
+            or skill_run.public_skill is None
+        ):
+            raise V2PersistenceError(
+                "style_skill_snapshot_invalid",
+                "The active Style Skill snapshot is incomplete.",
+                stage="agent_canvas_project_read",
+            )
+        public_skill = skill_run.public_skill
+        active_style_skill = ActiveStyleSkillSummaryV2(
+            skill_run_id=skill_run.skill_run_id,
+            skill_id=skill_run.skill_id,
+            skill_version=skill_run.skill_version,
+            title=public_skill.title,
+            summary=public_skill.summary,
+            category=public_skill.category,
+            creative_direction_snapshot_id=(skill_run.active_creative_direction_snapshot_id),
+        )
         asset_ids = {
             node.output_asset_id for node in workflow.nodes if node.output_asset_id is not None
         }
@@ -169,4 +192,9 @@ class AgentCanvasProjectService:
             except V2PersistenceError as error:
                 if error.code != "asset_not_found":
                     raise
-        return workflow.model_copy(update={"assets": tuple(assets)})
+        return workflow.model_copy(
+            update={
+                "assets": tuple(assets),
+                "active_style_skill": active_style_skill,
+            }
+        )

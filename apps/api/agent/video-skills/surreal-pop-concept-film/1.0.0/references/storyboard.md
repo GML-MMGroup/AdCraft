@@ -1,0 +1,1 @@
+Organize shots around impossible scale, develop visual progression through pop color, and reserve visual metaphor for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

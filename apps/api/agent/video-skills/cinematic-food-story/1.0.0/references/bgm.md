@@ -1,0 +1,1 @@
+Shape an adaptable instrumental arc around ingredient texture and process progression. Let texture and energy support steam and sound detail without masking dialogue, natural ambience, or synchronous craft sounds, and keep timing responsive to the finished edit.

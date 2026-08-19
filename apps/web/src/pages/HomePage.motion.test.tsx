@@ -60,7 +60,7 @@ describe("HomePage motion", () => {
   beforeEach(() => {
     startNewProject.mockReset();
     IntersectionObserverMock.instances = [];
-    document.documentElement.dataset.theme = "light";
+    document.documentElement.removeAttribute("data-theme");
     vi.stubGlobal("IntersectionObserver", IntersectionObserverMock);
   });
 
@@ -74,7 +74,7 @@ describe("HomePage motion", () => {
     }
   });
 
-  it("stages one continuous character wave across the three title lines", () => {
+  it("renders the title as three complete lines for the character reveal", () => {
     render(<HomePage navigate={vi.fn()} />);
 
     const title = screen.getByRole("heading", {
@@ -85,29 +85,15 @@ describe("HomePage motion", () => {
       title.querySelectorAll<HTMLElement>(".home-product-hero__title-line"),
     );
 
-    expect(lines.map((line) => line.textContent)).toEqual([
+    expect(lines.slice(0, 2).map((line) => line.textContent?.replace(/\u00a0/g, " "))).toEqual([
       "ONE SENTENCE",
       "BECOMES AN",
-      "Ad film.",
     ]);
 
-    const characters = Array.from(
-      title.querySelectorAll<HTMLElement>(".home-product-hero__character"),
-    );
-    expect(characters).toHaveLength(30);
-    expect(
-      characters.map((character) => character.dataset.characterIndex),
-    ).toEqual(Array.from({ length: 30 }, (_, index) => String(index)));
-    expect(
-      characters.slice(0, 4).map((character) => (
-        character.style.getPropertyValue("--home-character-delay")
-      )),
-    ).toEqual(["80ms", "108ms", "136ms", "164ms"]);
-    expect(
-      characters.at(-1)?.style.getPropertyValue("--home-character-delay"),
-    ).toBe("892ms");
-    expect(lines[2]?.querySelectorAll(".home-product-hero__glyph")).toHaveLength(8);
     expect(lines[2]?.getAttribute("data-accent-text")).toBe("Ad film.");
+    expect(lines[2]?.getAttribute("data-home-hero-accent-reveal")).toBe("diagonal");
+    expect(lines[2]?.querySelector("svg")).toBeNull();
+    expect(title.querySelectorAll(".home-product-hero__character")).toHaveLength(0);
   });
 
   it("starts the hero motion only after fonts and two paint frames are ready", async () => {
@@ -120,7 +106,12 @@ describe("HomePage motion", () => {
         }),
       },
     });
+    let heroPaintFrames = 0;
     const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      if (callback.name === "render") {
+        return requestFrame.mock.calls.length;
+      }
+      heroPaintFrames += 1;
       callback(0);
       return requestFrame.mock.calls.length;
     });
@@ -143,7 +134,7 @@ describe("HomePage motion", () => {
       await Promise.resolve();
     });
 
-    expect(requestFrame).toHaveBeenCalledTimes(2);
+    expect(heroPaintFrames).toBe(2);
     expect(hero?.classList.contains("is-motion-ready")).toBe(true);
   });
 
@@ -238,9 +229,9 @@ describe("HomePage motion", () => {
     expect(IntersectionObserverMock.instances).toHaveLength(0);
   });
 
-  it("uses compositor-friendly entrance animations with reduced-motion coverage", () => {
+  it("queues title lines from opposite edges without collision effects", () => {
     expect(styles).toMatch(
-      /\.home-product-hero__character\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*translate3d\(0,\s*0,\s*0\);/s,
+      /\.home-product-hero__title-line\s*\{[^}]*filter:\s*none;[^}]*white-space:\s*nowrap;/s,
     );
     expect(styles).toMatch(
       /\.home-product-hero__description\s*\{[^}]*opacity:\s*1;/s,
@@ -249,15 +240,37 @@ describe("HomePage motion", () => {
       /\.home-product-film\s*\{[^}]*opacity:\s*1;/s,
     );
     expect(styles).toMatch(
-      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__character\s*\{[^}]*animation:[^;}]*home-hero-character-wave/s,
+      /\.home-product-hero__title-character__glyph\s*\{[^}]*opacity:\s*1;[^}]*transform:\s*none;/s,
     );
     expect(styles).toMatch(
-      /@keyframes home-hero-character-wave\s*\{[\s\S]*?translate3d\(0,\s*0,\s*0\)[\s\S]*?translate3d\(0,\s*-4px,\s*0\)[\s\S]*?translate3d\(0,\s*2px,\s*0\)/,
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__title-line\[data-home-hero-queue-ready="true"\]\s+\.home-product-hero__title-character__glyph\s*\{[^}]*home-hero-character-queue-enter[^}]*calc\(var\(--home-hero-line-delay\) \+ var\(--home-hero-character-index\) \* var\(--home-hero-character-stagger\)\)/s,
     );
-    expect(styles).not.toMatch(/home-hero-line-wave/);
+    expect(styles).toMatch(
+      /@keyframes home-hero-character-queue-enter\s*\{[\s\S]*?translateX\(var\(--home-hero-character-start-offset\)\)[\s\S]*?transform:\s*none;/,
+    );
     expect(styles).not.toMatch(
-      /\.home-product-hero__character\s*\{[^}]*will-change:/s,
+      /home-hero-spotlight-focus/,
     );
+    expect(styles).not.toContain("home-hero-character-queue-collide");
+    expect(styles).not.toContain("home-hero-character-bump-target");
+    expect(styles).not.toContain("home-hero-character-collision-offset");
+    expect(styles).toMatch(
+      /\.home-product-hero\s*\{[^}]*--home-hero-character-stagger:\s*250ms;[^}]*--home-hero-accent-start-delay:\s*3020ms;/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-enabled \.home-product-hero__description\s*\{[^}]*opacity:\s*0;[^}]*filter:\s*blur\(10px\);/s,
+    );
+    expect(styles).toMatch(
+      /\.home-product-hero\.is-motion-ready \.home-product-hero__description\s*\{[^}]*home-hero-body-fade[^}]*var\(--home-hero-accent-start-delay\)/s,
+    );
+    expect(styles).toMatch(
+      /@keyframes home-hero-body-fade\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?filter:\s*blur\(10px\);[\s\S]*?opacity:\s*1;[\s\S]*?filter:\s*blur\(0\);/,
+    );
+    expect(styles).not.toMatch(
+      /\.home-product-hero\.is-motion-ready\s+\.home-product-hero__(create-stage|film)\s*\{/,
+    );
+    expect(styles).not.toContain("home-hero-support-in");
+    expect(styles).not.toContain("home-hero-media-in");
     expect(styles).toMatch(
       /\.home-reveal-section\[data-reveal-state="pending"\][\s\S]*?opacity:\s*0;/,
     );
@@ -265,12 +278,11 @@ describe("HomePage motion", () => {
       /\.home-reveal-section\[data-reveal-state="visible"\][\s\S]*?opacity:\s*1;/,
     );
     expect(styles).toMatch(
-      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;/,
+      /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.home-product-hero__title-character[\s\S]*?animation:\s*none !important;[\s\S]*?opacity:\s*1 !important;[\s\S]*?transform:\s*none !important;/,
     );
   });
 
   it("does not mount an animated cosmic layer over the shared static background", () => {
-    document.documentElement.dataset.theme = "dark";
     const view = render(<HomePage navigate={vi.fn()} />);
 
     expect(

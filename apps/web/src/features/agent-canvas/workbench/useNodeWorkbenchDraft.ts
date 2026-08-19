@@ -41,18 +41,18 @@ function errorState(error: unknown): { message: string; action: WorkbenchErrorAc
 }
 
 function structuredText(node: CanvasNodeV2): string {
-  const preferredKey = node.node_type === "script" ? "script_text" : "content";
-  const preferred = node.structured_content[preferredKey];
+  const preferred = node.structured_content.content;
   if (typeof preferred === "string") return preferred;
-  const fallback = node.node_type === "script"
-    ? node.structured_content.content
-    : node.structured_content.text;
+  const legacyScript = node.structured_content.script_text;
+  if (typeof legacyScript === "string") return legacyScript;
+  const fallback = node.structured_content.text;
   return typeof fallback === "string" ? fallback : "";
 }
 
 export function useNodeWorkbenchDraft({
   workflow,
   node,
+  visibleStatus,
   patchNode,
   onRun,
   onSaveVariation,
@@ -63,6 +63,7 @@ export function useNodeWorkbenchDraft({
   AgentCanvasInlineWorkbenchProps,
   | "workflow"
   | "node"
+  | "visibleStatus"
   | "patchNode"
   | "onRun"
   | "onSaveVariation"
@@ -103,9 +104,18 @@ export function useNodeWorkbenchDraft({
   const draftNodeIdRef = useRef(node.node_id);
 
   const isReadyMedia = ["image", "video", "audio"].includes(node.node_type) && node.status === "ready";
-  const editsTextContent = node.node_type === "text" || node.node_type === "script";
-  const editsGenerationPrompt = ["image", "video", "audio"].includes(node.node_type);
-  const usesProvider = ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const isWorldSetting = node.node_type === "text" && node.creative_role === "world_setting";
+  const effectiveStatus = visibleStatus ?? node.status;
+  const isRunnableScript = node.node_type === "script"
+    && (effectiveStatus === "draft" || effectiveStatus === "failed");
+  const editsTextContent = node.node_type === "text"
+    || (node.node_type === "script" && !isRunnableScript);
+  const editsGenerationPrompt = isRunnableScript
+    || ["image", "video", "audio"].includes(node.node_type);
+  const usesProvider = !isWorldSetting && ["text", "script", "image", "video", "audio"].includes(node.node_type);
+  const nodeForRun = node.node_type === "script" && effectiveStatus !== node.status
+    ? { ...node, status: effectiveStatus }
+    : node;
 
   const restoreFromNode = useCallback(() => {
     setTitle(node.variation_draft?.title ?? node.title);
@@ -191,7 +201,26 @@ export function useNodeWorkbenchDraft({
       return saved;
     }
 
-    const contentKey = node.node_type === "script" ? "script_text" : "content";
+    if (isWorldSetting) {
+      if (!textContent.trim()) {
+        setError("World Setting content cannot be empty.");
+        return false;
+      }
+      const saved = await perform(() => patchNode(node.node_id, {
+        structured_content: {
+          ...node.structured_content,
+          content: textContent,
+        },
+      }));
+      if (saved) setDirty(false);
+      return saved;
+    }
+
+    if (isRunnableScript && !prompt.trim()) {
+      setError("Enter a script direction before running.");
+      return false;
+    }
+
     const saved = await perform(() => patchNode(node.node_id, {
       title: title.trim() || node.title,
       ...(editsGenerationPrompt ? { generation_prompt: prompt } : {}),
@@ -203,7 +232,7 @@ export function useNodeWorkbenchDraft({
       ...(editsTextContent ? {
         structured_content: {
           ...node.structured_content,
-          [contentKey]: textContent,
+          content: textContent,
         },
       } : {}),
     }));
@@ -216,7 +245,7 @@ export function useNodeWorkbenchDraft({
 
   const run = async () => {
     if ((dirty || parameterMigrationRequired) && !(await save())) return;
-    await perform(() => onRun(node));
+    await perform(() => onRun(nodeForRun));
   };
 
   const materializeVariation = async (action: "create_draft" | "generate") => {
@@ -279,6 +308,7 @@ export function useNodeWorkbenchDraft({
     errorAction,
     dirty,
     isReadyMedia,
+    isWorldSetting,
     editsTextContent,
     editsGenerationPrompt,
     usesProvider,

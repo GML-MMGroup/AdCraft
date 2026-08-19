@@ -13,9 +13,8 @@ from app.schemas.agent_canvas_runtime import (
     CanvasProviderModelCapabilityV2,
     EffectiveMediaParameterSnapshotV2,
 )
+from app.services.agent_canvas_parameter_policy import NON_PROVIDER_NODE_PARAMETER_KEYS
 from app.services.provider_model_catalog import ProviderModelCatalogService
-
-_INTERNAL_NODE_PARAMETERS = frozenset({"requested_run"})
 
 
 class ProviderCapabilityError(V2PersistenceError):
@@ -147,7 +146,7 @@ class ProviderCapabilityService:
         requested = {
             key: value
             for key, value in node.parameters.items()
-            if key not in _INTERNAL_NODE_PARAMETERS
+            if key not in NON_PROVIDER_NODE_PARAMETER_KEYS
         }
         effective = dict(requested)
         applied_normalizations: list[str] = list(normalizations)
@@ -201,6 +200,8 @@ def _capability_from_record(record: ProviderModelRecord) -> CanvasProviderModelC
         max_references=int(metadata.get("max_references", sum(limits.values()))),
         reference_limits=limits,
         supported_parameters=frozenset(metadata.get("supported_parameters", [])),
+        default_parameters=dict(metadata.get("default_parameters", {})),
+        supported_resolutions=tuple(metadata.get("supported_resolutions", ())),
         supported_aspect_ratios=tuple(metadata.get("supported_aspect_ratios", ())),
         pixel_bounds=_optional_pair(metadata.get("pixel_bounds")),
         duration_range_seconds=_optional_pair(metadata.get("duration_range_seconds")),
@@ -246,7 +247,7 @@ def _parameters_compatible(
     reference_count = sum(reference_counts.values())
     if not _reference_counts_compatible(capability, reference_count, reference_counts):
         return False
-    provider_parameters = set(node.parameters).difference(_INTERNAL_NODE_PARAMETERS)
+    provider_parameters = set(node.parameters).difference(NON_PROVIDER_NODE_PARAMETER_KEYS)
     if node.node_type == "video":
         provider_parameters.discard("generate_audio")
     if not provider_parameters.issubset(capability.supported_parameters):

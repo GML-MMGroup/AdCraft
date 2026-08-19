@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around subjective transitions and identity motifs. Use layered realities to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

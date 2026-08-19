@@ -86,6 +86,28 @@ describe("HomeTypographyLabPage", () => {
       .not.toBe('"DM Serif Display", serif');
   });
 
+  it("shows handwritten font groups only for the Hero accent", () => {
+    render(<HomeTypographyLabPage />);
+
+    fireEvent.click(screen.getByLabelText("Font family"));
+    expect(screen.queryByRole("option", { name: "Dancing Script" })).toBeNull();
+
+    fireEvent.pointerDown(screen.getByTestId("home-typography-preview"));
+    fireEvent.change(screen.getByLabelText("Typography target"), {
+      target: { value: "heroAccent" },
+    });
+    fireEvent.click(screen.getByLabelText("Font family"));
+
+    expect(screen.getByRole("group", { name: "Handwritten: Signature & calligraphy" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Handwritten: Casual pen" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Handwritten: Marker & brush" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Handwritten: Playful display" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("option", { name: "Dancing Script" }));
+    expect(screen.getByTestId<HTMLElement>("home-typography-preview").style.getPropertyValue("--lab-hero-accent-font"))
+      .toBe('"Dancing Script", cursive');
+  });
+
   it("shows a selected background for the active font in the font menu", () => {
     render(<HomeTypographyLabPage />);
 
@@ -122,6 +144,6 @@ describe("HomeTypographyLabPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reset all typography" }));
 
     expect(screen.getByText("Current recipe")).toBeTruthy();
-    expect(screen.getByLabelText("Font family").textContent).toContain("Instrument Serif");
+    expect(screen.getByLabelText("Font family").textContent).toContain("Georgia");
   });
 });

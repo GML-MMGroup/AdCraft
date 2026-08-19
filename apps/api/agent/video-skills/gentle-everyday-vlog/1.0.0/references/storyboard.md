@@ -1,0 +1,1 @@
+Organize shots around intimate handheld observation, develop visual progression through soft routine, and reserve natural gestures for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

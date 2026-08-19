@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 
 from app.core.config import PROJECT_ROOT, Settings
 from app.persistence.provider_model_repository import ProviderModelRepository
@@ -12,6 +13,9 @@ from app.services.provider_credentials import (
     ProviderCredentialRegistry,
 )
 from app.services.provider_model_catalog import ProviderModelCatalogService
+
+
+_BOOTSTRAP_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -28,8 +32,12 @@ class ProviderModelBootstrapService:
         self._repository = repository
 
     def bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
+        with _BOOTSTRAP_LOCK:
+            return self._bootstrap(now=now)
+
+    def _bootstrap(self, *, now: str) -> ProviderModelBootstrapResult:
         registry = ProviderCredentialRegistry()
-        ProviderConnectionService(
+        connection_service = ProviderConnectionService(
             registry=registry,
             dotenv_store=DotenvCredentialStore(
                 PROJECT_ROOT,
@@ -41,11 +49,9 @@ class ProviderModelBootstrapService:
             ),
             metadata_repository=self._repository,
             settings_loader=lambda: self._settings,
-        ).synchronize_metadata(updated_at=now)
-        catalog = ProviderModelCatalogService(
-            self._repository,
-            provider_available=self._provider_available,
         )
+        connection_service.synchronize_metadata(updated_at=now)
+        catalog = ProviderModelCatalogService(self._repository)
         seeded_providers: list[str] = []
         for provider_id in ("siliconflow", "volcengine_ark", "tianpuyue", "fake"):
             had_models = bool(self._repository.list_models(provider_id=provider_id))
@@ -75,35 +81,22 @@ class ProviderModelBootstrapService:
             seeded_defaults=tuple(valid_candidates),
         )
 
-    def _provider_available(self, provider_id: str) -> bool:
-        if provider_id == "fake":
-            return True
-        if provider_id == "siliconflow":
-            return bool(self._settings.siliconflow_api_key)
-        if provider_id == "volcengine_ark":
-            return bool(
-                self._settings.llm_api_key
-                or self._settings.image_generation_api_key
-                or self._settings.video_generation_api_key
-            )
-        if provider_id == "tianpuyue":
-            return bool(self._settings.bgm_api_key)
-        return False
-
     def _recognized_defaults(self) -> dict[str, str]:
-        if self._settings.agent_runtime_mode == "fake" or self._settings.media_mode == "mock":
+        text_ref = "fake:deterministic-text"
+        if self._settings.agent_runtime_mode != "fake":
+            text_ref = (
+                "siliconflow:zai-org/GLM-5.2"
+                if self._settings.siliconflow_api_key
+                else "volcengine_ark:doubao-seed-2-0-mini-260428"
+            )
+        if self._settings.media_mode == "mock":
             return {
-                "agent": "fake:deterministic-text",
-                "text": "fake:deterministic-text",
+                "agent": text_ref,
+                "text": text_ref,
                 "image": "fake:deterministic-image",
                 "video": "fake:deterministic-video",
                 "audio": "fake:deterministic-audio",
             }
-        text_ref = (
-            "siliconflow:zai-org/GLM-5.2"
-            if self._settings.siliconflow_api_key
-            else "volcengine_ark:doubao-seed-2-0-mini-260428"
-        )
         return {
             "agent": text_ref,
             "text": text_ref,

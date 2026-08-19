@@ -1,0 +1,36 @@
+{
+  "skill_id": "mixed-media-collage-motion",
+  "version": "1.0.0",
+  "display_name": "Mixed-Media Collage Motion",
+  "description": "An advertising treatment built around cut-paper layers, typography-aware rhythm without baked text, and tactile compositing.",
+  "category": "experimental-graphic",
+  "tags": [
+    "experimental",
+    "graphic",
+    "compositing"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Mixed-Media Collage Motion creative treatment."
+  },
+  "display_order": 410,
+  "files": {
+    "SKILL.md": "0d0337fd4f70bc3949b364d8410f5aadcd6d60044e92e63b4198dec60237e804",
+    "references/prop.md": "35c92f96c9912b178d5c6b1a3d8e2a4c82d9f01c259f0c3f7f3450bdb54a937e",
+    "references/scene.md": "e85e9f5aeeb010e38f99b7800103b324945db77f3725206a32bcc1cf82f01203",
+    "references/storyboard.md": "d938e35357c3de47cf354f10970c63ebf4aa9a1ef9c30ccf64d4516d66190a30",
+    "references/video.md": "96c14e1b4f3be922329b41ccb339b96b64bddef36debd3461225e67a126db13c",
+    "references/quick_media.md": "768ffda5f4da221eb803aeb8f7be823233190f6eb4c7229479d1c1af93600f57"
+  },
+  "role_guidance": {
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
+  }
+}

@@ -20,7 +20,7 @@ from filelock import FileLock, Timeout
 from dotenv import dotenv_values
 
 from app.core.config import DEFAULT_LOCAL_SETTINGS_ALLOWED_ORIGINS, Settings, get_settings
-from app.persistence.provider_model_repository import ProviderModelRepository
+from app.persistence.provider_model_repository import ProviderModelRecord, ProviderModelRepository
 from app.schemas.provider_settings import (
     CredentialTestCapability,
     ProviderCredentialConsumer,
@@ -778,17 +778,64 @@ class ProviderConnectionService:
     ) -> ProviderConnectionTestResult:
         definition = self._registry.get(provider_id)
         binding = definition.binding_for_capability(capability)
+        model = self._resolve_test_model(
+            provider_id=provider_id,
+            capability=capability,
+            model_ref=model_ref,
+        )
         self._tester.test(
             definition=definition,
             consumer=binding.consumer,
             candidate=normalize_credential_value(candidate) if candidate is not None else None,
             settings=self._settings_loader(),
+            model_id=model.provider_model_id,
         )
         return ProviderConnectionTestResult(
             provider_id=provider_id,
             capability=capability,
-            model_ref=model_ref,
+            model_ref=model.model_ref,
         )
+
+    def _resolve_test_model(
+        self,
+        *,
+        provider_id: str,
+        capability: str,
+        model_ref: str | None,
+    ) -> ProviderModelRecord:
+        if model_ref is None:
+            models = self._metadata_repository.list_models(
+                provider_id=provider_id,
+                capability=capability,
+            )
+            if not models:
+                raise CredentialSettingsError(
+                    code="credential_test_model_not_found",
+                    message="No compatible provider model is available for this credential test.",
+                    status_code=422,
+                )
+            return models[0]
+        try:
+            model = self._metadata_repository.get_model(model_ref)
+        except ValueError as exc:
+            raise CredentialSettingsError(
+                code="credential_test_model_not_found",
+                message="The requested provider model is not available for this credential test.",
+                status_code=422,
+            ) from exc
+        if model.provider_id != provider_id:
+            raise CredentialSettingsError(
+                code="credential_test_model_provider_mismatch",
+                message="The requested model does not belong to this provider.",
+                status_code=422,
+            )
+        if model.capability != capability:
+            raise CredentialSettingsError(
+                code="credential_test_model_capability_mismatch",
+                message="The requested model does not support this credential capability.",
+                status_code=422,
+            )
+        return model
 
     def _credential_status(
         self,
@@ -1016,6 +1063,7 @@ class VolcengineArkConnectionTester:
         consumer: ProviderCredentialConsumer,
         candidate: str | None,
         settings: Settings,
+        model_id: str | None = None,
     ) -> CredentialTestResult:
         binding = definition.binding(consumer)
         if binding.test_capability == "unsupported":
@@ -1037,7 +1085,7 @@ class VolcengineArkConnectionTester:
             getattr(settings, binding.endpoint_field),
             definition.allowed_test_origins,
         )
-        model_id = settings.llm_front_desk_model
+        model_id = model_id or settings.llm_front_desk_model
         payload: dict[str, object] = {
             "model": model_id,
             "messages": [{"role": "user", "content": "ping"}],

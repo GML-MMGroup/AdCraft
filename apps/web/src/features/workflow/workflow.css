@@ -13,7 +13,7 @@
   width: min(760px, 92vw);
   height: 100dvh;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  border-left: 1px solid rgba(108, 93, 171, 0.2);
+  border-left: 1px solid rgba(157, 175, 230, 0.2);
   background: rgba(247, 249, 253, 0.98);
   box-shadow: -18px 0 50px rgba(32, 34, 53, 0.2);
 }
@@ -125,7 +125,7 @@
   display: grid;
   place-items: center;
   color: rgba(65, 56, 118, 0.76);
-  background: rgba(108, 93, 171, 0.12);
+  background: rgba(157, 175, 230, 0.12);
 }
 
 .composer-attachment-fallback svg {
@@ -171,7 +171,7 @@
   gap: 8px;
   margin-top: 10px;
   padding: 10px;
-  border: 1px solid rgba(108, 93, 171, 0.2);
+  border: 1px solid rgba(157, 175, 230, 0.2);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.78);
   box-shadow: 0 14px 30px rgba(45, 45, 73, 0.14);
@@ -190,7 +190,7 @@
   min-width: 0;
   height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(108, 93, 171, 0.18);
+  border: 1px solid rgba(157, 175, 230, 0.18);
   border-radius: 12px;
   outline: 0;
   background: rgba(255, 255, 255, 0.76);
@@ -205,7 +205,7 @@
   width: 34px;
   height: 34px;
   place-items: center;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.68);
   color: rgba(65, 56, 118, 0.8);
@@ -233,7 +233,7 @@
   gap: 10px;
   min-width: 0;
   padding: 8px;
-  border: 1px solid rgba(108, 93, 171, 0.1);
+  border: 1px solid rgba(157, 175, 230, 0.1);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.66);
   text-align: left;
@@ -241,7 +241,7 @@
 
 .composer-asset-picker-option:hover,
 .composer-asset-picker-option:focus-visible {
-  border-color: rgba(108, 93, 171, 0.28);
+  border-color: rgba(157, 175, 230, 0.28);
   background: rgba(255, 255, 255, 0.88);
 }
 
@@ -296,7 +296,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px;
-  border: 1px solid rgba(108, 93, 171, 0.2);
+  border: 1px solid rgba(157, 175, 230, 0.2);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 18px 36px rgba(45, 45, 73, 0.18);
@@ -319,7 +319,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  border-bottom: 1px solid rgba(108, 93, 171, 0.12);
+  border-bottom: 1px solid rgba(157, 175, 230, 0.12);
   padding-bottom: 8px;
 }
 
@@ -344,7 +344,7 @@
   flex: 0 0 auto;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.68);
   color: rgba(54, 58, 84, 0.74);
@@ -353,8 +353,8 @@
 }
 
 .asset-mention-category-row button.is-active {
-  border-color: rgba(108, 93, 171, 0.42);
-  background: rgba(108, 93, 171, 0.12);
+  border-color: rgba(157, 175, 230, 0.42);
+  background: rgba(157, 175, 230, 0.12);
   color: var(--ink);
 }
 
@@ -365,7 +365,7 @@
   gap: 10px;
   min-width: 0;
   padding: 8px;
-  border: 1px solid rgba(108, 93, 171, 0.1);
+  border: 1px solid rgba(157, 175, 230, 0.1);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.66);
   text-align: left;
@@ -408,7 +408,7 @@
   justify-content: center;
   overflow: hidden;
   border-radius: 10px;
-  background: rgba(108, 93, 171, 0.13);
+  background: rgba(157, 175, 230, 0.13);
   color: rgba(65, 56, 118, 0.86);
   font-size: 12px;
   font-weight: 800;
@@ -433,7 +433,7 @@
   align-items: center;
   gap: 6px;
   padding: 6px 9px;
-  border: 1px solid rgba(108, 93, 171, 0.15);
+  border: 1px solid rgba(157, 175, 230, 0.15);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.58);
   color: var(--ink);
@@ -489,7 +489,7 @@
 
 .mode.is-active,
 .pill-btn.is-active {
-  background: linear-gradient(145deg, rgba(108, 93, 171, 0.95), rgba(167, 149, 191, 0.76));
+  background: linear-gradient(145deg, rgba(157, 175, 230, 0.95), rgba(178, 192, 237, 0.76));
   color: white;
 }
 
@@ -532,7 +532,7 @@
 .library-reference-chip select {
   min-width: 0;
   max-width: 100%;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.7);
   color: var(--ink);
@@ -559,7 +559,7 @@
   align-items: center;
   gap: 6px;
   padding: 5px 7px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.62);
   color: rgba(35, 40, 62, 0.82);
@@ -735,7 +735,7 @@
   display: grid;
   gap: 7px;
   padding: 10px;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.5);
 }
@@ -854,7 +854,7 @@
   min-width: 0;
   gap: 8px;
   padding: 10px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.56);
 }
@@ -1006,7 +1006,7 @@
 .identity-certification-badge {
   flex: 0 0 auto;
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.1);
+  background: rgba(157, 175, 230, 0.1);
   padding: 3px 8px;
   color: rgba(74, 82, 111, 0.78);
   font-size: 10px;
@@ -1123,7 +1123,7 @@
 .provider-fallback-badge {
   width: fit-content;
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.1);
+  background: rgba(157, 175, 230, 0.1);
   padding: 3px 7px;
   color: rgba(74, 82, 111, 0.74);
 }
@@ -1152,7 +1152,7 @@
 
 .provider-attempts-list b {
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.1);
+  background: rgba(157, 175, 230, 0.1);
   padding: 2px 7px;
   font-size: 10px;
 }
@@ -1226,9 +1226,9 @@
   border-radius: 0;
   overflow: hidden;
   background:
-    radial-gradient(circle at 18% 16%, rgba(167, 149, 191, 0.48), transparent 34%),
+    radial-gradient(circle at 18% 16%, rgba(178, 192, 237, 0.48), transparent 34%),
     radial-gradient(circle at 78% 72%, rgba(203, 212, 229, 0.66), transparent 38%),
-    linear-gradient(135deg, rgba(167, 149, 191, 0.54), rgba(203, 212, 229, 0.7));
+    linear-gradient(135deg, rgba(178, 192, 237, 0.54), rgba(203, 212, 229, 0.7));
 }
 
 .workflow-board .react-flow {
@@ -1275,7 +1275,7 @@
 }
 
 .workflow-board .react-flow__edge-path {
-  filter: drop-shadow(0 5px 9px rgba(108, 93, 171, 0.12));
+  filter: drop-shadow(0 5px 9px rgba(157, 175, 230, 0.12));
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -1321,7 +1321,7 @@
 }
 
 .workflow-board .react-flow__connection-path {
-  stroke: rgba(108, 93, 171, 0.68);
+  stroke: rgba(157, 175, 230, 0.68);
   stroke-width: 2.5;
   stroke-linecap: round;
 }
@@ -1343,7 +1343,7 @@
 }
 
 .workflow-board .react-flow__controls-button:hover {
-  background: rgba(108, 93, 171, 0.1);
+  background: rgba(157, 175, 230, 0.1);
 }
 
 .copilot-panel {
@@ -1431,8 +1431,8 @@
 }
 
 .conversation-list button.is-active {
-  border-color: rgba(108, 93, 171, 0.36);
-  background: rgba(108, 93, 171, 0.12);
+  border-color: rgba(157, 175, 230, 0.36);
+  background: rgba(157, 175, 230, 0.12);
 }
 
 .conversation-list .conversation-new-button {
@@ -1471,7 +1471,7 @@
 
 .conversation-event.agent-message.is-user {
   justify-self: end;
-  border-color: rgba(108, 93, 171, 0.32);
+  border-color: rgba(157, 175, 230, 0.32);
   background: rgba(229, 224, 250, 0.78);
   box-shadow: 0 8px 20px rgba(90, 76, 143, 0.1);
 }
@@ -1486,7 +1486,7 @@
 }
 
 .conversation-event.agent-message.is-user .agent-speaker-badge {
-  background: rgba(108, 93, 171, 0.18);
+  background: rgba(157, 175, 230, 0.18);
   color: rgba(79, 66, 132, 0.98);
 }
 
@@ -1658,7 +1658,7 @@
 .agent-speaker-badge {
   width: fit-content;
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.12);
+  background: rgba(157, 175, 230, 0.12);
   padding: 5px 8px;
   color: var(--accent-strong);
   font-size: 11px;
@@ -1667,7 +1667,7 @@
 
 .conversation-action-card {
   max-width: 100%;
-  border-color: rgba(108, 93, 171, 0.24);
+  border-color: rgba(157, 175, 230, 0.24);
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -1722,7 +1722,7 @@
   min-width: 0;
   max-width: 100%;
   gap: 2px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.62);
   color: rgba(40, 45, 68, 0.82);
@@ -1799,7 +1799,7 @@
 
 .bubble.user {
   margin-left: auto;
-  background: rgba(108, 93, 171, 0.82);
+  background: rgba(157, 175, 230, 0.82);
   color: white;
 }
 
@@ -1886,16 +1886,16 @@
 }
 
 .workflow-card.planned:hover:not(.is-selected) {
-  border-color: rgba(108, 93, 171, 0.44);
-  box-shadow: 0 18px 44px rgba(74, 82, 111, 0.16), inset 0 0 0 1px rgba(108, 93, 171, 0.12);
+  border-color: rgba(157, 175, 230, 0.44);
+  box-shadow: 0 18px 44px rgba(74, 82, 111, 0.16), inset 0 0 0 1px rgba(157, 175, 230, 0.12);
   transform: translateY(-2px);
 }
 
 .workflow-card.planned.is-selected {
-  border-color: rgba(108, 93, 171, 0.62);
+  border-color: rgba(157, 175, 230, 0.62);
   box-shadow:
     0 20px 48px rgba(74, 82, 111, 0.18),
-    0 0 0 2px rgba(108, 93, 171, 0.2),
+    0 0 0 2px rgba(157, 175, 230, 0.2),
     0 0 0 7px rgba(130, 110, 255, 0.08),
     0 0 28px rgba(130, 110, 255, 0.22),
     inset 0 0 0 1px rgba(255, 255, 255, 0.48);
@@ -1908,7 +1908,7 @@
   100% {
     box-shadow:
       0 20px 48px rgba(74, 82, 111, 0.18),
-      0 0 0 2px rgba(108, 93, 171, 0.2),
+      0 0 0 2px rgba(157, 175, 230, 0.2),
       0 0 0 7px rgba(130, 110, 255, 0.08),
       0 0 28px rgba(130, 110, 255, 0.22),
       inset 0 0 0 1px rgba(255, 255, 255, 0.48);
@@ -1917,7 +1917,7 @@
   50% {
     box-shadow:
       0 22px 52px rgba(74, 82, 111, 0.2),
-      0 0 0 2px rgba(108, 93, 171, 0.26),
+      0 0 0 2px rgba(157, 175, 230, 0.26),
       0 0 0 9px rgba(130, 110, 255, 0.12),
       0 0 36px rgba(130, 110, 255, 0.28),
       inset 0 0 0 1px rgba(255, 255, 255, 0.56);
@@ -1940,7 +1940,7 @@
   height: 16px;
   border: 2px solid rgba(255, 255, 255, 0.96);
   background: var(--iris);
-  box-shadow: 0 4px 12px rgba(108, 93, 171, 0.28);
+  box-shadow: 0 4px 12px rgba(157, 175, 230, 0.28);
   pointer-events: all;
   transition: transform 160ms ease, box-shadow 160ms ease;
 }
@@ -1948,7 +1948,7 @@
 .workflow-handle:hover,
 .workflow-handle.connectingfrom,
 .workflow-handle.connectingto {
-  box-shadow: 0 0 0 7px rgba(108, 93, 171, 0.14), 0 8px 16px rgba(108, 93, 171, 0.28);
+  box-shadow: 0 0 0 7px rgba(157, 175, 230, 0.14), 0 8px 16px rgba(157, 175, 230, 0.28);
   transform: translateY(-50%) scale(1.16);
 }
 
@@ -2246,7 +2246,7 @@ button.workflow-card-preview:focus-visible {
   place-items: center;
   background:
     radial-gradient(circle at 36% 24%, rgba(255, 255, 255, 0.5), transparent 34%),
-    linear-gradient(135deg, rgba(32, 34, 53, 0.18), rgba(108, 93, 171, 0.14));
+    linear-gradient(135deg, rgba(32, 34, 53, 0.18), rgba(157, 175, 230, 0.14));
   color: rgba(74, 82, 111, 0.68);
   font-size: 11px;
   font-weight: 800;
@@ -2509,7 +2509,7 @@ button.workflow-card-preview:focus-visible {
   contain-intrinsic-size: 128px 720px;
   overflow: hidden;
   padding: 8px;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.52);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52);
@@ -3017,7 +3017,7 @@ button.v2-region-slot-media {
   align-items: center;
   gap: 4px;
   padding: 4px 6px;
-  border: 1px solid rgba(108, 93, 171, 0.12);
+  border: 1px solid rgba(157, 175, 230, 0.12);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.58);
   color: rgba(74, 82, 111, 0.7);
@@ -3030,7 +3030,7 @@ button.v2-region-slot-media {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.4);
+  background: rgba(157, 175, 230, 0.4);
 }
 
 .v2-slot-summary em {
@@ -3151,7 +3151,7 @@ button.v2-region-slot-media {
   display: grid;
   min-height: 82px;
   place-items: center;
-  border: 1px dashed rgba(108, 93, 171, 0.18);
+  border: 1px dashed rgba(157, 175, 230, 0.18);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.34);
   font-size: 11px;
@@ -3166,7 +3166,7 @@ button.v2-region-slot-media {
   max-width: 100%;
   gap: 12px;
   overflow: hidden;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.58);
   padding: 10px;
@@ -3533,7 +3533,7 @@ button.v2-region-slot-media {
 
 .canvas-entity-track::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(108, 93, 171, 0.22);
+  background: rgba(157, 175, 230, 0.22);
 }
 
 .canvas-entity-card {
@@ -3544,7 +3544,7 @@ button.v2-region-slot-media {
   align-content: start;
   gap: 7px;
   overflow: visible;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.52);
   padding: 8px;
@@ -3852,7 +3852,7 @@ button.canvas-entity-media {
   min-width: 54px;
   flex: 0 0 54px;
   place-items: center;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.52);
   color: rgba(87, 71, 151, 0.76);
@@ -3935,7 +3935,7 @@ button.canvas-entity-media {
 
 .semantic-gallery-frame:hover,
 .semantic-gallery-face:hover {
-  border-color: rgba(108, 93, 171, 0.36);
+  border-color: rgba(157, 175, 230, 0.36);
 }
 
 .semantic-gallery-frame:focus-visible,
@@ -4968,7 +4968,7 @@ button.canvas-entity-media {
   border: 1px solid rgba(255, 255, 255, 0.54);
   border-radius: 16px;
   background: rgba(244, 247, 252, 0.78);
-  box-shadow: 0 10px 24px rgba(108, 93, 171, 0.1);
+  box-shadow: 0 10px 24px rgba(157, 175, 230, 0.1);
   backdrop-filter: blur(18px) saturate(1.12);
 }
 
@@ -5340,7 +5340,7 @@ button.canvas-entity-media {
 .node-asset-history-item.is-local-revision-running {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.42);
-  box-shadow: inset 0 0 0 1px rgba(108, 93, 171, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(157, 175, 230, 0.16);
 }
 
 .node-asset-history-item .node-attachment-tile {
@@ -5376,7 +5376,7 @@ button.canvas-entity-media {
   max-width: 100%;
   gap: 10px;
   overflow: hidden;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.42);
   padding: 10px;
@@ -5462,7 +5462,7 @@ button.canvas-entity-media {
 .v2-workbench-item,
 .v2-slot-card {
   overflow: hidden;
-  border: 1px solid rgba(108, 93, 171, 0.14);
+  border: 1px solid rgba(157, 175, 230, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.42);
   padding: 10px;
@@ -5974,7 +5974,7 @@ button.canvas-entity-media {
   width: fit-content;
   max-width: 100%;
   padding: 4px 7px;
-  border: 1px solid rgba(108, 93, 171, 0.18);
+  border: 1px solid rgba(157, 175, 230, 0.18);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.58);
   color: rgba(87, 71, 151, 0.86);
@@ -6030,7 +6030,7 @@ button.canvas-entity-media {
   max-width: 100%;
   gap: 8px;
   padding: 9px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.42);
 }
@@ -6126,7 +6126,7 @@ button.canvas-entity-media {
   align-items: center;
   gap: 5px 8px;
   padding: 7px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.5);
 }
@@ -6244,7 +6244,7 @@ button.canvas-entity-media {
   display: grid;
   gap: 9px;
   padding: 12px;
-  border: 1px solid rgba(108, 93, 171, 0.18);
+  border: 1px solid rgba(157, 175, 230, 0.18);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.58);
   box-shadow: 0 14px 34px rgba(50, 56, 96, 0.12);
@@ -6462,7 +6462,7 @@ button.canvas-entity-media {
   max-width: 100%;
   gap: 7px;
   padding: 9px;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.4);
 }
@@ -6482,7 +6482,7 @@ button.canvas-entity-media {
   max-width: 100%;
   min-height: 56px;
   resize: vertical;
-  border: 1px solid rgba(108, 93, 171, 0.16);
+  border: 1px solid rgba(157, 175, 230, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.52);
   padding: 8px;
@@ -6575,7 +6575,7 @@ button.canvas-entity-media {
   display: grid;
   min-height: 74px;
   place-items: center;
-  border: 1px dashed rgba(108, 93, 171, 0.34);
+  border: 1px dashed rgba(157, 175, 230, 0.34);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.34);
   color: var(--muted);
@@ -7092,168 +7092,168 @@ button.canvas-entity-media {
   }
 }
 
-html[data-theme="dark"] .workflow-page,
-html[data-theme="dark"] .workflow-board {
+:root .workflow-page,
+:root .workflow-board {
   background: var(--page-bg);
 }
 
-html[data-theme="dark"] .workflow-board {
+:root .workflow-board {
   background-image:
     radial-gradient(circle at 18% 16%, rgba(158, 139, 234, 0.12), transparent 34%),
     radial-gradient(circle at 78% 72%, rgba(127, 159, 232, 0.08), transparent 38%),
     linear-gradient(135deg, #08090D, #0D0F14);
 }
 
-html[data-theme="dark"] .workflow-restore-state {
+:root .workflow-restore-state {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .workflow-restore-state span {
+:root .workflow-restore-state span {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__edge-path {
+:root .workflow-board .react-flow__edge-path {
   filter: drop-shadow(0 5px 9px rgba(158, 139, 234, 0.2));
 }
 
-html[data-theme="dark"] :is(.workflow-board .react-flow__edge.selected .react-flow__edge-path, .workflow-board .react-flow__edge:focus .react-flow__edge-path, .workflow-board .react-flow__connection-path) {
+:root :is(.workflow-board .react-flow__edge.selected .react-flow__edge-path, .workflow-board .react-flow__edge:focus .react-flow__edge-path, .workflow-board .react-flow__connection-path) {
   stroke: var(--brand);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__edge.is-runtime-active-edge .react-flow__edge-path {
+:root .workflow-board .react-flow__edge.is-runtime-active-edge .react-flow__edge-path {
   stroke: var(--success);
 }
 
-html[data-theme="dark"] :is(.workflow-board .react-flow__controls, .workflow-board .react-flow__minimap) {
+:root :is(.workflow-board .react-flow__controls, .workflow-board .react-flow__minimap) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__controls-button {
+:root .workflow-board .react-flow__controls-button {
   border-bottom-color: var(--border-default);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .workflow-board .react-flow__controls-button:hover {
+:root .workflow-board .react-flow__controls-button:hover {
   background: var(--brand-subtle);
 }
 
-html[data-theme="dark"] :is(.copilot-panel, .workflow-card, .prompt-composer, .node-run-panel, .ad-workflow-panel, .video-editing-panel, .workflow-side-panel, .node-detail-panel, .requirements-summary-panel) {
+:root :is(.copilot-panel, .workflow-card, .prompt-composer, .node-run-panel, .ad-workflow-panel, .video-editing-panel, .workflow-side-panel, .node-detail-panel, .requirements-summary-panel) {
   border-color: var(--border-default);
   background: var(--surface-card);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .bottom-toolbar {
+:root .bottom-toolbar {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] :is(.copilot-title, .composer-footer) {
+:root :is(.copilot-title, .composer-footer) {
   border-color: var(--border-default);
 }
 
-html[data-theme="dark"] :is(.conversation-list button, .node-detail-panel > .draggable-panel-heading, .requirement-field, .advanced-node-details, .prompt-insight-panel, .v2-workbench-item, .v2-slot-card, .v2-slot-version) {
+:root :is(.conversation-list button, .node-detail-panel > .draggable-panel-heading, .requirement-field, .advanced-node-details, .prompt-insight-panel, .v2-workbench-item, .v2-slot-card, .v2-slot-version) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: none;
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.prompt-composer textarea, .node-run-panel select, .node-run-panel textarea, .node-config-field input, .node-config-field textarea, .node-config-field select, .variable-card input, .variable-card textarea, .variable-card select, .compact-select, .node-workbench-composer textarea, .v2-slot-prompt textarea, .v2-item-prompt textarea) {
+:root :is(.prompt-composer textarea, .node-run-panel select, .node-run-panel textarea, .node-config-field input, .node-config-field textarea, .node-config-field select, .variable-card input, .variable-card textarea, .variable-card select, .compact-select, .node-workbench-composer textarea, .v2-slot-prompt textarea, .v2-item-prompt textarea) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.prompt-composer textarea::placeholder, .node-config-field span, .requirement-field span, .advanced-node-details summary, .node-prompt-field > span, .asset-preview-heading, .prompt-insight-heading > span, .v2-slot-prompt, .v2-slot-version span, .v2-slot-version em, .v2-slot-history) {
+:root :is(.prompt-composer textarea::placeholder, .node-config-field span, .requirement-field span, .advanced-node-details summary, .node-prompt-field > span, .asset-preview-heading, .prompt-insight-heading > span, .v2-slot-prompt, .v2-slot-version span, .v2-slot-version em, .v2-slot-history) {
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] :is(.state-chip, .v2-slot-status, .v2-workbench-item-heading span, .v2-workbench-item-heading em) {
+:root :is(.state-chip, .v2-slot-status, .v2-workbench-item-heading span, .v2-workbench-item-heading em) {
   background: var(--surface-input);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .bubble,
-html[data-theme="dark"] :is(.conversation-error, .conversation-send-state, .workflow-card-note, .status-pill) {
+:root .bubble,
+:root :is(.conversation-error, .conversation-send-state, .workflow-card-note, .status-pill) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-secondary);
 }
 
-html[data-theme="dark"] .bubble.user {
+:root .bubble.user {
   background: var(--brand);
   color: var(--text-inverse);
 }
 
-html[data-theme="dark"] .workflow-card-identity h3 {
+:root .workflow-card-identity h3 {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .workflow-port-label {
+:root .workflow-port-label {
   border-color: var(--border-default);
   background: var(--surface-raised);
   box-shadow: var(--shadow-soft);
 }
 
-html[data-theme="dark"] .workflow-handle {
+:root .workflow-handle {
   border-color: var(--surface-raised);
 }
 
-html[data-theme="dark"] :is(.state-chip.locked, .state-chip.warning, .v2-slot-version em) {
+:root :is(.state-chip.locked, .state-chip.warning, .v2-slot-version em) {
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] :is(.state-chip.stale, .dynamic-media-item-error) {
+:root :is(.state-chip.stale, .dynamic-media-item-error) {
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] .state-chip.candidate {
+:root .state-chip.candidate {
   background: var(--brand-subtle);
   color: var(--brand);
 }
 
-html[data-theme="dark"] :is(.status-pill.completed, .status-pill.success, .status-pill.finish) {
+:root :is(.status-pill.completed, .status-pill.success, .status-pill.finish) {
   color: var(--success);
 }
 
-html[data-theme="dark"] :is(.status-pill.error, .status-pill.failed) {
+:root :is(.status-pill.error, .status-pill.failed) {
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.node-attachment-tile, .asset-revision-history-item, .asset-revision-candidate-card, .asset-library-save-modal, .v2-floating-slot-composer, .asset-revision-panel, .node-preview-panel) {
+:root :is(.node-attachment-tile, .asset-revision-history-item, .asset-revision-candidate-card, .asset-library-save-modal, .v2-floating-slot-composer, .asset-revision-panel, .node-preview-panel) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.canvas-entity-card, .node-run-panel, .node-detail-panel, .node-workbench-composer, .v2-slot-card) {
+:root :is(.canvas-entity-card, .node-run-panel, .node-detail-panel, .node-workbench-composer, .v2-slot-card) {
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.canvas-entity-card.status-failed, .asset-quality-notice.status-failed) {
+:root :is(.canvas-entity-card.status-failed, .asset-quality-notice.status-failed) {
   border-color: var(--error);
   background: var(--error-subtle);
 }
 
-html[data-theme="dark"] .asset-quality-notice.status-warning {
+:root .asset-quality-notice.status-warning {
   border-color: var(--warning);
   background: var(--warning-subtle);
 }
 
-html[data-theme="dark"] .media-lightbox {
+:root .media-lightbox {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] .media-lightbox-close {
+:root .media-lightbox-close {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);

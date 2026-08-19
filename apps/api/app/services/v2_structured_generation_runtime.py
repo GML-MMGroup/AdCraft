@@ -16,6 +16,7 @@ from app.persistence.agent_run_repository import (
     AgentRunRecord,
 )
 from app.persistence.database import create_v2_database
+from app.persistence.provider_model_repository import ProviderModelRepository
 from app.schemas.agent_operation_contexts import PlanningAgentContext
 from app.schemas.agent_runtime import AgentName, AgentRunContext, AgentRunPolicy, AgentRunRequest
 from app.schemas.v2_structured_llm import V2StructuredLLMCallMetadata
@@ -32,9 +33,12 @@ from app.services.pi_agent_runtime_client import (
     PiAgentRuntimeClient,
     PiAgentRuntimeError,
 )
-from app.services.agent_run_envelope import agent_run_envelope_fields
+from app.services.provider_model_bootstrap import ProviderModelBootstrapService
+from app.services.agent_run_context_registry import validate_video_agent_operation_context
+from app.services.agent_operation_policy import AgentRunRequestFactory
 from app.services.v2_pi_agent_context import isolate_agent_input_payload
 from app.services.v2_pi_planning_session import AgentInvocation
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 TOutput = TypeVar("TOutput", bound=BaseModel)
 
@@ -142,8 +146,16 @@ class StructuredGenerationRuntime:
     def _run_pi(
         self, spec: StructuredGenerationSpec[TOutput]
     ) -> StructuredGenerationResult[TOutput]:
-        request = _agent_run_request(spec)
         database = create_v2_database(self._settings.media_data_dir)
+        try:
+            request = _freeze_agent_model(
+                _agent_run_request(spec),
+                settings=self._settings,
+                repository=ProviderModelRepository(database),
+            )
+        except Exception:
+            database.dispose()
+            raise
         repository = AgentRunRepository(database)
         lease_owner_id = f"python_{uuid4().hex}"
         lease_duration = max(
@@ -319,7 +331,13 @@ class StructuredGenerationRuntime:
         finally:
             database.dispose()
         return self._result(
-            spec,
+            replace(
+                spec,
+                trace_metadata={
+                    **spec.trace_metadata,
+                    "agent_run_id": request.run_id,
+                },
+            ),
             output=output,
             mode="pi",
             warnings=[],
@@ -575,8 +593,9 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         else float(spec.trace_metadata.get("timeout_seconds", 120.0))
     )
     operation = spec.operation or _agent_operation(spec)
+    VideoAgentOperationRegistry().resolve(operation)
     invocation = spec.invocation
-    agent_name = spec.agent_name or _agent_name_for_operation(operation)
+    agent_name: AgentName = "video_agent"
     context = spec.agent_context or AgentRunContext(
         operation=operation,
         user_input=json.dumps(payload, ensure_ascii=False, sort_keys=True),
@@ -584,6 +603,7 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         input_payload=payload,
         contract_schema=spec.output_model.model_json_schema(),
     )
+    validate_video_agent_operation_context(operation, context)
     identity = None
     action_id = str(spec.trace_metadata.get("action_id") or "").strip()
     if invocation is None and action_id:
@@ -614,7 +634,12 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
         if identity is not None
         else f"arun_{uuid4().hex}"
     )
-    return AgentRunRequest(
+    deadline_cap = (
+        invocation.deadline_at
+        if invocation
+        else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    )
+    return AgentRunRequestFactory().build(
         run_id=run_id,
         request_id=(
             invocation.request_id
@@ -623,27 +648,14 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             if identity is not None
             else f"req_{uuid4().hex}"
         ),
-        **agent_run_envelope_fields(context),
         parent_run_id=invocation.parent_run_id if invocation else None,
         agent_name=agent_name,
         operation=operation,
-        deadline_at=(
-            invocation.deadline_at
-            if invocation
-            else datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
-        ),
-        model_policy_id=(
-            invocation.model_policy_id if invocation else f"{agent_name}.{operation}.v1"
-        ),
+        deadline_cap=deadline_cap,
         contract_name=spec.contract_name,
         validation_profile=spec.validation_profile,
         validation_context=sanitize_context_for_llm_text(spec.validation_context),
         context=context,
-        policy=(
-            AgentRunPolicy(timeout_seconds=invocation.timeout_seconds)
-            if invocation
-            else spec.policy or AgentRunPolicy(timeout_seconds=timeout_seconds)
-        ),
         credential_ref="llm-default",
         audit_metadata={
             "stage_name": spec.stage_name,
@@ -658,6 +670,36 @@ def _agent_run_request(spec: StructuredGenerationSpec[Any]) -> AgentRunRequest:
             **({"request_identity_digest": identity.input_digest} if identity is not None else {}),
         },
         contract_schema=spec.output_model.model_json_schema(),
+    )
+
+
+def _freeze_agent_model(
+    request: AgentRunRequest,
+    *,
+    settings: Settings,
+    repository: ProviderModelRepository,
+) -> AgentRunRequest:
+    defaults = repository.get_defaults()
+    if "agent" not in defaults:
+        ProviderModelBootstrapService(settings, repository).bootstrap(
+            now=datetime.now(timezone.utc).isoformat()
+        )
+        defaults = repository.get_defaults()
+    default = defaults.get("agent")
+    if default is None:
+        raise StructuredGenerationRuntimeError(
+            "agent_model_unavailable",
+            "The installation Agent model default is not configured.",
+        )
+    return request.model_copy(
+        update={
+            "model_ref": default.model_ref,
+            "audit_metadata": {
+                **request.audit_metadata,
+                "model_ref": default.model_ref,
+                "model_default_revision": default.revision,
+            },
+        }
     )
 
 
@@ -677,26 +719,6 @@ def _agent_operation(spec: StructuredGenerationSpec[Any]) -> str:
     if spec.contract_name == "V2BgmPromptPlan":
         return "bgm_prompt"
     return spec.stage_name
-
-
-def _agent_name_for_operation(operation: str) -> str:
-    if operation == "script_writer" or operation == "script_edit_normalization":
-        return "script_writer"
-    if operation == "product_prompt":
-        return "product_designer"
-    if operation == "character_prompt":
-        return "character_designer"
-    if operation == "scene_prompt":
-        return "scene_designer"
-    if operation in {"storyboard_detail", "storyboard_prompt"}:
-        return "storyboard_artist"
-    if operation == "shot_video_prompt":
-        return "video_director"
-    if operation == "bgm_prompt":
-        return "bgm_director"
-    if operation == "visual_style_scope_repair":
-        return "scene_designer"
-    return "director"
 
 
 def _with_output_warnings(output: TOutput, warnings: list[dict[str, Any]]) -> TOutput:

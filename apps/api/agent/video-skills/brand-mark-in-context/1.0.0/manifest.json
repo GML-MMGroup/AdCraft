@@ -1,0 +1,36 @@
+{
+  "skill_id": "brand-mark-in-context",
+  "version": "1.0.0",
+  "display_name": "Brand Mark in Context",
+  "description": "An advertising treatment built around brand-shape echoes, environmental integration, and reveal and recognition hierarchy.",
+  "category": "experimental-graphic",
+  "tags": [
+    "experimental",
+    "graphic",
+    "compositing"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Brand Mark in Context creative treatment."
+  },
+  "display_order": 430,
+  "files": {
+    "SKILL.md": "bc7417f5fcf32efd9a9685fdcc4b4d19b243709d9ea3b55c2c1fb3a5d79ea4ec",
+    "references/prop.md": "7f8b8e926e896778f4dae6cffc52777f6caac9f2047f41aff324e93ee8a65c4b",
+    "references/scene.md": "193ccab30967a1793dd266801bcf38c7869a3af097b3f62f86fd70345f4ae208",
+    "references/storyboard.md": "3937d2dbf60196fb8c838f4b5ef0bd0d6cdb78c5b11df928de459c11a6f84b1e",
+    "references/video.md": "2f5191db8296d79fe1026c62039662d0cb5b64fd659dc8890515081603285398",
+    "references/quick_media.md": "3bd5425b1d65f32c55041f513690b516eba04370d018c60ab69ce43b24b4c648"
+  },
+  "role_guidance": {
+    "prop": "references/prop.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
+  }
+}

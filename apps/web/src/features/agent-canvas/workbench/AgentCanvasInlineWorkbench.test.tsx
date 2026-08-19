@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -100,6 +103,34 @@ function makeReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 {
   } as AgentCanvasWorkflowV2;
 }
 
+function makeTextReferenceWorkflow(target: CanvasNodeV2): AgentCanvasWorkflowV2 {
+  const source = {
+    ...makeNode("text", "ready"),
+    node_id: "source-text",
+    title: "World Setting",
+    structured_content: { content: "A calm morning in a riverside park." },
+  };
+  return {
+    ...makeWorkflow(target),
+    nodes: [source, target],
+    bindings: [{
+      binding_id: "text-binding",
+      workflow_id: "workflow-1",
+      source: { kind: "node_output", source_node_id: source.node_id },
+      target_node_id: target.node_id,
+      input_role: "text_context",
+      required: true,
+      enabled: true,
+      order: 0,
+      label: null,
+      metadata: {},
+      created_at: "2026-07-31T00:00:00Z",
+      updated_at: "2026-07-31T00:00:00Z",
+    }],
+    assets: [],
+  } as AgentCanvasWorkflowV2;
+}
+
 function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> = {}) {
   const props = {
     workflow: makeWorkflow(node),
@@ -126,9 +157,31 @@ function renderWorkbench(node: CanvasNodeV2, overrides: Record<string, unknown> 
 afterEach(() => cleanup());
 
 describe("AgentCanvasInlineWorkbench", () => {
+  it("uses a solid black-gray surface without gradients or backdrop blur", () => {
+    const cssPath = resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css");
+    const css = readFileSync(cssPath, "utf8");
+    const shellRule = css.match(/^\.agent-node-workbench\s*\{([\s\S]*?)\n\}/m)?.[1];
+
+    expect(shellRule).toContain("background: #2a2a2a");
+    expect(shellRule).not.toContain("gradient");
+    expect(shellRule).toContain("backdrop-filter: none");
+  });
+
+  it("keeps the Script editor on the shared workbench font", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css"),
+      "utf8",
+    );
+    const scriptComposerRule = css.match(
+      /\.agent-node-workbench__composer--script textarea\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(scriptComposerRule).toBeTruthy();
+    expect(scriptComposerRule).not.toContain("font-family");
+  });
+
   it.each<[CanvasNodeTypeV2, string]>([
     ["text", "Text content"],
-    ["script", "Script content"],
     ["image", "Generation prompt"],
   ])("uses a compact prompt composer for %s without node name chrome", (nodeType, textareaLabel) => {
     const node = makeNode(nodeType);
@@ -138,6 +191,187 @@ describe("AgentCanvasInlineWorkbench", () => {
     expect(screen.queryByText("Name")).toBeNull();
     expect(screen.queryByText(node.title)).toBeNull();
     expect(screen.queryByText(nodeType.toUpperCase())).toBeNull();
+  });
+
+  it("keeps a guided Draft visible while its generation prompt is being prepared and disables only that node Run action", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "working",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByText("A warm product portrait for the campaign opening.")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Preparing generation prompt");
+    expect(screen.queryByLabelText("Generation prompt")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run image node" })).toBeNull();
+  });
+
+  it("renders the prepared generation prompt and enables the existing Run action once preparation is ready", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: "Create a warm product portrait for the campaign opening.",
+      prompt_preparation: {
+        status: "ready",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: "a".repeat(64),
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect((screen.getByLabelText("Generation prompt") as HTMLTextAreaElement).value).toBe(
+      "Create a warm product portrait for the campaign opening.",
+    );
+    expect((screen.getByRole("button", { name: "Run image node" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows a retryable prompt preparation error without presenting it as media generation failure", () => {
+    const node = {
+      ...makeNode("image"),
+      summary_prompt: "A warm product portrait for the campaign opening.",
+      generation_prompt: null,
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 2,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: {
+          code: "prompt_preparation_failed",
+          message: "Node prompt preparation failed.",
+          retryable: true,
+        },
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    } as CanvasNodeV2;
+
+    renderWorkbench(node);
+
+    expect(screen.getByRole("alert").textContent).toContain("Node prompt preparation failed.");
+    expect(screen.getByRole("alert").textContent).toContain("Retryable");
+    expect(screen.queryByRole("button", { name: "Retry image node" })).toBeNull();
+  });
+
+  it("saves a Draft Script prompt without materializing content before running it", async () => {
+    const node = {
+      ...makeNode("script"),
+      generation_prompt: "Write a concise launch script.",
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node);
+
+    expect((screen.getByLabelText("Script prompt") as HTMLTextAreaElement).value)
+      .toBe("Write a concise launch script.");
+
+    fireEvent.change(screen.getByLabelText("Script prompt"), {
+      target: { value: "Write a quiet office story before the first meeting." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalled());
+    const patch = (props.patchNode as ReturnType<typeof vi.fn>).mock.calls[0]?.[1];
+    expect(patch).toEqual(expect.objectContaining({
+      generation_prompt: "Write a quiet office story before the first meeting.",
+    }));
+    expect(patch).not.toHaveProperty("structured_content");
+    expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("saves a ready Script node without running it again", async () => {
+    const node = {
+      ...makeNode("script", "ready"),
+      structured_content: {
+        document_kind: "script",
+        script_text: "Open on dawn.",
+        authoring_provenance: { source_option_id: "option-script-1" },
+      },
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node);
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A refined ready script." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: {
+          document_kind: "script",
+          script_text: "Open on dawn.",
+          authoring_provenance: { source_option_id: "option-script-1" },
+          content: "A refined ready script.",
+        },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Working status to prevent editing a canonically Draft Script", () => {
+    const node = makeNode("script", "draft");
+    const props = renderWorkbench(node, { visibleStatus: "working" });
+
+    expect(screen.getByLabelText("Script content")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Script node is working" }))
+      .toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Script node is working" }));
+
+    expect(props.patchNode).not.toHaveBeenCalled();
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Ready status when saving a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "ready" });
+
+    fireEvent.change(screen.getByLabelText("Script content"), {
+      target: { value: "A recovered Script result." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save script node" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      node.node_id,
+      expect.objectContaining({
+        structured_content: { content: "A recovered Script result." },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
+  });
+
+  it("uses the live Failed status when retrying a canonically Draft Script", async () => {
+    const node = {
+      ...makeNode("script", "draft"),
+      structured_content: {},
+    } as CanvasNodeV2;
+    const props = renderWorkbench(node, { visibleStatus: "failed" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry script node" }));
+
+    await waitFor(() => expect(props.onRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: node.node_id,
+        status: "failed",
+      }),
+    ));
   });
 
   it("saves structured text before running a Text node", async () => {
@@ -155,6 +389,57 @@ describe("AgentCanvasInlineWorkbench", () => {
       }));
     });
     expect(props.onRun).toHaveBeenCalledWith(node);
+  });
+
+  it("edits a World Setting in place without model or Run controls", async () => {
+    const provenance = {
+      source_proposal_id: "proposal-world-1",
+      source_option_id: "option-world-1",
+      materialization_run_id: "materialization-1",
+      style_skill_run_id: "style-run-1",
+      creative_direction_snapshot_id: "direction-1",
+    };
+    const core = {
+      premise: "Living craft quietly shapes modern life.",
+      era_and_place: "A contemporary coastal city.",
+      world_rules: ["Technology remains visually unobtrusive."],
+      visual_continuity: ["Pale stone and warm practical light recur."],
+    };
+    const node: CanvasNodeV2 = {
+      ...makeNode("text", "ready"),
+      node_id: "world-setting-node",
+      creative_role: "world_setting",
+      title: "World Setting",
+      structured_content: {
+        document_kind: "world_setting",
+        contract_version: "world-setting-v2",
+        content: "A quiet contemporary city.",
+        core,
+        authoring_provenance: provenance,
+      },
+    };
+    const props = renderWorkbench(node);
+
+    expect(screen.queryByLabelText("Choose model")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Run text node" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("World Setting content"), {
+      target: { value: "A quiet contemporary city shaped by living craft traditions." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save World Setting changes" }));
+
+    await waitFor(() => expect(props.patchNode).toHaveBeenCalledWith(
+      "world-setting-node",
+      expect.objectContaining({
+        structured_content: {
+          document_kind: "world_setting",
+          contract_version: "world-setting-v2",
+          content: "A quiet contemporary city shaped by living craft traditions.",
+          core,
+          authoring_provenance: provenance,
+        },
+      }),
+    ));
+    expect(props.onRun).not.toHaveBeenCalled();
   });
 
   it("saves a ready media prompt before creating a sibling variation", async () => {
@@ -291,5 +576,58 @@ describe("AgentCanvasInlineWorkbench", () => {
 
     expect(screen.getByRole("button", { name: "Choose asset references" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Upload image reference" })).toBeNull();
+  });
+
+  it("renders upstream text as a generic document SVG without exposing its content", () => {
+    const node = makeNode("image");
+    renderWorkbench(node, { workflow: makeTextReferenceWorkflow(node) });
+
+    const reference = screen.getByLabelText("World Setting text reference");
+    expect(reference.querySelector("svg")).toBeTruthy();
+    expect(reference.textContent).toBe("");
+    expect(document.body.textContent).not.toContain("A calm morning in a riverside park.");
+  });
+
+  it("wraps upstream references without a constrained scrolling strip", () => {
+    const css = readFileSync(
+      resolve(process.cwd(), "src/features/agent-canvas/workbench/agent-canvas-inline-workbench.css"),
+      "utf8",
+    );
+    const referencesRule = css.match(
+      /\.agent-node-workbench__references\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+    const listRule = css.match(
+      /\.agent-node-workbench__reference-list\s*\{([\s\S]*?)\n\}/,
+    )?.[1];
+
+    expect(referencesRule).toContain("align-items: flex-start");
+    expect(listRule).toContain("flex-wrap: wrap");
+    expect(listRule).toContain("overflow: visible");
+    expect(listRule).not.toContain("overflow-x: auto");
+  });
+
+  it("keeps the Text node model control in the composer footer", () => {
+    const props = {
+      workflow: makeWorkflow(makeNode("text")),
+      node: makeNode("text"),
+      patchNode: vi.fn().mockResolvedValue(undefined),
+      patchBinding: vi.fn().mockResolvedValue(undefined),
+      deleteBinding: vi.fn().mockResolvedValue(undefined),
+      onRun: vi.fn().mockResolvedValue(undefined),
+      onSaveVariation: vi.fn().mockResolvedValue(undefined),
+      onDiscardVariation: vi.fn().mockResolvedValue(undefined),
+      onMaterializeVariation: vi.fn().mockResolvedValue(null),
+      onSaveImageToLibrary: vi.fn().mockResolvedValue(undefined),
+      onDelete: vi.fn().mockResolvedValue(undefined),
+      onOpenEditing: vi.fn(),
+      onOpenAssets: vi.fn(),
+      onUploadReferences: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const { container } = render(<AgentCanvasInlineWorkbench {...props} />);
+
+    expect(container.querySelector(
+      ".agent-node-workbench__footer .agent-node-workbench__model-picker",
+    )).toBeTruthy();
   });
 });

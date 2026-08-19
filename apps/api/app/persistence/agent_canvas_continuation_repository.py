@@ -15,7 +15,12 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.persistence.database import V2Database
 from app.persistence.errors import V2PersistenceError
 from app.persistence.event_repository import EventRepository
-from app.persistence.models import AgentCanvasContinuationOutboxRow
+from app.persistence.models import (
+    AgentCanvasContinuationOutboxRow,
+    AgentCanvasOperationEnvelopeRow,
+)
+from app.schemas.agent_canvas_capabilities import CapabilityIdV1
+from app.schemas.agent_canvas_continuation import CONTINUATION_OPERATIONS_V2
 from app.schemas.agent_canvas_conversation import ContinuationDeliveryV2
 from app.schemas.v2_persistence import V2EventInsert
 
@@ -28,6 +33,10 @@ class AgentCanvasContinuationOutboxRepository:
             raise ValueError("Continuation outbox and events must use the same database.")
         self._database = database
         self._events = events
+
+    @property
+    def database(self) -> V2Database:
+        return self._database
 
     def enqueue(
         self,
@@ -42,8 +51,69 @@ class AgentCanvasContinuationOutboxRepository:
         max_attempts: int,
         now: datetime,
     ) -> ContinuationDeliveryV2:
+        try:
+            with self._database.engine.connect() as connection:
+                connection.exec_driver_sql("BEGIN IMMEDIATE")
+                try:
+                    delivery = self.enqueue_in_transaction(
+                        connection,
+                        continuation_id=continuation_id,
+                        workflow_id=workflow_id,
+                        conversation_id=conversation_id,
+                        source_turn_id=source_turn_id,
+                        continuation_turn_id=continuation_turn_id,
+                        operation=operation,
+                        payload=payload,
+                        max_attempts=max_attempts,
+                        now=now,
+                    )
+                    connection.commit()
+                    return delivery
+                except BaseException:
+                    connection.rollback()
+                    raise
+        except V2PersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _error(
+                "idempotency_conflict",
+                "Continuation identity conflicts with an existing delivery.",
+            ) from error
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def enqueue_in_transaction(
+        self,
+        connection: Connection,
+        *,
+        continuation_id: str,
+        workflow_id: str,
+        conversation_id: str,
+        source_turn_id: str,
+        continuation_turn_id: str,
+        operation: str,
+        payload: Mapping[str, object],
+        max_attempts: int,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
         if max_attempts < 1:
             raise _error("continuation_attempts_invalid", "Maximum attempts must be positive.")
+        if operation not in CONTINUATION_OPERATIONS_V2 or set(payload) != {
+            "schema_version",
+            "envelope_id",
+        }:
+            raise _error(
+                "continuation_payload_invalid",
+                "Continuation delivery requires one typed operation envelope reference.",
+            )
+        if (
+            payload.get("schema_version") != "1"
+            or not str(payload.get("envelope_id") or "").strip()
+        ):
+            raise _error(
+                "continuation_payload_invalid",
+                "Continuation delivery envelope reference is invalid.",
+            )
         payload_json = _json(payload)
         payload_digest = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
         timestamp = _utc(now)
@@ -68,30 +138,89 @@ class AgentCanvasContinuationOutboxRepository:
             "created_at": _iso(timestamp),
             "updated_at": _iso(timestamp),
         }
-        try:
-            with self._database.engine.begin() as connection:
-                existing = _select_one(connection, continuation_id)
-                if existing is not None:
-                    _require_same_enqueue(existing, values)
-                    return _delivery(existing)
-                connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
-                self._append_lifecycle_event(
-                    connection,
-                    values,
-                    event_type="continuation_queued",
-                    transition_key=(f"conversation:{continuation_turn_id}:continuation_queued:0"),
-                    created_at=timestamp,
+        existing = _select_one(connection, continuation_id)
+        if existing is not None:
+            _require_same_enqueue(existing, values)
+            return _delivery(existing)
+        active_row = _select_active_for_workflow(connection, workflow_id)
+        if active_row is not None:
+            if str(active_row["continuation_turn_id"]) != source_turn_id:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Another continuation already owns this workflow.",
                 )
-                return _delivery(values)
-        except V2PersistenceError:
-            raise
+            completed = {
+                **active_row,
+                "status": "completed",
+                "lease_owner": None,
+                "lease_expires_at": None,
+                "updated_at": _iso(timestamp),
+            }
+            changed = connection.execute(
+                update(AgentCanvasContinuationOutboxRow)
+                .where(
+                    AgentCanvasContinuationOutboxRow.continuation_id
+                    == active_row["continuation_id"],
+                    AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased", "retry_wait")),
+                )
+                .values(
+                    status="completed",
+                    lease_owner=None,
+                    lease_expires_at=None,
+                    updated_at=_iso(timestamp),
+                )
+            )
+            if changed.rowcount != 1:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Continuation handoff authority changed before commit.",
+                )
+            self._append_lifecycle_event(
+                connection,
+                completed,
+                event_type="continuation_completed",
+                transition_key=(
+                    "conversation:"
+                    f"{active_row['continuation_turn_id']}:"
+                    f"continuation_completed:{active_row['lease_generation']}"
+                ),
+                created_at=timestamp,
+            )
+        try:
+            connection.execute(insert(AgentCanvasContinuationOutboxRow).values(**values))
         except IntegrityError as error:
+            replay = _select_one(connection, continuation_id)
+            if replay is not None:
+                _require_same_enqueue(replay, values)
+                return _delivery(replay)
+            active = self.get_active_for_workflow_in_transaction(connection, workflow_id)
+            if active is not None:
+                raise _error(
+                    "active_continuation_conflict",
+                    "Another continuation already owns this workflow.",
+                ) from error
             raise _error(
                 "idempotency_conflict",
                 "Continuation identity conflicts with an existing delivery.",
             ) from error
-        except SQLAlchemyError as error:
-            raise _persistence_error() from error
+        self._append_lifecycle_event(
+            connection,
+            values,
+            event_type="continuation_queued",
+            transition_key=f"conversation:{continuation_turn_id}:continuation_queued:0",
+            created_at=timestamp,
+        )
+        return _delivery(values)
+
+    def get_active_for_workflow_in_transaction(
+        self,
+        connection: Connection,
+        workflow_id: str,
+    ) -> ContinuationDeliveryV2 | None:
+        """Read the single active owner through a caller-owned transaction."""
+
+        row = _select_active_for_workflow(connection, workflow_id)
+        return _delivery(row) if row is not None else None
 
     def get(self, continuation_id: str) -> ContinuationDeliveryV2:
         try:
@@ -102,6 +231,102 @@ class AgentCanvasContinuationOutboxRepository:
         if row is None:
             raise _error("continuation_not_found", "Continuation delivery was not found.")
         return _delivery(row)
+
+    def list_nonterminal_for_workflow(
+        self,
+        workflow_id: str,
+    ) -> tuple[ContinuationDeliveryV2, ...]:
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow)
+                        .where(
+                            AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                            AgentCanvasContinuationOutboxRow.status.in_(
+                                ("queued", "leased", "retry_wait")
+                            ),
+                        )
+                        .order_by(
+                            AgentCanvasContinuationOutboxRow.created_at.asc(),
+                            AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(_delivery(row) for row in rows)
+
+    def list_for_workflow(self, workflow_id: str) -> tuple[ContinuationDeliveryV2, ...]:
+        """Return causal delivery records without filtering terminal history."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow)
+                        .where(AgentCanvasContinuationOutboxRow.workflow_id == workflow_id)
+                        .order_by(
+                            AgentCanvasContinuationOutboxRow.created_at.asc(),
+                            AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(_delivery(row) for row in rows)
+
+    def get_for_turn(self, turn_id: str) -> ContinuationDeliveryV2 | None:
+        try:
+            with self._database.engine.connect() as connection:
+                row = (
+                    connection.execute(
+                        select(AgentCanvasContinuationOutboxRow).where(
+                            AgentCanvasContinuationOutboxRow.continuation_turn_id == turn_id
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return _delivery(row) if row is not None else None
+
+    def list_nonterminal_capability_ids(
+        self,
+        workflow_id: str,
+    ) -> tuple[CapabilityIdV1, ...]:
+        """Return capability commands that still own a pending delivery."""
+
+        try:
+            with self._database.engine.connect() as connection:
+                rows = tuple(
+                    connection.execute(
+                        select(AgentCanvasOperationEnvelopeRow.envelope_json)
+                        .join(
+                            AgentCanvasContinuationOutboxRow,
+                            AgentCanvasContinuationOutboxRow.continuation_turn_id
+                            == AgentCanvasOperationEnvelopeRow.turn_id,
+                        )
+                        .where(
+                            AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                            AgentCanvasContinuationOutboxRow.operation == "capability_command",
+                            AgentCanvasContinuationOutboxRow.status.in_(
+                                ("queued", "leased", "retry_wait")
+                            ),
+                        )
+                        .order_by(AgentCanvasContinuationOutboxRow.created_at.asc())
+                    ).scalars()
+                )
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+        return tuple(
+            dict.fromkeys(json.loads(str(envelope_json))["capability_id"] for envelope_json in rows)
+        )
 
     def claim_due(
         self,
@@ -214,6 +439,63 @@ class AgentCanvasContinuationOutboxRepository:
             status="completed",
             now=now,
         )
+
+    def renew_lease(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        now: datetime,
+        lease_duration: timedelta,
+    ) -> ContinuationDeliveryV2:
+        timestamp = _utc(now)
+        if lease_duration <= timedelta(0):
+            raise _error("continuation_claim_invalid", "Lease duration must be positive.")
+        try:
+            with self._database.engine.begin() as connection:
+                row = _select_one(connection, continuation_id)
+                if row is None:
+                    raise _error("continuation_not_found", "Continuation delivery was not found.")
+                _require_owned(row, worker_id, lease_generation, timestamp)
+                expires_at = _iso(timestamp + lease_duration)
+                result = connection.execute(
+                    update(AgentCanvasContinuationOutboxRow)
+                    .where(
+                        AgentCanvasContinuationOutboxRow.continuation_id == continuation_id,
+                        AgentCanvasContinuationOutboxRow.status == "leased",
+                        AgentCanvasContinuationOutboxRow.lease_owner == worker_id,
+                        AgentCanvasContinuationOutboxRow.lease_generation == lease_generation,
+                    )
+                    .values(lease_expires_at=expires_at, updated_at=_iso(timestamp))
+                )
+                if result.rowcount != 1:
+                    raise _stale_lease_error()
+                return _delivery(
+                    {**row, "lease_expires_at": expires_at, "updated_at": _iso(timestamp)}
+                )
+        except V2PersistenceError:
+            raise
+        except SQLAlchemyError as error:
+            raise _persistence_error() from error
+
+    def assert_owned(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        now: datetime,
+    ) -> None:
+        delivery = self.get(continuation_id)
+        if (
+            delivery.status != "leased"
+            or delivery.lease_owner != worker_id
+            or delivery.lease_generation != lease_generation
+            or delivery.lease_expires_at is None
+            or delivery.lease_expires_at < _utc(now)
+        ):
+            raise _stale_lease_error()
 
     def schedule_retry(
         self,
@@ -333,6 +615,27 @@ class AgentCanvasContinuationOutboxRepository:
         except SQLAlchemyError as error:
             raise _persistence_error() from error
 
+    def supersede_owned(
+        self,
+        continuation_id: str,
+        *,
+        worker_id: str,
+        lease_generation: int,
+        reason: str,
+        now: datetime,
+    ) -> ContinuationDeliveryV2:
+        """Supersede only the delivery generation currently owned by a worker."""
+
+        return self._finish_owned(
+            continuation_id,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            status="superseded",
+            now=now,
+            error_code="continuation_superseded",
+            error_message=reason,
+        )
+
     def _finish_owned(
         self,
         continuation_id: str,
@@ -383,6 +686,7 @@ class AgentCanvasContinuationOutboxRepository:
                     "completed": "continuation_completed",
                     "retry_wait": "continuation_retry_scheduled",
                     "failed": "continuation_failed",
+                    "superseded": "continuation_superseded",
                 }[status]
                 self._append_lifecycle_event(
                     connection,
@@ -443,6 +747,27 @@ def _select_one(connection: Connection, continuation_id: str) -> RowMapping | No
     )
 
 
+def _select_active_for_workflow(
+    connection: Connection,
+    workflow_id: str,
+) -> RowMapping | None:
+    return (
+        connection.execute(
+            select(AgentCanvasContinuationOutboxRow)
+            .where(
+                AgentCanvasContinuationOutboxRow.workflow_id == workflow_id,
+                AgentCanvasContinuationOutboxRow.status.in_(("queued", "leased", "retry_wait")),
+            )
+            .order_by(
+                AgentCanvasContinuationOutboxRow.created_at.asc(),
+                AgentCanvasContinuationOutboxRow.continuation_id.asc(),
+            )
+        )
+        .mappings()
+        .first()
+    )
+
+
 def _require_same_enqueue(existing: RowMapping, expected: Mapping[str, Any]) -> None:
     identity_fields = (
         "workflow_id",
@@ -475,6 +800,7 @@ def _require_owned(
 
 
 def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
+    payload = json.loads(str(row["payload_json"]))
     return ContinuationDeliveryV2(
         continuation_id=str(row["continuation_id"]),
         workflow_id=str(row["workflow_id"]),
@@ -482,6 +808,7 @@ def _delivery(row: Mapping[str, Any]) -> ContinuationDeliveryV2:
         source_turn_id=str(row["source_turn_id"]),
         continuation_turn_id=str(row["continuation_turn_id"]),
         operation=str(row["operation"]),
+        envelope_id=str(payload["envelope_id"]),
         payload_digest=str(row["payload_digest"]),
         status=row["status"],
         attempt_count=int(row["attempt_count"]),

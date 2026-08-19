@@ -47,7 +47,7 @@
   flex: 0 0 auto;
   width: 20px;
   height: 20px;
-  color: var(--accent, #7667b8);
+  color: var(--accent);
 }
 
 .agent-asset-browser__title h2,
@@ -76,17 +76,17 @@
   gap: 7px;
   min-height: 34px;
   padding: 0 13px;
-  color: #fff;
+  color: var(--text-inverse);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: var(--accent, #7667b8);
+  background: var(--accent);
   border-radius: 6px;
   transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
 }
 
 .agent-asset-browser__upload:hover {
-  box-shadow: 0 8px 22px rgb(118 103 184 / 28%);
+  box-shadow: 0 8px 22px rgb(157 175 230 / 28%);
   transform: translateY(-1px);
 }
 
@@ -143,8 +143,8 @@
 
 .agent-asset-browser__tabs button.is-active,
 .agent-asset-browser__filters button.is-active {
-  color: var(--accent-strong, #5e4fa5);
-  background: color-mix(in srgb, var(--accent-soft, #ddd8f3) 74%, #fff);
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent-soft) 74%, #fff);
   box-shadow: 0 1px 4px rgb(31 33 58 / 8%);
 }
 
@@ -160,8 +160,8 @@
 }
 
 .agent-asset-browser__search:focus {
-  border-color: var(--accent, #7667b8);
-  box-shadow: 0 0 0 3px rgb(118 103 184 / 13%);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(157 175 230 / 13%);
 }
 
 .agent-asset-browser__filters {
@@ -207,14 +207,14 @@
 }
 
 .agent-asset-card:hover {
-  border-color: color-mix(in srgb, var(--accent, #7667b8) 48%, var(--border, #d9dbea));
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border, #d9dbea));
   box-shadow: 0 10px 26px rgb(31 33 58 / 12%);
   transform: translateY(-2px);
 }
 
 .agent-asset-card.is-selected {
-  border-color: var(--accent, #7667b8);
-  box-shadow: 0 0 0 2px rgb(118 103 184 / 16%), 0 10px 28px rgb(31 33 58 / 12%);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgb(157 175 230 / 16%), 0 10px 28px rgb(31 33 58 / 12%);
 }
 
 .agent-asset-card__preview {
@@ -238,7 +238,7 @@
   place-items: center;
   width: 100%;
   height: 100%;
-  color: color-mix(in srgb, var(--accent, #7667b8) 62%, var(--text-secondary, #73778d));
+  color: color-mix(in srgb, var(--accent) 62%, var(--text-secondary, #73778d));
 }
 
 .agent-asset-card__placeholder svg {
@@ -293,8 +293,8 @@
 }
 
 .agent-asset-card__select input:checked + span {
-  background: var(--accent, #7667b8);
-  border-color: var(--accent, #7667b8);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .agent-asset-card__select input:checked + span::after {
@@ -309,7 +309,7 @@
 }
 
 .agent-asset-card__select input:focus-visible + span {
-  box-shadow: 0 0 0 3px rgb(118 103 184 / 28%);
+  box-shadow: 0 0 0 3px rgb(157 175 230 / 28%);
 }
 
 .agent-asset-card__meta {
@@ -341,12 +341,12 @@
   width: calc(100% - 20px);
   min-height: 30px;
   margin: 0 10px 10px;
-  color: var(--accent-strong, #5e4fa5);
+  color: var(--accent-strong);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  background: color-mix(in srgb, var(--accent-soft, #ddd8f3) 56%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent, #7667b8) 24%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 56%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
   border-radius: 5px;
 }
 
@@ -374,7 +374,7 @@
 .agent-asset-browser__state > svg {
   width: 28px;
   height: 28px;
-  color: color-mix(in srgb, var(--accent, #7667b8) 60%, var(--text-secondary, #73778d));
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-secondary, #73778d));
 }
 
 .agent-asset-browser__state p {
@@ -401,8 +401,8 @@
 .agent-asset-browser__spinner {
   width: 22px;
   height: 22px;
-  border: 2px solid color-mix(in srgb, var(--accent, #7667b8) 22%, transparent);
-  border-top-color: var(--accent, #7667b8);
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: agent-asset-spin 760ms linear infinite;
 }
@@ -431,11 +431,11 @@
   gap: 7px;
   min-height: 34px;
   padding: 0 13px;
-  color: #fff !important;
+  color: var(--text-inverse) !important;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  background: var(--accent, #7667b8);
+  background: var(--accent);
   border: 0;
   border-radius: 6px;
 }

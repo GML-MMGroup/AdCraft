@@ -1,0 +1,36 @@
+{
+  "skill_id": "observational-human-documentary",
+  "version": "1.0.0",
+  "display_name": "Observational Human Documentary",
+  "description": "An advertising treatment built around respectful observation, environmental context, authentic action, and restrained narration.",
+  "category": "lifestyle-documentary",
+  "tags": [
+    "lifestyle",
+    "documentary",
+    "observational"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Observational Human Documentary creative treatment."
+  },
+  "display_order": 540,
+  "files": {
+    "SKILL.md": "ce38b9315d8870e91b82056ac0e944e536ec80e6616b8e65229f9e7af56f67e2",
+    "references/script.md": "020159fc85e471b69bbab8ece771675c64c8986f6a79b539ef1e0f12669df88c",
+    "references/scene.md": "1e7826bb1eca244cfb854f686070b5eb00c9b6327af1d12f8f18619222498f1a",
+    "references/storyboard.md": "7bccb12a2bf0bea3457a6f26d45c6d98c80304386268ef167fe5ad2cc89336ae",
+    "references/video.md": "7a22c5bca8e13256737ce214a1d64dc99e94454aac9b6bacb950541497ab0774",
+    "references/bgm.md": "d9e7cc4126590e3c55dbe2c893e5a2f0595f4ec4f3f665c2c0fcecc9e4a5903a"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

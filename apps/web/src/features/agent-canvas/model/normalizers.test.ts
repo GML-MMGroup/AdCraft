@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeAgentActionReceiptV2,
   normalizeAgentCanvasChatTimelineV2,
   normalizeAgentCanvasProjectCreateResponseV2,
   normalizeAgentCanvasChatTurnV2,
   normalizeAgentCanvasVideoSkillRunV2,
   normalizeAgentCanvasWorkflowV2,
   normalizeAgentCanvasChatTimelineResponseV2,
+  normalizeAgentExecutionSettingsV2,
+  normalizeAgentWorkingDocumentPageV2,
+  normalizeAgentWorkingDocumentV2,
   normalizeCanvasBindingV2,
   normalizeCanvasLayoutPatchResponseV2,
   normalizeCanvasNodeV2,
+  normalizeCanvasPostReadyCheckpointV2,
   normalizeCanvasRuntimeEventV2,
   normalizeCanvasRuntimeEventsResponseV2,
   normalizeCanvasRuntimeSnapshotV2,
@@ -21,10 +26,13 @@ import {
   normalizeConceptProposalV2,
   normalizeEditingNodeContentV2,
   normalizeEditingExportAcceptedV2,
+  normalizeGuidedSessionStateV2,
   normalizeProjectAssetSummaryV2,
   normalizeProviderModelCapabilityListV2,
   normalizeResolvedMediaInputSnapshotV2,
   normalizeResolvedTextInputSnapshotV2,
+  normalizeVideoSkillCatalogResponseV2,
+  normalizeVideoSkillPublicDetailV2,
 } from "./normalizers.ts";
 
 function validWorkflowPayload() {
@@ -49,6 +57,7 @@ function validWorkflowPayload() {
         structured_content: { markdown: "# Brief" },
         model_id: null,
         parameters: {},
+        parameter_provenance: {},
         prompt_context_snapshot_id: null,
         output_asset_id: null,
         position: { x: 120, y: 80 },
@@ -71,6 +80,7 @@ function validWorkflowPayload() {
         structured_content: {},
         model_id: "model-image-1",
         parameters: { stylization: 100 },
+        parameter_provenance: {},
         prompt_context_snapshot_id: "snapshot-1",
         output_asset_id: "asset-output-1",
         position: { x: 480, y: 220 },
@@ -148,7 +158,868 @@ function validWorkflowPayload() {
   };
 }
 
+function progressiveGuidanceSessionPayload() {
+  return {
+    session_id: "guidance-1",
+    workflow_id: "workflow-1",
+    status: "active",
+    response_locale: "zh-CN",
+    goal: {
+      requested_output: "video",
+      delivery_scope: "generated_media",
+      summary: "Create a calm product advertisement.",
+      explicit_constraints: { dialogue: "none" },
+    },
+    creative_authority: {
+      authority: "user",
+      source: "explicit_user",
+      decided_at_turn_id: "turn-authority-1",
+      revision: 1,
+    },
+    current_checkpoint: {
+      checkpoint_id: "checkpoint-1",
+      workflow_id: "workflow-1",
+      session_revision: 3,
+      stage_kind: "scene",
+      status: "waiting_user",
+      trigger: "user_message",
+      action_id: null,
+    },
+    narrative_direction: "A quiet product ritual that builds toward a precise reveal.",
+    element_decisions: [{
+      element_kind: "character",
+      presence: "exclude",
+      authority: "user",
+      requirements: {},
+      source: "explicit_user",
+    }],
+    current_topic_id: "topic-scene",
+    topics: [{
+      topic_id: "topic-scene",
+      topic_kind: "scene",
+      title: "Scene direction",
+      status: "proposed",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      related_node_ids: [],
+      source_proposal_id: "proposal-scene-1",
+      revision: 2,
+    }],
+    active_proposal_id: "proposal-scene-1",
+    active_style_skill_run_id: "style-run-1",
+    completion: {
+      authoring: "not_ready",
+      delivery: "not_ready",
+      editing_preparation: "not_ready",
+      editing_node_id: null,
+      matching_node_ids: [],
+      matching_asset_ids: [],
+    },
+    journey: {
+      policy_version: "fixed_ad_production_v1",
+      stage: "foundation_design",
+      stage_status: "waiting_user",
+      stage_revision: 4,
+      foundation_queue: [{
+        item_id: "scene-1",
+        kind: "scene",
+        occurrence_index: 1,
+        requirement_source: "explicit_user",
+        required: true,
+        status: "active",
+        topic_id: "topic-scene",
+        selected_node_ids: [],
+      }],
+      foundation_cursor: 0,
+      active_action: {
+        action_id: "journey-action-1",
+        action_kind: "invoke_capability:scene_design",
+        stage: "foundation_design",
+        status: "waiting_user",
+        turn_id: "turn-scene-1",
+        foundation_item_id: "scene-1",
+      },
+      suspended_action: null,
+      transition_evidence: [{
+        evidence_id: "evidence-1",
+        evidence_kind: "clarification_completed",
+        source_id: "turn-clarification-1",
+        source_revision: 2,
+        recorded_at: "2026-08-04T09:00:00Z",
+      }],
+    },
+    revision: 3,
+    updated_at: "2026-08-04T09:00:00Z",
+  };
+}
+
 describe("Agent Canvas normalizers", () => {
+  it("keeps a durable decision-bundle timeline pointer without treating it as chat text", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [{
+        entry_id: "decision-entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 1,
+        entry_type: "decision_bundle",
+        speaker: null,
+        content: "Choose the creative direction.",
+        metadata: { bundle_id: "bundle-1" },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-10T00:00:00Z",
+      }],
+      next_cursor: 1,
+    });
+
+    expect(timeline.items).toEqual([{
+      item_type: "decision_bundle_pointer",
+      bundle_id: "bundle-1",
+      sequence: 1,
+      created_at: "2026-08-10T00:00:00Z",
+    }]);
+  });
+
+  it("accepts slim capability proposals and capability turns without guidance decisions", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-product-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-product-1",
+      video_skill_run_id: null,
+      topic_id: "topic-product",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "product",
+      capability_id: "product_design",
+      capability_display_name: "Product Designer",
+      options: [{
+        option_id: "option-product-1",
+        title: "Quiet Precision",
+        public_summary: "A restrained premium product direction.",
+        key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
+      }],
+      proposed_references: [{
+        source_kind: "node",
+        source_id: "node-world-setting-1",
+        binding_kind: "text_context",
+        input_role: "text_context",
+        required: true,
+        display_order: 0,
+        semantic_reference_role: "world_setting_reference",
+        display_name: "World Setting",
+        media_type: "text",
+      }],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Define the product direction.",
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      materialization: {
+        materialization_id: "materialization-product-1",
+        option_id: "option-product-1",
+        turn_id: "turn-materialization-1",
+        status: "failed",
+        attempt_no: 1,
+        retryable: true,
+        error: {
+          code: "capability_materialization_failed",
+          message: "The selected direction could not be prepared.",
+        },
+        created_at: "2026-08-07T01:00:01Z",
+        updated_at: "2026-08-07T01:00:02Z",
+      },
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 1,
+      actions: [],
+      created_at: "2026-08-07T01:00:00Z",
+      updated_at: "2026-08-07T01:00:00Z",
+    });
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-product-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "capability",
+      request: {},
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: 1,
+      continuation: null,
+      created_at: "2026-08-07T01:00:00Z",
+      updated_at: "2026-08-07T01:00:01Z",
+    });
+
+    expect(proposal).toMatchObject({
+      capability_id: "product_design",
+      capability_display_name: "Product Designer",
+      options: [{
+        public_summary: "A restrained premium product direction.",
+        key_decisions: ["Keep the silhouette compact.", "Use a restrained metallic finish."],
+      }],
+      proposed_references: [{ semantic_reference_role: "world_setting_reference" }],
+      materialization: {
+        status: "failed",
+        retryable: true,
+        error: { code: "capability_materialization_failed" },
+      },
+    });
+    expect(turn.turn_kind).toBe("capability");
+  });
+
+  it("accepts a single authoritative world-setting option", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-world-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-world-1",
+      video_skill_run_id: null,
+      topic_id: "topic-world",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "world_setting",
+      capability_id: "world_setting",
+      capability_display_name: "World Designer",
+      options: [{
+        option_id: "option-world-1",
+        title: "Rain-lit city",
+        public_summary: "A single backend-approved world direction.",
+        key_decisions: ["Night exterior", "Wet reflective streets"],
+      }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      materialization: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 1,
+      actions: [],
+      created_at: "2026-08-18T00:00:00Z",
+      updated_at: "2026-08-18T00:00:00Z",
+    });
+
+    expect(proposal.options).toHaveLength(1);
+  });
+
+  it("accepts retry lineage and safe operation recovery state for chat turns", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-retry-2",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "running",
+      turn_kind: "capability",
+      request: {},
+      creation_mode: null,
+      guidance_session_revision: 12,
+      continuation: null,
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      retryable: false,
+      operation_stage: "validating",
+      operation_failure: {
+        code: "agent_provider_transport_failed",
+        message: "The provider request could not be completed.",
+        operation: "scene_design",
+        capability_id: "scene_design",
+        attempt_stage: "transport_retry",
+        failure_stage: "provider",
+        elapsed_ms: 5400,
+        retryable: true,
+        validation_paths: ["options[0].title"],
+        occurred_at: "2026-08-11T10:00:01Z",
+      },
+      error_code: null,
+      error_message: null,
+      created_at: "2026-08-11T10:00:00Z",
+      updated_at: "2026-08-11T10:00:01Z",
+    });
+    const accepted = normalizeChatTurnAcceptedV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      message_id: null,
+      turn_id: "turn-retry-2",
+      status: "queued",
+      events_cursor: 42,
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      replayed: false,
+    });
+
+    expect(turn).toMatchObject({
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      operation_stage: "validating",
+      operation_failure: { code: "agent_provider_transport_failed" },
+    });
+    expect(accepted).toMatchObject({
+      retry_of_turn_id: "turn-failed-1",
+      retry_attempt_no: 2,
+      replayed: false,
+    });
+  });
+
+  it("accepts the canonical World Setting node, proposal, guidance topic, and persisted binding", () => {
+    const worldSettingDocument = {
+      document_kind: "world_setting",
+      contract_version: "world-setting-v2",
+      content: "A near-future coastal city where quiet technology blends into daily rituals.",
+      core: {
+        premise: "Quiet technology is embedded in daily rituals.",
+        era_and_place: "A near-future coastal city.",
+        world_rules: ["Technology stays visually unobtrusive."],
+        visual_continuity: ["Mist, pale stone, and restrained warm light recur."],
+      },
+      authoring_provenance: {
+        source_proposal_id: "proposal-world-1",
+        source_option_id: "world-option-1",
+        materialization_run_id: "materialization-1",
+        style_skill_run_id: null,
+        creative_direction_snapshot_id: "direction-1",
+      },
+    };
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      nodes: [
+        {
+          ...validWorkflowPayload().nodes[0],
+          node_id: "node-world-setting",
+          creative_role: "world_setting",
+          title: "World Setting",
+          structured_content: worldSettingDocument,
+        },
+        validWorkflowPayload().nodes[1],
+      ],
+      bindings: [{
+        binding_id: "binding-world-setting",
+        workflow_id: "workflow-1",
+        source: { kind: "node_output", source_node_id: "node-world-setting" },
+        target_node_id: "node-image-1",
+        input_role: "text_context",
+        required: true,
+        enabled: true,
+        order: 0,
+        label: "World Setting",
+        metadata: { context_kind: "world_setting" },
+        created_at: "2026-08-06T10:00:00Z",
+        updated_at: "2026-08-06T10:00:00Z",
+      }],
+    });
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-world-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-world-1",
+      video_skill_run_id: null,
+      topic_id: "topic-world-setting",
+      creative_direction_snapshot_id: "direction-1",
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "world_setting",
+      capability_id: "world_setting",
+      capability_display_name: "World Setting Designer",
+      options: [
+        {
+          option_id: "world-option-1",
+          title: "Quiet future",
+          public_summary: "A restrained near-future city.",
+          key_decisions: ["Keep technology calm and unobtrusive."],
+        },
+        {
+          option_id: "world-option-2",
+          title: "Living heritage",
+          public_summary: "Tradition expressed through modern craft.",
+          key_decisions: ["Make craft heritage visible in the environment."],
+        },
+      ],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Choose the production world",
+      availability: "open",
+      application_count: 0,
+      latest_application: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 4,
+      actions: [
+        {
+          action_id: "world-select",
+          action: "select_option",
+          label: "Use this world",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Materialize the selected World Setting.",
+        },
+        {
+          action_id: "world-revise",
+          action: "revise_options",
+          label: "Revise options",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Request revised World Setting options.",
+        },
+        {
+          action_id: "world-delegate",
+          action: "delegate_choice",
+          label: "Let AdCraft choose",
+          proposal_id: "proposal-world-1",
+          expected_session_revision: 4,
+          confirmation_required: false,
+          reason: "Delegate the World Setting choice.",
+        },
+      ],
+      created_at: "2026-08-06T10:00:00Z",
+      updated_at: "2026-08-06T10:00:00Z",
+    });
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: {
+        ...progressiveGuidanceSessionPayload(),
+        element_decisions: [{
+          element_kind: "world_setting",
+          presence: "include",
+          authority: "user",
+          requirements: { style: "quiet future" },
+          source: "explicit_user",
+        }],
+        current_topic_id: "topic-world-setting",
+        active_proposal_id: "proposal-world-1",
+        topics: [{
+          topic_id: "topic-world-setting",
+          topic_kind: "world_setting",
+          title: "World Setting",
+          status: "proposed",
+          capability_id: "world_setting",
+          capability_display_name: "World Setting Designer",
+          related_node_ids: ["node-world-setting"],
+          source_proposal_id: "proposal-world-1",
+          revision: 1,
+        }],
+      },
+      continuations: [],
+      current_session_actions: [],
+      items: [],
+      next_cursor: 0,
+    });
+
+    expect(workflow.nodes[0]).toMatchObject({
+      creative_role: "world_setting",
+      structured_content: worldSettingDocument,
+    });
+    expect(workflow.bindings[0]).toMatchObject({
+      input_role: "text_context",
+      required: true,
+      metadata: { context_kind: "world_setting" },
+    });
+    expect(proposal.proposal_kind).toBe("world_setting");
+    expect(proposal.options).toHaveLength(2);
+    expect(timeline.guidanceSession?.element_decisions[0]?.element_kind).toBe("world_setting");
+    expect(timeline.guidanceSession?.topics[0]?.topic_kind).toBe("world_setting");
+    expect(timeline.guidanceSession?.creative_authority).toMatchObject({ authority: "user" });
+    expect(timeline.guidanceSession?.current_checkpoint).toMatchObject({ stage_kind: "scene" });
+  });
+
+  it("normalizes superseded proposal actions and recoverable expert activity metadata", () => {
+    const historicalProposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-history-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-proposal-1",
+      video_skill_run_id: null,
+      topic_id: "topic-scene",
+      creative_direction_snapshot_id: null,
+      proposal_revision: 2,
+      source_proposal_id: null,
+      proposal_kind: "scene",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      options: [{
+        option_id: "option-scene-1",
+        title: "Morning",
+        public_summary: "Quiet morning light.",
+        key_decisions: ["Use soft directional daylight."],
+      }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: null,
+      availability: "superseded",
+      application_count: 0,
+      latest_application: null,
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 3,
+      actions: [{
+        action_id: "reuse:proposal-history-1:option-scene-1:3",
+        action: "reuse_direction",
+        label: "Use this direction",
+        proposal_id: "proposal-history-1",
+        expected_session_revision: 3,
+        confirmation_required: false,
+        reason: "Publish this historical direction as a sibling Draft.",
+        option_id: "option-scene-1",
+        enabled: true,
+        disabled_reason: null,
+      }],
+      created_at: "2026-08-07T00:00:00Z",
+      updated_at: "2026-08-07T00:01:00Z",
+    });
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: progressiveGuidanceSessionPayload(),
+      continuations: [],
+      current_session_actions: [{
+        action_id: "authority-director",
+        logical_key: "authority:director:3",
+        action: "set_creative_authority",
+        authority: "director",
+        state: "pending",
+        creating_turn_id: "turn-authority-2",
+        expected_session_revision: 3,
+        label: "Take the lead",
+        workflow_id: "workflow-1",
+        confirmation_required: false,
+        reason: "Let the Director choose the next direction.",
+      }],
+      items: [{
+        entry_id: "activity-entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 4,
+        entry_type: "expert_activity",
+        speaker: null,
+        content: "The Specialist request timed out.",
+        metadata: {
+          activity_id: "activity-1",
+          capability_id: "scene_design",
+          capability_display_name: "Scene Designer",
+          operation: "materialize_draft",
+          status: "failed",
+          error_code: "agent_deadline_exceeded",
+          elapsed_ms: 420000,
+          attempt_stage: "transport_retry",
+          retryable: true,
+          validation_paths: ["draft.title"],
+          operation_policy_id: "agent.materialization.v1",
+          suggested_actions: ["retry", "revise_request"],
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-07T01:00:00Z",
+      }],
+      next_cursor: 4,
+    });
+
+    expect(timeline.current_session_actions[0]).toMatchObject({
+      action: "set_creative_authority",
+      authority: "director",
+    });
+    expect(historicalProposal.actions[0]).toMatchObject({
+      action: "reuse_direction",
+      option_id: "option-scene-1",
+      enabled: true,
+    });
+    expect(timeline.items[0]).toMatchObject({
+      item_type: "expert_activity",
+      activity_id: "activity-1",
+      error_code: "agent_deadline_exceeded",
+      message: "The Specialist request timed out.",
+      retryable: true,
+      suggested_actions: ["retry", "revise_request"],
+    });
+    expect(timeline.items[0]).not.toHaveProperty("operation");
+    expect(timeline.items[0]).not.toHaveProperty("operation_policy_id");
+  });
+
+  it("accepts an open GuidedInteraction and legal durable awaiting state", () => {
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      interaction: {
+        interaction_id: "interaction-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
+        kind: "concept_choice", status: "open", response_locale: "zh-CN", expected_session_revision: 3, revision: 2,
+        title: "Choose scene", context: "Pick a scene direction.",
+        content: { content_kind: "concept_choice", proposal_id: null, options: [
+          { option_id: "option-a", title: "Morning", summary: "Soft morning light." },
+          { option_id: "option-b", title: "Evening", summary: "Warm evening light." },
+        ] },
+        allowed_actions: ["select", "revise", "delegate"], submit_path: "/submit",
+        created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
+      },
+      awaiting: {
+        awaiting_id: "awaiting-1", workflow_id: "workflow-1", session_id: "guidance-1", checkpoint_id: "checkpoint-1",
+        kind: "concept_selection", requires_user_action: true, resume_policy: "submit_interaction",
+        interaction_id: "interaction-1", node_ids: [], stage: "foundation_design", stage_revision: 4,
+        created_at: "2026-08-15T10:00:00Z",
+      },
+    });
+    expect(session.interaction?.content.content_kind).toBe("concept_choice");
+    expect(session.awaiting?.kind).toBe("concept_selection");
+  });
+
+  it("normalizes the complete guidance completion projection", () => {
+    const session = normalizeGuidedSessionStateV2({
+      ...progressiveGuidanceSessionPayload(),
+      completion: {
+        authoring: "ready",
+        delivery: "ready",
+        plan_document_id: "document-plan-1",
+        plan_revision: 3,
+        editing_preparation: "prepared",
+        editing_node_id: "node-editing-1",
+        preparation_receipt_id: "receipt-preparation-1",
+        manifest_revision: 2,
+        export_status: "completed",
+        export_id: "export-1",
+        final_completion_receipt_id: "receipt-completion-1",
+        final_asset_id: "asset-final-1",
+        matching_node_ids: ["node-video-1", "node-editing-1"],
+        matching_asset_ids: ["asset-video-1", "asset-final-1"],
+      },
+    });
+
+    expect(session.completion).toEqual({
+      authoring: "ready",
+      delivery: "ready",
+      plan_document_id: "document-plan-1",
+      plan_revision: 3,
+      editing_preparation: "prepared",
+      editing_node_id: "node-editing-1",
+      preparation_receipt_id: "receipt-preparation-1",
+      manifest_revision: 2,
+      export_status: "completed",
+      export_id: "export-1",
+      final_completion_receipt_id: "receipt-completion-1",
+      final_asset_id: "asset-final-1",
+      matching_node_ids: ["node-video-1", "node-editing-1"],
+      matching_asset_ids: ["asset-video-1", "asset-final-1"],
+    });
+  });
+
+  it("normalizes the canonical progressive guidance timeline", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: progressiveGuidanceSessionPayload(),
+      guidance_advance_precondition: {
+        schema_version: "1",
+        workflow_id: "workflow-1",
+        workflow_revision: 9,
+        session_id: "guidance-1",
+        session_revision: 3,
+        session_status: "active",
+        journey_stage: "foundation_design",
+        journey_stage_status: "working",
+        journey_stage_revision: 4,
+        source_id: "stage:foundation_design:4",
+        requirement_revision_id: "requirement-1",
+        requirement_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        active_action_digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        owner_state_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        authority_digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      },
+      continuations: [{
+        continuation_id: "continuation-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        source_turn_id: "turn-1",
+        continuation_turn_id: "turn-2",
+        operation: "resume_guidance",
+        payload_digest: "digest-1",
+        status: "superseded",
+        attempt_count: 1,
+        max_attempts: 3,
+        next_attempt_at: "2026-08-04T09:01:00Z",
+        lease_owner: null,
+        lease_generation: 0,
+        lease_expires_at: null,
+        last_error_code: null,
+        last_error_message: null,
+        created_at: "2026-08-04T09:00:00Z",
+        updated_at: "2026-08-04T09:01:00Z",
+      }],
+      current_session_actions: [{
+        action_id: "guidance-1:3:stop_guidance",
+        logical_key: "guidance-1:3:stop_guidance",
+        action: "stop_guidance",
+        state: "pending",
+        creating_turn_id: "turn-2",
+        expected_session_revision: 3,
+        label: "Stop guidance",
+        workflow_id: "workflow-1",
+        confirmation_required: true,
+        reason: "Pause the current guidance session.",
+      }],
+      items: [],
+      next_cursor: 2,
+    });
+
+    expect(timeline.guidanceSession).toMatchObject({
+      session_id: "guidance-1",
+      revision: 3,
+      response_locale: "zh-CN",
+      goal: { requested_output: "video" },
+    });
+    expect(timeline.current_session_actions[0]).toMatchObject({
+      action: "stop_guidance",
+      expected_session_revision: 3,
+    });
+    expect(timeline.continuations[0]?.delivery_status).toBe("superseded");
+    expect(timeline.guidanceAdvancePrecondition?.authority_digest)
+      .toBe("sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd");
+  });
+
+  it("normalizes progressive proposal descriptors and application receipts", () => {
+    const proposal = normalizeConceptProposalV2({
+      proposal_id: "proposal-scene-1",
+      workflow_id: "workflow-1",
+      turn_id: "turn-1",
+      video_skill_run_id: "style-run-1",
+      topic_id: "topic-scene",
+      creative_direction_snapshot_id: "direction-1",
+      proposal_revision: 1,
+      source_proposal_id: null,
+      proposal_kind: "scene",
+      capability_id: "scene_design",
+      capability_display_name: "Scene Designer",
+      options: [{
+        option_id: "scene-1",
+        title: "Quiet studio",
+        public_summary: "A calm daylight studio.",
+        key_decisions: ["Keep the set minimal and naturally lit."],
+      }],
+      proposed_references: [],
+      target_node_id: null,
+      target_node_revision: null,
+      proposal_purpose: "Choose the setting",
+      availability: "open",
+      application_count: 1,
+      latest_application: {
+        application_id: "application-1",
+        option_id: "scene-1",
+        action: "select_option",
+        receipt_id: "receipt-1",
+        created_node_ids: ["node-scene-1"],
+        queued_execution_ids: [],
+        created_at: "2026-08-04T09:02:00Z",
+      },
+      guidance_session_id: "guidance-1",
+      guidance_session_revision: 3,
+      actions: [{
+        action_id: "proposal-scene-1:1:select_option",
+        action: "select_option",
+        label: "Select",
+        proposal_id: "proposal-scene-1",
+        expected_session_revision: 3,
+        confirmation_required: false,
+        reason: "Create one editable Draft.",
+      }],
+      created_at: "2026-08-04T09:00:00Z",
+      updated_at: "2026-08-04T09:02:00Z",
+    });
+    const receipt = normalizeAgentActionReceiptV2({
+      receipt_id: "receipt-1",
+      workflow_id: "workflow-1",
+      plan_id: null,
+      action_id: "proposal-scene-1:1:select_option",
+      proposal_id: "proposal-scene-1",
+      proposal_option_id: "scene-1",
+      proposal_action: "select_option",
+      actor_kind: "user",
+      idempotency_key: "proposal-select-1",
+      status: "applied",
+      summary: "Created a scene draft.",
+      created_node_ids: ["node-scene-1"],
+      updated_node_ids: [],
+      deleted_node_ids: [],
+      created_binding_ids: [],
+      deleted_binding_ids: [],
+      queued_execution_ids: [],
+      run_queue_errors: [],
+      operation_results: [],
+      workflow_revision: 4,
+      before_workflow_revision: 3,
+      placement_hints: [],
+      continuation_turn_id: null,
+      superseded_by: null,
+      error_code: null,
+      error_message: null,
+      created_at: "2026-08-04T09:02:00Z",
+    });
+
+    expect(proposal.actions[0]).toMatchObject({
+      action: "select_option",
+      expected_session_revision: 3,
+    });
+    expect(proposal.latest_application?.action).toBe("select_option");
+    expect(receipt).toMatchObject({
+      proposal_id: "proposal-scene-1",
+      proposal_option_id: "scene-1",
+      proposal_action: "select_option",
+    });
+  });
+
+  it("normalizes progressive turn, provider capability, and style skill projections", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "message",
+      request: { text: "Make a calm ad." },
+      creation_mode: null,
+      guidance_session_revision: 3,
+      continuation: null,
+      error_code: null,
+      error_message: null,
+      created_at: "2026-08-04T09:00:00Z",
+      updated_at: "2026-08-04T09:01:00Z",
+    });
+    const capabilities = normalizeProviderModelCapabilityListV2({
+      items: [{
+        provider: "volcengine",
+        model_id: "image-model-1",
+        output_type: "image",
+        accepted_input_types: ["text", "image"],
+        max_references: 4,
+        reference_limits: { image: 4 },
+        supported_parameters: ["size"],
+        supported_aspect_ratios: ["16:9"],
+        duration_range_seconds: null,
+        pixel_bounds: [512, 2048],
+        available: true,
+        unavailable_reason: null,
+        supports_native_audio: false,
+        capability_revision: 8,
+      }],
+    });
+    const skillRun = normalizeAgentCanvasVideoSkillRunV2({
+      skill_run_id: "style-run-1",
+      workflow_id: "workflow-1",
+      skill_id: "platform-default",
+      skill_version: "1",
+      source_skill_run_id: null,
+      status: "active",
+      active_creative_direction_snapshot_id: "direction-1",
+      created_at: "2026-08-04T09:00:00Z",
+      updated_at: "2026-08-04T09:01:00Z",
+    });
+
+    expect(turn.turn_kind).toBe("message");
+    expect(turn.guidance_session_revision).toBe(3);
+    expect(capabilities[0]?.capability_revision).toBe(8);
+    expect(skillRun.active_creative_direction_snapshot_id).toBe("direction-1");
+  });
+
   it("accepts optional and nullable guidance session ids in project creation responses", () => {
     const response = {
       ...validWorkflowPayload(),
@@ -232,200 +1103,6 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
-  it("hydrates production readiness and renders current session actions outside history", () => {
-    const timeline = normalizeAgentCanvasChatTimelineResponseV2({
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      creative_session: {
-        skill_run_id: "session-1",
-        workflow_id: "workflow-1",
-        skill_id: "video-ad",
-        skill_version: "1",
-        status: "active",
-        readiness: {
-          discussable_topic_ids: ["characters"],
-          materializable_topic_ids: ["characters"],
-          runnable_node_ids: ["node-character-1"],
-          completion: {
-            planning: "in_progress",
-            generation: "not_started",
-            delivery: "not_ready",
-          },
-        },
-        creative_direction_snapshot_id: null,
-        current_topic_id: "characters",
-        topics: [
-          {
-            topic_id: "characters",
-            topic_kind: "character",
-            display_order: 0,
-            required: true,
-            specialist_name: "character_designer",
-            status: "in_review",
-            outcome: null,
-            related_node_ids: [],
-          },
-        ],
-        deferred_topic_ids: [],
-        memory_revision: 2,
-        updated_at: "2026-07-30T08:00:00Z",
-      },
-      current_session_actions: [
-        {
-          action_id: "action-add-character",
-          logical_key: "add-another:characters",
-          action: "add_another_topic_node",
-          state: "pending",
-          creating_turn_id: "turn-1",
-          expected_semantic_revision: 7,
-          label: "Add another",
-          workflow_id: "workflow-1",
-          proposal_id: "proposal-1",
-          topic_id: "characters",
-          node_id: null,
-          ordered_node_ids: [],
-          manifest_revision: null,
-          recipe_id: "recipe-guided-1",
-          recipe_revision: 1,
-          confirmation_required: false,
-          reason: "Add another character option.",
-        },
-      ],
-      items: [
-        {
-          entry_id: "entry-proposal-1",
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          sequence_no: 3,
-          entry_type: "concept_proposal",
-          speaker: null,
-          content: "Choose a character direction.",
-          metadata: {
-            proposal_id: "proposal-1",
-            proposal_kind: "character",
-          },
-          command_plan: null,
-          action_receipt: null,
-          created_at: "2026-07-30T08:01:00Z",
-        },
-        {
-          entry_id: "entry-activity-1",
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          sequence_no: 4,
-          entry_type: "expert_activity",
-          speaker: null,
-          content: "Character Designer is working",
-          metadata: {
-            specialist_name: "character_designer",
-            display_name: "Character Designer",
-            status: "working",
-          },
-          command_plan: null,
-          action_receipt: null,
-          created_at: "2026-07-30T08:01:01Z",
-        },
-      ],
-      next_cursor: 4,
-    });
-
-    expect(timeline.creative_session?.current_topic_id).toBe("characters");
-    expect(timeline.creative_session?.readiness?.completion.planning).toBe("in_progress");
-    expect(timeline.current_session_actions).toHaveLength(1);
-    expect(timeline.current_session_actions[0]?.logical_key).toBe("add-another:characters");
-    expect(timeline.items[0]?.entry_type).toBe("concept_proposal");
-    expect(timeline.items[1]?.entry_type).toBe("expert_activity");
-  });
-
-  it("normalizes independently branchable proposal state", () => {
-    const proposal = normalizeConceptProposalV2({
-      proposal_id: "proposal-1",
-      workflow_id: "workflow-1",
-      turn_id: "turn-1",
-      video_skill_run_id: "session-1",
-      topic_id: "characters",
-      creative_direction_snapshot_id: "direction-1",
-      proposal_revision: 3,
-      source_proposal_id: null,
-      proposal_kind: "character",
-      specialist_name: "character_designer",
-      options: [{
-        option_id: "option-1",
-        title: "Quiet confidence",
-        summary_prompt: "A restrained editorial lead.",
-      }],
-      proposed_references: [],
-      target_node_id: "node-character-1",
-      target_node_revision: 2,
-      proposal_purpose: "Create a second character direction",
-      availability: "open",
-      application_count: 2,
-      latest_application: {
-        application_id: "application-2",
-        option_id: "option-1",
-        generation_action: "draft_only",
-        receipt_id: "receipt-2",
-        created_node_ids: ["node-character-3"],
-        queued_execution_ids: [],
-        created_at: "2026-08-04T08:02:00Z",
-      },
-      available_actions: ["select", "revise", "archive"],
-      created_at: "2026-08-04T08:00:00Z",
-      updated_at: "2026-08-04T08:02:00Z",
-    });
-
-    expect(proposal.availability).toBe("open");
-    expect(proposal.application_count).toBe(2);
-    expect(proposal.latest_application?.created_node_ids).toEqual(["node-character-3"]);
-    expect(proposal.available_actions).toEqual(["select", "revise", "archive"]);
-  });
-
-  it("projects current session actions exactly once and composes expert display data separately", () => {
-    const timeline = normalizeAgentCanvasChatTimelineV2({
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      current_session_actions: [{
-        action_id: "action-skip",
-        logical_key: "skip:audio",
-        action: "skip_topic",
-        state: "pending",
-        creating_turn_id: "turn-2",
-        expected_semantic_revision: 8,
-        label: "Skip",
-        workflow_id: "workflow-1",
-        topic_id: "audio",
-        confirmation_required: false,
-        reason: "Audio is optional.",
-      }],
-      items: [{
-        entry_id: "entry-activity-1",
-        workflow_id: "workflow-1",
-        conversation_id: "conversation-1",
-        sequence_no: 4,
-        entry_type: "expert_activity",
-        speaker: null,
-        content: "",
-        metadata: {
-          specialist_name: "bgm_director",
-          display_name: "BGM Director",
-          status: "completed",
-        },
-        command_plan: null,
-        action_receipt: null,
-        created_at: "2026-08-04T08:01:00Z",
-      }],
-      next_cursor: 4,
-    });
-
-    expect(timeline.current_session_actions).toHaveLength(1);
-    expect(timeline.items).toHaveLength(1);
-    expect(timeline.items[0]).toMatchObject({
-      item_type: "expert_activity",
-      display_name: "BGM Director",
-      status: "completed",
-    });
-  });
-
   it("rejects more current session actions than the bounded backend contract allows", () => {
     expect(() => normalizeAgentCanvasChatTimelineResponseV2({
       workflow_id: "workflow-1",
@@ -433,10 +1110,10 @@ describe("Agent Canvas normalizers", () => {
       current_session_actions: ["one", "two", "three"].map((suffix, index) => ({
         action_id: `action-${suffix}`,
         logical_key: `logical-${suffix}`,
-        action: index === 2 ? "skip_topic" : "add_another_topic_node",
+        action: index === 2 ? "resume_guidance" : "stop_guidance",
         state: "pending",
         creating_turn_id: `turn-${suffix}`,
-        expected_semantic_revision: index + 1,
+        expected_session_revision: index + 1,
         label: suffix,
         workflow_id: "workflow-1",
         confirmation_required: false,
@@ -460,7 +1137,18 @@ describe("Agent Canvas normalizers", () => {
   });
 
   it("normalizes a complete canonical workflow payload", () => {
-    const workflow = normalizeAgentCanvasWorkflowV2(validWorkflowPayload());
+    const workflow = normalizeAgentCanvasWorkflowV2({
+      ...validWorkflowPayload(),
+      active_style_skill: {
+        skill_run_id: "style-run-1",
+        skill_id: "platform-default",
+        skill_version: "1.0.0",
+        title: "Platform Default",
+        summary: "Balanced commercial video direction.",
+        category: "commercial-craft",
+        creative_direction_snapshot_id: "direction-1",
+      },
+    });
 
     expect(workflow.canvas_model).toBe("agent_canvas_v1");
     expect(workflow.revision).toBe(7);
@@ -468,6 +1156,84 @@ describe("Agent Canvas normalizers", () => {
     expect(workflow.nodes).toHaveLength(2);
     expect(workflow.bindings[1]?.source.kind).toBe("image_asset");
     expect(workflow.assets[0]?.checksum).toBe("sha256-output-1");
+    expect(workflow.active_style_skill).toMatchObject({
+      skill_run_id: "style-run-1",
+      title: "Platform Default",
+    });
+  });
+
+
+  it("normalizes the public video Style catalog without exposing private Skill content", () => {
+    const catalog = normalizeVideoSkillCatalogResponseV2({
+      catalog_version: "1",
+      categories: [{
+        category_id: "commercial-craft",
+        title: "Commercial Craft",
+        display_order: 10,
+      }],
+      items: [{
+        skill_id: "platform-default",
+        version: "1.0.0",
+        title: "Platform Default",
+        summary: "Balanced commercial video direction.",
+        category: "commercial-craft",
+        tags: ["commercial", "balanced"],
+        supported_use_cases: ["general advertising"],
+        preview: { kind: "none", summary: null, media_url: null },
+        display_order: 10,
+      }],
+      next_cursor: "Mg",
+    });
+
+    expect(catalog.categories[0]).toEqual({
+      category_id: "commercial-craft",
+      title: "Commercial Craft",
+      display_order: 10,
+    });
+    expect(catalog.items[0]).toMatchObject({
+      skill_id: "platform-default",
+      preview: { kind: "none" },
+    });
+    expect(catalog.next_cursor).toBe("Mg");
+    expect(() => normalizeVideoSkillPublicDetailV2({
+      ...catalog.items[0],
+      skill_body: "private prompt content",
+    })).toThrowError(/unknown field/i);
+  });
+
+  it("normalizes public Style metadata returned with an activated Skill Run", () => {
+    const publicSkill = {
+      skill_id: "cinematic-poetic-realism",
+      version: "1.0.0",
+      title: "Cinematic Poetic Realism",
+      summary: "A restrained cinematic treatment.",
+      category: "cinematic-narrative",
+      tags: ["cinematic"],
+      supported_use_cases: ["brand film"],
+      preview: {
+        kind: "image",
+        summary: "Public visual preview.",
+        media_url: "/assets/previews/style.jpg",
+      },
+      display_order: 20,
+    };
+    const skillRun = normalizeAgentCanvasVideoSkillRunV2({
+      skill_run_id: "style-run-2",
+      workflow_id: "workflow-1",
+      skill_id: publicSkill.skill_id,
+      skill_version: publicSkill.version,
+      source_skill_run_id: "style-run-1",
+      status: "active",
+      active_creative_direction_snapshot_id: "direction-2",
+      public_skill: publicSkill,
+      created_at: "2026-08-05T01:00:00Z",
+      updated_at: "2026-08-05T01:00:01Z",
+    });
+
+    expect(skillRun.public_skill).toMatchObject({
+      skill_id: "cinematic-poetic-realism",
+      preview: { kind: "image" },
+    });
   });
 
   it("accepts final Project Asset provenance without exposing storage implementation details to callers", () => {
@@ -577,6 +1343,42 @@ describe("Agent Canvas normalizers", () => {
     });
   });
 
+  it("normalizes a post-ready checkpoint without accepting unknown fields", () => {
+    const checkpoint = normalizeCanvasPostReadyCheckpointV2({
+      checkpoint_id: "checkpoint-1",
+      workflow_id: "workflow-1",
+      execution_id: "execution-1",
+      execution_status: "waiting",
+      status: "pending",
+      counts: {
+        total: 2,
+        queued: 1,
+        running: 1,
+        completed: 0,
+        failed: 0,
+      },
+      effects: [{
+        effect_id: "effect-1",
+        effect_type: "advance_storyboard_progression",
+        node_id: "node-script-1",
+        status: "running",
+        attempt_no: 1,
+        error: null,
+        updated_at: "2026-08-17T10:00:00Z",
+      }],
+      error: null,
+      updated_at: "2026-08-17T10:00:00Z",
+    });
+
+    expect(checkpoint).toMatchObject({
+      checkpoint_id: "checkpoint-1",
+      status: "pending",
+      execution_status: "waiting",
+      counts: { total: 2, running: 1 },
+      effects: [{ effect_type: "advance_storyboard_progression", status: "running" }],
+    });
+  });
+
   it("normalizes frozen run intent and effective runtime metadata", () => {
     const runtime = normalizeCanvasRuntimeSnapshotV2({
       workflow_id: "workflow-1",
@@ -590,12 +1392,21 @@ describe("Agent Canvas normalizers", () => {
           execution_id: "execution-1",
           provider_task_id: null,
           run_intent_snapshot_id: "run-intent-1",
+          parameter_compilation_snapshot_id: "parameter-compilation-1",
           input_manifest_id: "manifest-1",
           effective_parameters: {
             duration_seconds: 15,
             generate_audio: false,
           },
-          normalizations: ["duration_clamped_to_provider_limit"],
+          normalizations: [
+            "duration_clamped_to_provider_limit",
+            {
+              field: "duration_seconds",
+              requested_value: 20,
+              effective_value: 15,
+              normalization_code: "duration_clamped_to_maximum",
+            },
+          ],
           omitted_optional_inputs: [
             {
               binding_id: "binding-audio-1",
@@ -623,11 +1434,20 @@ describe("Agent Canvas normalizers", () => {
     expect(runtime.node_runtime["node-video-1"]).toMatchObject({
       phase: "blocked_by_upstream",
       run_intent_snapshot_id: "run-intent-1",
+      parameter_compilation_snapshot_id: "parameter-compilation-1",
       effective_parameters: {
         duration_seconds: 15,
         generate_audio: false,
       },
-      normalizations: ["duration_clamped_to_provider_limit"],
+      normalizations: [
+        "duration_clamped_to_provider_limit",
+        {
+          field: "duration_seconds",
+          requested_value: 20,
+          effective_value: 15,
+          normalization_code: "duration_clamped_to_maximum",
+        },
+      ],
       omitted_optional_inputs: [
         {
           binding_id: "binding-audio-1",
@@ -645,12 +1465,6 @@ describe("Agent Canvas normalizers", () => {
       turn_id: "turn-1",
       status: "queued",
       events_cursor: 21,
-      continuation: {
-        continuation_id: "continuation-1",
-        delivery_status: "retry_wait",
-        attempt_count: 2,
-        next_attempt_at: "2026-07-31T04:10:00Z",
-      },
     });
     const turn = normalizeAgentCanvasChatTurnV2({
       turn_id: "turn-1",
@@ -673,7 +1487,7 @@ describe("Agent Canvas normalizers", () => {
     const timeline = normalizeAgentCanvasChatTimelineV2({
       workflow_id: "workflow-1",
       conversation_id: "conversation-1",
-      creative_session: null,
+      guidance_session: null,
       items: [{
         entry_id: "receipt-entry-1",
         workflow_id: "workflow-1",
@@ -689,6 +1503,9 @@ describe("Agent Canvas normalizers", () => {
           workflow_id: "workflow-1",
           plan_id: null,
           action_id: "action-1",
+          proposal_id: null,
+          proposal_option_id: null,
+          proposal_action: null,
           actor_kind: "user",
           idempotency_key: "guided-action-1",
           status: "not_applied",
@@ -705,9 +1522,7 @@ describe("Agent Canvas normalizers", () => {
           before_workflow_revision: 3,
           placement_hints: [],
           continuation_turn_id: null,
-          continuation_id: "continuation-1",
           superseded_by: null,
-          error: { code: "guided_action_no_effect", message: "No new sibling draft was created." },
           error_code: "guided_action_no_effect",
           error_message: "No new sibling draft was created.",
           created_at: "2026-07-31T04:01:00Z",
@@ -717,200 +1532,16 @@ describe("Agent Canvas normalizers", () => {
       next_cursor: 2,
     });
 
-    expect(accepted.continuation).toMatchObject({ delivery_status: "retry_wait", attempt_count: 2 });
+    expect(accepted).toMatchObject({ turn_id: "turn-1", status: "queued" });
     expect(turn.continuation).toMatchObject({ delivery_status: "leased", attempt_count: 3 });
     expect(timeline.items[0]).toMatchObject({
       item_type: "action_receipt",
       action_receipt: {
         status: "not_applied",
-        continuation_id: "continuation-1",
-        error: { code: "guided_action_no_effect" },
+        continuation_turn_id: null,
+        error_code: "guided_action_no_effect",
       },
     });
-  });
-
-  it("preserves the backend-defined adaptive production recipe without inferring topology", () => {
-    const timeline = normalizeAgentCanvasChatTimelineV2({
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      creative_session: {
-        skill_run_id: "skill-1",
-        workflow_id: "workflow-1",
-        skill_id: "video-ad",
-        skill_version: "1",
-        status: "active",
-        creation_mode: {
-          mode: "guided_production",
-          reason: "The user requested guided production.",
-          target_node_id: null,
-          target_asset_id: null,
-        },
-        active_recipe: {
-          recipe_id: "recipe-1",
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          skill_run_id: "skill-1",
-          revision: 2,
-          creation_mode: "guided_production",
-          goal: "Create a complete short advertisement.",
-        current_topic_id: "topic-scene",
-        stages: [
-          {
-            topic_id: "topic-product",
-            topic_kind: "product",
-            title: "Product design",
-            objective: "Define the product visual language.",
-            applicability: "not_required",
-            applicability_reason: "The approved product image already exists.",
-            specialist_name: "product_designer",
-            proposal_mode: "single_plan",
-            candidate_count: 1,
-            status: "not_required",
-            related_node_ids: ["node-product-ready"],
-          },
-          {
-            topic_id: "topic-scene",
-            topic_kind: "scene",
-            title: "Scene design",
-            objective: "Choose a setting for the product film.",
-            applicability: "required",
-            applicability_reason: "A scene is needed for the film.",
-            specialist_name: "scene_designer",
-            proposal_mode: "choice_set",
-            candidate_count: 3,
-            status: "working",
-            related_node_ids: [],
-          },
-        ],
-          anchor_digest: "anchor-1",
-          deliverables: [],
-          dependencies: [],
-          recommended_next_topic_ids: ["topic-scene"],
-          completion_criteria: {
-            required_deliverable_ids: [],
-            accepted_omission_deliverable_ids: [],
-          },
-          created_at: "2026-07-31T05:00:00Z",
-          updated_at: "2026-07-31T05:01:00Z",
-        },
-        readiness: null,
-        creative_direction_snapshot_id: null,
-        current_topic_id: "topic-scene",
-        topics: [],
-        deferred_topic_ids: [],
-        memory_revision: 2,
-        updated_at: "2026-07-31T05:01:00Z",
-      },
-      continuations: [],
-      current_session_actions: [],
-      items: [],
-      next_cursor: 0,
-    });
-
-    expect(timeline.creation_mode).toBe("guided_production");
-    expect(timeline.recipe).toMatchObject({
-      recipe_id: "recipe-1",
-      current_topic_id: "topic-scene",
-      stages: [
-        { topic_id: "topic-product", applicability: "not_required" },
-        { topic_id: "topic-scene", candidate_count: 3, status: "working" },
-      ],
-    });
-    expect(timeline.items).toEqual([]);
-  });
-
-  it("rejects invalid adaptive proposal cardinality instead of fabricating choices", () => {
-    expect(() => normalizeAgentCanvasChatTimelineV2({
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      creative_session: {
-        skill_run_id: "skill-invalid",
-        workflow_id: "workflow-1",
-        skill_id: "video-ad",
-        skill_version: "1",
-        status: "active",
-        creation_mode: {
-          mode: "guided_production",
-          reason: "The user requested guided production.",
-          target_node_id: null,
-          target_asset_id: null,
-        },
-        active_recipe: {
-          recipe_id: "recipe-invalid",
-          workflow_id: "workflow-1",
-          conversation_id: "conversation-1",
-          skill_run_id: null,
-          revision: 1,
-          creation_mode: "guided_production",
-        current_topic_id: "topic-scene",
-        stages: [{
-          topic_id: "topic-scene",
-          topic_kind: "scene",
-          title: "Scene design",
-          objective: "Choose a setting.",
-          applicability: "required",
-          applicability_reason: "A setting is required.",
-          specialist_name: "scene_designer",
-          proposal_mode: "choice_set",
-          candidate_count: 1,
-          status: "working",
-          related_node_ids: [],
-        }],
-          anchor_digest: "anchor-1",
-          created_at: "2026-07-31T05:00:00Z",
-          updated_at: "2026-07-31T05:01:00Z",
-        },
-        readiness: null,
-        creative_direction_snapshot_id: null,
-        current_topic_id: "topic-scene",
-        topics: [],
-        deferred_topic_ids: [],
-        memory_revision: 1,
-        updated_at: "2026-07-31T05:01:00Z",
-      },
-      continuations: [],
-      current_session_actions: [],
-      items: [],
-      next_cursor: 0,
-    })).toThrowError(/candidate_count/i);
-  });
-
-  it("normalizes the backend creative session creation-mode decision", () => {
-    const timeline = normalizeAgentCanvasChatTimelineV2({
-      workflow_id: "workflow-1",
-      conversation_id: "conversation-1",
-      creative_session: {
-        skill_run_id: "session-1",
-        workflow_id: "workflow-1",
-        skill_id: "platform-default",
-        skill_version: "1",
-        status: "active",
-        creation_mode: {
-          mode: "ordinary_conversation",
-          reason: "The user is continuing an ordinary conversation.",
-          target_node_id: null,
-          target_asset_id: null,
-        },
-        active_recipe: null,
-        creative_direction_snapshot_id: "direction-1",
-        current_topic_id: "script",
-        topics: [],
-        deferred_topic_ids: [],
-        memory_revision: 0,
-        updated_at: "2026-07-31T07:56:23Z",
-      },
-      continuations: [],
-      items: [],
-      next_cursor: 0,
-    });
-
-    expect(timeline.creative_session?.creation_mode).toEqual({
-      mode: "ordinary_conversation",
-      reason: "The user is continuing an ordinary conversation.",
-      target_node_id: null,
-      target_asset_id: null,
-    });
-    expect(timeline.creative_session?.active_recipe).toBeNull();
   });
 
   it("normalizes creation-mode decisions returned on persisted chat turns", () => {
@@ -929,7 +1560,7 @@ describe("Agent Canvas normalizers", () => {
         target_node_id: "node-video-1",
         target_asset_id: null,
       },
-      recipe: null,
+      guidance_session_revision: null,
       continuation: null,
       created_at: "2026-07-31T07:56:23Z",
       updated_at: "2026-07-31T07:56:24Z",
@@ -1159,12 +1790,14 @@ describe("Agent Canvas normalizers", () => {
             proposal_revision: 1,
             source_proposal_id: null,
             proposal_kind: "character",
-            specialist_name: "character_designer",
+            capability_id: "character_design",
+            capability_display_name: "Character Designer",
             options: [
               {
                 option_id: "option-1",
                 title: "Option A",
-                summary_prompt: "Athletic streetwear lead.",
+                public_summary: "Athletic streetwear lead.",
+                key_decisions: ["Use a confident athletic silhouette."],
               },
             ],
             proposed_references: [],
@@ -1174,7 +1807,17 @@ describe("Agent Canvas normalizers", () => {
             availability: "open",
             application_count: 0,
             latest_application: null,
-            available_actions: ["select", "revise", "archive"],
+            guidance_session_id: "guidance-1",
+            guidance_session_revision: 2,
+            actions: [{
+              action_id: "proposal-1:1:select_option",
+              action: "select_option",
+              label: "Use this direction",
+              proposal_id: "proposal-1",
+              expected_session_revision: 2,
+              confirmation_required: false,
+              reason: "Create one editable Draft.",
+            }],
             created_at: "2026-07-28T10:09:00Z",
             updated_at: "2026-07-28T10:09:00Z",
           },
@@ -1287,6 +1930,141 @@ describe("Agent Canvas normalizers", () => {
     expect(normalized.model_selection_mode).toBe("explicit");
     expect(normalized.model_ref).toBe("fake:deterministic-image");
     expect(normalized.model_summary?.display_name).toBe("Deterministic Image");
+  });
+
+  it("normalizes the persisted prompt preparation projection without changing the visible Draft status", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      generation_prompt: null,
+      error: null,
+      prompt_preparation: {
+        status: "working",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    });
+
+    expect(normalized.status).toBe("draft");
+    expect(normalized.prompt_preparation).toMatchObject({
+      status: "working",
+      operation_id: "prompt-operation-1",
+      attempt_no: 1,
+      context_snapshot_id: "snapshot-1",
+      prompt_digest: null,
+      error: null,
+      updated_at: "2026-08-11T10:00:00Z",
+    });
+  });
+
+  it("accepts role-specific prompt preparation and V3 authoritative document projections", () => {
+    const node = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      prompt_preparation: {
+        status: "superseded",
+        attempt_no: 2,
+        role_variant: "character_turnaround",
+        recipe_id: "recipe-character",
+        recipe_version: "1",
+        recipe_digest: "sha256:" + "a".repeat(64),
+        requirement_revision_id: "requirement-2",
+        requirement_revision_no: 2,
+        document_revisions: { "doc-plan": 3 },
+        binding_digest: "sha256:" + "b".repeat(64),
+        style_projection_digest: null,
+        brief_digest: null,
+        parameter_origins: [{
+          name: "duration_seconds",
+          value: 15,
+          source_kind: "storyboard_plan",
+          source_id: "doc-plan",
+          source_revision: 3,
+        }],
+        attempt_stage: "context_ready",
+        error: null,
+        updated_at: "2026-08-15T10:00:00Z",
+      },
+    });
+    expect(node.prompt_preparation.status).toBe("superseded");
+    expect(node.prompt_preparation.parameter_origins[0]?.source_kind).toBe("storyboard_plan");
+
+    const document = normalizeAgentWorkingDocumentV2({
+      document_id: "doc-v3", workflow_id: "workflow-1", guidance_session_id: "session-1",
+      kind: "anchor_registry", title: "Anchors", revision: 3, content_schema_version: 3,
+      content_digest: "sha256:document", created_by_agent_run_id: "run-1", updated_by_agent_run_id: "run-1",
+      linked_nodes: [], created_at: "2026-08-15T10:00:00Z", updated_at: "2026-08-15T10:00:00Z",
+      content: { schema_version: "3", anchors: [{
+        alias: "HERO", identity_id: "identity-1", semantic_role: "character", display_name: "Hero",
+        summary: "Lead talent", lifecycle: "active",
+        source: { source_kind: "node", workflow_id: "workflow-1", node_id: "node-1", node_revision: 2 },
+        acceptance_evidence: [{ evidence_id: "evidence-1", actor: "user", decision: "accepted", action_id: "action-1", requirement_revision_id: "requirement-2", requirement_revision_no: 2, node_revision: 2, asset_version_id: null, document_revision: 3, recorded_at: "2026-08-15T10:00:00Z" }],
+      }] },
+    });
+    expect(document.content_schema_version).toBe(3);
+  });
+
+  it("rejects malformed prompt preparation errors instead of accepting untyped backend payloads", () => {
+    expect(() => normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      prompt_preparation: {
+        status: "failed",
+        operation_id: "prompt-operation-1",
+        attempt_no: 1,
+        context_snapshot_id: "snapshot-1",
+        prompt_digest: null,
+        error: null,
+        updated_at: "2026-08-11T10:00:00Z",
+      },
+    })).toThrowError(/prompt_preparation.error/i);
+  });
+
+  it("accepts parameter provenance returned by current canvas workflow reads", () => {
+    const normalized = normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[1],
+      parameters: { duration_seconds: 10 },
+      parameter_provenance: {
+        duration_seconds: {
+          origin: "binding",
+          source_node_id: "node-text-1",
+          binding_id: "binding-1",
+          source_revision: 3,
+          requested_value: 18,
+          effective_value: 15,
+          normalization_code: "duration_clamped_to_maximum",
+        },
+      },
+    });
+
+    expect(normalized.parameter_provenance.duration_seconds).toEqual({
+      origin: "binding",
+      source_node_id: "node-text-1",
+      binding_id: "binding-1",
+      source_revision: 3,
+      requested_value: 18,
+      effective_value: 15,
+      normalization_code: "duration_clamped_to_maximum",
+    });
+    expect(normalizeCanvasNodeV2({
+      ...validWorkflowPayload().nodes[0],
+      parameter_provenance: {
+        duration_seconds: {
+          origin: "manual",
+          requested_value: 10,
+          effective_value: 10,
+        },
+      },
+    }).parameter_provenance.duration_seconds).toEqual({
+      origin: "manual",
+      source_node_id: null,
+      binding_id: null,
+      source_revision: null,
+      requested_value: 10,
+      effective_value: 10,
+      normalization_code: null,
+    });
   });
 
   it("normalizes model selection on a variation draft without a raw model ID", () => {
@@ -1474,6 +2252,10 @@ describe("Agent Canvas normalizers", () => {
           audio: 1,
         },
         supported_parameters: [],
+        default_parameters: {
+          duration_seconds: 5,
+        },
+        supported_resolutions: ["720p", "1080p"],
         supported_aspect_ratios: ["16:9"],
         duration_range_seconds: [3, 12],
         pixel_bounds: null,
@@ -1484,6 +2266,8 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(capabilities[0]?.supports_native_audio).toBe(true);
+    expect(capabilities[0]?.default_parameters).toEqual({ duration_seconds: 5 });
+    expect(capabilities[0]?.supported_resolutions).toEqual(["720p", "1080p"]);
     expect(capabilities[0]?.reference_limits).toEqual({
       image: 4,
       video: 1,
@@ -1523,6 +2307,67 @@ describe("Agent Canvas normalizers", () => {
     });
 
     expect(timeline.items[1]?.entry_type).toBe("script_artifact");
+    expect(timeline.presentation_items).toBeNull();
+  });
+
+  it("accepts the additive user presentation projection without changing raw timeline pagination", () => {
+    const payload = {
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      items: [{
+        entry_id: "entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 7,
+        entry_type: "planning_progress",
+        speaker: null,
+        content: "Planning the next creative action.",
+        metadata: {},
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-13T10:10:00Z",
+      }],
+      presentation_items: [{
+        entry_id: "entry-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 7,
+        entry_type: "planning_progress",
+        speaker: null,
+        content: "Planning the next creative action.",
+        metadata: {},
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-13T10:10:00Z",
+        presentation_key: "planning:next-action-1",
+        presentation_revision: 2,
+        source_entry_ids: ["entry-0", "entry-1"],
+        message_key: "planning_progress.next_action",
+        message_args: {},
+        response_locale: "zh-CN",
+      }],
+      next_cursor: 7,
+    };
+
+    const raw = normalizeAgentCanvasChatTimelineResponseV2(payload);
+    const timeline = normalizeAgentCanvasChatTimelineV2(payload);
+
+    expect(raw.next_cursor).toBe(7);
+    expect(raw.presentation_items?.[0]).toMatchObject({
+      presentation_key: "planning:next-action-1",
+      presentation_revision: 2,
+      source_entry_ids: ["entry-0", "entry-1"],
+      response_locale: "zh-CN",
+    });
+    expect(timeline.presentationItems?.[0]).toMatchObject({
+      presentation_key: "planning:next-action-1",
+      presentation_revision: 2,
+      item: {
+        item_type: "message",
+        text: "Planning the next creative action.",
+        sequence: 7,
+      },
+    });
   });
 
   it("enforces ready media output and positive revisions", () => {
@@ -1692,16 +2537,12 @@ describe("Agent Canvas normalizers", () => {
       skill_version: "1",
       source_skill_run_id: null,
       status: "active",
-      current_topic_id: "characters",
-      deferred_topic_ids: ["bgm"],
-      memory_revision: 3,
+      active_creative_direction_snapshot_id: "direction-3",
       created_at: "2026-07-30T08:00:00Z",
       updated_at: "2026-07-30T08:01:00Z",
     })).toMatchObject({
       status: "active",
-      current_topic_id: "characters",
-      deferred_topic_ids: ["bgm"],
-      memory_revision: 3,
+      active_creative_direction_snapshot_id: "direction-3",
       updated_at: "2026-07-30T08:01:00Z",
     });
   });
@@ -1716,10 +2557,199 @@ describe("Agent Canvas normalizers", () => {
       created_at: "2026-07-30T08:00:00Z",
     })).toMatchObject({
       status: "active",
-      current_topic_id: null,
-      deferred_topic_ids: [],
-      memory_revision: 0,
+      active_creative_direction_snapshot_id: null,
       updated_at: null,
     });
+  });
+
+  it("normalizes Agent execution settings without accepting unrelated fields", () => {
+    expect(normalizeAgentExecutionSettingsV2({
+      workflow_id: "workflow-1",
+      media_execution_mode: "automatic",
+      revision: 3,
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:01:00Z",
+    })).toMatchObject({
+      media_execution_mode: "automatic",
+      revision: 3,
+    });
+
+    expect(() => normalizeAgentExecutionSettingsV2({
+      workflow_id: "workflow-1",
+      media_execution_mode: "automatic",
+      revision: 3,
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:01:00Z",
+      guidance_mode: "delegated",
+    })).toThrowError(/guidance_mode/i);
+  });
+
+  it("normalizes read-only Anchor Registry and Storyboard Production Plan documents", () => {
+    const base = {
+      workflow_id: "workflow-1",
+      guidance_session_id: "session-1",
+      revision: 2,
+      content_digest: "sha256:document",
+      created_by_agent_run_id: "run-1",
+      updated_by_agent_run_id: "run-2",
+      linked_nodes: [{
+        node_id: "node-grid-1",
+        node_type: "image",
+        creative_role: "storyboard_sequence",
+        status: "ready",
+        revision: 4,
+      }],
+      created_at: "2026-08-06T08:00:00Z",
+      updated_at: "2026-08-06T08:02:00Z",
+    };
+    const anchorRegistry = normalizeAgentWorkingDocumentV2({
+      ...base,
+      document_id: "doc-anchor-1",
+      kind: "anchor_registry",
+      title: "Campaign anchors",
+      content: {
+        anchors: [{
+          alias: "HERO",
+          anchor_type: "subject",
+          display_name: "Lead talent",
+          summary: "Primary on-screen subject.",
+          source_kind: "node",
+          source_id: "node-character-1",
+          availability: "available",
+        }],
+      },
+    });
+    const storyboardPlan = normalizeAgentWorkingDocumentV2({
+      ...base,
+      document_id: "doc-plan-1",
+      kind: "storyboard_production_plan",
+      title: "Storyboard plan",
+      content: {
+        narrative_outline: "A calm product reveal.",
+        global_parameters: {
+          aspect_ratio: "16:9",
+          total_duration_seconds: 15,
+          segment_count: 1,
+        },
+        segments: [{
+          sequence_id: "sequence-1",
+          order: 1,
+          start_seconds: 0,
+          end_seconds: 15,
+          narrative_goal: "Reveal the product.",
+          start_state: "Closed frame.",
+          end_state: "Product hero frame.",
+          continuity_from_previous: null,
+          terminal_policy: "close",
+        }],
+        rows: [{
+          shot_index: 1,
+          sequence_id: "sequence-1",
+          panel_index: 1,
+          content_beat: "Product enters frame.",
+          anchor_aliases: ["HERO"],
+          camera_description: "Slow push in.",
+        }],
+        node_records: [{
+          sequence_id: "sequence-1",
+          node_role: "storyboard_grid",
+          node_id: "node-grid-1",
+        }],
+        materialized_panel_cursor: 1,
+        segment_materializations: [{
+          sequence_id: "sequence-1",
+          status: "materialized",
+          generation_prompt: "Generate a warm product reveal with a slow push in.",
+        }],
+        visual_anchor: {
+          node_id: "node-grid-1",
+          asset_id: "asset-grid-1",
+          node_revision: 4,
+          document_revision: 2,
+        },
+      },
+    });
+
+    expect(anchorRegistry.content).toMatchObject({ anchors: [{ alias: "HERO" }] });
+    expect(storyboardPlan.content).toMatchObject({
+      global_parameters: { aspect_ratio: "16:9", segment_count: 1 },
+      segments: [{ terminal_policy: "close" }],
+      materialized_panel_cursor: 1,
+      segment_materializations: [{
+        sequence_id: "sequence-1",
+        status: "materialized",
+      }],
+      visual_anchor: {
+        asset_id: "asset-grid-1",
+        document_revision: 2,
+      },
+    });
+    expect(normalizeAgentWorkingDocumentPageV2({
+      items: [anchorRegistry, storyboardPlan],
+      next_cursor: "cursor-2",
+    })).toMatchObject({ next_cursor: "cursor-2" });
+  });
+
+  it("accepts guidance advance command turns returned by the canonical backend", () => {
+    const turn = normalizeAgentCanvasChatTurnV2({
+      turn_id: "turn-guidance-command-1",
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      status: "completed",
+      turn_kind: "guidance_advance",
+      request: { source_id: "stage:foundation_design:4" },
+      error_code: null,
+      error_message: null,
+      creation_mode: null,
+      guidance_session_revision: 8,
+      continuation: null,
+      retry_of_turn_id: null,
+      retry_attempt_no: 1,
+      retryable: false,
+      operation_stage: null,
+      operation_failure: null,
+      created_at: "2026-08-17T10:00:00Z",
+      updated_at: "2026-08-17T10:00:01Z",
+    });
+
+    expect(turn.turn_kind).toBe("guidance_advance");
+  });
+
+  it("restores Agent Document references from the persisted chat timeline", () => {
+    const timeline = normalizeAgentCanvasChatTimelineV2({
+      workflow_id: "workflow-1",
+      conversation_id: "conversation-1",
+      guidance_session: null,
+      continuations: [],
+      current_session_actions: [],
+      items: [{
+        entry_id: "entry-document-1",
+        workflow_id: "workflow-1",
+        conversation_id: "conversation-1",
+        sequence_no: 1,
+        entry_type: "agent_document_reference",
+        speaker: null,
+        content: "Storyboard plan",
+        metadata: {
+          type: "agent_document_reference",
+          document_id: "doc-plan-1",
+          document_kind: "storyboard_production_plan",
+          revision: 4,
+          content_digest: "sha256:plan",
+          title: "Storyboard plan",
+        },
+        command_plan: null,
+        action_receipt: null,
+        created_at: "2026-08-06T08:00:00Z",
+      }],
+      next_cursor: 1,
+    });
+
+    expect(timeline.items).toEqual([expect.objectContaining({
+      item_type: "agent_document",
+      document_id: "doc-plan-1",
+      document_kind: "storyboard_production_plan",
+      revision: 4,
+    })]);
   });
 });

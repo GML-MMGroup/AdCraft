@@ -17,6 +17,7 @@
     "test:v2-asset-library-normalizer": "tsx scripts/test-v2-asset-library-normalizer.ts",
     "test:v2-recommended-catalog": "tsx scripts/test-v2-recommended-catalog.ts",
     "test:v2-project-authority": "tsx scripts/test-v2-project-authority.ts",
+    "check:agent-canvas-contract": "node scripts/check-agent-canvas-backend-contract.mjs",
     "perf:bundle": "node scripts/perf/check-build-budget.mjs",
     "perf:entry-graph": "node scripts/perf/check-entry-graph.mjs",
     "preview": "vite preview --host 0.0.0.0",
@@ -27,6 +28,7 @@
     "codegraph:query": "codegraph query"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^3.1.1",
     "@dnd-kit/core": "^6.3.1",
     "@vitejs/plugin-react": "^5.0.0",
     "@xyflow/react": "^12.11.0",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "@colbymchenry/codegraph": "^1.0.1",
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.62.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.9.3",
     "@types/react": "^19.1.8",

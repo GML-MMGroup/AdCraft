@@ -1,4 +1,5 @@
 import type {
+  AgentModelExecutionPolicyV1,
   AgentRunRequest,
   AgentToolCall,
   AgentToolResult,
@@ -16,6 +17,7 @@ export interface AgentCredentialSnapshot {
   readonly supports_streaming: boolean;
   readonly supports_streamed_tool_calls: boolean;
   readonly supports_reasoning_controls: boolean;
+  readonly execution_policy: AgentModelExecutionPolicyV1;
   readonly api_key: string;
 }
 
@@ -74,7 +76,14 @@ export class PythonInternalClient {
       typeof payload.supports_strict_structured_output !== "boolean" ||
       typeof payload.supports_streaming !== "boolean" ||
       typeof payload.supports_streamed_tool_calls !== "boolean" ||
-      typeof payload.supports_reasoning_controls !== "boolean"
+      typeof payload.supports_reasoning_controls !== "boolean" ||
+      !isExecutionPolicy(
+        payload.execution_policy,
+        operation,
+        modelRef,
+        payload.supports_tool_calls,
+        payload.supports_streamed_tool_calls,
+      )
     ) {
       throw new Error("agent_protocol_mismatch");
     }
@@ -102,6 +111,121 @@ export class PythonInternalClient {
     }
     return payload as unknown as AgentToolResult;
   }
+}
+
+const OPERATION_CLASSES = new Set([
+  "routing",
+  "proposal",
+  "materialization",
+  "long_form",
+]);
+const THINKING_FORMATS = new Set(["zai", "qwen", "none"]);
+const REASONING_CONTROLS = new Set([
+  "provider_default",
+  "enable_thinking",
+  "reasoning_effort",
+  "none",
+]);
+const STRUCTURED_TRANSPORTS = new Set([
+  "streamed_tool_call",
+  "non_streaming_tool_call",
+  "non_streaming_json_object",
+  "json_object",
+]);
+
+function isExecutionPolicy(
+  value: unknown,
+  operation: string,
+  modelRef: string,
+  supportsToolCalls: unknown,
+  supportsStreamedToolCalls: unknown,
+): value is AgentModelExecutionPolicyV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const policy = value as Record<string, unknown>;
+  if (
+    policy.model_ref !== modelRef ||
+    policy.operation !== operation ||
+    typeof policy.operation_class !== "string" ||
+    !OPERATION_CLASSES.has(policy.operation_class) ||
+    typeof policy.thinking_format !== "string" ||
+    !THINKING_FORMATS.has(policy.thinking_format) ||
+    typeof policy.reasoning_control !== "string" ||
+    !REASONING_CONTROLS.has(policy.reasoning_control) ||
+    (policy.reasoning_mode !== "low" && policy.reasoning_mode !== "deep") ||
+    typeof policy.enable_thinking !== "boolean" ||
+    !isThinkingBudget(policy.thinking_budget_tokens) ||
+    typeof policy.structured_transport !== "string" ||
+    !STRUCTURED_TRANSPORTS.has(policy.structured_transport) ||
+    policy.supports_tool_calls !== supportsToolCalls ||
+    policy.supports_streamed_tool_calls !== supportsStreamedToolCalls ||
+    !isPositiveInteger(policy.deadline_seconds) ||
+    !isPositiveInteger(policy.primary_timeout_seconds) ||
+    !isNonNegativeInteger(policy.recovery_timeout_seconds) ||
+    !isPositiveInteger(policy.persistence_reserve_seconds) ||
+    policy.primary_timeout_seconds +
+        policy.recovery_timeout_seconds +
+        policy.persistence_reserve_seconds !==
+      policy.deadline_seconds ||
+    (policy.max_model_submissions !== 1 && policy.max_model_submissions !== 2) ||
+    (policy.recovery_mode !== "none" &&
+      policy.recovery_mode !== "structured_repair_only" &&
+      policy.recovery_mode !== "transport_retry_or_structured_repair") ||
+    !isPositiveInteger(policy.max_output_tokens) ||
+    !isBoundedAttempt(policy.transport_retry_limit) ||
+    !isBoundedAttempt(policy.structured_repair_limit)
+  ) {
+    return false;
+  }
+  if (
+    (policy.max_model_submissions === 1 &&
+      (policy.recovery_mode !== "none" ||
+        policy.recovery_timeout_seconds !== 0 ||
+        policy.transport_retry_limit !== 0 ||
+        policy.structured_repair_limit !== 0)) ||
+    (policy.max_model_submissions === 2 &&
+      (policy.recovery_mode === "none" || policy.recovery_timeout_seconds < 1)) ||
+    (policy.recovery_mode === "structured_repair_only" &&
+      (policy.transport_retry_limit !== 0 || policy.structured_repair_limit !== 1))
+  ) {
+    return false;
+  }
+  if (
+    (policy.reasoning_mode === "low" &&
+      (policy.enable_thinking || policy.thinking_budget_tokens !== null)) ||
+    (policy.reasoning_mode === "deep" &&
+      (!policy.enable_thinking || policy.thinking_budget_tokens === null))
+  ) {
+    return false;
+  }
+  if (
+    policy.structured_transport === "streamed_tool_call" &&
+    policy.supports_streamed_tool_calls !== true
+  ) {
+    return false;
+  }
+  if (
+    policy.structured_transport === "non_streaming_tool_call" &&
+    policy.supports_tool_calls !== true
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isBoundedAttempt(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1;
+}
+
+function isThinkingBudget(value: unknown): value is number | null {
+  return value === null || isPositiveInteger(value);
 }
 
 async function boundedJson(response: Response): Promise<Record<string, unknown>> {

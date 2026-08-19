@@ -13,7 +13,7 @@
   overflow: hidden;
   background:
     linear-gradient(115deg, rgba(254, 233, 161, 0.2), transparent 32%),
-    linear-gradient(245deg, rgba(167, 149, 191, 0.24), transparent 38%),
+    linear-gradient(245deg, rgba(178, 192, 237, 0.24), transparent 38%),
     linear-gradient(rgba(203, 212, 229, 0.38), rgba(203, 212, 229, 0.5)),
     url("/assets/bg.jpg") center / cover fixed no-repeat,
     #cbd4e5;
@@ -150,22 +150,6 @@
   cursor: default;
 }
 
-.home-typography-lab__preview .home-page--static .filter-btn {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  padding: 0 14px;
-  border-radius: 999px;
-  color: #6f7183;
-  font-size: 14px;
-  line-height: 1;
-}
-
-.home-typography-lab__preview .home-page--static .filter-btn.is-active {
-  background: rgba(108, 93, 171, 0.16);
-  color: #4b3a94;
-}
-
 .home-typography-lab__preview .home-page--static .recent-card,
 .home-typography-lab__preview .home-page--static .discover-card {
   cursor: default;
@@ -181,7 +165,7 @@
 }
 
 .home-typography-lab__preview.is-guide-visible [data-home-typography-region] {
-  outline: 1px dashed rgba(108, 93, 171, 0.56);
+  outline: 1px dashed rgba(157, 175, 230, 0.56);
   outline-offset: 3px;
 }
 
@@ -355,11 +339,11 @@
 
 .home-typography-lab__font-option:hover,
 .home-typography-lab__font-option:focus-visible {
-  background: rgba(108, 93, 171, 0.08);
+  background: rgba(157, 175, 230, 0.08);
 }
 
 .home-typography-lab__font-option.is-selected {
-  background: rgba(108, 93, 171, 0.18);
+  background: rgba(157, 175, 230, 0.18);
 }
 
 .home-typography-lab__control-group select:focus-visible,
@@ -368,7 +352,7 @@
 .home-typography-lab__actions button:focus-visible,
 .home-typography-lab__export:focus-visible,
 .home-typography-lab__collapse:focus-visible {
-  outline: 2px solid rgba(108, 93, 171, 0.7);
+  outline: 2px solid rgba(157, 175, 230, 0.7);
   outline-offset: 2px;
 }
 
@@ -469,8 +453,8 @@
 }
 
 .home-typography-lab__actions button:hover {
-  border-color: rgba(108, 93, 171, 0.46);
-  background: rgba(108, 93, 171, 0.08);
+  border-color: rgba(157, 175, 230, 0.46);
+  background: rgba(157, 175, 230, 0.08);
 }
 
 .home-typography-lab__recipe {
@@ -567,17 +551,17 @@
   --text-inverse: #17151f;
   --border-default: #222733;
   --border-strong: #333a49;
-  --brand: #9e8bea;
-  --brand-hover: #af9af6;
-  --brand-subtle: #241e39;
-  --focus-ring: #b6a4ff;
-  --error: #eb788c;
+  --brand: #9DAFE6;
+  --brand-hover: #B2C0ED;
+  --brand-subtle: #20283F;
+  --focus-ring: #CAD4F5;
+  --error: #CA6F6F;
   --media-overlay: rgba(8, 9, 13, 0.72);
   --mist-blue: var(--page-bg);
   --mauve: var(--brand);
-  --butter: #e4bc62;
+  --butter: #E1A750;
   --iris: var(--brand);
-  --rose: #eb788c;
+  --rose: #CA6F6F;
   --ink: var(--text-primary);
   --muted: var(--text-secondary);
   --surface: var(--surface-card);
@@ -610,9 +594,9 @@
 
 .home-typography-lab--dark .home-typography-lab__preview {
   background:
-    linear-gradient(90deg, rgba(5, 6, 9, 0.95) 0%, rgba(6, 7, 10, 0.88) 38%, rgba(6, 7, 10, 0.56) 70%, rgba(6, 7, 10, 0.72) 100%),
-    linear-gradient(180deg, rgba(5, 6, 9, 0.38), rgba(5, 6, 9, 0.82)),
-    url("/assets/home-dark-cosmic.webp") 50% 57% / cover scroll no-repeat;
+    linear-gradient(90deg, rgba(5, 6, 9, 0.9) 0%, rgba(6, 7, 10, 0.82) 38%, rgba(6, 7, 10, 0.46) 70%, rgba(6, 7, 10, 0.62) 100%),
+    linear-gradient(180deg, rgba(5, 6, 9, 0.26), rgba(5, 6, 9, 0.68)),
+    url("/assets/home-dark-black-hole.webp") 50% 60% / cover scroll no-repeat;
 }
 
 .home-typography-lab--dark .home-typography-lab__preview-header {
@@ -672,12 +656,6 @@
   box-shadow: var(--shadow-soft);
 }
 
-.home-typography-lab--dark .discover-tabs {
-  border-color: var(--lab-border);
-  background: rgba(13, 15, 20, 0.9);
-  box-shadow: var(--shadow-soft);
-}
-
 .home-typography-lab--dark .recent-card.featured {
   background:
     linear-gradient(180deg, rgba(8, 9, 13, 0.04), rgba(8, 9, 13, 0.4)),
@@ -690,19 +668,6 @@
 
 .home-typography-lab--dark .recent-card.featured :is(h3, p) {
   color: var(--lab-text);
-}
-
-.home-typography-lab--dark .home-page--static .filter-btn {
-  border: 1px solid var(--border-default);
-  background: var(--surface-raised);
-  box-shadow: var(--glass-button-shadow);
-  color: var(--lab-text-muted);
-}
-
-.home-typography-lab--dark .home-page--static .filter-btn.is-active {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: var(--text-inverse);
 }
 
 .home-typography-lab--dark .discover-card {

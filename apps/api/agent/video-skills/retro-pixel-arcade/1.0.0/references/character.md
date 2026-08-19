@@ -1,0 +1,1 @@
+Shape wardrobe, pose, and expression around limited pixel palette and sprite readability. Use arcade staging to keep the performance legible, while retaining all explicit identity, age, wardrobe, and casting constraints from the brief.

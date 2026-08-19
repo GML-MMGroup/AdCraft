@@ -2,30 +2,9 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const AGENT_NAMES = new Set([
-  "bgm_director",
-  "character_designer",
-  "director",
-  "product_designer",
-  "prop_designer",
-  "quick_media_agent",
-  "scene_designer",
-  "script_writer",
-  "storyboard_artist",
-  "video_director",
-]);
+const AGENT_NAMES = new Set(["video_agent"]);
 
-const MODEL_ROLES = new Set([
-  "bgm",
-  "character",
-  "final_video",
-  "front_desk",
-  "product_design",
-  "quick_media",
-  "scene",
-  "script",
-  "storyboard",
-]);
+const MODEL_ROLES = new Set(["agent"]);
 
 export interface AgentCapability {
   readonly name: string;

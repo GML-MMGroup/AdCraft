@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.dependencies import get_workflow_graph_service
+from app.api.dependencies import get_workflow_graph_service, require_v1_workflow_authority
 from app.schemas.workflow_graph import (
     MarkStaleRequest,
     WorkflowGraph,
@@ -18,7 +18,11 @@ from app.schemas.workflow_graph import (
 )
 from app.services.workflow_graph import WorkflowGraphError, WorkflowGraphService
 
-router = APIRouter(prefix="/workflows", tags=["workflow-graph"])
+router = APIRouter(
+    prefix="/workflows",
+    tags=["workflow-graph"],
+    dependencies=[Depends(require_v1_workflow_authority)],
+)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowGraph)

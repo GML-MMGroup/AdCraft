@@ -1,109 +1,59 @@
 {
   "skills": [
     {
-      "path": "audience_analysis/SKILL.md",
-      "sha256": "8134f3763c45b1a73627daecc6cd467f646cc4a2ba2fe9cb5763c1058779c8ed",
-      "skill_id": "audience_analysis"
+      "path": "video_agent_bgm_direction/SKILL.md",
+      "sha256": "3100e5e08ddf9462f814770c861df5f8ef0e28b02b14685da20956f25e4a26c8",
+      "skill_id": "video_agent_bgm_direction"
     },
     {
-      "path": "bgm_prompt_generation/SKILL.md",
-      "sha256": "d39ca2242efeccfd86bb32749ac0337518a5e94abecc34ca2d88ce2d92f54219",
-      "skill_id": "bgm_prompt_generation"
+      "path": "video_agent_character_design/SKILL.md",
+      "sha256": "e31340de232352e76cfaa86520b7fc9cad6d523d9e115063c83c13af34ee7ffb",
+      "skill_id": "video_agent_character_design"
     },
     {
-      "path": "campaign_appeal_generation/SKILL.md",
-      "sha256": "f26891ecfc3eb2a2a5ce3f288dc848cb3259ee76f066a1e4ed5cd4a7449d57e8",
-      "skill_id": "campaign_appeal_generation"
+      "path": "video_agent_product_design/SKILL.md",
+      "sha256": "4ca60de958a108261b08ae850e0500b38618da7e3c0c4814f172b061d89c8bd6",
+      "skill_id": "video_agent_product_design"
     },
     {
-      "path": "character_prompt_expansion/SKILL.md",
-      "sha256": "10ca0316a0685f4c8d8ba605cb3593539a6837fa2162bc9bdd05064f22462292",
-      "skill_id": "character_prompt_expansion"
+      "path": "video_agent_prop_design/SKILL.md",
+      "sha256": "28ebf5dca5ff068d2a5ecf48d043f25b3f0a214af63a9265c830f2a8061cfcdd",
+      "skill_id": "video_agent_prop_design"
     },
     {
-      "path": "character_spec_extraction/SKILL.md",
-      "sha256": "8b61b95a08f041342c3df37c272b6aca2a0280acaad0e816d6126025d52612dd",
-      "skill_id": "character_spec_extraction"
+      "path": "video_agent_quick_media/SKILL.md",
+      "sha256": "a4a4f32144fa5047729f8137eee630a851b765bafe3b8c11c4434b10b54cb46e",
+      "skill_id": "video_agent_quick_media"
     },
     {
-      "path": "character_turnaround_prompt/SKILL.md",
-      "sha256": "4c210937793dc610616af90e1b658ad6894305b99c6deda5c356872d9ccb83f9",
-      "skill_id": "character_turnaround_prompt"
+      "path": "video_agent_role_prompt_authoring/SKILL.md",
+      "sha256": "fae1049dca84a524b387ba0e70dae9233b12d4b6360f985d31b9fd0bcec99040",
+      "skill_id": "video_agent_role_prompt_authoring"
     },
     {
-      "path": "creative_idea_generation/SKILL.md",
-      "sha256": "6dc8acae0c8effb339b8008e73b7c0b9281cad7203d1ccc0fad2e9b232df9008",
-      "skill_id": "creative_idea_generation"
+      "path": "video_agent_scene_design/SKILL.md",
+      "sha256": "1bffd56cb8c0e2be851a704f2e936aa0af4e42604be669920eee2e3f693dbed2",
+      "skill_id": "video_agent_scene_design"
     },
     {
-      "path": "dialogue_copy_generation/SKILL.md",
-      "sha256": "8ea87d50eb4cbd6af225047cd7c50796e26e531f773ab15f3d8f032ee18a634a",
-      "skill_id": "dialogue_copy_generation"
+      "path": "video_agent_script_authoring/SKILL.md",
+      "sha256": "b0d872ec8c7d671c4bd83f6e334a69a4717d05b4af43135462d8469f6d0ac8ee",
+      "skill_id": "video_agent_script_authoring"
     },
     {
-      "path": "mood_and_duration_matching/SKILL.md",
-      "sha256": "39eb8bf81a042b43d348429142d2be17ee02b2cf9e41a9f53f222703f33473df",
-      "skill_id": "mood_and_duration_matching"
+      "path": "video_agent_storyboard_design/SKILL.md",
+      "sha256": "1ba595417ca66f7c759ab2466babaf1aa57c3d50f5a98747775529b3e916b738",
+      "skill_id": "video_agent_storyboard_design"
     },
     {
-      "path": "multi_view_scene_prompt/SKILL.md",
-      "sha256": "ce90f3f2a39eb02ce9a8c24e7f45af403761d8332251124d6f97e1ab4a32ce2b",
-      "skill_id": "multi_view_scene_prompt"
+      "path": "video_agent_video_direction/SKILL.md",
+      "sha256": "db4cfbf8428363fce0843add44813ec1e5bc8bc0caa89e0e8ed6c4f2c49d142f",
+      "skill_id": "video_agent_video_direction"
     },
     {
-      "path": "product_info_extraction/SKILL.md",
-      "sha256": "5c36adbfa98c562865df9f3c06af55f622a289205ad7c40320496f8012440c4d",
-      "skill_id": "product_info_extraction"
-    },
-    {
-      "path": "pure_scene_prompt_expansion/SKILL.md",
-      "sha256": "6b7af6df11e3c355f70be05e9927c0e35c71224596502f647c43d65a8aeecb3f",
-      "skill_id": "pure_scene_prompt_expansion"
-    },
-    {
-      "path": "reference_asset_selection/SKILL.md",
-      "sha256": "d51bfcd900c1b7aeae105b69376b0f0d10a732717701b40c3d516f6c9e127785",
-      "skill_id": "reference_asset_selection"
-    },
-    {
-      "path": "scene_spec_extraction/SKILL.md",
-      "sha256": "128c1fc6cdea00713c315906c437b619e6dc641763eb995fc287639ca2adf372",
-      "skill_id": "scene_spec_extraction"
-    },
-    {
-      "path": "segment_generation_planning/SKILL.md",
-      "sha256": "577262f50a2816901c0f8c2141366ce15c0c42b2ebf85f6ba178b27746d01588",
-      "skill_id": "segment_generation_planning"
-    },
-    {
-      "path": "selling_point_extraction/SKILL.md",
-      "sha256": "f3826552fbe2462e0489816a49958b7da07f9b4cddbcb16c7ef75c7d780d9cbe",
-      "skill_id": "selling_point_extraction"
-    },
-    {
-      "path": "short_ad_script_structure/SKILL.md",
-      "sha256": "caa7b3dbe9d4c0da60de07d2f8555dce2846c702bab6ca617c7958c615bb1c6e",
-      "skill_id": "short_ad_script_structure"
-    },
-    {
-      "path": "storyboard_beat_extraction/SKILL.md",
-      "sha256": "fbb1a33f0648909c779e6678258ae841a4a3e2e1f605f28c2ce2f6a141fc44dd",
-      "skill_id": "storyboard_beat_extraction"
-    },
-    {
-      "path": "storyboard_image_prompt_generation/SKILL.md",
-      "sha256": "295dce72f9a7959a77a623428a75a52f0147224001b58a75e8c36cc8231aea60",
-      "skill_id": "storyboard_image_prompt_generation"
-    },
-    {
-      "path": "storyboard_video_prompt_generation/SKILL.md",
-      "sha256": "4556237c056904a77f7243c3971e99801d13fe2b8984fd7103c8089ada946d11",
-      "skill_id": "storyboard_video_prompt_generation"
-    },
-    {
-      "path": "visual_continuity_check/SKILL.md",
-      "sha256": "de1a64e386e46c4c36a43959f719dcf6dfc2eacb12126d465a04ca6686e03859",
-      "skill_id": "visual_continuity_check"
+      "path": "video_agent_world_setting/SKILL.md",
+      "sha256": "60078ca00977c87d23d73241f138ae0865db8ee4e1ba52ceb3d356163919144c",
+      "skill_id": "video_agent_world_setting"
     }
   ],
   "version": "1"

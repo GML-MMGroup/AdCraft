@@ -1,0 +1,1 @@
+Organize shots around time, develop visual progression through texture, and reserve silence for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

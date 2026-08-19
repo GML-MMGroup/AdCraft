@@ -11,6 +11,7 @@ from app.schemas.agent_capabilities import (
     AgentCapabilityContractV1,
     AgentCapabilityV1,
 )
+from app.services.video_agent_operation_registry import VideoAgentOperationRegistry
 
 
 _DEFAULT_CONTRACT_PATH = (
@@ -24,6 +25,7 @@ class V2AgentCapabilityContractService:
     def __init__(self, contract_path: Path | None = None) -> None:
         path = contract_path or _DEFAULT_CONTRACT_PATH
         contract = AgentCapabilityContractV1.model_validate_json(path.read_text(encoding="utf-8"))
+        VideoAgentOperationRegistry().validate_capability_contract(contract)
         self._contract = contract
         self._by_name = MappingProxyType(
             {capability.name: capability for capability in contract.agents}

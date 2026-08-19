@@ -1,0 +1,1 @@
+Preserve exact product identity while expressing continuous spatial choreography through silhouette and motivated transitions through surfaces and detail. Make functional features readable, and use reveal timing only where it strengthens the requested selling point.

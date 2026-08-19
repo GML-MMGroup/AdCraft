@@ -1,0 +1,1 @@
+Organize shots around subjective transitions, develop visual progression through identity motifs, and reserve layered realities for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

@@ -1,0 +1,1 @@
+Organize shots around axial framing, develop visual progression through curated palettes, and reserve chapter-like staging for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

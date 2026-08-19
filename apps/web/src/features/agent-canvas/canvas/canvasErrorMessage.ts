@@ -13,6 +13,7 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   provider_inputs_unsupported: "The selected provider cannot use these inputs.",
   provider_reference_delivery_unavailable: "The provider cannot currently receive this reference.",
   upstream_inputs_not_ready: "Required upstream nodes must be Ready before this node can run.",
+  world_setting_projection_unavailable: "World Setting context is temporarily unavailable. Retry this node.",
   model_not_configured: "No default model is configured for this node type.",
   model_default_not_configured: "No default model is configured for this node type.",
   model_not_found: "The selected model is no longer in the local catalog.",

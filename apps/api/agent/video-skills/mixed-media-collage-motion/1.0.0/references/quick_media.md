@@ -1,0 +1,1 @@
+Apply cut-paper layers, typography-aware rhythm without baked text, and tactile compositing as a concise treatment for the requested single media item. Preserve every explicit subject, product, format, and technical constraint while adding only the style details relevant to that item.

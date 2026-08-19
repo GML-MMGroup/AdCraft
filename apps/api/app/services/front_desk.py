@@ -92,29 +92,25 @@ class FrontDeskService:
         try:
             invocation = (
                 planning_session.child(
-                    agent_name="front_desk",
+                    agent_name="video_agent",
                     operation="workflow_creation",
                     logical_key="front-desk",
                 )
                 if planning_session
                 else None
             )
-            agent_context = (
-                FrontDeskIntentAgentContext(
-                    context_kind="front_desk_intent",
-                    user_input=request.message,
-                    workflow_id=planning_session.workflow_id,
-                    frozen_facts=FrozenPlanningFacts(),
-                    conversation_summary=_conversation_summary(request),
-                )
-                if planning_session
-                else None
+            agent_context = FrontDeskIntentAgentContext(
+                context_kind="front_desk_intent",
+                user_input=request.message,
+                workflow_id=planning_session.workflow_id if planning_session else None,
+                frozen_facts=FrozenPlanningFacts(),
+                conversation_summary=_conversation_summary(request),
             )
             output = self._structured_runtime.run(
                 StructuredGenerationSpec(
                     stage_name="front_desk",
                     operation="workflow_creation",
-                    agent_name="front_desk",
+                    agent_name="video_agent",
                     contract_name="FrontDeskIntentOutput",
                     model_id=self._settings.llm_front_desk_model,
                     system_prompt="",

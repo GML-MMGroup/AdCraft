@@ -130,11 +130,12 @@ class SpecialistAgentService:
         request: SpecialistInvocationRequest,
     ) -> tuple[dict[str, Any], str | None]:
         try:
+            operation = _revision_operation(request.specialist)
             output = self._structured_runtime.run(
                 StructuredGenerationSpec(
-                    stage_name="targeted_revision",
-                    operation="targeted_revision",
-                    agent_name=_pi_agent_name(request.specialist),
+                    stage_name="asset_revision",
+                    operation=operation,
+                    agent_name="video_agent",
                     contract_name="SpecialistResult",
                     tool_mode="structured_only",
                     policy=AgentRunPolicy(
@@ -170,7 +171,11 @@ class SpecialistAgentService:
         except StructuredGenerationRuntimeError as exc:
             code = (
                 "specialist_real_mode_unavailable"
-                if exc.code == "structured_generation_unavailable"
+                if exc.code
+                in {
+                    "agent_model_unavailable",
+                    "structured_generation_unavailable",
+                }
                 else "specialist_execution_failed"
             )
             raise SpecialistAgentError(code, str(exc)) from exc
@@ -258,8 +263,15 @@ def specialist_for_node_type(node_type: str) -> SpecialistAgentName | None:
     return SPECIALIST_BY_NODE_TYPE.get(node_type)
 
 
-def _pi_agent_name(specialist: SpecialistAgentName) -> str:
-    return "bgm_director" if specialist == "sound_director" else specialist
+def _revision_operation(specialist: SpecialistAgentName) -> str:
+    if specialist == "character_designer":
+        return "revise_character_asset"
+    if specialist == "scene_designer":
+        return "revise_scene_asset"
+    raise SpecialistAgentError(
+        "specialist_action_unsupported",
+        "Legacy targeted revision supports only Character and Scene assets.",
+    )
 
 
 def _model_id_for_specialist(specialist: SpecialistAgentName, settings: Settings) -> str:

@@ -9,6 +9,10 @@ from app.core.config import Settings, get_settings
 from app.persistence.agent_run_repository import AgentRunRepository
 from app.persistence.database import create_v2_database
 from app.schemas.workflow_v2_expert_brief_contracts import V2CharacterExpertPlan
+from app.schemas.agent_operation_contexts import (
+    CharacterExpertAgentContext,
+    FrozenPlanningFacts,
+)
 from app.schemas.workflow_v2 import (
     WorkflowV2ChatActionRequest,
     WorkflowV2ChatActionTarget,
@@ -210,11 +214,17 @@ class _ProductionForcedRepairRunner:
 
     def run(self) -> V2PiCanaryCaseResult:
         workflow_id = f"canary_{uuid4().hex[:16]}"
+        context = CharacterExpertAgentContext(
+            context_kind="character_expert",
+            user_input="Return a valid minimal Character expert plan with no media work.",
+            workflow_id=workflow_id,
+            frozen_facts=FrozenPlanningFacts(),
+        )
         StructuredGenerationRuntime(settings=self._settings).run(
             StructuredGenerationSpec(
                 stage_name="character_expert_brief",
                 operation="character_expert_brief",
-                agent_name="character_designer",
+                agent_name="video_agent",
                 contract_name="V2CharacterExpertPlan",
                 model_id=self._settings.llm_character_model,
                 system_prompt="",
@@ -224,6 +234,7 @@ class _ProductionForcedRepairRunner:
                     )
                 },
                 output_model=V2CharacterExpertPlan,
+                agent_context=context,
                 validation_profile="canary_reject_first_v1",
                 trace_metadata={"workflow_id": workflow_id},
             )

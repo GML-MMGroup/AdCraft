@@ -51,7 +51,7 @@
 
 .v2-screenplay-tabs { gap: 3px; padding: 10px 22px; border-bottom: 1px solid var(--stroke-dark); }
 .v2-screenplay-tabs button { display: inline-flex; gap: 7px; align-items: center; padding: 8px 11px; border-radius: 4px; background: transparent; color: var(--muted); font-size: 13px; }
-.v2-screenplay-tabs button[aria-selected="true"] { background: rgba(108, 93, 171, .13); color: var(--ink); font-weight: 700; }
+.v2-screenplay-tabs button[aria-selected="true"] { background: rgba(157, 175, 230, .13); color: var(--ink); font-weight: 700; }
 
 .v2-screenplay-drawer__body { min-height: 0; overflow: auto; padding: 18px 22px 30px; }
 .v2-screenplay-drawer__footer { position: sticky; bottom: 0; justify-content: space-between; gap: 14px; padding: 14px 22px; border-top: 1px solid var(--stroke-dark); background: rgba(247, 249, 253, .98); color: var(--muted); font-size: 13px; }
@@ -67,14 +67,14 @@
 .v2-screenplay-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .v2-screenplay-fields--compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .v2-screenplay-field { display: grid; gap: 5px; min-width: 0; color: var(--muted); font-size: 12px; font-weight: 700; }
-.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select { width: 100%; min-width: 0; border: 1px solid rgba(108, 93, 171, .22); border-radius: 4px; background: rgba(255, 255, 255, .72); padding: 8px; color: var(--ink); font-weight: 400; }
+.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select { width: 100%; min-width: 0; border: 1px solid rgba(157, 175, 230, .22); border-radius: 4px; background: rgba(255, 255, 255, .72); padding: 8px; color: var(--ink); font-weight: 400; }
 .v2-screenplay-field textarea { min-height: 66px; resize: vertical; }
 .v2-screenplay-field select[multiple] { min-height: 74px; }
 .v2-screenplay-field em { color: #a42e40; font-size: 12px; font-style: normal; }
-.v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version { padding: 13px 0; border-top: 1px solid rgba(108, 93, 171, .12); }
+.v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version { padding: 13px 0; border-top: 1px solid rgba(157, 175, 230, .12); }
 .v2-screenplay-item-heading { justify-content: space-between; gap: 12px; margin-bottom: 10px; font-size: 13px; }
-.v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(108, 93, 171, .17); }
-.v2-screenplay-beat { padding: 10px 0; border-top: 1px solid rgba(108, 93, 171, .12); }
+.v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(157, 175, 230, .17); }
+.v2-screenplay-beat { padding: 10px 0; border-top: 1px solid rgba(157, 175, 230, .12); }
 .v2-screenplay-dialogue h5 { font-size: 13px; }
 .v2-screenplay-empty, .v2-screenplay-hint { margin: 10px 0; color: var(--muted); font-size: 13px; }
 .v2-screenplay-empty em { display: block; margin-top: 5px; color: #a42e40; font-style: normal; }
@@ -109,68 +109,68 @@
   .v2-screenplay-confirm { flex: 0 0 auto; }
 }
 
-html[data-theme="dark"] .v2-screenplay-drawer,
-html[data-theme="dark"] :is(.v2-screenplay-drawer__header, .v2-screenplay-drawer__footer) {
+:root .v2-screenplay-drawer,
+:root :is(.v2-screenplay-drawer__header, .v2-screenplay-drawer__footer) {
   border-color: var(--border-default);
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-tabs, .v2-screenplay-section, .v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version, .v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats, .v2-screenplay-beat) {
+:root :is(.v2-screenplay-tabs, .v2-screenplay-section, .v2-screenplay-entity, .v2-screenplay-scene, .v2-screenplay-shot, .v2-screenplay-dialogue-line, .v2-screenplay-version, .v2-screenplay-shots, .v2-screenplay-dialogue, .v2-screenplay-product-beats, .v2-screenplay-beat) {
   border-color: var(--border-default);
 }
 
-html[data-theme="dark"] .v2-screenplay-tabs button[aria-selected="true"] {
+:root .v2-screenplay-tabs button[aria-selected="true"] {
   background: var(--brand-subtle);
   color: var(--brand);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-icon-button, .v2-screenplay-icon-actions button, .v2-screenplay-secondary-action) {
+:root :is(.v2-screenplay-icon-button, .v2-screenplay-icon-actions button, .v2-screenplay-secondary-action) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] .v2-screenplay-confirm {
+:root .v2-screenplay-confirm {
   background: var(--brand);
   color: var(--text-inverse);
 }
 
-html[data-theme="dark"] .v2-screenplay-danger-action {
+:root .v2-screenplay-danger-action {
   border-color: var(--error);
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select) {
+:root :is(.v2-screenplay-field input, .v2-screenplay-field textarea, .v2-screenplay-field select) {
   border-color: var(--border-default);
   background: var(--surface-input);
   color: var(--text-primary);
 }
 
-html[data-theme="dark"] :is(.v2-screenplay-field em, .v2-screenplay-empty em) {
+:root :is(.v2-screenplay-field em, .v2-screenplay-empty em) {
   color: var(--error);
 }
 
-html[data-theme="dark"] .v2-screenplay-validation-summary,
-html[data-theme="dark"] .v2-screenplay-request-error {
+:root .v2-screenplay-validation-summary,
+:root .v2-screenplay-request-error {
   border-color: var(--error);
   background: var(--error-subtle);
   color: var(--error);
 }
 
-html[data-theme="dark"] .v2-screenplay-conflict {
+:root .v2-screenplay-conflict {
   border-color: var(--warning);
   background: var(--warning-subtle);
   color: var(--warning);
 }
 
-html[data-theme="dark"] .v2-screenplay-discard-confirmation {
+:root .v2-screenplay-discard-confirmation {
   background: var(--overlay);
 }
 
-html[data-theme="dark"] .v2-screenplay-discard-confirmation > dialog {
+:root .v2-screenplay-discard-confirmation > dialog {
   background: var(--surface-raised);
   color: var(--text-primary);
   box-shadow: var(--shadow);

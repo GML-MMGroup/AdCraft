@@ -17,6 +17,11 @@ from app.schemas.agent_canvas_runtime import (
     GeneratedAssetProvenanceV2,
     PublishedMediaFactsV2,
 )
+from app.schemas.agent_canvas_runtime_authority import (
+    PreparedContentObjectV2,
+    PreparedNodeResultV2,
+)
+from app.schemas.agent_canvas_video_parameters import VideoParameterNormalizationV2
 from app.schemas.v2_asset_library import (
     AssetEntityCreate,
     AssetEntityMemberCreate,
@@ -255,6 +260,16 @@ class AgentCanvasAssetService:
             "publication_status": "ready",
             "publication_id": fingerprint,
         }
+        measured_facts = facts.model_dump(mode="json")
+        if mime_type.startswith("image/") and _image_size_mismatch(
+            provenance.get("submitted_media_facts"),
+            width=facts.width,
+            height=facts.height,
+        ):
+            warnings = list(provenance.get("media_fact_warnings") or ())
+            if "generated_image_size_mismatch" not in warnings:
+                warnings.append("generated_image_size_mismatch")
+            provenance["media_fact_warnings"] = warnings
         node = next((item for item in workflow.nodes if item.node_id == node_id), None)
         generated_provenance = _generated_provenance(
             provenance,
@@ -265,7 +280,8 @@ class AgentCanvasAssetService:
         )
         provenance.update(
             {
-                "published_media_facts": facts.model_dump(mode="json"),
+                "published_media_facts": measured_facts,
+                "measured_media_facts": measured_facts,
                 "generated_asset_provenance": generated_provenance.model_dump(mode="json"),
             }
         )
@@ -302,6 +318,93 @@ class AgentCanvasAssetService:
             ),
         )
         return self._asset_summary(version)
+
+    def prepare_generated_bytes(
+        self,
+        workflow_id: str,
+        *,
+        node_id: str,
+        execution_id: str,
+        filename: str,
+        mime_type: str,
+        content: bytes,
+        fingerprint: str,
+        source_type: str = "generated",
+        source_semantic_role: str | None = None,
+        publication_metadata: Mapping[str, object] | None = None,
+    ) -> PreparedNodeResultV2:
+        """Prepare verified bytes without publishing product Asset metadata."""
+
+        if not _valid_generated_media(content, mime_type):
+            raise V2PersistenceError(
+                "provider_output_invalid",
+                "Provider output is empty or has an unsupported media type.",
+                stage="agent_canvas_asset_service",
+            )
+        checksum = hashlib.sha256(content).hexdigest()
+        asset_id = _stable_identifier("asset", workflow_id, node_id, fingerprint)
+        version_id = f"version_{asset_id}"
+        extension = _extension(filename, mime_type)
+        staging = (
+            self._data_dir
+            / "v2"
+            / "runs"
+            / workflow_id
+            / "staging"
+            / f"{asset_id}.{extension}.part"
+        )
+        staging.parent.mkdir(parents=True, exist_ok=True)
+        staging.write_bytes(content)
+        facts = self._probe_generated_media(
+            staging,
+            mime_type=mime_type,
+            checksum=checksum,
+            size_bytes=len(content),
+        )
+        storage_key = self._storage.publish_verified_file(staging, checksum, extension)
+        workflow = self._workflows.get_workflow(workflow_id)
+        node = next((item for item in workflow.nodes if item.node_id == node_id), None)
+        metadata = {
+            **dict(publication_metadata or {}),
+            "display_name": Path(filename).stem,
+            "source_type": source_type,
+            "source_node_id": node_id,
+            "source_execution_id": execution_id,
+            "source_semantic_role": source_semantic_role,
+            "fingerprint": fingerprint,
+            "project_id": workflow.project_id,
+            "workflow_id": workflow_id,
+            "checksum": checksum,
+            "publication_status": "prepared",
+            "publication_id": fingerprint,
+            "published_media_facts": facts.model_dump(mode="json"),
+            "measured_media_facts": facts.model_dump(mode="json"),
+            "generated_asset_provenance": _generated_provenance(
+                dict(publication_metadata or {}),
+                workflow_id=workflow_id,
+                node_id=node_id,
+                execution_id=execution_id,
+                node_revision=(node.revision if node is not None else 1),
+            ).model_dump(mode="json"),
+        }
+        return PreparedNodeResultV2(
+            logical_result_key=fingerprint,
+            payload_digest=checksum,
+            prepared_object=PreparedContentObjectV2(
+                storage_key=storage_key,
+                sha256=checksum,
+                size_bytes=len(content),
+                media_type=mime_type.split("/", 1)[0],
+                mime_type=mime_type,
+                filename=filename,
+                media_facts=facts.model_dump(mode="json"),
+            ),
+            asset_id=asset_id,
+            version_id=version_id,
+            asset_display_name=Path(filename).stem,
+            asset_source_type=("generated" if source_type == "editing_export" else source_type),
+            asset_metadata={key: value for key, value in metadata.items() if value is not None},
+        )
 
     def _probe_generated_media(
         self,
@@ -702,6 +805,9 @@ def _generated_provenance(
             or f"run_intent_{_stable_identifier('snapshot', execution_id, node_id)}"
         ),
         input_manifest_id=_optional_string(metadata.get("input_manifest_id")),
+        parameter_compilation_snapshot_id=_optional_string(
+            metadata.get("parameter_compilation_snapshot_id")
+        ),
         node_revision=node_revision,
         compiled_prompt_digest=_hex_digest(
             metadata.get("compiled_prompt_digest") or metadata.get("prompt_digest")
@@ -715,11 +821,7 @@ def _generated_provenance(
         provider_task_id=_optional_string(metadata.get("provider_task_id")),
         requested_parameters=_json_mapping(metadata.get("requested_parameters")),
         effective_parameters=_json_mapping(metadata.get("effective_parameters")),
-        normalizations=tuple(
-            item for item in metadata.get("normalizations", ()) if isinstance(item, str) and item
-        )
-        if isinstance(metadata.get("normalizations"), (list, tuple))
-        else (),
+        normalizations=_generated_normalizations(metadata.get("normalizations")),
         source_asset_version_ids=tuple(
             item
             for item in metadata.get("source_asset_version_ids", ())
@@ -728,6 +830,38 @@ def _generated_provenance(
         if isinstance(metadata.get("source_asset_version_ids"), (list, tuple))
         else (),
     )
+
+
+def _generated_normalizations(
+    value: object,
+) -> tuple[str | VideoParameterNormalizationV2, ...]:
+    if not isinstance(value, (list, tuple)):
+        return ()
+    result: list[str | VideoParameterNormalizationV2] = []
+    for item in value:
+        if isinstance(item, str) and item:
+            result.append(item)
+        elif isinstance(item, Mapping):
+            result.append(VideoParameterNormalizationV2.model_validate(item))
+    return tuple(result)
+
+
+def _image_size_mismatch(
+    submitted_facts: object,
+    *,
+    width: int | None,
+    height: int | None,
+) -> bool:
+    if not isinstance(submitted_facts, Mapping) or width is None or height is None:
+        return False
+    size = submitted_facts.get("size")
+    if not isinstance(size, str):
+        return False
+    try:
+        requested_width, requested_height = (int(part) for part in size.lower().split("x", 1))
+    except (TypeError, ValueError):
+        return False
+    return (requested_width, requested_height) != (width, height)
 
 
 def _hex_digest(value: object) -> str:

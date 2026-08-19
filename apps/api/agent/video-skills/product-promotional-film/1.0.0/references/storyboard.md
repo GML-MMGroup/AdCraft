@@ -1,0 +1,1 @@
+Organize shots around selling-point hierarchy, develop visual progression through use context, and reserve benefit reveal for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

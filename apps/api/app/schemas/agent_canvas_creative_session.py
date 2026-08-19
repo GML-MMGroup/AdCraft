@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, computed_field, model_validator
 
 from app.schemas.agent_canvas import (
     CanvasBindingKindV2,
@@ -13,19 +13,28 @@ from app.schemas.agent_canvas import (
     CanvasInputRoleV2,
     CanvasNodeTypeV2,
 )
+from app.schemas.agent_canvas_ad_media import (
+    BgmContentV2,
+    CharacterDesignAssetContentV2,
+    DesignAssetContentV2,
+    SceneDesignBoardContentV2,
+    StoryboardGridContentV2,
+    VideoSegmentContentV2,
+    SemanticReferenceRoleV2,
+)
+from app.schemas.agent_canvas_video_parameters import CanvasParameterProvenanceV2
+from app.schemas.agent_canvas_capability_identity import (
+    CAPABILITY_DISPLAY_NAMES,
+    CapabilityIdV1,
+)
+from app.schemas.agent_canvas_production_journey import GuidedProductionJourneyV1
+from app.schemas.language import BCP47Tag
+from app.schemas.agent_canvas_guided_interactions import (
+    GuidanceAwaitingV1,
+    GuidedInteractionV1,
+)
 
 
-AgentCanvasSpecialistNameV2 = Literal[
-    "script_writer",
-    "product_designer",
-    "prop_designer",
-    "character_designer",
-    "scene_designer",
-    "storyboard_artist",
-    "video_director",
-    "bgm_director",
-    "quick_media_agent",
-]
 CreationModeV2 = Literal[
     "ordinary_conversation",
     "targeted_authoring",
@@ -35,6 +44,7 @@ CreationModeV2 = Literal[
 CreativeOutputKindV2 = Literal["text", "script", "image", "video", "audio"]
 CreativeDeliveryScopeV2 = Literal["draft", "generated_media"]
 CreativeElementKindV2 = Literal[
+    "world_setting",
     "product",
     "character",
     "prop",
@@ -45,6 +55,7 @@ CreativeElementKindV2 = Literal[
     "audio",
 ]
 GuidanceTopicKindV2 = Literal[
+    "world_setting",
     "creative_direction",
     "product",
     "prop",
@@ -54,6 +65,33 @@ GuidanceTopicKindV2 = Literal[
     "storyboard",
     "video",
     "audio",
+]
+
+
+def canonical_guidance_topic_kind(value: str) -> GuidanceTopicKindV2:
+    """Normalize retired capability-facing aliases at the persistence boundary."""
+
+    return cast(GuidanceTopicKindV2, "audio" if value == "bgm" else value)
+
+
+GuidanceStageKindV2 = Literal[
+    "world_setting",
+    "narrative_direction",
+    "product",
+    "prop",
+    "character",
+    "scene",
+    "script",
+    "storyboard",
+    "video",
+    "bgm",
+    "editing",
+]
+CreativeAuthorityV2 = Literal["user", "director"]
+CreativeAuthoritySourceV2 = Literal[
+    "explicit_user",
+    "explicit_delegation",
+    "director_inference",
 ]
 
 
@@ -92,25 +130,98 @@ class GuidanceTopicStateV2(_CreativeSessionModel):
     topic_kind: GuidanceTopicKindV2
     title: str = Field(min_length=1, max_length=256)
     status: Literal["proposed", "selected", "deferred", "excluded"]
-    specialist_name: AgentCanvasSpecialistNameV2
+    capability_id: CapabilityIdV1
     related_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     source_proposal_id: str | None = Field(default=None, max_length=160)
     revision: int = Field(ge=1)
+
+    @computed_field
+    @property
+    def capability_display_name(self) -> str:
+        return CAPABILITY_DISPLAY_NAMES[self.capability_id]
 
 
 class GuidanceCompletionProjectionV2(_CreativeSessionModel):
     authoring: Literal["not_ready", "ready"] = "not_ready"
     delivery: Literal["not_ready", "ready"] = "not_ready"
+    plan_document_id: str | None = Field(default=None, max_length=160)
+    plan_revision: int | None = Field(default=None, ge=1)
+    editing_preparation: Literal["not_ready", "prepared"] = "not_ready"
+    editing_node_id: str | None = Field(default=None, max_length=160)
+    preparation_receipt_id: str | None = Field(default=None, max_length=160)
+    manifest_revision: int | None = Field(default=None, ge=1)
+    export_status: Literal[
+        "not_started",
+        "queued",
+        "exporting",
+        "completed",
+        "failed",
+        "cancelled",
+    ] = "not_started"
+    export_id: str | None = Field(default=None, max_length=160)
+    final_completion_receipt_id: str | None = Field(default=None, max_length=160)
+    final_asset_id: str | None = Field(default=None, max_length=160)
     matching_node_ids: tuple[str, ...] = Field(default=(), max_length=32)
     matching_asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
+
+
+class CreativeAuthorityStateV2(_CreativeSessionModel):
+    authority: CreativeAuthorityV2
+    source: CreativeAuthoritySourceV2
+    decided_at_turn_id: str = Field(min_length=1, max_length=160)
+    revision: int = Field(ge=1)
+
+
+class CreativeAuthorityActionV2(_CreativeSessionModel):
+    action_id: str = Field(min_length=1, max_length=160)
+    action: Literal["set_creative_authority"] = "set_creative_authority"
+    authority: CreativeAuthorityV2
+    label: str = Field(min_length=1, max_length=160)
+    expected_session_revision: int = Field(ge=1)
+
+
+class CreativeAuthorityResolutionV2(_CreativeSessionModel):
+    outcome: Literal["resolved", "ask"]
+    authority: CreativeAuthorityV2 | None = None
+    source: CreativeAuthoritySourceV2 | None = None
+    actions: tuple[CreativeAuthorityActionV2, ...] = Field(default=(), max_length=2)
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> "CreativeAuthorityResolutionV2":
+        if self.outcome == "resolved":
+            if self.authority is None or self.source is None or self.actions:
+                raise ValueError("A resolved authority requires authority and source only.")
+        elif self.authority is not None or self.source is not None:
+            raise ValueError("An authority question cannot claim a resolved authority.")
+        return self
+
+
+class GuidedStepCheckpointV2(_CreativeSessionModel):
+    checkpoint_id: str = Field(min_length=1, max_length=160)
+    workflow_id: str = Field(min_length=1, max_length=160)
+    session_revision: int = Field(ge=1)
+    stage_kind: GuidanceStageKindV2 | None = None
+    status: Literal["pending", "waiting_user", "completed", "failed", "superseded"]
+    trigger: Literal["user_message", "proposal_action", "continuation", "recovery"]
+    action_id: str | None = Field(default=None, max_length=160)
+
+
+class GuidanceStagePolicyResultV2(_CreativeSessionModel):
+    allowed_stage_kinds: tuple[GuidanceStageKindV2, ...]
+    recommended_stage_kinds: tuple[GuidanceStageKindV2, ...]
+    unresolved_element_kinds: tuple[CreativeElementKindV2, ...] = ()
+    blocking_facts: tuple[str, ...] = Field(default=(), max_length=32)
+    completion_allowed: bool
 
 
 class GuidedSessionStateV2(_CreativeSessionModel):
     session_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     status: Literal["active", "paused", "completed"]
-    guidance_mode: Literal["collaborative", "delegated"]
     goal: CreativeGoalV2
+    creative_authority: CreativeAuthorityStateV2 | None = None
+    current_checkpoint: GuidedStepCheckpointV2 | None = None
+    narrative_direction: str | None = Field(default=None, max_length=4_096)
     element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
         default=(),
         max_length=32,
@@ -122,69 +233,12 @@ class GuidedSessionStateV2(_CreativeSessionModel):
     completion: GuidanceCompletionProjectionV2 = Field(
         default_factory=GuidanceCompletionProjectionV2
     )
+    interaction: GuidedInteractionV1 | None = None
+    awaiting: GuidanceAwaitingV1 | None = None
+    journey: GuidedProductionJourneyV1
     revision: int = Field(ge=1)
     updated_at: datetime
-
-
-class GuidanceIntentPatchV2(_CreativeSessionModel):
-    goal: CreativeGoalV2 | None = None
-    element_decisions: tuple[CreativeElementDecisionV2, ...] = Field(
-        default=(),
-        max_length=32,
-    )
-
-
-class GuidanceCompletionClaimV2(_CreativeSessionModel):
-    state: Literal["authoring_ready", "delivery_ready"]
-    output_kind: CreativeOutputKindV2
-    node_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    asset_ids: tuple[str, ...] = Field(default=(), max_length=32)
-    reason: str = Field(min_length=1, max_length=2_048)
-
-
-class NextGuidanceDecisionV2(_CreativeSessionModel):
-    action: Literal[
-        "ordinary_reply",
-        "ask_clarification",
-        "propose_topic",
-        "finish_guidance",
-    ]
-    assistant_message: str = Field(min_length=1, max_length=4_000)
-    rationale: str = Field(min_length=1, max_length=4_000)
-    topic_id: str | None = Field(default=None, max_length=160)
-    topic_kind: GuidanceTopicKindV2 | None = None
-    topic_title: str | None = Field(default=None, max_length=256)
-    topic_objective: str | None = Field(default=None, max_length=4_096)
-    specialist_name: AgentCanvasSpecialistNameV2 | None = None
-    candidate_count: int | None = Field(default=None, ge=1, le=4)
-    suggested_next_topic_kinds: tuple[GuidanceTopicKindV2, ...] = Field(
-        default=(),
-        max_length=8,
-    )
-    intent_patch: GuidanceIntentPatchV2 | None = None
-    completion_claim: GuidanceCompletionClaimV2 | None = None
-
-    @model_validator(mode="after")
-    def validate_action_shape(self) -> "NextGuidanceDecisionV2":
-        topic_values = (
-            self.topic_id,
-            self.topic_kind,
-            self.topic_title,
-            self.topic_objective,
-            self.specialist_name,
-            self.candidate_count,
-        )
-        if self.action == "propose_topic":
-            if any(value is None for value in topic_values):
-                raise ValueError("A topic proposal requires the complete topic shape.")
-        elif any(value is not None for value in topic_values):
-            raise ValueError("Only a topic proposal accepts topic fields.")
-        if self.action == "finish_guidance":
-            if self.completion_claim is None:
-                raise ValueError("Finishing guidance requires a completion claim.")
-        elif self.completion_claim is not None:
-            raise ValueError("Only finish_guidance accepts a completion claim.")
-        return self
+    response_locale: BCP47Tag = "und"
 
 
 class DelegatedProposalChoiceV2(_CreativeSessionModel):
@@ -192,16 +246,14 @@ class DelegatedProposalChoiceV2(_CreativeSessionModel):
     reason: str = Field(min_length=1, max_length=2_048)
 
 
-class ConceptDraftSpecV2(_CreativeSessionModel):
-    """Private bounded prompt authored for one proposal option."""
-
-    prompt: str = Field(min_length=1, max_length=32_768)
-
-
 class GuidanceSessionActionV2(_CreativeSessionModel):
     action_id: str = Field(min_length=1, max_length=160)
     logical_key: str = Field(min_length=1, max_length=256)
-    action: Literal["stop_guidance", "resume_guidance"]
+    action: Literal[
+        "stop_guidance",
+        "resume_guidance",
+        "set_creative_authority",
+    ]
     state: Literal["pending", "applying", "applied", "superseded", "failed"]
     creating_turn_id: str = Field(min_length=1, max_length=160)
     expected_session_revision: int = Field(ge=1)
@@ -209,6 +261,7 @@ class GuidanceSessionActionV2(_CreativeSessionModel):
     workflow_id: str = Field(min_length=1, max_length=160)
     confirmation_required: bool
     reason: str = Field(min_length=1, max_length=1_024)
+    authority: CreativeAuthorityV2 | None = None
 
 
 class CreativeDirectionSnapshotV2(_CreativeSessionModel):
@@ -225,6 +278,20 @@ class CreativeDirectionSnapshotV2(_CreativeSessionModel):
     source_proposal_id: str | None = Field(default=None, max_length=160)
     content_digest: str = Field(min_length=1, max_length=160)
     created_at: datetime
+
+
+class StyleGuidanceContextV2(_CreativeSessionModel):
+    skill_run_id: str = Field(min_length=1, max_length=160)
+    skill_id: str = Field(min_length=1, max_length=160)
+    skill_version: str = Field(min_length=1, max_length=80)
+    package_digest: str = Field(min_length=1, max_length=160)
+    creative_direction_snapshot_id: str = Field(min_length=1, max_length=160)
+    global_guidance: str = Field(min_length=1, max_length=8_192)
+    role: str | None = Field(default=None, max_length=160)
+    role_guidance: str | None = Field(default=None, max_length=8_192)
+    role_guidance_digest: str | None = Field(default=None, max_length=160)
+    source: Literal["creative_direction_snapshot"] = "creative_direction_snapshot"
+    precedence: Literal["advisory"] = "advisory"
 
 
 class ProjectCreativeMemoryV2(_CreativeSessionModel):
@@ -250,6 +317,7 @@ class DraftReferenceIntentV2(_CreativeSessionModel):
     input_role: CanvasInputRoleV2
     required: bool = False
     display_order: int = Field(ge=0, le=127)
+    semantic_reference_role: SemanticReferenceRoleV2 | None = None
 
 
 class ProposedDraftReferenceV2(DraftReferenceIntentV2):
@@ -257,14 +325,16 @@ class ProposedDraftReferenceV2(DraftReferenceIntentV2):
     media_type: Literal["text", "image", "video", "audio"]
 
 
-class SpecialistDraftV2(_CreativeSessionModel):
-    node_type: CanvasNodeTypeV2
-    creative_role: CanvasCreativeRoleV2
+class ScriptDraftContentV2(_CreativeSessionModel):
+    content: str = Field(min_length=1, max_length=32_768)
+
+
+class _SpecialistDraftBaseV2(_CreativeSessionModel):
     title: str = Field(min_length=1, max_length=256)
     summary_prompt: str = Field(min_length=1, max_length=8_192)
-    generation_prompt: str | None = Field(default=None, max_length=32_768)
-    structured_content: dict[str, JsonValue] = Field(default_factory=dict)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    parameter_provenance: dict[str, CanvasParameterProvenanceV2] = Field(default_factory=dict)
+    prompt_context_snapshot_id: str | None = Field(default=None, max_length=160)
     reference_intents: tuple[DraftReferenceIntentV2, ...] = Field(
         default=(),
         max_length=64,
@@ -272,13 +342,76 @@ class SpecialistDraftV2(_CreativeSessionModel):
     warnings: tuple[str, ...] = Field(default=(), max_length=32)
 
 
+class SpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: CanvasNodeTypeV2
+    creative_role: CanvasCreativeRoleV2
+    generation_prompt: str | None = Field(default=None, max_length=32_768)
+    structured_content: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ScriptSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["script"]
+    creative_role: Literal["script"]
+    generation_prompt: None = None
+    structured_content: ScriptDraftContentV2
+
+
+class ProductImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["product"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: DesignAssetContentV2
+
+
+class PropImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["prop"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: DesignAssetContentV2
+
+
+class CharacterImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["character"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: CharacterDesignAssetContentV2
+
+
+class SceneImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["scene"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: SceneDesignBoardContentV2
+
+
+class StoryboardImageSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["image"]
+    creative_role: Literal["storyboard_sequence"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: StoryboardGridContentV2
+
+
+class VideoSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["video"]
+    creative_role: Literal["storyboard_video"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: VideoSegmentContentV2
+
+
+class BgmAudioSpecialistDraftV2(_SpecialistDraftBaseV2):
+    node_type: Literal["audio"]
+    creative_role: Literal["bgm"]
+    generation_prompt: str = Field(min_length=1, max_length=32_768)
+    structured_content: BgmContentV2
+
+
 class ExpertActivityV2(_CreativeSessionModel):
     activity_id: str = Field(min_length=1, max_length=160)
     workflow_id: str = Field(min_length=1, max_length=160)
     turn_id: str = Field(min_length=1, max_length=160)
-    specialist_name: AgentCanvasSpecialistNameV2
-    display_name: str = Field(min_length=1, max_length=160)
-    operation: Literal["propose_concepts", "revise_concepts", "materialize_draft"]
+    capability_id: CapabilityIdV1
+    capability_display_name: str = Field(min_length=1, max_length=160)
+    operation: str = Field(min_length=1, max_length=160)
     status: Literal["working", "completed", "failed"]
     error_code: str | None = Field(default=None, max_length=160)
     error_message: str | None = Field(default=None, max_length=1_024)
@@ -290,6 +423,6 @@ class ResolvedImageTargetV2(_CreativeSessionModel):
     asset_id: str = Field(min_length=1, max_length=160)
     owner_node_id: str | None = Field(default=None, max_length=160)
     owner_semantic_role: str | None = Field(default=None, max_length=160)
-    specialist_name: AgentCanvasSpecialistNameV2
+    capability_id: CapabilityIdV1
     display_name: str = Field(min_length=1, max_length=256)
     checksum: str = Field(min_length=1, max_length=160)

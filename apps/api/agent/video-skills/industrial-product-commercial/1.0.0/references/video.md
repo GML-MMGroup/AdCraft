@@ -1,0 +1,1 @@
+Direct camera and subject motion through engineering form and material precision, using functional demonstration for controlled emphasis. Preserve dialogue, Foley, ambience, and synchronous action sound when relevant. Exclude background music because it belongs to the separate audio direction.

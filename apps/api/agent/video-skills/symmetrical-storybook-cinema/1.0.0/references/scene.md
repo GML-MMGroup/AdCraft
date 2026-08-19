@@ -1,0 +1,1 @@
+Construct spaces that express axial framing through layout and curated palettes through light, color, and material. Use chapter-like staging to direct attention toward the advertised subject while preserving the stated location and product context.

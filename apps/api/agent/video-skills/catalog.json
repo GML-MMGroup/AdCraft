@@ -1,0 +1,222 @@
+{
+  "catalog_version": "1",
+  "categories": [
+    {
+      "category_id": "commercial-craft",
+      "title": "Commercial Craft",
+      "display_order": 10
+    },
+    {
+      "category_id": "luxury-fashion",
+      "title": "Luxury & Fashion",
+      "display_order": 20
+    },
+    {
+      "category_id": "cinematic-narrative",
+      "title": "Cinematic Narrative",
+      "display_order": 30
+    },
+    {
+      "category_id": "animation-illustration",
+      "title": "Animation & Illustration",
+      "display_order": 40
+    },
+    {
+      "category_id": "experimental-graphic",
+      "title": "Experimental & Graphic",
+      "display_order": 50
+    },
+    {
+      "category_id": "lifestyle-documentary",
+      "title": "Lifestyle & Documentary",
+      "display_order": 60
+    }
+  ],
+  "skills": [
+    {
+      "skill_id": "platform-default",
+      "version": "1.0.0",
+      "display_order": 10
+    },
+    {
+      "skill_id": "new-product-tvc-campaign",
+      "version": "1.0.0",
+      "display_order": 10
+    },
+    {
+      "skill_id": "industrial-product-commercial",
+      "version": "1.0.0",
+      "display_order": 20
+    },
+    {
+      "skill_id": "product-promotional-film",
+      "version": "1.0.0",
+      "display_order": 30
+    },
+    {
+      "skill_id": "brand-manifesto-film",
+      "version": "1.0.0",
+      "display_order": 40
+    },
+    {
+      "skill_id": "one-take-commercial",
+      "version": "1.0.0",
+      "display_order": 50
+    },
+    {
+      "skill_id": "beat-synced-camera-commercial",
+      "version": "1.0.0",
+      "display_order": 60
+    },
+    {
+      "skill_id": "fashion-showcase-film",
+      "version": "1.0.0",
+      "display_order": 110
+    },
+    {
+      "skill_id": "jewelry-editorial-film",
+      "version": "1.0.0",
+      "display_order": 120
+    },
+    {
+      "skill_id": "luxury-silk-illustration",
+      "version": "1.0.0",
+      "display_order": 130
+    },
+    {
+      "skill_id": "art-deco-golden-age-romance",
+      "version": "1.0.0",
+      "display_order": 140
+    },
+    {
+      "skill_id": "theatrical-revue-glamour",
+      "version": "1.0.0",
+      "display_order": 150
+    },
+    {
+      "skill_id": "symmetrical-storybook-cinema",
+      "version": "1.0.0",
+      "display_order": 210
+    },
+    {
+      "skill_id": "controlled-psychological-thriller",
+      "version": "1.0.0",
+      "display_order": 220
+    },
+    {
+      "skill_id": "poetic-contemplative-cinema",
+      "version": "1.0.0",
+      "display_order": 230
+    },
+    {
+      "skill_id": "monumental-minimalist-science-fiction",
+      "version": "1.0.0",
+      "display_order": 240
+    },
+    {
+      "skill_id": "lived-in-epic-cinema",
+      "version": "1.0.0",
+      "display_order": 250
+    },
+    {
+      "skill_id": "geometric-suspense-cinema",
+      "version": "1.0.0",
+      "display_order": 260
+    },
+    {
+      "skill_id": "kinetic-wuxia-fantasy",
+      "version": "1.0.0",
+      "display_order": 270
+    },
+    {
+      "skill_id": "designer-toy-ip-film",
+      "version": "1.0.0",
+      "display_order": 310
+    },
+    {
+      "skill_id": "soft-3d-comfort-animation",
+      "version": "1.0.0",
+      "display_order": 320
+    },
+    {
+      "skill_id": "luminous-youth-anime",
+      "version": "1.0.0",
+      "display_order": 330
+    },
+    {
+      "skill_id": "dream-reality-psychological-anime",
+      "version": "1.0.0",
+      "display_order": 340
+    },
+    {
+      "skill_id": "kinetic-expressionist-animation",
+      "version": "1.0.0",
+      "display_order": 350
+    },
+    {
+      "skill_id": "chinese-traditional-art-animation",
+      "version": "1.0.0",
+      "display_order": 360
+    },
+    {
+      "skill_id": "retro-pixel-arcade",
+      "version": "1.0.0",
+      "display_order": 370
+    },
+    {
+      "skill_id": "retro-magical-girl-animation",
+      "version": "1.0.0",
+      "display_order": 380
+    },
+    {
+      "skill_id": "mixed-media-collage-motion",
+      "version": "1.0.0",
+      "display_order": 410
+    },
+    {
+      "skill_id": "surreal-pop-concept-film",
+      "version": "1.0.0",
+      "display_order": 420
+    },
+    {
+      "skill_id": "brand-mark-in-context",
+      "version": "1.0.0",
+      "display_order": 430
+    },
+    {
+      "skill_id": "chinese-millennium-dreamcore",
+      "version": "1.0.0",
+      "display_order": 440
+    },
+    {
+      "skill_id": "miniature-world-cinema",
+      "version": "1.0.0",
+      "display_order": 450
+    },
+    {
+      "skill_id": "hand-drawn-travel-journal",
+      "version": "1.0.0",
+      "display_order": 510
+    },
+    {
+      "skill_id": "gentle-everyday-vlog",
+      "version": "1.0.0",
+      "display_order": 520
+    },
+    {
+      "skill_id": "cinematic-food-story",
+      "version": "1.0.0",
+      "display_order": 530
+    },
+    {
+      "skill_id": "observational-human-documentary",
+      "version": "1.0.0",
+      "display_order": 540
+    },
+    {
+      "skill_id": "craft-process-film",
+      "version": "1.0.0",
+      "display_order": 550
+    }
+  ]
+}

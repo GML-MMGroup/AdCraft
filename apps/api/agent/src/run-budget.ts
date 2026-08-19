@@ -5,18 +5,53 @@ export type RunBudgetCode =
   | "agent_deadline_exceeded";
 
 const OPERATION_DEADLINES_SECONDS: Readonly<Record<string, number>> = {
-  resolve_creation_mode: 180,
-  conversation_turn: 300,
-  decide_next_guidance_step: 300,
-  proposal_action: 300,
-  propose_concepts: 300,
-  revise_concepts: 300,
-  materialize_draft: 300,
-  direct_response: 300,
+  decide_turn_intent: 300,
+  decide_next_action: 180,
+  command_replan: 180,
+  compile_video_parameters: 180,
+  propose_world_setting_options: 300,
+  propose_product_options: 300,
+  propose_prop_options: 300,
+  propose_character_options: 300,
+  propose_scene_options: 300,
+  propose_script_options: 300,
+  propose_storyboard_options: 300,
+  propose_video_options: 300,
+  propose_bgm_options: 300,
+  materialize_quick_media: 420,
+  execute_canvas_text: 420,
+  execute_canvas_script: 600,
 };
 
 export function operationDeadlineSeconds(operation: string): number {
   return OPERATION_DEADLINES_SECONDS[operation] ?? 300;
+}
+
+export type ModelAttemptStage =
+  | "initial"
+  | "transport_retry"
+  | "structured_repair";
+
+export function modelAttemptTimeoutMs(
+  policy: {
+    readonly primary_timeout_seconds: number;
+    readonly recovery_timeout_seconds: number;
+    readonly persistence_reserve_seconds: number;
+  },
+  hardDeadlineEpochMs: number,
+  stage: ModelAttemptStage,
+  nowEpochMs: number,
+): number {
+  const partitionSeconds =
+    stage === "initial"
+      ? policy.primary_timeout_seconds
+      : policy.recovery_timeout_seconds;
+  const persistenceBoundary =
+    hardDeadlineEpochMs - policy.persistence_reserve_seconds * 1_000;
+  return Math.max(
+    0,
+    Math.min(partitionSeconds * 1_000, persistenceBoundary - nowEpochMs),
+  );
 }
 
 export class RunBudgetFailure extends Error {
@@ -33,7 +68,18 @@ export class RunBudget {
   #eventBytes = 0;
 
   constructor(
-    private readonly policy: Required<AgentRunPolicy>,
+    private readonly policy: Required<
+      Pick<
+        AgentRunPolicy,
+        | "max_turns"
+        | "max_tool_calls"
+        | "max_handoffs"
+        | "timeout_seconds"
+        | "max_input_bytes"
+        | "max_output_bytes"
+        | "max_event_bytes"
+      >
+    >,
     private readonly deadlineEpochMs: number,
     private readonly now: () => number = Date.now,
   ) {}

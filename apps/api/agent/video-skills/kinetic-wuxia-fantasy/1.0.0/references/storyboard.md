@@ -1,0 +1,1 @@
+Organize shots around readable action geography, develop visual progression through fabric and weapon motion, and reserve poetic landscapes for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from app.schemas.agent_canvas import StorageAccessDescriptorV2
 
 
 AdMediaSemanticRoleV2 = Literal[
     "creative_brief",
+    "world_setting",
     "script",
     "product",
     "prop",
@@ -26,6 +27,16 @@ AdMediaSemanticRoleV2 = Literal[
     "general_audio",
     "editing",
 ]
+SemanticReferenceRoleV2 = Literal[
+    "world_setting_reference",
+    "subject_reference",
+    "environment_reference",
+    "product_reference",
+    "prop_reference",
+    "style_reference",
+    "style_composition_reference",
+    "storyboard_visual_reference",
+]
 
 
 class _AdMediaModel(BaseModel):
@@ -39,11 +50,23 @@ class VisualStyleContractV2(_AdMediaModel):
 
 
 class DesignAssetContentV2(_AdMediaModel):
+    asset_kind: Literal["main", "multi_view"] = "main"
     subject_identity: str = Field(min_length=1, max_length=4_096)
     design_summary: str = Field(min_length=1, max_length=8_192)
     style: VisualStyleContractV2
     explicit_inclusions: tuple[str, ...] = Field(default=(), max_length=64)
     negative_constraints: tuple[str, ...] = Field(default=(), max_length=64)
+
+
+CharacterAssetKindV2 = Literal["identity_master", "turnaround"]
+CharacterReferenceRenderingModeV2 = Literal["detailed_semi_realistic_illustration"]
+
+
+class CharacterDesignAssetContentV2(DesignAssetContentV2):
+    character_asset_kind: CharacterAssetKindV2 = "identity_master"
+    reference_rendering_mode: CharacterReferenceRenderingModeV2 = (
+        "detailed_semi_realistic_illustration"
+    )
 
 
 class SceneBoardPanelV2(_AdMediaModel):
@@ -159,9 +182,13 @@ class ResolvedAdReferenceV2(_AdMediaModel):
     source_kind: Literal["node_output", "image_asset"]
     source_node_id: str | None = None
     source_semantic_role: str | None = None
+    semantic_reference_role: SemanticReferenceRoleV2 | None = None
+    storyboard_reference_purpose: Literal["sequence_visual_anchor"] | None = None
     asset_id: str
+    asset_version_id: str = Field(min_length=1)
     media_type: Literal["image", "video", "audio"]
     display_order: int = Field(ge=0)
+    source_identity_facts: dict[str, JsonValue] = Field(default_factory=dict)
     access_descriptor: StorageAccessDescriptorV2
 
 

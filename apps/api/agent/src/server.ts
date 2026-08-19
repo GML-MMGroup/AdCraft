@@ -18,6 +18,8 @@ import {
   RunBudget,
   RunBudgetFailure,
 } from "./run-budget.js";
+import { AgentOperationFailure } from "./operation-recovery.js";
+import { AgentPromptInputProjectionError } from "./prompt-input-projection.js";
 
 interface ServerOptions {
   readonly internalToken: string;
@@ -40,19 +42,71 @@ type AbortCause =
   | "server_shutdown"
   | "client_transport_lost";
 
+type FailureAudit = AgentOperationFailure["attemptMetadata"];
+
+type TerminalFailureAudit = Readonly<Record<string, unknown>>;
+
+interface ProjectionFailureAudit {
+  readonly context_contract_name: string;
+  readonly projection_id?: string;
+}
+
 const terminalEvents = new Set(["run_completed", "run_failed", "run_cancelled"]);
 const safeAdapterErrorCodes = new Set([
   "agent_model_incompatible",
+  "agent_model_capability_mismatch",
   "agent_model_policy_mismatch",
   "agent_model_unavailable",
   "agent_operation_not_allowed",
   "agent_structured_output_invalid",
+  "agent_contract_validation_failed",
+  "agent_provider_timeout",
+  "agent_provider_transport_failed",
   "agent_run_budget_exceeded",
   "agent_tool_not_allowed",
   "agent_target_revision_conflict",
   "provider_credentials_invalid",
   "provider_credentials_missing",
 ]);
+const preSubmissionFailureCodes = new Set([
+  "agent_context_input_missing",
+  "agent_model_capability_mismatch",
+  "agent_model_incompatible",
+  "agent_model_policy_mismatch",
+  "agent_model_unavailable",
+  "agent_operation_not_allowed",
+  "agent_prompt_input_registry_invalid",
+  "provider_credentials_invalid",
+  "provider_credentials_missing",
+]);
+const structuredFailureCodes = new Set([
+  "agent_contract_validation_failed",
+  "agent_structured_output_invalid",
+]);
+const providerFailureCodes = new Set([
+  "agent_provider_timeout",
+  "agent_provider_transport_failed",
+]);
+const safeFailureMessages: Readonly<Record<string, string>> = {
+  agent_contract_validation_failed: "Agent contract validation failed.",
+  agent_context_input_missing: "Agent Prompt input is incomplete.",
+  agent_deadline_exceeded: "Agent run deadline exceeded.",
+  agent_model_capability_mismatch: "Agent model capability does not satisfy this operation.",
+  agent_model_incompatible: "Agent model is incompatible with this operation.",
+  agent_model_policy_mismatch: "Agent model policy rejected this operation.",
+  agent_model_unavailable: "Agent model is unavailable.",
+  agent_operation_not_allowed: "Agent operation is not allowed.",
+  agent_prompt_input_registry_invalid: "Agent Prompt input registry is invalid.",
+  agent_provider_timeout: "Agent provider request timed out.",
+  agent_provider_transport_failed: "Agent provider transport failed.",
+  agent_run_budget_exceeded: "Agent runtime policy rejected the operation.",
+  agent_stream_backpressure_exceeded: "Agent runtime stream exceeded its byte budget.",
+  agent_structured_output_invalid: "Agent structured output was invalid.",
+  agent_target_revision_conflict: "Agent target revision changed.",
+  agent_tool_not_allowed: "Agent tool is not allowed.",
+  provider_credentials_invalid: "Agent provider credentials are invalid.",
+  provider_credentials_missing: "Agent provider credentials are unavailable.",
+};
 
 export function createAgentRuntimeServer(options: ServerOptions) {
   const adapter = options.adapter ?? new FakeAgentModelAdapter();
@@ -135,8 +189,12 @@ async function handleRun(
   let request: AgentRunRequest;
   try {
     request = validateAgentRunRequest(await readJson(incoming, maxRequestBytes));
-  } catch {
-    json(response, 422, { code: "agent_protocol_mismatch" });
+  } catch (error) {
+    const code =
+      error instanceof Error && error.message === "agent_context_registry_invalid"
+        ? error.message
+        : "agent_protocol_mismatch";
+    json(response, 422, { code });
     return;
   }
   if (activeRuns.has(request.run_id)) {
@@ -163,7 +221,7 @@ async function handleRun(
   const policy = {
     max_turns: request.policy?.max_turns ?? 8,
     max_tool_calls: request.policy?.max_tool_calls ?? 16,
-    max_handoffs: request.policy?.max_handoffs ?? 8,
+    max_handoffs: 0 as const,
     timeout_seconds:
       request.policy?.timeout_seconds ?? operationDeadlineSeconds(request.operation),
     max_input_bytes: request.policy?.max_input_bytes ?? 131_072,
@@ -239,12 +297,20 @@ async function handleRun(
     if (!terminalEmitted) {
       const failure = safeRuntimeFailure(error);
       logStructuredRejectionDiagnostic(request, failure);
+      logTerminalProviderDiagnostic(request, failure);
+      logPromptProjectionDiagnostic(request, failure);
       const terminal = terminalForFailure(active.abortCause, failure);
       await emit(
         event(request, 0, terminal.eventType, {
           code: terminal.code,
           message: terminal.message,
-          audit: { duration_ms: Math.max(0, Date.now() - startedAt) },
+          retryable: terminal.retryable,
+          audit: terminalFailureAudit(
+            request,
+            terminal,
+            failure,
+            Math.max(0, Date.now() - startedAt),
+          ),
         }),
       );
     }
@@ -285,12 +351,16 @@ function terminalForFailure(
   eventType: "run_failed" | "run_cancelled";
   code: string;
   message: string;
+  retryable: boolean;
+  attemptStage: string;
 } {
   if (cause === "deadline") {
     return {
       eventType: "run_failed",
       code: "agent_deadline_exceeded",
       message: "Agent run deadline exceeded.",
+      retryable: true,
+      attemptStage: "initial",
     };
   }
   if (cause === "explicit_cancel" || cause === "server_shutdown") {
@@ -298,19 +368,144 @@ function terminalForFailure(
       eventType: "run_cancelled",
       code: "agent_run_cancelled",
       message: "Agent run was cancelled.",
+      retryable: false,
+      attemptStage: "initial",
     };
   }
   return {
     eventType: "run_failed",
     code: failure?.code ?? "agent_runtime_unavailable",
-    message: failure?.message ?? "Agent runtime failed.",
+    message: safeFailureMessage(failure?.code),
+    retryable: failure?.retryable ?? false,
+    attemptStage: failure?.attemptStage ?? "initial",
   };
+}
+
+function safeFailureMessage(code: string | undefined): string {
+  return (code && safeFailureMessages[code]) ?? "Agent runtime failed.";
+}
+
+function terminalFailureAudit(
+  request: AgentRunRequest,
+  terminal: ReturnType<typeof terminalForFailure>,
+  failure: RuntimeFailure | undefined,
+  durationMs: number,
+): TerminalFailureAudit {
+  const attempt = failure?.attemptMetadata;
+  const modelSubmissionCount = submittedModelCount(terminal.code, attempt);
+  const responseActivityObserved = attempt?.response_activity_observed ??
+    (modelSubmissionCount === 0 ? false : undefined);
+  return {
+    duration_ms: durationMs,
+    operation: request.operation,
+    agent_name: request.agent_name,
+    operation_policy_id:
+      attempt?.operation_policy_id ?? request.policy?.operation_policy_id,
+    attempt_stage: attempt?.attempt_stage ?? terminal.attemptStage,
+    ...safeAttemptAudit(attempt),
+    ...safeProjectionAudit(failure?.projectionMetadata),
+    failure_boundary: failureBoundary(terminal.code, attempt),
+    ...(modelSubmissionCount === undefined ? {} : { model_submission_count: modelSubmissionCount }),
+    ...(responseActivityObserved === undefined
+      ? {}
+      : { response_activity_observed: responseActivityObserved }),
+    retryable: terminal.retryable,
+    terminal_code: terminal.code,
+  };
+}
+
+function submittedModelCount(
+  code: string,
+  attempt: FailureAudit,
+): number | undefined {
+  if (attempt) {
+    return Math.max(
+      1,
+      attempt.transport_retry_count + 1,
+      attempt.structured_attempt_count,
+    );
+  }
+  return preSubmissionFailureCodes.has(code) ? 0 : undefined;
+}
+
+function failureBoundary(code: string, attempt: FailureAudit): string {
+  if (providerFailureCodes.has(code)) return "provider";
+  if (structuredFailureCodes.has(code)) return "structured_validation";
+  if (preSubmissionFailureCodes.has(code)) return "operation_preparation";
+  if (attempt) return "model_response";
+  return "runtime_internal";
+}
+
+function safeAttemptAudit(attempt: FailureAudit): TerminalFailureAudit {
+  if (!attempt) return {};
+  return {
+    provider: boundedAuditText(attempt.provider, 160),
+    model_ref: boundedAuditText(attempt.model_ref, 320),
+    structured_transport: attempt.structured_transport,
+    thinking_format: attempt.thinking_format,
+    reasoning_control: attempt.reasoning_control,
+    reasoning_mode: attempt.reasoning_mode,
+    enable_thinking: attempt.enable_thinking,
+    thinking_budget_tokens: attempt.thinking_budget_tokens,
+    deadline_seconds: attempt.deadline_seconds,
+    max_output_tokens: attempt.max_output_tokens,
+    operation_policy_id: boundedAuditText(attempt.operation_policy_id, 160),
+    operation_class: attempt.operation_class,
+    effective_timeout_ms: attempt.effective_timeout_ms,
+    request_bytes: attempt.request_bytes,
+    schema_bytes: attempt.schema_bytes,
+    response_activity_observed: attempt.response_activity_observed,
+    attempt_stage: attempt.attempt_stage,
+    started_at: boundedAuditText(attempt.started_at, 64),
+    first_response_at: boundedOptionalAuditText(attempt.first_response_at, 64),
+    last_activity_at: boundedOptionalAuditText(attempt.last_activity_at, 64),
+    finished_at: boundedAuditText(attempt.finished_at, 64),
+    duration_ms: attempt.duration_ms,
+    finish_reason: boundedOptionalAuditText(attempt.finish_reason, 160),
+    provider_trace_id: boundedOptionalAuditText(attempt.provider_trace_id, 320),
+    safe_exception_class: boundedOptionalAuditText(attempt.safe_exception_class, 160),
+    safe_error_code: boundedOptionalAuditText(attempt.safe_error_code, 120),
+    http_status: attempt.http_status,
+    input_tokens: attempt.input_tokens,
+    output_tokens: attempt.output_tokens,
+    reasoning_tokens: attempt.reasoning_tokens,
+    transport_retry_count: attempt.transport_retry_count,
+    structured_attempt_count: attempt.structured_attempt_count,
+    structured_validation_attempts: attempt.structured_validation_attempts,
+  };
+}
+
+function safeProjectionAudit(
+  projection: ProjectionFailureAudit | undefined,
+): TerminalFailureAudit {
+  if (!projection) return {};
+  return {
+    context_contract_name: boundedAuditText(projection.context_contract_name, 160),
+    ...(projection.projection_id
+      ? { projection_id: boundedAuditText(projection.projection_id, 160) }
+      : {}),
+  };
+}
+
+function boundedAuditText(value: string, maximum: number): string {
+  return value.slice(0, maximum);
+}
+
+function boundedOptionalAuditText(
+  value: string | null | undefined,
+  maximum: number,
+): string | null | undefined {
+  return typeof value === "string" ? value.slice(0, maximum) : value;
 }
 
 class RuntimeFailure extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly retryable = false,
+    readonly attemptStage = "initial",
+    readonly attemptMetadata?: FailureAudit,
+    readonly projectionMetadata?: ProjectionFailureAudit,
   ) {
     super(message);
   }
@@ -323,11 +518,64 @@ function safeRuntimeFailure(error: unknown): RuntimeFailure | undefined {
   if (error instanceof EventBufferOverflow) {
     return new RuntimeFailure(error.code, error.message);
   }
+  if (error instanceof AgentOperationFailure) {
+    return new RuntimeFailure(
+      error.code,
+      safeFailureMessage(error.code),
+      error.retryable,
+      error.attemptStage,
+      error.attemptMetadata,
+    );
+  }
+  if (error instanceof AgentPromptInputProjectionError) {
+    return new RuntimeFailure(
+      error.code,
+      "Agent Prompt input could not be projected.",
+      false,
+      "initial",
+      undefined,
+      {
+        context_contract_name: error.contextContractName,
+        ...(error.projectionId ? { projection_id: error.projectionId } : {}),
+      },
+    );
+  }
   if (error instanceof RuntimeFailure) return error;
   if (error instanceof Error && safeAdapterErrorCodes.has(error.message)) {
     return new RuntimeFailure(error.message, "Agent runtime rejected the operation.");
   }
   return undefined;
+}
+
+function logTerminalProviderDiagnostic(
+  request: AgentRunRequest,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (
+    failure?.code !== "agent_provider_timeout" &&
+    failure?.code !== "agent_provider_transport_failed"
+  ) {
+    return;
+  }
+  const audit = failure.attemptMetadata;
+  console.error(
+    JSON.stringify({
+      event: "agent_provider_terminal_failure",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      stable_error_code: failure.code,
+      operation_policy_id:
+        audit?.operation_policy_id ?? request.policy?.operation_policy_id,
+      operation_class: audit?.operation_class ?? request.policy?.operation_class,
+      effective_timeout_ms: audit?.effective_timeout_ms,
+      attempt_stage: audit?.attempt_stage ?? failure.attemptStage,
+      safe_exception_class: audit?.safe_exception_class,
+      safe_error_code: audit?.safe_error_code,
+      http_status: audit?.http_status,
+      provider_trace_id: audit?.provider_trace_id,
+    }),
+  );
 }
 
 function logStructuredRejectionDiagnostic(
@@ -344,6 +592,31 @@ function logStructuredRejectionDiagnostic(
       stage: "structured_submission",
       safe_error_code: failure.code,
       exception_class: failure.constructor.name,
+      retryable: false,
+    }),
+  );
+}
+
+function logPromptProjectionDiagnostic(
+  request: AgentRunRequest,
+  failure: RuntimeFailure | undefined,
+): void {
+  if (
+    failure?.code !== "agent_context_input_missing" &&
+    failure?.code !== "agent_prompt_input_registry_invalid"
+  ) {
+    return;
+  }
+  console.warn(
+    JSON.stringify({
+      event: "agent_prompt_input_projection_failed",
+      run_id: request.run_id,
+      agent_name: request.agent_name,
+      operation: request.operation,
+      context_contract_name: failure.projectionMetadata?.context_contract_name,
+      projection_id: failure.projectionMetadata?.projection_id,
+      stable_error_code: failure.code,
+      attempt_stage: failure.attemptStage,
       retryable: false,
     }),
   );

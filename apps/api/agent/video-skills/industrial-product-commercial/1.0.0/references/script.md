@@ -1,0 +1,1 @@
+Build the narrative premise around engineering form, then use material precision to shape escalation and controlled light to resolve the advertising idea. Keep product facts and the requested audience promise explicit rather than letting atmosphere replace the message.

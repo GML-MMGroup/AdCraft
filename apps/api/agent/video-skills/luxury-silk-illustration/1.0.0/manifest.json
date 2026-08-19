@@ -1,0 +1,34 @@
+{
+  "skill_id": "luxury-silk-illustration",
+  "version": "1.0.0",
+  "display_name": "Luxury Silk Illustration",
+  "description": "An advertising treatment built around flowing ornamental line, silk material behavior, refined color fields, and tactile elegance.",
+  "category": "luxury-fashion",
+  "tags": [
+    "luxury",
+    "editorial",
+    "material"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Luxury Silk Illustration creative treatment."
+  },
+  "display_order": 130,
+  "files": {
+    "SKILL.md": "59fa10614ce7f2464b7a6081356378421c679543898851ac9029b46381764145",
+    "references/product.md": "a3bbf42ec0f9ce7446dc090390ec457b791b58169d08219294ea8e19f616d291",
+    "references/character.md": "f56aa3a76aa0771c9c614e7a5941a9582dde6cba2ec15c482260c6ac8b7cf836",
+    "references/scene.md": "cf8a4f942988b38c43773b991234bd15b58e5867b6bebc18c7d2ae139a7b0e4b",
+    "references/video.md": "4a719833cf298937773382e46b561daa9f05d286974646fd0a43a8fc5f84568c"
+  },
+  "role_guidance": {
+    "product": "references/product.md",
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "video": "references/video.md"
+  }
+}

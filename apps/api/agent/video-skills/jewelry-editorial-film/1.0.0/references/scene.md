@@ -1,0 +1,1 @@
+Construct spaces that express macro detail through layout and specular light through light, color, and material. Use gesture-led display to direct attention toward the advertised subject while preserving the stated location and product context.

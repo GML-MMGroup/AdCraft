@@ -53,16 +53,10 @@ export async function loadRequiredSkills(
   descriptor: OperationDescriptor,
   selectedOptionalIds: ReadonlyArray<string> = [],
 ): Promise<ReadonlyArray<LoadedSkill>> {
-  const optional = new Set(descriptor.optional_skills);
-  if (selectedOptionalIds.some((skillId) => !optional.has(skillId))) {
+  if (selectedOptionalIds.length > 0) {
     throw new Error("agent_optional_skill_not_allowed");
   }
-  const selectedIds = [
-    ...descriptor.required_skills,
-    ...selectedOptionalIds.filter(
-      (skillId) => !descriptor.required_skills.includes(skillId),
-    ),
-  ];
+  const selectedIds = descriptor.required_skill ? [descriptor.required_skill] : [];
   const bundle = await verifySkillBundle();
   const skills = selectedIds.map((skillId) => {
     const skill = bundle.skills.get(skillId);

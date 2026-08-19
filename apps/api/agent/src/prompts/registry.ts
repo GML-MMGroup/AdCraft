@@ -1,215 +1,200 @@
 import { createHash } from "node:crypto";
 
-import type { AgentRunRequest } from "../generated/agent-runtime.js";
-
-type AgentName = AgentRunRequest["agent_name"];
+import { videoAgentBasePolicy } from "./agents.js";
+import { listOperationDescriptors } from "../registry.js";
 
 export interface PromptDescriptor {
   readonly prompt_id: string;
   readonly prompt_version: string;
   readonly prompt_digest: string;
-  readonly agent_name: AgentName;
+  readonly agent_name: "video_agent";
   readonly operation: string;
   readonly contract_name: string;
   readonly system_prompt: string;
 }
 
-type PromptRegistration = Omit<
-  PromptDescriptor,
-  "prompt_version" | "prompt_digest" | "system_prompt"
-> & {
-  readonly role: string;
-  readonly scope: string;
-};
-
-const specialistProfiles = [
-  ["script_writer", "Script Writer", "script"],
-  ["product_designer", "Product Designer", "product"],
-  ["prop_designer", "Prop Designer", "prop"],
-  ["character_designer", "Character Designer", "character"],
-  ["scene_designer", "Scene Designer", "scene"],
-  ["storyboard_artist", "Storyboard Artist", "storyboard"],
-  ["video_director", "Video Director", "video"],
-  ["bgm_director", "BGM Director", "bgm"],
-  ["quick_media_agent", "Quick Media Agent", "general media"],
-] as const satisfies ReadonlyArray<readonly [AgentName, string, string]>;
-
-const registrations: ReadonlyArray<PromptRegistration> = [
-  registration(
-    "adcraft.director.command_replan.v1",
-    "director",
-    "command_replan",
-    "AgentCommandPlanDraftV2",
-    "Video Agent Director",
-    "Repair one stale command plan from the supplied original intent, bounded plan summary, current target summaries, and conflict metadata. Do not delegate, recurse, or change targets without making the change explicit.",
-  ),
-  registration(
-    "adcraft.director.conversation_turn.v1",
-    "director",
-    "conversation_turn",
-    "AgentActionEnvelopeV2",
-    "Video Agent Director",
-    [
-      "Answer one bounded user turn and delegate at most one local creative task to one registered Specialist.",
-      "When the user explicitly asks for concepts for the current creative topic, set specialist_handoff to that topic's owning Specialist instead of returning only conversational text.",
-      "Current topic ownership is: script -> script_writer, product -> product_designer, props -> prop_designer, characters -> character_designer, scenes -> scene_designer, storyboard -> storyboard_artist, videos -> video_director, and bgm -> bgm_director.",
-      "Do not insert prerequisite analysis before that handoff.",
-    ].join(" "),
-  ),
-  registration(
-    "adcraft.director.decide_next_guidance_step.v1",
-    "director",
-    "decide_next_guidance_step",
-    "NextGuidanceDecisionV2",
-    "Video Agent Director",
-    [
-      "Decide one next interaction only, never a preplanned future sequence.",
-      "Honor explicit include, exclude, and deferred element decisions from the typed Guidance Session.",
-      "You may reply, ask one material clarification, propose at most one topic for exactly one owning Specialist, or finish guidance with a canonical completion_claim.",
-      "Direct Text, Script, Image, Video, or Audio work is allowed when it best matches the Creative Goal; do not synthesize prerequisite topics.",
-      "Return all user-visible language through the Video Agent Director identity.",
-      "Do not create Canvas topology, run Nodes, call providers, expose Skill text, or include private reasoning.",
-    ].join(" "),
-  ),
-  registration(
-    "adcraft.director.proposal_action.v1",
-    "director",
-    "proposal_action",
-    "DelegatedProposalChoiceV2",
-    "Video Agent Director",
-    "Choose exactly one existing option_id from the single supplied Proposal and give one bounded reason. Do not delegate, invent options, create provider work, or authorize future Proposals.",
-  ),
-  registration(
-    "adcraft.director.resolve_creation_mode.v1",
-    "director",
-    "resolve_creation_mode",
-    "CreationModeDecisionV2",
-    "Video Agent Director",
-    [
-      "Resolve exactly one mode: ordinary_conversation, targeted_authoring, quick_media, or guided_production.",
-      "Use quick_media only for one narrow requested media outcome with one explicit source or target.",
-      "Use guided_production for a complete advertisement or multi-stage creative request even when its final delivery is video.",
-      "Use targeted_authoring only when the typed context identifies one explicit editable node or supported asset target.",
-    ].join(" "),
-  ),
-  ...specialistProfiles.flatMap(([agentName, role, subject]) => [
-    registration(
-      `adcraft.${agentName}.propose_concepts.v1`,
-      agentName,
-      "propose_concepts",
-      "ConceptProposalDraftV2",
-      role,
-      `Return exactly the requested candidate_count of text-only ${subject} concepts using only the local handoff context. For single_plan return exactly one option; for choice_set return exactly the declared two-to-four options.`,
-    ),
-    registration(
-      `adcraft.${agentName}.revise_concepts.v1`,
-      agentName,
-      "revise_concepts",
-      "ConceptProposalDraftV2",
-      role,
-      `Revise the pending ${subject} concepts using only the explicit revision instruction.`,
-    ),
-    registration(
-      `adcraft.${agentName}.materialize_draft.v1`,
-      agentName,
-      "materialize_draft",
-      "SpecialistDraftV2",
-      role,
-      [
-        `Materialize one complete editable ${subject} draft from the selected concept without calling a provider.`,
-        ...(subject === "script"
-          ? [
-              'Set semantic_role exactly to "advertising_script". Populate structured_content.content with the complete editable script as a top-level non-empty string. structured_content must be exactly {"content":"<complete editable script>"}. Do not use a nested concept object, return multiple concepts, or put the script only in generation_prompt.',
-            ]
-          : []),
-      ].join(" "),
-    ),
-    registration(
-      `adcraft.${agentName}.direct_response.v1`,
-      agentName,
-      "direct_response",
-      "SpecialistDirectResponseV2",
-      role,
-      `Return one bounded ${subject} response for the precise local request without mutating platform state.`,
-    ),
-  ]),
-];
-
 const descriptors = Object.freeze(
-  registrations.map((item) => {
-    const systemPrompt = canonicalPrompt(item);
+  listOperationDescriptors().map((operation) => {
+    const systemPrompt = [
+      videoAgentBasePolicy,
+      instructionForOperation(operation.operation),
+      localeInstructionForOperation(operation.operation),
+      `Return exactly the ${operation.result_contract_name} contract through the configured structured transport.`,
+      "If Python rejects the first result, repair only the reported structured violations once. A second rejection is terminal.",
+    ].join("\n\n");
     return Object.freeze({
-      prompt_id: item.prompt_id,
+      prompt_id: `adcraft.video_agent.${operation.operation}.v1`,
       prompt_version: "1",
       prompt_digest: createHash("sha256").update(systemPrompt, "utf8").digest("hex"),
-      agent_name: item.agent_name,
-      operation: item.operation,
-      contract_name: item.contract_name,
+      agent_name: "video_agent",
+      operation: operation.operation,
+      contract_name: operation.result_contract_name,
       system_prompt: systemPrompt,
     }) satisfies PromptDescriptor;
   }),
 );
-
-const byOperationAndContract = new Map(
-  descriptors.map((item) => [
-    `${item.agent_name}:${item.operation}:${item.contract_name}`,
-    item,
-  ]),
-);
-const operationKeys = new Set(
-  descriptors.map((item) => `${item.agent_name}:${item.operation}`),
-);
-const planningOperations = new Set(descriptors.map((item) => item.operation));
+const byOperation = new Map(descriptors.map((item) => [item.operation, item]));
+const concreteContractFamilies = new Map<string, ReadonlySet<string>>([
+  [
+    "product_prompt",
+    new Set(["V2ProductMainPromptPlan", "V2ProductMultiViewPromptPlan"]),
+  ],
+  [
+    "character_prompt",
+    new Set(["V2CharacterMainPromptPlan", "V2CharacterThreeViewPromptPlan"]),
+  ],
+  [
+    "scene_prompt",
+    new Set(["V2SceneMainPromptPlan", "V2SceneMultiViewPromptPlan"]),
+  ],
+]);
 
 export function listPromptDescriptors(): ReadonlyArray<PromptDescriptor> {
   return descriptors;
 }
 
 export function isPlanningOperation(operation: string): boolean {
-  return planningOperations.has(operation);
+  return byOperation.has(operation);
 }
 
 export function getPromptDescriptor(
-  agentName: AgentName,
   operation: string,
   contractName: string,
 ): PromptDescriptor {
-  const operationKey = `${agentName}:${operation}`;
-  const descriptor = byOperationAndContract.get(
-    `${operationKey}:${contractName}`,
-  );
-  if (!descriptor && operationKeys.has(operationKey)) {
+  const descriptor = byOperation.get(operation);
+  if (!descriptor) throw new Error("agent_prompt_not_found");
+  if (descriptor.contract_name === contractName) return descriptor;
+  if (!concreteContractFamilies.get(operation)?.has(contractName)) {
     throw new Error("agent_prompt_contract_mismatch");
   }
-  if (!descriptor) throw new Error("agent_prompt_not_found");
-  return descriptor;
-}
-
-function registration(
-  promptId: string,
-  agentName: AgentName,
-  operation: string,
-  contractName: string,
-  role: string,
-  scope: string,
-): PromptRegistration {
-  return {
-    prompt_id: promptId,
-    agent_name: agentName,
-    operation,
+  const systemPrompt = descriptor.system_prompt.replace(
+    `Return exactly the ${descriptor.contract_name} contract`,
+    `Return exactly the ${contractName} contract`,
+  );
+  return Object.freeze({
+    ...descriptor,
     contract_name: contractName,
-    role,
-    scope,
-  };
+    prompt_digest: createHash("sha256").update(systemPrompt, "utf8").digest("hex"),
+    system_prompt: systemPrompt,
+  });
 }
 
-function canonicalPrompt(item: PromptRegistration): string {
-  return [
-    `You are the AdCraft ${item.role} for the ${item.operation} operation.`,
-    item.scope,
-    "Use only the typed context supplied for this operation. Do not infer from sibling expert prompts, provider payloads, complete workflow documents, local paths, credentials, or media bytes.",
-    "Preserve every frozen explicit user fact exactly. Values marked unspecified may be chosen only within the operation scope and must not be relabeled as user-explicit.",
-    `Return exactly the ${item.contract_name} contract by calling submit_structured_result. Do not emit JSON in Markdown or prose.`,
-    "If Python rejects the first submission, repair only the reported structured violations and submit once more. A second rejection is terminal.",
-  ].join("\n\n");
+function instructionForOperation(operation: string): string {
+  if (operation === "decide_turn_intent") {
+    return [
+      "Classify one user turn into ordinary_conversation, guided_production, targeted_authoring, or quick_media.",
+      "ordinary_conversation is for greetings, informational questions, explanations, and messages that request no authoring or Canvas work.",
+      "guided_production is for a request to create, plan, or continue an advertising production.",
+      "targeted_authoring is for authoring or revising a specifically referenced Node or image Asset.",
+      "quick_media is for one bounded media output through the Quick Media boundary.",
+      "Missing, ambiguous, or contradictory creative details do not change guided_production; ask a focused clarification while preserving guided intent.",
+      'For example, "Create an advertisement." is guided_production, while "What makes an advertisement effective?" is ordinary_conversation.',
+      "Return only creative intent, exact-evidence explicit element presence, an optional bounded requirement_patch, and an optional bounded assistant message.",
+      "For every authoring mode that can continue automatically, return a non-empty assistant_message that acknowledges the request and confirms the next production work is starting.",
+      "When deterministic policy can continue, acknowledge that production will continue and must not ask the user to choose a creative stage.",
+      "The deterministic Python journey policy is the sole authority for the next stage; never encode or infer stage selection through assistant prose.",
+      "Represent explicit_elements as one strict object with only the optional product, prop, character, scene, world_setting, script, storyboard, video, and audio keys. Every present key must contain presence and an exact source_quote.",
+      "Represent requirement controls as a controls_to_set object keyed by canonical control name. Every present control must contain its correctly typed value and exact source_quote; audio_mode is exactly none, bgm_only, or full.",
+      "Represent each directive as either scope_kind global without capability_id or scope_kind capability with exactly one registered capability_id.",
+      "Every control, directive, element decision, and conflict must quote an exact substring from context.user_input; never translate or paraphrase source_quote.",
+      "Do not author directive IDs, conflict identities, revisions, provenance, defaults, workflow state, or provider actions. Approximate values are preference directives, not hard controls.",
+      "Use requirement_patch only for durable creative or output facts supported by exact current-message quotes. Never emit continue, pause, skip, defer, resume, hold, reuse-existing-Drafts, stage-ordering, execution-timing, retry, or export mechanics as Requirement directives; express transient intent through routing or objective, or leave it to the supplied typed action.",
+      "Do not choose an Agent identity, Node type, candidate count, revision, or provider action.",
+    ].join(" ");
+  }
+  if (operation === "decide_next_action") {
+    return [
+      "Choose exactly one next action from ask_user, author_decision_bundle, invoke_capability, reply, or finish.",
+      "Use author_decision_bundle with one bounded objective when several independent creative decisions should be answered together.",
+      "When invoking, copy one capability_id from context.policy.allowed_capabilities and provide one bounded objective.",
+      "Treat recommended_capabilities as advice and do not invent an unavailable capability.",
+    ].join(" ");
+  }
+  if (operation === "compile_video_parameters") {
+    return [
+      "Extract only explicit technical video controls from the supplied target prompt and direct Text or Script Binding sources.",
+      "Allowed fields are duration_seconds, resolution, aspect_ratio, and generate_audio, limited by the supplied capability contract.",
+      "Copy source identity exactly. Return no_explicit_controls when no supplied source explicitly states a control.",
+      "Do not infer controls from creative wording, defaults, sibling nodes, or transitive nodes.",
+    ].join(" ");
+  }
+  if (operation === "command_replan") {
+    return "Repair one stale command plan from the supplied original intent, bounded plan summary, target summaries, and conflict metadata without changing targets implicitly.";
+  }
+  if (operation === "workflow_conversation") {
+    return "Answer the current workflow conversation turn using only the bounded current context. Do not silently create or modify Canvas state.";
+  }
+  if (operation === "conversation_summary") {
+    return "Summarize only durable facts and unresolved objectives needed by a later turn. Exclude private reasoning and unrelated history.";
+  }
+  if (operation === "author_decision_bundle") {
+    return [
+      "Author one adaptive Decision Bundle containing one to five independent questions and two to six options per question.",
+      "Use only creative_directive, set_control, or set_element_presence effects and only canonical values available in the supplied context.",
+      "Return wording and bounded effects only. Never author Bundle, question, option, Node, Binding, persistence, provider, path, credential, revision, or platform identities.",
+    ].join(" ");
+  }
+  if (operation === "author_role_brief") {
+    return [
+      "Author only the typed creative brief for the current role variant.",
+      "Use only the supplied requirement facts, current document revisions, selected direction, explicit Binding snapshots, and bounded role projections.",
+      "Do not invoke another capability, copy a sibling prompt, infer an unbound Asset, or emit provider and persistence controls.",
+    ].join(" ");
+  }
+  if (operation === "plan_storyboard_sequence_outline") {
+    return [
+      "Return only compact ordered Storyboard Sequence timing, narrative states, and continuity facts.",
+      "Planning rule: one storyboard sequence represents one bounded downstream video segment and one later ordered 3x3 storyboard grid, not one shot, camera setup, panel, or story beat.",
+      "When deterministic context supplies an exact sequence count or timing windows, preserve them exactly.",
+      "Otherwise use the minimum sequence count required by the total duration and the 15-second maximum; group multiple ordered shots and beats inside each sequence.",
+      "Cover the total duration with contiguous, non-overlapping sequences and preserve the narrative handoff between adjacent sequences.",
+      "Do not author panel rows, provider prompts, or platform identifiers.",
+    ].join(" ");
+  }
+  if (operation === "materialize_storyboard_segment") {
+    return "Materialize only the supplied storyboard segment as exactly nine ordered rows and one segment-local generation prompt. Preserve the supplied prior end state and terminal policy; do not author platform identifiers.";
+  }
+  if (operation.startsWith("propose_") && operation.endsWith("_options")) {
+    return [
+      "Return exactly candidate_count options using only concise interaction display text: title, public_summary, and one to six key_decisions.",
+      "Render all option display text in the supplied response_locale.",
+      "Do not return provider prompts, private Draft seeds, detailed storyboard panels, or output for another production stage.",
+    ].join(" ");
+  }
+  if (operation.startsWith("revise_") && operation.endsWith("_options")) {
+    return [
+      "Revise only the supplied capability options and return concise replacement typed options.",
+      "Do not publish, select, or mutate platform state.",
+    ].join(" ");
+  }
+  if (operation.startsWith("free_")) {
+    return "Return one bounded prompt plan for the requested single-output media kind using only approved references and supplied deterministic constraints. Do not submit media generation.";
+  }
+  if (operation === "materialize_quick_media") {
+    return [
+      "Expand only the selected option into the requested capability Materialization result.",
+      "Use only the bounded capability context and accepted reference summaries.",
+      "Return creative content only; never emit Node identity, status, model selection, execution parameters, Bindings, reference IDs, paths, or provider payloads.",
+    ].join(" ");
+  }
+  if (operation === "execute_canvas_text") {
+    return "Return the bounded Text Node result requested by the current instruction without selecting another capability or modifying other Nodes.";
+  }
+  if (operation === "execute_canvas_script") {
+    return "Return one complete editable Script Node result under the supplied contract and deterministic timing constraints.";
+  }
+  return `Perform only the ${operation} operation using its typed context, trusted internal Skill when declared, approved references, and exact result schema.`;
+}
+
+function localeInstructionForOperation(operation: string): string {
+  if (operation === "decide_turn_intent") {
+    return [
+      "Treat current_response_locale as prior conversation state, not as a command to render in an unresolved locale.",
+      "When current_response_locale is und and the current message clearly establishes a language, return its canonical BCP 47 response_locale and render assistant_message in that language.",
+      "For Simplified Chinese, prefer zh-CN as response_locale.",
+      "When the current message does not establish a language change, preserve an existing resolved locale or leave the fresh locale unresolved.",
+      "Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English.",
+    ].join(" ");
+  }
+  return "Render every model-owned user-visible or audible field in the supplied response_locale. Keep field names, enum values, IDs, diagnostics, provider controls, and hidden constraints in canonical English. Style guidance never overrides response_locale.";
 }

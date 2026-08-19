@@ -1,0 +1,34 @@
+{
+  "skill_id": "monumental-minimalist-science-fiction",
+  "version": "1.0.0",
+  "display_name": "Monumental Minimalist Science Fiction",
+  "description": "An advertising treatment built around vast scale, sparse geometry, atmospheric depth, and human-to-environment contrast.",
+  "category": "cinematic-narrative",
+  "tags": [
+    "cinematic",
+    "narrative",
+    "composition"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Monumental Minimalist Science Fiction creative treatment."
+  },
+  "display_order": 240,
+  "files": {
+    "SKILL.md": "ff33e3c3e53a3fd17b059c9f5d6a75c1d865d54d9e4c9f4c3fd5d3cdc8c12009",
+    "references/script.md": "eebd72b0ff2a086275ac862346ae3a407790252552bc36b8954ad22b4f0e35cf",
+    "references/scene.md": "4a92e9b4a208ab2ef3637221a9fba2651f99dcac25079a2271758385db55529f",
+    "references/storyboard.md": "ed49b605078e8fb931496d02fc0b1dd679e55f03392271d8cd87130bd370f057",
+    "references/video.md": "48212ddd6d8e0125f19a9b01e4ac3d46decf3ca186828453246011e7d11bbb4b"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md"
+  }
+}

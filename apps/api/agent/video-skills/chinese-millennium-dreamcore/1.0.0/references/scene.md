@@ -1,0 +1,1 @@
+Construct spaces that express nostalgic digital texture through layout and liminal familiarity through light, color, and material. Use memory fragments to direct attention toward the advertised subject while preserving the stated location and product context.

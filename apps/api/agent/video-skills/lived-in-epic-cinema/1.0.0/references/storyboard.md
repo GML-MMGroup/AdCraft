@@ -1,0 +1,1 @@
+Organize shots around weathered worlds, develop visual progression through tactile production design, and reserve grounded spectacle for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

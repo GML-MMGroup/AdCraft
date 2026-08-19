@@ -1,0 +1,36 @@
+{
+  "skill_id": "hand-drawn-travel-journal",
+  "version": "1.0.0",
+  "display_name": "Hand-Drawn Travel Journal",
+  "description": "An advertising treatment built around drawn overlays, travel observation, location rhythm, and scrapbook continuity.",
+  "category": "lifestyle-documentary",
+  "tags": [
+    "lifestyle",
+    "documentary",
+    "observational"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Hand-Drawn Travel Journal creative treatment."
+  },
+  "display_order": 510,
+  "files": {
+    "SKILL.md": "0a89b1d8d8b6afab7c8a7329ff5ef2fd0730ff3362c843d7e2a5030eff4c8901",
+    "references/script.md": "3008640de4c1d89801213002cae62bb44bd4cbdb288a1ba97f719be996798455",
+    "references/scene.md": "9417421ed2f398efd3d534e8b0668da0868243b2221abf4bcb84e0aff7855f42",
+    "references/storyboard.md": "174aaa90d0ba1668389c100daded2045559bf42fdc0c2c9f1dc6c6517f244bd1",
+    "references/video.md": "0256e28f9a79878c4f933fd6ff796c4b724b27e829b8e55201e34857609096e5",
+    "references/bgm.md": "0bfec64d45415e163873f91066c50d1bba038b1d81e3c7cc11a3a1c8a57ee1ce"
+  },
+  "role_guidance": {
+    "script": "references/script.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "bgm": "references/bgm.md"
+  }
+}

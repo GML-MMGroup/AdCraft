@@ -1,0 +1,1 @@
+Organize shots around engineering form, develop visual progression through material precision, and reserve functional demonstration for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.

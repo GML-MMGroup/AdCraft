@@ -1,0 +1,1 @@
+Design supporting objects around cut-paper layers and typography-aware rhythm without baked text, with a material hierarchy that reinforces tactile compositing. Props should frame the advertised subject without competing with its identity or introducing unrequested marks.

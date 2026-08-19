@@ -1,0 +1,36 @@
+{
+  "skill_id": "dream-reality-psychological-anime",
+  "version": "1.0.0",
+  "display_name": "Dream-Reality Psychological Anime",
+  "description": "An advertising treatment built around subjective transitions, identity motifs, layered realities, and graphic match cuts.",
+  "category": "animation-illustration",
+  "tags": [
+    "animation",
+    "illustration",
+    "motion"
+  ],
+  "supported_use_cases": [
+    "brand campaigns",
+    "product advertising"
+  ],
+  "preview": {
+    "kind": "none",
+    "summary": "Dream-Reality Psychological Anime creative treatment."
+  },
+  "display_order": 340,
+  "files": {
+    "SKILL.md": "685d74d0773496705e891d0cd26d50254fe8aab8fa917ce58934b69a17cc3c93",
+    "references/character.md": "c6f8e792f329d6ae162b8a57edd007e07baae71e7c2ba96418bff3c5ee4dae64",
+    "references/scene.md": "341f2be055f72c9c8b7139e20ee6271196cb7c52a67a1d0af0ac38684fdb3350",
+    "references/storyboard.md": "4352560b261214a480bacb198addca029c5e741ba63146a09ca7f615e140783c",
+    "references/video.md": "c86ae4aff226d9c35caf33c5d68d9164df812a9de7c5aea86445fea2085408df",
+    "references/quick_media.md": "7449af65e7eeb36cb1053596c231114b973ea942053acce4e969b6dab0fde23a"
+  },
+  "role_guidance": {
+    "character": "references/character.md",
+    "scene": "references/scene.md",
+    "storyboard": "references/storyboard.md",
+    "video": "references/video.md",
+    "quick_media": "references/quick_media.md"
+  }
+}

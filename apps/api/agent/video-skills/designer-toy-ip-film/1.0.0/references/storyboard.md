@@ -1,0 +1,1 @@
+Organize shots around collectible silhouette, develop visual progression through signature accessories, and reserve material charm for meaningful emphasis. Maintain screen direction, subject continuity, and a clear advertising reveal across the sequence.
